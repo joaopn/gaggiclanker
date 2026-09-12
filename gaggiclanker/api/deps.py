@@ -15,6 +15,7 @@ from fastapi import Depends, Request
 
 from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.auth.service import AuthService
+from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
@@ -48,6 +49,7 @@ __all__ = [
     "AnalyzerServiceDep",
     "AuthServiceDep",
     "BeansRepoDep",
+    "ChatRunnerDep",
     "CleanupServiceDep",
     "DatabaseDep",
     "DeviceClientDep",
@@ -137,6 +139,17 @@ def get_analyzer(request: Request) -> AnalyzerService:
     """
     service: AnalyzerService = request.app.state.analyzer
     return service
+
+
+def get_chat_runner(request: Request) -> ChatRunner:
+    """The chat runner. App-scoped, and it has to be.
+
+    It holds the cancel event of every run in flight. A per-request instance
+    would make the cancel button a no-op against an empty map — the same class
+    of bug as a per-request rate limiter.
+    """
+    runner: ChatRunner = request.app.state.chat
+    return runner
 
 
 def get_device_client(request: Request) -> GaggimateClient | None:
@@ -286,6 +299,7 @@ SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_re
 AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]
 DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_writes_repo)]
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
+ChatRunnerDep = Annotated[ChatRunner, Depends(get_chat_runner)]
 CleanupServiceDep = Annotated["CleanupService | None", Depends(get_cleanup_service)]
 NotesWritebackServiceDep = Annotated[
     "NotesWritebackService | None", Depends(get_notes_writeback_service)

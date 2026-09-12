@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import type { Suggestion } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
+import { DiscussButton } from "@/components/chat/DiscussButton";
 import { InsightCard } from "@/components/knowledge/InsightCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -131,6 +132,13 @@ export function SetDetailPage() {
           <div className="flex items-center gap-2">
             {row.active ? <Badge data-testid="set-active">active</Badge> : null}
             {row.status === "archived" ? <Badge variant="outline">archived</Badge> : null}
+            {/* The scoped conversation this feature is for: the Set's recipe,
+                its recent shots and the insights that apply are already in the
+                prompt before the first word is typed. */}
+            <DiscussButton
+              setId={row.id}
+              question={`How is ${row.name} going, and what should I change next?`}
+            />
             {!row.active && row.status === "active" ? (
               <Button
                 variant="outline"

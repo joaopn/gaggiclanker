@@ -67,6 +67,11 @@ class LlmConfig:
     rate_limit_retries: int = 2
     store_call_text: bool = True
     models: dict[str, str] = field(default_factory=dict)
+    #: Where the archive lives. Not a setting — it comes from ``EnvSettings`` —
+    #: but it belongs on the snapshot because exactly one provider needs it:
+    #: ``claude_code`` hands it to the MCP server it spawns for the chat, so the
+    #: CLI's tool loop reads the same database this process opened.
+    data_dir: str = ""
 
     def resolve_model(self, purpose: ModelPurpose = "default") -> str:
         """The model for ``purpose``: its own, then the default, then empty."""
@@ -91,7 +96,7 @@ class LlmConfig:
         return ""
 
 
-async def load_llm_config(settings: SettingsService) -> LlmConfig:
+async def load_llm_config(settings: SettingsService, *, data_dir: str = "") -> LlmConfig:
     """Read the registry once and hand back a frozen snapshot.
 
     A snapshot rather than a live reader because a single call must not see the
@@ -121,6 +126,7 @@ async def load_llm_config(settings: SettingsService) -> LlmConfig:
             "default": await text("modelDefault"),
             **{purpose: await text(key) for purpose, key in _PURPOSE_KEYS.items()},
         },
+        data_dir=data_dir,
     )
 
 
@@ -132,6 +138,7 @@ def build_provider(config: LlmConfig, provider: ProviderId | None = None) -> Pro
             binary=config.claude_code_bin,
             oauth_token=config.claude_code_oauth_token,
             effort=config.claude_code_effort,
+            data_dir=config.data_dir,
         )
     if target == "anthropic":
         return AnthropicProvider(api_key=config.anthropic_api_key)

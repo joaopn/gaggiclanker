@@ -17,6 +17,7 @@ budget without the budget noticing.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,6 +31,14 @@ from openai import (
     OpenAIError,
 )
 
+from gaggiclanker.llm.chat_types import (
+    ChatEvent,
+    ChatMessage,
+    ChatRequest,
+    ChatToolCall,
+    ChatTurn,
+    OnChatEvent,
+)
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import schema_name, strict_json_schema
@@ -221,6 +230,85 @@ class OpenAiCompatibleProvider:
         # plainest request the endpoint could possibly accept.
         return None
 
+    # -- the chat turn ----------------------------------------------------
+
+    async def chat(self, request: ChatRequest, on_event: OnChatEvent) -> ChatTurn:
+        """One streamed turn with `tools`, accumulating the tool-call deltas.
+
+        The awkward part of this API, and the reason this method is longer than
+        the request it makes: a tool call arrives in pieces. The first delta
+        carries an index, an id and a name; every later delta carries the same
+        index and another fragment of `arguments` as a *string*. So the
+        accumulator is keyed on index, the name is taken from whichever delta
+        had one, and the arguments are concatenated and parsed once at the end.
+        Parsing early gets you half an object; keying on id gets you a
+        `KeyError` on the second chunk, because the later deltas have no id.
+        """
+        body: dict[str, Any] = {
+            "model": request.model,
+            "messages": _chat_messages(request),
+            "stream": True,
+            # Ask for usage on the final chunk. Gateways that do not implement
+            # it ignore the option rather than refusing, so there is no
+            # capability check to do; what it buys is a chat whose ledger rows
+            # are not all NULL.
+            "stream_options": {"include_usage": True},
+        }
+        if request.tools:
+            body["tools"] = request.tools
+            body["tool_choice"] = "auto"
+
+        text_parts: list[str] = []
+        partials: dict[int, _PartialToolCall] = {}
+        usage = Usage()
+        stop_reason = ""
+        try:
+            stream = await self.client.chat.completions.create(**body, timeout=request.timeout_s)
+            async for chunk in stream:
+                if request.cancel is not None and request.cancel.is_set():
+                    await stream.close()
+                    return ChatTurn(
+                        text="".join(text_parts),
+                        usage=usage,
+                        stop_reason="cancelled",
+                        model=request.model,
+                    )
+                chunk_usage = _extract_usage(chunk)
+                if chunk_usage.total_tokens is not None:
+                    usage = chunk_usage
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                stop_reason = getattr(choice, "finish_reason", None) or stop_reason
+                delta = getattr(choice, "delta", None)
+                if delta is None:
+                    continue
+                piece = getattr(delta, "content", None)
+                if isinstance(piece, str) and piece:
+                    text_parts.append(piece)
+                    on_event(ChatEvent(kind="delta", data={"text": piece}))
+                for call in getattr(delta, "tool_calls", None) or []:
+                    _accumulate(partials, call)
+        except APIStatusError as exc:
+            raise LlmApiError(
+                _status_message(exc), status=exc.status_code, body=_error_body(exc)
+            ) from exc
+        except APITimeoutError as exc:
+            raise LlmApiError(f"the provider timed out after {request.timeout_s:g}s") from exc
+        except APIConnectionError as exc:
+            raise LlmApiError(f"connection to {self.base_url} failed: {exc}") from exc
+        except OpenAIError as exc:
+            raise LlmApiError(str(exc)) from exc
+
+        return ChatTurn(
+            text="".join(text_parts),
+            tool_calls=[partial.finish() for _, partial in sorted(partials.items())],
+            usage=usage,
+            stop_reason=stop_reason or ("tool_use" if partials else "end_turn"),
+            model=request.model,
+        )
+
     # -- diagnostics ------------------------------------------------------
 
     async def validate_credentials(self) -> CredentialCheck:
@@ -309,3 +397,90 @@ def _first_int(source: Any, *names: str) -> int | None:
         if isinstance(value, int) and not isinstance(value, bool):
             return value
     return None
+
+
+@dataclass
+class _PartialToolCall:
+    """A tool call being assembled from deltas. See ``chat`` for why."""
+
+    id: str = ""
+    name: str = ""
+    arguments: str = ""
+
+    def finish(self) -> ChatToolCall:
+        try:
+            parsed = json.loads(self.arguments or "{}")
+        except ValueError:
+            # A truncated or malformed argument string. Passed on as an empty
+            # object rather than raised: the dispatcher's own validation gives
+            # the model a message it can act on, where an exception here would
+            # end the run over one bad call out of four.
+            parsed = {}
+        return ChatToolCall(
+            id=self.id or f"call_{abs(hash(self.name + self.arguments)) % 10**12:012d}",
+            name=self.name,
+            arguments=parsed if isinstance(parsed, dict) else {"value": parsed},
+        )
+
+
+def _accumulate(partials: dict[int, _PartialToolCall], delta: Any) -> None:
+    index = getattr(delta, "index", None)
+    key = int(index) if index is not None else len(partials)
+    slot = partials.setdefault(key, _PartialToolCall())
+    call_id = getattr(delta, "id", None)
+    if isinstance(call_id, str) and call_id:
+        slot.id = call_id
+    function = getattr(delta, "function", None)
+    if function is None:
+        return
+    name = getattr(function, "name", None)
+    if isinstance(name, str) and name:
+        slot.name = name
+    arguments = getattr(function, "arguments", None)
+    if isinstance(arguments, str) and arguments:
+        slot.arguments += arguments
+
+
+def _chat_messages(request: ChatRequest) -> list[dict[str, Any]]:
+    """The transcript in chat-completions shape.
+
+    The system prompt is a message here (unlike Anthropic), and each tool
+    result is its own `role: "tool"` message keyed by `tool_call_id` — one
+    message carrying several results is a 400, and a result whose id does not
+    match a call in the preceding assistant message is a different 400.
+    """
+    rendered: list[dict[str, Any]] = []
+    if request.system:
+        rendered.append({"role": "system", "content": request.system})
+    for message in request.messages:
+        rendered.extend(_render_message(message))
+    return rendered
+
+
+def _render_message(message: ChatMessage) -> list[dict[str, Any]]:
+    if message.role == "tool":
+        return [
+            {"role": "tool", "tool_call_id": result.id, "content": result.content}
+            for result in message.tool_results
+        ]
+    if message.role == "assistant" and message.tool_calls:
+        return [
+            {
+                "role": "assistant",
+                # `content` must be present even when empty, or several
+                # gateways reject the turn outright.
+                "content": message.content or None,
+                "tool_calls": [
+                    {
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": json.dumps(call.arguments),
+                        },
+                    }
+                    for call in message.tool_calls
+                ],
+            }
+        ]
+    return [{"role": message.role, "content": message.content}]

@@ -24,6 +24,7 @@ below the cache minimum, because the API just ignores it.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 import httpx2
@@ -36,6 +37,14 @@ from anthropic import (
     AsyncAnthropic,
 )
 
+from gaggiclanker.llm.chat_types import (
+    ChatEvent,
+    ChatMessage,
+    ChatRequest,
+    ChatToolCall,
+    ChatTurn,
+    OnChatEvent,
+)
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import strict_json_schema
@@ -138,6 +147,97 @@ class AnthropicProvider:
         if not text:
             raise LlmApiError("the provider returned no content to parse")
         return ProviderReply(text=text, usage=_extract_usage(message))
+
+    async def chat(self, request: ChatRequest, on_event: OnChatEvent) -> ChatTurn:
+        """One streamed turn over the Messages API, with `tools`.
+
+        The raw event stream rather than the SDK's `messages.stream()` helper,
+        for one reason: the helper accumulates into a final message and hands it
+        over at the end, and what a chat needs is the text *as it arrives*.
+        Reading the events directly also makes the two block types explicit —
+        `text_delta` is prose, `input_json_delta` is a tool argument arriving as
+        a string that only parses once the block closes.
+        """
+        kwargs: dict[str, Any] = {
+            "model": request.model,
+            "max_tokens": request.max_tokens,
+            "messages": _chat_messages(request.messages),
+            "timeout": request.timeout_s,
+            "stream": True,
+        }
+        if request.system:
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": request.system,
+                    # The system block is the same few thousand tokens on every
+                    # turn of a conversation, which is exactly what the cache is
+                    # for. Ignored when the prompt is below the minimum.
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        if request.tools:
+            kwargs["tools"] = request.tools
+
+        text_parts: list[str] = []
+        blocks: dict[int, _PartialBlock] = {}
+        usage = Usage()
+        stop_reason = ""
+        try:
+            stream = await self.client.messages.create(**kwargs)
+            async for event in stream:
+                if request.cancel is not None and request.cancel.is_set():
+                    await stream.close()
+                    return ChatTurn(
+                        text="".join(text_parts),
+                        usage=usage,
+                        stop_reason="cancelled",
+                        model=request.model,
+                    )
+                kind = getattr(event, "type", "")
+                if kind == "message_start":
+                    opening = _extract_usage(getattr(event, "message", None))
+                    if opening.total_tokens is not None:
+                        usage = opening
+                elif kind == "content_block_start":
+                    blocks[int(getattr(event, "index", 0))] = _PartialBlock.begin(
+                        getattr(event, "content_block", None)
+                    )
+                elif kind == "content_block_delta":
+                    slot = blocks.get(int(getattr(event, "index", 0)))
+                    delta = getattr(event, "delta", None)
+                    piece = getattr(delta, "text", None)
+                    if isinstance(piece, str) and piece:
+                        text_parts.append(piece)
+                        on_event(ChatEvent(kind="delta", data={"text": piece}))
+                    partial_json = getattr(delta, "partial_json", None)
+                    if slot is not None and isinstance(partial_json, str):
+                        slot.arguments += partial_json
+                elif kind == "message_delta":
+                    delta = getattr(event, "delta", None)
+                    stop_reason = getattr(delta, "stop_reason", None) or stop_reason
+                    extra = _extract_usage(event)
+                    if extra.completion_tokens is not None:
+                        usage = usage + Usage(completion_tokens=extra.completion_tokens)
+        except APIStatusError as exc:
+            raise LlmApiError(
+                _status_message(exc), status=exc.status_code, body=_error_body(exc)
+            ) from exc
+        except APITimeoutError as exc:
+            raise LlmApiError(f"the provider timed out after {request.timeout_s:g}s") from exc
+        except APIConnectionError as exc:
+            raise LlmApiError(f"connection to the Anthropic API failed: {exc}") from exc
+        except AnthropicError as exc:
+            raise LlmApiError(str(exc)) from exc
+
+        calls = [block.finish() for _, block in sorted(blocks.items()) if block.kind == "tool_use"]
+        return ChatTurn(
+            text="".join(text_parts),
+            tool_calls=calls,
+            usage=usage,
+            stop_reason=stop_reason or ("tool_use" if calls else "end_turn"),
+            model=request.model,
+        )
 
     async def validate_credentials(self) -> CredentialCheck:
         missing = self.missing_credential()
@@ -250,3 +350,84 @@ def _error_body(exc: APIStatusError) -> str:
         return exc.response.text
     except Exception:  # pragma: no cover - a body already consumed by the SDK
         return str(exc.body)
+
+
+@dataclass
+class _PartialBlock:
+    """One content block being assembled from `content_block_delta` events."""
+
+    kind: str = "text"
+    id: str = ""
+    name: str = ""
+    arguments: str = ""
+
+    @classmethod
+    def begin(cls, block: Any) -> _PartialBlock:
+        return cls(
+            kind=str(getattr(block, "type", "text") or "text"),
+            id=str(getattr(block, "id", "") or ""),
+            name=str(getattr(block, "name", "") or ""),
+        )
+
+    def finish(self) -> ChatToolCall:
+        try:
+            parsed = json.loads(self.arguments or "{}")
+        except ValueError:
+            # As in the chat-completions provider: a malformed argument string
+            # becomes an empty object, and the dispatcher's validation error is
+            # what the model is shown. Raising here would end a run over one bad
+            # block out of three.
+            parsed = {}
+        return ChatToolCall(
+            id=self.id,
+            name=self.name,
+            arguments=parsed if isinstance(parsed, dict) else {"value": parsed},
+        )
+
+
+def _chat_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
+    """The transcript in Messages-API shape.
+
+    Three rules the API enforces and this function encodes: the system prompt is
+    never a message, an assistant turn that called tools is a list of content
+    blocks rather than a string, and a tool *result* is a **user** turn whose
+    blocks carry `tool_use_id`. That last one reads oddly and is not negotiable —
+    results are input to the next assistant turn.
+    """
+    rendered: list[dict[str, Any]] = []
+    for message in messages:
+        if message.role == "system":
+            continue
+        if message.role == "tool":
+            rendered.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": result.id,
+                            "content": result.content,
+                            "is_error": not result.ok,
+                        }
+                        for result in message.tool_results
+                    ],
+                }
+            )
+            continue
+        if message.role == "assistant" and message.tool_calls:
+            blocks: list[dict[str, Any]] = []
+            if message.content:
+                blocks.append({"type": "text", "text": message.content})
+            blocks.extend(
+                {
+                    "type": "tool_use",
+                    "id": call.id,
+                    "name": call.name,
+                    "input": call.arguments,
+                }
+                for call in message.tool_calls
+            )
+            rendered.append({"role": "assistant", "content": blocks})
+            continue
+        rendered.append({"role": message.role, "content": message.content})
+    return rendered

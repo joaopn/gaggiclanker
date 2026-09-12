@@ -288,6 +288,86 @@ boot — neither silently disappears. Token usage is recorded per analysis; the
 `cost_estimate` column stays empty until there are pricing tables to fill it
 from, because a made-up number in a money column is worse than a blank one.
 
+### The chat
+
+The **Chat** page (`g c`) is the other half of the LLM layer, and it is the
+opposite shape from the analysis: instead of one call with everything in front
+of it, the model is given a small set of tools and asks the archive its own
+questions. It can run read-only SQL over a curated set of views, read a shot's
+curve, compare shots, walk a Set's versions, search the knowledge base, and read
+what this box has learned about this kitchen.
+
+Scope a conversation to a Set and it starts with that Set's recipe, its recent
+shots and the confirmed insights that apply, so "how is it going?" is a question
+with an answer. The **Discuss in chat** button on a shot and on a Set is the same
+thing with the question already typed.
+
+Three tools write, and each writes something you still have to decide about: a
+new Set version with `origin=chat`, a profile draft that goes through the same
+schema, safety-policy and clamp checks as one typed by hand, and an insight
+that is stored **unconfirmed** and reaches no future prompt until you confirm
+it. Nothing in the chat can touch the machine — pushing a profile and deleting a
+shot off the display stay buttons you press.
+
+Every answer shows what was called, with the input and the output one click
+away, and citations are links: a shot id goes to the shot, a knowledge passage's
+heading path goes to the passage. A turn is bounded by `chatMaxToolRounds` and
+`chatMaxToolCalls`; the Stop button cancels a run mid-answer, and the transcript
+survives a reload because the stream is replayed from the database rather than
+held in the tab.
+
+### MCP: the same tools, for other agents
+
+Everything the chat can do is also exposed over the Model Context Protocol, so
+Claude Desktop, `claude -p`, or anything else that speaks MCP gets exactly the
+capabilities the in-app chat has. Two transports:
+
+**Streamable HTTP at `/mcp`**, behind the same bearer token as `/api`. **Off by
+default** (`mcpEnabled` in Settings) and on purpose: it hands an outside agent
+the whole archive, so it is a switch you throw when you want it, the way
+`deviceWritesEnabled` is. With it on, authenticate with a token from
+`POST /api/auth/login`:
+
+```bash
+TOKEN=$(curl -sX POST http://gaggiclanker.local:8000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"username": "barista", "password": "..."}' | jq -r .data.token)
+# Any MCP client that can send a header:
+#   endpoint: http://gaggiclanker.local:8000/mcp
+#   header:   Authorization: Bearer $TOKEN
+```
+
+The token is a session token and lasts `authTokenTtlSeconds` (thirty days by
+default), so it is long-lived enough to paste into a client's configuration;
+signing out of the browser does not revoke it, but changing the password revokes
+every session including this one. With auth off — the default on a home LAN —
+no header is needed.
+
+**stdio**, for a client that launches the server itself. This is what Claude
+Desktop wants, what the `claude_code` chat provider generates for itself, and it
+needs no running server and no switch:
+
+```json
+{
+  "mcpServers": {
+    "gaggiclanker": {
+      "command": "/path/to/gaggiclanker/.venv/bin/python",
+      "args": ["-m", "gaggiclanker", "mcp"],
+      "env": { "DATA_DIR": "/path/to/gaggiclanker/data" }
+    }
+  }
+}
+```
+
+Point `DATA_DIR` at the same directory the server uses and start the server once
+first: the stdio entry point deliberately runs no migrations, because a second
+process migrating a database the application is also using is a race. Add
+`GAGGICLANKER_MCP_SET_ID` to the `env` block to scope it to one Set.
+
+Device-write tools are excluded from MCP unless **both** `deviceWritesEnabled`
+and `mcpDeviceWrites` are on. None ship yet; that is the gate they will be
+behind.
+
 ## Troubleshooting
 
 **The device pill never goes green.**

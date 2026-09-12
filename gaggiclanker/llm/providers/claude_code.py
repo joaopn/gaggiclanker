@@ -39,13 +39,23 @@ import json
 import os
 import shutil
 import signal
+import sys
 import tempfile
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 import structlog
 
+from gaggiclanker.llm.chat_types import (
+    ChatEvent,
+    ChatMessage,
+    ChatRequest,
+    ChatToolCall,
+    ChatToolResult,
+    ChatTurn,
+    OnChatEvent,
+)
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import strict_json_schema
@@ -54,11 +64,16 @@ from gaggiclanker.llm.types import CredentialCheck, ProviderId, ResponseMode, Us
 __all__ = [
     "CLAUDE_CODE_EFFORT_LEVELS",
     "HARNESS_SYSTEM_PROMPT",
+    "MCP_SERVER_NAME",
+    "MCP_TOOL_GLOB",
     "SUGGESTED_MODELS",
     "ClaudeCodeProvider",
     "SpawnResult",
     "build_call_argv",
+    "build_chat_argv",
     "build_child_env",
+    "build_mcp_config",
+    "format_chat_prompt",
     "format_prompt",
     "parse_cli_json_output",
 ]
@@ -400,6 +415,186 @@ class _suppress_process_gone:
         return exc_type is not None and issubclass(exc_type, ProcessLookupError)
 
 
+#: The server name in the generated `--mcp-config`. It is load-bearing: the
+#: CLI namespaces MCP tools as `mcp__<server>__<tool>`, so this string is half
+#: of the `--allowedTools` glob below and renaming it silently allows nothing.
+MCP_SERVER_NAME = "gaggiclanker"
+
+#: What the child may call: our tools and nothing else. Every built-in tool is
+#: already off (`--tools ""`), so this is the whole surface.
+MCP_TOOL_GLOB = f"mcp__{MCP_SERVER_NAME}__*"
+
+#: How long the child is given with no output at all before it is killed. The
+#: per-call deadline still applies; this is the narrower one that catches a CLI
+#: that started and then wedged, where waiting out a five-minute timeout on a
+#: stream nobody is writing to buys nothing.
+STREAM_IDLE_TIMEOUT_S = 120.0
+
+
+def build_mcp_config(*, data_dir: str, executable: str, set_id: int | None = None) -> str:
+    """The `--mcp-config` document: our stdio MCP server, and only it.
+
+    Passed as a JSON *string* rather than a path because it is per-call and
+    a temp file would have to be cleaned up on a path that includes "the child
+    was killed". `--strict-mcp-config` on the command line is what stops the
+    CLI merging the user's own servers into this.
+
+    `env` is the child server's whole environment as far as gaggiclanker is
+    concerned: `DATA_DIR` is how it finds the archive, and it is the same
+    directory this process opened, so the two see one database.
+    """
+    env: dict[str, str] = {"DATA_DIR": data_dir}
+    if set_id is not None:
+        env["GAGGICLANKER_MCP_SET_ID"] = str(set_id)
+    return json.dumps(
+        {
+            "mcpServers": {
+                MCP_SERVER_NAME: {
+                    "command": executable,
+                    "args": ["-m", "gaggiclanker", "mcp"],
+                    "env": env,
+                }
+            }
+        }
+    )
+
+
+def build_chat_argv(
+    *,
+    model: str = "",
+    effort: str = "",
+    system_prompt: str = "",
+    mcp_config: str = "",
+) -> list[str]:
+    """The flags for one streamed chat turn. Order matters, as it does above.
+
+    What each of the unobvious ones is doing:
+
+    * ``--output-format stream-json`` with ``--verbose`` — the CLI refuses the
+      streaming format in print mode without it.
+    * ``--include-partial-messages`` — without it the stream carries whole
+      assistant messages and the browser gets the answer in one lump at the end,
+      which is the entire thing this feature exists to avoid.
+    * ``--mcp-config`` plus ``--strict-mcp-config`` — our tools, and nothing the
+      user happens to have configured on the box.
+    * ``--allowedTools`` — the MCP glob only. Combined with ``--tools ""`` it
+      means the child can read this archive and touch nothing else.
+    * ``--permission-prompts none`` — nobody is at a terminal. Anything that
+      would prompt is denied instead of hanging until the deadline.
+    * ``--setting-sources ""`` — no CLAUDE.md, no user settings. A project's own
+      instructions have no business in a barista's prompt.
+
+    Every variadic flag (``--tools``, ``--setting-sources``, ``--allowedTools``)
+    is followed immediately by another flag, because a bare value after one is
+    swallowed as a second argument to it.
+    """
+    argv = [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--no-session-persistence",
+        "--permission-prompts",
+        "none",
+        "--tools",
+        "",
+        "--setting-sources",
+        "",
+        "--strict-mcp-config",
+    ]
+    if mcp_config:
+        argv += ["--mcp-config", mcp_config, "--allowedTools", MCP_TOOL_GLOB]
+    if system_prompt:
+        argv += ["--system-prompt", system_prompt]
+    if model.strip():
+        argv += ["--model", model.strip()]
+    if effort.strip() in CLAUDE_CODE_EFFORT_LEVELS:
+        argv += ["--effort", effort.strip()]
+    return argv
+
+
+def format_chat_prompt(messages: Sequence[ChatMessage]) -> str:
+    """Flatten a transcript into the one prompt the CLI takes.
+
+    The CLI has a prompt, not a conversation, and `--resume` is deliberately not
+    used: a session id is state on disk that survives this process, and
+    `--no-session-persistence` is what keeps a kitchen appliance from
+    accumulating transcripts in a scratch HOME that is deleted anyway. So the
+    whole history is re-sent every turn, which is also what makes the history
+    budget in the runner the only place transcript length is bounded.
+
+    Tool results are rendered as text rather than dropped: the CLI ran those
+    calls itself on a previous turn, and a model shown its own earlier answer
+    with the evidence removed contradicts itself.
+    """
+    blocks: list[str] = []
+    for index, message in enumerate(messages):
+        if message.role == "tool":
+            for result in message.tool_results:
+                blocks.append(
+                    f"Message {index + 1} (TOOL RESULT: {result.name}):\n{result.content}"
+                )
+            continue
+        body = message.content.strip()
+        if message.tool_calls:
+            named = ", ".join(call.name for call in message.tool_calls)
+            body = f"{body}\n(called: {named})".strip()
+        if not body:
+            continue
+        blocks.append(f"Message {index + 1} ({message.role.upper()}):\n{body}")
+    return "Transcript:\n\n" + "\n\n".join(blocks)
+
+
+async def _spawn_stream(
+    argv: Sequence[str],
+    env: Mapping[str, str],
+    cwd: str,
+    stdin: str | None,
+    timeout_s: float,
+) -> AsyncIterator[str]:
+    """Run the binary and yield its stdout a line at a time.
+
+    A separate seam from :func:`_spawn` because the two have opposite shapes:
+    that one waits for the child to finish and hands over everything at once,
+    this one has to surface a token the moment it arrives. The child is killed
+    on every exit path — normal, timeout, and the caller giving up — because a
+    `claude -p` that outlives the request keeps spending the subscription.
+    """
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=dict(env),
+        cwd=cwd,
+        # A stream-json line carries a whole assistant message and the default
+        # 64 KiB limit turns a long answer into a LimitOverrunError.
+        limit=4 * 1024 * 1024,
+    )
+    try:
+        if process.stdin is not None:
+            process.stdin.write((stdin or "").encode())
+            await process.stdin.drain()
+            process.stdin.close()
+        stdout = process.stdout
+        assert stdout is not None  # PIPE above
+        async with asyncio.timeout(timeout_s):
+            while True:
+                line = await asyncio.wait_for(stdout.readline(), STREAM_IDLE_TIMEOUT_S)
+                if not line:
+                    break
+                yield line.decode(errors="replace")
+    finally:
+        await _terminate(process)
+
+
+#: The streaming injection seam, as :data:`SpawnFn` is for the blocking one.
+type StreamSpawnFn = Callable[
+    [Sequence[str], Mapping[str, str], str, str | None, float], AsyncIterator[str]
+]
+
+
 class ClaudeCodeProvider:
     """The CLI, wrapped so it looks like every other provider."""
 
@@ -416,11 +611,18 @@ class ClaudeCodeProvider:
         oauth_token: str = "",
         effort: str = "",
         spawn: SpawnFn | None = None,
+        stream_spawn: StreamSpawnFn | None = None,
+        data_dir: str = "",
     ) -> None:
         self.binary = binary or "claude"
         self.oauth_token = oauth_token
         self.effort = effort
+        #: Where the archive lives. Handed to the MCP child so it opens the same
+        #: database this process did; empty means "no tools", which is what a
+        #: provider built outside the app gets.
+        self.data_dir = data_dir
         self._spawn: SpawnFn = spawn or _spawn
+        self._stream_spawn: StreamSpawnFn = stream_spawn or _spawn_stream
 
     def missing_credential(self) -> str | None:
         """No token, no call - and the scratch HOME is why.
@@ -458,6 +660,83 @@ class ClaudeCodeProvider:
             raise LlmApiError(f"the Claude Code CLI produced no output ({detail[:STDERR_LIMIT]})")
         text, usage = parse_cli_json_output(result.stdout)
         return ProviderReply(text=text, usage=usage)
+
+    async def chat(self, request: ChatRequest, on_event: OnChatEvent) -> ChatTurn:
+        """One chat turn, with the tool loop running *inside* Claude Code.
+
+        This provider is the odd one out and it is worth being clear about why.
+        The other two are given our tool schemas and hand back "call this"; here
+        the CLI is pointed at our own MCP server and runs the whole loop itself,
+        so what comes back is a transcript of calls that have already happened.
+        The runner therefore records rather than executes them — see
+        ``executed_tool_calls`` on :class:`ChatTurn` — and the returned
+        ``tool_calls`` list is always empty, which is what ends the loop after
+        one round.
+
+        The hardening is the same as ``complete``: prompt on stdin, scratch HOME
+        that is also the cwd, an allow-list environment with no
+        ``ANTHROPIC_API_KEY`` on it.
+        """
+        missing = self.missing_credential()
+        if missing is not None:
+            raise LlmApiError(missing, status=401)
+
+        argv = [
+            self.binary,
+            *build_chat_argv(
+                model=request.model,
+                effort=self.effort,
+                system_prompt=request.system,
+                mcp_config=(
+                    build_mcp_config(
+                        data_dir=self.data_dir,
+                        executable=sys.executable,
+                        # The conversation's Set, so an unqualified `get_set` in
+                        # the CLI's own loop answers the same question it does
+                        # on every other provider.
+                        set_id=request.set_id,
+                    )
+                    if self.data_dir
+                    else ""
+                ),
+            ),
+        ]
+        scratch = tempfile.mkdtemp(prefix="gaggiclanker-claude-chat-")
+        env = build_child_env(scratch_home=scratch, oauth_token=self.oauth_token)
+        reader = _StreamReader(on_event)
+        try:
+            source = self._stream_spawn(
+                argv, env, scratch, format_chat_prompt(request.messages), request.timeout_s
+            )
+            try:
+                async for line in source:
+                    if request.cancel is not None and request.cancel.is_set():
+                        reader.cancelled = True
+                        break
+                    reader.feed(line)
+            finally:
+                # An async generator abandoned mid-iteration only runs its
+                # `finally` when the loop gets round to closing it, and that
+                # `finally` is what kills the child. Closing it here makes the
+                # kill synchronous with the decision to stop reading.
+                aclose = getattr(source, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+        except FileNotFoundError as exc:
+            raise LlmApiError(
+                f"the Claude Code CLI ({argv[0]}) was not found on PATH. Install "
+                "@anthropic-ai/claude-code, or set the claudeCodeBin setting."
+            ) from exc
+        except TimeoutError as exc:
+            raise LlmApiError(
+                f"the Claude Code CLI timed out after {request.timeout_s:g}s and was killed"
+            ) from exc
+        except OSError as exc:
+            raise LlmApiError(f"could not run the Claude Code CLI: {exc}") from exc
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+        return reader.finish(model=request.model)
 
     async def validate_credentials(self) -> CredentialCheck:
         """``claude auth status --json`` — local, free, and conclusive.
@@ -537,3 +816,184 @@ class ClaudeCodeProvider:
             # A child killed on timeout can still be writing here, so a failure
             # to clean up is not worth failing the call over.
             shutil.rmtree(scratch, ignore_errors=True)
+
+
+class _StreamReader:
+    """Translates the CLI's ``stream-json`` lines into our events and one turn.
+
+    The event vocabulary the CLI emits is Anthropic's with an envelope round it,
+    and four shapes matter:
+
+    * ``{"type": "stream_event", "event": {...}}`` — the raw content-block
+      events, which is where the text deltas live.
+    * ``{"type": "assistant", "message": {...}}`` — a whole assistant message,
+      including any ``tool_use`` blocks. Used for the tool calls and for usage.
+    * ``{"type": "user", "message": {...}}`` — carries the ``tool_result``
+      blocks the CLI produced by actually calling our MCP server.
+    * ``{"type": "result", ...}`` — the envelope, with the final text, the
+      totals, and ``is_error``.
+
+    Anything else (``system``/``init``, hook events, an unparseable line from a
+    warning printed before the stream) is ignored rather than treated as a
+    failure: a CLI that prints something new must not break a chat.
+    """
+
+    def __init__(self, on_event: OnChatEvent) -> None:
+        self._on_event = on_event
+        self._text: list[str] = []
+        self._streamed = False
+        self.calls: list[ChatToolCall] = []
+        self.results: list[ChatToolResult] = []
+        self.usage = Usage()
+        self.final = ""
+        self.error = ""
+        self.status: int | None = None
+        self.cancelled = False
+
+    def feed(self, line: str) -> None:
+        stripped = line.strip()
+        if not stripped:
+            return
+        try:
+            event = json.loads(stripped)
+        except ValueError:
+            return
+        if not isinstance(event, dict):
+            return
+        kind = event.get("type")
+        if kind == "stream_event":
+            self._stream_event(event.get("event"))
+        elif kind == "assistant":
+            self._assistant(event.get("message"))
+        elif kind == "user":
+            self._user(event.get("message"))
+        elif kind == "result":
+            self._result(event)
+
+    def _stream_event(self, event: Any) -> None:
+        if not isinstance(event, dict):
+            return
+        if event.get("type") != "content_block_delta":
+            return
+        delta = event.get("delta")
+        if not isinstance(delta, dict):
+            return
+        piece = delta.get("text")
+        if isinstance(piece, str) and piece:
+            self._streamed = True
+            self._text.append(piece)
+            self._on_event(ChatEvent(kind="delta", data={"text": piece}))
+
+    def _assistant(self, message: Any) -> None:
+        if not isinstance(message, dict):
+            return
+        usage = _read_usage(message.get("usage"))
+        if usage.total_tokens is not None:
+            self.usage = self.usage + usage
+        for block in message.get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text" and not self._streamed:
+                text = block.get("text")
+                if isinstance(text, str) and text:
+                    self._text.append(text)
+                    self._on_event(ChatEvent(kind="delta", data={"text": text}))
+            elif block.get("type") == "tool_use":
+                raw_input = block.get("input")
+                call = ChatToolCall(
+                    id=str(block.get("id") or ""),
+                    name=_short_name(str(block.get("name") or "")),
+                    arguments=raw_input if isinstance(raw_input, dict) else {},
+                )
+                self.calls.append(call)
+                self._on_event(
+                    ChatEvent(
+                        kind="tool_call",
+                        data={"id": call.id, "name": call.name, "arguments": call.arguments},
+                    )
+                )
+
+    def _user(self, message: Any) -> None:
+        if not isinstance(message, dict):
+            return
+        for block in message.get("content") or []:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            call_id = str(block.get("tool_use_id") or "")
+            name = next((call.name for call in self.calls if call.id == call_id), "")
+            result = ChatToolResult(
+                id=call_id,
+                name=name,
+                content=_flatten(block.get("content")),
+                ok=not bool(block.get("is_error")),
+            )
+            self.results.append(result)
+            self._on_event(
+                ChatEvent(
+                    kind="tool_result",
+                    data={
+                        "id": result.id,
+                        "name": result.name,
+                        "ok": result.ok,
+                        "content": result.content[:4000],
+                    },
+                )
+            )
+
+    def _result(self, event: dict[str, Any]) -> None:
+        usage = _read_usage(event.get("usage"))
+        if usage.total_tokens is not None:
+            # The envelope's totals supersede the per-message sums rather than
+            # adding to them: it reports the whole run, cache traffic included.
+            self.usage = usage
+        if event.get("is_error"):
+            self.status = _as_int(event.get("api_error_status"))
+            self.error = _non_empty(event.get("result")) or "the Claude Code CLI reported an error"
+            return
+        self.final = _non_empty(event.get("result"))
+
+    def finish(self, *, model: str) -> ChatTurn:
+        if self.error:
+            # `is_error`, never the exit code — see the module docstring. The
+            # status is what lets the classifier say "auth" rather than guess.
+            raise LlmApiError(self.error, status=self.status)
+        streamed = "".join(self._text)
+        text = self.final or streamed
+        if self.final and not self._text:
+            # Nothing was streamed (an older CLI, or a very short answer that
+            # arrived whole). The browser still needs the text as an event or
+            # the bubble stays empty until the reload.
+            self._on_event(ChatEvent(kind="delta", data={"text": self.final}))
+        return ChatTurn(
+            text=text,
+            tool_calls=[],
+            usage=self.usage,
+            stop_reason="cancelled" if self.cancelled else "end_turn",
+            model=model,
+            executed_tool_calls=self.calls,
+            executed_tool_results=self.results,
+        )
+
+
+def _short_name(name: str) -> str:
+    """``mcp__gaggiclanker__get_shot`` -> ``get_shot``.
+
+    The transcript, the audit table and the UI all name tools the way the
+    registry does; carrying the CLI's namespacing through would mean three
+    places that have to strip it.
+    """
+    prefix = f"mcp__{MCP_SERVER_NAME}__"
+    return name[len(prefix) :] if name.startswith(prefix) else name
+
+
+def _flatten(content: Any) -> str:
+    """A tool_result's content, which is a string or a list of text blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(block.get("text", ""))
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return json.dumps(content, default=str) if content is not None else ""

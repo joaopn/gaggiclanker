@@ -19,6 +19,12 @@ import type {
   BatchResult,
   BeanRow,
   BeanWrite,
+  ChatRun,
+  ChatSendResult,
+  ChatThread,
+  ChatThreadDetail,
+  ChatThreadWrite,
+  ChatToolList,
   CleanupPlan,
   CleanupRunAccepted,
   CleanupRunsData,
@@ -909,4 +915,60 @@ export async function patchKnowledgeInsight(
 
 export async function deleteKnowledgeInsight(id: number): Promise<{ deleted: boolean }> {
   return fetchApi<{ deleted: boolean }>(`/knowledge/insights/${id}`, { method: "DELETE" });
+}
+
+// The chat. Sending is the only one of these that is not a plain
+// read: it answers 202 with the run to follow, and the answer itself arrives on
+// `/api/chat/runs/{id}/stream`.
+
+export async function getChatThreads(): Promise<ChatThread[]> {
+  return fetchApi<ChatThread[]>("/chat/threads");
+}
+
+export async function createChatThread(body: ChatThreadWrite): Promise<ChatThread> {
+  return fetchApi<ChatThread>("/chat/threads", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getChatThread(id: number): Promise<ChatThreadDetail> {
+  return fetchApi<ChatThreadDetail>(`/chat/threads/${id}`);
+}
+
+export async function renameChatThread(id: number, title: string): Promise<ChatThread> {
+  return fetchApi<ChatThread>(`/chat/threads/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteChatThread(id: number): Promise<{ deleted: boolean }> {
+  return fetchApi<{ deleted: boolean }>(`/chat/threads/${id}`, { method: "DELETE" });
+}
+
+export async function sendChatMessage(id: number, message: string): Promise<ChatSendResult> {
+  return fetchApi<ChatSendResult>(`/chat/threads/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
+export async function cancelChatRun(id: number): Promise<ChatRun> {
+  return fetchApi<ChatRun>(`/chat/runs/${id}/cancel`, { method: "POST" });
+}
+
+export async function getChatTools(): Promise<ChatToolList> {
+  return fetchApi<ChatToolList>("/chat/tools");
+}
+
+/**
+ * Where the browser follows one run.
+ *
+ * `after` is the last sequence number the tab has seen, so a reconnect replays
+ * only what it missed. Not a `fetchApi` wrapper: `lib/sse.ts` reads it with
+ * `fetch` and its own reader, because `EventSource` cannot send a bearer token.
+ */
+export function chatRunStreamUrl(runId: number, after = 0): string {
+  return `${API_BASE}/chat/runs/${runId}/stream${queryString({ after })}`;
 }

@@ -181,6 +181,52 @@ server does the scope matching through the same `select_insights` an analysis
 uses, so the page cannot show a different answer from the prompt. Do not
 reimplement the matching rule in TypeScript.
 
+The chat adds a sixth slice:
+
+```
+src/
+  hooks/
+    useChat.ts            threads, the turn, and `useChatRun` — the live stream
+  components/chat/
+    ThreadList.tsx        the conversations, with the Set each one is scoped to
+    ChatTranscript.tsx    questions, answers, and the trace folded under each
+    ToolTrace.tsx         one row per call, collapsed, expandable to input/output
+    ProposeCard.tsx       what a propose_ tool created, as a link to it
+    citations.tsx         shot ids and heading paths turned into links
+    DiscussButton.tsx     the shot and Set pages' way in
+  pages/
+    ChatPage.tsx          the page: threads, scope picker, composer, cancel
+```
+
+Four things about it are worth knowing before editing.
+
+**The live answer is component state, not cache.** Tokens arrive several a
+second; putting each into the query cache would re-render every consumer of the
+thread per token. `useChatRun` holds the partial answer, and the stored message
+replaces it when the run completes — which is why the live bubble is rendered
+after the message list rather than merged into it.
+
+**The stream is resumable and the server replays it.** Every event carries a
+sequence number, `chatRunStreamUrl(runId, after)` takes the last one this tab
+saw, and the route replays from the database before joining the live bus. A
+reload mid-answer catches up; it does not lose the middle.
+
+**The transcript folds, the database does not.** A `tool` message and the
+assistant turn that asked for it are separate rows because the next turn has to
+be shown exactly what the model was shown. `toTurns` folds them into "it looked
+these things up, then said this", which is how a person reads it.
+
+**`ChatPage` takes three parameters and each is a link somebody else makes**:
+`?thread=` selects, `?set=` scopes a new conversation, `?ask=` prefills the
+composer. `DiscussButton` produces the last two, and it is a `<Link>` rather
+than a mutation so a mis-click leaves no empty thread behind.
+
+Answers are rendered by `citations.tsx` rather than by a markdown library, on
+purpose: a markdown pipeline plus a sanitiser to render text a language model
+wrote is a large attack surface for a small gain. Paragraphs, bullets and fenced
+code are handled; a shot id and a `heading_path` become links, and nothing else
+is linkified — a citation that goes nowhere is worse than plain text.
+
 Auth adds a sixth, and it is small because the plumbing was already here:
 
 ```

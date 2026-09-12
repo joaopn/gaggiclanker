@@ -20,16 +20,19 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.routing import Route
 
 from gaggiclanker import __version__
 from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
 from gaggiclanker.auth.service import AuthService, validate_env_secret
+from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.analyses import AnalysesRepository
+from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
@@ -51,11 +54,15 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.mcp.http import MCP_PATH, McpMount, start_mcp, stop_mcp
+from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.static import mount_spa
 from gaggiclanker.sync.engine import SyncEngine
+from gaggiclanker.tools import registry as tool_registry
+from gaggiclanker.tools.registry import ToolContext, permissions_for
 
 __all__ = ["app", "check_configuration", "create_app"]
 
@@ -147,6 +154,12 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
     app.state.drafts = None
     app.state.cleanup = None
     app.state.notes_writeback = None
+
+    # Before the task registry: the MCP session manager owns a task group whose
+    # children hold open response streams, and cancelling the app's own tasks
+    # out from under it would leave those streams half-written.
+    with suppress(Exception):
+        await stop_mcp(app)
 
     tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
     if tasks is not None:
@@ -243,11 +256,15 @@ async def _start(app: FastAPI, db: Database) -> None:
     # `running` cleanup row nothing closes would show a deletion in progress for
     # ever on the Device page.
     interrupted_cleanups = await CleanupRepository(db).reconcile_running()
+    # The chat's runs, for the reason an analysis's are: a `running` chat run
+    # nobody owns is a spinner and a cancel button that cancels nothing.
+    interrupted_chats = await ChatRepository(db).reconcile_running()
     log.info(
         "boot_reconciled",
         analyses_interrupted=interrupted_analyses,
         sync_runs_interrupted=interrupted_syncs,
         cleanup_runs_interrupted=interrupted_cleanups,
+        chat_runs_interrupted=interrupted_chats,
         auth_sessions_expired=forgotten,
         auth_enabled=await auth.enabled(),
     )
@@ -256,6 +273,10 @@ async def _start(app: FastAPI, db: Database) -> None:
         settings_service,
         observer=LlmCallObserver(app.state.events),
         calls_repo=LlmCallsRepository(db),
+        # Only `claude_code` reads it, and only for the chat: it is what the
+        # generated `--mcp-config` points the CLI's own MCP client at, so the
+        # tool loop inside Claude Code reads this database.
+        data_dir=str(env.data_dir),
     )
 
     # App-scoped, not per request: it holds the "being opened right now" map
@@ -266,6 +287,13 @@ async def _start(app: FastAPI, db: Database) -> None:
         PromptService(PromptsRepository(db)),
         bus=app.state.events,
     )
+
+    # Before the device client, deliberately. Starting a task group is tens of
+    # milliseconds, and the sync engine's first profiles sweep is timed from
+    # the moment its loops start: anything slow wedged between the two shifts
+    # that sweep relative to whatever a caller does next. MCP depends on none
+    # of it, so it goes where it costs nothing.
+    await _start_mcp_if_enabled(app, db, settings_service)
 
     app.state.device = await start_device_client(settings_service, db)
     app.state.sync = await start_sync_engine(app)
@@ -297,6 +325,62 @@ async def _start(app: FastAPI, db: Database) -> None:
         PromptService(PromptsRepository(db)),
         settings_service,
         client=app.state.device,
+    )
+
+    # App-scoped for the reason the analyzer is: it holds the cancel event of
+    # every run in flight, and a per-request copy would make the cancel button a
+    # no-op. Built last, because it reaches into the analyzer and the draft
+    # service for the two tools that queue work.
+    app.state.chat = ChatRunner(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        tools=tool_registry,
+        bus=app.state.events,
+        analyzer=app.state.analyzer,
+        drafts=app.state.drafts,
+        knowledge=app.state.knowledge,
+        tasks=app.state.tasks,
+        rate_limits=app.state.rate_limits,
+    )
+
+
+async def _start_mcp_if_enabled(app: FastAPI, db: Database, settings: SettingsService) -> None:
+    """Mount the MCP endpoint, unless the switch says not to.
+
+    The permission set is resolved once, here, rather than per request: a tool
+    outside it is not advertised at all, and a `tools/list` that changed between
+    two calls would be a client planning around a tool that vanishes.
+    ``ToolContext`` still carries it, so the dispatcher re-checks on every call.
+    """
+    app.state.mcp_manager = None
+    app.state.mcp_stack = None
+    if not bool(await settings.get("mcpEnabled")):
+        log.info("mcp_disabled")
+        return
+    permissions = await permissions_for(settings, mcp=True)
+
+    async def context() -> ToolContext:
+        # Read off `app.state` per call rather than captured: this runs before
+        # the draft service exists, and a factory that closed over the values
+        # would hand every MCP client a `None` for the life of the process.
+        return ToolContext(
+            db=db,
+            settings=settings,
+            knowledge=getattr(app.state, "knowledge", None),
+            analyzer=getattr(app.state, "analyzer", None),
+            drafts=getattr(app.state, "drafts", None),
+            tasks=getattr(app.state, "tasks", None),
+            rate_limits=getattr(app.state, "rate_limits", None),
+            caller="mcp-http",
+            permissions=permissions,
+        )
+
+    await start_mcp(
+        app,
+        server=build_mcp_server(
+            context, registry=tool_registry, permissions=permissions, db_for_resources=db
+        ),
     )
 
 
@@ -448,6 +532,15 @@ def create_app(
 
     app.include_router(health_router)
     app.include_router(api_router)
+
+    # Before the SPA fallback, which is a catch-all: a route appended after it
+    # is unreachable. A `Route` rather than a `mount`, because a mount at
+    # `/mcp` answers `/mcp` itself with a 307 to `/mcp/` — and the endpoint URL
+    # is what every client has in its configuration file, verbatim. The shim
+    # resolves the session manager off `app.state` at request time, so a request
+    # that arrives before the lifespan has built one gets a 503 rather than a
+    # stack trace. See gaggiclanker/mcp/http.py.
+    app.router.routes.append(Route(MCP_PATH, endpoint=McpMount(app)))
 
     # Last: the SPA fallback is a catch-all and would shadow the routers above.
     app.state.spa_mounted = mount_spa(app, web_dist or env.web_dist)

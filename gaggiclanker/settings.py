@@ -987,4 +987,69 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         env_key="GAGGICLANKER_MODEL_CHAT",
         description="Model for conversational turns. Empty falls back to modelDefault.",
     ),
+    SettingDefinition(
+        key="chatMaxToolRounds",
+        type="int",
+        default=8,
+        env_key="GAGGICLANKER_CHAT_MAX_TOOL_ROUNDS",
+        validate=_at_least(1, "a chat turn needs at least one round to answer in"),
+        description=(
+            "How many provider round-trips one chat answer may take. Each round is one "
+            "model call plus whatever tools it asked for; the budget is what stops a "
+            "model that keeps re-querying from spending an afternoon's tokens on one "
+            "question."
+        ),
+    ),
+    SettingDefinition(
+        key="chatMaxToolCalls",
+        type="int",
+        default=20,
+        env_key="GAGGICLANKER_CHAT_MAX_TOOL_CALLS",
+        validate=_at_least(1, "a chat turn needs at least one tool call to be useful"),
+        description=(
+            "How many tool calls one chat answer may make in total, across all rounds. "
+            "Hit either this or chatMaxToolRounds and the model is told to answer with "
+            "what it already has."
+        ),
+    ),
+    SettingDefinition(
+        key="chatHistoryTokenBudget",
+        type="int",
+        default=12000,
+        env_key="GAGGICLANKER_CHAT_HISTORY_TOKEN_BUDGET",
+        validate=_at_least(1000, "a history budget below 1000 tokens drops the question itself"),
+        description=(
+            "Roughly how many tokens of conversation history are sent with each turn. "
+            "Oldest messages are dropped first; the newest user message is always kept, "
+            "because a turn without the question is not a turn."
+        ),
+    ),
+    SettingDefinition(
+        key="mcpEnabled",
+        type="bool",
+        default=False,
+        env_key="GAGGICLANKER_MCP_ENABLED",
+        description=(
+            "Serve the MCP endpoint at /mcp (Streamable HTTP), so any MCP client that can "
+            "send a header gets the same tools the in-app chat has. Behind the same bearer "
+            "token as /api. Off by default as a deliberate choice rather than a limitation: "
+            "it hands an outside agent the whole archive, and a capability like that is one "
+            "you switch on when you want it, the way deviceWritesEnabled is. The stdio entry "
+            "point (`gaggiclanker mcp`) is what Claude Desktop and `claude -p` use and is "
+            "unaffected by this switch."
+        ),
+    ),
+    SettingDefinition(
+        key="mcpDeviceWrites",
+        type="bool",
+        default=False,
+        env_key="GAGGICLANKER_MCP_DEVICE_WRITES",
+        description=(
+            "Let an MCP client call device-write tools, on top of deviceWritesEnabled. "
+            "Two switches rather than one because handing an external agent the ability "
+            "to change a profile on the machine is a decision separate from allowing "
+            "this app's own push button. No device-write tools ship yet; this is the "
+            "gate they will be behind."
+        ),
+    ),
 )

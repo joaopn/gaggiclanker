@@ -22,6 +22,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
+from gaggiclanker.llm.chat_types import ChatRequest, ChatTurn, OnChatEvent
 from gaggiclanker.llm.types import (
     CredentialCheck,
     LlmMessage,
@@ -73,6 +74,22 @@ class Provider(Protocol):
 
     async def complete(self, call: ProviderCall) -> ProviderReply:
         """Make one attempt. Raises :class:`LlmApiError` for a provider refusal."""
+        ...
+
+    async def chat(self, request: ChatRequest, on_event: OnChatEvent) -> ChatTurn:
+        """One conversational turn with native tool use, streamed.
+
+        The second half of the interface, added for the chat. It is on the same
+        protocol as :meth:`complete` rather than on a separate one because the
+        alternative — an ``isinstance`` check at the one call site — moves a
+        compile-time guarantee into a runtime branch that is only exercised by
+        the provider somebody forgot to implement.
+
+        ``on_event`` is called as chunks arrive and must not be awaited; the
+        completed turn is the return value. Raises :class:`LlmApiError` for a
+        provider refusal, exactly as ``complete`` does, so the chat runner
+        classifies failures with the same code.
+        """
         ...
 
     def missing_credential(self) -> str | None:

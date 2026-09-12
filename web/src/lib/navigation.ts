@@ -9,6 +9,7 @@ import {
   HardDrive,
   Import,
   Layers,
+  MessageSquare,
   Settings as SettingsIcon,
   SlidersHorizontal,
 } from "lucide-react";
@@ -53,6 +54,10 @@ export const NAV_LINKS: NavLink[] = [
   // queue and a state, and something waiting for a decision has to be visible
   // from wherever you are.
   { to: "/drafts", label: "Drafts", icon: FilePen, shortcut: "g r", shortcutLabel: "g r" },
+  // Its own entry rather than a panel on a page: a conversation is a place you
+  // go back to, and the "Discuss in chat" buttons on a shot and a Set both land
+  // here with a thread already scoped.
+  { to: "/chat", label: "Chat", icon: MessageSquare, shortcut: "g c", shortcutLabel: "g c" },
   { to: "/import", label: "Import", icon: Import, shortcut: "g i", shortcutLabel: "g i" },
   { to: "/device", label: "Device", icon: HardDrive, shortcut: "g d", shortcutLabel: "g d" },
   { to: "/knowledge", label: "Knowledge", icon: BookOpen, shortcut: "g k", shortcutLabel: "g k" },

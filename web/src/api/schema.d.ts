@@ -197,6 +197,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One run: its status, usage and tool counts */
+        get: operations["get_run_api_chat_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop a run that is still going */
+        post: operations["cancel_run_api_chat_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/runs/{run_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Server-sent events for one run, replayed then live */
+        get: operations["stream_run_api_chat_runs__run_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/threads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Conversations, most recently used first */
+        get: operations["list_threads_api_chat_threads_get"];
+        put?: never;
+        /** Start a conversation, optionally scoped to a Set */
+        post: operations["create_thread_api_chat_threads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/threads/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One conversation, with its transcript */
+        get: operations["get_thread_api_chat_threads__thread_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete a conversation and its transcript */
+        delete: operations["delete_thread_api_chat_threads__thread_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename a conversation */
+        patch: operations["rename_thread_api_chat_threads__thread_id__patch"];
+        trace?: never;
+    };
+    "/api/chat/threads/{thread_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask something; the answer streams on the run
+         * @description 202, not 200: the work is queued and the row is the handle.
+         *
+         *     The same shape as `POST /api/shots/{id}/analyses`, and for the same reason —
+         *     a request holding a two-minute provider call open is a request `docker stop`
+         *     kills mid-flight, with the browser still waiting.
+         */
+        post: operations["send_api_chat_threads__thread_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The tools the chat may call, with their permission class
+         * @description Read-only, and the same list the runner sends the provider.
+         *
+         *     The UI needs it to render a trace: a tool call arrives as a name, and a
+         *     panel that said "propose_set_version" without saying that is a *proposal*
+         *     would be hiding the one thing a reader has to know.
+         */
+        get: operations["list_tools_api_chat_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device/cleanup/plan": {
         parameters: {
             query?: never;
@@ -1981,6 +2117,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ChatRunRow] */
+        ApiResponse_ChatRunRow_: {
+            data?: components["schemas"]["ChatRunRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ChatThreadRow] */
+        ApiResponse_ChatThreadRow_: {
+            data?: components["schemas"]["ChatThreadRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[CleanupPlan] */
         ApiResponse_CleanupPlan_: {
             data?: components["schemas"]["CleanupPlan"] | null;
@@ -2123,6 +2275,15 @@ export interface components {
         /** ApiResponse[InsightRow] */
         ApiResponse_InsightRow_: {
             data?: components["schemas"]["InsightRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[list[ChatThreadRow]] */
+        ApiResponse_list_ChatThreadRow__: {
+            /** Data */
+            data?: components["schemas"]["ChatThreadRow"][] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2312,6 +2473,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[SendResult] */
+        ApiResponse_SendResult_: {
+            data?: components["schemas"]["SendResult"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[SetDetailData] */
         ApiResponse_SetDetailData_: {
             data?: components["schemas"]["SetDetailData"] | null;
@@ -2427,6 +2596,22 @@ export interface components {
         /** ApiResponse[SyncStatusData] */
         ApiResponse_SyncStatusData_: {
             data?: components["schemas"]["SyncStatusData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ThreadDetail] */
+        ApiResponse_ThreadDetail_: {
+            data?: components["schemas"]["ThreadDetail"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ToolList] */
+        ApiResponse_ToolList_: {
+            data?: components["schemas"]["ToolList"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2653,6 +2838,132 @@ export interface components {
         };
         /** @enum {string} */
         BurrType: "conical" | "flat" | "unknown";
+        /**
+         * ChatMessageRow
+         * @description One turn as stored.
+         */
+        ChatMessageRow: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Role */
+            role: string;
+            /** Run Id */
+            run_id?: number | null;
+            /** Thread Id */
+            thread_id: number;
+            /** Tool Calls */
+            tool_calls?: {
+                [key: string]: unknown;
+            }[];
+            /** Tool Results */
+            tool_results?: {
+                [key: string]: unknown;
+            }[];
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ChatRunRow
+         * @description One press of Send.
+         */
+        ChatRunRow: {
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Started At
+             * @default
+             */
+            started_at: string;
+            /** @default running */
+            status: components["schemas"]["RunStatus"];
+            /** Thread Id */
+            thread_id: number;
+            /**
+             * Tool Calls
+             * @default 0
+             */
+            tool_calls: number;
+            /**
+             * Tool Rounds
+             * @default 0
+             */
+            tool_rounds: number;
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ChatThreadRow
+         * @description One thread as listed.
+         */
+        ChatThreadRow: {
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+            /** Set Id */
+            set_id?: number | null;
+            /** Set Name */
+            set_name?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /**
+         * ChatThreadWrite
+         * @description A new thread. Both fields optional: "just ask something" is a thread.
+         */
+        ChatThreadWrite: {
+            /** Set Id */
+            set_id?: number | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
         /**
          * ChunkHit
          * @description One search result: the chunk, its BM25 score and a quotable snippet.
@@ -4064,6 +4375,11 @@ export interface components {
             /** Stopped */
             stopped: boolean;
         };
+        /** RenameBody */
+        RenameBody: {
+            /** Title */
+            title: string;
+        };
         /** @enum {string} */
         RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
         /**
@@ -4143,6 +4459,8 @@ export interface components {
         };
         /** @enum {string} */
         RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
+        /** @enum {string} */
+        RunStatus: "running" | "ok" | "failed" | "cancelled" | "interrupted";
         /**
          * SearchData
          * @description What a search found, best first.
@@ -4152,6 +4470,19 @@ export interface components {
             items: components["schemas"]["ChunkHit"][];
             /** Query */
             query: string;
+        };
+        /** SendBody */
+        SendBody: {
+            /** Message */
+            message: string;
+        };
+        /**
+         * SendResult
+         * @description What a press of Send produced: the run to follow, and the stored question.
+         */
+        SendResult: {
+            message: components["schemas"]["ChatMessageRow"];
+            run: components["schemas"]["ChatRunRow"];
         };
         /**
          * SetAnalyseRequest
@@ -5208,6 +5539,34 @@ export interface components {
             value: string;
         };
         /**
+         * ThreadDetail
+         * @description One thread and everything said in it.
+         */
+        ThreadDetail: {
+            /** Messages */
+            messages?: components["schemas"]["ChatMessageRow"][];
+            /** Runs */
+            runs?: components["schemas"]["ChatRunRow"][];
+            thread: components["schemas"]["ChatThreadRow"];
+        };
+        /**
+         * ToolInfo
+         * @description One tool, as the UI labels a trace.
+         */
+        ToolInfo: {
+            /** Description */
+            description: string;
+            /** Name */
+            name: string;
+            /** Permission */
+            permission: string;
+        };
+        /** ToolList */
+        ToolList: {
+            /** Tools */
+            tools?: components["schemas"]["ToolInfo"][];
+        };
+        /**
          * UsageTotals
          * @description What ``GET /api/llm/usage`` adds up.
          */
@@ -5713,6 +6072,316 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_chat_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ChatRunRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_chat_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ChatRunRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_run_api_chat_runs__run_id__stream_get: {
+        parameters: {
+            query?: {
+                /** @description Resume after this sequence number. */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_threads_api_chat_threads_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_list_ChatThreadRow__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_thread_api_chat_threads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatThreadWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ChatThreadRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_thread_api_chat_threads__thread_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ThreadDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_thread_api_chat_threads__thread_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__bool__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_thread_api_chat_threads__thread_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ChatThreadRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_api_chat_threads__thread_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SendResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tools_api_chat_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ToolList_"];
                 };
             };
         };

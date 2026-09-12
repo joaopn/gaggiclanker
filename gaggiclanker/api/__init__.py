@@ -9,6 +9,7 @@ from gaggiclanker.api import (
     auth,
     backup,
     beans,
+    chat,
     device,
     drafts,
     grinders,
@@ -51,5 +52,6 @@ api_router.include_router(prompts.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(analyses.router)
 api_router.include_router(analyses.suggestions_router)
+api_router.include_router(chat.router)
 
 health_router = health.router

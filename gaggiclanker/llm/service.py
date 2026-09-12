@@ -105,8 +105,12 @@ class LlmService:
         budget: RateLimitBudget | None = None,
         mode_memory: ModeMemory | None = None,
         provider_factory: ProviderFactory = build_provider,
+        data_dir: str = "",
     ) -> None:
         self.settings = settings
+        #: Passed through to the config snapshot for the one provider that needs
+        #: it; see :class:`~gaggiclanker.llm.config.LlmConfig`.
+        self.data_dir = data_dir
         self.observer = observer or LlmCallObserver()
         self.calls_repo = calls_repo
         self.budget = budget or get_rate_limit_budget()
@@ -118,7 +122,7 @@ class LlmService:
     # -- configuration ----------------------------------------------------
 
     async def config(self) -> LlmConfig:
-        return await load_llm_config(self.settings)
+        return await load_llm_config(self.settings, data_dir=self.data_dir)
 
     async def resolve_model(self, purpose: str = "default") -> str:
         config = await self.config()

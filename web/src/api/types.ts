@@ -546,3 +546,14 @@ export type PushVerification = {
   sent_canonical?: unknown;
   loaded_canonical?: unknown;
 };
+
+// The chat and its tool surface. Every one of these is a pydantic
+// model on the server, so nothing here is retyped.
+export type ChatThread = components["schemas"]["ChatThreadRow"];
+export type ChatThreadWrite = components["schemas"]["ChatThreadWrite"];
+export type ChatMessage = components["schemas"]["ChatMessageRow"];
+export type ChatRun = components["schemas"]["ChatRunRow"];
+export type ChatThreadDetail = components["schemas"]["ThreadDetail"];
+export type ChatSendResult = components["schemas"]["SendResult"];
+export type ChatToolInfo = components["schemas"]["ToolInfo"];
+export type ChatToolList = components["schemas"]["ToolList"];

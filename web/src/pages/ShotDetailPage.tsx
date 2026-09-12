@@ -5,6 +5,7 @@ import { getShotExport, shotRawUrl } from "@/api/client";
 import type { DeviceShotNotes, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { ShotChart } from "@/components/charts/ShotChart";
+import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
@@ -112,6 +113,12 @@ export function ShotDetailPage() {
             <ScoreBadge score={row.execution_score ?? null} className="text-sm" />
             <RatingStars
               rating={shot.data.judgement?.rating ?? row.rating ?? row.index_rating ?? null}
+            />
+            {/* Scoped to the shot's own Set, so the chat starts knowing what
+                this shot was an attempt at rather than asking. */}
+            <DiscussButton
+              setId={row.set_badge?.set_id ?? null}
+              question={`What do you make of shot ${row.id}?`}
             />
           </div>
         }

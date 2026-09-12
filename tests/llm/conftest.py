@@ -24,6 +24,7 @@ from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.llm.budget import RateLimitBudget
+from gaggiclanker.llm.chat_types import ChatEvent, ChatRequest, ChatTurn, OnChatEvent
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
@@ -63,6 +64,15 @@ class FakeProvider:
     #: method, so the deadline and cancellation tests exercise the same code
     #: path as every other test here.
     delay: float = 0.0
+    #: The chat half of the interface: one :class:`ChatTurn` per
+    #: round, in order, with the last one repeating. A turn carrying tool calls
+    #: makes the runner dispatch and come back for the next entry, which is how
+    #: a loop of a known length is scripted.
+    chat_script: list[Any] = field(default_factory=list)
+    chat_calls: list[ChatRequest] = field(default_factory=list)
+    #: Stall inside ``chat`` before answering, for the cancel tests. Checked
+    #: against ``request.cancel`` as a real provider does.
+    chat_delay: float = 0.0
 
     async def complete(self, call: ProviderCall) -> ProviderReply:
         self.calls.append(call)
@@ -76,6 +86,27 @@ class FakeProvider:
             return ProviderReply(text=outcome, usage=Usage(prompt_tokens=11, completion_tokens=7))
         reply: ProviderReply = outcome
         return reply
+
+    async def chat(self, request: ChatRequest, on_event: OnChatEvent) -> ChatTurn:
+        """Emit the turn's text as deltas, then hand the turn over.
+
+        The deltas are emitted rather than skipped because the runner persists
+        each one, and "did the browser get tokens" is a property the streaming
+        tests assert on.
+        """
+        self.chat_calls.append(request)
+        if self.chat_delay:
+            await asyncio.sleep(self.chat_delay)
+        index = min(len(self.chat_calls) - 1, len(self.chat_script) - 1)
+        outcome = self.chat_script[index] if self.chat_script else ChatTurn(text="ok")
+        if isinstance(outcome, BaseException):
+            raise outcome
+        turn: ChatTurn = outcome
+        if request.cancel is not None and request.cancel.is_set():
+            return ChatTurn(text=turn.text, stop_reason="cancelled")
+        for piece in turn.text.split(" "):
+            on_event(ChatEvent(kind="delta", data={"text": piece + " "}))
+        return turn
 
     def missing_credential(self) -> str | None:
         return self.missing

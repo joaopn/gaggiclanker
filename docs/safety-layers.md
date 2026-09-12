@@ -33,6 +33,16 @@ gate (in a test, in a script) gets `DenyAllWrites` and can write nothing at all,
 so read-only is what you get by forgetting. Every attempt, authorised or
 refused, leaves a row in `device_writes`, which the Device page lists.
 
+**The chat and MCP add callers, not writes**. Every tool declares
+a permission class, and the two callers that can be driven by a language model
+are handed `read` and `propose` only: `propose` writes to gaggiclanker — a Set
+version, a profile draft, an unconfirmed insight — and to nothing else. No
+device-write tool exists, so there is nothing for the chat to be refused; over
+MCP the class is gated twice, by `deviceWritesEnabled` and by `mcpDeviceWrites`,
+and a tool outside the caller's classes is not advertised at all rather than
+merely refused. Pushing a draft to the machine stays what it was: a button a
+person presses, on a page showing the diff they are approving.
+
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.
 

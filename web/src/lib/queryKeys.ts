@@ -113,6 +113,18 @@ export const queryKeys = {
    * analysis list under that prefix would be re-fetched for every row on screen
    * for a list that changes only when somebody presses a button.
    */
+  /**
+   * The chat. `tools` is outside `threads` because the tool list
+   * changes with a redeploy and nothing a conversation does invalidates it,
+   * while a thread moves on every turn.
+   */
+  chat: {
+    all: ["chat"] as const,
+    threads: () => ["chat", "threads"] as const,
+    thread: (id: string) => ["chat", "thread", id] as const,
+    run: (id: string) => ["chat", "run", id] as const,
+    tools: () => ["chat", "tools"] as const,
+  },
   analyses: {
     all: ["analyses"] as const,
     forShot: (shotId: string) => ["analyses", "shot", shotId] as const,
