@@ -241,5 +241,5 @@ __marimo__/
 
 # Agent working files, never tracked
 /CLAUDE.md
-/.claude/
-/PLAN/
+/.claude
+/PLAN
