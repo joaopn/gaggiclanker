@@ -1,10 +1,14 @@
 import { SlidersHorizontal, Star } from "lucide-react";
+import { Link } from "react-router-dom";
+import type { ProfileVersionSummary } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useProfiles } from "@/hooks/useArchive";
+import { useProfiles, useProfileVersions } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
+import { formatDate } from "@/lib/shots";
 
 /**
  * The profile mirror, read-only — and it stays read-only for now.
@@ -15,8 +19,10 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
  */
 export function ProfilesPage() {
   const profiles = useProfiles();
+  const versions = useProfileVersions({ limit: 200 });
 
   useQueryErrorToast(profiles.error, "Could not load profiles");
+  useQueryErrorToast(versions.error, "Could not load profile versions");
 
   return (
     <div className="space-y-6">
@@ -87,6 +93,101 @@ export function ProfilesPage() {
           description="The mirror is read on connect, whenever the selected profile changes, and every fifteen minutes."
         />
       )}
+
+      <ProfileVersions
+        items={versions.data?.items ?? []}
+        total={versions.data?.total ?? 0}
+        pending={versions.isPending}
+      />
     </div>
+  );
+}
+
+/**
+ * Every stored version, mirrored or imported.
+ *
+ * The table above answers "what is on the machine". This answers "what can a
+ * shot resolve to", which is a superset and the one that matters for the
+ * archive: a profile edited on the display leaves its previous version behind,
+ * and a version loaded from a file never had a device profile at all. Before
+ * `/api/profile-versions` existed, an imported profile landed in the database
+ * and appeared nowhere.
+ */
+function ProfileVersions({
+  items,
+  total,
+  pending,
+}: {
+  items: ProfileVersionSummary[];
+  total: number;
+  pending: boolean;
+}) {
+  if (pending) return <Skeleton className="h-24 w-full" />;
+  if (items.length === 0) return null;
+  return (
+    <SectionCard
+      title="Versions"
+      description={`Every distinct profile document the archive holds (${total}). A version is immutable and content-hashed, so a shot from March still resolves to what it was brewed with.`}
+      contentClassName="overflow-x-auto"
+    >
+      <table className="w-full border-collapse text-left text-sm">
+        <thead className="border-border border-b text-muted-foreground text-xs uppercase tracking-wide">
+          <tr>
+            <th className="py-2 pr-4 font-medium">Label</th>
+            <th className="py-2 pr-4 font-medium">Source</th>
+            <th className="py-2 pr-4 font-medium">Created</th>
+            <th className="py-2 pr-4 text-right font-medium">Shots</th>
+            <th className="py-2 pr-4 font-medium">Hash</th>
+            <th className="py-2 font-medium">On the machine</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((version) => (
+            <tr
+              key={version.id}
+              id={`version-${version.id}`}
+              data-testid="profile-version-row"
+              className="border-border border-b last:border-0 target:bg-muted/60"
+            >
+              <td className="py-2 pr-4">
+                <span className="block max-w-[18rem] truncate font-medium">{version.label}</span>
+                <span className="text-muted-foreground text-xs">
+                  {version.type}
+                  {version.utility ? " · utility" : ""}
+                </span>
+              </td>
+              <td className="py-2 pr-4">
+                {version.source === "import" ? (
+                  <Badge variant="secondary">imported</Badge>
+                ) : (
+                  <span className="text-muted-foreground">device</span>
+                )}
+              </td>
+              <td className="py-2 pr-4">{formatDate(version.created_at)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {version.shot_count > 0 ? (
+                  <Link
+                    className="underline underline-offset-2"
+                    to={`/shots?profile_version_id=${version.id}`}
+                  >
+                    {version.shot_count}
+                  </Link>
+                ) : (
+                  version.shot_count
+                )}
+              </td>
+              <td className="py-2 pr-4 font-mono text-xs">{version.content_hash.slice(0, 8)}</td>
+              <td className="py-2">
+                {version.mirrored ? (
+                  <Badge variant="outline">mirrored</Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">not on the machine</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </SectionCard>
   );
 }

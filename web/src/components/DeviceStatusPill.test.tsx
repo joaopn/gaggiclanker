@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,9 +19,12 @@ vi.mock("@/api/client", async (importOriginal) => ({
 function renderPill() {
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
-      <TooltipProvider>
-        <DeviceStatusPill />
-      </TooltipProvider>
+      <MemoryRouter>
+        <TooltipProvider>
+          {/* The pill is a link to the device page, so it needs a router. */}
+          <DeviceStatusPill />
+        </TooltipProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

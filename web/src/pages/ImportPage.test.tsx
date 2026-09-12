@@ -85,8 +85,10 @@ describe("ImportPage", () => {
     await pick([jsonFile(), jsonFile("profile-dCs4AOOcBn.json")]);
 
     expect(await screen.findByText("213 samples")).toBeInTheDocument();
-    expect(screen.getByText("shot 000129")).toHaveAttribute("href", "/shots");
-    expect(screen.getByText("Cremina v2")).toHaveAttribute("href", "/profiles");
+    // The per-shot page exists, so the result links straight at it.
+    expect(screen.getByText("shot 000129")).toHaveAttribute("href", "/shots/4");
+    // And a profile at its version, which is the only place an imported one shows.
+    expect(screen.getByText("Cremina v2")).toHaveAttribute("href", "/profiles#version-2");
     expect(importFiles).toHaveBeenCalledWith(expect.arrayContaining([expect.any(File)]), {
       replace: false,
     });

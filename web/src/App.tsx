@@ -1,17 +1,31 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useDeviceLiveStream } from "@/hooks/useDeviceLive";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
+import { DevicePage } from "@/pages/DevicePage";
 import { ImportPage } from "@/pages/ImportPage";
+import { LivePage } from "@/pages/LivePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
 import { BeansPage, HardwarePage, KnowledgePage, SetsPage } from "@/pages/placeholders";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
+
+/**
+ * The shot page is the only route that needs Chart.js, and Chart.js is the
+ * largest thing in the bundle. Splitting it here means opening the list does
+ * not download a charting library, and the fetch happens while the shot's own
+ * request is in flight.
+ */
+const ShotDetailPage = lazy(() =>
+  import("@/pages/ShotDetailPage").then((module) => ({ default: module.ShotDetailPage })),
+);
 
 /**
  * The device's live stream. It carries two kinds of event: `device.live`
@@ -45,7 +59,10 @@ export function App() {
     return () => setAuthNavigator(null);
   }, [navigate]);
 
-  useEventInvalidation(DEVICE_STREAM_URL);
+  // One subscription to the device stream, not two: the hook both feeds the
+  // live-status store (`device.live`, read straight off the wire) and
+  // invalidates `/api/device/status` on `device.connection`.
+  useDeviceLiveStream(DEVICE_STREAM_URL);
   useEventInvalidation(SYNC_STREAM_URL);
 
   return (
@@ -54,6 +71,16 @@ export function App() {
         <Route element={<AppShell />}>
           <Route path="/" element={<Navigate to={DEFAULT_ROUTE} replace />} />
           <Route path="/shots" element={<ShotsPage />} />
+          <Route
+            path="/shots/:shotId"
+            element={
+              <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+                <ShotDetailPage />
+              </Suspense>
+            }
+          />
+          <Route path="/live" element={<LivePage />} />
+          <Route path="/device" element={<DevicePage />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route path="/beans" element={<BeansPage />} />
           <Route path="/hardware" element={<HardwarePage />} />

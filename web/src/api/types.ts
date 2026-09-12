@@ -16,8 +16,13 @@ export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
 export type ShotListData = components["schemas"]["ShotListData"];
 export type ShotListRow = components["schemas"]["ShotListRow"];
 export type ShotDetailData = components["schemas"]["ShotDetailData"];
+export type DeviceShotNotes = components["schemas"]["DeviceShotNotesRow"];
 export type ShotSamplesData = components["schemas"]["ShotSamplesData"];
+export type ShotSampleRow = components["schemas"]["ShotSampleRow"];
+export type ShotDetailRow = components["schemas"]["ShotDetailRow"];
 export type ProfileListData = components["schemas"]["ProfileListData"];
+export type ProfileVersionListData = components["schemas"]["ProfileVersionListData"];
+export type ProfileVersionSummary = components["schemas"]["ProfileVersionSummary"];
 export type DeviceProfileSummary = components["schemas"]["DeviceProfileSummary"];
 export type SyncStatusData = components["schemas"]["SyncStatusData"];
 export type ImportSummary = components["schemas"]["ImportSummary"];
@@ -63,6 +68,8 @@ export function isSecretSetting(setting: ResolvedSetting): setting is SecretSett
  * The filters `GET /api/shots` accepts. `cursor` and `offset` are alternatives
  * and the server answers 400 if both are sent, so a caller picks one.
  */
+export type ShotSort = "started_at" | "execution_score" | "duration" | "rating";
+
 export type ShotListParams = {
   limit?: number;
   offset?: number;
@@ -74,6 +81,140 @@ export type ShotListParams = {
   quarantined?: boolean;
   include_deleted?: boolean;
   source?: "device" | "import";
+  min_score?: number;
+  max_score?: number;
+  min_rating?: number;
+  sort?: ShotSort;
+  order?: "asc" | "desc";
+};
+
+/** `GET /api/profile-versions`. Offset paging; versions are inserted rarely. */
+export type ProfileVersionParams = {
+  limit?: number;
+  offset?: number;
+  source?: "device" | "import";
+};
+
+/**
+ * The derived blobs on a shot detail row.
+ *
+ * `phases` and `diagnostics` are declared server-side as decoded JSON of
+ * whatever `gaggiclanker/domain/diagnostics.py` produced, so OpenAPI can only
+ * say "anything". These mirror the TypedDicts in that module at
+ * `detail_level: "per_phase"`; when those change, change these. Everything is
+ * optional because a shot stored before a diagnostics fix — or one whose
+ * diagnostics pass failed, which does not quarantine it — has none of it.
+ */
+export type BandAnnotations = Record<string, string>;
+
+export type ShotPhase = {
+  name: string;
+  phase_number: number;
+  start_time_seconds: number;
+  duration_seconds: number;
+  sample_count: number;
+  avg_temperature_c: number;
+  avg_pressure_bar: number;
+  total_flow_ml: number;
+  diagnostics?: {
+    phase_type?: string;
+    avg_pressure_bar?: number;
+    avg_flow_ml_s?: number;
+    pressure_rmse_bar?: number;
+    flow_rmse_ml_s?: number;
+    ramp_rate_bar_s?: number;
+    saturation_time_s?: number;
+    resistance_avg?: number;
+    resistance_slope?: number;
+    channeling_risk?: string;
+    flow_jitter_ml_s?: number;
+    pressure_jitter_bar?: number;
+    taper_rate_bar_s?: number;
+    taper_smoothness?: number;
+    annotations?: BandAnnotations;
+  };
+};
+
+export type ShotDiagnosticsBlob = {
+  summary?: {
+    temperature?: { min_c: number; max_c: number; avg_c: number; target_avg_c: number };
+    pressure?: {
+      min_bar: number;
+      max_bar: number;
+      avg_bar: number;
+      peak_time_s: number;
+    } | null;
+    flow?: {
+      total_volume_ml: number;
+      avg_flow_ml_s: number;
+      peak_flow_ml_s: number;
+      time_to_first_drip_s: number | null;
+    };
+    extraction?: {
+      preinfusion_time_s: number;
+      main_extraction_time_s: number;
+      total_time_s: number;
+    };
+  };
+  diagnostics?: {
+    has_pressure?: boolean;
+    resistance?: {
+      avg: number;
+      std: number;
+      slope: number;
+      peak: number;
+      peak_timing_pct: number;
+      annotations: BandAnnotations;
+    } | null;
+    channeling?: {
+      flow_jitter_ml_s: number;
+      flow_vs_target_residual_ml_s: number | null;
+      pressure_max_drop_rate_bar_s: number;
+      flow_acceleration_late_ml_s2: number;
+      flow_spread_ml_s: number;
+      pressure_jitter_bar: number;
+      channeling_risk: string;
+      annotations: BandAnnotations;
+    } | null;
+    temperature?: {
+      overshoot_c: number;
+      undershoot_c: number;
+      stability_std_c: number;
+      annotations: BandAnnotations;
+    };
+    extraction?: {
+      pressure_auc_bar_s: number;
+      pressure_slope_brew_bar_s: number;
+      flow_slope_brew_ml_s2: number;
+      flow_avg_brew_ml_s: number;
+      annotations: BandAnnotations;
+    };
+    weight?: {
+      rate_avg_g_s: number | null;
+      rate_std_g_s: number | null;
+      scale_connected: boolean;
+      annotations: BandAnnotations;
+    };
+    profile_compliance?: {
+      pressure_rmse_bar: number;
+      flow_rmse_ml_s: number | null;
+      max_pressure_overshoot_bar: number;
+      max_pressure_undershoot_bar: number;
+      max_flow_overshoot_ml_s: number | null;
+      max_flow_undershoot_ml_s: number | null;
+      annotations: BandAnnotations;
+    } | null;
+  } | null;
+  detail_level?: string;
+  has_pressure?: boolean;
+  /** Added with the shots UI. Absent on shots derived before it; the columns still carry
+      the score and its one-line reason. */
+  score?: {
+    score: number;
+    confidence: string;
+    reason: string;
+    components: Record<string, number>;
+  };
 };
 
 /** The form fields `POST /api/import` accepts beside the files themselves. */
@@ -98,6 +239,62 @@ export type DeviceIdentity = {
   latestVersion?: string | null;
   channel?: string | null;
   updating?: boolean | null;
+};
+
+/**
+ * The merged `evt:status` the device stream carries, as the firmware spells it.
+ * Declared server-side as
+ * a plain object — it is open on purpose, so a firmware that adds a key does
+ * not take the live connection down — which is why the keys we read are named
+ * here rather than generated.
+ */
+export type LiveProcess = {
+  /** 1 while a shot is running. The live view's whole trigger. */
+  a?: number | null;
+  s?: string | null;
+  /** The phase label, `l` on the wire. */
+  l?: string | null;
+  /** Elapsed milliseconds. */
+  e?: number | null;
+  u?: number | null;
+  /** What the phase target counts: "volumetric" (grams) or "time" (ms). */
+  tt?: string | null;
+  /** The phase target, in the unit `tt` names. */
+  pt?: number | null;
+  /** Progress towards `pt`, same unit. */
+  pp?: number | null;
+};
+
+export type LiveWarning = { k?: string | null; l?: number | null; a?: boolean | null };
+
+export type LiveStatus = {
+  process?: LiveProcess | null;
+  /** Current and target boiler temperature. */
+  ct?: number | null;
+  tt?: number | null;
+  /** Pressure at the pump, and the profile's target. Zero on Standard boards. */
+  pr?: number | null;
+  pt?: number | null;
+  /** Flow: modelled pump flow, target flow, puck flow. */
+  fl?: number | null;
+  tf?: number | null;
+  pf?: number | null;
+  /** Current weight from the BLE scale, and puck resistance. */
+  cw?: number | null;
+  pkr?: number | null;
+  /** Mode: 0 standby, 1 brew, 2 steam, 3 water, 4 grind. */
+  m?: number | null;
+  /** Selected profile label and id. */
+  p?: string | null;
+  puid?: string | null;
+  /** Capabilities: pressure sensor (Pro boards only), pump dimming. */
+  cp?: boolean | null;
+  cd?: boolean | null;
+  warn?: LiveWarning[] | null;
+  sys?: { s?: string | null; m?: string | null; c?: number | null } | null;
+  /** Scale connected, and its battery percentage. */
+  bc?: boolean | null;
+  sbat?: number | null;
 };
 
 /** The `device.connection` event on `/api/device/live`. */

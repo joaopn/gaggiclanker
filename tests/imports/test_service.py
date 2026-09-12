@@ -494,3 +494,96 @@ async def test_a_shot_links_to_the_profile_version_when_the_mirror_has_it(
     assert shot is not None
     assert shot.profile_version_id == version.id
     assert shot.profile_label == "Cremina v2"
+
+
+# ── the label fallback ───────────────────────────────────────────────
+
+GRATUS = "Gratus 16:32 trad"
+
+
+def profile_labelled(label: str) -> ImportFile:
+    """The real profile export, relabelled.
+
+    The label is part of the canonical JSON, so a relabelled profile is a
+    different content hash and therefore a different version — which is exactly
+    what makes it a usable fixture here.
+    """
+    document = json.loads(fixture_bytes(PROFILE_FIXTURE))
+    document["label"] = label
+    return ImportFile(filename=f"{label}.json", data=json.dumps(document).encode())
+
+
+async def test_a_shot_links_by_profile_label_when_no_id_matches(
+    service: ImportService, db: Database
+) -> None:
+    """The usual case for an import: the `profileId` is long gone from the machine.
+
+    shot-129 names "Gratus 16:32 trad" and carries `profileId` "rV4GhUcSZc",
+    which no device profile here points at. The label is the only handle left,
+    and it is enough to put the shot on the profile's page. The shot is also
+    listed *before* the profile, which is the order the pass has to survive:
+    it runs once, at the end of the batch, precisely so that it can.
+    """
+    summary = await service.import_files([*files(SHOT_FIXTURE), profile_labelled(GRATUS)])
+
+    shot_result = next(item for item in summary.items if item.kind == "shot")
+    assert shot_result.shot_id is not None
+    assert shot_result.profile_version_id is not None
+
+    shot = await ShotsRepository(db).get(shot_result.shot_id)
+    assert shot is not None
+    assert shot.profile_version_id == shot_result.profile_version_id
+    assert shot.profile_label == GRATUS
+
+
+async def test_a_label_stored_by_an_earlier_import_still_matches(
+    service: ImportService, db: Database
+) -> None:
+    """ "Already present" counts, not only "in the same batch"."""
+    await service.import_files([profile_labelled(GRATUS)])
+
+    summary = await service.import_files(files(SHOT_FIXTURE))
+    shot = await ShotsRepository(db).get(summary.items[0].shot_id or 0)
+    assert shot is not None
+    assert shot.profile_label == GRATUS
+
+
+async def test_a_label_that_matches_nothing_leaves_the_link_alone(
+    service: ImportService, db: Database
+) -> None:
+    summary = await service.import_files(files(SHOT_FIXTURE, PROFILE_FIXTURE))
+
+    shot_result = next(item for item in summary.items if item.kind == "shot")
+    shot = await ShotsRepository(db).get(shot_result.shot_id or 0)
+    assert shot is not None
+    # "Cremina v2" is not "Gratus 16:32 trad", and a near miss is still a miss:
+    # a wrong link is worse than none, because it silently mixes two profiles'
+    # shots together.
+    assert shot.profile_version_id is None
+
+
+async def test_an_id_match_is_never_overridden_by_a_label_match(db: Database) -> None:
+    """The id is evidence; the label is a guess. A guess never wins."""
+    from gaggiclanker.db.repos.profiles import ProfilesRepository
+    from gaggiclanker.domain.exports import profile_export_to_profiles
+
+    machine = await MachinesRepository(db).upsert(MachineUpsert(host="kitchen.local"))
+    profiles = ProfilesRepository(db)
+    [profile] = profile_export_to_profiles(json.loads(fixture_bytes(PROFILE_FIXTURE)))
+    version, _ = await profiles.ensure_version(profile)
+    await profiles.upsert_device_profile(
+        machine_id=machine.id, device_id="rV4GhUcSZc", version_id=version.id
+    )
+
+    summary = await ImportService(db).import_files(
+        [*files(SHOT_FIXTURE), profile_labelled(GRATUS)],
+        machine_id=machine.id,
+    )
+
+    shot_result = next(item for item in summary.items if item.kind == "shot")
+    shot = await ShotsRepository(db).get(shot_result.shot_id or 0)
+    assert shot is not None
+    # "Cremina v2" — the version the device profile pointed at, not the one
+    # whose label happens to match the header.
+    assert shot.profile_version_id == version.id
+    assert shot.profile_label == "Cremina v2"

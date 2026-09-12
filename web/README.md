@@ -1,8 +1,8 @@
 # web/
 
 The React front end. Vite + React 18 + TypeScript, Tailwind v4, shadcn/ui
-(new-york), TanStack Query 5, React Router 7, react-hook-form + zod, Biome,
-Vitest.
+(new-york), TanStack Query 5, React Router 7, react-hook-form + zod, Chart.js 4
+via react-chartjs-2, Biome, Vitest.
 
 `web/dist` is the build output: git-ignored, and served by FastAPI from `/` with
 an SPA fallback whenever the directory exists (`gaggiclanker/static.py`, which
@@ -23,7 +23,16 @@ npm run gen:api     # regenerate src/api/schema.d.ts from the backend's OpenAPI
 
 `npm run dev` expects the backend on `http://127.0.0.1:8000`
 (`uv run uvicorn gaggiclanker.main:app --reload --no-access-log` from the repo
-root). Point it elsewhere with `GAGGICLANKER_BACKEND=http://host:port npm run dev`.
+root). For the live view and the shots list there has to be a machine pushing
+frames, so run the fake with a brew interval and point the backend at it:
+
+```bash
+uv run python -m gaggiclanker.device.fake --port 8090 --brew-every 30
+GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload --no-access-log
+```
+
+Without `--brew-every` the fake only heartbeats, and `/live` correctly shows
+"no shot running" for ever. Point it elsewhere with `GAGGICLANKER_BACKEND=http://host:port npm run dev`.
 Because the dev server proxies rather than talking cross-origin, `CORS_ORIGINS`
 is not needed for this setup — and production, where FastAPI serves the bundle
 from the same origin, exercises the same code path.
@@ -68,9 +77,75 @@ src/
   components/
     ui/               shadcn primitives (see the React 18 note below)
     layout/           AppShell, PageHeader, SectionCard, EmptyState, ShortcutsDialog
-  pages/              one file per route; settings/ is the only real page so far
-  test/               renderWithQueryClient, setupUser
+  pages/              one file per route
+  test/               renderWithQueryClient, setupUser, the shot-129 fixture
   setupTests.ts       jest-dom, matchMedia/ResizeObserver/pointer-capture mocks
+```
+
+The shot pages add a layer of their own:
+
+```
+src/
+  lib/
+    shots.ts          formatting, score bands, exit reasons, band-label meanings
+    shotChart.ts      samples -> series and phase bands; the sparkline path
+    shotFilters.ts    the filter bar's state, and how it becomes a query string
+    liveStatus.ts     the device's live status, held once for the tab
+  hooks/
+    useArchive.ts     shots (paged and infinite), one shot, samples, versions
+    useDeviceLive.ts  the single writer into the live store, and its reader
+    useVirtualRows.ts the list window, and "has this row been on screen yet"
+  components/
+    charts/           chartSetup (registration + palette), Shot/Live/Compare
+    shots/            table, filters, sparkline, score badge, stars, drawer
+```
+
+## Charting: Chart.js 4, not Recharts
+
+Both were on the table. Chart.js won on four
+counts, in order of weight:
+
+1. **It draws to a canvas.** A shot is 213 samples times up to nine series, and
+   a list of a thousand rows sits behind it; Recharts renders SVG, so every
+   point is a DOM node the browser lays out and hit-tests. At this point count
+   the difference is not subtle, and the live view redraws twice a second for
+   the length of a shot.
+2. **The live view is a streaming chart.** Chart.js updates a dataset in place
+   with no animation and no reconciliation; a React-component charting library
+   re-renders the tree for every frame it receives.
+3. **The firmware's own web UI uses Chart.js**, so a curve here and a curve on
+   the machine are drawn by the same code with the same defaults. When they
+   disagree, the data disagrees.
+4. **Phase bands and the exit marker are one plugin** (`chartjs-plugin-annotation`)
+   rather than hand-placed `ReferenceArea` elements.
+
+What it costs: the chart is imperative, so it does not compose with React state
+the way Recharts does, and a `<canvas>` is invisible to a screen reader and to a
+test. Both are paid for deliberately — the chart components keep *data
+building* in `lib/shotChart.ts`, which is pure and tested on the real shot-129
+fixture, and each chart renders a `sr-only` text summary of what it drew, which
+is what the page tests assert on.
+
+Chart.js is registered once in `components/charts/chartSetup.ts` and reaches the
+bundle through `React.lazy`: `/shots/:id`, the compare drawer and the live chart
+are code-split, so listing shots never downloads 200 kB of charting library.
+`npm run build` prints the split — look for `chartSetup-*.js`.
+
+Canvas rendering in tests comes from `vitest-canvas-mock` (a setup file in
+`vite.config.ts`). Without it Chart.js logs "can't acquire context" and draws
+nothing; with it the real layout and draw code runs, which is what makes the
+render-budget test in `ShotDetailPage.test.tsx` mean something.
+
+## The shot-129 fixture
+
+`src/test/fixtures/shot-129.json` is the maintainer's own exported shot, run
+through the real importer and dumped in the shape `/api/shots/{id}` and
+`/samples` answer — so its phases, diagnostics, band labels and execution score
+were computed by `gaggiclanker/domain/diagnostics.py` rather than written by
+hand. Regenerate it after a diagnostics change:
+
+```bash
+uv run python scripts/build_web_shot_fixture.py
 ```
 
 ## How to add a page
@@ -82,6 +157,9 @@ src/
 3. Add the `<Route>` to `src/App.tsx`, inside the `AppShell` layout route.
 4. Extend `tests/test_static.py::test_every_client_route_deep_links_to_index`
    with the new path, so a hard refresh on it stays covered.
+
+A page that draws a chart is lazy (`React.lazy` in `App.tsx`) and wrapped in a
+`<Suspense>` with a skeleton, so it does not pull Chart.js into the main chunk.
 
 ## How to add a query
 

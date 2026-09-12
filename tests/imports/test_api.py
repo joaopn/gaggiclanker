@@ -179,3 +179,92 @@ async def test_the_import_tells_open_tabs_to_re_read(
 
     assert [event.event for event in seen] == [SHOT_INGESTED_EVENT, PROFILE_UPDATED_EVENT]
     assert seen[0].data == {"imported": 1}
+
+
+# ── `/api/profile-versions` ──────────────────────────────────────────
+
+
+async def test_the_version_list_shows_imported_and_mirrored_alike(
+    client: httpx.AsyncClient,
+) -> None:
+    """The page the Import result links to has to be able to show the version.
+
+    `/api/profiles` lists what is on the machine. An imported profile is on no
+    machine, so without this route it lands in the archive and is invisible.
+    """
+    await post_import(client, [upload(PROFILE_FIXTURE), upload(SHOT_FIXTURE)])
+
+    response = await client.get("/api/profile-versions")
+    assert response.status_code == 200
+    body = response.json()
+    assert_envelope(body, request_id=response.headers["x-request-id"])
+    data = body["data"]
+
+    assert data["total"] == 1
+    assert data["limit"] == 50
+    assert data["offset"] == 0
+    [version] = data["items"]
+    assert version["label"] == "Cremina v2"
+    assert version["source"] == "import"
+    # Nothing on any machine points at it, and saying so is the point of the
+    # column: it separates "the machine has this" from "the archive has this".
+    assert version["mirrored"] is False
+    assert version["shot_count"] == 0
+    # The document itself is not in the list — `/api/profile-versions/{id}` has it.
+    assert "profile" not in version
+
+
+async def test_the_version_list_pages_and_filters_by_source(
+    client: httpx.AsyncClient,
+) -> None:
+    await post_import(client, [upload(PROFILE_ARRAY_EXPORT)])
+
+    everything = (await client.get("/api/profile-versions")).json()["data"]
+    assert everything["total"] >= 2
+
+    page = (await client.get("/api/profile-versions", params={"limit": 1})).json()["data"]
+    assert len(page["items"]) == 1
+    assert page["total"] == everything["total"]
+
+    second = (await client.get("/api/profile-versions", params={"limit": 1, "offset": 1})).json()[
+        "data"
+    ]
+    assert second["items"][0]["id"] != page["items"][0]["id"]
+
+    imported = (await client.get("/api/profile-versions", params={"source": "import"})).json()[
+        "data"
+    ]
+    assert imported["total"] == everything["total"]
+
+    from_device = (await client.get("/api/profile-versions", params={"source": "device"})).json()[
+        "data"
+    ]
+    assert from_device["total"] == 0
+
+
+async def test_the_version_list_counts_the_shots_that_resolve_to_it(
+    client: httpx.AsyncClient,
+) -> None:
+    """A shot linked by the label heuristic shows up in the version's count."""
+    document = json.loads(fixture_bytes(PROFILE_FIXTURE))
+    document["label"] = "Gratus 16:32 trad"
+    await post_import(
+        client,
+        [
+            upload(SHOT_FIXTURE),
+            upload("gratus.json", json.dumps(document).encode()),
+        ],
+    )
+
+    [version] = (await client.get("/api/profile-versions")).json()["data"]["items"]
+    assert version["label"] == "Gratus 16:32 trad"
+    assert version["shot_count"] == 1
+
+    listing = await client.get("/api/shots", params={"profile_version_id": version["id"]})
+    assert listing.json()["data"]["total"] == 1
+
+
+async def test_an_unknown_version_is_a_404_in_the_envelope(client: httpx.AsyncClient) -> None:
+    response = await client.get("/api/profile-versions/99999")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"

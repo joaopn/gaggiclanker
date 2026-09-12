@@ -158,6 +158,12 @@ def _attach_diagnostics(shot: ShotInsert, slog: Slog, *, has_pressure: bool | No
             "diagnostics": transformed["diagnostics"],
             "detail_level": transformed["detail_level"],
             "has_pressure": transformed["has_pressure"],
+            # The score's own working, not just its result. `shots.execution_score`
+            # and `execution_reason` are columns because the list sorts and filters
+            # on them; the per-component penalties belong with the diagnostics they
+            # were computed from, so the shot page can say *which* fault cost what
+            # without re-deriving the score in the browser.
+            "score": score.as_dict(),
         }
     )
     shot.execution_score = score.score

@@ -1,7 +1,10 @@
+import { Link } from "react-router-dom";
 import type { DeviceIdentity } from "@/api/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLiveStatus } from "@/hooks/useDeviceLive";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { useHealth } from "@/hooks/useHealth";
+import { DEVICE_MODES, formatNumber } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,12 +16,14 @@ import { cn } from "@/lib/utils";
  * different: no machine configured is a setup step and not a fault; configured
  * but disconnected is something to go and look at; connected names the board.
  *
- * Deliberately small. The device page is elsewhere; this is the always-visible
- * summary that says whether to go there.
+ * Deliberately small: it says whether to go to the device page, and links
+ * there. The boiler temperature comes off the live stream rather than the
+ * status poll, so the one number that moves is the one that is current.
  */
 export function DeviceStatusPill() {
   const health = useHealth();
   const device = useDeviceStatus();
+  const live = useLiveStatus();
 
   const backendOk = !health.isPending && !health.isError && health.data?.status === "ok";
   const identity = device.data?.identity as DeviceIdentity | null | undefined;
@@ -43,9 +48,14 @@ export function DeviceStatusPill() {
   } else if (device.data.connected) {
     state = "good";
     label = hardware ?? "Machine online";
-    detail = `${hardware ?? "GaggiMate"} at ${device.data.host} - display ${
-      identity?.displayVersion ?? "unknown"
-    }`;
+    const warnings = (live.status?.warn ?? []).filter((warning) => warning.a);
+    if (warnings.length > 0) state = "bad";
+    detail =
+      `${hardware ?? "GaggiMate"} at ${device.data.host} - display ${
+        identity?.displayVersion ?? "unknown"
+      } - ${DEVICE_MODES[live.status?.m ?? 0] ?? "unknown mode"}` +
+      (live.status?.ct == null ? "" : ` at ${formatNumber(live.status.ct, 1, "°C")}`) +
+      (warnings.length > 0 ? ` - ${warnings.map((w) => w.k).join(", ")}` : "");
   } else {
     state = "bad";
     label = "Machine offline";
@@ -55,7 +65,8 @@ export function DeviceStatusPill() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span
+        <Link
+          to="/device"
           data-testid="device-status-pill"
           data-state={state}
           className={cn(
@@ -75,7 +86,12 @@ export function DeviceStatusPill() {
             )}
           />
           {label}
-        </span>
+          {live.status?.ct == null ? null : (
+            <span className="hidden font-normal text-muted-foreground tabular-nums sm:inline">
+              {formatNumber(live.status.ct, 0, "°C")}
+            </span>
+          )}
+        </Link>
       </TooltipTrigger>
       <TooltipContent>{detail}</TooltipContent>
     </Tooltip>

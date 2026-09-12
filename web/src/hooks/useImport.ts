@@ -24,6 +24,11 @@ export function useImportFiles(): UseMutationResult<ImportSummary, Error, Import
     mutationFn: ({ files, ...options }: ImportRequest) => importFiles(files, options),
     onSuccess: (summary) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.shots.all });
+      // The one place an *existing* shot's curve changes: `replace` re-derives
+      // it from the file's bytes. The server's `shot.ingested` for an import
+      // carries only a count, so the invalidation belongs here, where the tab
+      // that asked for it knows what it asked for.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.samples.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.profiles.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.sync.all });
       const landed = summary.created + summary.updated;

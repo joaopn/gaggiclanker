@@ -21,6 +21,19 @@ export function invalidateShots(queryClient: QueryClient, shotId?: string): Prom
 }
 
 /**
+ * One shot's stored curve.
+ *
+ * Never swept up with the list: samples are immutable once a shot is ingested,
+ * and the only things that change them are a re-derive and an import with
+ * `replace`. Both know which shot they touched, which is why this takes an id.
+ */
+export function invalidateShotSamples(queryClient: QueryClient, shotId: string): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: queryKeys.samples.shot(shotId) })
+    .then(() => undefined);
+}
+
+/**
  * Which query families each server event touches.
  *
  * The bus is lossy (gaggiclanker/infra/sse.py), so an event means "go and
@@ -29,6 +42,10 @@ export function invalidateShots(queryClient: QueryClient, shotId?: string): Prom
  * needs no changes.
  */
 export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[]>> = {
+  // Note what is *not* here: `queryKeys.samples`. A backfill publishes one of
+  // these per shot, and a prefix that reached the curves would re-fetch every
+  // sparkline on screen fifty times over — TanStack refetches active queries
+  // on invalidation whatever their staleTime says.
   "shot.ingested": [queryKeys.shots.all, queryKeys.sync.all],
   "shot.updated": [queryKeys.shots.all, queryKeys.sync.all],
   // A shot we could not parse is still a shot: it appears in the list with a
@@ -43,3 +60,19 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "settings.changed": [queryKeys.settings.all],
   "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all],
 };
+
+/**
+ * The events whose payload names a shot whose stored curve may have moved.
+ *
+ * The only event that carries a `shot_id` at all. It is used as a *narrowing*
+ * hint rather than as data: the bus is lossy, so the worst case of missing one
+ * is a stale copy of something that almost never changes.
+ */
+export const SAMPLE_INVALIDATING_EVENTS = new Set(["shot.updated"]);
+
+/** The `shot_id` out of an event payload, when it has one we can use. */
+export function shotIdFromEvent(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const id = (data as { shot_id?: unknown }).shot_id;
+  return typeof id === "number" || typeof id === "string" ? String(id) : null;
+}

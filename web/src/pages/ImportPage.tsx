@@ -58,13 +58,20 @@ function ResultRow({ result }: { result: ImportResult }) {
       <td className="py-2 pr-4">{statusBadge(result)}</td>
       <td className="py-2 pr-4">
         {result.shot_id ? (
-          // The per-shot page arrives later; until then the archive list is
-          // where an imported shot is actually visible.
-          <Link className="underline underline-offset-2" to="/shots">
+          <Link className="underline underline-offset-2" to={`/shots/${result.shot_id}`}>
             shot {result.device_id ?? result.shot_id}
           </Link>
         ) : result.label ? (
-          <Link className="underline underline-offset-2" to="/profiles">
+          // The version, not the page: a profile loaded from a file is on no
+          // machine, so the mirror table above it would not list it at all.
+          <Link
+            className="underline underline-offset-2"
+            to={
+              result.profile_version_id
+                ? `/profiles#version-${result.profile_version_id}`
+                : "/profiles"
+            }
+          >
             {result.label}
           </Link>
         ) : (

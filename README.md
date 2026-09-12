@@ -64,6 +64,15 @@ uv run python -m gaggiclanker.device.fake --port 8090   # in one terminal
 GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload
 ```
 
+Add `--brew-every SECONDS` and the fake pulls a shot on that interval — fill,
+soak, ramp and decline at 2 Hz against a volumetric target, then the firmware's
+own save sequence — which is what the live view and the "a new shot appeared"
+refresh are developed against:
+
+```bash
+uv run python -m gaggiclanker.device.fake --port 8090 --brew-every 30
+```
+
 Or seed the archive from files, with no machine at all. The web UI on the
 display exports a shot as `shot-<id>.json` and a profile as `profile-<id>.json`;
 those files are the only way back for a shot the machine has already deleted,

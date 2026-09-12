@@ -18,6 +18,8 @@ import type {
   ImportOptions,
   ImportSummary,
   ProfileListData,
+  ProfileVersionListData,
+  ProfileVersionParams,
   SettingsMap,
   SettingsPatch,
   ShotDetailData,
@@ -283,6 +285,33 @@ export async function getShotSamples(id: number, downsample?: number): Promise<S
 /** The stored `.slog` bytes. A download, not JSON — hence the raw path. */
 export function shotRawUrl(id: number): string {
   return `${API_BASE}/shots/${id}/raw`;
+}
+
+/**
+ * The JSON a "download this shot" button hands over.
+ *
+ * Built in the browser rather than served, because there is no endpoint that
+ * returns the row and its curve in one document and adding one would duplicate
+ * two that already exist. The file is what a reader would reconstruct anyway:
+ * the detail payload with its samples attached.
+ */
+export async function getShotExport(id: number): Promise<unknown> {
+  const [detail, samples] = await Promise.all([getShot(id), getShotSamples(id)]);
+  return { ...detail, samples };
+}
+
+export async function getProfileVersions(
+  params: ProfileVersionParams = {},
+): Promise<ProfileVersionListData> {
+  return fetchApi<ProfileVersionListData>(`/profile-versions${queryString(params)}`);
+}
+
+/** Ask the sync engine to run now. 202 and returns before any device I/O. */
+export async function runSync(kind = "all"): Promise<{ queued: string[] }> {
+  return fetchApi<{ queued: string[] }>("/sync/run", {
+    method: "POST",
+    body: JSON.stringify({ kind }),
+  });
 }
 
 export async function getProfiles(includeDeleted = false): Promise<ProfileListData> {

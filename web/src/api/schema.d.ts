@@ -106,6 +106,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every stored profile version, mirrored or imported
+         * @description Newest first, with `mirrored` saying whether the machine still has it.
+         *
+         *     `/api/profiles` lists what is on the machine right now. This lists what the
+         *     archive can resolve a shot to, which is a superset: a profile edited on the
+         *     display leaves its previous version behind, and a version imported from a
+         *     file never had a device profile at all. Offset paging rather than a cursor —
+         *     versions are inserted rarely and the list is short enough to page by number.
+         */
+        get: operations["list_profile_versions_api_profile_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-versions/{version_id}": {
         parameters: {
             query?: never;
@@ -481,6 +507,14 @@ export interface components {
         /** ApiResponse[ProfileListData] */
         ApiResponse_ProfileListData_: {
             data?: components["schemas"]["ProfileListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ProfileVersionListData] */
+        ApiResponse_ProfileVersionListData_: {
+            data?: components["schemas"]["ProfileVersionListData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -885,6 +919,20 @@ export interface components {
             items: components["schemas"]["DeviceProfileSummary"][];
         };
         /**
+         * ProfileVersionListData
+         * @description One page of profile versions, newest first.
+         */
+        ProfileVersionListData: {
+            /** Items */
+            items: components["schemas"]["ProfileVersionSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * ProfileVersionRow
          * @description One immutable profile version, identified by its content hash.
          */
@@ -899,6 +947,47 @@ export interface components {
             /** Label */
             label: string;
             profile: components["schemas"]["JsonObject"];
+            /**
+             * Source
+             * @default device
+             */
+            source: string;
+            /** Type */
+            type: string;
+            /**
+             * Utility
+             * @default false
+             */
+            utility: boolean;
+        };
+        /**
+         * ProfileVersionSummary
+         * @description A version as a table row: what it is, where it came from, who uses it.
+         *
+         *     Deliberately without the document. `profile` and `device_profile` are a few
+         *     kilobytes each and a page of fifty of them is a payload nobody reads — the
+         *     list says which versions exist, `/api/profile-versions/{id}` says what one
+         *     contains.
+         */
+        ProfileVersionSummary: {
+            /** Content Hash */
+            content_hash: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            /**
+             * Mirrored
+             * @default false
+             */
+            mirrored: boolean;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
             /**
              * Source
              * @default device
@@ -1545,6 +1634,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_MachineListData_"];
+                };
+            };
+        };
+    };
+    list_profile_versions_api_profile_versions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                source?: ("device" | "import") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileVersionListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

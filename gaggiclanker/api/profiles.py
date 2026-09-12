@@ -13,14 +13,18 @@ machine has been edited twice.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.api.deps import ProfilesRepoDep
-from gaggiclanker.db.repos.profiles import DeviceProfileSummary, ProfileVersionRow
+from gaggiclanker.db.repos.profiles import (
+    DeviceProfileSummary,
+    ProfileVersionRow,
+    ProfileVersionSummary,
+)
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import NotFound
 
@@ -36,6 +40,17 @@ class ProfileListData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[DeviceProfileSummary]
+
+
+class ProfileVersionListData(BaseModel):
+    """One page of profile versions, newest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ProfileVersionSummary]
+    total: int
+    limit: int
+    offset: int
 
 
 class ProfileDetailData(BaseModel):
@@ -86,6 +101,39 @@ async def get_profile(
         raise NotFound(f"Profile {device_id!r} points at a version that is not stored")
     return envelope_response(
         ProfileDetailData(profile=summary, version=version).model_dump(mode="json")
+    )
+
+
+#: A page bigger than this is a scrape, not a screen. The same reasoning as
+#: `shots.MAX_LIMIT`, and the same number, so the two cannot drift apart in a
+#: reader's head.
+MAX_LIMIT = 500
+
+
+@versions_router.get(
+    "",
+    response_model=ApiResponse[ProfileVersionListData],
+    summary="Every stored profile version, mirrored or imported",
+)
+async def list_profile_versions(
+    profiles: ProfilesRepoDep,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    source: Annotated[Literal["device", "import"] | None, Query()] = None,
+) -> JSONResponse:
+    """Newest first, with `mirrored` saying whether the machine still has it.
+
+    `/api/profiles` lists what is on the machine right now. This lists what the
+    archive can resolve a shot to, which is a superset: a profile edited on the
+    display leaves its previous version behind, and a version imported from a
+    file never had a device profile at all. Offset paging rather than a cursor —
+    versions are inserted rarely and the list is short enough to page by number.
+    """
+    page = await profiles.list_versions(limit=limit, offset=offset, source=source)
+    return envelope_response(
+        ProfileVersionListData(
+            items=page.items, total=page.total, limit=limit, offset=offset
+        ).model_dump(mode="json")
     )
 
 

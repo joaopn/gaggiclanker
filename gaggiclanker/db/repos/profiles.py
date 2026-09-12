@@ -21,7 +21,9 @@ from gaggiclanker.domain.models import Profile, canonical_profile_json, profile_
 __all__ = [
     "DeviceProfileRow",
     "DeviceProfileSummary",
+    "ProfileVersionPage",
     "ProfileVersionRow",
+    "ProfileVersionSummary",
     "ProfilesRepository",
 ]
 
@@ -46,6 +48,42 @@ class ProfileVersionRow(BaseModel):
     device_profile: JsonObject = Field(default=None, validation_alias="device_json")
     source: str = "device"
     created_at: str
+
+
+class ProfileVersionSummary(BaseModel):
+    """A version as a table row: what it is, where it came from, who uses it.
+
+    Deliberately without the document. `profile` and `device_profile` are a few
+    kilobytes each and a page of fifty of them is a payload nobody reads — the
+    list says which versions exist, `/api/profile-versions/{id}` says what one
+    contains.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    content_hash: str
+    label: str
+    type: str
+    utility: bool = False
+    #: `device` (mirrored off the machine) or `import` (a file someone loaded).
+    source: str = "device"
+    created_at: str
+    #: Whether some device profile currently points at this version. An imported
+    #: version is normally False; a mirrored one that was later edited on the
+    #: machine becomes False too, which is the honest answer — it is history.
+    mirrored: bool = False
+    #: How many shots resolve to this exact version.
+    shot_count: int = 0
+
+
+class ProfileVersionPage(BaseModel):
+    """One page of versions, with the size of the unfiltered-by-page total."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ProfileVersionSummary]
+    total: int
 
 
 class DeviceProfileRow(BaseModel):
@@ -148,6 +186,67 @@ class ProfilesRepository(Repository):
             "SELECT * FROM profile_versions WHERE content_hash = ?", (content_hash,)
         )
         return self.to_model(ProfileVersionRow, row)
+
+    async def find_version_by_label(self, label: str) -> ProfileVersionRow | None:
+        """The newest stored version carrying this exact label.
+
+        The importer's fallback link: a shot export names its profile but
+        the `profileId` it carries is usually long gone from the machine, so the
+        label is the only handle left. Newest wins because a relabelled profile
+        makes a new version and the most recent one is the current meaning of
+        that name. An exact, case-sensitive match on purpose — "9 Bar" and
+        "9 bar" are two profiles as far as the machine is concerned.
+        """
+        if not label:
+            return None
+        row = await self.db.fetch_one(
+            "SELECT * FROM profile_versions WHERE label = ? ORDER BY id DESC LIMIT 1",
+            (label,),
+        )
+        return self.to_model(ProfileVersionRow, row)
+
+    async def list_versions(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        source: str | None = None,
+    ) -> ProfileVersionPage:
+        """Every version, newest first, whether or not the machine still has it.
+
+        This is the other half of `/api/profiles`: that one lists what is *on*
+        the machine, this one lists everything the archive can resolve a shot
+        to — including versions imported from a file, which no device profile
+        points at and which would otherwise be invisible.
+        """
+        where = ["1 = 1"]
+        params: list[object] = []
+        if source is not None:
+            where.append("v.source = ?")
+            params.append(source)
+        clause = " AND ".join(where)
+        total_row = await self.db.fetch_one(
+            f"SELECT COUNT(*) AS n FROM profile_versions v WHERE {clause}",  # noqa: S608
+            params,
+        )
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT v.id, v.content_hash, v.label, v.type, v.utility, v.source, v.created_at,
+                   EXISTS (SELECT 1 FROM device_profiles d
+                            WHERE d.current_version_id = v.id
+                              AND d.deleted_at IS NULL) AS mirrored,
+                   (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = v.id) AS shot_count
+            FROM profile_versions v
+            WHERE {clause}
+            ORDER BY v.id DESC
+            LIMIT ? OFFSET ?
+            """,  # noqa: S608 - the WHERE clauses above are literals, values are bound
+            [*params, limit, offset],
+        )
+        return ProfileVersionPage(
+            items=self.to_models(ProfileVersionSummary, rows),
+            total=int(total_row["n"]) if total_row is not None else 0,
+        )
 
     async def find_version_for_device_profile(
         self, machine_id: int, device_id: str

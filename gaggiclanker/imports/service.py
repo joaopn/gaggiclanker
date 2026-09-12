@@ -248,6 +248,7 @@ class ImportService:
             items.extend(
                 await self._import_file(file, machine_id=resolved, replace=replace, budget=budget)
             )
+        await self._link_versions_by_label(items)
         summary = ImportSummary.of(items, resolved)
         log.info(
             "import_batch_finished",
@@ -542,6 +543,51 @@ class ImportService:
             quarantined=True,
             message=f"stored unreadable, with its bytes: {reason}",
         )
+
+    async def _link_versions_by_label(self, items: list[ImportResult]) -> None:
+        """Last-resort link from an imported shot to a profile version, by label.
+
+        Runs once at the end of a batch rather than inside `import_shot`, so
+        that a folder whose shots happen to be read before its profiles still
+        links: the shot pass has no way to know a matching version is three
+        files away.
+
+        The heuristic, and its limits:
+
+        * only shots whose `profile_version_id` is still NULL — an id match
+          (`_version_for`) is evidence and this is a guess, so it never
+          overrides one;
+        * match on the `.slog` header's `profileName` against
+          `profile_versions.label`, exactly and case-sensitively, because the
+          machine treats "9 Bar" and "9 bar" as two profiles;
+        * newest matching version wins (`find_version_by_label`), since a
+          relabelled profile creates a new version and the most recent one is
+          what that name means now.
+
+        It can be wrong: two profiles that once shared a name are
+        indistinguishable here. That is the honest cost of having any link at
+        all for a shot whose `profileId` the machine deleted years ago, and it
+        is why the link is only ever made where there is none.
+        """
+        for item in items:
+            if item.kind != "shot" or item.shot_id is None or item.quarantined:
+                continue
+            shot = await self.shots.get(item.shot_id)
+            if shot is None or shot.profile_version_id is not None:
+                continue
+            version = await self.profiles.find_version_by_label(shot.profile_name_on_device)
+            if version is None:
+                continue
+            await self.shots.link_profile_version(shot.id, version.id)
+            # Echoed on the result so the import report can link to the version
+            # it guessed, and so a wrong guess is visible rather than silent.
+            item.profile_version_id = version.id
+            log.info(
+                "shot_linked_by_profile_label",
+                shot_id=shot.id,
+                version_id=version.id,
+                label=shot.profile_name_on_device,
+            )
 
     async def _version_for(self, machine_id: int, profile_id: str) -> int | None:
         """The mirrored profile version this shot's `profileId` points at, if any.
