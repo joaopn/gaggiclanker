@@ -9,6 +9,164 @@ grind as set: 22 numbers
 decision: adjust
 notes: Sharp up front, nothing behind it.
 
+=== knowledge_excerpts ===
+[ESPRESSO_TASTING_GUIDE#what-your-taste-tells-you] What Your Taste Tells You
+## What Your Taste Tells You
+
+For full diagnostic decision trees with branching logic and style-relative thresholds, see `gaggimate://knowledge/diagnostics/DIAGNOSTIC_TREES.md`.
+
+| You taste... | Likely cause |
+|---|---|
+| Sour + thin | Under-extraction |
+| Sour + fast shot | Grind too coarse |
+| Salty or savory | Severe under-extraction |
+| Bitter + slow shot | Over-extraction |
+| Bitter + dry finish | Severe over-extraction |
+| Flat/lifeless | Stale beans or wrong temp |
+| Good but lacks body | Ratio too long or channeling |
+| Harsh/ashy | Over-extracted or dark roast issue |
+| **Sour AND bitter** | **Channeling** — uneven extraction |
+
+**The "sour AND bitter" rule (Scott Rao):** When a shot tastes both sour and bitter simultaneously, water is finding paths of least resistance — over-extracting some grounds while under-extracting others. Primary fix: improve puck prep (WDT, distribution, even tamp). Do NOT grind finer — that increases puck resistance and worsens channeling. Grinding slightly *coarser* may help by reducing resistance, but only after addressing distribution. Also consider: extend pre-infusion, reduce pre-infusion flow, or add a bloom phase.
+
+## Common Flavor Descriptors
+
+Use these if you want to be more specific:
+
+**Positive:**
+- Fruity (berry, citrus, stone fruit)
+- Sweet (caramel, honey, chocolate)
+- Nutty (almond, hazelnut)
+- Floral (jasmine, rose)
+
+**Negative (defects):**
+- Sour, acidic, sharp (under-extracted)
+- Bitter, burnt, ashy (over-extracted)
+- Dry, astringent (over-extracted)
+- Flat, lifeless (stale or wrong temp)
+- Watery, thin (under-extracted)
+
+## Notes for Different Shot Styles
+
+The balance expectations differ by style:
+
+| Style | Expected Character | "Off" would be... |
+|---|---|---|
+| **Traditional** (9 bar, 25-35s) | Full body, balanced, syrupy | Thin, watery, or harsh |
+| **Turbo** (6 bar, 10-20s) | Sweeter, less body, clarity | Muddy or bitter |
+| **Allongé** (longer ratio) | Lighter body, bright | Watery without complexity |
+| **SOUP** (<2 bar) | Tea-like, juicy, clear | Thin without flavor |
+
+Don't judge a turbo shot for lacking body — that's expected. Judge it on clarity and sweetness.
+
+## Sources
+
+- Lance Hedrick: [Why your Coffee is Sour or Bitter (and how to fix it)](https://www.youtube.com/watch?v=Z2zsmehysHk) — Timing/texture framework, sour-bitter confusion science, Lemon vs Cocoa experiment, Salami Shot diagnostic
+
+*This guide supports the Gaggimate shot notes system via the MCP server. For brewing fundamentals and adjustment strategies, see `ESPRESSO_BREWING_BASICS.md`. For pressure selection, see `PRESSURE_GUIDE.md`.*
+
+[SHOT_DIAGNOSTICS_REFERENCE#per-phase-diagnostics/brew-specific-fields] Per-Phase Diagnostics > Brew-Specific Fields
+### Brew-Specific Fields
+
+| Field | Unit | Meaning |
+|-------|------|---------|
+| `resistance_avg` | dimensionless | Puck resistance in this phase |
+| `resistance_slope` | /s | Resistance trend in this phase |
+| `channeling_risk` | string | Channeling risk for this phase (may be INSUFFICIENT_DATA — see Channeling Indicators section) |
+| `flow_jitter_ml_s` | ml/s | Per-phase flow jitter (first-difference std over steady-state window) |
+| `pressure_jitter_bar` | bar | Per-phase pressure jitter (same metric on pressure) |
+
+**Annotations:** `resistance_level`, `resistance_erosion`, `channeling` (risk label), plus the full `channeling_*` namespace mirroring the top-level Channeling Indicators annotations (`channeling_flow_jitter`, `channeling_flow_vs_target`, `channeling_pressure_drop`, `channeling_late_flow_trend`, `channeling_pressure_jitter`, `channeling_flow_shape`, `channeling_window_confidence`, `channeling_primary_signal`, `channeling_guidance`, `channeling_note` when trimming applied).
+
+### Decline-Specific Fields
+
+| Field | Unit | Meaning |
+|-------|------|---------|
+| `taper_rate_bar_s` | bar/s | Rate of pressure decline (negative values) |
+| `taper_smoothness` | bar/s | Std dev of pressure derivatives — lower = smoother taper |
+
+**Annotations:** `taper_smoothness` → VERY_SMOOTH (<0.2) · SMOOTH (<0.5) · MODERATE (<1.0) · ROUGH
+
+## Interpretation Cheat Sheet
+
+### Grind Too Fine
+
+- `max_pressure_overshoot_bar` > 1.5 (MODERATE/SIGNIFICANT_OVERSHOOT)
+- Resistance avg HIGH or VERY_HIGH
+- Flow avg below expected for style
+- Channeling risk may be elevated
+
+### Grind Too Coarse
+
+- Pressure never reaches target (`max_pressure_undershoot_bar` high)
+- Resistance avg LOW or VERY_LOW
+- Flow avg above expected for style
+- Fast extraction time
+
+### Channeling
+
+- `channeling_risk` HIGH or VERY_HIGH (ignore INSUFFICIENT_DATA — it means the phase was too short to assess)
+- Resistance slope STEEP_DECLINE
+- Pressure volatility JITTERY or VOLATILE
+- Flow acceleration in late shot
+
+### Temperature Problems
+
+- `stability_std_c` > 1.5 (UNSTABLE) → equipment issue
+- `overshoot_c` > 2.0 → thermosiphon or PID issue
+- `undershoot_c` > 2.0 → machine not heated properly
+
+### Good Shot Indicators
+
+- Resistance MODERATE, STABLE, GRADUAL_DECLINE
+- Channeling LOW
+- Temperature VERY_STABLE or STABLE
+- Profile adherence EXCELLENT or GOOD
+- Overshoot WITHIN_TOLERANCE
+
+## Detail Level Strategy
+
+```
+User says "what's wrong with my shot?"
+  → analyze_shot(shot_id)              # summary first
+
+Summary shows HIGH channeling risk?
+  → analyze_shot(shot_id, detail="per_phase")  # which phase has the problem?
+
+Per-phase shows INSUFFICIENT_DATA for channeling?
+  → Phase too short for reliable assessment. Check taste + adjacent phases.
+
+Per-phase shows brew phase channeling?
+  → analyze_shot(shot_id, detail="per_phase_detailed")  # see the curve shape
+  → Correlate with taste, recommend grind adjustment
+
+Need to see pressure/flow trend in a specific phase?
+  → analyze_shot(shot_id, detail="per_phase_detailed")  # ~5 averaged samples per phase
+```
+
+[COFFEE_PROCESSING#the-methods/natural-dry-process] The Methods > Natural (Dry Process)
+### Natural (Dry Process)
+
+**What happens:** Whole cherries are dried intact on raised beds or patios for 2-4 weeks. The seed ferments inside the fruit the entire time, absorbing sugars, esters, and organic acids from the decomposing mucilage and skin.
+
+**Flavor signature:** Heavy body, intense sweetness, fruit-forward (blueberry, strawberry, tropical fruit). Can have winey or fermented notes. Acidity is lower and rounder than washed. At its best: juicy and complex. At its worst: boozy, overripe, or "dirty."
+
+**Why it extracts the way it does:** Extended fruit contact produces beans with:
+- Higher sugar content (caramelizes easily — risk of bitterness at high temps)
+- More volatile fermentation compounds (extract very quickly)
+- Lower density and more irregular internal structure (less uniform extraction)
+
+This means naturals extract faster and less evenly than washed coffees. Over-extraction of fermentation compounds creates harsh, boozy, or muddy flavors.
+
+**Espresso implications:**
+- **Lower pressure** (1-2 bar below what you'd use for a washed coffee of the same roast) — reduces extraction of harsh fermentation byproducts
+- **Bloom profiles recommended** — even saturation compensates for uneven bean structure
+- **Extend pre-infusion** — gentle wetting reduces channeling risk from porous pucks
+- **Temperature: lower end for roast level** — limits caramelization of high sugar content
+- **Puck prep is critical** — uneven density means channeling is more likely
+
+**Common origins:** Ethiopia (Guji, Sidamo natural lots), Brazil (common for commodity and specialty), Yemen
+
 === knowledge_rules ===
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
@@ -79,6 +237,9 @@ safety_bounds:
   [one_step_at_a_time] Never suggest more than one step of one variable in a single shot, and never a change larger than the increment rules allow. A big correction is two shots, not one.
   [pressure] Never suggest a pressure outside 0-12 bar; the firmware itself refuses more.
   [temperature] Never suggest a brew temperature outside 25-100 °C.
+
+=== learned_insights ===
+  [process=natural · grinder_id=1] Naturals on this grinder want two numbers finer than a washed bean of the same roast.
 
 === previous_analysis ===
 This is the first analysis of this shot.

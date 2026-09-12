@@ -34,6 +34,11 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.knowledge import RulesRepository
+from gaggiclanker.db.repos.knowledge_insights import (
+    InsightScope,
+    InsightsRepository,
+    InsightWrite,
+)
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
@@ -42,6 +47,7 @@ from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsReposito
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.knowledge.rules import seed_rules
+from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
@@ -124,9 +130,17 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
 
 @pytest.fixture
 async def seeded(db: Database) -> Database:
-    """A database with the shipped prompts and the shipped rule tier in it."""
+    """A database with the shipped prompts and the whole knowledge base in it.
+
+    All three tiers, because the golden prompt carries all three. Seeding the
+    twenty-five documents is a couple of hundred milliseconds of chunking once
+    per test that asks for it — worth it, because a golden that rendered "no
+    reference excerpts were retrieved" would assert nothing about the half of
+    this feature that does the retrieving.
+    """
     await seed_prompts(PromptsRepository(db), DEFAULT_PROMPTS_DIR)
     await seed_rules(RulesRepository(db))
+    await KnowledgeService(db).seed_docs()
     return db
 
 
@@ -373,6 +387,7 @@ async def build_fixture(db: Database) -> Fixture:
     """
     await seed_prompts(PromptsRepository(db), DEFAULT_PROMPTS_DIR)
     await seed_rules(RulesRepository(db))
+    await KnowledgeService(db).seed_docs()
     machine = await MachinesRepository(db).upsert(
         MachineUpsert(host="kitchen.local", name="Kitchen", hardware_string="GaggiMate Pro")
     )
@@ -532,6 +547,38 @@ async def build_fixture(db: Database) -> Fixture:
         ),
     )
     shot_ids.append(subject)
+
+    # Tier 3, both halves: one confirmed insight that applies to this Set (so
+    # the golden shows what "what you have learned" renders as), and one that is
+    # confirmed but scoped to a different grinder (so the golden also proves
+    # that scoping actually excludes something).
+    insights = InsightsRepository(db)
+    await insights.insert(
+        InsightWrite(
+            scope=InsightScope(grinder_id=grinder.id, process="natural"),
+            text="Naturals on this grinder want two numbers finer than a washed bean of the "
+            "same roast.",
+            evidence_shot_ids=[shot_ids[0], shot_ids[1]],
+            source="analysis",
+            confirmed=True,
+        )
+    )
+    await insights.insert(
+        InsightWrite(
+            scope=InsightScope(grinder_id=grinder.id + 99),
+            text="The other grinder drifts coarser as it warms up.",
+            source="user",
+            confirmed=True,
+        )
+    )
+    await insights.insert(
+        InsightWrite(
+            scope=InsightScope(process="natural"),
+            text="An unconfirmed proposal, which must never reach a prompt.",
+            source="analysis",
+            confirmed=False,
+        )
+    )
 
     return Fixture(
         db=db,

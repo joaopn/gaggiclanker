@@ -74,6 +74,21 @@ export type AcceptedSuggestion = components["schemas"]["AcceptedData"];
 export type KnowledgeRule = components["schemas"]["RuleRow"];
 export type KnowledgeRuleListData = components["schemas"]["RuleListData"];
 export type KnowledgeRulePatch = components["schemas"]["RulePatch"];
+
+// Tiers 2 and 3: the prose documents with their chunks, and the
+// learned insights. Real pydantic models server-side, so none of them is
+// retyped here.
+export type KnowledgeDoc = components["schemas"]["DocRow"];
+export type KnowledgeDocListData = components["schemas"]["DocListData"];
+export type KnowledgeDocDetail = components["schemas"]["DocDetailData"];
+export type KnowledgeChunk = components["schemas"]["ChunkRow"];
+export type KnowledgeChunkHit = components["schemas"]["ChunkHit"];
+export type KnowledgeSearchData = components["schemas"]["SearchData"];
+export type KnowledgeInsight = components["schemas"]["InsightRow"];
+export type KnowledgeInsightListData = components["schemas"]["InsightListData"];
+export type KnowledgeInsightCreate = components["schemas"]["InsightCreate"];
+export type KnowledgeInsightPatch = components["schemas"]["InsightPatch"];
+export type KnowledgeInsightScope = components["schemas"]["InsightScope"];
 export type SetAnalyseRequest = components["schemas"]["SetAnalyseRequest"];
 export type BatchResult = components["schemas"]["BatchResult"];
 
@@ -112,6 +127,22 @@ export type AnalysisOutput = {
   }>;
   questions_for_user?: string[];
   rules_used?: string[];
+  /**
+   * The heading paths of the reference excerpts the model leaned on. Checked
+   * server-side against the excerpts this shot was actually given, so a path
+   * here always resolves to a passage in the Docs tab.
+   */
+  excerpts_used?: string[];
+  /**
+   * At most two. Already stored as unconfirmed rows linked to the analysis, so
+   * the panel renders the *rows* rather than this copy — this is what the model
+   * said, and the rows are what the user acts on.
+   */
+  proposed_insights?: Array<{
+    scope?: KnowledgeInsightScope;
+    text?: string;
+    evidence_shot_ids?: number[];
+  }>;
 };
 
 /** Where the newest analysis of a shot got to. Four states, not five. */

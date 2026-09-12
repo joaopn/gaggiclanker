@@ -1,4 +1,11 @@
-import type { Analysis, KnowledgeRule, Suggestion } from "@/api/types";
+import type {
+  Analysis,
+  KnowledgeChunk,
+  KnowledgeDoc,
+  KnowledgeInsight,
+  KnowledgeRule,
+  Suggestion,
+} from "@/api/types";
 
 /**
  * What the analysis components are handed.
@@ -90,6 +97,56 @@ export function rule(overrides: Partial<KnowledgeRule> = {}): KnowledgeRule {
     enabled: true,
     updated_at: "2026-03-01T00:00:00.000Z",
     edited: false,
+    ...overrides,
+  };
+}
+
+export function knowledgeDoc(overrides: Partial<KnowledgeDoc> = {}): KnowledgeDoc {
+  return {
+    id: 1,
+    slug: "ESPRESSO_TASTING_GUIDE",
+    title: "Espresso Tasting Guide",
+    source: "gaggimate-mcp",
+    licence: "MIT",
+    attribution: "gaggimate-mcp (julianleopold, MIT), adapting gaggimate-barista (Charlie Hall)",
+    body: "# Espresso Tasting Guide\n\n## Sour vs Bitter\n\nSour hits fast and fades.\n",
+    content_hash: "abc",
+    edited: false,
+    created_at: "2026-03-01T00:00:00.000Z",
+    updated_at: "2026-03-01T00:00:00.000Z",
+    chunk_count: 2,
+    tokens_estimate: 640,
+    ...overrides,
+  };
+}
+
+export function knowledgeChunk(overrides: Partial<KnowledgeChunk> = {}): KnowledgeChunk {
+  return {
+    id: 1,
+    doc_id: 1,
+    doc_slug: "ESPRESSO_TASTING_GUIDE",
+    doc_title: "Espresso Tasting Guide",
+    heading_path: "ESPRESSO_TASTING_GUIDE#sour-vs-bitter",
+    heading: "Sour vs Bitter",
+    ordinal: 0,
+    body: "Sour hits fast and fades; bitter creeps up and dries the mouth.",
+    tokens_estimate: 320,
+    ...overrides,
+  };
+}
+
+export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): KnowledgeInsight {
+  return {
+    id: 1,
+    scope: { grinder_id: 2, process: "natural" },
+    text: "Naturals on this grinder want two numbers finer than a washed bean.",
+    evidence_shot_ids: [4, 6],
+    source: "analysis",
+    analysis_id: 1,
+    confirmed: false,
+    created_at: "2026-03-03T09:00:00.000Z",
+    updated_at: "2026-03-03T09:00:00.000Z",
+    confirmed_at: null,
     ...overrides,
   };
 }

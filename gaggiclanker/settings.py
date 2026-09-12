@@ -899,6 +899,19 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         ),
     ),
     SettingDefinition(
+        key="analysisChunkTokenBudget",
+        type="int",
+        default=1500,
+        env_key="GAGGICLANKER_ANALYSIS_CHUNK_TOKEN_BUDGET",
+        description=(
+            "How many estimated tokens of knowledge-base prose one analysis may be given. "
+            "The retrieved excerpts are supporting context — the rule tier is what is "
+            "authoritative — so the default of 1500 buys two or three passages and leaves "
+            "the shot, its trajectory and the rules dominating the prompt. 0 turns "
+            "retrieval off entirely."
+        ),
+    ),
+    SettingDefinition(
         key="modelDefault",
         type="string",
         default="",

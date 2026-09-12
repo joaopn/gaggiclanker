@@ -11,8 +11,11 @@ description: |
   Set next, because it says what the shot was *meant* to be; the trajectory
   after that, because advice only makes sense against what has already been
   tried; the user's verdict last of the facts, so it is the most recent thing in
-  the model's attention when it starts reasoning; and the rules after
-  everything, because they are reference material rather than evidence.
+  the model's attention when it starts reasoning; what has been learned about
+  this setup after that, because it qualifies the general rules that follow it;
+  the rules next, because they are reference material rather than evidence; and
+  the retrieved prose last of all, because it is the least authoritative thing
+  in the prompt and the easiest to talk itself into following.
 variables:
   - name: shot_facts
     description: The shot's header, measurements, diagnostics, phases, score and curve.
@@ -26,6 +29,10 @@ variables:
     description: The user's verdict on this cup. Ground truth for taste.
   - name: knowledge_rules
     description: The knowledge rules selected for this shot, verbatim.
+  - name: knowledge_excerpts
+    description: Passages retrieved from the knowledge base for this shot, with their citations.
+  - name: learned_insights
+    description: What this archive has learned and the user has confirmed about this setup.
   - name: previous_analysis
     description: What you said about this shot last time, when this is a re-run.
 user: |
@@ -49,9 +56,17 @@ user: |
 
   {{judgement}}
 
+  WHAT YOU HAVE LEARNED ABOUT THIS SETUP — confirmed by the user
+
+  {{learned_insights}}
+
   KNOWLEDGE RULES SELECTED FOR THIS SHOT — authoritative over your own priors
 
   {{knowledge_rules}}
+
+  REFERENCE EXCERPTS — supporting material, not authoritative. Cite by heading path.
+
+  {{knowledge_excerpts}}
 
   YOUR PREVIOUS READING OF THIS SHOT
 

@@ -33,9 +33,16 @@ import type {
   ImportOptions,
   ImportSummary,
   JudgementWrite,
+  KnowledgeDocDetail,
+  KnowledgeDocListData,
+  KnowledgeInsight,
+  KnowledgeInsightCreate,
+  KnowledgeInsightListData,
+  KnowledgeInsightPatch,
   KnowledgeRule,
   KnowledgeRuleListData,
   KnowledgeRulePatch,
+  KnowledgeSearchData,
   LlmCallsData,
   LlmCredentialCheck,
   LlmModelsData,
@@ -840,4 +847,66 @@ export async function patchKnowledgeRule(
 
 export async function reloadKnowledgeRules(): Promise<{ changed: number }> {
   return fetchApi<{ changed: number }>("/knowledge/rules/reload", { method: "POST" });
+}
+
+// Tier 2: the documents, their chunks and the search over them. The list is
+// deliberately body-less server-side — 200 KB of markdown between the
+// twenty-five of them — so the doc view fetches the one it is showing.
+
+export async function getKnowledgeDocs(): Promise<KnowledgeDocListData> {
+  return fetchApi<KnowledgeDocListData>("/knowledge/docs");
+}
+
+export async function getKnowledgeDoc(slug: string): Promise<KnowledgeDocDetail> {
+  return fetchApi<KnowledgeDocDetail>(`/knowledge/docs/${encodeURIComponent(slug)}`);
+}
+
+export async function putKnowledgeDoc(slug: string, markdown: string): Promise<KnowledgeDocDetail> {
+  return fetchApi<KnowledgeDocDetail>(`/knowledge/docs/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    body: JSON.stringify({ markdown }),
+  });
+}
+
+export async function resetKnowledgeDoc(slug: string): Promise<KnowledgeDocDetail> {
+  return fetchApi<KnowledgeDocDetail>(`/knowledge/docs/${encodeURIComponent(slug)}/reset`, {
+    method: "POST",
+  });
+}
+
+export async function searchKnowledge(q: string, k = 8): Promise<KnowledgeSearchData> {
+  return fetchApi<KnowledgeSearchData>(`/knowledge/search${queryString({ q, k })}`);
+}
+
+// Tier 3: the learned insights. The only part of the knowledge base with a real
+// DELETE — a rule or a document is shipped in a file and comes back on the next
+// boot, an insight is this box's alone.
+
+export async function getKnowledgeInsights(
+  params: { confirmed?: boolean; analysis_id?: number; set_id?: number } = {},
+): Promise<KnowledgeInsightListData> {
+  return fetchApi<KnowledgeInsightListData>(`/knowledge/insights${queryString(params)}`);
+}
+
+export async function createKnowledgeInsight(
+  body: KnowledgeInsightCreate,
+): Promise<KnowledgeInsight> {
+  return fetchApi<KnowledgeInsight>("/knowledge/insights", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function patchKnowledgeInsight(
+  id: number,
+  body: KnowledgeInsightPatch,
+): Promise<KnowledgeInsight> {
+  return fetchApi<KnowledgeInsight>(`/knowledge/insights/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteKnowledgeInsight(id: number): Promise<{ deleted: boolean }> {
+  return fetchApi<{ deleted: boolean }>(`/knowledge/insights/${id}`, { method: "DELETE" });
 }

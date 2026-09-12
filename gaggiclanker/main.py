@@ -47,6 +47,7 @@ from gaggiclanker.infra.security import BodyLimitMiddleware, SecurityHeadersMidd
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.knowledge.rules import seed_rules
+from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
@@ -222,8 +223,11 @@ async def _start(app: FastAPI, db: Database) -> None:
     # unedited row while leaving an edited one alone, and they only run here.
     await seed_prompts(PromptsRepository(db))
     # The knowledge tier, on the same three-way upsert and for the same reason
-    # (gaggiclanker/knowledge/rules.py).
+    # (gaggiclanker/knowledge/rules.py). Tier 2's documents go through the same
+    # rule at document level, and re-chunk whatever they move.
     await seed_rules(RulesRepository(db))
+    app.state.knowledge = KnowledgeService(db)
+    await app.state.knowledge.seed_docs()
 
     # Boot reconciliation. A row is only `running` while a process holds it, and
     # no process survives a boot: anything still in that state was cut off

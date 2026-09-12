@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SetDetailPage } from "@/pages/SetDetailPage";
-import { suggestion } from "@/test/analysisFixtures";
+import { knowledgeInsight, suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { setDetail, trends, vocabulary } from "@/test/setsFixtures";
 
@@ -57,6 +57,7 @@ const {
   getSetSuggestions,
   analyseSet,
   getVocabulary,
+  getKnowledgeInsights,
 } = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
@@ -65,6 +66,7 @@ const {
   getSetSuggestions: vi.fn(),
   analyseSet: vi.fn(),
   getVocabulary: vi.fn(),
+  getKnowledgeInsights: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -75,6 +77,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSetSuggestions,
   analyseSet,
   getVocabulary,
+  getKnowledgeInsights,
 }));
 
 beforeEach(() => {
@@ -94,6 +97,7 @@ beforeEach(() => {
     analysis_ids: [1, 2],
   });
   getVocabulary.mockResolvedValue(vocabulary);
+  getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
 });
 
 describe("SetDetailPage", () => {
@@ -212,5 +216,28 @@ describe("SetDetailPage suggestions", () => {
     await user.click(await screen.findByTestId("analyse-set"));
 
     await waitFor(() => expect(analyseSet.mock.calls[0]?.[0]).toBe(3));
+  });
+});
+
+describe("SetDetailPage — what this archive has learned", () => {
+  it("shows the confirmed insights that apply to this Set", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [knowledgeInsight({ confirmed: true, confirmed_at: "2026-03-03T10:00:00.000Z" })],
+      scope_keys: [],
+    });
+    renderWithQueryClient(<SetDetailPage />);
+
+    const card = await screen.findByTestId("set-insights");
+    expect(card).toHaveTextContent("Naturals on this grinder");
+    // The server does the scope matching, through the same call an analysis
+    // makes — so the page cannot show a different answer from the prompt.
+    expect(getKnowledgeInsights).toHaveBeenCalledWith({ set_id: 3 });
+  });
+
+  it("says nothing at all when nothing has been learned about this Set", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("set-trend-summary");
+    expect(screen.queryByTestId("set-insights")).not.toBeInTheDocument();
   });
 });

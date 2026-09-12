@@ -145,6 +145,42 @@ src/
     KnowledgePage.tsx   the rules by category, with a switch and an editor
 ```
 
+Knowledge tiers 2 and 3 extend the analyzer's slice rather than
+adding one of their own:
+
+```
+src/
+  hooks/
+    useKnowledge.ts   now also: the documents, their chunks, the search, the insights
+  components/knowledge/
+    DocsTab.tsx       the document list, one document with its chunks, the editor, the search
+    InsightsTab.tsx   proposals waiting for a decision, then what is confirmed
+    InsightCard.tsx   one insight: scope badge, evidence links, confirm/unconfirm
+  pages/
+    KnowledgePage.tsx now three tabs — Rules, Docs, Insights
+```
+
+Two things about that page are worth knowing before editing it. **The
+parameters select the tab**: `?rule=<key>` lands on Rules,
+`?doc=<slug>&chunk=<heading path>` on Docs with the passage marked, and a `?doc=`
+that forgot its `?tab=` still lands on Docs — a citation link must never land on
+a different tier. And **the doc view shows the chunks, not only the markdown**,
+because retrieval sees chunks and an analysis cites one by `heading_path`; a page
+that showed only the source would leave "why did my edit split that section in
+two" unanswerable.
+
+A search hit carries its `heading_path` into `?chunk=` and the doc view scrolls
+that chunk into view: the hit found one passage in a twenty-chunk file, and
+opening at the top of the document makes the reader find it again by eye. Chunk
+elements are keyed by a sanitised id (`chunk-<path with punctuation hyphenated>`)
+because `#` and `/` are legal in an `id` and unusable in a selector built from
+one; `data-chunk` keeps the real path.
+
+The Set page's insights come from `GET /api/knowledge/insights?set_id=` — the
+server does the scope matching through the same `select_insights` an analysis
+uses, so the page cannot show a different answer from the prompt. Do not
+reimplement the matching rule in TypeScript.
+
 Auth adds a sixth, and it is small because the plumbing was already here:
 
 ```

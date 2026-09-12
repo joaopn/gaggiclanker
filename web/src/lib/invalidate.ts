@@ -128,7 +128,16 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   // started from the Set page moves rows on the shots list and the shot pages
   // of every shot it touches, none of which asked for anything.
   "analysis.started": [queryKeys.analyses.all, queryKeys.shots.all],
-  "analysis.finished": [queryKeys.analyses.all, queryKeys.shots.all, queryKeys.sets.all],
+  // `knowledge` is on the finished event and on no other: a completed analysis
+  // may have written proposed insights, and the shot panel and the Knowledge
+  // page both list them. Without this an analysis started in another tab leaves
+  // the proposals invisible until something else happens to refetch.
+  "analysis.finished": [
+    queryKeys.analyses.all,
+    queryKeys.shots.all,
+    queryKeys.sets.all,
+    queryKeys.knowledge.all,
+  ],
   "analysis.failed": [queryKeys.analyses.all, queryKeys.shots.all],
 };
 

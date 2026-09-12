@@ -51,7 +51,7 @@ from typing import Any
 import structlog
 
 from gaggiclanker.analyzer.context import AnalysisContext, build_context
-from gaggiclanker.analyzer.models import AnalysisResult
+from gaggiclanker.analyzer.models import MAX_PROPOSED_INSIGHTS, AnalysisResult
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import (
     AnalysesRepository,
@@ -59,6 +59,10 @@ from gaggiclanker.db.repos.analyses import (
     AnalysisStart,
     SuggestionsRepository,
     SuggestionWrite,
+)
+from gaggiclanker.db.repos.knowledge_insights import (
+    InsightsRepository,
+    InsightWrite,
 )
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
@@ -178,6 +182,7 @@ class AnalyzerService:
         self.retry_delay_s = RETRY_DELAY_S
         self.analyses = AnalysesRepository(db)
         self.suggestions = SuggestionsRepository(db)
+        self.insights = InsightsRepository(db)
         # Shots whose row is being opened right now, so a second request can
         # wait for the first one's row instead of reading a database the first
         # one has not written to yet. Held only across the opening — once the
@@ -301,7 +306,14 @@ class AnalyzerService:
             previous = await self.analyses.latest_for_shot(shot_id)
             rerun_of = previous.id if previous is not None and previous.status == "ok" else None
 
-        context = await build_context(self.db, shot_id, rerun_of=rerun_of)
+        # The excerpt budget is a setting, and it is read here rather than
+        # inside `build_context` so that assembling a context stays a pure
+        # function of the database it was handed — which is what lets the golden
+        # test build one without a settings service.
+        budget = int(await self.llm.settings.get("analysisChunkTokenBudget"))
+        context = await build_context(
+            self.db, shot_id, rerun_of=rerun_of, chunk_token_budget=budget
+        )
         system, user, version = await self._render(context)
 
         analysis_id = await self.analyses.start(
@@ -402,6 +414,7 @@ class AnalyzerService:
             model=result.model,
             llm_call_id=result.call_id or None,
         )
+        await self._store_insights(analysis_id, output)
         await self.suggestions.insert_many(
             analysis_id,
             [
@@ -427,6 +440,29 @@ class AnalyzerService:
         self._publish("analysis.finished", analysis_id, shot_id, status="ok")
         # Re-read so the row carries its suggestions, which the caller renders.
         return _require(await self.analyses.get(analysis_id), analysis_id)
+
+    async def _store_insights(self, analysis_id: int, output: AnalysisResult) -> None:
+        """The proposals, as unconfirmed rows linked to this analysis.
+
+        Unconfirmed is the whole point: they are shown on the panel with a
+        confirm button and nothing reads them until somebody presses it
+        (`gaggiclanker/db/repos/knowledge_insights.py`). Stored even so, rather
+        than left in the output document, because confirming one has to be a
+        `PATCH` on a row rather than an edit to a stored LLM reply — and because
+        a proposal the user ignores is still evidence about whether the prompt
+        is asking for the right thing.
+        """
+        for insight in output.proposed_insights:
+            await self.insights.insert(
+                InsightWrite(
+                    scope=insight.scope,
+                    text=insight.text,
+                    evidence_shot_ids=insight.evidence_shot_ids,
+                    source="analysis",
+                    analysis_id=analysis_id,
+                    confirmed=False,
+                )
+            )
 
     async def _render(self, context: AnalysisContext) -> tuple[str, str, str]:
         """The two prompts, rendered, plus the version string for the ledger.
@@ -599,23 +635,72 @@ def _usage(prompt_tokens: int | None, completion_tokens: int | None) -> dict[str
 def _post_process(result: AnalysisResult, context: AnalysisContext) -> AnalysisResult:
     """Everything the schema cannot check, done in one place.
 
-    Only `rules_used` for now, and only one way: a key the shot was not given is
+    Three checks, all of the same shape: a citation the shot was not given is
     dropped and logged. Dropping rather than failing the analysis is deliberate
     — a fabricated citation is a small flaw in an otherwise useful answer, and
     throwing the answer away over it would cost the user a call. It is logged
     because a model that invents citations often is a prompt problem worth
     seeing.
+
+    * `rules_used` is filtered against the rules this shot was given;
+    * `excerpts_used` against the excerpts it was given, by heading path. A
+      heading path is a *citation*: a reader follows it to a passage, so one
+      pointing at a passage the model never saw is worse than none at all;
+    * a proposed insight's `evidence_shot_ids` against the shots that were
+      actually in front of the model — this shot and its trajectory. An insight
+      is only checkable if its evidence is real, and a model asked for shot ids
+      will happily produce plausible ones.
+
+    The proposal list is also *trimmed* to
+    :data:`~gaggiclanker.analyzer.models.MAX_PROPOSED_INSIGHTS` here rather than
+    bounded by the schema. A third proposal is not a broken answer: rejecting it
+    would cost a corrective turn and a second paid call over a field the user
+    was going to have to triage anyway.
     """
-    allowed = context.rule_keys
-    kept = [key for key in result.rules_used if key in allowed]
-    dropped = [key for key in result.rules_used if key not in allowed]
+    allowed_shots = {context.shot.shot_id} | {entry.shot_id for entry in context.trajectory}
+    if len(result.proposed_insights) > MAX_PROPOSED_INSIGHTS:
+        log.info(
+            "analysis_proposed_too_many_insights",
+            shot_id=context.shot.shot_id,
+            proposed=len(result.proposed_insights),
+            kept=MAX_PROPOSED_INSIGHTS,
+        )
+    insights = [
+        insight.model_copy(
+            update={
+                "evidence_shot_ids": sorted(
+                    {shot_id for shot_id in insight.evidence_shot_ids if shot_id in allowed_shots}
+                )
+            }
+        )
+        for insight in result.proposed_insights[:MAX_PROPOSED_INSIGHTS]
+    ]
+    return result.model_copy(
+        update={
+            "rules_used": _cited(
+                result.rules_used, context.rule_keys, context.shot.shot_id, "rules"
+            ),
+            "excerpts_used": _cited(
+                result.excerpts_used, context.excerpt_paths, context.shot.shot_id, "excerpts"
+            ),
+            "proposed_insights": insights,
+        }
+    )
+
+
+def _cited(claimed: list[str], allowed: frozenset[str], shot_id: int, kind: str) -> list[str]:
+    """The citations that were really on offer, deduplicated, order preserved.
+
+    A model that lists the same rule twice is not citing it twice, and the order
+    it named them in is the order it used them in — which is worth keeping,
+    because the panel renders that list as "what it leaned on".
+    """
+    dropped = [key for key in claimed if key not in allowed]
     if dropped:
         log.warning(
-            "analysis_cited_unknown_rules",
-            shot_id=context.shot.shot_id,
+            "analysis_cited_unknown",
+            kind=kind,
+            shot_id=shot_id,
             dropped=sorted(dropped),
         )
-    # Deduplicated, order preserved: a model that lists the same rule twice is
-    # not citing it twice.
-    seen: dict[str, None] = dict.fromkeys(kept)
-    return result.model_copy(update={"rules_used": list(seen)})
+    return list(dict.fromkeys(key for key in claimed if key in allowed))

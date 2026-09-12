@@ -2,11 +2,14 @@ import { RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { KnowledgeRule } from "@/api/types";
+import { DocsTab } from "@/components/knowledge/DocsTab";
+import { InsightsTab } from "@/components/knowledge/InsightsTab";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useKnowledgeRules,
   usePatchKnowledgeRule,
@@ -16,22 +19,109 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
+/** The three tiers, as tabs. `?tab=` so every one of them is linkable. */
+const TABS = ["rules", "docs", "insights"] as const;
+type Tab = (typeof TABS)[number];
+
+/**
+ * The whole knowledge base, one tab per tier.
+ *
+ * This page exists because the analyzer is asked to name what it used: the value
+ * of those lists is only realised if the reader can follow a citation here, read
+ * what it actually says, and turn it off when it turns out to mislead. So every
+ * citation deep-links — `?rule=<key>` to a rule, `?tab=docs&doc=<slug>&chunk=<heading path>`
+ * to the passage an excerpt came from — and the parameters are what select the
+ * tab, so a link never lands on the wrong one.
+ *
+ * The tiers get different controls because they are owned by different people.
+ * Rules and documents are shipped in files: they are edited and reset, never
+ * deleted, and an edit survives every upgrade. Insights are this box's own, so
+ * they are created, confirmed and really deleted.
+ */
+export function KnowledgePage() {
+  const [params, setParams] = useSearchParams();
+  const highlighted = params.get("rule");
+  const doc = params.get("doc");
+  const chunk = params.get("chunk");
+  const requested = params.get("tab");
+  // A `?doc=` link that forgot its `?tab=` still lands on the Docs tab: the
+  // parameter that says what to show outranks the one that says where.
+  const tab: Tab = doc ? "docs" : TABS.includes(requested as Tab) ? (requested as Tab) : "rules";
+
+  const setTab = (next: string) => {
+    const updated = new URLSearchParams(params);
+    updated.set("tab", next);
+    if (next !== "docs") {
+      updated.delete("doc");
+      updated.delete("chunk");
+    }
+    setParams(updated, { replace: true });
+  };
+
+  const openDoc = (slug: string | null, chunk?: string) => {
+    const updated = new URLSearchParams(params);
+    updated.set("tab", "docs");
+    if (slug) {
+      updated.set("doc", slug);
+      // A search hit names a passage, not a file. Carried in the URL so the
+      // link is shareable and a reload lands in the same place.
+      if (chunk) updated.set("chunk", chunk);
+      else updated.delete("chunk");
+    } else {
+      updated.delete("doc");
+      updated.delete("chunk");
+    }
+    setParams(updated, { replace: true });
+  };
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Knowledge"
+        subtitle="Three tiers: the rules the analyser must follow, the prose it quotes from, and what this archive has learned about your kitchen."
+      />
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="rules">Rules</TabsTrigger>
+          <TabsTrigger value="docs">Docs</TabsTrigger>
+          <TabsTrigger value="insights">Insights</TabsTrigger>
+        </TabsList>
+        <TabsContent value="rules">
+          <RulesTab
+            highlighted={highlighted}
+            onClearHighlight={() => {
+              const updated = new URLSearchParams(params);
+              updated.delete("rule");
+              setParams(updated, { replace: true });
+            }}
+          />
+        </TabsContent>
+        <TabsContent value="docs">
+          <DocsTab slug={doc} onOpen={openDoc} highlightedChunk={chunk} />
+        </TabsContent>
+        <TabsContent value="insights">
+          <InsightsTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
 /**
  * The rule tier, by category, with a switch and an editor on each rule.
- *
- * This page exists because the analyzer is asked to name the rules it used: the
- * value of that list is only realised if the reader can follow a key here, read
- * what the rule actually says, and turn it off when it turns out to mislead. So
- * `?rule=<key>` deep-links from an analysis and highlights the row.
  *
  * Editing replaces the whole value document rather than merging: a merge cannot
  * express "remove this key", and the editor has the whole object in a text box
  * anyway. An edited rule keeps its text through every later re-seed — that is
  * what makes editing safe to do, and the badge says which rules are yours.
  */
-export function KnowledgePage() {
-  const [params, setParams] = useSearchParams();
-  const highlighted = params.get("rule");
+function RulesTab({
+  highlighted,
+  onClearHighlight,
+}: {
+  highlighted: string | null;
+  onClearHighlight: () => void;
+}) {
   const [category, setCategory] = useState<string>("");
   const rules = useKnowledgeRules(category ? { category } : {});
   const reload = useReloadKnowledgeRules();
@@ -52,13 +142,9 @@ export function KnowledgePage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Knowledge"
-        subtitle={
-          rules.isPending
-            ? "Loading the rule tier…"
-            : `${total} rule${total === 1 ? "" : "s"}${off ? `, ${off} turned off` : ""}`
-        }
+      <SectionCard
+        title="What the analyser is told"
+        description="Every rule that matches a shot's bean, grinder, style and diagnostics is put in front of the model verbatim, and it is asked to name the ones it used. Turning a rule off removes it from the very next analysis; editing one keeps your text through every upgrade."
         actions={
           <Button
             size="sm"
@@ -71,12 +157,12 @@ export function KnowledgePage() {
             Reload from the file
           </Button>
         }
-      />
-
-      <SectionCard
-        title="What the analyser is told"
-        description="Every rule that matches a shot's bean, grinder, style and diagnostics is put in front of the model verbatim, and it is asked to name the ones it used. Turning a rule off removes it from the very next analysis; editing one keeps your text through every upgrade."
       >
+        <p className="mb-2 text-muted-foreground text-sm" data-testid="rule-count">
+          {rules.isPending
+            ? "Loading the rule tier…"
+            : `${total} rule${total === 1 ? "" : "s"}${off ? `, ${off} turned off` : ""}`}
+        </p>
         <div className="flex flex-wrap gap-1.5" data-testid="category-filter">
           <FilterChip label="Everything" active={category === ""} onClick={() => setCategory("")} />
           {(rules.data?.categories ?? []).map((name) => (
@@ -101,10 +187,7 @@ export function KnowledgePage() {
                   key={rule.id}
                   rule={rule}
                   highlighted={rule.key === highlighted}
-                  onClearHighlight={() => {
-                    params.delete("rule");
-                    setParams(params, { replace: true });
-                  }}
+                  onClearHighlight={onClearHighlight}
                 />
               ))}
             </ul>

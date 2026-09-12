@@ -18,13 +18,15 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getShot, getShotSamples, getLlmCalls, runAnalysis, getVocabulary } = vi.hoisted(() => ({
-  getShot: vi.fn(),
-  getShotSamples: vi.fn(),
-  getLlmCalls: vi.fn(),
-  runAnalysis: vi.fn(),
-  getVocabulary: vi.fn(),
-}));
+const { getShot, getShotSamples, getLlmCalls, runAnalysis, getVocabulary, getKnowledgeInsights } =
+  vi.hoisted(() => ({
+    getShot: vi.fn(),
+    getShotSamples: vi.fn(),
+    getLlmCalls: vi.fn(),
+    runAnalysis: vi.fn(),
+    getVocabulary: vi.fn(),
+    getKnowledgeInsights: vi.fn(),
+  }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getShot,
@@ -32,6 +34,10 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getLlmCalls,
   runAnalysis,
   getVocabulary,
+  // Mocked rather than left to the real fetch: the analysis panel asks for the
+  // insights its analysis proposed, and an unmocked call is a rejected promise
+  // and a console full of noise that hides a real failure.
+  getKnowledgeInsights,
 }));
 
 function renderShot(id = shot129.shot.id) {
@@ -57,6 +63,7 @@ beforeEach(() => {
   getShotSamples.mockResolvedValue(samples());
   getLlmCalls.mockResolvedValue({ calls: [], running: 0 });
   getVocabulary.mockResolvedValue(vocabulary);
+  getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   runAnalysis.mockResolvedValue(analysis());
 });
 

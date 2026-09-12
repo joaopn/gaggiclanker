@@ -189,3 +189,60 @@ async def test_a_failed_previous_analysis_is_not_carried(fixture: Fixture) -> No
 
     context = await build_context(fixture.db, fixture.shots[-1], rerun_of=analysis_id)
     assert context.previous_analysis is None
+
+
+async def test_the_context_carries_reference_excerpts_with_citable_paths(
+    fixture: Fixture,
+) -> None:
+    """Tier 2 reaches the prompt, and every excerpt is followable."""
+    context = await build_context(fixture.db, fixture.shots[-1])
+    assert context.excerpts
+    for excerpt in context.excerpts:
+        assert excerpt["heading_path"].startswith(f"{excerpt['doc_slug']}#")
+        assert excerpt["body"]
+        assert excerpt["query"]
+    # At most one per document: two sections of one guide are one opinion twice.
+    slugs = [excerpt["doc_slug"] for excerpt in context.excerpts]
+    assert len(slugs) == len(set(slugs))
+    assert context.excerpt_paths == {excerpt["heading_path"] for excerpt in context.excerpts}
+
+    rendered = context.render()["knowledge_excerpts"]
+    for path in context.excerpt_paths:
+        assert f"[{path}]" in rendered
+
+
+async def test_the_excerpt_budget_is_a_parameter_and_zero_turns_it_off(
+    fixture: Fixture,
+) -> None:
+    generous = await build_context(fixture.db, fixture.shots[-1], chunk_token_budget=6000)
+    frugal = await build_context(fixture.db, fixture.shots[-1], chunk_token_budget=400)
+    off = await build_context(fixture.db, fixture.shots[-1], chunk_token_budget=0)
+
+    assert len(generous.excerpts) >= len(frugal.excerpts) > 0
+    assert sum(int(item["tokens_estimate"]) for item in frugal.excerpts) <= 400
+    assert off.excerpts == []
+    assert "no reference excerpts" in off.render()["knowledge_excerpts"]
+
+
+async def test_only_confirmed_insights_whose_scope_matches_reach_the_context(
+    fixture: Fixture,
+) -> None:
+    """The fixture holds three: one matching, one scoped elsewhere, one unconfirmed."""
+    context = await build_context(fixture.db, fixture.shots[-1])
+    assert [insight["text"] for insight in context.insights] == [
+        "Naturals on this grinder want two numbers finer than a washed bean of the same roast."
+    ]
+    rendered = context.render()["learned_insights"]
+    assert "process=natural" in rendered
+    assert "unconfirmed" not in rendered.lower()
+
+
+async def test_a_shot_with_no_set_still_builds_a_context(fixture: Fixture) -> None:
+    """Retrieval must not need a Set: the taste and the bands are enough."""
+    await fixture.db.execute(
+        "UPDATE shots SET set_version_id = NULL WHERE id = ?", (fixture.shots[-1],)
+    )
+    context = await build_context(fixture.db, fixture.shots[-1])
+    assert context.set is None
+    assert context.excerpts
+    assert context.insights == []

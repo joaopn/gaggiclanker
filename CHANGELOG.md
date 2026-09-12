@@ -92,6 +92,50 @@ New: `GET /api/device/cleanup/plan`, `POST /api/device/cleanup/run`,
 card and a notes card on the Device page, "Sync notes to machine" on a shot, and
 six settings under Settings → Machine. Migration `0010`.
 
+### Knowledge base tiers 2 and 3
+
+The rule tier is a few hundred one-sentence facts. This adds the two tiers
+either side of it: the prose behind the rules, retrieved a few passages at a
+time, and what this archive has learned about *your* kitchen.
+
+- **Tier 2 — 25 documents, 63 chunks, about 31 000 words.** The gaggimate-mcp
+  knowledge files (MIT; see `gaggiclanker/knowledge/seed/docs/ATTRIBUTION.md`),
+  split at their H2/H3 headings into 200–600-word chunks and indexed with FTS5
+  (BM25, `porter unicode61`, headings weighted ten to one). Seeded on boot with
+  the same three-way rule the prompts and the rules have: new documents are
+  inserted, unedited ones take the new text, edited ones keep yours and only the
+  shipped default moves.
+- **A chunk id is a citation.** `heading_path` — e.g.
+  `ESPRESSO_BREWING_BASICS#adjustment-strategies/variable-hierarchy` — is derived
+  from the headings, so it survives a re-seed, a reset and an upgrade. An
+  analysis prints the ones it used and the panel links each straight to the
+  passage. Tables and fenced blocks are never split: half a table still looks
+  complete, which is worse than no table.
+- **Retrieval is deterministic and budgeted.** Queries are built from the
+  judgement's taste and balance, the channeling indicators that fired, the
+  diagnostic bands that were not normal, then the bean and the style — in that
+  order. Top hits merge into a stable total order, at most one chunk per
+  document, under `analysisChunkTokenBudget` (default 1500 estimated tokens; 0
+  turns retrieval off). The same shot gets the same excerpts twice running.
+- **Excerpts are supporting context; the rules stay authoritative.** The prompt
+  says so, and `excerpts_used` is checked against what the shot was actually
+  given — an invented citation is dropped rather than shown.
+- **Tier 3 — learned insights.** Scoped by any of bean, roast level, process,
+  origin, grinder, profile style and machine; an insight applies when **every**
+  key it states matches. The analyzer proposes at most two per analysis, with
+  the shots they were drawn from, and they land **unconfirmed**: nothing reaches
+  a later prompt until somebody presses confirm, because a model that
+  generalises from one shot and is then believed by the next analysis has
+  manufactured its own evidence. Confirmed ones are rendered above the rules as
+  "what you have learned".
+
+New: `GET /api/knowledge/docs`, `GET|PUT /api/knowledge/docs/{slug}`,
+`POST /api/knowledge/docs/{slug}/reset`, `GET /api/knowledge/search`,
+`GET|POST /api/knowledge/insights`, `PATCH|DELETE /api/knowledge/insights/{id}`,
+a Knowledge page with Rules / Docs / Insights tabs, "Reference excerpts" and
+"Proposed insights" on the analysis panel, learned insights on the Set page, and
+one setting (`analysisChunkTokenBudget`). Migrations `0011` and `0012`.
+
 ## [0.1.0] — 2026-09-11
 
 The prototype. It archives every shot a GaggiMate has taken, shows the curves

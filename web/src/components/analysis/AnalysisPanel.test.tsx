@@ -1,7 +1,7 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
-import { analysis, suggestion } from "@/test/analysisFixtures";
+import { analysis, knowledgeInsight, suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { vocabulary } from "@/test/setsFixtures";
 
@@ -17,6 +17,8 @@ const {
   acceptSuggestion,
   rejectSuggestion,
   createProfileDraft,
+  getKnowledgeInsights,
+  patchKnowledgeInsight,
 } = vi.hoisted(() => ({
   getVocabulary: vi.fn(),
   runAnalysis: vi.fn(),
@@ -24,6 +26,8 @@ const {
   acceptSuggestion: vi.fn(),
   rejectSuggestion: vi.fn(),
   createProfileDraft: vi.fn(),
+  getKnowledgeInsights: vi.fn(),
+  patchKnowledgeInsight: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -33,6 +37,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   acceptSuggestion,
   rejectSuggestion,
   createProfileDraft,
+  getKnowledgeInsights,
+  patchKnowledgeInsight,
 }));
 
 beforeEach(() => {
@@ -46,6 +52,8 @@ beforeEach(() => {
   });
   rejectSuggestion.mockResolvedValue(suggestion({ status: "rejected" }));
   createProfileDraft.mockResolvedValue({ id: 5, status: "draft" });
+  getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
+  patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ confirmed: true }));
 });
 
 describe("AnalysisPanel", () => {
@@ -188,5 +196,76 @@ describe("AnalysisPanel", () => {
     );
     expect(screen.getByTestId("draft-unavailable")).toBeInTheDocument();
     expect(screen.queryByTestId("draft-profile")).not.toBeInTheDocument();
+  });
+});
+
+describe("AnalysisPanel — the knowledge it used", () => {
+  it("links each reference excerpt to the passage it came from", async () => {
+    renderWithQueryClient(
+      <AnalysisPanel
+        shotId={6}
+        hasSet
+        analyses={[
+          analysis({
+            output: {
+              diagnosis: "Sour and fast.",
+              excerpts_used: [
+                "ESPRESSO_TASTING_GUIDE#sour-vs-bitter",
+                "COFFEE_PROCESSING#the-methods/natural-dry-process",
+              ],
+            },
+          }),
+        ]}
+      />,
+    );
+
+    const list = await screen.findByTestId("excerpts-used");
+    const [first, second] = within(list).getAllByRole("link");
+    // The document slug is the part before the `#`, and the whole path is the
+    // anchor — so the link lands on the passage, not on the top of the file.
+    expect(first).toHaveAttribute(
+      "href",
+      "/knowledge?tab=docs&doc=ESPRESSO_TASTING_GUIDE&chunk=ESPRESSO_TASTING_GUIDE%23sour-vs-bitter",
+    );
+    expect(second).toHaveAttribute(
+      "href",
+      "/knowledge?tab=docs&doc=COFFEE_PROCESSING&chunk=COFFEE_PROCESSING%23the-methods%2Fnatural-dry-process",
+    );
+  });
+
+  it("shows nothing where the model cited no excerpts", async () => {
+    renderWithQueryClient(
+      <AnalysisPanel shotId={6} hasSet analyses={[analysis({ output: { diagnosis: "Fine." } })]} />,
+    );
+
+    await screen.findByTestId("analysis-result");
+    expect(screen.queryByTestId("excerpts-used")).not.toBeInTheDocument();
+  });
+
+  it("offers the analysis's proposals for a one-click confirm", async () => {
+    const user = setupUser();
+    getKnowledgeInsights.mockResolvedValue({
+      items: [knowledgeInsight({ id: 9 })],
+      scope_keys: [],
+    });
+    renderWithQueryClient(<AnalysisPanel shotId={6} hasSet analyses={[analysis()]} />);
+
+    const proposed = await screen.findByTestId("proposed-insights");
+    expect(proposed).toHaveTextContent("Naturals on this grinder");
+    expect(getKnowledgeInsights).toHaveBeenCalledWith({ analysis_id: 1 });
+
+    await user.click(within(proposed).getByTestId("toggle-insight"));
+    await waitFor(() => expect(patchKnowledgeInsight).toHaveBeenCalledWith(9, { confirmed: true }));
+  });
+
+  it("says nothing about insights once they have all been confirmed", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [knowledgeInsight({ id: 9, confirmed: true })],
+      scope_keys: [],
+    });
+    renderWithQueryClient(<AnalysisPanel shotId={6} hasSet analyses={[analysis()]} />);
+
+    await screen.findByTestId("analysis-result");
+    expect(screen.queryByTestId("proposed-insights")).not.toBeInTheDocument();
   });
 });

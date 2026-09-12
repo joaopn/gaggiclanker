@@ -14,8 +14,10 @@ import json
 
 import pytest
 
+from gaggiclanker.analyzer.context import build_context
 from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.db.repos.analyses import AnalysesRepository, AnalysisStart
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.service import LlmService
 from tests.analyzer.conftest import GOOD_OUTPUT, Fixture
@@ -246,3 +248,105 @@ async def test_events_are_published_on_the_llm_bus(fixture: Fixture, llm: LlmSer
     names = [event.event for event in seen if event.event.startswith("analysis.")]
     assert names == ["analysis.started", "analysis.finished"]
     assert seen[-1].data["shot_id"] == fixture.shots[-1]
+
+
+async def test_an_invented_excerpt_citation_is_dropped(
+    analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    """A heading path is followed by a reader, so a fabricated one is worse than none."""
+    context = await build_context(fixture.db, fixture.shots[-1])
+    real = sorted(context.excerpt_paths)[0]
+    provider.script = [json.dumps(dict(GOOD_OUTPUT, excerpts_used=[real, "MADE_UP#nowhere", real]))]
+
+    row = await analyzer.run_analysis(fixture.shots[-1])
+
+    assert row.status == "ok"
+    assert row.output is not None
+    assert row.output["excerpts_used"] == [real]
+
+
+async def test_proposed_insights_are_stored_unconfirmed_and_linked(
+    analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    """The safety property: a proposal is a row to confirm, never a fact."""
+    provider.script = [
+        json.dumps(
+            dict(
+                GOOD_OUTPUT,
+                proposed_insights=[
+                    {
+                        "scope": {"grinder_id": fixture.grinder_id, "process": "natural"},
+                        "text": "This bag wants a longer pre-infusion than the rules say.",
+                        "evidence_shot_ids": [fixture.shots[0], fixture.shots[-1]],
+                    }
+                ],
+            )
+        )
+    ]
+
+    row = await analyzer.run_analysis(fixture.shots[-1])
+
+    assert row.status == "ok"
+    insights = await InsightsRepository(fixture.db).list_insights(analysis_id=row.id)
+    assert len(insights) == 1
+    stored = insights[0]
+    assert stored.confirmed is False
+    assert stored.source == "analysis"
+    assert stored.analysis_id == row.id
+    assert stored.scope.stated() == {"process": "natural", "grinder_id": fixture.grinder_id}
+    assert stored.evidence_shot_ids == sorted([fixture.shots[0], fixture.shots[-1]])
+
+    # And it stays out of the next analysis's context until somebody confirms it.
+    context = await build_context(fixture.db, fixture.shots[-1])
+    assert stored.text not in {insight["text"] for insight in context.insights}
+
+
+async def test_invented_evidence_shot_ids_are_dropped(
+    analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    """An insight is only checkable if its evidence is real."""
+    provider.script = [
+        json.dumps(
+            dict(
+                GOOD_OUTPUT,
+                proposed_insights=[
+                    {
+                        "scope": {},
+                        "text": "A claim with half-invented evidence.",
+                        "evidence_shot_ids": [fixture.shots[0], 99_999],
+                    }
+                ],
+            )
+        )
+    ]
+
+    row = await analyzer.run_analysis(fixture.shots[-1])
+
+    assert row.output is not None
+    assert row.output["proposed_insights"][0]["evidence_shot_ids"] == [fixture.shots[0]]
+
+
+async def test_too_many_proposed_insights_are_trimmed_not_refused(
+    analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    """A list of eight is one pattern and seven restatements of this shot.
+
+    Trimmed rather than rejected, and asserted as such: bounding it in the
+    schema turned a third proposal into a validation failure, a corrective turn
+    and a second paid call — over a field whose whole point is that a person
+    triages it. The first two are kept, in the order the model gave them.
+    """
+    too_many = [
+        {"scope": {}, "text": f"Claim {index}.", "evidence_shot_ids": []} for index in range(5)
+    ]
+    # One scripted reply, because there must be no second call.
+    provider.script = [json.dumps(dict(GOOD_OUTPUT, proposed_insights=too_many))]
+
+    row = await analyzer.run_analysis(fixture.shots[-1])
+
+    assert row.status == "ok"
+    assert len(provider.calls) == 1, "trimming must not cost a corrective turn"
+    assert row.output is not None
+    assert [item["text"] for item in row.output["proposed_insights"]] == ["Claim 0.", "Claim 1."]
+    stored = await InsightsRepository(fixture.db).list_insights(analysis_id=row.id)
+    assert [insight.text for insight in stored] == ["Claim 0.", "Claim 1."]

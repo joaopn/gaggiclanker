@@ -23,6 +23,8 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
+from gaggiclanker.db.repos.knowledge_docs import KnowledgeDocsRepository
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.db.repos.notes import NotesRepository
@@ -33,6 +35,7 @@ from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.sse import SseEventBus
+from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService
@@ -53,7 +56,10 @@ __all__ = [
     "EnvSettingsDep",
     "EventBusDep",
     "GrindersRepoDep",
+    "InsightsRepoDep",
     "JudgementsRepoDep",
+    "KnowledgeDocsRepoDep",
+    "KnowledgeServiceDep",
     "LlmServiceDep",
     "MachinesRepoDep",
     "NotesRepoDep",
@@ -193,6 +199,25 @@ def get_rules_repo(request: Request) -> RulesRepository:
     return RulesRepository(get_database(request))
 
 
+def get_knowledge_docs_repo(request: Request) -> KnowledgeDocsRepository:
+    return KnowledgeDocsRepository(get_database(request))
+
+
+def get_insights_repo(request: Request) -> InsightsRepository:
+    return InsightsRepository(get_database(request))
+
+
+def get_knowledge_service(request: Request) -> KnowledgeService:
+    """Tiers 2 and 3, as one object.
+
+    Built per request over the shared database handle rather than taken off
+    ``app.state``: it holds three repositories and no state of its own, and the
+    lifespan's copy exists only because boot seeding needs one before any route
+    is reachable. Two instances cannot disagree about anything.
+    """
+    return KnowledgeService(get_database(request))
+
+
 def get_analyses_repo(request: Request) -> AnalysesRepository:
     return AnalysesRepository(get_database(request))
 
@@ -253,6 +278,9 @@ GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
 SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]
 RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
+KnowledgeDocsRepoDep = Annotated[KnowledgeDocsRepository, Depends(get_knowledge_docs_repo)]
+InsightsRepoDep = Annotated[InsightsRepository, Depends(get_insights_repo)]
+KnowledgeServiceDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
 AnalysesRepoDep = Annotated[AnalysesRepository, Depends(get_analyses_repo)]
 SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_repo)]
 AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]

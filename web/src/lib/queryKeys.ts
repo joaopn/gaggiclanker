@@ -99,6 +99,13 @@ export const queryKeys = {
   knowledge: {
     all: ["knowledge"] as const,
     list: (filters?: Record<string, unknown>) => ["knowledge", "list", filters ?? {}] as const,
+    docs: () => ["knowledge", "docs"] as const,
+    doc: (slug: string) => ["knowledge", "doc", slug] as const,
+    // The query text is part of the key, so typing narrows through the cache
+    // rather than re-fetching what has already been asked.
+    search: (q: string, k: number) => ["knowledge", "search", q, k] as const,
+    insights: (filters?: Record<string, unknown>) =>
+      ["knowledge", "insights", filters ?? {}] as const,
   },
   /**
    * Analyses live outside the `shots` prefix, like samples and for the same

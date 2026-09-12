@@ -1,13 +1,15 @@
-import { AlertTriangle, BookOpen, FilePen, Sparkles } from "lucide-react";
+import { AlertTriangle, BookOpen, FilePen, Lightbulb, Quote, Sparkles } from "lucide-react";
 import { useId, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Analysis, AnalysisOutput } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
+import { InsightCard } from "@/components/knowledge/InsightCard";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRunAnalysis } from "@/hooks/useAnalysis";
 import { useCreateDraft } from "@/hooks/useDrafts";
+import { useKnowledgeInsights } from "@/hooks/useKnowledge";
 import { formatTime } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
@@ -64,7 +66,7 @@ export function AnalysisPanel({
   return (
     <SectionCard
       title="Analysis"
-      description="One structured call per run: the diagnostics, this Set, the shots before it, your verdict and the matching knowledge rules go in; a diagnosis and prioritised suggestions come out. The execution score above stays authoritative — this explains it."
+      description="One structured call per run: the diagnostics, this Set, the shots before it, your verdict, what you have confirmed about this setup, the matching knowledge rules and a few reference excerpts go in; a diagnosis and prioritised suggestions come out. The execution score above stays authoritative — this explains it."
       actions={
         <div className="flex items-center gap-2">
           <input
@@ -246,6 +248,35 @@ function AnalysisBody({
         </div>
       ) : null}
 
+      {!compact ? <ProposedInsights analysisId={analysis.id} /> : null}
+
+      {!compact && (output.excerpts_used ?? []).length > 0 ? (
+        <div>
+          <h4 className="mb-1 flex items-center gap-1.5 font-medium text-sm">
+            <Quote className="size-3.5" aria-hidden="true" />
+            Reference excerpts it quoted
+          </h4>
+          {/* Supporting context rather than authority: the rules above win
+              where the two disagree, and the taste wins over both. Each path
+              was checked server-side against the excerpts this shot was
+              actually given, so every link lands on a real passage. */}
+          <ul className="flex flex-wrap gap-1.5" data-testid="excerpts-used">
+            {(output.excerpts_used ?? []).map((path) => (
+              <li key={path}>
+                <Link
+                  to={`/knowledge?tab=docs&doc=${encodeURIComponent(
+                    path.split("#")[0],
+                  )}&chunk=${encodeURIComponent(path)}`}
+                  className="inline-flex rounded-full border border-border px-2 py-0.5 font-mono text-xs hover:bg-accent"
+                >
+                  {path}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {!compact && (output.rules_used ?? []).length > 0 ? (
         <div>
           <h4 className="mb-1 flex items-center gap-1.5 font-medium text-sm">
@@ -269,6 +300,42 @@ function AnalysisBody({
           </ul>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * What this analysis thinks it learned about the *setup* rather than the shot.
+ *
+ * Read from the rows rather than from the stored output: they are already
+ * unconfirmed rows linked to this analysis, and confirming one has to be a
+ * write on a row rather than an edit to a stored LLM reply. Nothing here
+ * reaches a later prompt until somebody presses the button — a model that
+ * generalises from one shot and is then believed by the next analysis has
+ * manufactured its own evidence, and this is where that loop is broken.
+ *
+ * The whole block disappears once every proposal has been confirmed or thrown
+ * away, because a confirmed insight belongs on the Knowledge page and on the
+ * Sets it applies to, not on the shot that happened to suggest it.
+ */
+function ProposedInsights({ analysisId }: { analysisId: number }) {
+  const insights = useKnowledgeInsights({ analysis_id: analysisId });
+  const proposed = (insights.data?.items ?? []).filter((insight) => !insight.confirmed);
+  if (proposed.length === 0) return null;
+  return (
+    <div>
+      <h4 className="mb-1.5 flex items-center gap-1.5 font-medium text-sm">
+        <Lightbulb className="size-3.5" aria-hidden="true" />
+        Proposed insights
+      </h4>
+      <p className="mb-1.5 text-muted-foreground text-xs">
+        Nothing is put in front of the model until you confirm it. Open the shots it drew on first.
+      </p>
+      <ul className="space-y-2" data-testid="proposed-insights">
+        {proposed.map((insight) => (
+          <InsightCard key={insight.id} insight={insight} compact />
+        ))}
+      </ul>
     </div>
   );
 }

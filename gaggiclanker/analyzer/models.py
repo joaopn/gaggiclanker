@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from gaggiclanker.db.repos.knowledge_insights import InsightScope
 from gaggiclanker.domain.vocab import (
     Balance,
     ShotStyle,
@@ -33,13 +34,27 @@ from gaggiclanker.domain.vocab import (
 )
 
 __all__ = [
+    "MAX_PROPOSED_INSIGHTS",
     "AnalysisResult",
     "Execution",
     "ExecutionIssue",
     "ProfilePatch",
+    "ProposedInsight",
     "Suggestion",
     "TastePrediction",
 ]
+
+#: How many insights one analysis may keep. Two, because a model asked for "any
+#: patterns you noticed" produces a list of eight, of which one is a pattern and
+#: seven are restatements of this shot, and every one of them costs the user a
+#: confirm-or-delete decision.
+#:
+#: **Not enforced by the schema.** It used to be a `max_length`, which turned a
+#: third proposal into a validation failure, a corrective turn and a second
+#: paid call — for an answer whose diagnosis and suggestions were fine. The
+#: prompt asks for at most two and `_post_process` keeps the first two, the same
+#: way an over-long citation list is trimmed rather than rejected.
+MAX_PROPOSED_INSIGHTS = 2
 
 #: How sure the model is, everywhere it is asked. Three words rather than a 0-1
 #: number: a model asked for a probability produces a decimal with two digits of
@@ -135,6 +150,30 @@ class ProfilePatch(BaseModel):
     reason: str = ""
 
 
+class ProposedInsight(BaseModel):
+    """Something the analyzer thinks is true of this setup rather than this shot.
+
+    Stored **unconfirmed** and shown for a one-click confirm. Nothing
+    unconfirmed reaches a later
+    prompt, which is the whole safety property: a model that generalises from one
+    shot and is then believed by the next analysis has manufactured its own
+    evidence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: What the insight is about. Every key optional; the ones it names must all
+    #: match a Set for the insight to apply to it. An empty scope is a claim
+    #: about the whole kitchen and should be rare.
+    scope: InsightScope = Field(default_factory=InsightScope)
+    #: One sentence. What was learned, in the user's own units.
+    text: str = Field(min_length=1, max_length=2000)
+    #: The shots it was learned from — ids from the trajectory in the context.
+    #: Filtered on the way in against the shots this analysis was actually
+    #: shown, because an insight's evidence is what makes it checkable.
+    evidence_shot_ids: list[int] = Field(default_factory=list)
+
+
 class AnalysisResult(BaseModel):
     """The whole answer. One call, one document, no tool loop."""
 
@@ -159,3 +198,12 @@ class AnalysisResult(BaseModel):
     #: rules this shot was actually given; an invented key is dropped with a
     #: warning rather than shown as a citation (`investigation.md` §8).
     rules_used: list[str] = Field(default_factory=list)
+    #: The `heading_path` of every reference excerpt the model leaned on.
+    #: Validated the same way and for the same reason — a citation into a
+    #: document that was never in front of it is worse than no citation, because
+    #: the reader can follow it and find prose that says something else.
+    excerpts_used: list[str] = Field(default_factory=list)
+    #: Trimmed to :data:`MAX_PROPOSED_INSIGHTS` by `_post_process`, in the order
+    #: the model gave them. Stored as unconfirmed rows linked to this analysis;
+    #: the user confirms them from the panel.
+    proposed_insights: list[ProposedInsight] = Field(default_factory=list)

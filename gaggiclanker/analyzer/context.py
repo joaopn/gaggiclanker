@@ -45,12 +45,20 @@ from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
+from gaggiclanker.db.repos.knowledge_insights import set_attributes as insight_set_attributes
 from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotsRepository
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
+from gaggiclanker.knowledge.service import (
+    DEFAULT_CHUNK_TOKEN_BUDGET,
+    KnowledgeService,
+    RetrievalContext,
+    render_excerpts,
+    render_insights,
+)
 from gaggiclanker.sync.engine import downsample
 
 __all__ = [
@@ -58,6 +66,8 @@ __all__ = [
     "TRAJECTORY_SHOTS",
     "AnalysisContext",
     "build_context",
+    "retrieval_context",
+    "set_attributes",
     "signal_tokens",
 ]
 
@@ -145,6 +155,14 @@ class SetFacts(BaseModel):
     version_id: int
     version_no: int
     intent: str = ""
+    #: The catalogue ids, carried so an insight's scope can be matched against
+    #: them. Not rendered into the prompt — a model has no use for a row id —
+    #: but part of the stored snapshot, because `{"grinder_id": 2}` on an
+    #: insight is only checkable later if the number it was checked against is
+    #: on the row too.
+    bean_id: int | None = None
+    grinder_id: int | None = None
+    machine_id: int | None = None
     bean_name: str = ""
     roaster: str = ""
     origin: str = ""
@@ -249,6 +267,15 @@ class AnalysisContext(BaseModel):
     signals: list[str] = Field(default_factory=list)
     #: `[{key, category, text, confidence, source}]` for every selected rule.
     rules: list[dict[str, str]] = Field(default_factory=list)
+    #: `[{heading_path, doc_slug, doc_title, heading, body, tokens_estimate,
+    #: query}]` for every retrieved chunk (tier 2). Supporting context, cited by
+    #: heading path, and stored on the snapshot in full — a citation into a
+    #: document the user has since edited has to still resolve to the text the
+    #: model actually read.
+    excerpts: list[dict[str, Any]] = Field(default_factory=list)
+    #: `[{id, scope, text, evidence_shot_ids}]` for every confirmed insight that
+    #: applies to this Set (tier 3). Unconfirmed ones are never here.
+    insights: list[dict[str, Any]] = Field(default_factory=list)
     previous_analysis: PreviousAnalysis | None = None
 
     @property
@@ -260,6 +287,11 @@ class AnalysisContext(BaseModel):
         name shadows the builtin, so ``set[str]`` here is not a type at all.
         """
         return frozenset(rule["key"] for rule in self.rules)
+
+    @property
+    def excerpt_paths(self) -> frozenset[str]:
+        """What `excerpts_used` is validated against. See `rule_keys` for the type."""
+        return frozenset(str(excerpt["heading_path"]) for excerpt in self.excerpts)
 
     def render(self) -> dict[str, str]:
         """The prompt's variables: one rendered block per section.
@@ -281,6 +313,8 @@ class AnalysisContext(BaseModel):
             "trajectory": _render_trajectory(self.trajectory),
             "judgement": _render_judgement(self.judgement),
             "knowledge_rules": render_rules(self.rules),
+            "knowledge_excerpts": render_excerpts(self.excerpts),
+            "learned_insights": render_insights(self.insights),
             "previous_analysis": _render_previous(self.previous_analysis),
         }
 
@@ -294,8 +328,15 @@ async def build_context(
     *,
     trajectory: int = TRAJECTORY_SHOTS,
     rerun_of: int | None = None,
+    chunk_token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
 ) -> AnalysisContext:
     """Assemble everything the model is told about one shot.
+
+    ``chunk_token_budget`` is how much tier-2 prose may come along, in estimated
+    tokens; it is a *parameter* rather than a settings read so that this function
+    stays pure with respect to the database it was handed — the analyzer service
+    resolves `analysisChunkTokenBudget` and passes it, and the golden test pins
+    the default. Zero turns retrieval off.
 
     ``rerun_of`` names an earlier analysis of the same shot whose diagnosis and
     suggestions are carried into the context. A re-run with no reference to what
@@ -384,6 +425,13 @@ async def build_context(
         signals,
     )
 
+    knowledge = KnowledgeService(db)
+    excerpts = await knowledge.select_chunks(
+        retrieval_context(selection.signals, verdict.style, judgement, set_facts),
+        token_budget=chunk_token_budget,
+    )
+    insights = await knowledge.select_insights(set_attributes(set_facts, verdict.style))
+
     return AnalysisContext(
         shot=facts,
         set=set_facts,
@@ -404,7 +452,66 @@ async def build_context(
             }
             for rule in selection.rules
         ],
+        excerpts=[excerpt.as_dict() for excerpt in excerpts],
+        insights=[
+            {
+                "id": insight.id,
+                "scope": insight.scope.label(),
+                "text": insight.text,
+                "evidence_shot_ids": list(insight.evidence_shot_ids or []),
+            }
+            for insight in insights
+        ],
         previous_analysis=await _previous(db, rerun_of),
+    )
+
+
+def set_attributes(facts: SetFacts | None, style: str) -> dict[str, Any]:
+    """This shot's Set, in the flat shape an insight's scope is matched against.
+
+    A thin call onto
+    :func:`gaggiclanker.db.repos.knowledge_insights.set_attributes`, which owns
+    the key list and the "empty means not stated" normalisation — this only
+    knows where the values live on a context.
+
+    The style is the *detected* one rather than a stored attribute, because that
+    is what "this profile style" means to somebody confirming an insight: the
+    kind of shot the machine actually pulled. It is also why a Set on its own
+    cannot answer for it, and why the Set page's list is narrower than a shot's.
+    """
+    if facts is None:
+        return insight_set_attributes(profile_style=style)
+    return insight_set_attributes(
+        bean_id=facts.bean_id,
+        roast_level=facts.roast_level,
+        process=facts.process,
+        origin=facts.origin,
+        grinder_id=facts.grinder_id,
+        profile_style=style,
+        machine_id=facts.machine_id,
+    )
+
+
+def retrieval_context(
+    signals: list[str],
+    style: str,
+    judgement: JudgementFacts | None,
+    facts: SetFacts | None,
+) -> RetrievalContext:
+    """The analysis, in the shape tier-2 retrieval reads it.
+
+    A translation and nothing else, but it is a named one: the chat
+    builds the same record from a conversation, and having one place where "what
+    an analysis knows" becomes "what to search for" is what keeps the two
+    callers retrieving comparably.
+    """
+    return RetrievalContext(
+        style=style,
+        signals=tuple(signals),
+        taste_tags=tuple(judgement.taste_tags) if judgement else (),
+        balance=judgement.balance if judgement else None,
+        roast_level=facts.roast_level if facts else None,
+        process=facts.process if facts else None,
     )
 
 
@@ -524,6 +631,9 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             version_id=version.id,
             version_no=version.version_no,
             intent=version.intent,
+            bean_id=row.bean_id,
+            grinder_id=row.grinder_id,
+            machine_id=row.machine_id,
             bean_name=bean.name if bean else "",
             roaster=(bean.roaster or "") if bean else "",
             origin=(bean.origin or "") if bean else "",

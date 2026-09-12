@@ -440,6 +440,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge/docs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The knowledge documents
+         * @description Every document with its chunk count and what it would cost a prompt.
+         */
+        get: operations["list_docs_api_knowledge_docs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/docs/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One document and its chunks
+         * @description The markdown plus the chunks, so the page can anchor a citation.
+         *
+         *     Both, because they answer different questions: the markdown is what an
+         *     editor loads, and the chunks are what retrieval actually sees. A page that
+         *     showed only the first would leave "why did my edit split that section in
+         *     two" unanswerable.
+         */
+        get: operations["get_doc_api_knowledge_docs__slug__get"];
+        /**
+         * Replace a document's markdown and re-chunk it
+         * @description Store the edit, re-chunk, and answer with what retrieval will now see.
+         *
+         *     An edited document keeps the user's text through every later re-seed; only
+         *     its shipped default moves. That is what makes editing safe to do — the same
+         *     contract a rule and a prompt have.
+         */
+        put: operations["put_doc_api_knowledge_docs__slug__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/docs/{slug}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put the shipped text of a document back
+         * @description Restore the default the package shipped, and re-chunk.
+         *
+         *     The default converges on the *current* wording rather than the version the
+         *     user forked from: seeding records the new default on an edited row even
+         *     while leaving its text alone, so a reset after an upgrade gives the upgrade's
+         *     text.
+         */
+        post: operations["reset_doc_api_knowledge_docs__slug__reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this archive has learned
+         * @description Every insight, or the ones a filter narrows to.
+         *
+         *     `?set_id=` answers the Set page's question — "what has this archive learned
+         *     that applies here" — through the same `select_insights` an analysis uses, so
+         *     the page cannot show a different answer from the prompt. It matches on the
+         *     Set's own attributes only: `profile_style` is detected *per shot* from the
+         *     profile the machine ran, so a Set has no single one and an insight scoped by
+         *     style is left to the shot page.
+         */
+        get: operations["list_insights_api_knowledge_insights_get"];
+        put?: never;
+        /** Write an insight by hand */
+        post: operations["create_insight_api_knowledge_insights_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/insights/{insight_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Throw an insight away
+         * @description A real delete, unlike a rule's.
+         *
+         *     A rule is shipped in a file, so deleting the row only means the next boot
+         *     re-seeds it and `enabled = false` is what "delete" has to mean there. An
+         *     insight is *this box's*: nothing re-creates it, and a proposal the user
+         *     rejects should leave no trace to read past.
+         */
+        delete: operations["delete_insight_api_knowledge_insights__insight_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit an insight, or confirm it
+         * @description Apply whichever fields were sent.
+         *
+         *     Confirming is what puts an insight in front of the next analysis of a
+         *     matching Set; un-confirming takes it out again with nothing else to
+         *     remember, the way disabling a rule does.
+         */
+        patch: operations["patch_insight_api_knowledge_insights__insight_id__patch"];
+        trace?: never;
+    };
     "/api/knowledge/rules": {
         parameters: {
             query?: never;
@@ -507,6 +646,30 @@ export interface paths {
          *     reachable over HTTP — the same shape `POST /api/prompts/reload` has.
          */
         post: operations["reload_rules_api_knowledge_rules_reload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the knowledge documents
+         * @description BM25 over the chunk index, heading matches weighted above body matches.
+         *
+         *     The query is words, not FTS5 syntax: everything that is not a word or a
+         *     digit is dropped, so a search can never be a syntax error
+         *     (`db/repos/knowledge_docs.py::match_expression`).
+         */
+        get: operations["search_api_knowledge_search_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1885,6 +2048,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[DocDetailData] */
+        ApiResponse_DocDetailData_: {
+            data?: components["schemas"]["DocDetailData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[DocListData] */
+        ApiResponse_DocListData_: {
+            data?: components["schemas"]["DocListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[DraftListData] */
         ApiResponse_DraftListData_: {
             data?: components["schemas"]["DraftListData"] | null;
@@ -1928,6 +2107,22 @@ export interface components {
         /** ApiResponse[ImportSummary] */
         ApiResponse_ImportSummary_: {
             data?: components["schemas"]["ImportSummary"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[InsightListData] */
+        ApiResponse_InsightListData_: {
+            data?: components["schemas"]["InsightListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[InsightRow] */
+        ApiResponse_InsightRow_: {
+            data?: components["schemas"]["InsightRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2104,6 +2299,14 @@ export interface components {
         /** ApiResponse[RuleRow] */
         ApiResponse_RuleRow_: {
             data?: components["schemas"]["RuleRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SearchData] */
+        ApiResponse_SearchData_: {
+            data?: components["schemas"]["SearchData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2451,6 +2654,59 @@ export interface components {
         /** @enum {string} */
         BurrType: "conical" | "flat" | "unknown";
         /**
+         * ChunkHit
+         * @description One search result: the chunk, its BM25 score and a quotable snippet.
+         */
+        ChunkHit: {
+            chunk: components["schemas"]["ChunkRow"];
+            /** Score */
+            score: number;
+            /** Snippet */
+            snippet: string;
+        };
+        /**
+         * ChunkRow
+         * @description One row of `knowledge_chunks`.
+         */
+        ChunkRow: {
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** Doc Id */
+            doc_id: number;
+            /**
+             * Doc Slug
+             * @default
+             */
+            doc_slug: string;
+            /**
+             * Doc Title
+             * @default
+             */
+            doc_title: string;
+            /**
+             * Heading
+             * @default
+             */
+            heading: string;
+            /** Heading Path */
+            heading_path: string;
+            /** Id */
+            id: number;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            ordinal: number;
+            /**
+             * Tokens Estimate
+             * @default 0
+             */
+            tokens_estimate: number;
+        };
+        /**
          * CleanupPlan
          * @description What a run would do, if one were started now. Never touches the machine.
          */
@@ -2752,6 +3008,109 @@ export interface components {
             enabled: boolean;
             /** Items */
             items: components["schemas"]["DeviceWriteRow"][];
+        };
+        /**
+         * DocDetailData
+         * @description One document: its markdown, and the chunks the retriever actually sees.
+         */
+        DocDetailData: {
+            /** Chunks */
+            chunks: components["schemas"]["ChunkRow"][];
+            doc: components["schemas"]["DocRow"];
+        };
+        /**
+         * DocEdit
+         * @description `PUT /api/knowledge/docs/{slug}`: replace the markdown, then re-chunk.
+         *
+         *     The whole document, not a patch. Chunk boundaries are derived from the
+         *     headings, so an edit that moves a heading moves every citation below it —
+         *     there is no smaller unit of change here that means anything.
+         */
+        DocEdit: {
+            /** Markdown */
+            markdown: string;
+        };
+        /**
+         * DocListData
+         * @description Every seeded document, slug order, without its markdown.
+         *
+         *     Without, deliberately: the list is a directory and the bodies are 200 KB.
+         *     The doc view fetches the one it is showing.
+         */
+        DocListData: {
+            /** Items */
+            items: components["schemas"]["DocRow"][];
+        };
+        /**
+         * DocRow
+         * @description One row of `knowledge_docs`, as read back.
+         *
+         *     ``body`` is the live markdown and is what the editor loads; ``default_body``
+         *     is not on this model at all, for the reason `RuleRow` leaves `default_json`
+         *     off — it is a second copy of the text that no reader wants and every
+         *     serialiser would send. "Is it edited" is the part a reader needs, and that
+         *     is a column.
+         */
+        DocRow: {
+            /**
+             * Attribution
+             * @default
+             */
+            attribution: string;
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /**
+             * Chunk Count
+             * @default 0
+             */
+            chunk_count: number;
+            /**
+             * Content Hash
+             * @default
+             */
+            content_hash: string;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            /**
+             * Edited
+             * @default false
+             */
+            edited: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Licence
+             * @default
+             */
+            licence: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Tokens Estimate
+             * @default 0
+             */
+            tokens_estimate: number;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
         };
         /**
          * DraftApprove
@@ -3058,6 +3417,115 @@ export interface components {
              * @default 0
              */
             updated: number;
+        };
+        /**
+         * InsightCreate
+         * @description `POST /api/knowledge/insights`: write one by hand.
+         *
+         *     Source is fixed to `user` rather than taken from the body: the column says
+         *     *who* learned this, and a client asserting "an analysis said so" would make
+         *     the one thing this row is for — knowing whether a model or a person is
+         *     behind it — unreliable.
+         */
+        InsightCreate: {
+            /**
+             * Confirmed
+             * @default true
+             */
+            confirmed: boolean;
+            /** Evidence Shot Ids */
+            evidence_shot_ids?: number[];
+            scope?: components["schemas"]["InsightScope"];
+            /** Text */
+            text: string;
+        };
+        /**
+         * InsightListData
+         * @description The insights that matched the filter, oldest first.
+         */
+        InsightListData: {
+            /** Items */
+            items: components["schemas"]["InsightRow"][];
+            /** Scope Keys */
+            scope_keys: string[];
+        };
+        /**
+         * InsightPatch
+         * @description `PATCH /api/knowledge/insights/{id}`: edit it, or change its confirmation.
+         *
+         *     Every field optional and each independent: a PATCH with only `confirmed`
+         *     does not touch the text, and one with only `text` does not confirm a
+         *     proposal somebody has not read yet.
+         */
+        InsightPatch: {
+            /** Confirmed */
+            confirmed?: boolean | null;
+            /** Evidence Shot Ids */
+            evidence_shot_ids?: number[] | null;
+            scope?: components["schemas"]["InsightScope"] | null;
+            /** Text */
+            text?: string | null;
+        };
+        /**
+         * InsightRow
+         * @description One row of `knowledge_insights`, as read back.
+         */
+        InsightRow: {
+            /** Analysis Id */
+            analysis_id?: number | null;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Confirmed At */
+            confirmed_at?: string | null;
+            /**
+             * Created At
+             * @default
+             */
+            created_at: string;
+            evidence_shot_ids?: components["schemas"]["JsonList"];
+            /** Id */
+            id: number;
+            scope?: components["schemas"]["InsightScope"];
+            /**
+             * Source
+             * @default user
+             */
+            source: string;
+            /** Text */
+            text: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+        };
+        /**
+         * InsightScope
+         * @description What an insight is about. Every field optional; an absent one means "any".
+         *
+         *     ``extra="forbid"`` is load-bearing here rather than tidiness: this model
+         *     validates a scope the *model* proposed, and a misspelled dimension has to be
+         *     a validation failure the LLM layer can correct rather than a row that never
+         *     fires.
+         */
+        InsightScope: {
+            /** Bean Id */
+            bean_id?: number | null;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Machine Id */
+            machine_id?: number | null;
+            /** Origin */
+            origin?: string | null;
+            /** Process */
+            process?: string | null;
+            /** Profile Style */
+            profile_style?: string | null;
+            /** Roast Level */
+            roast_level?: string | null;
         };
         JsonList: unknown[] | null;
         JsonObject: {
@@ -3675,6 +4143,16 @@ export interface components {
         };
         /** @enum {string} */
         RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
+        /**
+         * SearchData
+         * @description What a search found, best first.
+         */
+        SearchData: {
+            /** Items */
+            items: components["schemas"]["ChunkHit"][];
+            /** Query */
+            query: string;
+        };
         /**
          * SetAnalyseRequest
          * @description `POST /api/sets/{id}/analyse`: the batch, and how much of it to do.
@@ -5616,6 +6094,256 @@ export interface operations {
             };
         };
     };
+    list_docs_api_knowledge_docs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DocListData_"];
+                };
+            };
+        };
+    };
+    get_doc_api_knowledge_docs__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DocDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_doc_api_knowledge_docs__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DocDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_doc_api_knowledge_docs__slug__reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DocDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_insights_api_knowledge_insights_get: {
+        parameters: {
+            query?: {
+                analysis_id?: number | null;
+                confirmed?: boolean | null;
+                /** @description Only the **confirmed** insights that apply to this Set — the same selection an analysis of one of its shots is given. */
+                set_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_insight_api_knowledge_insights_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsightCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_insight_api_knowledge_insights__insight_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__bool__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_insight_api_knowledge_insights__insight_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsightPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_rules_api_knowledge_rules_get: {
         parameters: {
             query?: {
@@ -5701,6 +6429,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["gaggiclanker__infra__envelope__ApiResponse_ReloadData___2"];
+                };
+            };
+        };
+    };
+    search_api_knowledge_search_get: {
+        parameters: {
+            query: {
+                /** @description How many chunks to return */
+                k?: number;
+                /** @description Words to look for */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SearchData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

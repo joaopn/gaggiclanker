@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import type { Suggestion } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
+import { InsightCard } from "@/components/knowledge/InsightCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
@@ -12,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalyseSet, useSetSuggestions } from "@/hooks/useAnalysis";
+import { useKnowledgeInsights } from "@/hooks/useKnowledge";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
   useActivateSet,
@@ -23,6 +25,38 @@ import {
 import { attempt } from "@/lib/mutations";
 import { grindPatch, setSummary, versionSummary } from "@/lib/sets";
 import { cn } from "@/lib/utils";
+
+/**
+ * What this archive has learned that applies to this Set.
+ *
+ * Selected by the server through the same `select_insights` an analysis of one
+ * of these shots is given, so the page cannot show a different answer from the
+ * prompt — which is the whole reason the filter is a query parameter rather than
+ * a scope comparison written a second time in TypeScript.
+ *
+ * Confirmed only, and the card's unconfirm button is live: taking an insight
+ * back out is meant to be as easy as it was to put in, because the one that
+ * turns out to be wrong is discovered by reading an analysis that followed it.
+ * Renders nothing when there is nothing — an empty card on every Set would be
+ * noise on the page people look at most.
+ */
+function SetInsights({ setId }: { setId: number }) {
+  const insights = useKnowledgeInsights({ set_id: setId });
+  const items = insights.data?.items ?? [];
+  if (items.length === 0) return null;
+  return (
+    <SectionCard
+      title="What you have learned about this Set"
+      description="Confirmed insights whose scope matches this bean, grinder and machine. Every analysis of a shot in this Set is told them, above the general rules."
+    >
+      <ul className="space-y-2" data-testid="set-insights">
+        {items.map((insight) => (
+          <InsightCard key={insight.id} insight={insight} compact />
+        ))}
+      </ul>
+    </SectionCard>
+  );
+}
 
 /**
  * One Set: what it is, how it has gone, and every recipe it has been through.
@@ -158,6 +192,8 @@ export function SetDetailPage() {
           <SetTrendChart trends={trends.data as NonNullable<typeof trends.data>} />
         )}
       </SectionCard>
+
+      <SetInsights setId={row.id} />
 
       <SectionCard
         title="Versions"
