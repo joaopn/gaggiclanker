@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Third-party reference clones (not part of the package)
+/external/
+
+# --- gaggiclanker ---
+# The bind-mounted data directory: the SQLite file, its WAL sidecars and backups.
+/data/
+# Front-end build output. The generic `dist/` rule above already covers
+# it; named here so it is obvious where the served bundle comes from.
+/web/dist/
+
+# Agent working files, never tracked
+/CLAUDE.md
+/.claude/
+/PLAN/

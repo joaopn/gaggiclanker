@@ -1,0 +1,115 @@
+# gaggiclanker — one service, one bind mount, one machine on the LAN.
+#
+#   cp .env.example .env      # then set GAGGIMATE_HOST
+#   docker compose up -d
+#   open http://localhost:8000
+#
+# Networking, which is the only decision this file forces:
+#
+#   The GaggiMate is on the LAN and the container has to reach it. Published
+#   ports (the default below) work whenever the machine has a routable IP from
+#   the Docker bridge, which is the normal case on a home network — put its IP
+#   or a DHCP-reserved hostname in GAGGIMATE_HOST and you are done.
+#
+#   Host networking (the commented block) is only needed if you want mDNS
+#   discovery (gaggimate.local) to resolve, which does not work from a bridge
+#   network. Note that the firmware turns mDNS off entirely when HomeKit is
+#   enabled, so a fixed IP is the more reliable answer either way. If you do
+#   switch to host networking, remove the `ports:` block — the two are mutually
+#   exclusive — and the app listens on PORT directly on the host.
+
+services:
+  gaggiclanker:
+    build:
+      context: .
+      # Match the host user that owns ./data, so files written into the bind
+      # mount are not owned by a uid you cannot delete.
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    image: gaggiclanker:local
+    container_name: gaggiclanker
+    restart: unless-stopped
+
+    # Everything that must survive a container recreate: the SQLite file, its
+    # WAL sidecars, and backups/. One mount, so a backup is a file copy.
+    #
+    # A bind mount, so the database is a file you can see, copy and restore
+    # without docker commands. When this directory does not exist yet, Docker
+    # creates it as root:root; the image's entrypoint starts as root, chowns it
+    # to the app user, and drops privileges before the app runs — so a fresh
+    # `docker compose up -d --build` works with no preparation.
+    #
+    # To use a named volume instead, swap the two blocks below and uncomment
+    # the top-level `volumes:` key at the end of this file. Find the files with
+    #   docker volume inspect gaggiclanker-data     # .[0].Mountpoint
+    # and back them up with
+    #   docker run --rm -v gaggiclanker-data:/d -v "$PWD:/out" alpine \
+    #     tar czf /out/gaggiclanker-data.tgz -C /d .
+    volumes:
+      - ./data:/app/data
+      # - gaggiclanker-data:/app/data
+
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+
+    # network_mode: host   # see the note above; remove `ports:` if you use it
+
+    environment:
+      # Hostname or IP of the display board. Required for anything to sync.
+      GAGGIMATE_HOST: ${GAGGIMATE_HOST:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Passed through only when set on the host or in .env, so an unset key
+      # does not shadow one stored in the settings table.
+      GAGGICLANKER_LLM_API_KEY: ${GAGGICLANKER_LLM_API_KEY:-}
+
+    env_file:
+      - path: .env
+        required: false
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    # The app parses binary shot files off the network and can spawn
+    # `claude -p`, so the blast radius is worth shrinking: drop everything, then
+    # add back only what the entrypoint needs to hand DATA_DIR to the app user
+    # and drop to it. The application process itself holds none of these — by
+    # the time it starts, setpriv has left it unprivileged.
+    cap_drop:
+      - ALL
+    # FOWNER and DAC_OVERRIDE are deliberately absent: the entrypoint runs as
+    # uid 0, which owns the tree it walks, so plain DAC already permits the
+    # traversal and CAP_CHOWN alone covers the ownership change.
+    cap_add:
+      - CHOWN   # chown the data directory to the app user
+      - SETUID  # setpriv: drop to the app uid
+      - SETGID  # setpriv: drop to the app gid
+      - SETPCAP # setpriv: empty the bounding set so the app cannot regain any
+    security_opt:
+      # setpriv only ever drops privileges, so this does not interfere with it.
+      # Together with --bounding-set=-all the app process ends up with an empty
+      # CapBnd: verify with
+      #   docker exec gaggiclanker grep CapBnd /proc/1/status   # -> 0000...000
+      - no-new-privileges:true
+
+    # Shot ingest is bursty but small; this is a guard against a runaway loop,
+    # not a tuning knob.
+    mem_limit: 1g
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Uncomment together with the `gaggiclanker-data` line in `volumes:` above.
+# volumes:
+#   gaggiclanker-data:
