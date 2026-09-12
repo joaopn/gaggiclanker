@@ -64,6 +64,20 @@ uv run python -m gaggiclanker.device.fake --port 8090   # in one terminal
 GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload
 ```
 
+Or seed the archive from files, with no machine at all. The web UI on the
+display exports a shot as `shot-<id>.json` and a profile as `profile-<id>.json`;
+those files are the only way back for a shot the machine has already deleted,
+and the importer reads them into the same tables the sync engine writes:
+
+```bash
+uv run gaggiclanker import tests/fixtures/exports       # or any folder, file or zip
+uv run gaggiclanker import ~/exports --replace          # overwrite what is already stored
+```
+
+The same thing is `POST /api/import` and the Import page in the UI. Importing
+the same shot twice is a no-op, and a file that does not parse is reported on
+its own — the rest of the batch still lands.
+
 The whole offline suite runs against it, so "works against the fake" means
 rather more than it usually does. `scripts/sim.sh test` is the next step up: it
 clones the firmware to a scratch tree, patches its simulator shim, builds the

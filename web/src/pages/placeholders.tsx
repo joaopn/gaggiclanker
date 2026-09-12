@@ -1,4 +1,4 @@
-import { Bean, BookOpen, Cpu, Import, Layers } from "lucide-react";
+import { Bean, BookOpen, Cpu, Layers } from "lucide-react";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
 
 export function SetsPage() {
@@ -33,18 +33,6 @@ export function HardwarePage() {
       icon={Cpu}
       chunk="a later release"
       detail="Capability flags read from the device decide which diagnostics are meaningful: pressure and flow are zero on a Standard board."
-    />
-  );
-}
-
-export function ImportPage() {
-  return (
-    <PlaceholderPage
-      title="Import"
-      subtitle="Load shots exported from another tool."
-      icon={Import}
-      chunk="a later release"
-      detail="JSON import covers the shots the machine has already deleted, which is the only way to get them back into the archive."
     />
   );
 }

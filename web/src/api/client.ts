@@ -15,6 +15,8 @@ import type {
   BackupData,
   DeviceStatusData,
   HealthData,
+  ImportOptions,
+  ImportSummary,
   ProfileListData,
   SettingsMap,
   SettingsPatch,
@@ -289,4 +291,26 @@ export async function getProfiles(includeDeleted = false): Promise<ProfileListDa
 
 export async function getSyncStatus(): Promise<SyncStatusData> {
   return fetchApi<SyncStatusData>("/sync/status");
+}
+
+/**
+ * Upload shot and profile exports. One request, many files, one result each.
+ *
+ * `FormData` and no `Content-Type`: the multipart boundary is the browser's to
+ * generate, and setting the header by hand leaves the server parsing nothing
+ * (see `fetchPath`, which excludes FormData for exactly this reason).
+ *
+ * A failed *file* is not a failed request — it comes back as an item with
+ * `status: "failed"` — so the only rejections here are a request that never
+ * arrived, was too large, or named a machine that does not exist.
+ */
+export async function importFiles(
+  files: File[],
+  options: ImportOptions = {},
+): Promise<ImportSummary> {
+  const body = new FormData();
+  for (const file of files) body.append("files", file, file.name);
+  if (options.machineId !== undefined) body.append("machine_id", String(options.machineId));
+  if (options.replace) body.append("replace", "true");
+  return fetchApi<ImportSummary>("/import", { method: "POST", body });
 }

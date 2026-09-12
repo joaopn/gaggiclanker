@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { ResolvedSetting } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -148,6 +149,20 @@ export function SettingsPage() {
           })}
         </form>
       )}
+
+      <SectionCard
+        title="Import"
+        description="Shots and profiles exported from the machine's own web UI, including ones it has since deleted."
+        contentClassName="space-y-3"
+      >
+        <p className="text-muted-foreground text-sm">
+          The machine keeps about 300 KB of history and drops the oldest shots when it runs short.
+          An export saved before that happened is the only way those shots come back.
+        </p>
+        <Button asChild variant="outline">
+          <Link to="/import">Open the import page</Link>
+        </Button>
+      </SectionCard>
 
       <SectionCard
         title="System"

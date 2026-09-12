@@ -1,0 +1,155 @@
+[
+  {
+    "id": "dCs4AOOcBn",
+    "label": "Cremina v2",
+    "type": "pro",
+    "description": "Darker Roasts - Very Fine- 40-60s - 1:1.5-2.2",
+    "temperature": 86.5,
+    "utility": false,
+    "phases": [
+      {
+        "name": "preinfusion start",
+        "phase": "preinfusion",
+        "valve": 1,
+        "duration": 2,
+        "temperature": 86.5,
+        "transition": {
+          "type": "instant",
+          "duration": 0,
+          "adaptive": false,
+          "target": "time"
+        },
+        "pump": {
+          "target": "pressure",
+          "pressure": 1.1,
+          "flow": 0
+        }
+      },
+      {
+        "name": "preinfusion",
+        "phase": "preinfusion",
+        "valve": 1,
+        "duration": 3,
+        "temperature": 86.5,
+        "transition": {
+          "type": "instant",
+          "duration": 0,
+          "adaptive": false,
+          "target": "time"
+        },
+        "pump": {
+          "target": "pressure",
+          "pressure": 1.1,
+          "flow": 0
+        },
+        "targets": [
+          {
+            "type": "pressure",
+            "operator": "gte",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "name": "soak",
+        "phase": "preinfusion",
+        "valve": 1,
+        "duration": 10,
+        "temperature": 86.5,
+        "transition": {
+          "type": "instant",
+          "duration": 0,
+          "adaptive": false,
+          "target": "time"
+        },
+        "pump": {
+          "target": "pressure",
+          "pressure": 1.1,
+          "flow": 0
+        }
+      },
+      {
+        "name": "ramp",
+        "phase": "brew",
+        "valve": 1,
+        "duration": 10,
+        "temperature": 86.5,
+        "transition": {
+          "type": "ease-in-out",
+          "duration": 10,
+          "adaptive": true,
+          "target": "time"
+        },
+        "pump": {
+          "target": "pressure",
+          "pressure": 8,
+          "flow": 0
+        }
+      },
+      {
+        "name": "ramp-down",
+        "phase": "brew",
+        "valve": 1,
+        "duration": 45,
+        "temperature": 87,
+        "transition": {
+          "type": "linear",
+          "duration": 45,
+          "adaptive": true,
+          "target": "time"
+        },
+        "pump": {
+          "target": "pressure",
+          "pressure": 3,
+          "flow": 0
+        },
+        "targets": [
+          {
+            "type": "volumetric",
+            "operator": "gte",
+            "value": 36
+          }
+        ]
+      }
+    ],
+    "favorite": true,
+    "selected": false
+  },
+  {
+    "id": "9bar",
+    "label": "9 Bar Espresso",
+    "type": "standard",
+    "description": "",
+    "temperature": 93,
+    "phases": [
+      {
+        "name": "Pump",
+        "phase": "brew",
+        "valve": 1,
+        "duration": 28,
+        "temperature": 0,
+        "transition": {
+          "type": "instant",
+          "duration": 0,
+          "adaptive": true,
+          "target": "time"
+        },
+        "pump": {
+          "target": "pressure",
+          "pressure": 9,
+          "flow": 0
+        },
+        "targets": [
+          {
+            "type": "volumetric",
+            "operator": "gte",
+            "value": 36
+          }
+        ]
+      }
+    ],
+    "utility": false,
+    "favorite": true,
+    "selected": false
+  }
+]

@@ -6,9 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
+import { ImportPage } from "@/pages/ImportPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
-import { BeansPage, HardwarePage, ImportPage, KnowledgePage, SetsPage } from "@/pages/placeholders";
+import { BeansPage, HardwarePage, KnowledgePage, SetsPage } from "@/pages/placeholders";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 

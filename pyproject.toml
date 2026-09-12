@@ -20,6 +20,10 @@ dependencies = [
     "aiohttp>=3.10",
     "websockets>=13.0",
     "sse-starlette>=2.1",
+    # Multipart form parsing, which is how the JSON importer takes
+    # files. FastAPI needs it present to declare an UploadFile parameter at
+    # all, so it is a hard dependency rather than an extra.
+    "python-multipart>=0.0.18",
     "structlog>=24.4",
 ]
 

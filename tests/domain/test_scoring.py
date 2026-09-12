@@ -9,7 +9,7 @@ import pytest
 from gaggiclanker.domain.diagnostics import TransformedShot, transform_shot
 from gaggiclanker.domain.scoring import Recipe, execution_score
 from gaggiclanker.domain.slog import encode_slog, parse_slog
-from tests.domain.helpers import load_export, make_slog, slog_from_export
+from tests.domain.helpers import make_slog, slog_from_export
 
 
 def _clean_shot() -> TransformedShot:
@@ -195,7 +195,7 @@ def test_summary_detail_level_scores_too() -> None:
 
 def test_score_on_the_maintainers_real_shot_is_stable() -> None:
     """A regression pin on a real curve, not a synthetic one."""
-    slog = parse_slog(encode_slog(slog_from_export(load_export("shot-129.json"))), "000129")
+    slog = parse_slog(encode_slog(slog_from_export("shot-129.json")), "000129")
     score = execution_score(transform_shot(slog, "per_phase"))
     assert score.score == 7.7
     assert score.confidence == "high"

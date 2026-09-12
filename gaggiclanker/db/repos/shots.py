@@ -313,6 +313,73 @@ class ShotsRepository(Repository):
                 await self._insert_samples(shot_id, samples)
         return shot_id
 
+    async def replace_derived(
+        self, shot_id: int, shot: ShotInsert, samples: Sequence[ShotSampleRow] = ()
+    ) -> None:
+        """Re-state one shot from a fresh set of bytes, keeping what is ours.
+
+        The `--replace` path of the JSON importer: a better copy of a shot
+        we already hold has arrived — an export with samples where we quarantined
+        the bytes, or a file rescued from a backup. What the bytes say is
+        overwritten; what a *person* or the *machine* said about the shot is not.
+
+        Kept deliberately: the row id (so a Set or a judgement that references
+        this shot still does), `set_version_id`, the `index_*` columns and
+        `deleted_on_device` — the device's own view of a shot, which no export
+        carries and which re-deriving cannot invent — and the `device_shot_notes`
+        row, which lives in its own table and is written by its own repository.
+
+        `profile_version_id` is COALESCEd rather than assigned: an import that
+        cannot resolve the profile must not unlink a shot that was already
+        linked to the version it was brewed with.
+        """
+        payload = {
+            "id": shot_id,
+            "raw_slog": shot.raw_slog,
+            "source": shot.source,
+            "started_at": shot.started_at,
+            "start_epoch": shot.start_epoch,
+            "duration_ms": shot.duration_ms,
+            "profile_version_id": shot.profile_version_id,
+            "profile_id_on_device": shot.profile_id_on_device,
+            "profile_name_on_device": shot.profile_name_on_device,
+            "final_weight_g": shot.final_weight_g,
+            "final_exit_reason": shot.final_exit_reason,
+            "brew_delay_ms": shot.brew_delay_ms,
+            "slog_version": shot.slog_version,
+            "sample_interval_ms": shot.sample_interval_ms,
+            "fields_mask": shot.fields_mask,
+            "sample_count": shot.sample_count,
+            "scale_connected": int(shot.scale_connected),
+            "incomplete": int(shot.incomplete),
+            "quarantined": int(shot.quarantined),
+            "quarantine_reason": shot.quarantine_reason,
+            "phases_json": shot.phases_json,
+            "diagnostics_json": shot.diagnostics_json,
+            "execution_score": shot.execution_score,
+            "execution_reason": shot.execution_reason,
+            "updated_at": utc_now(),
+        }
+        if shot.quarantined and samples:
+            raise ValueError("a quarantined shot must not carry sample rows")
+        assignments = ", ".join(
+            f"{name} = COALESCE(:{name}, profile_version_id)"
+            if name == "profile_version_id"
+            else f"{name} = :{name}"
+            for name in payload
+            if name != "id"
+        )
+        async with self.db.transaction():
+            await self.db.execute(
+                f"UPDATE shots SET {assignments} WHERE id = :id",  # noqa: S608 - keys are model fields
+                payload,
+            )
+            # One transaction with the delete, so a replace that fails half-way
+            # cannot leave a shot holding another shot's curve.
+            await self.db.execute("DELETE FROM shot_samples WHERE shot_id = ?", (shot_id,))
+            if samples:
+                await self._insert_samples(shot_id, samples)
+
     async def _insert_samples(self, shot_id: int, samples: Sequence[ShotSampleRow]) -> None:
         columns = ", ".join(("shot_id", *SAMPLE_FIELDS))
         placeholders = ", ".join("?" for _ in range(len(SAMPLE_FIELDS) + 1))

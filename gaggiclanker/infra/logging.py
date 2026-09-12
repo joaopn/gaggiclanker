@@ -127,7 +127,14 @@ def configure_logging(level: str = "info", *, json_output: bool = True) -> None:
             renderer,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(resolved),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        # No `file=`, on purpose: the factory then resolves `sys.stdout` when a
+        # line is written rather than when logging is configured. In the
+        # container the two are the same stream; under pytest they are not, and
+        # a logger holding the stdout of the test that configured it writes to a
+        # closed file in the next one. Configuration is global, so one test
+        # calling `gaggiclanker import` would otherwise break every later test
+        # that logs.
+        logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=False,
     )
     _configured = True

@@ -11,8 +11,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog
 from gaggiclanker.domain.models import PhaseTransition, Sample, SlogHeader
-from gaggiclanker.domain.slog import FIELDS_MASK_ALL, FIELDS_MASK_V5, Slog
+from gaggiclanker.domain.slog import FIELDS_MASK_ALL, Slog
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SLOG_FIXTURES = FIXTURES / "slog"
@@ -67,72 +68,22 @@ def make_slog(
     return Slog(header=header, samples=parsed, shot_id=shot_id)
 
 
-def slog_from_export(export: dict[str, Any]) -> Slog:
-    """Rebuild a :class:`Slog` from the web UI's JSON shot export.
-
-    The export is the output of the firmware's own JS parser, so re-encoding it
-    and parsing the bytes back is a round trip through *their* reading of the
-    format — which is what makes it usable as ground truth. The importer will need the
-    same conversion for the JSON importer; this is the test-side prototype.
-    """
-    version = int(export["version"])
-    transitions = [
-        PhaseTransition(
-            sample_index=int(t["sampleIndex"]),
-            phase_number=int(t["phaseNumber"]),
-            transition_reason=int(t.get("transitionReason", 0)),
-            phase_name=t.get("phaseName", ""),
-        )
-        for t in export.get("phaseTransitions", [])
-    ]
-
-    samples: list[Sample] = []
-    for row in export["samples"]:
-        values: dict[str, Any] = {
-            k: row[k]
-            for k in ("t", "tt", "ct", "tp", "cp", "fl", "tf", "pf", "vf", "v", "ev", "pr", "wp")
-            if k in row
-        }
-        system_info = row.get("systemInfo")
-        if isinstance(system_info, dict):
-            values["si"] = system_info["raw"]
-        elif system_info is not None:
-            values["si"] = system_info
-        if "phaseNumber" in row:
-            values["phase"] = row["phaseNumber"]
-        samples.append(Sample.model_validate(values))
-
-    for i, sample in enumerate(samples):
-        for transition in transitions:
-            if i >= transition.sample_index:
-                sample.phase_name = transition.phase_name
-            else:
-                break
-
-    volume = export.get("volume")
-    header = SlogHeader(
-        version=version,
-        sample_size=0,
-        header_size=512 if version >= 5 else 128,
-        sample_interval=int(export["sampleInterval"]),
-        fields_mask=int(export.get("fieldsMask", FIELDS_MASK_V5)),
-        sample_count=int(export.get("samplesExpected") or len(samples)),
-        duration_ms=int(export["duration"]),
-        start_epoch=int(export["timestamp"]),
-        profile_id=export.get("profileId", ""),
-        profile_name=export.get("profile", ""),
-        final_weight_g=float(volume) if volume else None,
-        transitions=transitions,
-        final_exit_reason=int(export.get("finalExitReason", 0)),
-        brew_delay_ms=int(export.get("brewDelay", 0)),
-    )
-    return Slog(header=header, samples=samples, shot_id=str(export.get("id") or "").zfill(6))
-
-
 def load_export(name: str) -> dict[str, Any]:
     """Read one of the maintainer's real exports from `tests/fixtures/exports`."""
     data: dict[str, Any] = json.loads((EXPORT_FIXTURES / name).read_text())
     return data
+
+
+def slog_from_export(name: str) -> Slog:
+    """The :class:`Slog` one of those exports describes.
+
+    The conversion itself lives in the package now
+    (:func:`gaggiclanker.domain.exports.shot_export_to_slog`) — the export
+    is the firmware's own JS parser's reading of a `.slog`, so re-encoding it and
+    parsing the bytes back is a round trip through *their* implementation, which
+    is what makes these fixtures usable as ground truth.
+    """
+    return shot_export_to_slog(ShotExport.model_validate(load_export(name)))
 
 
 def upstream_shot(

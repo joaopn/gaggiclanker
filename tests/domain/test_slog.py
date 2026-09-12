@@ -244,8 +244,7 @@ def test_synthetic_v5_from_the_maintainers_own_export() -> None:
     agreeing with the device. Real curves, four real phases, and the sample
     count and duration the machine itself reported.
     """
-    export = load_export("shot-129.json")
-    raw = encode_slog(slog_from_export(export))
+    raw = encode_slog(slog_from_export("shot-129.json"))
     slog = parse_slog(raw, "000129")
 
     assert slog.version == 5
@@ -263,7 +262,7 @@ def test_synthetic_v5_from_the_maintainers_own_export() -> None:
 def test_synthetic_v5_reproduces_every_exported_sample() -> None:
     """Every field of every sample matches the device's own reading."""
     export = load_export("shot-129.json")
-    slog = parse_slog(encode_slog(slog_from_export(export)), "000129")
+    slog = parse_slog(encode_slog(slog_from_export("shot-129.json")), "000129")
 
     for i, (row, sample) in enumerate(zip(export["samples"], slog.samples, strict=True)):
         for field in ("tt", "ct", "tp", "cp", "fl", "tf", "pf", "vf", "v", "ev", "pr"):

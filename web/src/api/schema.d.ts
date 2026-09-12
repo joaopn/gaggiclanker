@@ -63,6 +63,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import shot and profile exports
+         * @description Import every uploaded file and report on each one separately.
+         *
+         *     A file is recognised by its content, not its name: a shot export, a profile
+         *     export, a JSON array of profiles, or a zip of any of those. An unreadable
+         *     file is one `failed` row in the results — except an unreadable *shot* that
+         *     still names its id, which is stored quarantined with its bytes, because the
+         *     machine's copy is gone and a parser fix is a re-derive away.
+         */
+        post: operations["import_files_api_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/machines": {
         parameters: {
             query?: never;
@@ -428,6 +454,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ImportSummary] */
+        ApiResponse_ImportSummary_: {
+            data?: components["schemas"]["ImportSummary"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[MachineListData] */
         ApiResponse_MachineListData_: {
             data?: components["schemas"]["MachineListData"] | null;
@@ -534,6 +568,25 @@ export interface components {
             directory: string;
             /** Items */
             items: components["schemas"]["BackupData"][];
+        };
+        /** Body_import_files_api_import_post */
+        Body_import_files_api_import_post: {
+            /**
+             * Files
+             * @description Shot exports, profile exports, or zips containing them.
+             */
+            files: string[];
+            /**
+             * Machine Id
+             * @description Which machine the shots belong to. Defaults to the configured one.
+             */
+            machine_id?: number | null;
+            /**
+             * Replace
+             * @description Overwrite shots already in the archive rather than skipping them.
+             * @default false
+             */
+            replace: boolean;
         };
         /**
          * DeviceProfileSummary
@@ -662,6 +715,76 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** @enum {string} */
+        ImportKind: "shot" | "profile" | "unknown";
+        /**
+         * ImportResult
+         * @description What became of one file — or of one profile inside a multi-profile file.
+         *
+         *     Always a result and never an exception: a failed file is a row in the list
+         *     with `status="failed"` and a message saying why, because the caller's next
+         *     question is always "which ones did not land, and what was wrong with them".
+         */
+        ImportResult: {
+            /** Device Id */
+            device_id?: string | null;
+            /**
+             * Filename
+             * @default
+             */
+            filename: string;
+            /** @default unknown */
+            kind: components["schemas"]["ImportKind"];
+            /** Label */
+            label?: string | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /**
+             * Quarantined
+             * @default false
+             */
+            quarantined: boolean;
+            /** Shot Id */
+            shot_id?: number | null;
+            status: components["schemas"]["ImportStatus"];
+        };
+        /** @enum {string} */
+        ImportStatus: "created" | "updated" | "skipped" | "failed";
+        /**
+         * ImportSummary
+         * @description One batch: every result, plus the counts a UI puts in a headline.
+         */
+        ImportSummary: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /** Items */
+            items: components["schemas"]["ImportResult"][];
+            /** Machine Id */
+            machine_id: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
         };
         JsonList: unknown[] | null;
         JsonObject: {
@@ -1369,6 +1492,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DeviceStatusData_"];
+                };
+            };
+        };
+    };
+    import_files_api_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_files_api_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ImportSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

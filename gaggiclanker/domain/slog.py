@@ -81,6 +81,7 @@ FIELD_DEFS: tuple[_FieldDef, ...] = (
 )
 
 _BY_BIT = {f.bit: f for f in FIELD_DEFS}
+_BY_NAME = {f.name: f for f in FIELD_DEFS}
 
 #: All 14 fields — what current firmware writes.
 FIELDS_MASK_ALL = 0x3FFF
@@ -337,7 +338,7 @@ def parse_slog(data: bytes, shot_id: str | None = None) -> Slog:
         )
         for i in range(usable)
     ]
-    _apply_phases(samples, transitions, version)
+    apply_phases(samples, transitions, version)
 
     incomplete = sample_count == 0 or trailing_bytes != 0 or sample_count > available
 
@@ -382,7 +383,7 @@ def _read_sample(
     return Sample.model_validate(values)
 
 
-def _apply_phases(samples: list[Sample], transitions: list[PhaseTransition], version: int) -> None:
+def apply_phases(samples: list[Sample], transitions: list[PhaseTransition], version: int) -> None:
     """Stamp each sample with the phase that was active when it was recorded.
 
     The transition table records the sample index at which each phase became
@@ -478,24 +479,23 @@ def encode_slog(slog: Slog) -> bytes:
         record = bytearray(sample_size)
         offset = 0
         for fdef in layout:
+            # Every value written here goes through the same two functions the
+            # importer reads through (`stored_time`, `stored_sample_value`).
+            # One quantisation path, so an imported shot and a fetched one
+            # cannot round a sample differently and score differently for it.
             if fdef.bit == TIME_BIT:
-                t = sample.t or 0
+                stored = stored_time(
+                    sample.t, version=version, sample_interval=header.sample_interval
+                )
                 if version >= 6:
-                    struct.pack_into("<I", record, offset, min(t, 0xFFFFFFFF))
+                    struct.pack_into("<I", record, offset, stored)
                     offset += 4
                 else:
-                    interval = header.sample_interval or 1
-                    struct.pack_into("<H", record, offset, min(t // interval, 0xFFFF))
+                    struct.pack_into("<H", record, offset, stored)
                     offset += 2
                 continue
-            value = getattr(sample, fdef.name)
-            if fdef.scale is None:
-                raw = int(value) if _writable(value) else 0
-                struct.pack_into("<H", record, offset, _clamp(raw, 0, 0xFFFF))
-            elif fdef.signed:
-                struct.pack_into("<h", record, offset, _clamp_i16(value, fdef.scale))
-            else:
-                struct.pack_into("<H", record, offset, _clamp_u16(value, fdef.scale))
+            raw = stored_sample_value(fdef.name, getattr(sample, fdef.name))
+            struct.pack_into("<h" if fdef.signed else "<H", record, offset, raw)
             offset += 2
         body += record
 
@@ -537,3 +537,70 @@ def _clamp_i16(value: float | None, scale: float) -> int:
     if not _writable(value):
         return 0
     return _clamp(_round_half_away((value or 0.0) * scale), -0x8000, 0x7FFF)
+
+
+# ── quantisation ─────────────────────────────────────────────────────
+#
+# The JSON exports carry real units rounded to two decimals; the binary format
+# carries scaled 16-bit integers. The importer rebuilds a `.slog` from an export, so the
+# importer has to land on exactly the values a device-fetched file would have
+# produced — otherwise the same shot scores differently depending on which way
+# it entered the archive. These two functions are the encoder's own arithmetic,
+# exposed so the importer cannot drift from it.
+
+
+def stored_sample_value(name: str, value: float | None) -> int:
+    """The integer the file holds for a real-unit value: scaled, rounded, clamped.
+
+    The encoder writes exactly this and :func:`quantise_sample_value` reads
+    exactly this back, which is what makes the two agree by construction rather
+    than by two pieces of arithmetic that look alike.
+
+    ``None`` becomes 0: the caller only asks about fields whose `fieldsMask` bit
+    is *set*, and the firmware writes a plain zero for a value it does not have
+    (`ShotHistoryPlugin.cpp:34-68`), as does this encoder.
+    """
+    fdef = _BY_NAME[name]
+    if fdef.scale is None:
+        if value is None or not _writable(value):
+            return 0
+        return _clamp(int(value), 0, 0xFFFF)
+    return _clamp_i16(value, fdef.scale) if fdef.signed else _clamp_u16(value, fdef.scale)
+
+
+def stored_time(t: int | None, *, version: int, sample_interval: int) -> int:
+    """The integer the file holds for an elapsed time.
+
+    Two different things depending on the version, which is the whole reason
+    this is a function: before v6 the field is a sample *index*, from v6 it is a
+    `uint32` of real milliseconds.
+    """
+    value = max(int(t or 0), 0)
+    if version >= 6:
+        return min(value, 0xFFFFFFFF)
+    return min(value // (sample_interval or 1), 0xFFFF)
+
+
+def quantise_sample_value(name: str, value: float | None) -> float | int | None:
+    """A real-unit value as the format would store it and read it back.
+
+    ``None`` quantises to the field's zero rather than to ``None``, on purpose:
+    the caller only asks about fields whose `fieldsMask` bit is *set*, and for
+    those the encoder writes 0 and the parser reads 0 back. "The mask says this
+    field exists but the export omitted it" is a zero, not an absence.
+    """
+    fdef = _BY_NAME[name]
+    raw = stored_sample_value(name, value)
+    return raw if fdef.scale is None else raw / fdef.scale
+
+
+def quantise_time(t: int | None, *, version: int, sample_interval: int) -> int:
+    """Elapsed milliseconds as the format would store them and read them back.
+
+    Before v6 the file stores a sample *index* and the reader multiplies it by
+    the header's interval, so any `t` that is not a whole number of intervals
+    comes back rounded down. From v6 the field is a real `uint32` millisecond
+    count and survives as it is.
+    """
+    stored = stored_time(t, version=version, sample_interval=sample_interval)
+    return stored if version >= 6 else stored * (sample_interval or 1)

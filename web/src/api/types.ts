@@ -20,6 +20,8 @@ export type ShotSamplesData = components["schemas"]["ShotSamplesData"];
 export type ProfileListData = components["schemas"]["ProfileListData"];
 export type DeviceProfileSummary = components["schemas"]["DeviceProfileSummary"];
 export type SyncStatusData = components["schemas"]["SyncStatusData"];
+export type ImportSummary = components["schemas"]["ImportSummary"];
+export type ImportResult = components["schemas"]["ImportResult"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
@@ -71,6 +73,14 @@ export type ShotListParams = {
   machine_id?: number;
   quarantined?: boolean;
   include_deleted?: boolean;
+  source?: "device" | "import";
+};
+
+/** The form fields `POST /api/import` accepts beside the files themselves. */
+export type ImportOptions = {
+  machineId?: number;
+  /** Overwrite shots already in the archive instead of skipping them. */
+  replace?: boolean;
 };
 
 /** A PATCH body: registry key -> value, with null meaning "drop the override". */
