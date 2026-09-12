@@ -52,6 +52,24 @@ Running the app outside Docker, `DATA_DIR` defaults to `./data` and the app
 creates it. If it cannot write there it says so at startup, with the path and
 the uid, rather than failing later with SQLite's "unable to open database file".
 
+### Working without a machine
+
+There is a fake GaggiMate in the package. It is a real HTTP + WebSocket server
+loaded from `tests/fixtures`, with the firmware's quirks reproduced — 2 Hz
+telemetry, `evt:history-shot-saved`, half-written `.slog` files, the SPA served
+where binary was asked for, the three-client limit:
+
+```bash
+uv run python -m gaggiclanker.device.fake --port 8090   # in one terminal
+GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload
+```
+
+The whole offline suite runs against it, so "works against the fake" means
+rather more than it usually does. `scripts/sim.sh test` is the next step up: it
+clones the firmware to a scratch tree, patches its simulator shim, builds the
+real display firmware natively and runs the `-m simulator` tests against it.
+The reference checkout under `external/` is never modified.
+
 ## Configuration
 
 `.env.example` documents every variable with the reasoning behind it. The one

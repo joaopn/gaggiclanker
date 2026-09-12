@@ -19,11 +19,11 @@ import {
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 /**
- * The event stream lands with the device client. Pointing at it now is harmless — `useSse`
- * with a null url does nothing — and means the wiring is already proven when
- * the endpoint appears.
+ * The device's live stream. It carries two kinds of event: `device.live`
+ * at 2 Hz, which a consumer reads directly, and `device.connection`, which is
+ * the one mapped to a query invalidation in `lib/invalidate.ts`.
  */
-const EVENT_STREAM_URL: string | null = null;
+const EVENT_STREAM_URL: string | null = "/api/device/live";
 
 export function App() {
   const navigate = useNavigate();

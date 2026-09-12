@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,7 +23,7 @@ from typing import Any
 import structlog
 from sse_starlette.sse import EventSourceResponse
 
-__all__ = ["DEFAULT_PING_SECONDS", "EventBus", "SseEvent", "sse_response"]
+__all__ = ["DEFAULT_PING_SECONDS", "EventBus", "SseEvent", "SseEventBus", "sse_response"]
 
 log = structlog.get_logger(__name__)
 
@@ -54,23 +54,25 @@ class SseEvent:
 
 
 @dataclass
-class EventBus:
-    """An in-process publish/subscribe hub for :class:`SseEvent`.
+class EventBus[T]:
+    """An in-process publish/subscribe hub.
 
-    One bus per application, held on ``app.state``. Publishing never blocks and
-    never raises, so a producer (the device reader) is unaffected by how many
-    consumers exist or how fast they read.
+    One bus per application and per kind of event, held on ``app.state``: the
+    browser-facing :data:`SseEventBus` carries :class:`SseEvent`, and the
+    device client carries its own typed device events over the same machinery.
+    Publishing never blocks and never raises, so a producer (the device reader)
+    is unaffected by how many consumers exist or how fast they read.
     """
 
     queue_size: int = DEFAULT_QUEUE_SIZE
-    _subscribers: set[asyncio.Queue[SseEvent]] = field(default_factory=set, repr=False)
+    _subscribers: set[asyncio.Queue[T]] = field(default_factory=set, repr=False)
     dropped: int = 0
 
     @property
     def subscriber_count(self) -> int:
         return len(self._subscribers)
 
-    def publish(self, event: SseEvent) -> None:
+    def publish(self, event: T) -> None:
         """Deliver ``event`` to every subscriber, dropping the oldest on overflow."""
         for queue in list(self._subscribers):
             if queue.full():
@@ -85,24 +87,32 @@ class EventBus:
                 self.dropped += 1
 
     @contextmanager
-    def subscribe(self) -> Iterator[asyncio.Queue[SseEvent]]:
+    def subscribe(self) -> Iterator[asyncio.Queue[T]]:
         """Register a subscriber for the duration of the block."""
-        queue: asyncio.Queue[SseEvent] = asyncio.Queue(maxsize=self.queue_size)
+        queue: asyncio.Queue[T] = asyncio.Queue(maxsize=self.queue_size)
         self._subscribers.add(queue)
         try:
             yield queue
         finally:
             self._subscribers.discard(queue)
 
-    async def stream(self) -> AsyncIterator[SseEvent]:
+    async def stream(self) -> AsyncGenerator[T]:
         """An endless stream of events for one subscriber.
 
         Ends when the consumer is cancelled — which is what happens when the
-        browser closes the connection.
+        browser closes the connection. Typed as a generator rather than a bare
+        iterator so a consumer that owns the subscription can ``aclose()`` it
+        and release the queue without waiting for garbage collection.
         """
         with self.subscribe() as queue:
             while True:
                 yield await queue.get()
+
+
+#: The browser-facing bus. Named so the un-parameterised ``EventBus`` never
+#: appears in an annotation, which under ``mypy --strict`` would be an implicit
+#: ``Any`` for the event type and would let a device event onto the SSE bus.
+type SseEventBus = EventBus[SseEvent]
 
 
 async def _encode(source: AsyncIterator[SseEvent]) -> AsyncIterator[dict[str, str]]:

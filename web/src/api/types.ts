@@ -12,6 +12,7 @@ import type { components } from "@/api/schema";
 
 export type HealthData = components["schemas"]["HealthData"];
 export type BackupData = components["schemas"]["BackupData"];
+export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
@@ -51,3 +52,25 @@ export function isSecretSetting(setting: ResolvedSetting): setting is SecretSett
 
 /** A PATCH body: registry key -> value, with null meaning "drop the override". */
 export type SettingsPatch = Record<string, SettingValue>;
+
+/**
+ * The device identity, `res:ota-settings`. Declared server-side as a plain
+ * object (it is whatever the firmware sent, carried through), so OpenAPI can
+ * only say "an object" and the fields we read are named here.
+ */
+export type DeviceIdentity = {
+  hardware?: string | null;
+  displayVersion?: string | null;
+  controllerVersion?: string | null;
+  latestVersion?: string | null;
+  channel?: string | null;
+  updating?: boolean | null;
+};
+
+/** The `device.connection` event on `/api/device/live`. */
+export type DeviceConnectionEvent = {
+  connected: boolean;
+  configured: boolean;
+  host?: string;
+  reason?: string;
+};

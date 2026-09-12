@@ -1,0 +1,111 @@
+diff --git a/sim/web/ESPAsyncWebServer.cpp b/sim/web/ESPAsyncWebServer.cpp
+index c726770..5f303df 100644
+--- a/sim/web/ESPAsyncWebServer.cpp
++++ b/sim/web/ESPAsyncWebServer.cpp
+@@ -535,10 +535,18 @@ bool AsyncWebServer::handleHttp(Conn &c) {
+ void AsyncWebServer::dispatch(Conn &c, AsyncWebServerRequest &req) {
+     std::string path(req._url.c_str());
+     for (auto &r : _routes) {
+-        if ((r.method == HTTP_ANY || (r.method & req._method)) && r.uri == path) {
+-            r.handler(&req);
+-            return;
+-        }
++        if (r.method != HTTP_ANY && !(r.method & req._method))
++            continue;
++        const bool uriMatches = r.isPrefix ? (path.rfind(r.uri, 0) == 0) : (r.uri == path);
++        if (!uriMatches)
++            continue;
++        // A filtered-out route is skipped rather than terminal, which is how
++        // the OTA "Update in progress" handler sits in front of the history
++        // routes without shadowing them the rest of the time.
++        if (r.filter && !r.filter(&req))
++            continue;
++        r.handler(&req);
++        return;
+     }
+     for (auto &s : _static) {
+         if (path.rfind(s.uri, 0) == 0) { // prefix match
+diff --git a/sim/web/ESPAsyncWebServer.h b/sim/web/ESPAsyncWebServer.h
+index a481726..0ba8939 100644
+--- a/sim/web/ESPAsyncWebServer.h
++++ b/sim/web/ESPAsyncWebServer.h
+@@ -101,6 +101,36 @@ class AsyncWebServerRequest {
+ };
+ 
+ using ArRequestHandlerFunction = std::function<void(AsyncWebServerRequest *)>;
++using ArRequestFilterFunction = std::function<bool(AsyncWebServerRequest *)>;
++
++// Minimal stand-in for ESPAsyncWebServer 3.12's AsyncURIMatcher. WebUIPlugin
++// uses exactly one form of it -- AsyncURIMatcher::prefix("/api/history/") for
++// the "Update in progress" filter -- so prefix matching is all this carries.
++class AsyncURIMatcher {
++  public:
++    static AsyncURIMatcher prefix(const char *uri) { return AsyncURIMatcher(uri); }
++    const std::string &uri() const { return _uri; }
++
++  private:
++    explicit AsyncURIMatcher(const char *uri) : _uri(uri) {}
++    std::string _uri;
++};
++
++class AsyncWebServer;
++
++// What on() hands back so that .setFilter() has somewhere to go. It refers to
++// the route by index rather than by pointer: the route vector can reallocate,
++// and a handle that outlived one push_back would be a use-after-free that only
++// showed up under load.
++class AsyncWebHandlerRef {
++  public:
++    AsyncWebHandlerRef(AsyncWebServer *server, size_t index) : _server(server), _index(index) {}
++    AsyncWebHandlerRef &setFilter(ArRequestFilterFunction filter);
++
++  private:
++    AsyncWebServer *_server;
++    size_t _index;
++};
+ 
+ // Matches the real library's queued-message payload type.
+ using AsyncWebSocketSharedBuffer = std::shared_ptr<std::vector<uint8_t>>;
+@@ -151,10 +181,17 @@ class AsyncWebServer {
+     explicit AsyncWebServer(uint16_t port) : _port(port) {}
+     ~AsyncWebServer();
+ 
+-    void on(const char *uri, ArRequestHandlerFunction handler) { _routes.push_back({HTTP_ANY, uri, std::move(handler)}); }
++    void on(const char *uri, ArRequestHandlerFunction handler) {
++        _routes.push_back({HTTP_ANY, uri, std::move(handler), false, nullptr});
++    }
+     void on(const char *uri, WebRequestMethod method, ArRequestHandlerFunction handler) {
+-        _routes.push_back({(int)method, uri, std::move(handler)});
++        _routes.push_back({(int)method, uri, std::move(handler), false, nullptr});
+     }
++    AsyncWebHandlerRef on(AsyncURIMatcher matcher, WebRequestMethod method, ArRequestHandlerFunction handler) {
++        _routes.push_back({(int)method, matcher.uri(), std::move(handler), true, nullptr});
++        return AsyncWebHandlerRef(this, _routes.size() - 1);
++    }
++    void setRouteFilter(size_t index, ArRequestFilterFunction filter) { _routes[index].filter = std::move(filter); }
+     void onNotFound(ArRequestHandlerFunction handler) { _notFound = std::move(handler); }
+     void addHandler(AsyncWebSocket *ws) { _ws = ws; }
+     AsyncStaticWebHandler &serveStatic(const char *uri, FS &fs, const char *path);
+@@ -169,6 +206,11 @@ class AsyncWebServer {
+         int method;
+         std::string uri;
+         ArRequestHandlerFunction handler;
++        // A prefix route matches any path that starts with uri; a filter that
++        // returns false makes the route invisible for this request, so the
++        // routes registered after it still get their turn.
++        bool isPrefix = false;
++        ArRequestFilterFunction filter;
+     };
+     struct StaticRoute {
+         std::string uri;
+@@ -199,5 +241,10 @@ class AsyncWebServer {
+     void dispatch(Conn &c, AsyncWebServerRequest &req);
+ };
+ 
++inline AsyncWebHandlerRef &AsyncWebHandlerRef::setFilter(ArRequestFilterFunction filter) {
++    _server->setRouteFilter(_index, std::move(filter));
++    return *this;
++}
++
+ // Pump every running AsyncWebServer once (call from the simulator main loop).
+ void gm_web_pump();

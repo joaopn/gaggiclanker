@@ -11,7 +11,13 @@
  * than calling `fetch` from a component.
  */
 
-import type { BackupData, HealthData, SettingsMap, SettingsPatch } from "@/api/types";
+import type {
+  BackupData,
+  DeviceStatusData,
+  HealthData,
+  SettingsMap,
+  SettingsPatch,
+} from "@/api/types";
 import { redirectToSignIn } from "@/lib/auth-navigation";
 
 const API_BASE = "/api";
@@ -230,4 +236,8 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsMap> 
 
 export async function createBackup(): Promise<BackupData> {
   return fetchApi<BackupData>("/backup", { method: "POST" });
+}
+
+export async function getDeviceStatus(): Promise<DeviceStatusData> {
+  return fetchApi<DeviceStatusData>("/device/status");
 }

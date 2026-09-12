@@ -20,6 +20,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server-sent stream of the merged live status
+         * @description Every merged `evt:status`, plus connection changes.
+         *
+         *     The status is already merged server-side (one socket, one merge) so each
+         *     event is the whole picture and a tab that joins mid-shot is immediately
+         *     correct. Heartbeat comments come from ``sse_response``; without them a
+         *     reverse proxy closes an idle stream between shots.
+         */
+        get: operations["get_device_live_api_device_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connection state, identity and the last known live status */
+        get: operations["get_device_status_api_device_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -87,6 +129,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[DeviceStatusData] */
+        ApiResponse_DeviceStatusData_: {
+            data?: components["schemas"]["DeviceStatusData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[HealthData] */
         ApiResponse_HealthData_: {
             data?: components["schemas"]["HealthData"] | null;
@@ -119,6 +169,30 @@ export interface components {
             path: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /**
+         * DeviceStatusData
+         * @description What `GET /api/device/status` answers.
+         *
+         *     ``configured`` and ``connected`` are separate facts and the UI needs both:
+         *     "no machine configured" is a setup step, "configured but not connected" is a
+         *     problem to go and look at.
+         */
+        DeviceStatusData: {
+            /** Configured */
+            configured: boolean;
+            /** Connected */
+            connected: boolean;
+            /** Host */
+            host?: string | null;
+            /** Identity */
+            identity?: {
+                [key: string]: unknown;
+            } | null;
+            /** Last Status */
+            last_status?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * HealthData
@@ -190,6 +264,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_BackupData_"];
+                };
+            };
+        };
+    };
+    get_device_live_api_device_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_device_status_api_device_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DeviceStatusData_"];
                 };
             };
         };

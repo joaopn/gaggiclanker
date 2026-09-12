@@ -316,9 +316,32 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         default="",
         env_key="GAGGIMATE_HOST",
         description=(
-            "Hostname or IP of the GaggiMate display board, without a scheme. Empty disables "
-            "device sync. mDNS (gaggimate.local) is unreliable from inside a container and is "
-            "off entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation."
+            "Hostname or IP of the GaggiMate display board, without a scheme; an explicit "
+            "host:port is accepted for a simulator or the fake device. Empty disables device "
+            "sync. mDNS (gaggimate.local) is unreliable from inside a container and is off "
+            "entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation."
+        ),
+    ),
+    SettingDefinition(
+        key="gaggimateProtocol",
+        type="string",
+        default="ws",
+        env_key="GAGGIMATE_PROTOCOL",
+        description=(
+            "WebSocket scheme for the device connection: ws or wss. The firmware never "
+            "terminates TLS (WebSocketHandler.cpp serves plain HTTP on port 80), so wss is only "
+            "useful behind a reverse proxy that adds it."
+        ),
+    ),
+    SettingDefinition(
+        key="gaggimateTimeoutSeconds",
+        type="float",
+        default=15.0,
+        env_key="GAGGIMATE_TIMEOUT_S",
+        description=(
+            "How long to wait for one device request — a WebSocket res:* frame or an HTTP "
+            "body — before giving up. The machine's own web UI uses 30 s; shorter is better "
+            "here because a stuck request holds one of only two HTTP slots."
         ),
     ),
     SettingDefinition(

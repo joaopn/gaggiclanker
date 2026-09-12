@@ -14,6 +14,11 @@ dependencies = [
     # dependency rather than one inherited from pydantic-settings.
     "python-dotenv>=1.0",
     "aiosqlite>=0.20",
+    # The device transport. aiohttp for HTTP (bounded concurrency, binary
+    # bodies) and for the in-process fake device's server; websockets for the
+    # one persistent client connection.
+    "aiohttp>=3.10",
+    "websockets>=13.0",
     "sse-starlette>=2.1",
     "structlog>=24.4",
 ]
@@ -71,7 +76,10 @@ ignore = [
 # Tests reach into internals, hardcode fake secrets and bind test ports.
 # ASYNC240: a test asserting on a file it just wrote is allowed to stat it
 # directly; there is no event loop latency to protect in a test.
-"tests/**" = ["S105", "S106", "S108", "ASYNC240"]
+# ASYNC109/110: a test helper that waits for the fake device to do something
+# takes a `timeout` and polls a plain bool that uvicorn exposes; neither is the
+# production pattern those rules are protecting.
+"tests/**" = ["S105", "S106", "S108", "ASYNC109", "ASYNC110", "ASYNC240"]
 # The diagnostics tests are a port of gaggimate-mcp's own suite (see
 # gaggiclanker/domain/VENDORED.md). They are kept as close to upstream as the
 # renamed entry points allow, because their value is the exact numbers they
@@ -84,7 +92,11 @@ ignore = [
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-q --strict-markers"
+# `-m "not simulator"` is what makes the simulator tests opt-in: the marker
+# alone only labels them. An explicit `-m simulator` on the command line
+# replaces this one (pytest takes the last -m), which is exactly the override
+# `scripts/sim.sh test` relies on.
+addopts = "-q --strict-markers -m \"not simulator\""
 markers = [
     # Opt-in: integration tests that need the GaggiMate firmware simulator
     # (`pio run -e display-sim -t run`) listening on localhost:8080.

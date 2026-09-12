@@ -1,26 +1,56 @@
+import type { DeviceIdentity } from "@/api/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { useHealth } from "@/hooks/useHealth";
 import { cn } from "@/lib/utils";
 
 /**
- * The header pill.
+ * The header pill: is anything working, and is the machine attached.
  *
- * Today it reports the backend (`/health`), which is the only liveness fact
- * that exists before the device client. When that lands it grows a second dot
- * for the machine itself — the shape is already right, so that is an edit here
- * and nothing else.
+ * The backend comes first because nothing else can be known without it — an
+ * unreachable backend makes the device question unanswerable rather than
+ * negative. After that there are three machine states and they are genuinely
+ * different: no machine configured is a setup step and not a fault; configured
+ * but disconnected is something to go and look at; connected names the board.
+ *
+ * Deliberately small. The device page is elsewhere; this is the always-visible
+ * summary that says whether to go there.
  */
 export function DeviceStatusPill() {
-  const { data, isPending, isError, error } = useHealth();
+  const health = useHealth();
+  const device = useDeviceStatus();
 
-  const state = isPending ? "pending" : isError || data?.status !== "ok" ? "bad" : "good";
-  const label = state === "pending" ? "Checking" : state === "good" ? "Online" : "Offline";
-  const detail =
-    state === "pending"
-      ? "Contacting the backend"
-      : state === "good"
-        ? `gaggiclanker ${data?.version} - database ${data?.database}`
-        : `Backend unreachable: ${error?.message ?? "unknown error"}`;
+  const backendOk = !health.isPending && !health.isError && health.data?.status === "ok";
+  const identity = device.data?.identity as DeviceIdentity | null | undefined;
+  const hardware = identity?.hardware ?? undefined;
+
+  let state: "pending" | "good" | "bad";
+  let label: string;
+  let detail: string;
+
+  if (health.isPending) {
+    state = "pending";
+    label = "Checking";
+    detail = "Contacting the backend";
+  } else if (!backendOk) {
+    state = "bad";
+    label = "Offline";
+    detail = `Backend unreachable: ${health.error?.message ?? "unknown error"}`;
+  } else if (!device.data?.configured) {
+    state = "good";
+    label = "Online";
+    detail = `gaggiclanker ${health.data?.version} - no machine configured`;
+  } else if (device.data.connected) {
+    state = "good";
+    label = hardware ?? "Machine online";
+    detail = `${hardware ?? "GaggiMate"} at ${device.data.host} - display ${
+      identity?.displayVersion ?? "unknown"
+    }`;
+  } else {
+    state = "bad";
+    label = "Machine offline";
+    detail = `No connection to ${device.data.host}. The archive still works; nothing is syncing.`;
+  }
 
   return (
     <Tooltip>

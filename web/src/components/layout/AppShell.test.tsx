@@ -6,14 +6,23 @@ import { App } from "@/App";
 import { NAV_LINKS } from "@/lib/navigation";
 import { createTestQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
-const { getHealth, getSettings } = vi.hoisted(() => ({
+const { getHealth, getSettings, getDeviceStatus } = vi.hoisted(() => ({
   getHealth: vi.fn(),
   getSettings: vi.fn(),
+  getDeviceStatus: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getHealth,
   getSettings,
+  getDeviceStatus,
+}));
+// The shell subscribes to /api/device/live. There is no server behind jsdom,
+// so leave the stream inert rather than letting every test start a reconnect
+// loop against a fetch that will never succeed.
+vi.mock("@/lib/sse", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/sse")>()),
+  subscribeToEventSource: () => () => {},
 }));
 
 function renderApp(path = "/shots") {
@@ -31,6 +40,7 @@ describe("AppShell", () => {
     vi.clearAllMocks();
     getHealth.mockResolvedValue({ status: "ok", version: "0.1.0", database: "ok" });
     getSettings.mockResolvedValue({});
+    getDeviceStatus.mockResolvedValue({ configured: false, connected: false });
   });
 
   it("lists every nav entry", () => {
@@ -98,7 +108,7 @@ describe("AppShell", () => {
     expect(await screen.findByText("Keyboard shortcuts")).toBeInTheDocument();
   });
 
-  it("renders the device status pill from /health", async () => {
+  it("renders the device status pill from /health with no machine configured", async () => {
     renderApp();
     await waitFor(() =>
       expect(screen.getByTestId("device-status-pill")).toHaveAttribute("data-state", "good"),

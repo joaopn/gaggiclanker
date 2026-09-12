@@ -586,7 +586,18 @@ class OtaSettings(DeviceModel):
     The single best "what is this device" frame: firmware versions on both
     halves plus the controller board name, which is how we learn whether a
     pressure sensor exists at all.
+
+    Open rather than closed, unlike most of this file, and the simulator is why
+    the difference was not theoretical: the real frame also carries a
+    diagnostics block (`spiffs*`, `heap*`, `controllerTaskHealth`,
+    `uiTaskHealth`, and `sd*` only when a card is mounted) whose membership
+    depends on the build — `uiTaskHealth` is absent on headless — so a closed
+    model rejected the whole frame and the device page went dark with no
+    identity at all. The documented members are typed below; anything a later
+    firmware adds is kept rather than fatal.
     """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     latest_version: str | None = Field(default=None, alias="latestVersion")
     display_version: str | None = Field(default=None, alias="displayVersion")
@@ -598,6 +609,23 @@ class OtaSettings(DeviceModel):
     )
     channel: str | None = None
     updating: bool | None = None
+
+    # The diagnostics block. Typed because the hardware page wants it, all
+    # optional because which of them arrives depends on the build and on
+    # whether an SD card is mounted.
+    spiffs_total: int | None = Field(default=None, alias="spiffsTotal")
+    spiffs_used: int | None = Field(default=None, alias="spiffsUsed")
+    spiffs_free: int | None = Field(default=None, alias="spiffsFree")
+    spiffs_used_pct: float | None = Field(default=None, alias="spiffsUsedPct")
+    heap_free: int | None = Field(default=None, alias="heapFree")
+    heap_largest: int | None = Field(default=None, alias="heapLargest")
+    heap_total: int | None = Field(default=None, alias="heapTotal")
+    controller_task_health: bool | None = Field(default=None, alias="controllerTaskHealth")
+    ui_task_health: bool | None = Field(default=None, alias="uiTaskHealth")
+    sd_total: int | None = Field(default=None, alias="sdTotal")
+    sd_used: int | None = Field(default=None, alias="sdUsed")
+    sd_free: int | None = Field(default=None, alias="sdFree")
+    sd_used_pct: float | None = Field(default=None, alias="sdUsedPct")
 
 
 class ProcessStatus(DeviceModel):

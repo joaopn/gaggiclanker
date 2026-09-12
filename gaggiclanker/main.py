@@ -26,10 +26,11 @@ from gaggiclanker.api import api_router, health_router
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.settings_repo import SettingsRepository
+from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.infra.envelope import register_exception_handlers
 from gaggiclanker.infra.logging import configure_logging, get_logger
 from gaggiclanker.infra.middleware import RequestContextMiddleware
-from gaggiclanker.infra.sse import EventBus
+from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
@@ -92,20 +93,57 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await run_migrations(db)
 
     app.state.db = db
-    app.state.settings_service = SettingsService(SettingsRepository(db), dotenv=app.state.dotenv)
-    app.state.events = EventBus()
+    settings_service = SettingsService(SettingsRepository(db), dotenv=app.state.dotenv)
+    app.state.settings_service = settings_service
+    app.state.events = EventBus[SseEvent]()
     app.state.tasks = TaskRegistry()
 
-    # The device reader and the sync loop are registered here:
-    #   app.state.tasks.spawn("device", device_client.run())
+    app.state.device = await start_device_client(settings_service)
 
     log.info("app_started", version=__version__, data_dir=str(env.data_dir))
     try:
         yield
     finally:
+        # The device client first: its supervisor owns a socket and an aiohttp
+        # session, and both have to be closed before the loop stops accepting
+        # callbacks. Then the registry, then the database, so nothing is
+        # mid-write when the file is released.
+        if app.state.device is not None:
+            await app.state.device.stop()
         await app.state.tasks.cancel_all()
         await db.close()
         log.info("app_stopped")
+
+
+async def start_device_client(settings: SettingsService) -> GaggimateClient | None:
+    """Build and start the device client, or return ``None`` if there is no machine.
+
+    An unset ``gaggimateHost`` is a supported configuration, not an error: the
+    app is an archive browser first and everything already imported works with
+    the machine unplugged. ``deviceSyncEnabled`` is the same switch for someone
+    who has a machine but is working on the archive and does not want to take
+    one of the device's three WebSocket slots.
+
+    Starting never blocks on the machine answering — ``start()`` spawns the
+    supervisor and returns — so a box that boots before the espresso machine
+    still serves in under a second.
+    """
+    host = str(await settings.get("gaggimateHost") or "").strip()
+    if not host:
+        log.info("device_not_configured")
+        return None
+    if not await settings.get("deviceSyncEnabled"):
+        log.info("device_sync_disabled", host=host)
+        return None
+
+    client = GaggimateClient(
+        host,
+        protocol=str(await settings.get("gaggimateProtocol") or "ws"),
+        timeout=float(await settings.get("gaggimateTimeoutSeconds")),
+    )
+    await client.start()
+    log.info("device_client_started", host=host)
+    return client
 
 
 def create_app(

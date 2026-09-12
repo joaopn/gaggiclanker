@@ -1,0 +1,82 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DeviceStatusPill } from "@/components/DeviceStatusPill";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { createTestQueryClient } from "@/test/renderWithQueryClient";
+
+const { getHealth, getDeviceStatus } = vi.hoisted(() => ({
+  getHealth: vi.fn(),
+  getDeviceStatus: vi.fn(),
+}));
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  getHealth,
+  getDeviceStatus,
+}));
+
+function renderPill() {
+  return render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <TooltipProvider>
+        <DeviceStatusPill />
+      </TooltipProvider>
+    </QueryClientProvider>,
+  );
+}
+
+const pill = () => screen.getByTestId("device-status-pill");
+
+describe("DeviceStatusPill", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getHealth.mockResolvedValue({ status: "ok", version: "0.1.0", database: "ok" });
+    getDeviceStatus.mockResolvedValue({
+      configured: false,
+      connected: false,
+      host: null,
+      identity: null,
+      last_status: null,
+    });
+  });
+
+  it("reports the backend first: nothing else is knowable without it", async () => {
+    getHealth.mockRejectedValue(new Error("Failed to fetch"));
+    getDeviceStatus.mockResolvedValue({ configured: true, connected: true, host: "gaggimate" });
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveAttribute("data-state", "bad"));
+    expect(pill()).toHaveTextContent("Offline");
+  });
+
+  it("is not a fault when no machine is configured", async () => {
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveAttribute("data-state", "good"));
+    expect(pill()).toHaveTextContent("Online");
+  });
+
+  it("names the board when the machine is connected", async () => {
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: true,
+      host: "192.168.1.50",
+      identity: { hardware: "GaggiMate Pro Rev 1.1", displayVersion: "v1.9.0" },
+      last_status: null,
+    });
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveTextContent("GaggiMate Pro Rev 1.1"));
+    expect(pill()).toHaveAttribute("data-state", "good");
+  });
+
+  it("goes red when the machine is configured but not answering", async () => {
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: false,
+      host: "192.168.1.50",
+      identity: null,
+      last_status: null,
+    });
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveAttribute("data-state", "bad"));
+    expect(pill()).toHaveTextContent("Machine offline");
+  });
+});

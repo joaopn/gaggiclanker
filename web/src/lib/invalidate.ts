@@ -32,6 +32,10 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "shot.ingested": [queryKeys.shots.all],
   "shot.updated": [queryKeys.shots.all],
   "sync.progress": [queryKeys.shots.all, queryKeys.device.all],
+  // The rare one: the socket came up or went down, so re-read
+  // /api/device/status. `device.live` is deliberately absent — it arrives
+  // twice a second and is read straight off the stream.
+  "device.connection": [queryKeys.device.all],
   "device.status": [queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
   "profile.updated": [queryKeys.profiles.all],

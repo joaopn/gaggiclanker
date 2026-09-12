@@ -67,7 +67,7 @@ def test_sse_event_encodes_json() -> None:
 
 
 async def test_event_bus_fans_out_to_every_subscriber() -> None:
-    bus = EventBus()
+    bus = EventBus[SseEvent]()
     with bus.subscribe() as a, bus.subscribe() as b:
         assert bus.subscriber_count == 2
         bus.publish(SseEvent(event="shot", data={"id": 1}))
@@ -77,12 +77,12 @@ async def test_event_bus_fans_out_to_every_subscriber() -> None:
 
 
 def test_event_bus_publish_with_no_subscribers_is_a_no_op() -> None:
-    EventBus().publish(SseEvent(event="shot"))
+    EventBus[SseEvent]().publish(SseEvent(event="shot"))
 
 
 async def test_slow_subscriber_drops_oldest_instead_of_blocking() -> None:
     """A tab that stops reading must never stall the device loop."""
-    bus = EventBus(queue_size=2)
+    bus = EventBus[SseEvent](queue_size=2)
     with bus.subscribe() as queue:
         for index in range(5):
             bus.publish(SseEvent(event="status", data=index))
