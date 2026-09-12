@@ -261,6 +261,56 @@ class JudgementsRepository(Repository):
         )
         return cursor.rowcount > 0
 
+    async def mark_device_synced(self, shot_id: int) -> None:
+        """Record that the machine's notes card now matches this judgement.
+
+        Only ever called after the device acknowledged the write. The column is
+        the whole conflict rule in one comparison — a judgement is pending
+        write-back while `device_synced_at` is NULL or older than `updated_at` —
+        and :meth:`upsert` clears it on every edit, so an edit made while a
+        write-back was in flight is pending again the moment it lands.
+        """
+        await self.db.execute(
+            "UPDATE shot_judgements SET device_synced_at = ? WHERE shot_id = ?",
+            (utc_now(), shot_id),
+        )
+
+    async def pending_writeback(
+        self, machine_id: int | None = None, *, limit: int = 200
+    ) -> list[int]:
+        """Shot ids whose verdict this box has that the machine does not.
+
+        Three conditions, and each is one half of a rule the write-back states:
+
+        * `seeded_from_device_note = 0` — a judgement that *came* from the
+          machine and has not been edited since is not news to the machine.
+          Writing it back would be an echo, and an echo with a fresh timestamp
+          on it is an echo that wins the next conflict comparison.
+        * `device_synced_at IS NULL OR device_synced_at < updated_at` — nothing
+          has been sent, or the verdict has moved since the last send.
+        * the shot is still on the machine. A shot the device has deleted has no
+          `/h/<id>.json` to write, and `req:history:notes:save` would recreate
+          one for a shot whose `.slog` is gone.
+
+        Oldest first, so a bulk push walks the backlog in the order it built up.
+        """
+        sql = """
+            SELECT j.shot_id
+            FROM shot_judgements j
+            JOIN shots s ON s.id = j.shot_id
+            WHERE j.seeded_from_device_note = 0
+              AND (j.device_synced_at IS NULL OR j.device_synced_at < j.updated_at)
+              AND s.deleted_on_device = 0
+        """
+        params: list[object] = []
+        if machine_id is not None:
+            sql += " AND s.machine_id = ?"
+            params.append(machine_id)
+        sql += " ORDER BY j.updated_at ASC, j.shot_id ASC LIMIT ?"
+        params.append(limit)
+        rows = await self.db.fetch_all(sql, params)
+        return [int(row["shot_id"]) for row in rows]
+
     async def delete(self, shot_id: int) -> bool:
         cursor = await self.db.execute("DELETE FROM shot_judgements WHERE shot_id = ?", (shot_id,))
         return cursor.rowcount > 0

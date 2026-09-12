@@ -321,8 +321,11 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     The release checklist asks it again rather than trusting that the earlier
     test is still being run, because what this box can do to somebody's machine
     is the claim the README makes to whoever installs it. Profile push changed
-    the answer from "nothing" to "five profile writes, all gated", so the question
-    here changes with it — but it is still asked twice, in two files, on purpose.
+    the answer from "nothing" to "five profile writes, all gated"; storage
+    cleanup and notes write-back made it seven, adding one shot delete and one
+    notes save, each with
+    its own rule in the gate on top of the switch. The question is still asked
+    twice, in two files, on purpose.
     """
     import inspect
 
@@ -343,6 +346,17 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     # it might: `set_` would catch `set_settings`, which is the endpoint that
     # clears every boolean key it omits.
     assert all(not name.startswith(("write", "set_")) for name in public - set(GATED_WRITE_METHODS))
+    # And the seven are exactly the seven, named rather than counted: a count
+    # would survive a swap.
+    assert set(GATED_WRITE_METHODS) == {
+        "save_profile",
+        "delete_profile",
+        "select_profile",
+        "favorite_profile",
+        "unfavorite_profile",
+        "delete_shot",
+        "save_shot_notes",
+    }
 
 
 def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> None:
@@ -355,6 +369,12 @@ def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> Non
     from gaggiclanker.settings import SETTINGS_REGISTRY
 
     assert SETTINGS_REGISTRY["deviceWritesEnabled"].default is False
+    # The two features that write outside `req:profiles:*` each have a second
+    # switch of their own, and both of those are off too. Neither replaces the
+    # master switch: a cleanup with writes off is a run that deletes nothing.
+    assert SETTINGS_REGISTRY["deviceCleanupMode"].default == "off"
+    assert SETTINGS_REGISTRY["deviceCleanupAuto"].default is False
+    assert SETTINGS_REGISTRY["notesWritebackEnabled"].default is False
 
 
 def test_the_unauthenticated_surface_is_three_routes(app: FastAPI) -> None:

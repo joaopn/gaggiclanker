@@ -16,7 +16,7 @@ The first thing gaggiclanker writes to a GaggiMate. It turns an analysis's
 `profile_patch`, or a hand edit, into a validated profile draft, and — once a
 person has approved it — saves it to the display as a **new** profile.
 
-- **Off by default.** `deviceWritesEnabled` gates all five write methods and is
+- **Off by default.** `deviceWritesEnabled` gates every write method and is
   re-read on every write, not cached at boot. A device client built without the
   app's gate can write nothing at all, so read-only is what forgetting gives you.
 - **Never overwrites, never selects.** `save_profile` refuses a profile carrying
@@ -44,6 +44,53 @@ person has approved it — saves it to the display as a **new** profile.
 New: `GET/POST /api/profile-drafts` and its approve / push / rollback / discard
 / refine routes, `GET /api/device/writes`, a Drafts page, "Draft profile" on the
 shot analysis panel, and "Edit as draft" on a profile version. Migration `0008`.
+
+### Device storage cleanup
+
+The machine is a buffer: its firmware deletes the oldest shot whenever free
+space drops below 500 KB, archived or not. This makes shots leave the display
+*when the archive has them* instead.
+
+- **A shot is only deleted once this box holds it, intact.** The eligibility
+  rule is one function, applied by the plan step so a preview means something and
+  by the write gate so it is actually enforced: the shot must be in the archive
+  for this machine, not quarantined, and its stored blob must be exactly the
+  length its header implies (or already recorded as `incomplete`).
+- **A policy, off by default.** `deviceCleanupMode` is `off`, `keep_newest`
+  (default 50, at least 5) or `free_space` (default 2048 KB free, at least
+  1024 — the firmware's own threshold is 500). `deviceCleanupAuto` runs it after
+  each successful index read; without it, cleanup is a button.
+- **Oldest first, two a second, stopping on the first refusal.** The firmware
+  deletes in id order, so anything else would fight its own retention; the pace
+  is because the display's web server is pumped from its main loop.
+- **A preview that lists what it will *not* delete, with the reason.** "Why is
+  that shot still on my machine" is otherwise unanswerable.
+- Every delete is audited in `device_writes`; every run is a `cleanup_runs` row
+  carrying both figures (planned and deleted) and the error that stopped it.
+
+### Judgements written back to the machine
+
+Your verdict on a shot, mirrored onto the display's own notes card so the
+touchscreen shows it.
+
+- **Off by default and gated twice**: `notesWritebackEnabled` on top of
+  `deviceWritesEnabled`. `notesWritebackFields` picks what is sent; `notes` is
+  offered and not on by default.
+- **The document is the machine's, with our fields laid over it.** Unknown keys
+  another client wrote survive; a field not in the policy keeps what the machine
+  has. `doseOut` goes as a **string** — the firmware only honours it as an
+  override for the index volume when it is one — and `timestamp` is set by us,
+  because the firmware never sets it.
+- **Newest wins, and a device note is never echoed back.** A verdict is written
+  only when it is newer than the machine's card; one that was *seeded* from the
+  machine and never edited is never sent. The read path's rule is unchanged: a
+  sync can create a judgement, never overwrite one.
+
+New: `GET /api/device/cleanup/plan`, `POST /api/device/cleanup/run`,
+`GET /api/device/cleanup/runs`, `GET /api/device/notes/pending`,
+`POST /api/device/notes/push`, `POST /api/shots/{id}/notes-writeback`, a Storage
+card and a notes card on the Device page, "Sync notes to machine" on a shot, and
+six settings under Settings → Machine. Migration `0010`.
 
 ## [0.1.0] — 2026-09-11
 

@@ -36,17 +36,34 @@ __all__ = [
     "payload_hash",
 ]
 
-#: The five things this box may ever ask a machine to change, and no more. Each
-#: is one `req:profiles:*` frame. Notably absent: `req:profiles:reorder` (it
-#: rewrites the display's whole ordering for a cosmetic gain), everything under
-#: `req:history:*` (deletion is unrecoverable), and `POST /api/settings` (it
-#: clears every boolean key the body omits, and it can change WiFi and PID).
+#: The seven things this box may ever ask a machine to change, and no more.
+#:
+#: Five are `req:profiles:*` frames. Two are `req:history:*` frames
+#: and each was a deliberate widening of this list rather than a refactor:
+#:
+#: * ``shot_delete`` is `req:history:delete`, and it is
+#:   **unrecoverable** — which is why the gate refuses it for any shot whose
+#:   bytes are not already in the archive, intact and unquarantined. The
+#:   firmware performs exactly the same deletion itself when free space drops
+#:   below 500 KB, so the machine is losing these shots either way; the only
+#:   question is whether the archive has them first.
+#: * ``notes_save`` is `req:history:notes:save`, which overwrites the
+#:   machine's own notes card for one shot and, as a side effect, the index's
+#:   rating and volume.
+#:
+#: Still absent, and still a design decision to add: `req:profiles:reorder` (it
+#: rewrites the display's whole ordering for a cosmetic gain),
+#: `req:history:rebuild` (it regenerates `index.bin` for every shot at once),
+#: and `POST /api/settings` (it clears every boolean key the body omits, and it
+#: can change WiFi and PID).
 type WriteKind = Literal[
     "profile_save",
     "profile_delete",
     "profile_select",
     "profile_favorite",
     "profile_unfavorite",
+    "shot_delete",
+    "notes_save",
 ]
 
 

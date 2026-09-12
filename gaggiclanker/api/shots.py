@@ -29,6 +29,7 @@ from gaggiclanker.api.deps import (
     AnalyzerServiceDep,
     JudgementsRepoDep,
     NotesRepoDep,
+    NotesWritebackServiceDep,
     SetsRepoDep,
     ShotsRepoDep,
 )
@@ -38,9 +39,10 @@ from gaggiclanker.db.repos.notes import DeviceShotNotesRow
 from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListRow, ShotSampleRow
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
-from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
+from gaggiclanker.infra.errors import BadRequest, NotFound, ServiceUnavailable, Unprocessable
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
+from gaggiclanker.notes.writeback import NotesWritebackService, WritebackResult
 from gaggiclanker.sync.engine import downsample
 
 __all__ = ["router"]
@@ -329,7 +331,11 @@ class SetVersionAssignment(BaseModel):
     summary="Record or replace what you thought of this cup",
 )
 async def put_judgement(
-    shot_id: int, body: JudgementWrite, shots: ShotsRepoDep, judgements: JudgementsRepoDep
+    shot_id: int,
+    body: JudgementWrite,
+    request: Request,
+    shots: ShotsRepoDep,
+    judgements: JudgementsRepoDep,
 ) -> JSONResponse:
     """An upsert. The verdict is one row per shot and the form sends all of it.
 
@@ -342,7 +348,43 @@ async def put_judgement(
     if await shots.get(shot_id) is None:
         raise NotFound(f"No shot {shot_id}")
     row = await judgements.upsert(shot_id, body)
+    # Notes write-back: mirror it to the machine's own notes card, if both switches are
+    # on. A task rather than an await, because the response is the verdict the
+    # user just typed and it must not wait on a WebSocket frame to a machine
+    # that may be switched off — and because the service decides for itself
+    # whether there is anything to send, so nothing here has to.
+    writeback: NotesWritebackService | None = getattr(request.app.state, "notes_writeback", None)
+    if writeback is not None:
+        writeback.spawn_one(request.app.state.tasks, shot_id)
     return envelope_response(row.model_dump(mode="json"))
+
+
+@router.post(
+    "/{shot_id}/notes-writeback",
+    response_model=ApiResponse[WritebackResult],
+    summary="Send this shot's judgement to the machine's own notes card",
+)
+async def post_notes_writeback(
+    shot_id: int, notes: NotesWritebackServiceDep, shots: ShotsRepoDep
+) -> JSONResponse:
+    """One frame, in the request. Answers 200 with *why* when it wrote nothing.
+
+    Unlike the analysis routes there is nothing long-running here — a notes save
+    is a single `req:history:notes:save` — so the outcome comes back to the
+    caller that asked for it rather than to a stream.
+
+    A refusal is a 200 with ``written: false`` and a sentence, not an error
+    status. Every reason this declines is a fact about the configuration or the
+    data ("write-back is off", "this verdict came from the machine"), and a 4xx
+    would put them in an error toast that says the request was wrong when it was
+    not.
+    """
+    if await shots.get(shot_id) is None:
+        raise NotFound(f"No shot {shot_id}")
+    if notes is None:
+        raise ServiceUnavailable("No machine is configured, so there is nowhere to write notes to.")
+    result = await notes.writeback(shot_id)
+    return envelope_response(result.model_dump(mode="json"))
 
 
 @router.delete(

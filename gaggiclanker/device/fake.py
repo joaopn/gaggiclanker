@@ -43,6 +43,7 @@ from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.index import encode_index
 from gaggiclanker.domain.models import (
     SHOT_FLAG_COMPLETED,
+    SHOT_FLAG_DELETED,
     SHOT_FLAG_HAS_NOTES,
     IndexEntry,
     IndexHeader,
@@ -661,6 +662,10 @@ class FakeDevice:
             wanted = str(message.get("id", ""))
             shot = next((s for s in self.shots.values() if pad6(s.entry.id) == wanted), None)
             await self._reply(socket, tp, rid, notes=(shot.notes if shot else {}) or {})
+        elif tp == "req:history:notes:save":
+            await self._save_notes(socket, tp, rid, message)
+        elif tp == "req:history:delete":
+            await self._delete_shot(socket, tp, rid, str(message.get("id", "")))
         else:
             # Fire-and-forget commands get no answer at all on the real device,
             # and so do the writes this client is not allowed to make.
@@ -729,6 +734,78 @@ class FakeDevice:
         if self.selected_profile_id == profile_id:
             self.selected_profile_id = None
         await self._reply(socket, tp, rid)
+
+    # ── history writes ───────────────────────────────────────────────
+
+    async def _delete_shot(
+        self, socket: web.WebSocketResponse, tp: str, rid: Any, shot_id: str
+    ) -> None:
+        """`ShotHistoryPlugin::handleRequest` for `req:history:delete` (`:528-540`).
+
+        The firmware removes `/h/<id>.slog` and `/h/<id>.json` and **flags the
+        index entry deleted** — it never removes the row, which is why the
+        entry stays visible to a client for ever and why the sync engine treats
+        the flag rather than the absence as the signal. That asymmetry is
+        reproduced exactly, because a fake that dropped the row would let a
+        reconcile bug pass.
+
+        An id it does not know gets `error: "Delete failed"`, the same shape a
+        failed `req:profiles:delete` gets.
+        """
+        shot = next((s for s in self.shots.values() if pad6(s.entry.id) == shot_id), None)
+        if shot is None:
+            await self._reply(socket, tp, rid, error="Delete failed")
+            return
+        shot.entry.flags |= SHOT_FLAG_DELETED
+        shot.entry.flags &= ~SHOT_FLAG_HAS_NOTES
+        shot.notes = None
+        # The files are gone; the index row is not. `missing_files` is exactly
+        # how this fake spells "the entry is there and the file is not".
+        self.missing_files.add(shot.entry.id)
+        await self._reply(socket, tp, rid, msg="Ok")
+
+    async def _save_notes(
+        self, socket: web.WebSocketResponse, tp: str, rid: Any, message: dict[str, Any]
+    ) -> None:
+        """`req:history:notes:save` (`ShotHistoryPlugin.cpp:546-567`), quirks included.
+
+        Four behaviours, and every one of them has cost somebody an evening
+        somewhere:
+
+        * the id is used **verbatim as the filename**, so an unpadded id writes
+          a file nothing will ever read back — here it simply matches nothing;
+        * the document is stored **verbatim**, so an extra key another client
+          wrote survives and a key we omit is *gone*, not defaulted;
+        * the index entry's `rating` is overwritten from `notes.rating`, and
+          `HAS_NOTES` is set when it is above zero;
+        * `volume` is overwritten from `doseOut` **only when it is a non-empty
+          string** that parses above zero (`notes["doseOut"].is<String>()`). A
+          JSON number is stored in the file and ignored by the index, which is
+          the quirk the notes write-back exists to get right.
+        """
+        wanted = str(message.get("id", ""))
+        notes = message.get("notes")
+        shot = next((s for s in self.shots.values() if pad6(s.entry.id) == wanted), None)
+        if shot is None or not isinstance(notes, dict):
+            await self._reply(socket, tp, rid, error="Save failed")
+            return
+        shot.notes = dict(notes)
+
+        rating = notes.get("rating")
+        if isinstance(rating, int) and not isinstance(rating, bool):
+            shot.entry.rating = rating
+            if rating > 0:
+                shot.entry.flags |= SHOT_FLAG_HAS_NOTES
+        elif notes:
+            shot.entry.flags |= SHOT_FLAG_HAS_NOTES
+
+        dose_out = notes.get("doseOut")
+        if isinstance(dose_out, str) and dose_out:
+            with contextlib.suppress(ValueError):
+                volume = float(dose_out)
+                if volume > 0:
+                    shot.entry.volume_g = volume
+        await self._reply(socket, tp, rid, msg="Ok")
 
     async def _reply(
         self, socket: web.WebSocketResponse, tp: str, rid: Any, **payload: Any

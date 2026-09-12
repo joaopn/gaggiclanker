@@ -11,11 +11,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getDeviceStatus, getSyncStatus, runSync, getDeviceWrites } = vi.hoisted(() => ({
+const {
+  getDeviceStatus,
+  getSyncStatus,
+  runSync,
+  getDeviceWrites,
+  getCleanupPlan,
+  getCleanupRuns,
+  getPendingNotes,
+} = vi.hoisted(() => ({
   getDeviceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   runSync: vi.fn(),
   getDeviceWrites: vi.fn(),
+  getCleanupPlan: vi.fn(),
+  getCleanupRuns: vi.fn(),
+  getPendingNotes: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -23,6 +34,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSyncStatus,
   runSync,
   getDeviceWrites,
+  getCleanupPlan,
+  getCleanupRuns,
+  getPendingNotes,
 }));
 
 function deviceStatus(overrides: Partial<DeviceStatusData> = {}): DeviceStatusData {
@@ -91,6 +105,32 @@ beforeEach(() => {
   getSyncStatus.mockResolvedValue(syncStatus());
   runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
   getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
+  // The Storage and notes cards are part of this page now.
+  // Their own suites cover what they render; here they only have to answer, so
+  // the page is not asserting on a card stuck in its error state.
+  getCleanupPlan.mockResolvedValue({
+    machine_id: 1,
+    policy: {
+      mode: "off",
+      keep_newest: 50,
+      min_free_kb: 2048,
+      auto: false,
+      writes_enabled: false,
+    },
+    on_device_count: 12,
+    free_bytes: 262_144,
+    free_source: "spiffs",
+    planned: [],
+    skipped: [],
+    blocked: null,
+  });
+  getCleanupRuns.mockResolvedValue({ items: [] });
+  getPendingNotes.mockResolvedValue({
+    enabled: false,
+    writes_enabled: false,
+    fields: ["rating"],
+    shot_ids: [],
+  });
 });
 
 describe("DevicePage", () => {
@@ -263,5 +303,16 @@ describe("DevicePage", () => {
   it("says plainly when this box has never written to the machine", async () => {
     renderWithQueryClient(<DevicePage />);
     expect(await screen.findByTestId("device-writes-empty")).toBeInTheDocument();
+  });
+
+  it("carries the storage and notes cards, with both switches off by default", async () => {
+    // Both are rendered whatever the switches say: a card that disappeared when
+    // writes were off would leave nowhere to find out that they are.
+    renderWithQueryClient(<DevicePage />);
+
+    await waitFor(() => expect(screen.getByTestId("cleanup-summary")).toHaveTextContent("12"));
+    expect(screen.getByText("cleanup off")).toBeInTheDocument();
+    expect(screen.getByTestId("cleanup-runs-empty")).toBeInTheDocument();
+    expect(screen.getByText("write-back off")).toBeInTheDocument();
   });
 });

@@ -112,8 +112,9 @@ and asserts each route answers 401, so a router added later is covered the day
 it is mounted.
 
 **What can reach the machine is two closed lists, enforced by a test.** Ten
-reads, and five profile writes behind a switch that is off by default. See
-[`safety-layers.md`](safety-layers.md).
+reads, and seven writes behind a switch that is off by default: five profile
+operations, plus a shot delete and a notes save that each carry a second switch
+and a rule of their own. See [`safety-layers.md`](safety-layers.md).
 
 ## What runs where
 

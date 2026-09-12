@@ -36,7 +36,9 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __all__ = [
+    "CLEANUP_MODES",
     "DEFAULT_ENV_FILE",
+    "NOTES_WRITEBACK_FIELDS",
     "SETTINGS_REGISTRY",
     "SETTING_PAIRS",
     "EnvSettings",
@@ -438,6 +440,66 @@ def _within_firmware_limits(key: str) -> Callable[[Any], str | None]:
     return validate
 
 
+#: The three cleanup policies. `off` is the default and the only one
+#: that deletes nothing: `keep_newest` keeps a fixed number of shots on the
+#: machine, `free_space` keeps a floor of free flash. Both are ceilings on how
+#: much the *firmware's own* retention ever has to do — it deletes the oldest
+#: shot when free space drops below 500 KB, whether or not the archive has it.
+CLEANUP_MODES: tuple[str, ...] = ("off", "keep_newest", "free_space")
+
+#: The judgement fields that can be mirrored to the machine's notes card,
+#: spelled as the firmware's own JSON keys. `notes` is offered but
+#: not on by default: the firmware caps it at 200 characters, and silently
+#: publishing somebody's tasting note to a screen in the kitchen is a choice
+#: they should make rather than inherit.
+NOTES_WRITEBACK_FIELDS: tuple[str, ...] = (
+    "rating",
+    "balance",
+    "doseIn",
+    "doseOut",
+    "grindSetting",
+    "notes",
+)
+
+
+def _one_of(allowed: tuple[str, ...], noun: str) -> Callable[[Any], str | None]:
+    """A validator for a small closed vocabulary stored as a string."""
+
+    def validate(value: Any) -> str | None:
+        if str(value) in allowed:
+            return None
+        return f"{noun} must be one of: {', '.join(allowed)}"
+
+    return validate
+
+
+def _at_least(minimum: int, message: str) -> Callable[[Any], str | None]:
+    """A validator for an integer floor that exists for a reason worth naming."""
+
+    def validate(value: Any) -> str | None:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):  # pragma: no cover - coerce ran first
+            return None
+        return None if number >= minimum else message
+
+    return validate
+
+
+def _known_writeback_fields(value: Any) -> str | None:
+    """Refuse a field list with anything in it the firmware has no key for.
+
+    A typo here would silently stop mirroring the field somebody meant, and the
+    symptom — "my ratings do not show up on the machine" — points at the write
+    path rather than at a comma-separated list in settings.
+    """
+    names = [part.strip() for part in str(value).split(",") if part.strip()]
+    unknown = [name for name in names if name not in NOTES_WRITEBACK_FIELDS]
+    if unknown:
+        return f"unknown notes fields; allowed: {', '.join(NOTES_WRITEBACK_FIELDS)}"
+    return None
+
+
 def _at_least_one_phase(value: Any) -> str | None:
     """A profile with zero phases crashes brew start; a policy of zero forbids every profile."""
     try:
@@ -557,6 +619,89 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "crashes brew start, and recovering one means a reflash plus a filesystem erase. "
             "Nothing else is ever written: not device settings (POST /api/settings clears "
             "every boolean key it omits), not shot history."
+        ),
+    ),
+    SettingDefinition(
+        key="deviceCleanupMode",
+        type="string",
+        default="off",
+        env_key="GAGGICLANKER_DEVICE_CLEANUP_MODE",
+        validate=_one_of(CLEANUP_MODES, "the cleanup mode"),
+        description=(
+            "How much shot history to leave on the machine: off (delete nothing), "
+            "keep_newest (keep deviceCleanupKeepNewest shots there), or free_space (delete "
+            "oldest-first until deviceCleanupMinFreeKb of flash is free). A shot is only ever "
+            "deleted when this box already holds its raw bytes intact and unquarantined. The "
+            "firmware deletes its own oldest shots below 500 KB free whatever this says; all "
+            "this changes is whether they go while the archive still has them."
+        ),
+    ),
+    SettingDefinition(
+        key="deviceCleanupKeepNewest",
+        type="int",
+        default=50,
+        env_key="GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST",
+        validate=_at_least(
+            5,
+            "keep at least 5 shots on the machine: its own history screen is how most "
+            "people look at a shot they have just pulled",
+        ),
+        description=(
+            "With deviceCleanupMode=keep_newest, how many shots to leave on the machine. "
+            "The rest are deleted oldest first."
+        ),
+    ),
+    SettingDefinition(
+        key="deviceCleanupMinFreeKb",
+        type="int",
+        default=2048,
+        env_key="GAGGICLANKER_DEVICE_CLEANUP_MIN_FREE_KB",
+        validate=_at_least(
+            1024,
+            "keep at least 1024 KB free: the firmware starts deleting shots of its own "
+            "below 500 KB, and a floor at that level would be a policy that never acts "
+            "before the machine does",
+        ),
+        description=(
+            "With deviceCleanupMode=free_space, the free flash to keep available, in KB. "
+            "Shots are deleted oldest first until spiffsFree (or sdFree, with a card) is "
+            "above this. The firmware's own threshold is 500 KB."
+        ),
+    ),
+    SettingDefinition(
+        key="deviceCleanupAuto",
+        type="bool",
+        default=False,
+        env_key="GAGGICLANKER_DEVICE_CLEANUP_AUTO",
+        description=(
+            "Run the cleanup policy after every successful index read, rather than only "
+            "when somebody presses the button. Needs deviceWritesEnabled as well: this "
+            "switch decides when a cleanup runs, that one decides whether it may write at "
+            "all."
+        ),
+    ),
+    SettingDefinition(
+        key="notesWritebackEnabled",
+        type="bool",
+        default=False,
+        env_key="GAGGICLANKER_NOTES_WRITEBACK_ENABLED",
+        description=(
+            "Mirror a saved judgement back to the machine's own notes card, so the "
+            "touchscreen shows it. Off by default and gated by deviceWritesEnabled as "
+            "well. The device copy is only overwritten when the judgement here is newer "
+            "than the note on the machine."
+        ),
+    ),
+    SettingDefinition(
+        key="notesWritebackFields",
+        type="string",
+        default="rating,balance,doseIn,doseOut,grindSetting",
+        env_key="GAGGICLANKER_NOTES_WRITEBACK_FIELDS",
+        validate=_known_writeback_fields,
+        description=(
+            "Which judgement fields are mirrored to the machine, comma-separated. "
+            "Allowed: rating, balance, doseIn, doseOut, grindSetting, notes. Anything left "
+            "out keeps whatever the machine already has in that field."
         ),
     ),
     SettingDefinition(

@@ -2,22 +2,32 @@
 
 Verified against the GaggiMate firmware source.
 
-**gaggiclanker writes exactly five things to a machine, and only when a person
-has switched writes on.** All five are profile operations — save, delete,
-select, favourite, unfavourite — and every one of them is a `req:profiles:*`
-frame. Not a setting, not a mode change, not a byte of shot history.
+**gaggiclanker writes exactly seven things to a machine, and only when a person
+has switched writes on.** Five are profile operations — save, delete, select,
+favourite, unfavourite — each a `req:profiles:*` frame. Two are history
+operations added later: `req:history:delete` (deleting a shot the
+archive already holds) and `req:history:notes:save` (the judgement
+mirrored onto the machine's notes card). Not a setting, not a mode change, not
+an index rebuild.
 
 That is a property of the code, not a convention. `GaggimateClient`'s public
-surface is two closed lists — ten reads in `READ_ONLY_METHODS`, five writes in
+surface is two closed lists — ten reads in `READ_ONLY_METHODS`, seven writes in
 `GATED_WRITE_METHODS` — `_send` is private, no write method can reach it except
 through the gate, and `tests/device/test_public_surface.py` fails the build if
-an eleventh read or a sixth write appears, or if a request type outside those
-five shows up anywhere in the module, including in a docstring. Even the
+an eleventh read or an eighth write appears, or if a request type outside those
+seven shows up anywhere in the module, including in a docstring. Widening that
+list is what storage cleanup and notes write-back each did deliberately, by moving a request
+type from the test's forbidden-grep list into its "appears exactly once" list —
+an edit nobody makes by accident. Even the
 simulator end-to-end test, which genuinely needs the machine to brew, opens a
 throwaway socket of its own rather than widening that surface.
 
 The gate is `deviceWritesEnabled`, **off by default**, re-read on every single
-write rather than cached at boot — the person turning it off is usually the
+write rather than cached at boot. The two history writes have a second switch
+each (`deviceCleanupMode`/`deviceCleanupAuto` and `notesWritebackEnabled`), also
+off, and the master switch is checked first: neither feature can write with it
+off. The gate's per-kind branch is where the narrower rules live — a delete is
+refused unless the archive already holds that shot intact — the person turning it off is usually the
 person who has just seen something they did not like. A client built without a
 gate (in a test, in a script) gets `DenyAllWrites` and can write nothing at all,
 so read-only is what you get by forgetting. Every attempt, authorised or
@@ -28,9 +38,24 @@ the bar is where it is.
 
 ## What can actually go wrong
 
-**Shot data cannot be damaged.** `req:history:delete` is the only history write,
-and the firmware performs the same deletion itself under storage pressure.
-Deleting archived shots is safe.
+**Shot data can be lost, and that is the risk device storage cleanup manages.**
+`req:history:delete` removes the `.slog`, the notes file and the index entry,
+and there is no undo on the display. What makes it acceptable is that the
+firmware performs exactly the same deletion itself whenever free space drops
+below 500 KB, archived or not — the machine loses these shots either way, and
+the only question is whether this box has them first. So the gate refuses the
+delete unless the archive holds that shot, for that machine, unquarantined — a
+shot whose bytes are stored but did not parse stays on the display, because a
+parser fix can still re-derive it — and with a stored blob exactly the length
+its header implies. The rule is `gaggiclanker/cleanup/eligibility.py`, it is applied
+by the plan step *and* by the gate, and a refusal is audited with its reason.
+
+**A notes save overwrites somebody's typing if it is careless.**
+`req:history:notes:save` stores the document verbatim and rewrites the index's
+rating and volume as a side effect, so the write-back sends the machine's own document
+with our fields laid over it (unknown keys survive), and only when our judgement
+is newer than the card's `timestamp`. A judgement that came *from* the machine
+and was never edited is never sent back.
 
 **Profiles can wedge a machine.** They are JSON files the display re-reads at
 boot and on every list. Known failure modes, from the firmware's own parser:

@@ -407,7 +407,13 @@ function ExecutionScoreCard({
   );
 }
 
-/** The device's own notes, mirrored. Read-only: the machine's UI owns them. */
+/**
+ * The device's own notes, mirrored.
+ *
+ * Read-only *here*: this is what the machine holds, and the way to change it is
+ * to edit the judgement above and press "Sync notes to machine",
+ * which is behind two switches that are both off by default.
+ */
 function NotesPanel({ notes }: { notes: DeviceShotNotes }) {
   const entries: Array<[string, string]> = [
     ["Bean", notes.bean_type ?? ""],
@@ -420,7 +426,7 @@ function NotesPanel({ notes }: { notes: DeviceShotNotes }) {
   return (
     <SectionCard
       title="Device notes"
-      description="A read-only mirror of what the machine's own UI recorded. gaggiclanker writes nothing to the device."
+      description="What the machine's own notes card holds for this shot. Editable only through the judgement above, and only with notes write-back switched on."
       actions={<RatingStars rating={notes.rating ?? null} />}
     >
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3" data-testid="device-notes">

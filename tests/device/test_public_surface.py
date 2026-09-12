@@ -6,18 +6,29 @@ push add five profile writes, so the question this file answers changes from "is
 anything writable" to **"is exactly the agreed set writable, and is every one of
 them gated"**.
 
+Storage cleanup and notes write-back move two request types across the line, and the shape of
+that move is the thing to copy if a third is ever proposed. `req:history:delete`
+and `req:history:notes:save` were in the forbidden-grep list below, which is
+where a request type lives while this client may not send it at all. They are
+now in the "appears exactly once" list, which is where it lives once a gated
+method owns it — one method, one frame, no second place that sends it. Moving an
+entry between those two lists is the edit that admits the surface has grown; a
+rule that let a write appear *without* that edit would be a rule that does not
+hold.
+
 The stakes have not changed. `POST /api/settings` clears every checkbox-style
 boolean key the body omits (so a partial write turns off HomeKit, boiler fill
 and the momentary buttons), `req:profiles:save` with a float `pump` leaves a
 profile that never runs the pump, `req:history:delete` is unrecoverable — the
-machine is the only copy until we have synced it — and a profile with zero
-phases crashes brew start on the display.
+machine is the only copy until we have synced it, which is exactly why the gate
+refuses it for any shot the archive does not already hold intact — and a profile
+with zero phases crashes brew start on the display.
 
 So: two allow-lists, a forbidden-request-type grep that still covers everything
 outside them, and a check that no write method can reach `_send` except through
 the gate. If you are here because this test failed, the question is not "how do
-I update the list" but "does this write belong in the five, and has it got a
-validation layer in front of it".
+I update the list" but "does this write belong in the seven, and has it got a
+rule in front of it".
 """
 
 from __future__ import annotations
@@ -83,10 +94,10 @@ def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
     """Not even in a helper, a constant or a docstring's example call.
 
     A source grep rather than an API check, because the way a write sneaks back
-    in is somebody adding `req:history:delete` to a private helper that a public
-    read then calls. The five profile writes the client allows are absent from
-    this list and checked separately below; everything else the firmware will
-    act on is here.
+    in is somebody adding `req:history:rebuild` to a private helper that a
+    public read then calls. The seven writes this client is allowed to make are
+    absent from this list and checked separately below; everything else the
+    firmware will act on is here.
     """
     from gaggiclanker.device import client as module
 
@@ -96,10 +107,10 @@ def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
         # the display's whole `profileOrder` for a cosmetic gain, and a partial
         # order silently drops the ids it omits.
         '"req:profiles:reorder"',
-        # History: deletion is unrecoverable and a note write overwrites the
-        # index's rating and volume as a side effect.
-        '"req:history:delete"',
-        '"req:history:notes:save"',
+        # History: a rebuild regenerates `index.bin` from every `.slog` on the
+        # machine at once, which is minutes of filesystem work and a progress
+        # stream nothing here consumes. The delete and the notes save moved out
+        # of this list when they were added and are pinned below instead.
         '"req:history:rebuild"',
         # Anything that moves the hardware or the firmware.
         '"req:ota-start"',
@@ -133,6 +144,11 @@ def test_each_allowed_write_type_appears_exactly_once() -> None:
         '"req:profiles:select"',
         '"req:profiles:favorite"',
         '"req:profiles:unfavorite"',
+        # The two history writes. Each is sent by exactly one gated method, and
+        # each has an eligibility rule in `SettingsWriteGate.authorize` that
+        # runs before the frame exists.
+        '"req:history:delete"',
+        '"req:history:notes:save"',
     ):
         assert source.count(request_type) == 1, request_type
 

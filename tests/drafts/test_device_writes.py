@@ -1,4 +1,4 @@
-"""The five gated writes, against a fake machine that behaves like the firmware.
+"""The gated profile writes, against a fake machine that behaves like the firmware.
 
 Not against a mock. What is being tested is a write to somebody's espresso
 machine, and the interesting parts are all firmware behaviours: the id
@@ -19,7 +19,12 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.device.writes import DeviceWriteRefused
-from gaggiclanker.domain.models import Profile, canonical_profile_json, with_app_suffix
+from gaggiclanker.domain.models import (
+    Profile,
+    ShotNotes,
+    canonical_profile_json,
+    with_app_suffix,
+)
 from tests.drafts.conftest import base_profile, profile_fixture
 
 
@@ -299,3 +304,57 @@ async def test_a_write_the_machine_refuses_is_audited_as_failed(
 
     kinds = await audit(app)
     assert ("profile_save", "failed", None) in kinds
+
+
+# ── the three copies of the kind list ────────────────────────────────
+
+
+def test_the_write_kinds_are_spelled_the_same_in_every_layer() -> None:
+    """`WriteKind`, the repository's Literal and migration 0010's CHECK agree.
+
+    Three copies, on purpose. The device layer imports nothing from the database
+    layer (`gaggiclanker/device/writes.py` says why), and a CHECK constraint
+    cannot import anything at all — so the list is written out three times and
+    this is what keeps them equal. A mismatch would otherwise surface as an
+    `IntegrityError` from the audit row of a write that had already reached the
+    machine, which is the worst possible place to learn about a typo.
+    """
+    import re
+    import typing
+    from pathlib import Path
+
+    from gaggiclanker.db.repos.device_writes import DeviceWriteWrite
+    from gaggiclanker.device.writes import WriteKind
+
+    client_kinds = set(typing.get_args(WriteKind.__value__))
+    repo_kinds = set(typing.get_args(DeviceWriteWrite.model_fields["kind"].annotation))
+    assert client_kinds == repo_kinds
+
+    migration = (
+        Path(__file__).resolve().parents[2]
+        / "gaggiclanker"
+        / "db"
+        / "migrations"
+        / "0010_device_cleanup.sql"
+    ).read_text()
+    check = re.search(r"kind\s+TEXT\s+NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", migration)
+    assert check is not None, "migration 0010 no longer declares the kind CHECK"
+    assert set(re.findall(r"'([a-z_]+)'", check.group(1))) == client_kinds
+
+
+async def test_the_two_history_writes_are_gated_by_the_same_switch(
+    live: tuple[FastAPI, object],
+) -> None:
+    """Cleanup and notes write-back widened the surface; they did not widen the default.
+
+    The per-kind rules are tested in `tests/cleanup`; what is checked here is
+    that the master switch still comes first for both of them, which is the
+    property the whole gate exists for.
+    """
+    app, _ = live
+    client = app.state.device
+    with pytest.raises(DeviceWriteRefused, match="switched off"):
+        await client.delete_shot(129)
+    with pytest.raises(DeviceWriteRefused, match="switched off"):
+        await client.save_shot_notes(129, ShotNotes(id="000129"))
+    assert {result for _kind, result, _id in await audit(app)} == {"refused"}

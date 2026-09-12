@@ -9,11 +9,12 @@ The two-list rule
 -----------------
 
 The public surface is two closed lists and nothing else: the ten reads in
-:data:`READ_ONLY_METHODS`, and the five profile writes in
-:data:`GATED_WRITE_METHODS`. :meth:`_send` stays private and
-``tests/device/test_public_surface.py`` fails the build if an eleventh read or a
-sixth write appears, or if a request type outside those five turns up anywhere
-in this module — including in a docstring.
+:data:`READ_ONLY_METHODS`, and the seven writes in
+:data:`GATED_WRITE_METHODS` — five profile operations, plus the shot delete and
+the notes save added later. :meth:`_send`
+stays private and ``tests/device/test_public_surface.py`` fails the build if an
+eleventh read or an eighth write appears, or if a request type outside those
+seven turns up anywhere in this module — including in a docstring.
 
 The lists are separate because the two halves have different rules. A read
 needs a socket. **A write additionally needs a gate** (:mod:`.writes`): it is
@@ -23,12 +24,16 @@ built without a gate gets :class:`~gaggiclanker.device.writes.DenyAllWrites` and
 can write nothing at all, so read-only is what you get by forgetting.
 
 What is *not* here, and will not be: `POST /api/settings` (it clears every
-boolean key the body omits, and it can change WiFi and PID), anything under
-`req:history:*` (deletion is unrecoverable — the machine is the only copy until
-we have synced it), and `req:profiles:reorder` (it rewrites the display's whole
-ordering for a cosmetic gain). A bad `req:profiles:save` can still leave the
-machine with a profile that will not brew, which is why four validation layers
-sit in front of these five methods and none of them is in this file.
+boolean key the body omits, and it can change WiFi and PID),
+`req:history:rebuild` (it regenerates the index for every shot at once), and
+`req:profiles:reorder` (it rewrites the display's whole ordering for a cosmetic
+gain). A bad `req:profiles:save` can still leave the machine with a profile that
+will not brew, which is why four validation layers sit in front of the five
+profile methods and none of them is in
+this file. The shot delete is unrecoverable — the machine is the only copy until
+we have synced it — so the gate refuses it for anything the archive does not
+already hold intact; that rule is in `gaggiclanker/cleanup/eligibility.py` and
+is likewise not in this file.
 
 Failure modes, and which one you get
 ------------------------------------
@@ -129,10 +134,13 @@ READ_ONLY_METHODS: frozenset[str] = frozenset(
     }
 )
 
-#: The other half: the five writes this client can make, every one of them a profile
-#: operation and every one of them behind :class:`DeviceWriteGate`. The list is
-#: closed and the test pins it; a sixth entry is a design decision, not a
-#: refactor.
+#: The other half: the seven writes this client can make, every one of them
+#: behind :class:`DeviceWriteGate`. Five are profile operations; two
+#: are history operations — the storage cleanup's (`delete_shot`) and the notes
+#: write-back's (`save_shot_notes`) — each of which widened this list
+#: deliberately and with
+#: its own eligibility rule in the gate. The list is closed and the test pins
+#: it; an eighth entry is a design decision, not a refactor.
 GATED_WRITE_METHODS: frozenset[str] = frozenset(
     {
         "save_profile",
@@ -140,6 +148,8 @@ GATED_WRITE_METHODS: frozenset[str] = frozenset(
         "select_profile",
         "favorite_profile",
         "unfavorite_profile",
+        "delete_shot",
+        "save_shot_notes",
     }
 )
 
@@ -819,6 +829,69 @@ class GaggimateClient:
             payload_hash=payload_hash(profile_id),
         )
         await self._write(write, "req:profiles:unfavorite", id=profile_id)
+
+    async def delete_shot(self, shot_id: int | str) -> None:
+        """Delete one shot from the machine: its `.slog`, its notes, its index row.
+
+        **Unrecoverable.** There is no undo on the display and no copy left
+        behind, which is why nothing about *whether* this shot may go is decided
+        here: the gate's ``shot_delete`` branch refuses unless the archive holds
+        the bytes, they are the length the header says they should be, the shot
+        is not quarantined and it belongs to this machine
+        (`gaggiclanker/cleanup/eligibility.py`). That check runs before a frame
+        goes out, and its refusal is audited with the reason.
+
+        The id goes on the wire padded. The firmware accepts either form for
+        this one request, but every other history call uses the filename and a
+        single spelling is one fewer thing to get wrong.
+        """
+        padded = pad6(shot_id)
+        write = PendingWrite(
+            kind="shot_delete",
+            host=self.host,
+            device_id=padded,
+            payload_hash=payload_hash(padded),
+        )
+        await self._write(write, "req:history:delete", id=padded)
+        log.info("device_shot_deleted", host=self.host, shot_id=padded)
+
+    async def save_shot_notes(self, shot_id: int | str, notes: ShotNotes) -> ShotNotes:
+        """Write the machine's own notes card for a shot.
+
+        Three firmware details are handled by the caller building the document
+        and re-asserted here, because getting any of them wrong is silent:
+
+        * the id is **padded** — it is used verbatim as the filename
+          `/h/<id>.json`, so an unpadded 129 writes a second, invisible file;
+        * ``doseOut`` is only honoured as an override for the index's `volume`
+          when it arrives as a **non-empty string** (`ShotHistoryPlugin.cpp:557`);
+          :class:`~gaggiclanker.domain.models.ShotNotes` stores it as one, and
+          :meth:`~gaggiclanker.domain.models.ShotNotes.to_device` keeps it that way;
+        * ``timestamp`` is **ours to set**. The firmware never writes it, and it
+          is the only thing that makes "is the device's copy newer than ours"
+          answerable, so it is filled in here rather than trusted from the
+          caller.
+
+        The document is stored verbatim, extra keys included — which is what
+        lets another client's field survive a write from this one.
+
+        Returns the document as it was sent, which is exactly what the machine
+        now holds: the mirror is updated from this rather than from a re-read,
+        because a re-read costs a second frame and could only disagree with it
+        by the machine having lied.
+        """
+        padded = pad6(shot_id)
+        sent = notes.model_copy(update={"id": padded, "timestamp": int(time.time())})
+        document = sent.to_device()
+        write = PendingWrite(
+            kind="notes_save",
+            host=self.host,
+            device_id=padded,
+            payload_hash=payload_hash(json.dumps(document, sort_keys=True)),
+        )
+        await self._write(write, "req:history:notes:save", id=padded, notes=document)
+        log.info("device_shot_notes_saved", host=self.host, shot_id=padded)
+        return sent
 
     async def _authorize(self, write: PendingWrite) -> None:
         """Ask the gate, and record the refusal if it says no.

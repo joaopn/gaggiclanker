@@ -29,12 +29,20 @@ class DeviceWriteWrite(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    #: Spelled out rather than imported from
+    #: :data:`gaggiclanker.device.writes.WriteKind`, so that the database layer
+    #: still imports nothing from the device layer. The two lists are held
+    #: equal by `tests/drafts/test_device_writes.py`, which is cheaper than the
+    #: import edge it replaces — and the CHECK constraint in migration 0010 is
+    #: a third copy that a mismatch fails loudly against.
     kind: Literal[
         "profile_save",
         "profile_delete",
         "profile_select",
         "profile_favorite",
         "profile_unfavorite",
+        "shot_delete",
+        "notes_save",
     ]
     host: str = ""
     device_id: str | None = None

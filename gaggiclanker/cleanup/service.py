@@ -1,0 +1,587 @@
+"""Plan and run a device cleanup: which shots go, in what order, and how fast.
+
+The machine is a buffer. `cleanupHistory()` deletes its oldest `.slog` whenever
+free space drops below 500 KB, whether or not anything has archived it, so shots
+leave the device either way — this service only changes *when*, and adds the one
+precondition the firmware cannot check: that this box already holds the bytes.
+
+Three properties are worth stating before the code, because each is a decision
+rather than a consequence.
+
+**Oldest first, always.** The firmware walks `/h/` in filename order, which is id
+order, so a cleanup that deleted newest-first would leave the machine's own
+retention fighting ours — it would still delete the oldest shot the moment space
+ran low, and the newest ones this box removed would have been removed for
+nothing.
+
+**One shot per frame, paced, stopping on the first error.** `req:history:delete`
+is one message per shot and the display has about 300 KB of heap. A burst of
+four hundred deletes is a burst of four hundred filesystem operations on a
+cooperatively scheduled web server that is also drawing a UI. And a device error
+mid-run means the machine is unhappy *now*; carrying on would turn one bad frame
+into four hundred.
+
+**The plan is advisory, the gate is authoritative.** :meth:`CleanupService.plan`
+calls exactly the same :func:`~gaggiclanker.cleanup.eligibility.ineligible_reason`
+the write gate does, so a preview and a run agree — but if they ever disagreed,
+the gate would win and the run would record a refusal. The preview is a
+courtesy; the gate is the safety layer.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import time
+from typing import Any
+
+import structlog
+from pydantic import BaseModel, ConfigDict, Field
+
+from gaggiclanker.cleanup.eligibility import ineligible_reason
+from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.cleanup import (
+    CleanupCandidate,
+    CleanupRepository,
+    CleanupRunRow,
+    CleanupRunUpdate,
+)
+from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
+from gaggiclanker.db.repos.machines import MachineRow, MachinesRepository
+from gaggiclanker.db.repos.notes import NotesRepository
+from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.errors import DeviceError
+from gaggiclanker.device.writes import payload_hash
+from gaggiclanker.domain.ids import pad6
+from gaggiclanker.domain.models import IndexEntry
+from gaggiclanker.infra.sse import SseEvent, SseEventBus
+from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.settings_service import SettingsService
+
+__all__ = [
+    "CLEANUP_EVENT",
+    "CleanupPlan",
+    "CleanupPolicy",
+    "CleanupService",
+    "PlannedShot",
+    "SkippedShot",
+    "auto_task_name",
+    "cleanup_task_name",
+]
+
+log = structlog.get_logger(__name__)
+
+#: Published on the sync bus when a run starts and when it finishes. The Device
+#: page follows it the way it follows `sync.progress`: the event means "re-read",
+#: never "here is the new state".
+CLEANUP_EVENT = "cleanup.progress"
+
+#: The floor on the interval between two deletes, in seconds — two a second at
+#: most. The display's web server is pumped from its main loop and every delete
+#: is three filesystem operations plus an index rewrite; a tight loop over four
+#: hundred shots is how a machine stops answering its own UI.
+MIN_DELETE_INTERVAL_S = 0.5
+
+
+def auto_task_name(machine_id: int) -> str:
+    """The name the *decision* to run automatically holds, distinct from the run.
+
+    Separate so that "is automatic cleanup even on" can be answered without
+    claiming the name a manual run needs — see :meth:`CleanupService.maybe_spawn_auto`.
+    """
+    return f"cleanup-auto:{machine_id}"
+
+
+def cleanup_task_name(machine_id: int) -> str:
+    """The registry name one machine's cleanup holds.
+
+    Per machine rather than global, so a second box on the network is not
+    blocked by this one's run — and one per machine, so two tabs pressing the
+    button get one run rather than two passes fighting over the device's two
+    HTTP slots.
+    """
+    return f"cleanup:{machine_id}"
+
+
+class CleanupPolicy(BaseModel):
+    """The settings as they are right now, resolved once per plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str = "off"
+    keep_newest: int = 50
+    min_free_kb: int = 2048
+    auto: bool = False
+    writes_enabled: bool = False
+
+    @property
+    def target(self) -> int:
+        """The policy's one number, for the ledger: a count or a KB floor."""
+        if self.mode == "keep_newest":
+            return self.keep_newest
+        if self.mode == "free_space":
+            return self.min_free_kb
+        return 0
+
+
+class PlannedShot(BaseModel):
+    """One shot the plan would delete, in the order it would go."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: int
+    device_id: str
+    started_at: str | None = None
+    raw_bytes: int = 0
+    profile_name: str = ""
+
+
+class SkippedShot(BaseModel):
+    """One shot the plan would not delete, and the sentence saying why."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: int
+    device_id: str
+    reason: str
+
+
+class CleanupPlan(BaseModel):
+    """What a run would do, if one were started now. Never touches the machine."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: int | None = None
+    policy: CleanupPolicy
+    #: What the archive believes is still on the machine — every shot it holds
+    #: for this machine that the index has not flagged deleted.
+    on_device_count: int = 0
+    #: Free bytes from the last `res:ota-settings`, and which volume they are
+    #: from. ``None`` when the machine has never broadcast one, which is the
+    #: only honest answer and is why `free_space` mode refuses to act on it.
+    free_bytes: int | None = None
+    free_source: str | None = None
+    #: Shots that would go, oldest first. Empty is a perfectly good plan.
+    planned: list[PlannedShot] = Field(default_factory=list)
+    #: Shots the rule refuses, with the reason. Shown rather than hidden: a
+    #: plan that silently omitted them could not explain why a shot it can see
+    #: is never cleaned up.
+    skipped: list[SkippedShot] = Field(default_factory=list)
+    #: Set when the policy wants to act but cannot. A sentence, not a code.
+    blocked: str | None = None
+
+    @property
+    def bytes_freed(self) -> int:
+        return sum(item.raw_bytes for item in self.planned)
+
+
+class CleanupService:
+    """Owns the plan, the run and the ledger. Holds the one gated client."""
+
+    def __init__(
+        self,
+        db: Database,
+        settings: SettingsService,
+        *,
+        client: GaggimateClient | None,
+        bus: SseEventBus | None = None,
+        pace_seconds: float = MIN_DELETE_INTERVAL_S,
+    ) -> None:
+        self.db = db
+        self.settings = settings
+        self.client = client
+        self.bus = bus
+        # A parameter so the suite can prove the pacing exists without spending
+        # half a second per deleted shot proving it forty times.
+        self.pace_seconds = pace_seconds
+        self.cleanup = CleanupRepository(db)
+        self.machines = MachinesRepository(db)
+        self.shots = ShotsRepository(db)
+        self.notes = NotesRepository(db)
+        self.writes = DeviceWritesRepository(db)
+
+    # ── policy ───────────────────────────────────────────────────────
+
+    async def policy(self) -> CleanupPolicy:
+        """The four cleanup settings plus the master write switch, read fresh.
+
+        Read on every plan and every run rather than cached, for the same reason
+        the write gate re-reads `deviceWritesEnabled`: the person turning it off
+        has usually just seen something they did not like.
+        """
+        return CleanupPolicy(
+            mode=str(await self.settings.get("deviceCleanupMode") or "off"),
+            keep_newest=int(await self.settings.get("deviceCleanupKeepNewest")),
+            min_free_kb=int(await self.settings.get("deviceCleanupMinFreeKb")),
+            auto=bool(await self.settings.get("deviceCleanupAuto")),
+            writes_enabled=bool(await self.settings.get("deviceWritesEnabled")),
+        )
+
+    # ── the plan ─────────────────────────────────────────────────────
+
+    async def plan(self, machine_id: int | None = None) -> CleanupPlan:
+        """What a run would delete right now. A dry run, and the UI's preview.
+
+        ``machine_id`` defaults to the machine this box is configured for. It is
+        a parameter because the archive can hold more than one machine's shots
+        and a cleanup is always *of a machine* — there is no such thing as
+        cleaning up "the archive".
+        """
+        policy = await self.policy()
+        machine = await self._machine(machine_id)
+        if machine is None:
+            return CleanupPlan(
+                policy=policy,
+                blocked=(
+                    "No machine has been synced yet, so there is nothing here that knows "
+                    "what is on the display."
+                ),
+            )
+
+        free_bytes, free_source = self._free_space()
+        candidates = await self.cleanup.candidates(machine.id)
+        eligible: list[CleanupCandidate] = []
+        skipped: list[SkippedShot] = []
+        for candidate in candidates:
+            reason = ineligible_reason(
+                candidate, machine_id=machine.id, device_id=candidate.device_id
+            )
+            if reason is None:
+                eligible.append(candidate)
+            else:
+                skipped.append(
+                    SkippedShot(shot_id=candidate.id, device_id=candidate.device_id, reason=reason)
+                )
+
+        chosen, blocked = self._choose(policy, eligible, len(candidates), free_bytes)
+        return CleanupPlan(
+            machine_id=machine.id,
+            policy=policy,
+            on_device_count=len(candidates),
+            free_bytes=free_bytes,
+            free_source=free_source,
+            planned=[
+                PlannedShot(
+                    shot_id=item.id,
+                    device_id=item.device_id,
+                    started_at=item.started_at,
+                    raw_bytes=item.raw_bytes,
+                    profile_name=item.profile_name_on_device,
+                )
+                for item in chosen
+            ],
+            skipped=skipped,
+            blocked=blocked,
+        )
+
+    def _choose(
+        self,
+        policy: CleanupPolicy,
+        eligible: list[CleanupCandidate],
+        on_device: int,
+        free_bytes: int | None,
+    ) -> tuple[list[CleanupCandidate], str | None]:
+        """Apply the mode to the oldest-first eligible list. Pure, and tested as such."""
+        if policy.mode == "off":
+            return [], None
+        if policy.mode == "keep_newest":
+            surplus = on_device - policy.keep_newest
+            if surplus <= 0:
+                return [], None
+            # From the oldest end. A shot the rule refuses is skipped rather
+            # than substituted-for from the newest end: the point of the policy
+            # is that the machine keeps the *newest* N, and deleting a newer
+            # shot because an older one is quarantined would quietly break that.
+            return eligible[:surplus], None
+        if policy.mode == "free_space":
+            if free_bytes is None:
+                return [], (
+                    "The machine has not reported its free space, so a free-space policy "
+                    "has nothing to act on. It broadcasts that with res:ota-settings, "
+                    "which needs a live WebSocket connection."
+                )
+            deficit = policy.min_free_kb * 1024 - free_bytes
+            if deficit <= 0:
+                return [], None
+            chosen: list[CleanupCandidate] = []
+            freed = 0
+            for candidate in eligible:
+                if freed >= deficit:
+                    break
+                chosen.append(candidate)
+                freed += candidate.raw_bytes
+            if freed < deficit:
+                return chosen, (
+                    "Deleting every eligible shot would still not reach the free-space "
+                    "target; the rest of the flash is profiles and firmware."
+                )
+            return chosen, None
+        return [], None  # pragma: no cover - the registry validates the mode
+
+    def _free_space(self) -> tuple[int | None, str | None]:
+        """Free bytes from the last identity frame, preferring the SD card.
+
+        The firmware moves `/h/` onto an SD card when one is mounted
+        (`ShotHistoryPlugin.cpp:83-86`), and only reports `sd*` keys when it
+        did — so the presence of `sdFree` is itself the answer to "where does
+        the history live".
+        """
+        identity = self.client.identity if self.client is not None else None
+        if identity is None:
+            return None, None
+        if identity.sd_free is not None:
+            return identity.sd_free, "sd"
+        if identity.spiffs_free is not None:
+            return identity.spiffs_free, "spiffs"
+        return None, None
+
+    # ── the run ──────────────────────────────────────────────────────
+
+    def spawn(self, tasks: TaskRegistry, machine_id: int, *, trigger: str = "manual") -> bool:
+        """Queue a run under this machine's registry name. False if one is running.
+
+        The name is claimed synchronously inside
+        :meth:`~gaggiclanker.infra.tasks.TaskRegistry.spawn`, so two tabs
+        pressing the button cannot both start a pass however the requests
+        interleave — the loser is told a run is already going rather than
+        getting a second one.
+        """
+        name = cleanup_task_name(machine_id)
+        if tasks.get(name) is not None:
+            return False
+        tasks.spawn(name, self.run(machine_id, trigger=trigger))
+        return True
+
+    async def run(self, machine_id: int | None = None, *, trigger: str = "manual") -> CleanupRunRow:
+        """Delete what the plan says, oldest first, stopping on the first error.
+
+        Every delete goes through the gated client, so every one of them is
+        authorised against the archive and audited in `device_writes` whatever
+        happens to it. `deleted_on_device` is set here rather than waiting for
+        the next index diff: the row is how the archive stops offering the same
+        shot again, and a run that deleted forty shots should not depend on a
+        later pass to say so.
+        """
+        plan = await self.plan(machine_id)
+        if plan.machine_id is None:
+            raise LookupError(plan.blocked or "no machine to clean up")
+        run_id = await self.cleanup.start_run(
+            plan.machine_id,
+            mode=plan.policy.mode,
+            target=plan.policy.target,
+            trigger=trigger,
+            planned=len(plan.planned),
+            free_before=plan.free_bytes,
+        )
+        self._publish(
+            {
+                "status": "started",
+                "run_id": run_id,
+                "machine_id": plan.machine_id,
+                "planned": len(plan.planned),
+                "trigger": trigger,
+            }
+        )
+        update = CleanupRunUpdate()
+        try:
+            if self.client is None:
+                update.errors += 1
+                update.error = "No machine is configured, so nothing was deleted."
+            else:
+                await self._delete_all(plan, update)
+        except Exception as exc:  # pragma: no cover - defensive; a run must always close
+            update.errors += 1
+            update.error = f"{type(exc).__name__}: {exc}"
+            log.error("cleanup_run_crashed", run_id=run_id, exc_info=True)
+        finally:
+            update.free_after = self._free_space()[0]
+            await self.cleanup.finish_run(run_id, update)
+
+        finished = await self.cleanup.get_run(run_id)
+        assert finished is not None  # finish_run wrote it
+        self._publish(
+            {
+                "status": finished.status,
+                "run_id": run_id,
+                "machine_id": plan.machine_id,
+                "deleted": finished.deleted,
+                "planned": finished.planned,
+                "error": finished.error,
+            }
+        )
+        log.info(
+            "cleanup_run_finished",
+            run_id=run_id,
+            machine_id=plan.machine_id,
+            planned=finished.planned,
+            deleted=finished.deleted,
+            errors=finished.errors,
+        )
+        return finished
+
+    async def _delete_all(self, plan: CleanupPlan, update: CleanupRunUpdate) -> None:
+        """One delete per shot, paced, stopping at the first thing the machine refuses.
+
+        The index is re-read once here rather than taken from the plan, because
+        the delete takes the notes file with it and the `HAS_NOTES` flag is the
+        only thing that says there is one. A plan built a minute ago cannot know
+        that somebody has since opened the notes card on the touchscreen.
+        """
+        assert self.client is not None
+        entries = await self._index_by_id()
+        last = 0.0
+        for item in plan.planned:
+            wait = self.pace_seconds - (time.monotonic() - last)
+            if last and wait > 0:
+                await asyncio.sleep(wait)
+            last = time.monotonic()
+            if not await self._notes_are_safe(item, entries.get(item.device_id), update):
+                continue
+            try:
+                await self.client.delete_shot(item.device_id)
+            except DeviceError as exc:
+                # Including a refusal from the gate: it never reached the wire,
+                # it is already audited with its reason, and it means the plan
+                # and the gate disagree — which is a stop, not a skip.
+                update.errors += 1
+                update.error = str(exc)
+                log.info(
+                    "cleanup_delete_refused",
+                    device_id=item.device_id,
+                    error=str(exc),
+                    deleted_so_far=update.deleted,
+                )
+                return
+            await self.shots.mark_deleted_on_device(item.shot_id)
+            update.deleted += 1
+
+    async def _index_by_id(self) -> dict[str, IndexEntry]:
+        """The machine's index right now, keyed by padded id.
+
+        A failed read is not fatal here — an empty map means every shot is
+        treated as "we cannot prove it has no notes", which
+        :meth:`_notes_are_safe` turns into a pull attempt rather than into a
+        delete. Being wrong in that direction costs one HTTP request.
+        """
+        assert self.client is not None
+        try:
+            index = await self.client.fetch_index()
+        except DeviceError as exc:
+            log.info("cleanup_index_unreadable", error=str(exc))
+            return {}
+        if index is None:
+            return {}
+        return {pad6(entry.id): entry for entry in index.entries}
+
+    async def _notes_are_safe(
+        self, item: PlannedShot, entry: IndexEntry | None, update: CleanupRunUpdate
+    ) -> bool:
+        """Pull the machine's notes card before the delete takes it away.
+
+        `req:history:delete` removes `/h/<id>.json` along with the `.slog`, and
+        the notes mirror is **not** kept current by the shot sync: notes are
+        re-pulled only when the index's `rating` or `volume` changes, because
+        those are the only two fields the firmware writes back into the index
+        entry. Edit the *text* on the touchscreen and nothing in the index moves
+        — so a shot whose note was reworded since the last pull would be deleted
+        with the only copy of that wording on it.
+
+        So: if the index still says `HAS_NOTES`, the card is fetched and
+        mirrored first. A fetch that **fails** skips the shot with a reason and
+        an audit row rather than stopping the run — the machine is answering,
+        this one file is not, and the other three hundred shots are unaffected.
+        A 404 is not a failure: the flag is stale and there is nothing to save.
+        """
+        assert self.client is not None
+        if entry is not None and not entry.has_notes:
+            return True
+        try:
+            notes = await self.client.fetch_notes_json(item.device_id)
+        except DeviceError as exc:
+            reason = (
+                f"Shot {item.device_id} was not deleted: its notes card could not be read "
+                f"first, and deleting would take the only copy with it ({exc})."
+            )
+            update.errors += 1
+            update.error = reason
+            await self._audit_refusal(item.device_id, reason)
+            log.info("cleanup_notes_unreadable", device_id=item.device_id, error=str(exc))
+            return False
+        if notes is not None:
+            await self.notes.upsert(
+                item.shot_id,
+                notes,
+                index_rating=entry.rating if entry is not None else None,
+                index_volume_g=entry.volume_g if entry is not None else None,
+            )
+            log.info("cleanup_notes_preserved", device_id=item.device_id, shot_id=item.shot_id)
+        return True
+
+    async def _audit_refusal(self, device_id: str, reason: str) -> None:
+        """Record a delete this service declined, in the same table the gate uses.
+
+        The gate audits what it refuses; this is the one refusal that happens
+        above it, and leaving it out would make `device_writes` answer "nothing
+        tried to delete that shot" when something did.
+        """
+        host = self.client.host if self.client is not None else ""
+        with contextlib.suppress(Exception):  # bookkeeping must not break a run
+            await self.writes.record(
+                DeviceWriteWrite(
+                    kind="shot_delete",
+                    host=host,
+                    device_id=device_id,
+                    payload_hash=payload_hash(device_id),
+                    result="refused",
+                    error=reason[:500],
+                )
+            )
+
+    # ── the automatic trigger ────────────────────────────────────────
+
+    def maybe_spawn_auto(self, tasks: TaskRegistry, machine_id: int) -> None:
+        """The sync engine's poke: schedule a run if — and only if — both switches are on.
+
+        Synchronous and cheap on purpose. It is called from the shot pass after
+        the engine's lock has been released, and the settings read happens
+        inside the task rather than here, so a poke costs the sync loop one
+        ``create_task`` and never a database round trip on a path that has just
+        finished one.
+
+        The task it spawns is **not** named `cleanup:<machine>`. It reads the
+        two switches first and only then claims that name, because the poke
+        fires after every successful index diff whether or not automatic cleanup
+        is on: claiming the run's name to discover that it is off would make a
+        person pressing "Run cleanup" in the half-second after a sync pass get a
+        409 about a run that was never going to happen.
+        """
+        name = auto_task_name(machine_id)
+        if tasks.get(name) is not None:
+            return
+        tasks.spawn(name, self._auto_run(tasks, machine_id))
+
+    async def _auto_run(self, tasks: TaskRegistry, machine_id: int) -> None:
+        """Check both switches, then take the run's name. Behind :meth:`maybe_spawn_auto`."""
+        policy = await self.policy()
+        if not policy.auto or not policy.writes_enabled or policy.mode == "off":
+            return
+        # Through `spawn` rather than by calling `run` here, so the automatic
+        # pass and a manual one are the same single-run-per-machine rule. If a
+        # manual run won the race, this one simply does not happen; the next
+        # index diff pokes again.
+        self.spawn(tasks, machine_id, trigger="auto")
+
+    def _publish(self, data: dict[str, Any]) -> None:
+        if self.bus is not None:
+            self.bus.publish(SseEvent(event=CLEANUP_EVENT, data=data))
+
+    async def _machine(self, machine_id: int | None) -> MachineRow | None:
+        if machine_id is not None:
+            return await self.machines.get(machine_id)
+        if self.client is not None:
+            machine = await self.machines.get_by_host(self.client.host)
+            if machine is not None:
+                return machine
+        rows = await self.machines.list_all()
+        return rows[0] if len(rows) == 1 else None

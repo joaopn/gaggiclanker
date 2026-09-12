@@ -197,6 +197,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device/cleanup/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a cleanup would delete from the machine right now
+         * @description A dry run. Reads the archive and the last identity frame; writes nothing.
+         *
+         *     This is the preview a person approves, and it lists what it will **not**
+         *     delete as well as what it will — a shot that is quarantined or whose stored
+         *     bytes do not match its header is named with the reason, because "why is that
+         *     shot still on my machine" is otherwise unanswerable from this page.
+         */
+        get: operations["get_cleanup_plan_api_device_cleanup_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/cleanup/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete what the policy says, oldest first
+         * @description 202, and the work happens in a background task.
+         *
+         *     Not in the request, for the same reason an analysis is not: a run is one
+         *     WebSocket frame per shot paced at two a second, so a hundred shots is most
+         *     of a minute and `docker stop` allows ten seconds. The task is named
+         *     `cleanup:<machine id>`, claimed synchronously, so a second tab pressing the
+         *     button gets a 409 rather than a second pass fighting this one over the
+         *     device's two HTTP slots.
+         *
+         *     Every delete is still authorised by the write gate on its way out, which is
+         *     what makes this route safe to expose at all: it cannot delete anything the
+         *     archive does not already hold intact.
+         */
+        post: operations["post_cleanup_run_api_device_cleanup_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/cleanup/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every cleanup pass this box has run
+         * @description Newest first. A run that stopped early shows both figures: planned and deleted.
+         */
+        get: operations["list_cleanup_runs_api_device_cleanup_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device/live": {
         parameters: {
             query?: never;
@@ -216,6 +292,46 @@ export interface paths {
         get: operations["get_device_live_api_device_live_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/notes/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Judgements the machine's own notes cards do not have yet
+         * @description The backlog, plus both switches — a page has to say *why* the list is idle.
+         */
+        get: operations["get_pending_notes_api_device_notes_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/device/notes/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send every pending judgement to the machine's notes cards
+         * @description 202: one frame per shot, in a background task, stopping on the first device error.
+         */
+        post: operations["post_notes_push_api_device_notes_push_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1266,6 +1382,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shots/{shot_id}/notes-writeback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send this shot's judgement to the machine's own notes card
+         * @description One frame, in the request. Answers 200 with *why* when it wrote nothing.
+         *
+         *     Unlike the analysis routes there is nothing long-running here — a notes save
+         *     is a single `req:history:notes:save` — so the outcome comes back to the
+         *     caller that asked for it rather than to a stream.
+         *
+         *     A refusal is a 200 with ``written: false`` and a sentence, not an error
+         *     status. Every reason this declines is a fact about the configuration or the
+         *     data ("write-back is off", "this verdict came from the machine"), and a 4xx
+         *     would put them in an error toast that says the request was wrong when it was
+         *     not.
+         */
+        post: operations["post_notes_writeback_api_shots__shot_id__notes_writeback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shots/{shot_id}/raw": {
         parameters: {
             query?: never;
@@ -1672,6 +1818,30 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[CleanupPlan] */
+        ApiResponse_CleanupPlan_: {
+            data?: components["schemas"]["CleanupPlan"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[CleanupRunAccepted] */
+        ApiResponse_CleanupRunAccepted_: {
+            data?: components["schemas"]["CleanupRunAccepted"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[CleanupRunsData] */
+        ApiResponse_CleanupRunsData_: {
+            data?: components["schemas"]["CleanupRunsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[CredentialCheckData] */
         ApiResponse_CredentialCheckData_: {
             data?: components["schemas"]["CredentialCheckData"] | null;
@@ -1819,9 +1989,25 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[NotesPushAccepted] */
+        ApiResponse_NotesPushAccepted_: {
+            data?: components["schemas"]["NotesPushAccepted"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[PasswordData] */
         ApiResponse_PasswordData_: {
             data?: components["schemas"]["PasswordData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PendingNotesData] */
+        ApiResponse_PendingNotesData_: {
+            data?: components["schemas"]["PendingNotesData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2059,6 +2245,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[WritebackResult] */
+        ApiResponse_WritebackResult_: {
+            data?: components["schemas"]["WritebackResult"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /**
          * AuthStatusData
          * @description ``auth_required`` is what the SPA reads before it has any token at all.
@@ -2256,6 +2450,133 @@ export interface components {
         };
         /** @enum {string} */
         BurrType: "conical" | "flat" | "unknown";
+        /**
+         * CleanupPlan
+         * @description What a run would do, if one were started now. Never touches the machine.
+         */
+        CleanupPlan: {
+            /** Blocked */
+            blocked?: string | null;
+            /** Free Bytes */
+            free_bytes?: number | null;
+            /** Free Source */
+            free_source?: string | null;
+            /** Machine Id */
+            machine_id?: number | null;
+            /**
+             * On Device Count
+             * @default 0
+             */
+            on_device_count: number;
+            /** Planned */
+            planned?: components["schemas"]["PlannedShot"][];
+            policy: components["schemas"]["CleanupPolicy"];
+            /** Skipped */
+            skipped?: components["schemas"]["SkippedShot"][];
+        };
+        /**
+         * CleanupPolicy
+         * @description The settings as they are right now, resolved once per plan.
+         */
+        CleanupPolicy: {
+            /**
+             * Auto
+             * @default false
+             */
+            auto: boolean;
+            /**
+             * Keep Newest
+             * @default 50
+             */
+            keep_newest: number;
+            /**
+             * Min Free Kb
+             * @default 2048
+             */
+            min_free_kb: number;
+            /**
+             * Mode
+             * @default off
+             */
+            mode: string;
+            /**
+             * Writes Enabled
+             * @default false
+             */
+            writes_enabled: boolean;
+        };
+        /**
+         * CleanupRunAccepted
+         * @description What was queued. Nothing has been deleted when this is sent.
+         */
+        CleanupRunAccepted: {
+            /** Machine Id */
+            machine_id: number;
+            /** Planned */
+            planned: number;
+            /** Task */
+            task: string;
+        };
+        /**
+         * CleanupRunRow
+         * @description One cleanup pass, as the Device page renders it.
+         */
+        CleanupRunRow: {
+            /**
+             * Deleted
+             * @default 0
+             */
+            deleted: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Free After */
+            free_after?: number | null;
+            /** Free Before */
+            free_before?: number | null;
+            /** Id */
+            id: number;
+            /** Machine Id */
+            machine_id: number;
+            /** Mode */
+            mode: string;
+            /**
+             * Planned
+             * @default 0
+             */
+            planned: number;
+            /** Started At */
+            started_at: string;
+            /**
+             * Status
+             * @default running
+             */
+            status: string;
+            /**
+             * Target
+             * @default 0
+             */
+            target: number;
+            /**
+             * Trigger
+             * @default manual
+             */
+            trigger: string;
+        };
+        /**
+         * CleanupRunsData
+         * @description The ledger of past runs, newest first.
+         */
+        CleanupRunsData: {
+            /** Items */
+            items: components["schemas"]["CleanupRunRow"][];
+        };
         /** CredentialCheckData */
         CredentialCheckData: {
             /**
@@ -2935,6 +3256,16 @@ export interface components {
             provider: string;
         };
         /**
+         * NotesPushAccepted
+         * @description What was queued for the bulk push.
+         */
+        NotesPushAccepted: {
+            /** Machine Id */
+            machine_id: number;
+            /** Pending */
+            pending: number;
+        };
+        /**
          * PasswordBody
          * @description A password change. The plain values never leave this request.
          */
@@ -2953,6 +3284,42 @@ export interface components {
             auth_required: boolean;
             /** Sessions Revoked */
             sessions_revoked: boolean;
+        };
+        /**
+         * PendingNotesData
+         * @description How many verdicts this box holds that the machine does not.
+         */
+        PendingNotesData: {
+            /** Enabled */
+            enabled: boolean;
+            /** Fields */
+            fields: string[];
+            /** Shot Ids */
+            shot_ids: number[];
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
+        /**
+         * PlannedShot
+         * @description One shot the plan would delete, in the order it would go.
+         */
+        PlannedShot: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Profile Name
+             * @default
+             */
+            profile_name: string;
+            /**
+             * Raw Bytes
+             * @default 0
+             */
+            raw_bytes: number;
+            /** Shot Id */
+            shot_id: number;
+            /** Started At */
+            started_at?: string | null;
         };
         /**
          * PolicyChange
@@ -4081,6 +4448,18 @@ export interface components {
             /** Version No */
             version_no: number;
         };
+        /**
+         * SkippedShot
+         * @description One shot the plan would not delete, and the sentence saying why.
+         */
+        SkippedShot: {
+            /** Device Id */
+            device_id: string;
+            /** Reason */
+            reason: string;
+            /** Shot Id */
+            shot_id: number;
+        };
         /** @enum {string} */
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
         /** @enum {string} */
@@ -4456,6 +4835,31 @@ export interface components {
             suggestion_variables: components["schemas"]["Term"][];
             /** Taste Groups */
             taste_groups: components["schemas"]["TasteGroup"][];
+        };
+        /**
+         * WritebackResult
+         * @description What one write-back did, or why it did nothing.
+         */
+        WritebackResult: {
+            /**
+             * Device Error
+             * @default false
+             */
+            device_error: boolean;
+            /**
+             * Device Id
+             * @default
+             */
+            device_id: string;
+            /** Reason */
+            reason?: string | null;
+            /** Shot Id */
+            shot_id: number;
+            /**
+             * Written
+             * @default false
+             */
+            written: boolean;
         };
     };
     responses: never;
@@ -4835,6 +5239,100 @@ export interface operations {
             };
         };
     };
+    get_cleanup_plan_api_device_cleanup_plan_get: {
+        parameters: {
+            query?: {
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CleanupPlan_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cleanup_run_api_device_cleanup_run_post: {
+        parameters: {
+            query?: {
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CleanupRunAccepted_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cleanup_runs_api_device_cleanup_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CleanupRunsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_device_live_api_device_live_get: {
         parameters: {
             query?: never;
@@ -4850,6 +5348,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_pending_notes_api_device_notes_pending_get: {
+        parameters: {
+            query?: {
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PendingNotesData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_notes_push_api_device_notes_push_post: {
+        parameters: {
+            query?: {
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_NotesPushAccepted_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -6534,6 +7094,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DeviceShotNotesRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_notes_writeback_api_shots__shot_id__notes_writeback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_WritebackResult_"];
                 };
             };
             /** @description Validation Error */

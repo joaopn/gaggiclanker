@@ -116,6 +116,15 @@ export const queryKeys = {
     all: ["device"] as const,
     status: () => ["device", "status"] as const,
     writes: () => ["device", "writes"] as const,
+    /**
+     * Storage cleanup. Under the `device` prefix so one `sync.progress` or
+     * `cleanup.progress` refreshes the whole card: the plan, the run history
+     * and the free-space figures on it are three reads of the same subject.
+     */
+    cleanupPlan: () => ["device", "cleanup", "plan"] as const,
+    cleanupRuns: () => ["device", "cleanup", "runs"] as const,
+    /** Notes write-back: the judgements the machine's own notes cards do not have. */
+    pendingNotes: () => ["device", "notes", "pending"] as const,
   },
   llm: {
     all: ["llm"] as const,

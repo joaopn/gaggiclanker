@@ -14,7 +14,7 @@ nothing is mid-write when the file is released.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -26,9 +26,11 @@ from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
 from gaggiclanker.auth.service import AuthService, validate_env_secret
+from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.analyses import AnalysesRepository
+from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
@@ -48,6 +50,7 @@ from gaggiclanker.knowledge.rules import seed_rules
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.static import mount_spa
@@ -141,6 +144,8 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
             await device.stop()
     app.state.sync = None
     app.state.drafts = None
+    app.state.cleanup = None
+    app.state.notes_writeback = None
 
     tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
     if tasks is not None:
@@ -230,10 +235,15 @@ async def _start(app: FastAPI, db: Database) -> None:
     # an absent log line does not answer it.
     interrupted_analyses = await AnalysesRepository(db).reconcile_running()
     interrupted_syncs = await SyncRepository(db).reconcile_running()
+    # The cleanup ledger gets the same treatment and for the same reason: a
+    # `running` cleanup row nothing closes would show a deletion in progress for
+    # ever on the Device page.
+    interrupted_cleanups = await CleanupRepository(db).reconcile_running()
     log.info(
         "boot_reconciled",
         analyses_interrupted=interrupted_analyses,
         sync_runs_interrupted=interrupted_syncs,
+        cleanup_runs_interrupted=interrupted_cleanups,
         auth_sessions_expired=forgotten,
         auth_enabled=await auth.enabled(),
     )
@@ -255,6 +265,23 @@ async def _start(app: FastAPI, db: Database) -> None:
 
     app.state.device = await start_device_client(settings_service, db)
     app.state.sync = await start_sync_engine(app)
+
+    # Cleanup and notes write-back. Both are app-scoped for the reason the draft service
+    # is: they hold the one client that can change a machine, and a per-request
+    # copy would have to build its own — which would mean a second gate, or a
+    # client with none.
+    app.state.cleanup = CleanupService(
+        db, settings_service, client=app.state.device, bus=app.state.events
+    )
+    app.state.notes_writeback = NotesWritebackService(
+        db, settings_service, client=app.state.device, bus=app.state.events
+    )
+    if app.state.sync is not None:
+        # The engine's poke. It fires after a full, successful index diff and
+        # after the engine's own lock has been released — a cleanup takes the
+        # device's WebSocket for as long as it runs, and holding the sync lock
+        # while it did would block the next shot's ingest behind it.
+        app.state.sync.on_index_synced = _cleanup_poke(app)
 
     # App-scoped because it holds the one client that can change a machine. A
     # per-request service would have to build its own — and a client built
@@ -296,8 +323,10 @@ async def start_device_client(settings: SettingsService, db: Database) -> Gaggim
         timeout=float(await settings.get("gaggimateTimeoutSeconds")),
         # The one place the gate is attached. Without it every write method
         # refuses, which is what a client built anywhere else in this codebase
-        # gets — see `gaggiclanker/device/writes.py`.
-        write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db)),
+        # gets — see `gaggiclanker/device/writes.py`. The database goes in with
+        # it because the `shot_delete` branch has to look the shot up in
+        # the archive before it will allow the machine to lose it.
+        write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db), db=db),
     )
     await client.start()
     log.info("device_client_started", host=host)
@@ -319,6 +348,26 @@ async def start_sync_engine(app: FastAPI) -> SyncEngine | None:
     engine = SyncEngine(client, app.state.db, app.state.events)
     await engine.start(app.state.tasks)
     return engine
+
+
+def _cleanup_poke(app: FastAPI) -> Callable[[int], None]:
+    """The callback the sync engine calls after a clean index diff.
+
+    A closure over the app rather than a method on the engine, because what
+    happens next belongs to the cleanup service and the task registry, neither
+    of which the engine has any business holding. It checks nothing itself: both
+    switches are read inside the task (`CleanupService._auto_run`), so the sync
+    loop pays one ``create_task`` and never a database read.
+    """
+
+    def poke(machine_id: int) -> None:
+        service: CleanupService | None = getattr(app.state, "cleanup", None)
+        tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
+        if service is None or tasks is None:  # pragma: no cover - torn-down app
+            return
+        service.maybe_spawn_auto(tasks, machine_id)
+
+    return poke
 
 
 def create_app(

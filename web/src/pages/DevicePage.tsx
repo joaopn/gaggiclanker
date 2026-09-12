@@ -3,6 +3,8 @@ import { AlertTriangle, Cpu, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { runSync } from "@/api/client";
 import type { DeviceIdentity, DeviceWrite } from "@/api/types";
+import { NotesWritebackCard } from "@/components/device/NotesWritebackCard";
+import { StorageCard } from "@/components/device/StorageCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
@@ -24,6 +26,11 @@ import { DEVICE_MODES, formatNumber, formatTime } from "@/lib/shots";
  * carries the telemetry, read straight off the stream rather than polled. The
  * sync ledger is a third: "connected" and "keeping up" are different questions
  * and a machine can be the first without the second.
+ *
+ * Two of the cards write to the machine rather than reading from it
+ * (`StorageCard` deletes shots, `NotesWritebackCard` overwrites notes), and both
+ * are rendered whatever the switches say: a card that disappeared when writes
+ * were off would leave nowhere to find out that they are.
  */
 export function DevicePage() {
   const device = useDeviceStatus();
@@ -141,13 +148,12 @@ export function DevicePage() {
           </dl>
         </SectionCard>
 
-        <SectionCard
-          title="Storage"
-          description="The machine deletes old shots when free space drops below 500 KB. It is a buffer, not an archive."
-        >
-          <StorageBars identity={identity} />
-        </SectionCard>
+        <NotesWritebackCard />
       </div>
+
+      {/* Full width rather than half: it carries a preview list and a run
+          history, and a two-column card would wrap every row. */}
+      <StorageCard identity={identity} writesEnabled={writes.data?.enabled ?? false} />
 
       <SectionCard
         title="Sync"
@@ -276,60 +282,4 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dd className="text-sm tabular-nums">{value}</dd>
     </div>
   );
-}
-
-/**
- * `spiffs*` and `sd*` out of `res:ota-settings`.
- *
- * Both are optional: a machine with no SD card reports no `sd*` keys at all,
- * and saying "no SD card" is better than drawing an empty bar.
- */
-function StorageBars({ identity }: { identity: Record<string, unknown> }) {
-  const volumes = [
-    { key: "spiffs", label: "Internal (SPIFFS)" },
-    { key: "sd", label: "SD card" },
-  ];
-  const rows = volumes
-    .map(({ key, label }) => {
-      const total = Number(identity[`${key}Total`]);
-      const used = Number(identity[`${key}Used`]);
-      const free = Number(identity[`${key}Free`]);
-      if (!Number.isFinite(total) || total <= 0) return null;
-      const usedBytes = Number.isFinite(used) ? used : total - (Number.isFinite(free) ? free : 0);
-      return { label, total, used: usedBytes };
-    })
-    .filter((row): row is { label: string; total: number; used: number } => row !== null);
-
-  if (rows.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">This firmware did not report storage figures.</p>
-    );
-  }
-
-  return (
-    <div className="space-y-3" data-testid="device-storage">
-      {rows.map((row) => (
-        <div key={row.label}>
-          <div className="flex items-baseline justify-between text-sm">
-            <span>{row.label}</span>
-            <span className="tabular-nums">
-              {kb(row.used)} / {kb(row.total)}
-            </span>
-          </div>
-          <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full bg-status-info"
-              style={{ width: `${Math.min(100, (row.used / row.total) * 100).toFixed(1)}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function kb(bytes: number): string {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
-    : `${Math.round(bytes / 1024)} KB`;
 }

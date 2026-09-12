@@ -8,7 +8,12 @@ stream would mean a tab that opened between two broadcasts knows nothing.
 
 The web UI builds the real device page on top of these. Profile push adds a third: the
 audit of every write this box has ever asked the machine to make, which is the
-one page that can answer "what has this thing done to my machine".
+one page that can answer "what has this thing done to my machine". Storage cleanup adds
+the storage-cleanup trio (plan, run, history) and the notes push, and
+both follow the same shape as the analyzer's routes: the **plan** is computed in
+the request because it is a database read, and the **run** is 202 plus a
+background task, because it is a sequence of WebSocket frames paced at two a
+second and `docker stop` allows ten seconds in total.
 """
 
 from __future__ import annotations
@@ -19,15 +24,24 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sse_starlette.sse import EventSourceResponse
 
-from gaggiclanker.api.deps import DeviceWritesRepoDep, SettingsServiceDep
+from gaggiclanker.api.deps import (
+    CleanupServiceDep,
+    DeviceWritesRepoDep,
+    NotesWritebackServiceDep,
+    SettingsServiceDep,
+)
+from gaggiclanker.cleanup.service import CleanupPlan, CleanupService, cleanup_task_name
+from gaggiclanker.db.repos.cleanup import CleanupRepository, CleanupRunRow
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.events import Connected, DeviceEvent, Disconnected, StatusChanged
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
+from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
 from gaggiclanker.infra.sse import SseEvent, sse_response
+from gaggiclanker.notes.writeback import NotesWritebackService
 
 __all__ = ["router"]
 
@@ -117,6 +131,196 @@ async def list_device_writes(
     items = await writes.list_writes(limit=limit)
     enabled = bool(await settings.get("deviceWritesEnabled"))
     return envelope_response(DeviceWritesData(enabled=enabled, items=items).model_dump(mode="json"))
+
+
+# ── storage cleanup ──────────────────────────────────────────────────
+
+
+def _require_cleanup(service: CleanupService | None) -> CleanupService:
+    if service is None:
+        raise ServiceUnavailable(
+            "No machine is configured, so there is nothing to clean up. "
+            "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
+        )
+    return service
+
+
+class CleanupRunAccepted(BaseModel):
+    """What was queued. Nothing has been deleted when this is sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: int
+    planned: int
+    task: str
+
+
+class CleanupRunsData(BaseModel):
+    """The ledger of past runs, newest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CleanupRunRow]
+
+
+@router.get(
+    "/cleanup/plan",
+    response_model=ApiResponse[CleanupPlan],
+    summary="What a cleanup would delete from the machine right now",
+)
+async def get_cleanup_plan(
+    cleanup: CleanupServiceDep,
+    machine_id: Annotated[int | None, Query()] = None,
+) -> JSONResponse:
+    """A dry run. Reads the archive and the last identity frame; writes nothing.
+
+    This is the preview a person approves, and it lists what it will **not**
+    delete as well as what it will — a shot that is quarantined or whose stored
+    bytes do not match its header is named with the reason, because "why is that
+    shot still on my machine" is otherwise unanswerable from this page.
+    """
+    plan = await _require_cleanup(cleanup).plan(machine_id)
+    return envelope_response(plan.model_dump(mode="json"))
+
+
+@router.post(
+    "/cleanup/run",
+    response_model=ApiResponse[CleanupRunAccepted],
+    status_code=202,
+    summary="Delete what the policy says, oldest first",
+)
+async def post_cleanup_run(
+    request: Request,
+    cleanup: CleanupServiceDep,
+    machine_id: Annotated[int | None, Query()] = None,
+) -> JSONResponse:
+    """202, and the work happens in a background task.
+
+    Not in the request, for the same reason an analysis is not: a run is one
+    WebSocket frame per shot paced at two a second, so a hundred shots is most
+    of a minute and `docker stop` allows ten seconds. The task is named
+    `cleanup:<machine id>`, claimed synchronously, so a second tab pressing the
+    button gets a 409 rather than a second pass fighting this one over the
+    device's two HTTP slots.
+
+    Every delete is still authorised by the write gate on its way out, which is
+    what makes this route safe to expose at all: it cannot delete anything the
+    archive does not already hold intact.
+    """
+    service = _require_cleanup(cleanup)
+    plan = await service.plan(machine_id)
+    if plan.machine_id is None:
+        raise ServiceUnavailable(
+            plan.blocked or "No machine has been synced yet, so there is nothing to clean up."
+        )
+    if not service.spawn(request.app.state.tasks, plan.machine_id, trigger="manual"):
+        raise Conflict(
+            "A cleanup is already running for this machine. Wait for it to finish; "
+            "its result appears under Storage on the Device page."
+        )
+    return envelope_response(
+        CleanupRunAccepted(
+            machine_id=plan.machine_id,
+            planned=len(plan.planned),
+            task=cleanup_task_name(plan.machine_id),
+        ).model_dump(mode="json"),
+        status_code=202,
+    )
+
+
+@router.get(
+    "/cleanup/runs",
+    response_model=ApiResponse[CleanupRunsData],
+    summary="Every cleanup pass this box has run",
+)
+async def list_cleanup_runs(
+    request: Request,
+    machine_id: Annotated[int | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+) -> JSONResponse:
+    """Newest first. A run that stopped early shows both figures: planned and deleted."""
+    items = await CleanupRepository(request.app.state.db).list_runs(machine_id, limit=limit)
+    return envelope_response(CleanupRunsData(items=items).model_dump(mode="json"))
+
+
+# ── notes write-back ─────────────────────────────────────────────────
+
+
+def _require_writeback(service: NotesWritebackService | None) -> NotesWritebackService:
+    if service is None:
+        raise ServiceUnavailable("No machine is configured, so there is nowhere to write notes to.")
+    return service
+
+
+class PendingNotesData(BaseModel):
+    """How many verdicts this box holds that the machine does not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    writes_enabled: bool
+    fields: list[str]
+    shot_ids: list[int]
+
+
+class NotesPushAccepted(BaseModel):
+    """What was queued for the bulk push."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    machine_id: int
+    pending: int
+
+
+@router.get(
+    "/notes/pending",
+    response_model=ApiResponse[PendingNotesData],
+    summary="Judgements the machine's own notes cards do not have yet",
+)
+async def get_pending_notes(
+    notes: NotesWritebackServiceDep,
+    machine_id: Annotated[int | None, Query()] = None,
+) -> JSONResponse:
+    """The backlog, plus both switches — a page has to say *why* the list is idle."""
+    service = _require_writeback(notes)
+    policy = await service.policy()
+    return envelope_response(
+        PendingNotesData(
+            enabled=policy.enabled,
+            writes_enabled=policy.writes_enabled,
+            fields=policy.fields,
+            shot_ids=await service.pending(machine_id),
+        ).model_dump(mode="json")
+    )
+
+
+@router.post(
+    "/notes/push",
+    response_model=ApiResponse[NotesPushAccepted],
+    status_code=202,
+    summary="Send every pending judgement to the machine's notes cards",
+)
+async def post_notes_push(
+    request: Request,
+    notes: NotesWritebackServiceDep,
+    cleanup: CleanupServiceDep,
+    machine_id: Annotated[int | None, Query()] = None,
+) -> JSONResponse:
+    """202: one frame per shot, in a background task, stopping on the first device error."""
+    service = _require_writeback(notes)
+    resolved = machine_id
+    if resolved is None:
+        plan = await _require_cleanup(cleanup).plan()
+        resolved = plan.machine_id
+    if resolved is None:
+        raise ServiceUnavailable("No machine has been synced yet.")
+    pending = await service.pending(resolved)
+    if not service.spawn_bulk(request.app.state.tasks, resolved):
+        raise Conflict("A notes push is already running for this machine.")
+    return envelope_response(
+        NotesPushAccepted(machine_id=resolved, pending=len(pending)).model_dump(mode="json"),
+        status_code=202,
+    )
 
 
 @router.get(

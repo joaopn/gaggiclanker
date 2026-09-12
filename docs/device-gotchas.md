@@ -61,11 +61,23 @@ It is a buffer, not an archive. Sync promptly, keep the raw bytes, and never
 lose a shot to a parse failure — by the time a parser bug is fixed, the
 machine's copy is gone. That single fact is why quarantine exists.
 
+It is also why device storage cleanup is safe *and* why it is careful. The firmware
+deletes the oldest `.slog` in filename order, so a cleanup that went
+newest-first would fight it; and `cleanupHistory()` does not care whether
+anything has archived the shot, so the one thing this box adds is the
+precondition that it has. A quarantined shot therefore stays on the machine:
+its bytes might yet parse, and the display holds the only other copy.
+
+Deleting leaves the index row behind with the DELETED flag set and removes the
+files, which is why the reconcile treats the flag rather than the absence as the
+signal — and why `gaggiclanker/device/fake.py` reproduces exactly that.
+
 **10. `POST /api/settings` on the device clears any boolean key you omit.**
 It is the one endpoint that can change WiFi and PID, and a partial write turns
 off HomeKit, boiler fill and the momentary buttons. gaggiclanker never writes
-device settings — the five writes it *can* make are all `req:profiles:*`, and
-they are off by default (`docs/safety-layers.md`).
+device settings — the seven writes it *can* make are five `req:profiles:*`
+frames plus `req:history:delete` and `req:history:notes:save`, and every one of
+them is off by default (`docs/safety-layers.md`).
 
 **11. Profile JSON has undocumented fields, and `pump` must be an integer.**
 The firmware includes `transition.target`, which a strict validator has to

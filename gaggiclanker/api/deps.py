@@ -15,6 +15,7 @@ from fastapi import Depends, Request
 
 from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.auth.service import AuthService
+from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.beans import BeansRepository
@@ -34,6 +35,7 @@ from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.sse import SseEventBus
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.engine import SyncEngine
@@ -43,6 +45,7 @@ __all__ = [
     "AnalyzerServiceDep",
     "AuthServiceDep",
     "BeansRepoDep",
+    "CleanupServiceDep",
     "DatabaseDep",
     "DeviceClientDep",
     "DeviceWritesRepoDep",
@@ -54,6 +57,7 @@ __all__ = [
     "LlmServiceDep",
     "MachinesRepoDep",
     "NotesRepoDep",
+    "NotesWritebackServiceDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
     "RulesRepoDep",
@@ -201,6 +205,23 @@ def get_device_writes_repo(request: Request) -> DeviceWritesRepository:
     return DeviceWritesRepository(get_database(request))
 
 
+def get_cleanup_service(request: Request) -> CleanupService | None:
+    """The device-cleanup service, or ``None`` when no machine is configured.
+
+    App-scoped for the reason the draft service is: it holds the one client that
+    can change a machine, and that client was built once with the write gate
+    wired into it.
+    """
+    service: CleanupService | None = getattr(request.app.state, "cleanup", None)
+    return service
+
+
+def get_notes_writeback_service(request: Request) -> NotesWritebackService | None:
+    """The notes write-back service, or ``None`` before the lifespan built it."""
+    service: NotesWritebackService | None = getattr(request.app.state, "notes_writeback", None)
+    return service
+
+
 def get_draft_service(request: Request) -> ProfileDraftService:
     """The profile-draft service. App-scoped, because it holds the device client.
 
@@ -237,3 +258,7 @@ SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_re
 AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]
 DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_writes_repo)]
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
+CleanupServiceDep = Annotated["CleanupService | None", Depends(get_cleanup_service)]
+NotesWritebackServiceDep = Annotated[
+    "NotesWritebackService | None", Depends(get_notes_writeback_service)
+]

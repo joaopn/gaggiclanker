@@ -19,6 +19,9 @@ import type {
   BatchResult,
   BeanRow,
   BeanWrite,
+  CleanupPlan,
+  CleanupRunAccepted,
+  CleanupRunsData,
   DeviceStatusData,
   DeviceWritesData,
   DraftCreateBody,
@@ -44,7 +47,9 @@ import type {
   MachineListData,
   MachinePatch,
   MachineRow,
+  NotesPushAccepted,
   PasswordData,
+  PendingNotesData,
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
@@ -73,6 +78,7 @@ import type {
   SuggestionListData,
   SyncStatusData,
   Vocabulary,
+  WritebackResult,
 } from "@/api/types";
 import { redirectToSignIn } from "@/lib/auth-navigation";
 
@@ -507,6 +513,52 @@ export async function previewProfileDraft(
 /** Every write this box has asked the machine to make, refusals included. */
 export async function getDeviceWrites(limit = 100): Promise<DeviceWritesData> {
   return fetchApi<DeviceWritesData>(`/device/writes${queryString({ limit })}`);
+}
+
+/**
+ * What a cleanup would delete from the machine right now.
+ *
+ * A dry run: it reads the archive and the last identity frame and writes
+ * nothing, which is what makes it safe to fetch on every render of the Device
+ * page.
+ */
+export async function getCleanupPlan(): Promise<CleanupPlan> {
+  return fetchApi<CleanupPlan>("/device/cleanup/plan");
+}
+
+/**
+ * Start a cleanup. Resolves as soon as it is **queued**, not when it is done.
+ *
+ * 202 and a background task, like running an analysis: a hundred shots at two
+ * deletes a second is most of a minute. The page follows the ledger.
+ */
+export async function runCleanup(): Promise<CleanupRunAccepted> {
+  return fetchApi<CleanupRunAccepted>("/device/cleanup/run", { method: "POST" });
+}
+
+export async function getCleanupRuns(limit = 20): Promise<CleanupRunsData> {
+  return fetchApi<CleanupRunsData>(`/device/cleanup/runs${queryString({ limit })}`);
+}
+
+/** The judgements the machine's own notes cards do not have yet. */
+export async function getPendingNotes(): Promise<PendingNotesData> {
+  return fetchApi<PendingNotesData>("/device/notes/pending");
+}
+
+/** Queue the whole backlog. 202, like the cleanup run. */
+export async function pushPendingNotes(): Promise<NotesPushAccepted> {
+  return fetchApi<NotesPushAccepted>("/device/notes/push", { method: "POST" });
+}
+
+/**
+ * Send one shot's judgement to the machine's notes card.
+ *
+ * Resolves with the *outcome*, not with "queued": this is a single WebSocket
+ * frame. A result with `written: false` carries the sentence saying why, which
+ * is a success as far as the request is concerned.
+ */
+export async function writeBackNotes(shotId: string | number): Promise<WritebackResult> {
+  return fetchApi<WritebackResult>(`/shots/${shotId}/notes-writeback`, { method: "POST" });
 }
 
 export async function getSyncStatus(): Promise<SyncStatusData> {

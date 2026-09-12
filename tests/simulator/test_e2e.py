@@ -190,8 +190,15 @@ async def test_the_whole_prototype_against_the_simulator(
     )
     assert status["connected"] is True
 
-    machines = [entry["machine"] for entry in data(await client.get("/api/machines"))["items"]]
-    assert machines and machines[0]["display_version"], machines
+    # Polled, not asserted straight after the pill goes green. "Connected" is
+    # the socket; `display_version` is written by the identity pass, which needs
+    # the `res:ota-settings` broadcast to have arrived and been stored — a
+    # moment later. Asserting on the row the instant the socket is up fails
+    # about one run in ten, and it is the test that is wrong, not the app.
+    machines = await _until(
+        lambda: _machine_identified(client), timeout=30.0, what="the identity pass to store a row"
+    )
+    assert machines[0]["display_version"], machines
 
     # 2. Profiles. A fresh install ships the seed profiles in `data/p/`.
     profiles = data(await client.get("/api/profiles"))["items"]
@@ -301,6 +308,12 @@ async def test_the_whole_prototype_against_the_simulator(
 async def _device_identified(client: httpx.AsyncClient) -> dict[str, Any] | None:
     status = data(await client.get("/api/device/status"))
     return status if status.get("connected") else None
+
+
+async def _machine_identified(client: httpx.AsyncClient) -> list[dict[str, Any]] | None:
+    """The machine rows, once the first of them carries a firmware version."""
+    rows = [entry["machine"] for entry in data(await client.get("/api/machines"))["items"]]
+    return rows if rows and rows[0].get("display_version") else None
 
 
 async def _shot_arrived(client: httpx.AsyncClient, before: int) -> dict[str, Any] | None:

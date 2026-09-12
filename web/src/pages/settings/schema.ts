@@ -158,7 +158,12 @@ export function humanizeKey(key: string): string {
  * "General" rather than disappearing.
  */
 export const SETTINGS_SECTIONS = [
-  { id: "device", title: "Machine", description: "How gaggiclanker reaches the GaggiMate." },
+  {
+    id: "device",
+    title: "Machine",
+    description:
+      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default. Cleanup deletes shots from the machine — only ones already archived here, intact and readable — and notes write-back overwrites the machine's own notes card for a shot.",
+  },
   {
     id: "llm",
     title: "LLM",
@@ -196,7 +201,12 @@ export function sectionFor(key: string): string {
   // written, not about how the machine is reached, and burying seven bounds in
   // the connection section would hide them.
   if (key.startsWith("profilePolicy")) return "safety";
-  if (key.startsWith("device") || key.startsWith("gaggimate")) return "device";
+  // `notesWriteback*` is named after what it writes rather than after the
+  // machine, but it is a device write behind the same master switch — so it
+  // belongs beside `deviceWritesEnabled` rather than in "General", where a
+  // person turning writes on would never find it.
+  if (key.startsWith("device") || key.startsWith("gaggimate") || key.startsWith("notesWriteback"))
+    return "device";
   if (LLM_PREFIXES.some((prefix) => key.startsWith(prefix))) return "llm";
   if (key.startsWith("auth")) return "auth";
   return "general";
