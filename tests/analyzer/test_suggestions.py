@@ -121,14 +121,22 @@ async def test_a_resolved_suggestion_cannot_be_resolved_again(
 async def test_a_non_actionable_variable_is_refused_with_a_reason(
     analyzer: AnalyzerService, fixture: Fixture
 ) -> None:
-    """The prototype writes nothing to the machine, and says so."""
+    """A profile change has no Set field, and the refusal names the route that has.
+
+    There *is* now somewhere for a pressure suggestion to go — a
+    profile draft, four validation layers and a push that never overwrites — so
+    the refusal is no longer "this cannot be done" but "not here, and here is
+    where". Accepting it on this path would mean guessing a number and writing
+    it to the machine in one step, which is the thing the draft flow exists to
+    prevent.
+    """
     *_, pressure_id = await _advice(analyzer, fixture)
 
     with pytest.raises(Conflict) as caught:
         await accept_suggestion(fixture.db, pressure_id)
 
     assert "pressure suggestion cannot be applied" in caught.value.message
-    assert "writes nothing to the machine" in str(caught.value.details)
+    assert "/api/profile-drafts" in str(caught.value.details)
 
 
 async def test_a_suggestion_about_a_stale_version_is_refused(

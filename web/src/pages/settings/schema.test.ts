@@ -1,12 +1,28 @@
 import { describe, expect, it } from "vitest";
-import type { SettingsMap } from "@/api/types";
+import type { PlainSetting, SettingsMap } from "@/api/types";
 import {
   buildSettingsSchema,
+  fieldSchema,
   humanizeKey,
   sectionFor,
   toFormValues,
   toPatch,
 } from "@/pages/settings/schema";
+
+/** One non-secret registry entry, for the per-key validators below. */
+function plain(overrides: Partial<PlainSetting> & { key: string }): PlainSetting {
+  return {
+    type: "float",
+    secret: false,
+    readonly: false,
+    value: 0,
+    default: 0,
+    override: null,
+    source: "default",
+    description: "",
+    ...overrides,
+  } as PlainSetting;
+}
 
 const settings: SettingsMap = {
   host: {
@@ -116,6 +132,43 @@ describe("labels and sections", () => {
     expect(sectionFor("anthropicApiKey")).toBe("llm");
     expect(sectionFor("claudeCodeBin")).toBe("llm");
     expect(sectionFor("modelAnalysis")).toBe("llm");
+    // The writes switch is about the machine; the seven bounds are about what
+    // may be written, which is a different question and its own section.
+    expect(sectionFor("deviceWritesEnabled")).toBe("device");
+    expect(sectionFor("profilePolicyTemperatureMaxC")).toBe("safety");
+    expect(sectionFor("profilePolicyMaxPhases")).toBe("safety");
     expect(sectionFor("somethingNew")).toBe("general");
+  });
+
+  it("refuses a policy bound wider than the firmware's own limit", () => {
+    // The whole point of layer 2 is that it is narrower. A bound a text box can
+    // widen to the firmware's own limit is a layer that does nothing — and the
+    // server refuses these too; this is only so the message lands before save.
+    const cases: Array<[string, string]> = [
+      ["profilePolicyTemperatureMaxC", "200"],
+      ["profilePolicyTemperatureMinC", "-10"],
+      ["profilePolicyPhaseDurationMaxS", "900"],
+      ["profilePolicyPhaseDurationMinS", "0"],
+      ["profilePolicyPressureMaxBar", "50"],
+      ["profilePolicyFlowMaxMlS", "40"],
+    ];
+    for (const [key, value] of cases) {
+      const schema = fieldSchema(plain({ key, type: "float", value: 1 }));
+      expect(schema.safeParse(value).success, key).toBe(false);
+    }
+  });
+
+  it("accepts a policy bound inside the firmware's limits", () => {
+    const schema = fieldSchema(
+      plain({ key: "profilePolicyTemperatureMaxC", type: "float", value: 100 }),
+    );
+    expect(schema.safeParse("96").success).toBe(true);
+  });
+
+  it("refuses a profile with no phases at all", () => {
+    const schema = fieldSchema(plain({ key: "profilePolicyMaxPhases", type: "int", value: 10 }));
+    expect(schema.safeParse("0").success).toBe(false);
+    expect(schema.safeParse("-3").success).toBe(false);
+    expect(schema.safeParse("4").success).toBe(true);
   });
 });

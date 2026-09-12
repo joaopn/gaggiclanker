@@ -61,6 +61,24 @@ export function invalidateKnowledge(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all }).then(() => undefined);
 }
 
+/**
+ * The profile mirror. Needed for the first time by profile push: a push changes
+ * what the machine holds, and the Profiles page has to stop showing the state
+ * before it.
+ */
+export function invalidateProfiles(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.profiles.all }).then(() => undefined);
+}
+
+/** The draft queue, and the device-write audit that every push appends to. */
+export function invalidateDrafts(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.drafts.all }).then(() => undefined);
+}
+
+export function invalidateDeviceWrites(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.device.all }).then(() => undefined);
+}
+
 export function invalidateBeans(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.beans.all }).then(() => undefined);
 }

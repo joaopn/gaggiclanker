@@ -10,15 +10,21 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getVocabulary, runAnalysis, getLlmCalls, acceptSuggestion, rejectSuggestion } = vi.hoisted(
-  () => ({
-    getVocabulary: vi.fn(),
-    runAnalysis: vi.fn(),
-    getLlmCalls: vi.fn(),
-    acceptSuggestion: vi.fn(),
-    rejectSuggestion: vi.fn(),
-  }),
-);
+const {
+  getVocabulary,
+  runAnalysis,
+  getLlmCalls,
+  acceptSuggestion,
+  rejectSuggestion,
+  createProfileDraft,
+} = vi.hoisted(() => ({
+  getVocabulary: vi.fn(),
+  runAnalysis: vi.fn(),
+  getLlmCalls: vi.fn(),
+  acceptSuggestion: vi.fn(),
+  rejectSuggestion: vi.fn(),
+  createProfileDraft: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getVocabulary,
@@ -26,6 +32,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getLlmCalls,
   acceptSuggestion,
   rejectSuggestion,
+  createProfileDraft,
 }));
 
 beforeEach(() => {
@@ -38,6 +45,7 @@ beforeEach(() => {
     version: {},
   });
   rejectSuggestion.mockResolvedValue(suggestion({ status: "rejected" }));
+  createProfileDraft.mockResolvedValue({ id: 5, status: "draft" });
 });
 
 describe("AnalysisPanel", () => {
@@ -72,10 +80,10 @@ describe("AnalysisPanel", () => {
     expect(screen.getByTestId("execution-issues")).toHaveTextContent("flow_adherence");
     expect(screen.getByTestId("taste-prediction")).toHaveTextContent("predicts sour, thin body");
     expect(screen.getByTestId("questions")).toHaveTextContent("What did the last shot taste like");
-    // Recorded, never applied: the panel has to say so where somebody would
-    // otherwise look for a button.
+    // Still recorded rather than applied — but there is now a button,
+    // and it makes a draft rather than touching the machine.
     expect(screen.getByTestId("profile-patch")).toHaveTextContent("phase 1.duration");
-    expect(screen.getByText(/writes nothing to the machine/)).toBeInTheDocument();
+    expect(screen.getByText(/Recorded, not applied/)).toBeInTheDocument();
   });
 
   it("links each cited rule to the Knowledge page", () => {
@@ -154,5 +162,31 @@ describe("AnalysisPanel", () => {
     expect(screen.queryByTestId("older-analyses")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /1 earlier analysis/ }));
     expect(screen.getByTestId("older-analyses")).toBeInTheDocument();
+  });
+
+  it("turns a profile patch into a draft rather than into a device write", async () => {
+    // The one route from an analysis to the machine, and it stops at a draft:
+    // the diff, the clamps and any stop-condition change are seen by a person
+    // before the machine hears about it.
+    const user = setupUser();
+    renderWithQueryClient(
+      <AnalysisPanel shotId={6} analyses={[analysis()]} hasSet profileVersionId={7} />,
+    );
+
+    await user.click(screen.getByTestId("draft-profile"));
+
+    await waitFor(() =>
+      expect(createProfileDraft).toHaveBeenCalledWith({ base_version_id: 7, analysis_id: 1 }),
+    );
+  });
+
+  it("says why there is no draft button when the profile was never mirrored", () => {
+    // The machine had deleted the profile by the time we synced it, so there is
+    // nothing to derive an edit from. Better than a button that 404s.
+    renderWithQueryClient(
+      <AnalysisPanel shotId={6} analyses={[analysis()]} hasSet profileVersionId={null} />,
+    );
+    expect(screen.getByTestId("draft-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("draft-profile")).not.toBeInTheDocument();
   });
 });

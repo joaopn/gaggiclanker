@@ -1,12 +1,13 @@
-import { AlertTriangle, BookOpen, Sparkles } from "lucide-react";
+import { AlertTriangle, BookOpen, FilePen, Sparkles } from "lucide-react";
 import { useId, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { Analysis, AnalysisOutput } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRunAnalysis } from "@/hooks/useAnalysis";
+import { useCreateDraft } from "@/hooks/useDrafts";
 import { formatTime } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
@@ -35,11 +36,19 @@ export function AnalysisPanel({
   shotId,
   analyses,
   hasSet,
+  profileVersionId,
 }: {
   shotId: number;
   analyses: Analysis[];
   /** A shot with no Set has no recipe to suggest changes to; say so up front. */
   hasSet: boolean;
+  /**
+   * The version of the profile this shot was pulled with, which is what a draft
+   * is derived from. `null` for a shot whose profile the mirror never caught —
+   * there is then nothing to edit, and the draft button says so rather than
+   * appearing and failing.
+   */
+  profileVersionId?: number | null;
 }) {
   const run = useRunAnalysis();
   const [model, setModel] = useState("");
@@ -99,7 +108,7 @@ export function AnalysisPanel({
           Not analysed yet.
         </p>
       ) : (
-        <AnalysisBody analysis={latest} />
+        <AnalysisBody analysis={latest} profileVersionId={profileVersionId} />
       )}
 
       {older.length > 0 ? (
@@ -127,7 +136,15 @@ export function AnalysisPanel({
   );
 }
 
-function AnalysisBody({ analysis, compact = false }: { analysis: Analysis; compact?: boolean }) {
+function AnalysisBody({
+  analysis,
+  compact = false,
+  profileVersionId,
+}: {
+  analysis: Analysis;
+  compact?: boolean;
+  profileVersionId?: number | null;
+}) {
   if (analysis.status === "running") {
     return (
       <p className="text-muted-foreground text-sm" data-testid="analysis-running">
@@ -188,13 +205,19 @@ function AnalysisBody({ analysis, compact = false }: { analysis: Analysis; compa
 
       {(output.profile_patch ?? []).length > 0 ? (
         <div>
-          <h4 className="mb-1 font-medium text-sm">Profile changes it would make</h4>
-          {/* Recorded, never applied: the prototype writes nothing to the
-              machine. Saying so here is what stops somebody waiting for a
-              button that is not coming. */}
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <h4 className="font-medium text-sm">Profile changes it would make</h4>
+            {/* Still recorded rather than applied. What changed is
+                that there is now somewhere for them to go: a draft, which is
+                validated four ways and pushed as a NEW profile only after
+                somebody approves it. Nothing here touches the machine. */}
+            {!compact ? (
+              <DraftButton profileVersionId={profileVersionId} analysis={analysis} />
+            ) : null}
+          </div>
           <p className="mb-1.5 text-muted-foreground text-xs">
-            Shown for reference. gaggiclanker writes nothing to the machine, so these are edits to
-            make there yourself.
+            Recorded, not applied. "Draft profile" turns them into a new profile you can review and
+            approve; the machine is never written to without that.
           </p>
           <ul className="space-y-1" data-testid="profile-patch">
             {(output.profile_patch ?? []).map((patch) => (
@@ -247,6 +270,54 @@ function AnalysisBody({ analysis, compact = false }: { analysis: Analysis; compa
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * "Draft profile" — the one route from an analysis to the machine.
+ *
+ * It creates a draft and navigates to the queue rather than pushing anything:
+ * the whole point of the draft step is that a person sees the diff, the clamps
+ * and any stop-condition change before the machine hears about it.
+ *
+ * Disabled without a profile version, which happens when the shot's profile was
+ * never mirrored — the machine had deleted it by the time we synced. There is
+ * nothing to derive an edit from, and saying so is better than a button that
+ * 404s.
+ */
+function DraftButton({
+  profileVersionId,
+  analysis,
+}: {
+  profileVersionId?: number | null;
+  analysis: Analysis;
+}) {
+  const create = useCreateDraft();
+  const navigate = useNavigate();
+  if (!profileVersionId) {
+    return (
+      <span className="text-muted-foreground text-xs" data-testid="draft-unavailable">
+        No mirrored profile to edit
+      </span>
+    );
+  }
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={create.isPending}
+      data-testid="draft-profile"
+      onClick={async () => {
+        const draft = await create.mutateAsync({
+          base_version_id: profileVersionId,
+          analysis_id: analysis.id,
+        });
+        if (draft) navigate("/drafts");
+      }}
+    >
+      <FilePen className="size-3.5" aria-hidden="true" />
+      {create.isPending ? "Drafting..." : "Draft profile"}
+    </Button>
   );
 }
 

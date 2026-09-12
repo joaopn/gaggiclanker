@@ -1,0 +1,21 @@
+-- A draft has to know what it was drafted *from*, on the machine.
+--
+-- A draft is derived from a `profile_versions` row, which is immutable and says
+-- what a profile brews. That is the right thing to diff against and the wrong
+-- thing to answer "is this still what the machine has". A profile edited on the
+-- display keeps its device id and gets a **new** version; the draft still points
+-- at the old one, and pushing it silently proposes undoing whatever was changed
+-- in the meantime.
+--
+-- So the draft records which file on the display its base was mirrored under at
+-- the moment it was made. Staleness is then one comparison: does that device
+-- profile still point at the version we started from?
+--
+-- NULL means the base was not on the machine at all — an imported profile, or a
+-- draft of a draft. There is nothing for it to have drifted from, so such a
+-- draft is never stale; that is the honest answer rather than a convenient one.
+--
+-- No foreign key: a device id belongs to the machine and is gone the moment
+-- somebody deletes the profile from the display, which must not take the draft's
+-- record of what it was drafted from with it.
+ALTER TABLE profile_drafts ADD COLUMN base_device_profile_id TEXT;

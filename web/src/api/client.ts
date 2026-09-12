@@ -20,6 +20,10 @@ import type {
   BeanRow,
   BeanWrite,
   DeviceStatusData,
+  DeviceWritesData,
+  DraftCreateBody,
+  DraftPreview,
+  DraftPushResult,
   GrinderRow,
   GrinderWrite,
   HealthData,
@@ -41,9 +45,13 @@ import type {
   MachinePatch,
   MachineRow,
   PasswordData,
+  ProfileDraft,
+  ProfileDraftDetail,
+  ProfileDraftListData,
   ProfileListData,
   ProfileVersionListData,
   ProfileVersionParams,
+  ProfileVersionRow,
   PromptData,
   PromptListData,
   SetCreate,
@@ -411,8 +419,94 @@ export async function runSync(kind = "all"): Promise<{ queued: string[] }> {
   });
 }
 
+/** One immutable version, with the document the drafts editor starts from. */
+export async function getProfileVersion(id: number): Promise<ProfileVersionRow> {
+  return fetchApi<ProfileVersionRow>(`/profile-versions/${id}`);
+}
+
 export async function getProfiles(includeDeleted = false): Promise<ProfileListData> {
   return fetchApi<ProfileListData>(`/profiles${queryString({ include_deleted: includeDeleted })}`);
+}
+
+// ---------------------------------------------------------------------------
+// Profile drafts: the only routes in this client that can change a
+// machine. `pushDraft` answers 200 for a push that *failed verification* too —
+// the draft's `status` is the outcome, not the HTTP code — because the profile
+// is on the display either way and the caller has to be told which.
+// ---------------------------------------------------------------------------
+
+export async function getProfileDrafts(
+  params: { status?: string; open?: boolean } = {},
+): Promise<ProfileDraftListData> {
+  return fetchApi<ProfileDraftListData>(`/profile-drafts${queryString(params)}`);
+}
+
+export async function getProfileDraft(id: number): Promise<ProfileDraftDetail> {
+  return fetchApi<ProfileDraftDetail>(`/profile-drafts/${id}`);
+}
+
+export async function createProfileDraft(body: DraftCreateBody): Promise<ProfileDraft> {
+  return fetchApi<ProfileDraft>("/profile-drafts", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function refineProfileDraft(
+  id: number,
+  body: { notes?: string; model?: string } = {},
+): Promise<ProfileDraft> {
+  return fetchApi<ProfileDraft>(`/profile-drafts/${id}/refine`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function approveProfileDraft(
+  id: number,
+  acknowledgeStopChanges = false,
+): Promise<ProfileDraft> {
+  return fetchApi<ProfileDraft>(`/profile-drafts/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ acknowledge_stop_changes: acknowledgeStopChanges }),
+  });
+}
+
+export async function pushProfileDraft(
+  id: number,
+  options: { setId?: number; allowStaleBase?: boolean } = {},
+): Promise<DraftPushResult> {
+  return fetchApi<DraftPushResult>(`/profile-drafts/${id}/push`, {
+    method: "POST",
+    body: JSON.stringify({
+      set_id: options.setId ?? null,
+      allow_stale_base: options.allowStaleBase ?? false,
+    }),
+  });
+}
+
+export async function rollbackProfileDraft(id: number): Promise<ProfileDraft> {
+  return fetchApi<ProfileDraft>(`/profile-drafts/${id}/rollback`, { method: "POST" });
+}
+
+export async function discardProfileDraft(id: number): Promise<ProfileDraft> {
+  return fetchApi<ProfileDraft>(`/profile-drafts/${id}/discard`, { method: "POST" });
+}
+
+/** Validate a document the editor has not saved. Answers 200 whatever it finds. */
+export async function previewProfileDraft(
+  baseVersionId: number,
+  profile: Record<string, unknown>,
+): Promise<DraftPreview> {
+  return fetchApi<DraftPreview>("/profile-drafts/preview", {
+    method: "POST",
+    body: JSON.stringify({ base_version_id: baseVersionId, profile }),
+  });
+}
+
+/** Every write this box has asked the machine to make, refusals included. */
+export async function getDeviceWrites(limit = 100): Promise<DeviceWritesData> {
+  return fetchApi<DeviceWritesData>(`/device/writes${queryString({ limit })}`);
 }
 
 export async function getSyncStatus(): Promise<SyncStatusData> {

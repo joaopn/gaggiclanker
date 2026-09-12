@@ -29,8 +29,10 @@ import asyncio
 import contextlib
 import json
 import logging
+import random
+import string
 import time
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,7 +53,7 @@ from gaggiclanker.domain.models import (
 )
 from gaggiclanker.domain.slog import FIELDS_MASK_ALL, Slog, encode_slog
 
-__all__ = ["FakeDevice", "FakeShot", "run_fake_device"]
+__all__ = ["FakeDevice", "FakeShot", "run_fake_device", "write_profile"]
 
 #: What the real firmware answers with for any path it does not recognise. The
 #: byte-for-byte shape does not matter; that it starts with a doctype does,
@@ -117,6 +119,96 @@ class FakeShot:
     header_only_requests: int = 0
 
 
+#: Characters `generateShortID()` draws from (`utils.h`), and the length the
+#: schema's own example implies. Random ids rather than a counter, because a
+#: caller that guessed "the next one will be p2" would pass every test here and
+#: fail against a machine.
+SHORT_ID_ALPHABET = string.ascii_letters + string.digits
+SHORT_ID_LENGTH = 10
+
+
+def generate_short_id() -> str:
+    """The firmware's own id generator, in Python."""
+    return "".join(random.choice(SHORT_ID_ALPHABET) for _ in range(SHORT_ID_LENGTH))  # noqa: S311
+
+
+def write_profile(profile: dict[str, Any], *, favorite: bool, selected: bool) -> dict[str, Any]:
+    """Serialise a profile the way `writeProfile` does (`profile.h:335-410`).
+
+    This is the single most load-bearing quirk in the whole feature, because it
+    is what a save-then-load round trip compares against. The firmware never
+    echoes what you sent: it parses into a struct and serialises the struct, so
+    the document that comes back has fields the document that went out did not.
+
+    Specifically it **always** emits, whatever the input said:
+
+    * `id`, `favorite` and `selected` — all three owned by NVS, not by the file;
+    * a `transition` on every phase, defaulting to instant/0/false;
+    * `transition.target`, which is absent from `schema/profile.json` entirely
+      and defaults to `"time"`;
+    * a phase `temperature`, spelled out as `0` where the author left it out.
+
+    And it omits `targets` when the list is empty, rather than sending `[]`.
+
+    `canonical_profile_json` drops exactly this set, which is why a faithful
+    round trip compares equal.
+    """
+    phases = [_write_phase(phase) for phase in profile.get("phases", [])]
+    written: dict[str, Any] = {
+        "id": profile.get("id", ""),
+        "label": profile.get("label", ""),
+        "type": profile.get("type", "standard"),
+        "description": profile.get("description", ""),
+        "temperature": float(profile.get("temperature", 0) or 0),
+        "favorite": favorite,
+        "selected": selected,
+        "utility": bool(profile.get("utility", False)),
+        "phases": phases,
+    }
+    # `^_` annotation keys are round-tripped by the real firmware's parser only
+    # in the sense that it ignores them and they stay in the file it rewrites.
+    # It rewrites the file from the struct, so they are lost. Reproduced.
+    return written
+
+
+def _write_phase(phase: dict[str, Any]) -> dict[str, Any]:
+    duration = float(phase.get("duration", 0) or 0)
+    transition = dict(phase.get("transition") or {})
+    # "Duration longer than phase duration is clamped" (profile.h:255-272). A
+    # silent clamp on the device is a round-trip mismatch here unless the
+    # policy has already done it, which is exactly why the policy does it.
+    ramp = float(transition.get("duration", 0) or 0)
+    written: dict[str, Any] = {
+        "name": str(phase.get("name", "")),
+        # An unrecognised phase kind parses as `brew` (profile.h).
+        "phase": phase.get("phase") if phase.get("phase") in ("preinfusion", "brew") else "brew",
+        "valve": int(phase.get("valve", 0) or 0),
+        "duration": duration,
+        "temperature": float(phase.get("temperature", 0) or 0),
+        "transition": {
+            "type": transition.get("type", "instant"),
+            "target": transition.get("target", "time"),
+            "duration": min(ramp, duration),
+            "adaptive": bool(transition.get("adaptive", False)),
+        },
+        "pump": phase.get("pump", 0),
+    }
+    targets = [
+        {
+            "type": target.get("type"),
+            # Any spelling that is not `gte` parses as LTE (profile.h:291).
+            "operator": "gte" if target.get("operator", "gte") == "gte" else "lte",
+            "value": float(target.get("value", 0) or 0),
+        }
+        for target in phase.get("targets") or []
+        # An unknown target type is silently dropped.
+        if target.get("type") in ("volumetric", "pressure", "flow", "pumped")
+    ]
+    if targets:
+        written["targets"] = targets
+    return written
+
+
 @dataclass
 class FakeDevice:
     """A GaggiMate on localhost, with every quirk behind a switch.
@@ -161,6 +253,17 @@ class FakeDevice:
     #: succession but not atomically, so a client can be told about a shot the
     #: index has not listed yet.
     hidden_from_index: set[int] = field(default_factory=set)
+    #: Profile ids the fake has been asked to star. The real firmware keeps
+    #: favourites and the selected id in NVS rather than in the profile files,
+    #: and stamps them onto the JSON as it serialises — so a test that asserts
+    #: on `favorite` is asserting on this, not on what it saved.
+    favorite_profile_ids: set[str] = field(default_factory=set)
+    selected_profile_id: str | None = None
+    #: A hook that corrupts what a save stores, for the one test that has to
+    #: prove the round-trip check catches a machine that did not store what it
+    #: was sent. Takes the parsed profile and returns what to keep.
+    mutate_on_save: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
     #: Seconds to stall every `/api/history/*` response. The real machine takes
     #: tens of milliseconds to read a `.slog` off LittleFS and rather longer off
     #: an SD card, and "does the API stay responsive during a backfill" is only
@@ -531,7 +634,7 @@ class FakeDevice:
             profiles = (
                 [{"id": p.get("id"), "label": p.get("label")} for p in self.profiles]
                 if minimal
-                else self.profiles
+                else [self._serialise(p) for p in self.profiles]
             )
             await self._reply(socket, tp, rid, profiles=profiles)
         elif tp == "req:profiles:load":
@@ -540,15 +643,92 @@ class FakeDevice:
             if found is None:
                 await self._reply(socket, tp, rid, error="Profile not found")
             else:
-                await self._reply(socket, tp, rid, profile=found)
+                await self._reply(socket, tp, rid, profile=self._serialise(found))
+        elif tp == "req:profiles:save":
+            await self._save_profile(socket, tp, rid, message)
+        elif tp == "req:profiles:delete":
+            await self._delete_profile(socket, tp, rid, str(message.get("id", "")))
+        elif tp == "req:profiles:select":
+            self.selected_profile_id = str(message.get("id", ""))
+            await self._reply(socket, tp, rid)
+        elif tp == "req:profiles:favorite":
+            self.favorite_profile_ids.add(str(message.get("id", "")))
+            await self._reply(socket, tp, rid)
+        elif tp == "req:profiles:unfavorite":
+            self.favorite_profile_ids.discard(str(message.get("id", "")))
+            await self._reply(socket, tp, rid)
         elif tp == "req:history:notes:get":
             wanted = str(message.get("id", ""))
             shot = next((s for s in self.shots.values() if pad6(s.entry.id) == wanted), None)
             await self._reply(socket, tp, rid, notes=(shot.notes if shot else {}) or {})
         else:
             # Fire-and-forget commands get no answer at all on the real device,
-            # and so do the writes this prototype never sends.
+            # and so do the writes this client is not allowed to make.
             return
+
+    # ── profile writes ───────────────────────────────────────────────
+
+    def _serialise(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """One stored profile, as the firmware would put it on the wire."""
+        profile_id = str(profile.get("id", ""))
+        return write_profile(
+            profile,
+            favorite=profile_id in self.favorite_profile_ids,
+            selected=profile_id == self.selected_profile_id,
+        )
+
+    async def _save_profile(
+        self, socket: web.WebSocketResponse, tp: str, rid: Any, message: dict[str, Any]
+    ) -> None:
+        """`ProfileManager::saveProfile`, quirks included.
+
+        Three of them, and all three are load-bearing for the push flow:
+
+        * an **absent or empty id gets a generated one**, which is the only way
+          a caller learns the id of what it just wrote;
+        * a save carrying an **existing id overwrites** that file — the upsert
+          this client refuses to perform, reproduced here so a test can prove
+          it never reaches the wire;
+        * a **new** profile is auto-favourited (`ProfileManager.cpp:186-188`),
+          so a push puts an unreviewed draft on the machine's home screen unless
+          somebody unstars it.
+        """
+        incoming = message.get("profile")
+        if not isinstance(incoming, dict):
+            await self._reply(socket, tp, rid, error="Save failed")
+            return
+        stored = dict(incoming)
+        profile_id = str(stored.get("id") or "")
+        is_new = not profile_id
+        if is_new:
+            profile_id = generate_short_id()
+        stored["id"] = profile_id
+        if self.mutate_on_save is not None:
+            stored = self.mutate_on_save(stored)
+            stored["id"] = profile_id
+        existing = next((p for p in self.profiles if p.get("id") == profile_id), None)
+        if existing is None:
+            self.profiles.append(stored)
+        else:
+            self.profiles[self.profiles.index(existing)] = stored
+        if is_new:
+            self.favorite_profile_ids.add(profile_id)
+        await self._reply(socket, tp, rid, profile=self._serialise(stored))
+
+    async def _delete_profile(
+        self, socket: web.WebSocketResponse, tp: str, rid: Any, profile_id: str
+    ) -> None:
+        found = next((p for p in self.profiles if p.get("id") == profile_id), None)
+        if found is None:
+            await self._reply(socket, tp, rid, error="Delete failed")
+            return
+        self.profiles.remove(found)
+        # Deleting removes it from favourites and clears the startup profile if
+        # it matched (`ProfileManager::deleteProfile`).
+        self.favorite_profile_ids.discard(profile_id)
+        if self.selected_profile_id == profile_id:
+            self.selected_profile_id = None
+        await self._reply(socket, tp, rid)
 
     async def _reply(
         self, socket: web.WebSocketResponse, tp: str, rid: Any, **payload: Any

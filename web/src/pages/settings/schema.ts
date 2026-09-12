@@ -17,7 +17,48 @@ const NUMBER = /^-?(?:\d+|\d*\.\d+)$/;
 
 export type SettingsFormValues = Record<string, string | boolean>;
 
+/**
+ * The firmware's own hard limits, mirrored from `gaggiclanker/settings.py`.
+ *
+ * A deliberate second copy, and the only one in this file: the server refuses
+ * these too, and it is the refusal that matters. What this buys is the error
+ * appearing under the field as somebody types rather than after a round trip —
+ * "the safety policy is narrower than the firmware, not wider" is a sentence
+ * worth reading *before* pressing save.
+ *
+ * When the Python changes, change this. The pair rules are deliberately NOT
+ * mirrored: comparing two fields needs the form's whole state, and a check that
+ * only half works would be worse than sending it to the server.
+ */
+const POLICY_LIMITS: Record<string, { min: number; max: number; described: string }> = {
+  profilePolicyTemperatureMinC: { min: 0, max: 150, described: "0-150 °C" },
+  profilePolicyTemperatureMaxC: { min: 0, max: 150, described: "0-150 °C" },
+  profilePolicyPressureMaxBar: { min: 0, max: 12, described: "0-12 bar" },
+  profilePolicyFlowMaxMlS: { min: 0, max: 15, described: "0-15 ml/s" },
+  profilePolicyPhaseDurationMinS: { min: 0.5, max: 300, described: "0.5-300 s" },
+  profilePolicyPhaseDurationMaxS: { min: 0.5, max: 300, described: "0.5-300 s" },
+};
+
 export function fieldSchema(setting: ResolvedSetting): z.ZodTypeAny {
+  const limits = POLICY_LIMITS[setting.key];
+  if (limits) {
+    return z
+      .string()
+      .regex(NUMBER, "expected a number")
+      .refine((raw) => {
+        const value = Number.parseFloat(raw);
+        return value >= limits.min && value <= limits.max;
+      }, `the safety policy is narrower than the firmware, not wider: ${limits.described}`);
+  }
+  if (setting.key === "profilePolicyMaxPhases") {
+    return z
+      .string()
+      .regex(INTEGER, "expected an integer")
+      .refine(
+        (raw) => Number.parseInt(raw, 10) >= 1,
+        "a profile has at least one phase, so this must be 1 or more",
+      );
+  }
   // A secret is write-only: the form never holds its value, and blank means
   // "leave whatever is stored alone".
   if (setting.secret) return z.string();
@@ -129,6 +170,12 @@ export const SETTINGS_SECTIONS = [
     description:
       "Off unless a username and a password are both set. Turn it on if anything you do not trust can reach this box.",
   },
+  {
+    id: "safety",
+    title: "Profile safety policy",
+    description:
+      "Bounds narrower than the firmware's own parser. A profile drafted for the machine is clamped to these and then re-validated; anything a clamp cannot fix is refused rather than quietly rewritten. The firmware itself accepts 150 °C and 300 s phases.",
+  },
   { id: "general", title: "General", description: "Everything else in the registry." },
 ] as const;
 
@@ -145,6 +192,10 @@ export const SETTINGS_SECTIONS = [
 const LLM_PREFIXES = ["llm", "anthropic", "claudeCode", "model"];
 
 export function sectionFor(key: string): string {
+  // Before the `device` prefix check: `profilePolicy*` is about what may be
+  // written, not about how the machine is reached, and burying seven bounds in
+  // the connection section would hide them.
+  if (key.startsWith("profilePolicy")) return "safety";
   if (key.startsWith("device") || key.startsWith("gaggimate")) return "device";
   if (LLM_PREFIXES.some((prefix) => key.startsWith(prefix))) return "llm";
   if (key.startsWith("auth")) return "auth";

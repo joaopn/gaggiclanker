@@ -31,6 +31,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.json_schema import SkipJsonSchema
 
 # ── shared base ──────────────────────────────────────────────────────
 
@@ -62,6 +63,20 @@ PROFILE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,31}$"
 #: Sentinel on `pump.pressure` / `pump.flow`: hold whatever was measured at
 #: phase entry instead of driving to a fixed setpoint (BrewProcess.h:206-209).
 HOLD_MEASURED = -1.0
+
+#: What gaggiclanker appends to the label of every profile it writes to the
+#: machine. Two jobs, and both matter:
+#:
+#: * on the display, it is how a person tells a profile this box created from
+#:   one they authored, in a list that is otherwise just names;
+#: * in `delete_profile`, it is half of the provenance check — we delete a
+#:   profile only when its label carries this *and* the `device_writes` audit
+#:   says we created that id. Either alone is not enough: a label can be edited
+#:   on the machine, and an id can be reused after a delete.
+#:
+#: crema's convention, and kept identical on purpose — a shared archive of
+#: GaggiMate profiles is more useful if "[AI]" means the same thing in both.
+APP_PROFILE_SUFFIX = " [AI]"
 
 
 class Transition(DeviceModel):
@@ -166,7 +181,13 @@ class Profile(BaseModel):
     utility: bool = False
     phases: list[Phase] = Field(min_length=1)
     #: The `^_` annotation keys, kept so an import round-trips what it read.
-    annotations: dict[str, Any] = Field(default_factory=dict)
+    #:
+    #: `SkipJsonSchema` because this model is also an LLM output schema
+    #: (the draft call), and `strict_json_schema` marks every property
+    #: required. A model dutifully answering `"annotations": {}` would then hit
+    #: the validator below, which refuses the key outright — so the field is
+    #: kept out of the schema rather than out of the model.
+    annotations: SkipJsonSchema[dict[str, Any]] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod
@@ -196,6 +217,26 @@ class Profile(BaseModel):
             body = {"id": self.id, **body}
         body.update(self.annotations)
         return body
+
+    def for_new_device_profile(self, label: str | None = None) -> Profile:
+        """A copy safe to hand to `req:profiles:save` as a **new** profile.
+
+        Three fields are cleared and the reason is the same for all of them:
+        they belong to the machine, not to the document. `id` empty is what
+        makes the firmware generate one (`ProfileManager::saveProfile`) instead
+        of overwriting the file that id names; `selected` and `favorite` live in
+        NVS and are stamped back on load, so sending our own values would be
+        writing a preference we were never asked for. The web UI strips exactly
+        these three on export, duplicate and import, for exactly this reason.
+        """
+        return self.model_copy(
+            update={
+                "id": None,
+                "selected": False,
+                "favorite": False,
+                "label": self.label if label is None else label,
+            }
+        )
 
 
 #: What `writeProfile` emits for a phase that was authored without a transition
@@ -264,6 +305,19 @@ def _canonical_phase(phase: dict[str, Any]) -> dict[str, Any]:
 def profile_content_hash(profile: Profile) -> str:
     """sha256 of :func:`canonical_profile_json` — the profile's content identity."""
     return hashlib.sha256(canonical_profile_json(profile).encode("utf-8")).hexdigest()
+
+
+def with_app_suffix(label: str) -> str:
+    """``"9 Bar"`` -> ``"9 Bar [AI]"``, and idempotent.
+
+    Idempotent because a draft is routinely refined from a profile this box
+    already pushed, and ``"9 Bar [AI] [AI]"`` on the machine's brew screen would
+    be this feature's most visible bug.
+    """
+    stripped = label.rstrip()
+    if stripped.endswith(APP_PROFILE_SUFFIX.strip()):
+        return stripped
+    return f"{stripped}{APP_PROFILE_SUFFIX}"
 
 
 def _normalise_numbers(value: Any) -> Any:

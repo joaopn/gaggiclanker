@@ -5,16 +5,30 @@ browser UI is one of them, so this class holds exactly one connection for the
 whole process and multiplexes every request over it. A second connection is not
 a fallback; index polling is what the sync engine falls back to.
 
-The read-only rule
-------------------
+The two-list rule
+-----------------
 
-The prototype writes nothing to the device. That is
-not a convention here, it is the type surface — the only public methods are the
-ten reads listed in :data:`READ_ONLY_METHODS`, :meth:`_send` is private, and
-``tests/device/test_public_surface.py`` fails the build if a tenth appears. A
-write to `/api/settings` clears every boolean key it omits, and a bad
-`req:profiles:save` can leave the machine with a profile that will not brew;
-neither is something a sync loop should be able to reach by accident.
+The public surface is two closed lists and nothing else: the ten reads in
+:data:`READ_ONLY_METHODS`, and the five profile writes in
+:data:`GATED_WRITE_METHODS`. :meth:`_send` stays private and
+``tests/device/test_public_surface.py`` fails the build if an eleventh read or a
+sixth write appears, or if a request type outside those five turns up anywhere
+in this module — including in a docstring.
+
+The lists are separate because the two halves have different rules. A read
+needs a socket. **A write additionally needs a gate** (:mod:`.writes`): it is
+authorised against the `deviceWritesEnabled` setting and the `device_writes`
+audit before a byte goes out, and the attempt is recorded either way. A client
+built without a gate gets :class:`~gaggiclanker.device.writes.DenyAllWrites` and
+can write nothing at all, so read-only is what you get by forgetting.
+
+What is *not* here, and will not be: `POST /api/settings` (it clears every
+boolean key the body omits, and it can change WiFi and PID), anything under
+`req:history:*` (deletion is unrecoverable — the machine is the only copy until
+we have synced it), and `req:profiles:reorder` (it rewrites the display's whole
+ordering for a cosmetic gain). A bad `req:profiles:save` can still leave the
+machine with a profile that will not brew, which is why four validation layers
+sit in front of these five methods and none of them is in this file.
 
 Failure modes, and which one you get
 ------------------------------------
@@ -39,10 +53,10 @@ import json
 import random
 import time
 from collections import deque
-from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass, replace
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Literal, Self
 from uuid import uuid4
 
 import aiohttp
@@ -72,19 +86,34 @@ from gaggiclanker.device.events import (
     StatusChanged,
     merge_status,
 )
+from gaggiclanker.device.writes import (
+    DenyAllWrites,
+    DeviceWriteGate,
+    DeviceWriteRefused,
+    PendingWrite,
+    payload_hash,
+)
 from gaggiclanker.domain.ids import pad6, unpad
 from gaggiclanker.domain.index import parse_index
-from gaggiclanker.domain.models import LiveStatus, OtaSettings, Profile, ShotIndex, ShotNotes
+from gaggiclanker.domain.models import (
+    APP_PROFILE_SUFFIX,
+    LiveStatus,
+    OtaSettings,
+    Profile,
+    ShotIndex,
+    ShotNotes,
+    canonical_profile_json,
+)
 from gaggiclanker.domain.slog import Slog, SlogError, header_size_for, is_html_response, parse_slog
 from gaggiclanker.infra.sse import EventBus
 
-__all__ = ["READ_ONLY_METHODS", "GaggimateClient", "SlogFetch"]
+__all__ = ["GATED_WRITE_METHODS", "READ_ONLY_METHODS", "GaggimateClient", "SlogFetch"]
 
 log = structlog.get_logger(__name__)
 
-#: The client's entire public API. Pinned by a test rather than by review: the
-#: point of a read-only prototype is that nobody can add `save_profile()`
-#: without also deleting the line that says the device is read-only.
+#: Half of the client's public API: everything that only *asks*. Pinned by a
+#: test rather than by review, so an eleventh read cannot appear without
+#: somebody also editing the list that says what this client is allowed to do.
 READ_ONLY_METHODS: frozenset[str] = frozenset(
     {
         "list_profiles",
@@ -97,6 +126,20 @@ READ_ONLY_METHODS: frozenset[str] = frozenset(
         "fetch_notes_json",
         "get_status",
         "get_settings",
+    }
+)
+
+#: The other half: the five writes this client can make, every one of them a profile
+#: operation and every one of them behind :class:`DeviceWriteGate`. The list is
+#: closed and the test pins it; a sixth entry is a design decision, not a
+#: refactor.
+GATED_WRITE_METHODS: frozenset[str] = frozenset(
+    {
+        "save_profile",
+        "delete_profile",
+        "select_profile",
+        "favorite_profile",
+        "unfavorite_profile",
     }
 )
 
@@ -197,6 +240,7 @@ class GaggimateClient:
         backoff_max: float = BACKOFF_MAX_S,
         stable_after: float = STABLE_CONNECTION_S,
         slog_retry_budget: float = SLOG_RETRY_BUDGET_S,
+        write_gate: DeviceWriteGate | None = None,
     ) -> None:
         if not host:
             raise ValueError("GaggimateClient needs a host; an empty host means 'no machine'")
@@ -204,6 +248,9 @@ class GaggimateClient:
         self.protocol = protocol
         self.timeout = timeout
         self.events: DeviceEventBus = events if events is not None else EventBus[DeviceEvent]()
+        # Deny-all unless somebody deliberately handed us a gate. A client that
+        # nobody configured is a client that cannot change a machine.
+        self._gate: DeviceWriteGate = write_gate if write_gate is not None else DenyAllWrites()
 
         self._backoff_initial = backoff_initial
         self._backoff_max = backoff_max
@@ -626,6 +673,223 @@ class GaggimateClient:
                 details=str(exc),
             ) from exc
 
+    # ── gated write surface ──────────────────────────────────────────
+    #
+    # Five methods, each one frame, each behind the gate. The validation that
+    # decides whether a *document* is fit to send lives above this layer
+    # (`gaggiclanker/domain/profile_policy.py` and the draft service); what is
+    # enforced here is narrower and absolute: writes are off unless somebody
+    # turned them on, a save never overwrites, and a delete only ever removes a
+    # profile this box created.
+
+    async def save_profile(self, profile: Profile) -> Profile:
+        """Store ``profile`` on the machine as a **new** profile. Returns it.
+
+        The returned profile is the firmware's own serialisation of what it
+        stored, carrying the id `generateShortID()` assigned — which is the only
+        way to learn that id, and the document the round-trip check compares
+        against.
+
+        **It cannot overwrite.** `ProfileManager::saveProfile` upserts on the
+        file `/p/<id>.json`, so a save carrying an existing id replaces somebody
+        else's profile; a profile that arrives here with an id is therefore
+        refused outright rather than silently stripped, because a caller that
+        passed one meant something by it and quietly doing something else is how
+        you lose a profile somebody spent an evening on.
+
+        Two things the firmware does on its own, worth knowing before reading
+        the result back: a new profile is **auto-favourited**
+        (`ProfileManager.cpp:186-188`), and `selected`/`favorite` are re-stamped
+        from NVS on every load. Neither is part of what a profile brews, and
+        :func:`canonical_profile_json` drops all three.
+        """
+        write = PendingWrite(
+            kind="profile_save",
+            host=self.host,
+            device_id=profile.id,
+            payload_hash=payload_hash(canonical_profile_json(profile)),
+        )
+        if profile.id is not None:
+            refusal = DeviceWriteRefused(
+                f"save_profile creates new profiles only, and this one carries the id "
+                f"{profile.id!r}. Saving with an existing id overwrites that profile on the "
+                "machine; build a fresh document with Profile.for_new_device_profile()."
+            )
+            # Audited like every other refusal. "Something tried to overwrite a
+            # profile" is exactly the row a person wants to find later, and a
+            # refusal that leaves no trace is the one kind nobody can debug.
+            await self._record(write, "refused", str(refusal))
+            raise refusal
+        body = profile.to_device()
+        message = await self._write(
+            write,
+            "req:profiles:save",
+            id_from_response=_saved_profile_id,
+            profile=body,
+        )
+        served = message.get("profile")
+        if not isinstance(served, dict):
+            raise DeviceProtocolError("res:profiles:save carried no profile back")
+        try:
+            stored = Profile.model_validate(served)
+        except ValidationError as exc:
+            raise DeviceProtocolError(
+                "The machine accepted the profile and served back something that does not "
+                "validate; treat the save as unverified and check the display",
+                details=str(exc),
+            ) from exc
+        if stored.id is None:
+            raise DeviceProtocolError("The machine saved a profile and gave it no id")
+        log.info("device_profile_saved", host=self.host, profile_id=stored.id, label=stored.label)
+        return stored
+
+    async def delete_profile(self, profile_id: str) -> None:
+        """Delete a profile **this box created**, and nothing else.
+
+        Two independent proofs are required, and both can be checked:
+
+        * the label on the machine right now ends in :data:`APP_PROFILE_SUFFIX`,
+          which is read here, from the device, rather than from our mirror — the
+          mirror can be stale and the display is the authority on its own files;
+        * the gate finds an `ok` `profile_save` for this id in `device_writes`,
+          which is the part a label cannot fake.
+
+        Either alone is insufficient. A person can rename a profile to end in
+        "[AI]"; an id can be reused by the firmware after a delete. Together
+        they mean this is the profile we pushed and it is still ours.
+        """
+        write = PendingWrite(
+            kind="profile_delete",
+            host=self.host,
+            device_id=profile_id,
+            payload_hash=payload_hash(profile_id),
+        )
+        # The gate first, before the read. A delete that the switch forbids, or
+        # that names a profile this box did not create, must not put a frame on
+        # the wire at all — and `load_profile` is a frame. The machine has three
+        # WebSocket slots and a refused write should cost it none of them.
+        await self._authorize(write)
+        profile = await self.load_profile(profile_id)
+        if not profile.label.rstrip().endswith(APP_PROFILE_SUFFIX.strip()):
+            refusal = DeviceWriteRefused(
+                f"Profile {profile_id!r} is labelled {profile.label!r}, which does not carry the "
+                f"{APP_PROFILE_SUFFIX.strip()} suffix. This box only deletes profiles it wrote."
+            )
+            await self._gate.record(write, result="refused", error=str(refusal))
+            raise refusal
+        await self._write(write, "req:profiles:delete", id=profile_id, authorized=True)
+        log.info("device_profile_deleted", host=self.host, profile_id=profile_id)
+
+    async def select_profile(self, profile_id: str) -> None:
+        """Make ``profile_id`` the machine's selected profile.
+
+        Never called by a push: a draft is pushed *beside* what the person is
+        brewing with, never in place of it. This exists so the UI can offer it
+        as a separate, deliberate action.
+        """
+        write = PendingWrite(
+            kind="profile_select",
+            host=self.host,
+            device_id=profile_id,
+            payload_hash=payload_hash(profile_id),
+        )
+        await self._write(write, "req:profiles:select", id=profile_id)
+
+    async def favorite_profile(self, profile_id: str) -> None:
+        """Star a profile, so it appears on the machine's home screen."""
+        write = PendingWrite(
+            kind="profile_favorite",
+            host=self.host,
+            device_id=profile_id,
+            payload_hash=payload_hash(profile_id),
+        )
+        await self._write(write, "req:profiles:favorite", id=profile_id)
+
+    async def unfavorite_profile(self, profile_id: str) -> None:
+        """Unstar a profile.
+
+        The one this pair exists for: the firmware auto-favourites every new
+        profile, so a push puts an unreviewed draft on the home screen whether
+        anybody wanted it there or not. This is how that is undone.
+        """
+        write = PendingWrite(
+            kind="profile_unfavorite",
+            host=self.host,
+            device_id=profile_id,
+            payload_hash=payload_hash(profile_id),
+        )
+        await self._write(write, "req:profiles:unfavorite", id=profile_id)
+
+    async def _authorize(self, write: PendingWrite) -> None:
+        """Ask the gate, and record the refusal if it says no.
+
+        Separate from :meth:`_write` because one write — the delete — has to
+        read from the machine before it knows whether it is allowed to proceed,
+        and that read must not happen until the gate has already said yes.
+        """
+        try:
+            await self._gate.authorize(write)
+        except DeviceError as exc:
+            await self._record(write, "refused", str(exc))
+            raise
+
+    async def _write(
+        self,
+        write: PendingWrite,
+        tp: str,
+        *,
+        id_from_response: Callable[[dict[str, Any]], str | None] | None = None,
+        authorized: bool = False,
+        **payload: Any,
+    ) -> dict[str, Any]:
+        """Authorise, send, record. The only path from a write method to `_send`.
+
+        Every outcome leaves an audit row, and the three results mean different
+        things to whoever reads them later: `refused` never reached the wire,
+        `failed` did and the machine said no or said nothing, `ok` is a write
+        the machine acknowledged — which is not yet the same as a write the
+        machine *stored*, and that is what the round-trip check is for.
+
+        ``id_from_response`` exists for the save, which is the one write whose
+        subject does not exist until the machine answers: the audit row has to
+        carry the id `generateShortID()` produced, or no save would ever satisfy
+        the provenance check and nothing this box pushed could be deleted by it.
+
+        ``authorized`` says the caller has already been through
+        :meth:`_authorize` — the delete has to, because it reads the profile's
+        label off the machine first and that read must not happen for a write
+        the gate would refuse. Asking twice would be harmless but would also let
+        a second refusal write a second audit row for one attempt.
+
+        A failure inside :meth:`DeviceWriteGate.record` is swallowed: losing the
+        audit row for a write that worked is bad, and turning it into an
+        exception that makes the caller think the write failed is worse.
+        """
+        if not authorized:
+            await self._authorize(write)
+        try:
+            message = await self._send(tp, **payload)
+        except Exception as exc:
+            await self._record(write, "failed", f"{type(exc).__name__}: {exc}")
+            raise
+        recorded = write
+        if id_from_response is not None:
+            assigned = id_from_response(message)
+            if assigned:
+                recorded = replace(write, device_id=assigned)
+        await self._record(recorded, "ok", "")
+        return message
+
+    async def _record(
+        self, write: PendingWrite, result: Literal["ok", "refused", "failed"], error: str
+    ) -> None:
+        try:
+            await self._gate.record(write, result=result, error=error[:500])
+        except Exception:  # pragma: no cover - bookkeeping must not break a write
+            log.warning("device_write_audit_failed", host=self.host, kind=write.kind, exc_info=True)
+
+    # ── read-only WebSocket surface, continued ───────────────────────
+
     async def get_shot_notes(self, shot_id: int | str) -> ShotNotes | None:
         """The device's notes for a shot, or ``None`` when it has none.
 
@@ -872,6 +1136,20 @@ class GaggimateClient:
             raise DeviceProtocolError(
                 f"The machine's notes for {padded} do not validate", details=str(exc)
             ) from exc
+
+
+def _saved_profile_id(message: dict[str, Any]) -> str | None:
+    """The id `req:profiles:save` came back with, for the audit row.
+
+    Deliberately forgiving: this runs before the response is validated, and an
+    audit row naming the id is worth having even when the document beside it
+    turns out to be something we cannot parse.
+    """
+    profile = message.get("profile")
+    if not isinstance(profile, dict):
+        return None
+    served = profile.get("id")
+    return served if isinstance(served, str) and served else None
 
 
 def _looks_header_only(raw: bytes) -> bool:

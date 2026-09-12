@@ -1,6 +1,6 @@
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
-import { getDeviceStatus } from "@/api/client";
-import type { DeviceStatusData } from "@/api/types";
+import { getDeviceStatus, getDeviceWrites } from "@/api/client";
+import type { DeviceStatusData, DeviceWritesData } from "@/api/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -18,6 +18,22 @@ export function useDeviceStatus(): UseQueryResult<DeviceStatusData, Error> {
     queryFn: getDeviceStatus,
     refetchInterval: 30_000,
     staleTime: 10_000,
+    retry: 0,
+  });
+}
+
+/**
+ * Every write this box has asked the machine to make, and whether the switch
+ * that allows them is on.
+ *
+ * Both in one query because they are read together: a list of refusals means
+ * one thing when writes are off and something quite different when they are on,
+ * and two requests would render the wrong sentence for a moment every time.
+ */
+export function useDeviceWrites(limit = 100): UseQueryResult<DeviceWritesData, Error> {
+  return useQuery({
+    queryKey: queryKeys.device.writes(),
+    queryFn: () => getDeviceWrites(limit),
     retry: 0,
   });
 }

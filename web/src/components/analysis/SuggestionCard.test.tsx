@@ -59,7 +59,9 @@ describe("SuggestionCard", () => {
     renderWithQueryClient(<SuggestionCard suggestion={suggestion({ variable: "pressure" })} />);
 
     expect(screen.queryByTestId("accept-suggestion")).not.toBeInTheDocument();
-    expect(await screen.findByText(/writes nothing to the machine/)).toBeInTheDocument();
+    // It points at the draft flow rather than saying "cannot be done": since
+    // profile drafts exist, a profile change has a route, it is just not this button.
+    expect(await screen.findByText(/Draft profile/)).toBeInTheDocument();
     // But it can still be turned down: the advice was read and disagreed with.
     expect(screen.getByTestId("reject-suggestion")).toBeInTheDocument();
   });

@@ -18,6 +18,7 @@ from gaggiclanker.auth.service import AuthService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
@@ -29,6 +30,7 @@ from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.sse import SseEventBus
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
@@ -43,6 +45,8 @@ __all__ = [
     "BeansRepoDep",
     "DatabaseDep",
     "DeviceClientDep",
+    "DeviceWritesRepoDep",
+    "DraftServiceDep",
     "EnvSettingsDep",
     "EventBusDep",
     "GrindersRepoDep",
@@ -193,6 +197,22 @@ def get_suggestions_repo(request: Request) -> SuggestionsRepository:
     return SuggestionsRepository(get_database(request))
 
 
+def get_device_writes_repo(request: Request) -> DeviceWritesRepository:
+    return DeviceWritesRepository(get_database(request))
+
+
+def get_draft_service(request: Request) -> ProfileDraftService:
+    """The profile-draft service. App-scoped, because it holds the device client.
+
+    That client is the one object in the app that can change a machine, and it
+    is built once in the lifespan with the write gate wired into it. A
+    per-request service would have to build its own — which would mean building
+    a second gate, or worse, a client with none.
+    """
+    service: ProfileDraftService = request.app.state.drafts
+    return service
+
+
 DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
@@ -215,3 +235,5 @@ RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
 AnalysesRepoDep = Annotated[AnalysesRepository, Depends(get_analyses_repo)]
 SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_repo)]
 AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]
+DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_writes_repo)]
+DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]

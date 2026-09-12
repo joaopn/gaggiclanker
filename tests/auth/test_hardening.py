@@ -315,16 +315,22 @@ async def test_the_limit_is_per_user_when_auth_is_on(
 # ---------------------------------------------------------------------------
 
 
-def test_the_device_client_surface_is_still_read_only() -> None:
+def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     """A second copy of `tests/device/test_public_surface.py`'s question.
 
     The release checklist asks it again rather than trusting that the earlier
-    test is still being run, because "the prototype writes nothing to the
-    machine" is the claim the README makes to whoever installs this.
+    test is still being run, because what this box can do to somebody's machine
+    is the claim the README makes to whoever installs it. Profile push changed
+    the answer from "nothing" to "five profile writes, all gated", so the question
+    here changes with it — but it is still asked twice, in two files, on purpose.
     """
     import inspect
 
-    from gaggiclanker.device.client import READ_ONLY_METHODS, GaggimateClient
+    from gaggiclanker.device.client import (
+        GATED_WRITE_METHODS,
+        READ_ONLY_METHODS,
+        GaggimateClient,
+    )
 
     public = {
         name
@@ -332,8 +338,23 @@ def test_the_device_client_surface_is_still_read_only() -> None:
         if not name.startswith("_") and inspect.isfunction(value)
     }
     lifecycle = {"start", "stop", "wait_connected", "subscribe"}
-    assert public == set(READ_ONLY_METHODS) | lifecycle
-    assert all(not name.startswith(("save", "delete", "write", "set_")) for name in public)
+    assert public == set(READ_ONLY_METHODS) | set(GATED_WRITE_METHODS) | lifecycle
+    # Nothing that writes anything but a profile, and nothing named as though
+    # it might: `set_` would catch `set_settings`, which is the endpoint that
+    # clears every boolean key it omits.
+    assert all(not name.startswith(("write", "set_")) for name in public - set(GATED_WRITE_METHODS))
+
+
+def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> None:
+    """The switch in front of all five writes defaults to off.
+
+    A default that had drifted to True would make every other guard in this
+    feature the only thing standing between a bug and a display that will not
+    brew.
+    """
+    from gaggiclanker.settings import SETTINGS_REGISTRY
+
+    assert SETTINGS_REGISTRY["deviceWritesEnabled"].default is False
 
 
 def test_the_unauthenticated_surface_is_three_routes(app: FastAPI) -> None:

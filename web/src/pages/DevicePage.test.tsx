@@ -11,16 +11,18 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getDeviceStatus, getSyncStatus, runSync } = vi.hoisted(() => ({
+const { getDeviceStatus, getSyncStatus, runSync, getDeviceWrites } = vi.hoisted(() => ({
   getDeviceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   runSync: vi.fn(),
+  getDeviceWrites: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getDeviceStatus,
   getSyncStatus,
   runSync,
+  getDeviceWrites,
 }));
 
 function deviceStatus(overrides: Partial<DeviceStatusData> = {}): DeviceStatusData {
@@ -88,6 +90,7 @@ beforeEach(() => {
   getDeviceStatus.mockResolvedValue(deviceStatus());
   getSyncStatus.mockResolvedValue(syncStatus());
   runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
+  getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
 });
 
 describe("DevicePage", () => {
@@ -217,5 +220,48 @@ describe("DevicePage", () => {
 
     expect(await screen.findByText("No machine configured")).toBeInTheDocument();
     expect(screen.getByText(/gaggimateHost/)).toBeInTheDocument();
+  });
+
+  it("lists every write, refusals included, and says whether writes are on", async () => {
+    // The refused rows are the ones worth having: "nothing tried to write" and
+    // "something tried and was stopped" look identical in an audit that only
+    // records what worked.
+    getDeviceWrites.mockResolvedValue({
+      enabled: false,
+      items: [
+        {
+          id: 2,
+          kind: "profile_save",
+          host: "gaggimate.local",
+          device_id: null,
+          payload_hash: "abc",
+          result: "refused",
+          error: "Writing to the machine is switched off.",
+          created_at: "2026-03-01T09:00:00.000Z",
+        },
+        {
+          id: 1,
+          kind: "profile_delete",
+          host: "gaggimate.local",
+          device_id: "aB3xYz90Pq",
+          payload_hash: "def",
+          result: "ok",
+          error: "",
+          created_at: "2026-02-28T09:00:00.000Z",
+        },
+      ],
+    });
+    renderWithQueryClient(<DevicePage />);
+
+    const table = await screen.findByTestId("device-writes");
+    expect(table).toHaveTextContent("profile_save");
+    expect(table).toHaveTextContent("refused");
+    expect(table).toHaveTextContent("aB3xYz90Pq");
+    expect(screen.getByText("writes off")).toBeInTheDocument();
+  });
+
+  it("says plainly when this box has never written to the machine", async () => {
+    renderWithQueryClient(<DevicePage />);
+    expect(await screen.findByTestId("device-writes-empty")).toBeInTheDocument();
   });
 });

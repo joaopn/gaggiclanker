@@ -10,6 +10,7 @@ import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
 import { BeansPage } from "@/pages/BeansPage";
 import { DevicePage } from "@/pages/DevicePage";
+import { DraftsPage } from "@/pages/DraftsPage";
 import { HardwarePage } from "@/pages/HardwarePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { KnowledgePage } from "@/pages/KnowledgePage";
@@ -110,6 +111,7 @@ export function App() {
           <Route path="/beans" element={<BeansPage />} />
           <Route path="/hardware" element={<HardwarePage />} />
           <Route path="/profiles" element={<ProfilesPage />} />
+          <Route path="/drafts" element={<DraftsPage />} />
           <Route path="/import" element={<ImportPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/settings" element={<SettingsPage />} />

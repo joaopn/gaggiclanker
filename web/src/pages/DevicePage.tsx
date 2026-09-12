@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Cpu, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { runSync } from "@/api/client";
-import type { DeviceIdentity } from "@/api/types";
+import type { DeviceIdentity, DeviceWrite } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSyncStatus } from "@/hooks/useArchive";
 import { useLiveStatus } from "@/hooks/useDeviceLive";
-import { useDeviceStatus } from "@/hooks/useDeviceStatus";
+import { useDeviceStatus, useDeviceWrites } from "@/hooks/useDeviceStatus";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { queryKeys } from "@/lib/queryKeys";
 import { DEVICE_MODES, formatNumber, formatTime } from "@/lib/shots";
@@ -28,6 +28,7 @@ import { DEVICE_MODES, formatNumber, formatTime } from "@/lib/shots";
 export function DevicePage() {
   const device = useDeviceStatus();
   const sync = useSyncStatus();
+  const writes = useDeviceWrites();
   const live = useLiveStatus();
   const queryClient = useQueryClient();
 
@@ -188,7 +189,83 @@ export function DevicePage() {
           </p>
         ) : null}
       </SectionCard>
+
+      <DeviceWritesCard
+        enabled={writes.data?.enabled ?? false}
+        items={writes.data?.items ?? []}
+        pending={writes.isPending}
+      />
     </div>
+  );
+}
+
+/**
+ * Everything this box has ever asked the machine to change.
+ *
+ * The refusals are the rows worth having. "Nothing tried to write" and
+ * "something tried and was stopped" look identical in an audit that only
+ * records successes, and they are very different facts about a box sitting on
+ * somebody's counter.
+ */
+function DeviceWritesCard({
+  enabled,
+  items,
+  pending,
+}: {
+  enabled: boolean;
+  items: DeviceWrite[];
+  pending: boolean;
+}) {
+  return (
+    <SectionCard
+      title="Writes to the machine"
+      description="Every write attempt, refused ones included. gaggiclanker writes profiles and nothing else: never device settings, which clear every boolean key they omit, and never shot history, which is unrecoverable."
+      actions={
+        enabled ? (
+          <Badge variant="secondary">writes enabled</Badge>
+        ) : (
+          <Badge variant="outline">writes off</Badge>
+        )
+      }
+      contentClassName="overflow-x-auto"
+    >
+      {pending ? (
+        <Skeleton className="h-16 w-full" />
+      ) : items.length === 0 ? (
+        <p className="text-muted-foreground text-sm" data-testid="device-writes-empty">
+          Nothing has been written to this machine.
+        </p>
+      ) : (
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="border-border border-b text-muted-foreground text-xs uppercase tracking-wide">
+            <tr>
+              <th className="py-2 pr-4 font-medium">When</th>
+              <th className="py-2 pr-4 font-medium">What</th>
+              <th className="py-2 pr-4 font-medium">Profile</th>
+              <th className="py-2 font-medium">Result</th>
+            </tr>
+          </thead>
+          <tbody data-testid="device-writes">
+            {items.map((write) => (
+              <tr key={write.id} className="border-border border-b last:border-0">
+                <td className="py-2 pr-4">{formatTime(write.created_at)}</td>
+                <td className="py-2 pr-4 font-mono text-xs">{write.kind}</td>
+                <td className="py-2 pr-4 font-mono text-xs">{write.device_id ?? "—"}</td>
+                <td className="py-2">
+                  {write.result === "ok" ? (
+                    <Badge variant="secondary">ok</Badge>
+                  ) : (
+                    <span title={write.error}>
+                      <Badge variant="outline">{write.result}</Badge>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </SectionCard>
   );
 }
 

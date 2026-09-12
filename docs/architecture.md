@@ -111,7 +111,8 @@ web bundle outside it. A test enumerates the application's own OpenAPI document
 and asserts each route answers 401, so a router added later is covered the day
 it is mounted.
 
-**The device is read-only, enforced by a test.** See
+**What can reach the machine is two closed lists, enforced by a test.** Ten
+reads, and five profile writes behind a switch that is off by default. See
 [`safety-layers.md`](safety-layers.md).
 
 ## What runs where

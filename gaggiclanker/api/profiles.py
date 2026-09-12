@@ -119,7 +119,7 @@ async def list_profile_versions(
     profiles: ProfilesRepoDep,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
-    source: Annotated[Literal["device", "import"] | None, Query()] = None,
+    source: Annotated[Literal["device", "import", "draft"] | None, Query()] = None,
 ) -> JSONResponse:
     """Newest first, with `mirrored` saying whether the machine still has it.
 

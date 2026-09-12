@@ -64,12 +64,24 @@ machine's copy is gone. That single fact is why quarantine exists.
 **10. `POST /api/settings` on the device clears any boolean key you omit.**
 It is the one endpoint that can change WiFi and PID, and a partial write turns
 off HomeKit, boiler fill and the momentary buttons. gaggiclanker never writes
-device settings.
+device settings — the five writes it *can* make are all `req:profiles:*`, and
+they are off by default (`docs/safety-layers.md`).
 
 **11. Profile JSON has undocumented fields, and `pump` must be an integer.**
 The firmware includes `transition.target`, which a strict validator has to
 tolerate. Send integer `pump` percentages: a float like `100.0` is parsed as an
 *object* with zero targets, leaving a profile that never runs the pump.
+
+Three more that only matter once you write one. `req:profiles:save`
+**upserts on the filename** `/p/<id>.json`, so a save carrying somebody else's
+id silently replaces their profile — send no id and let `generateShortID()`
+assign one. A **new profile is auto-favourited** (`ProfileManager.cpp:186-188`),
+so a push puts an unreviewed draft on the machine's home screen unless you
+unstar it. And `writeProfile` **never echoes what you sent**: it parses into a
+struct and serialises the struct, adding `id`, `favorite`, `selected`,
+`transition.target` and a spelled-out phase `temperature` of `0`, and dropping
+`targets` when the list is empty. A round-trip comparison has to be done in a
+canonical form that tolerates exactly that set — `canonical_profile_json` is it.
 
 **12. Trust the header's `sampleInterval` and each sample's own `t`.**
 Not the nominal 250 ms, and not the 100 ms that gaggimate-mcp's research
@@ -82,6 +94,7 @@ These are enforced, not merely documented. `gaggiclanker/device/fake.py` is a
 real HTTP + WebSocket server that reproduces the awkward ones — half-written
 `.slog` files, the SPA served where binary was asked for, 503 during an OTA, the
 three-client limit — and the whole offline suite runs against it.
-`tests/device/test_simulator.py` and `tests/simulator/test_e2e.py` then check the
-same client against the actual firmware compiled natively, which is what caught
-`OtaSettings` rejecting every real identity frame.
+`tests/device/test_simulator.py`, `tests/simulator/test_e2e.py` and
+`tests/simulator/test_profile_push.py` then check the same client against the
+actual firmware compiled natively, which is what caught `OtaSettings` rejecting
+every real identity frame.

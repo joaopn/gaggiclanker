@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
   getProfiles,
+  getProfileVersion,
   getProfileVersions,
   getShot,
   getShotSamples,
@@ -16,6 +17,7 @@ import type {
   ProfileListData,
   ProfileVersionListData,
   ProfileVersionParams,
+  ProfileVersionRow,
   ShotDetailData,
   ShotListData,
   ShotListParams,
@@ -123,6 +125,17 @@ export function useProfileVersions(
   return useQuery({
     queryKey: queryKeys.profiles.versions(params as Record<string, unknown>),
     queryFn: () => getProfileVersions(params),
+  });
+}
+
+/** One version's full document. Fetched only when the draft editor opens it. */
+export function useProfileVersion(
+  id: number | undefined,
+): UseQueryResult<ProfileVersionRow, Error> {
+  return useQuery({
+    queryKey: queryKeys.profiles.version(String(id)),
+    queryFn: () => getProfileVersion(id as number),
+    enabled: id !== undefined && Number.isFinite(id),
   });
 }
 

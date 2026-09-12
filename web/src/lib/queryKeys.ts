@@ -86,6 +86,15 @@ export const queryKeys = {
     list: () => ["profiles", "list"] as const,
     versions: (filters?: Record<string, unknown>) =>
       ["profiles", "versions", filters ?? {}] as const,
+    // Its own prefix rather than a member of `versions`: a version document is
+    // immutable, and keying it under the list would refetch it every time the
+    // list is invalidated by a push.
+    version: (id: string) => ["profiles", "version", id] as const,
+  },
+  drafts: {
+    all: ["drafts"] as const,
+    list: (filters?: Record<string, unknown>) => ["drafts", "list", filters ?? {}] as const,
+    detail: (id: string) => ["drafts", "detail", id] as const,
   },
   knowledge: {
     all: ["knowledge"] as const,
@@ -103,7 +112,11 @@ export const queryKeys = {
     forSet: (setId: string) => ["analyses", "set", setId] as const,
   },
   imports: { all: ["imports"] as const, list: () => ["imports", "list"] as const },
-  device: { all: ["device"] as const, status: () => ["device", "status"] as const },
+  device: {
+    all: ["device"] as const,
+    status: () => ["device", "status"] as const,
+    writes: () => ["device", "writes"] as const,
+  },
   llm: {
     all: ["llm"] as const,
     status: () => ["llm", "status"] as const,

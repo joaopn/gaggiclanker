@@ -239,6 +239,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/device/writes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every write this box has asked the machine to make
+         * @description Newest first, refusals included.
+         *
+         *     A refused write never reached the wire and is the most useful row here: it
+         *     is what "something tried to write while this was switched off" looks like.
+         */
+        get: operations["list_device_writes_api_device_writes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/grinders": {
         parameters: {
             query?: never;
@@ -554,6 +577,172 @@ export interface paths {
          * @description Name and notes only. Identity comes from the device and stays there.
          */
         patch: operations["patch_machine_api_machines__machine_id__patch"];
+        trace?: never;
+    };
+    "/api/profile-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The draft queue
+         * @description Newest first. `open=true` is the queue: drafted, approved, or failed.
+         *
+         *     `failed` counts as open on purpose. A push that did not verify left a
+         *     profile on the machine that somebody has to decide about, and filing it
+         *     under "done" is how it stays there.
+         */
+        get: operations["list_drafts_api_profile_drafts_get"];
+        put?: never;
+        /** Draft a profile, from advice or by hand */
+        post: operations["create_draft_api_profile_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One draft with both documents */
+        get: operations["get_draft_api_profile_drafts__draft_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a draft ready to push
+         * @description Refused with a 409 when the draft moves a stop condition and nobody said so.
+         *
+         *     The refusal carries the list of changes in `details`, so a client that sent
+         *     the approval without the acknowledgement can show exactly what it is asking
+         *     the person to confirm.
+         */
+        post: operations["approve_draft_api_profile_drafts__draft_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn a draft down */
+        post: operations["discard_draft_api_profile_drafts__draft_id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save the draft to the machine as a new profile, and read it back
+         * @description A 200 does **not** mean the push verified — read `draft.status`.
+         *
+         *     `pushed` means the machine served back what we sent. `failed` means it did
+         *     not, and the draft then carries both documents and a device id the rollback
+         *     route can delete. Both are outcomes of a completed request; only a refusal
+         *     (writes disabled, no machine, the draft not approved, a stale base) is an
+         *     error status.
+         */
+        post: operations["push_draft_api_profile_drafts__draft_id__push_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}/refine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft again, with more to go on; the old draft is superseded */
+        post: operations["refine_draft_api_profile_drafts__draft_id__refine_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/{draft_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete the machine's copy of a push that did not verify */
+        post: operations["rollback_draft_api_profile_drafts__draft_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-drafts/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a profile document without storing it
+         * @description Live validation for the JSON editor: schema, policy and what would clamp.
+         *
+         *     Answers 200 whatever it finds — "this is not valid yet" is the normal state
+         *     of a document somebody is halfway through typing, not an error.
+         */
+        post: operations["preview_draft_api_profile_drafts_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/profile-versions": {
@@ -1507,12 +1696,36 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[DeviceWritesData] */
+        ApiResponse_DeviceWritesData_: {
+            data?: components["schemas"]["DeviceWritesData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[dict[str, bool]] */
         ApiResponse_dict_str__bool__: {
             /** Data */
             data?: {
                 [key: string]: boolean;
             } | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[DraftListData] */
+        ApiResponse_DraftListData_: {
+            data?: components["schemas"]["DraftListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[DraftPreview] */
+        ApiResponse_DraftPreview_: {
+            data?: components["schemas"]["DraftPreview"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -1622,6 +1835,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ProfileDraftDetail] */
+        ApiResponse_ProfileDraftDetail_: {
+            data?: components["schemas"]["ProfileDraftDetail"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ProfileDraftRow] */
+        ApiResponse_ProfileDraftRow_: {
+            data?: components["schemas"]["ProfileDraftRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ProfileListData] */
         ApiResponse_ProfileListData_: {
             data?: components["schemas"]["ProfileListData"] | null;
@@ -1657,6 +1886,14 @@ export interface components {
         /** ApiResponse[PromptListData] */
         ApiResponse_PromptListData_: {
             data?: components["schemas"]["PromptListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PushedData] */
+        ApiResponse_PushedData_: {
+            data?: components["schemas"]["PushedData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2150,6 +2387,175 @@ export interface components {
             } | null;
         };
         /**
+         * DeviceWriteRow
+         * @description One audit row, as the Device page renders it.
+         */
+        DeviceWriteRow: {
+            /** Created At */
+            created_at: string;
+            /** Device Id */
+            device_id?: string | null;
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /**
+             * Host
+             * @default
+             */
+            host: string;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Payload Hash
+             * @default
+             */
+            payload_hash: string;
+            /** Result */
+            result: string;
+        };
+        /**
+         * DeviceWritesData
+         * @description The write audit, plus whether the switch that allows them is on.
+         *
+         *     Both in one response because they are read together: a list of refusals
+         *     means one thing when writes are off and something quite different when they
+         *     are on, and a page that had to make two requests to say which would render
+         *     the wrong sentence for a moment every time.
+         */
+        DeviceWritesData: {
+            /** Enabled */
+            enabled: boolean;
+            /** Items */
+            items: components["schemas"]["DeviceWriteRow"][];
+        };
+        /**
+         * DraftApprove
+         * @description The approval, and the acknowledgement it may require.
+         */
+        DraftApprove: {
+            /**
+             * Acknowledge Stop Changes
+             * @default false
+             */
+            acknowledge_stop_changes: boolean;
+        };
+        /**
+         * DraftCreate
+         * @description Ask for a draft. Either the model writes it, or you did.
+         *
+         *     `profile` present means "this document, validated" and no provider is
+         *     contacted. `profile` absent means "draft one from the advice", which needs
+         *     at least one of `analysis_id` or `suggestion_id` — a draft with nothing to
+         *     go on is a model rewriting somebody's profile for no stated reason.
+         */
+        DraftCreate: {
+            /** Analysis Id */
+            analysis_id?: number | null;
+            /** Base Version Id */
+            base_version_id: number;
+            /**
+             * Change Summary
+             * @default
+             */
+            change_summary: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Suggestion Id */
+            suggestion_id?: number | null;
+        };
+        /**
+         * DraftListData
+         * @description The queue. Rows only — the documents are on the detail route.
+         */
+        DraftListData: {
+            /** Items */
+            items: components["schemas"]["ProfileDraftRow"][];
+        };
+        /**
+         * DraftPreview
+         * @description What the manual editor gets back for a document it has not saved yet.
+         *
+         *     The editor validates live against the schema *and* the policy, which is two
+         *     different failure modes with two different fixes, so the response keeps them
+         *     apart: ``schema_errors`` means the document is not a profile, ``violations``
+         *     means it is a profile the policy will not allow, and ``clamp_changes`` means
+         *     it is a profile the policy would quietly move — which is allowed, but only
+         *     once somebody has seen the list.
+         */
+        DraftPreview: {
+            /** Clamp Changes */
+            clamp_changes?: components["schemas"]["PolicyChange"][];
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Schema Errors */
+            schema_errors?: string[];
+            /** Stop Condition Changes */
+            stop_condition_changes?: components["schemas"]["StopConditionChange"][];
+            /** Valid */
+            valid: boolean;
+            /** Violations */
+            violations?: components["schemas"]["Violation"][];
+        };
+        /**
+         * DraftPreviewRequest
+         * @description A document the editor has not saved, for live validation.
+         */
+        DraftPreviewRequest: {
+            /** Base Version Id */
+            base_version_id: number;
+            /** Profile */
+            profile: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DraftPush
+         * @description Where the push should land, beyond the machine.
+         */
+        DraftPush: {
+            /**
+             * Allow Stale Base
+             * @default false
+             */
+            allow_stale_base: boolean;
+            /** Set Id */
+            set_id?: number | null;
+        };
+        /**
+         * DraftRefine
+         * @description A new draft from an existing one, with something more to go on.
+         */
+        DraftRefine: {
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /**
          * FieldChange
          * @description One difference between a version and its parent.
          */
@@ -2548,6 +2954,26 @@ export interface components {
             /** Sessions Revoked */
             sessions_revoked: boolean;
         };
+        /**
+         * PolicyChange
+         * @description One number the policy moved, and what it was before.
+         *
+         *     Rendered verbatim beside the approve button. ``path`` is the address inside
+         *     the document (`phases[2].pump.pressure`) so the UI can point at the field
+         *     rather than describing it.
+         */
+        PolicyChange: {
+            /** After */
+            after: number;
+            /** Before */
+            before: number;
+            /** Field */
+            field: string;
+            /** Path */
+            path: string;
+            /** Reason */
+            reason: string;
+        };
         /** @enum {string} */
         Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
         /**
@@ -2557,6 +2983,85 @@ export interface components {
         ProfileDetailData: {
             profile: components["schemas"]["DeviceProfileSummary"];
             version: components["schemas"]["ProfileVersionRow"];
+        };
+        /**
+         * ProfileDraftDetail
+         * @description One draft with both documents, which is what the diff view needs.
+         *
+         *     The list route deliberately does not carry these — a page of fifty drafts
+         *     with two profile documents each is a payload nobody reads — so the queue
+         *     lists rows and this answers "show me that one".
+         */
+        ProfileDraftDetail: {
+            /** Base Profile */
+            base_profile?: {
+                [key: string]: unknown;
+            } | null;
+            draft: components["schemas"]["ProfileDraftRow"];
+            /** Draft Profile */
+            draft_profile?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ProfileDraftRow
+         * @description One draft, with the joined labels a reader needs beside it.
+         */
+        ProfileDraftRow: {
+            /**
+             * Acknowledged Stop Changes
+             * @default false
+             */
+            acknowledged_stop_changes: boolean;
+            /** Base Device Profile Id */
+            base_device_profile_id?: string | null;
+            /**
+             * Base Is Current
+             * @default true
+             */
+            base_is_current: boolean;
+            /** Base Label */
+            base_label?: string | null;
+            /** Base Version Id */
+            base_version_id: number;
+            /**
+             * Change Summary
+             * @default
+             */
+            change_summary: string;
+            clamp_changes?: components["schemas"]["JsonList"];
+            /** Created At */
+            created_at: string;
+            /** Draft Label */
+            draft_label?: string | null;
+            /** Draft Version Id */
+            draft_version_id?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Parent Draft Id */
+            parent_draft_id?: number | null;
+            /** Pushed Device Profile Id */
+            pushed_device_profile_id?: string | null;
+            /** Source Analysis Id */
+            source_analysis_id?: number | null;
+            /** Source Suggestion Id */
+            source_suggestion_id?: number | null;
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            stop_condition_changes?: components["schemas"]["JsonList"];
+            /** Updated At */
+            updated_at: string;
+            verification?: components["schemas"]["JsonObject"];
         };
         /**
          * ProfileListData
@@ -2703,6 +3208,14 @@ export interface components {
         ProviderBody: {
             /** Provider */
             provider?: string | null;
+        };
+        /**
+         * PushedData
+         * @description What a push produced: the draft, and the Set version if one was asked for.
+         */
+        PushedData: {
+            draft: components["schemas"]["ProfileDraftRow"];
+            set_version?: components["schemas"]["SetVersionRow"] | null;
         };
         /**
          * RateLimitData
@@ -3050,6 +3563,8 @@ export interface components {
             origin_analysis_id?: number | null;
             /** Profile Version Id */
             profile_version_id?: number | null;
+            /** Pushed Device Profile Id */
+            pushed_device_profile_id?: string | null;
             /** Target Temperature C */
             target_temperature_c?: number | null;
             /** Target Yield G */
@@ -3085,6 +3600,8 @@ export interface components {
             profile_label?: string | null;
             /** Profile Version Id */
             profile_version_id?: number | null;
+            /** Pushed Device Profile Id */
+            pushed_device_profile_id?: string | null;
             /** Set Id */
             set_id: number;
             /**
@@ -3569,6 +4086,32 @@ export interface components {
         /** @enum {string} */
         StepUnit: "clicks" | "numbers" | "microns" | "free";
         /**
+         * StopConditionChange
+         * @description One stop condition that a draft added, removed or moved.
+         *
+         *     crema's rule, and the reason this has its own type rather than being part
+         *     of the general diff: a stop condition is the thing that decides when the
+         *     machine stops pumping water into the cup. Changing a pressure setpoint
+         *     makes a different shot; changing a stop condition can make a different
+         *     *amount of coffee*, and the person approving the draft is told so and has
+         *     to tick a box.
+         */
+        StopConditionChange: {
+            after?: components["schemas"]["TargetSpec"] | null;
+            before?: components["schemas"]["TargetSpec"] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "added" | "removed" | "changed";
+            /** Phase Index */
+            phase_index: number;
+            /** Phase Name */
+            phase_name: string;
+            /** Target Type */
+            target_type: string;
+        };
+        /**
          * SuggestionListData
          * @description `GET /api/sets/{id}/suggestions`: every piece of advice about this Set.
          *
@@ -3760,6 +4303,18 @@ export interface components {
             running: boolean;
         };
         /**
+         * TargetSpec
+         * @description One stop condition, in the shape the diff renders.
+         */
+        TargetSpec: {
+            /** Operator */
+            operator: string;
+            /** Type */
+            type: string;
+            /** Value */
+            value: number;
+        };
+        /**
          * TasteGroup
          * @description A named group of chips, with the direction it points.
          */
@@ -3849,6 +4404,18 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * Violation
+         * @description One thing :func:`clamp` could not fix, in words a person can act on.
+         */
+        Violation: {
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+            /** Path */
+            path: string;
         };
         /**
          * Vocabulary
@@ -4302,6 +4869,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DeviceStatusData_"];
+                };
+            };
+        };
+    };
+    list_device_writes_api_device_writes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DeviceWritesData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4797,12 +5395,309 @@ export interface operations {
             };
         };
     };
+    list_drafts_api_profile_drafts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                open?: boolean;
+                status?: ("draft" | "approved" | "pushed" | "failed" | "discarded" | "superseded") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DraftListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_api_profile_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_api_profile_drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDraftDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_draft_api_profile_drafts__draft_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_draft_api_profile_drafts__draft_id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_draft_api_profile_drafts__draft_id__push_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftPush"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PushedData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refine_draft_api_profile_drafts__draft_id__refine_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRefine"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_draft_api_profile_drafts__draft_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_draft_api_profile_drafts_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DraftPreview_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_profile_versions_api_profile_versions_get: {
         parameters: {
             query?: {
                 limit?: number;
                 offset?: number;
-                source?: ("device" | "import") | null;
+                source?: ("device" | "import" | "draft") | null;
             };
             header?: never;
             path?: never;

@@ -29,11 +29,14 @@ from gaggiclanker.auth.service import AuthService, validate_env_secret
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.analyses import AnalysesRepository
+from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.drafts.gate import SettingsWriteGate
+from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.envelope import register_exception_handlers
 from gaggiclanker.infra.logging import configure_logging, get_logger
 from gaggiclanker.infra.middleware import RequestContextMiddleware
@@ -137,6 +140,7 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
         with suppress(Exception):
             await device.stop()
     app.state.sync = None
+    app.state.drafts = None
 
     tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
     if tasks is not None:
@@ -249,11 +253,23 @@ async def _start(app: FastAPI, db: Database) -> None:
         bus=app.state.events,
     )
 
-    app.state.device = await start_device_client(settings_service)
+    app.state.device = await start_device_client(settings_service, db)
     app.state.sync = await start_sync_engine(app)
 
+    # App-scoped because it holds the one client that can change a machine. A
+    # per-request service would have to build its own — and a client built
+    # without the gate cannot write at all, which is the right default and the
+    # wrong thing to discover from a push that silently refused.
+    app.state.drafts = ProfileDraftService(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        settings_service,
+        client=app.state.device,
+    )
 
-async def start_device_client(settings: SettingsService) -> GaggimateClient | None:
+
+async def start_device_client(settings: SettingsService, db: Database) -> GaggimateClient | None:
     """Build and start the device client, or return ``None`` if there is no machine.
 
     An unset ``gaggimateHost`` is a supported configuration, not an error: the
@@ -278,6 +294,10 @@ async def start_device_client(settings: SettingsService) -> GaggimateClient | No
         host,
         protocol=str(await settings.get("gaggimateProtocol") or "ws"),
         timeout=float(await settings.get("gaggimateTimeoutSeconds")),
+        # The one place the gate is attached. Without it every write method
+        # refuses, which is what a client built anywhere else in this codebase
+        # gets — see `gaggiclanker/device/writes.py`.
+        write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db)),
     )
     await client.start()
     log.info("device_client_started", host=host)

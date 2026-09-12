@@ -8,6 +8,43 @@ may change between releases; migrations are forward-only and run at boot, so an
 upgrade is `docker compose pull && docker compose up -d` — but take a backup
 first (`POST /api/backup`), because there is no down-migration.
 
+## [Unreleased]
+
+### Profile drafts and push to the machine
+
+The first thing gaggiclanker writes to a GaggiMate. It turns an analysis's
+`profile_patch`, or a hand edit, into a validated profile draft, and — once a
+person has approved it — saves it to the display as a **new** profile.
+
+- **Off by default.** `deviceWritesEnabled` gates all five write methods and is
+  re-read on every write, not cached at boot. A device client built without the
+  app's gate can write nothing at all, so read-only is what forgetting gives you.
+- **Never overwrites, never selects.** `save_profile` refuses a profile carrying
+  an id — the firmware upserts on the filename — so the machine always assigns
+  its own. The pushed profile sits beside whatever you were brewing with.
+- **Deletes only what it created.** Two independent proofs: the label on the
+  machine ends in ` [AI]`, and the `device_writes` audit holds a successful save
+  for that id.
+- **A safety policy narrower than the firmware**, tunable from Settings:
+  60–100 °C, 0–12 bar, 0–10 ml/s, phases of 0.5–120 s, at most ten of them. It
+  clamps and **says what it moved**; anything a clamp cannot fix is refused
+  rather than quietly rewritten.
+- **Stop conditions need an explicit acknowledgement.** A draft that adds,
+  removes or moves a `targets` entry changes how much coffee ends up in the cup,
+  and cannot be approved until somebody says they meant it. `9` and `9.0` are not
+  a change.
+- **Round-trip verified.** The push reads the profile back and compares canonical
+  JSON. A mismatch is a stored `failed` draft carrying both documents plus one
+  button that deletes the machine's copy.
+- **Every attempt audited**, refusals included, and listed on the Device page.
+- **A simulator gate**: every profile fixture and one generated draft saved to
+  the real firmware compiled natively, read back, brewed, and deleted.
+  `scripts/profile_gate.py` runs the same four layers over a file from a shell.
+
+New: `GET/POST /api/profile-drafts` and its approve / push / rollback / discard
+/ refine routes, `GET /api/device/writes`, a Drafts page, "Draft profile" on the
+shot analysis panel, and "Edit as draft" on a profile version. Migration `0008`.
+
 ## [0.1.0] — 2026-09-11
 
 The prototype. It archives every shot a GaggiMate has taken, shows the curves

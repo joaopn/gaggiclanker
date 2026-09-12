@@ -160,15 +160,18 @@ export function SettingsPage() {
                     disabled={update.isPending}
                   />
                 ) : (
-                  entries.map((setting) => (
-                    <SettingField
-                      key={setting.key}
-                      setting={setting}
-                      control={form.control}
-                      error={form.formState.errors[setting.key]}
-                      disabled={update.isPending}
-                    />
-                  ))
+                  <>
+                    {section.id === "device" ? <DeviceWritesWarning /> : null}
+                    {entries.map((setting) => (
+                      <SettingField
+                        key={setting.key}
+                        setting={setting}
+                        control={form.control}
+                        error={form.formState.errors[setting.key]}
+                        disabled={update.isPending}
+                      />
+                    ))}
+                  </>
                 )}
               </SectionCard>
             );
@@ -228,6 +231,41 @@ export function SettingsPage() {
           </p>
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+/**
+ * The one setting on this page that can change somebody's espresso machine.
+ *
+ * Rendered above the field rather than as part of its description, because the
+ * description is a sentence in a small grey font under a dropdown and this is
+ * the thing a person should read before touching the dropdown. Plain about what
+ * goes wrong: a wedged display is recoverable, and the recovery is a reflash
+ * plus a filesystem erase.
+ */
+function DeviceWritesWarning() {
+  return (
+    <div
+      className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+      data-testid="device-writes-warning"
+    >
+      <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
+        <AlertTriangle className="size-3.5" aria-hidden="true" />
+        Device writes enabled
+      </p>
+      <p className="mt-1 text-status-warn-text text-xs">
+        Off by default. With it on, gaggiclanker may save a <strong>new</strong> profile to the
+        display, delete one it created itself, select one, and star or unstar one. It never
+        overwrites an existing profile, never writes device settings, and never touches shot
+        history. A profile with zero phases crashes brew start on the display and recovering that
+        means a reflash plus a filesystem erase — four validation layers stand in the way of that,
+        and this switch is the fifth. Every attempt, refused or not, is recorded on the{" "}
+        <Link className="underline underline-offset-2" to="/device">
+          Device page
+        </Link>
+        .
+      </p>
     </div>
   );
 }

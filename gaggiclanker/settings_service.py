@@ -16,6 +16,7 @@ import structlog
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.infra.errors import BadRequest
 from gaggiclanker.settings import (
+    SETTING_PAIRS,
     SETTINGS_REGISTRY,
     ResolvedSetting,
     SettingDefinition,
@@ -186,6 +187,8 @@ class SettingsService:
                 # client and the rejected value may be the secret being set.
                 failures.append({"field": key, "message": definition.expected})
 
+        failures.extend(await self._pair_failures(validated))
+
         if failures:
             raise BadRequest("Invalid settings update", details=failures)
 
@@ -197,6 +200,50 @@ class SettingsService:
 
         log.info("settings_updated", keys=sorted(validated))
         return await self.resolve_all()
+
+    async def _pair_failures(self, validated: dict[str, str | None]) -> list[dict[str, str]]:
+        """Check the bounds that only make sense in pairs.
+
+        Run after every key has passed its own validator, because a pair rule
+        compares two numbers and both have to *be* numbers first. The comparison
+        is against the **effective** value of each half — the one in this PATCH,
+        or the one already resolved when the body moves only one of them — so
+        raising the minimum above a maximum nobody touched is refused too.
+
+        A key sent as ``None`` clears its override, and what it reverts to is
+        not known until the row is gone. It is compared against its current
+        value instead, which errs towards refusing: a combination that would
+        have become valid is rejected and the person sends both halves. The
+        alternative errs towards storing an inverted pair, and an inverted pair
+        makes `clamp` stop clamping.
+        """
+        touched = [
+            pair for pair in SETTING_PAIRS if pair.lower in validated or pair.upper in validated
+        ]
+        if not touched:
+            return []
+        resolved = await self.resolve_all()
+        failures: list[dict[str, str]] = []
+        for pair in touched:
+            low = self._effective(pair.lower, validated, resolved)
+            high = self._effective(pair.upper, validated, resolved)
+            if low is not None and high is not None and low > high:
+                failures.append({"field": pair.lower, "message": pair.message})
+        return failures
+
+    def _effective(
+        self,
+        key: str,
+        validated: dict[str, str | None],
+        resolved: dict[str, ResolvedSetting],
+    ) -> float | None:
+        """What ``key`` will be worth once this PATCH lands, as a number."""
+        raw = validated.get(key) if validated.get(key) is not None else None
+        value = self.definition(key).parse(raw) if raw is not None else resolved[key].value
+        try:
+            return float(value)
+        except (TypeError, ValueError):  # pragma: no cover - both sides validated above
+            return None
 
     async def store(self, key: str, value: Any) -> None:
         """Write one setting, read-only flag and all.

@@ -193,6 +193,7 @@ export function ShotDetailPage() {
           shotId={row.id}
           analyses={shot.data.analyses ?? []}
           hasSet={shot.data.set_version != null}
+          profileVersionId={row.profile_version_id}
         />
       ) : null}
 

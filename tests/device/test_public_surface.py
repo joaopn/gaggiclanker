@@ -1,23 +1,31 @@
-"""The prototype writes nothing to the machine, and this is what enforces it.
+"""The client's surface is two closed lists, and this is what keeps them closed.
 
-The prototype writes nothing to the device until profile drafts and push are
-built. A convention decays; a test does not. The stakes are
-concrete: `POST /api/settings` clears every checkbox-style boolean key the body
-omits (so a partial write turns off HomeKit, boiler fill and the momentary
-buttons), `req:profiles:save` with a float `pump` leaves a profile that never
-runs the pump, and `req:history:delete` is unrecoverable — the machine is the
-only copy until we have synced it.
+The list used to be one: ten reads, and a failing test if an eleventh appeared.
+That was the right shape for a prototype that wrote nothing. Profile drafts and
+push add five profile writes, so the question this file answers changes from "is
+anything writable" to **"is exactly the agreed set writable, and is every one of
+them gated"**.
 
-If you are here because this test failed, the question is not "how do I update
-the list" but "has the four-layer write path in investigation.md §4.6 been
-built yet".
+The stakes have not changed. `POST /api/settings` clears every checkbox-style
+boolean key the body omits (so a partial write turns off HomeKit, boiler fill
+and the momentary buttons), `req:profiles:save` with a float `pump` leaves a
+profile that never runs the pump, `req:history:delete` is unrecoverable — the
+machine is the only copy until we have synced it — and a profile with zero
+phases crashes brew start on the display.
+
+So: two allow-lists, a forbidden-request-type grep that still covers everything
+outside them, and a check that no write method can reach `_send` except through
+the gate. If you are here because this test failed, the question is not "how do
+I update the list" but "does this write belong in the five, and has it got a
+validation layer in front of it".
 """
 
 from __future__ import annotations
 
 import inspect
 
-from gaggiclanker.device.client import READ_ONLY_METHODS, GaggimateClient
+from gaggiclanker.device.client import GATED_WRITE_METHODS, READ_ONLY_METHODS, GaggimateClient
+from gaggiclanker.device.writes import DenyAllWrites, DeviceWriteGate
 
 #: Methods that are part of running the client rather than talking to the
 #: machine. They send nothing the device can act on.
@@ -33,20 +41,35 @@ def public_methods() -> set[str]:
     }
 
 
-def test_the_public_surface_is_exactly_the_allowed_reads() -> None:
-    assert public_methods() == set(READ_ONLY_METHODS) | LIFECYCLE_METHODS
+def test_the_public_surface_is_exactly_the_two_allowed_lists() -> None:
+    assert public_methods() == set(READ_ONLY_METHODS) | set(GATED_WRITE_METHODS) | LIFECYCLE_METHODS
+
+
+def test_the_two_lists_do_not_overlap() -> None:
+    """A method in both lists would be a read nobody gates and a write nobody reads."""
+    assert not READ_ONLY_METHODS & GATED_WRITE_METHODS
 
 
 def test_every_allowed_method_actually_exists() -> None:
-    """A typo in the allow-list would make the test above vacuous."""
-    for name in READ_ONLY_METHODS:
+    """A typo in either allow-list would make the test above vacuous."""
+    for name in READ_ONLY_METHODS | GATED_WRITE_METHODS:
         assert callable(getattr(GaggimateClient, name)), name
 
 
-def test_no_method_name_suggests_a_write() -> None:
-    """A second net, cast wider than the exact list, for the obvious spellings."""
+def test_no_read_method_name_suggests_a_write() -> None:
+    """A second net, cast wider than the exact list, for the obvious spellings.
+
+    The write verbs are still forbidden — on the *reads*. Five methods are
+    allowed to be called `save_profile` and friends, and they are named
+    explicitly rather than matched by prefix, which is what stops
+    `save_settings` from ever looking like it belongs.
+    """
     forbidden = ("save", "delete", "write", "post", "set_", "update", "start_ota", "select")
-    offenders = [name for name in public_methods() if any(name.startswith(p) for p in forbidden)]
+    offenders = [
+        name
+        for name in public_methods() - set(GATED_WRITE_METHODS)
+        if any(name.startswith(prefix) for prefix in forbidden)
+    ]
     assert not offenders, offenders
 
 
@@ -56,25 +79,23 @@ def test_the_raw_sender_is_private() -> None:
     assert "_send" not in public_methods()
 
 
-def test_no_write_request_type_appears_anywhere_in_the_client() -> None:
+def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
     """Not even in a helper, a constant or a docstring's example call.
 
     A source grep rather than an API check, because the way a write sneaks back
-    in is somebody adding `req:profiles:save` to a private helper that a public
-    read then calls.
+    in is somebody adding `req:history:delete` to a private helper that a public
+    read then calls. The five profile writes the client allows are absent from
+    this list and checked separately below; everything else the firmware will
+    act on is here.
     """
     from gaggiclanker.device import client as module
 
     source = inspect.getsource(module)
     writes = (
-        # Profiles: everything that mutates the machine's profile store or its
-        # selection, including the two that only change a flag.
-        '"req:profiles:save"',
-        '"req:profiles:delete"',
-        '"req:profiles:select"',
+        # Profiles: the one mutation that is still refused. Reordering rewrites
+        # the display's whole `profileOrder` for a cosmetic gain, and a partial
+        # order silently drops the ids it omits.
         '"req:profiles:reorder"',
-        '"req:profiles:favorite"',
-        '"req:profiles:unfavorite"',
         # History: deletion is unrecoverable and a note write overwrites the
         # index's rating and volume as a side effect.
         '"req:history:delete"',
@@ -93,5 +114,43 @@ def test_no_write_request_type_appears_anywhere_in_the_client() -> None:
         '"req:raise-temp"',
         '"req:lower-temp"',
     )
-    found = [w for w in writes if w in source]
+    found = [write for write in writes if write in source]
     assert not found, found
+
+
+def test_each_allowed_write_type_appears_exactly_once() -> None:
+    """One frame per method, and no second place that sends it.
+
+    A duplicate would mean a code path that reaches `_send` without going
+    through the write method the audit and the gate are attached to.
+    """
+    from gaggiclanker.device import client as module
+
+    source = inspect.getsource(module)
+    for request_type in (
+        '"req:profiles:save"',
+        '"req:profiles:delete"',
+        '"req:profiles:select"',
+        '"req:profiles:favorite"',
+        '"req:profiles:unfavorite"',
+    ):
+        assert source.count(request_type) == 1, request_type
+
+
+def test_every_write_method_goes_through_the_gate() -> None:
+    """No write method calls `_send` directly; they all call `_write`.
+
+    `_write` is where authorisation and the audit row live, so a write that
+    reaches `_send` on its own is a write nobody recorded and nobody allowed.
+    """
+    for name in GATED_WRITE_METHODS:
+        source = inspect.getsource(getattr(GaggimateClient, name))
+        assert "self._send(" not in source, f"{name} reaches _send without the gate"
+        assert "self._write(" in source or "refused" in source, name
+
+
+def test_a_client_with_no_gate_refuses_everything() -> None:
+    """The default is deny-all, so read-only is what forgetting gives you."""
+    client = GaggimateClient("machine.test")
+    assert isinstance(client._gate, DenyAllWrites)
+    assert isinstance(client._gate, DeviceWriteGate)

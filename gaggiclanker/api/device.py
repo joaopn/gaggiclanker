@@ -6,21 +6,24 @@ the 2 Hz telemetry. Putting telemetry behind the poll would mean the UI either
 refetched twice a second or showed a stale temperature; putting identity in the
 stream would mean a tab that opened between two broadcasts knows nothing.
 
-The web UI builds the real device page on top of these. Everything here is read-only,
-like the client behind it.
+The web UI builds the real device page on top of these. Profile push adds a third: the
+audit of every write this box has ever asked the machine to make, which is the
+one page that can answer "what has this thing done to my machine".
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from gaggiclanker.api.deps import DeviceWritesRepoDep, SettingsServiceDep
+from gaggiclanker.db.repos.device_writes import DeviceWriteRow
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.events import Connected, DeviceEvent, Disconnected, StatusChanged
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
@@ -81,6 +84,39 @@ async def get_device_status(request: Request) -> JSONResponse:
             ),
         ).model_dump(mode="json")
     )
+
+
+class DeviceWritesData(BaseModel):
+    """The write audit, plus whether the switch that allows them is on.
+
+    Both in one response because they are read together: a list of refusals
+    means one thing when writes are off and something quite different when they
+    are on, and a page that had to make two requests to say which would render
+    the wrong sentence for a moment every time.
+    """
+
+    enabled: bool
+    items: list[DeviceWriteRow]
+
+
+@router.get(
+    "/writes",
+    response_model=ApiResponse[DeviceWritesData],
+    summary="Every write this box has asked the machine to make",
+)
+async def list_device_writes(
+    writes: DeviceWritesRepoDep,
+    settings: SettingsServiceDep,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> JSONResponse:
+    """Newest first, refusals included.
+
+    A refused write never reached the wire and is the most useful row here: it
+    is what "something tried to write while this was switched off" looks like.
+    """
+    items = await writes.list_writes(limit=limit)
+    enabled = bool(await settings.get("deviceWritesEnabled"))
+    return envelope_response(DeviceWritesData(enabled=enabled, items=items).model_dump(mode="json"))
 
 
 @router.get(

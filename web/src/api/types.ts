@@ -26,6 +26,7 @@ export type ShotDetailRow = components["schemas"]["ShotDetailRow"];
 export type ProfileListData = components["schemas"]["ProfileListData"];
 export type ProfileVersionListData = components["schemas"]["ProfileVersionListData"];
 export type ProfileVersionSummary = components["schemas"]["ProfileVersionSummary"];
+export type ProfileVersionRow = components["schemas"]["ProfileVersionRow"];
 export type DeviceProfileSummary = components["schemas"]["DeviceProfileSummary"];
 export type SyncStatusData = components["schemas"]["SyncStatusData"];
 export type ImportSummary = components["schemas"]["ImportSummary"];
@@ -441,4 +442,62 @@ export type DeviceConnectionEvent = {
   configured: boolean;
   host?: string;
   reason?: string;
+};
+
+// Profile drafts and the device-write audit. The rows are real
+// pydantic models, so they come from the schema; the two JSON columns on a
+// draft do not, because the server declares them as decoded JSON and OpenAPI
+// can only say "a list". Their element types are the same models the preview
+// endpoint returns, which is how the two halves stay one definition.
+export type ProfileDraft = components["schemas"]["ProfileDraftRow"];
+export type ProfileDraftDetail = components["schemas"]["ProfileDraftDetail"];
+export type ProfileDraftListData = components["schemas"]["DraftListData"];
+export type DraftPreview = components["schemas"]["DraftPreview"];
+export type DraftPushResult = components["schemas"]["PushedData"];
+export type PolicyChange = components["schemas"]["PolicyChange"];
+export type StopConditionChange = components["schemas"]["StopConditionChange"];
+export type PolicyViolation = components["schemas"]["Violation"];
+export type DeviceWrite = components["schemas"]["DeviceWriteRow"];
+export type DeviceWritesData = components["schemas"]["DeviceWritesData"];
+
+/** Every state a draft can be in, as the `status` CHECK spells them. */
+export type DraftStatus = "draft" | "approved" | "pushed" | "failed" | "discarded" | "superseded";
+
+/** `POST /api/profile-drafts`, in the two shapes the route accepts. */
+export type DraftCreateBody = {
+  base_version_id: number;
+  /** A complete profile document: the manual editor's path, no model involved. */
+  profile?: Record<string, unknown>;
+  analysis_id?: number;
+  suggestion_id?: number;
+  notes?: string;
+  change_summary?: string;
+  model?: string;
+};
+
+/**
+ * A draft's two JSON columns, decoded.
+ *
+ * `gaggiclanker/db/repos/profile_drafts.py` owns the shape; when that changes,
+ * change this. They are cast rather than generated because the columns are
+ * `JsonList` on the server, which OpenAPI renders as `unknown[]`.
+ */
+export function clampChangesOf(draft: ProfileDraft): PolicyChange[] {
+  return (draft.clamp_changes ?? []) as PolicyChange[];
+}
+
+export function stopConditionChangesOf(draft: ProfileDraft): StopConditionChange[] {
+  return (draft.stop_condition_changes ?? []) as StopConditionChange[];
+}
+
+/**
+ * The two documents a failed push recorded: what we sent, and what the machine
+ * served back. `null` on a draft that has not been pushed, and on a push that
+ * verified the `loaded` half is simply confirmation.
+ */
+export type PushVerification = {
+  sent?: Record<string, unknown> | null;
+  loaded?: Record<string, unknown> | null;
+  sent_canonical?: unknown;
+  loaded_canonical?: unknown;
 };

@@ -9,10 +9,12 @@ is.
 Three rules govern what can be accepted at all:
 
 * **Only four variables are actionable.** grind, dose, yield and temperature are
-  columns of `set_versions`; pressure, flow, pre-infusion, puck prep and profile
-  are edits to a profile, and gaggiclanker writes nothing to the device. Those
-  are refused with a message saying so, not silently
-  dropped — the suggestion is still worth reading.
+  columns of `set_versions`; pressure, flow, pre-infusion and profile are edits
+  to a profile, which now have a path of their own — a draft, four
+  validation layers, and a push that never overwrites. Accepting one *here*
+  would have to guess a number and write it to the machine in one step, which
+  is precisely what the draft flow exists to prevent, so it is still refused
+  with a message naming the route that does it properly.
 
 * **The Set must not have moved on.** A suggestion made about version 3 is a
   delta from version 3's numbers; applying it to version 5 is exactly the
@@ -109,9 +111,10 @@ async def accept_suggestion(
                 "field": "variable",
                 "message": (
                     "Only grind, dose, yield and temperature are recorded on a Set version. "
-                    "Pressure, flow, pre-infusion, puck prep and profile changes are edits to "
-                    "a brew profile, and this prototype writes nothing to the machine — make "
-                    "the change there and record a new Set version by hand."
+                    "Pressure, flow, pre-infusion and profile changes are edits to a brew "
+                    "profile: draft one from this analysis (POST /api/profile-drafts), review "
+                    "the diff, and push it as a new profile. Puck prep is neither — it is "
+                    "something to do differently at the machine."
                 ),
             },
         )

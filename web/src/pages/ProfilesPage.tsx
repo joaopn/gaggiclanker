@@ -1,25 +1,35 @@
-import { SlidersHorizontal, Star } from "lucide-react";
+import { FilePen, SlidersHorizontal, Star } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { ProfileVersionSummary } from "@/api/types";
+import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useProfiles, useProfileVersions } from "@/hooks/useArchive";
+import { useProfiles, useProfileVersion, useProfileVersions } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { formatDate } from "@/lib/shots";
 
 /**
- * The profile mirror, read-only — and it stays read-only for now.
+ * The profile mirror, plus the one way a profile gets *written*.
  *
- * A profile with zero phases crashes brew start on the display, and a float
- * `pump: 100.0` is parsed as an object with zero targets. Writing to the
- * machine is a feature with its own safety work; reading is this.
+ * Reading is the bulk of this page and always was. Editing, added later,
+ * never touches the machine from here: "Edit as draft" opens a JSON editor,
+ * validates against the strict schema and the safety policy on the server, and
+ * produces a **draft**. Drafts are approved and pushed from their own page,
+ * because a profile with zero phases crashes brew start on the display and a
+ * float `pump: 100.0` is parsed as an object with zero targets — neither is
+ * something a text box
+ * should be able to reach the machine with in one click.
  */
 export function ProfilesPage() {
   const profiles = useProfiles();
   const versions = useProfileVersions({ limit: 200 });
+  const [editing, setEditing] = useState<number | null>(null);
+  const editingVersion = useProfileVersion(editing ?? undefined);
 
   useQueryErrorToast(profiles.error, "Could not load profiles");
   useQueryErrorToast(versions.error, "Could not load profile versions");
@@ -98,7 +108,20 @@ export function ProfilesPage() {
         items={versions.data?.items ?? []}
         total={versions.data?.total ?? 0}
         pending={versions.isPending}
+        onEdit={setEditing}
       />
+
+      {editing !== null && editingVersion.data?.profile ? (
+        <ProfileJsonEditor
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditing(null);
+          }}
+          baseVersionId={editing}
+          label={editingVersion.data.label}
+          document={editingVersion.data.profile as Record<string, unknown>}
+        />
+      ) : null}
     </div>
   );
 }
@@ -117,10 +140,13 @@ function ProfileVersions({
   items,
   total,
   pending,
+  onEdit,
 }: {
   items: ProfileVersionSummary[];
   total: number;
   pending: boolean;
+  /** Open the draft editor on this version. */
+  onEdit: (versionId: number) => void;
 }) {
   if (pending) return <Skeleton className="h-24 w-full" />;
   if (items.length === 0) return null;
@@ -138,7 +164,10 @@ function ProfileVersions({
             <th className="py-2 pr-4 font-medium">Created</th>
             <th className="py-2 pr-4 text-right font-medium">Shots</th>
             <th className="py-2 pr-4 font-medium">Hash</th>
-            <th className="py-2 font-medium">On the machine</th>
+            <th className="py-2 pr-4 font-medium">On the machine</th>
+            <th className="py-2 font-medium">
+              <span className="sr-only">Edit as draft</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -177,12 +206,23 @@ function ProfileVersions({
                 )}
               </td>
               <td className="py-2 pr-4 font-mono text-xs">{version.content_hash.slice(0, 8)}</td>
-              <td className="py-2">
+              <td className="py-2 pr-4">
                 {version.mirrored ? (
                   <Badge variant="outline">mirrored</Badge>
                 ) : (
                   <span className="text-muted-foreground text-xs">not on the machine</span>
                 )}
+              </td>
+              <td className="py-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-testid="edit-as-draft"
+                  onClick={() => onEdit(version.id)}
+                >
+                  <FilePen className="size-3.5" aria-hidden="true" />
+                  Edit as draft
+                </Button>
               </td>
             </tr>
           ))}

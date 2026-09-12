@@ -80,8 +80,10 @@ export function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
             </Button>
           ) : (
             <p className="text-muted-foreground text-xs">
-              This is a profile change, and gaggiclanker writes nothing to the machine. Make it on
-              the machine and record a new Set version by hand.
+              This is a change to the brew profile rather than to the recipe, so there is no Set
+              field to record it in. Use "Draft profile" above: it turns the advice into a new
+              profile you can review, and pushes it as a new file on the machine rather than over
+              the one you are brewing with.
             </p>
           )}
           <Button

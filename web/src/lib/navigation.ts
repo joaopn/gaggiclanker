@@ -5,6 +5,7 @@ import {
   BookOpen,
   Coffee,
   Cpu,
+  FilePen,
   HardDrive,
   Import,
   Layers,
@@ -48,6 +49,10 @@ export const NAV_LINKS: NavLink[] = [
     shortcut: "g p",
     shortcutLabel: "g p",
   },
+  // Its own entry rather than a tab under Profiles: a draft is a thing with a
+  // queue and a state, and something waiting for a decision has to be visible
+  // from wherever you are.
+  { to: "/drafts", label: "Drafts", icon: FilePen, shortcut: "g r", shortcutLabel: "g r" },
   { to: "/import", label: "Import", icon: Import, shortcut: "g i", shortcutLabel: "g i" },
   { to: "/device", label: "Device", icon: HardDrive, shortcut: "g d", shortcutLabel: "g d" },
   { to: "/knowledge", label: "Knowledge", icon: BookOpen, shortcut: "g k", shortcutLabel: "g k" },

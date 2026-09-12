@@ -10,10 +10,12 @@ runs a per-shot LLM analysis through whichever provider you point it at.
 The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
-> **Status: 0.1.0, the prototype.** Everything in this README works: sync, the
-> shots UI, Sets and judgement, the LLM layer, the per-shot analyzer, optional
-> authentication and the container. It writes nothing to the machine and will
-> not until the four-layer write path in `docs/safety-layers.md` is built.
+> **Status: 0.1.0, the prototype, plus profile drafts and push.** Everything in this README
+> works: sync, the shots UI, Sets and judgement, the LLM layer, the per-shot
+> analyzer, optional authentication and the container. It can now
+> also put a profile *on* the machine — as a new `[AI]`-suffixed file, never
+> over an existing one, never selected for you, behind a switch that is off by
+> default and through the four layers in `docs/safety-layers.md`.
 > `CHANGELOG.md` has what landed in each release.
 
 ## Quick start

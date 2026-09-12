@@ -2,17 +2,29 @@
 
 Verified against the GaggiMate firmware source.
 
-**The prototype writes nothing to the device at all.** Not a profile, not a
-setting, not a mode change. That is a property of the code, not a convention:
-`GaggimateClient`'s entire public surface is ten reads listed in
-`READ_ONLY_METHODS`, `_send` is private, and `tests/device/test_public_surface.py`
-fails the build if an eleventh method appears or if a write request type shows
-up anywhere in the module — including in a docstring. Even the simulator
-end-to-end test, which genuinely needs the machine to brew, opens a throwaway
-socket of its own rather than widening that surface.
+**gaggiclanker writes exactly five things to a machine, and only when a person
+has switched writes on.** All five are profile operations — save, delete,
+select, favourite, unfavourite — and every one of them is a `req:profiles:*`
+frame. Not a setting, not a mode change, not a byte of shot history.
 
-This page describes what the four layers *will* be when writing to the machine
-is built, and why the bar is where it is.
+That is a property of the code, not a convention. `GaggimateClient`'s public
+surface is two closed lists — ten reads in `READ_ONLY_METHODS`, five writes in
+`GATED_WRITE_METHODS` — `_send` is private, no write method can reach it except
+through the gate, and `tests/device/test_public_surface.py` fails the build if
+an eleventh read or a sixth write appears, or if a request type outside those
+five shows up anywhere in the module, including in a docstring. Even the
+simulator end-to-end test, which genuinely needs the machine to brew, opens a
+throwaway socket of its own rather than widening that surface.
+
+The gate is `deviceWritesEnabled`, **off by default**, re-read on every single
+write rather than cached at boot — the person turning it off is usually the
+person who has just seen something they did not like. A client built without a
+gate (in a test, in a script) gets `DenyAllWrites` and can write nothing at all,
+so read-only is what you get by forgetting. Every attempt, authorised or
+refused, leaves a row in `device_writes`, which the Device page lists.
+
+This page describes the four layers between a profile and the machine, and why
+the bar is where it is.
 
 ## What can actually go wrong
 
@@ -46,7 +58,9 @@ socket.
 ## The four layers
 
 Applied in order to anything bound for the device, and the first of them applies
-to everything entering the database too.
+to everything entering the database too. `scripts/profile_gate.py` runs all four
+over a profile file from a shell, which is the cheapest way to check a
+hand-written one before it goes anywhere near a machine.
 
 **1. Schema validity — pydantic, strict.**
 A `Profile` model mirroring the firmware's own `schema/profile.json`:
@@ -63,25 +77,62 @@ today: a shot that fails parsing or validation is stored as a raw blob with
 is queryable.
 
 **2. A safety policy narrower than the firmware's.**
-Kept in a settings table so it can be tuned: temperature 60–100 °C, pressure
-0–12 bar, flow 0–10 ml/s, phase duration 0.5–120 s, at most 10 phases,
-transition duration no longer than its phase, every profile ending in a
-volumetric or pumped stop or a bounded duration, and an explicit acknowledgement
-in the UI when a draft changes a stop condition. Anything an LLM drafts is
-clamped to these bounds and then re-validated.
+`gaggiclanker/domain/profile_policy.py`, with its bounds in the settings
+registry (Settings → Profile safety policy) so they can be tuned: temperature
+60–100 °C, pressure 0–12 bar, flow 0–10 ml/s, phase duration 0.5–120 s, at most
+10 phases, transition duration no longer than its phase, and every profile
+ending in a volumetric or pumped stop or a bounded duration.
+
+Two functions, and the difference between them is the design. `clamp()` moves
+numbers into range **and says what it moved** — the list is stored on the draft
+and rendered beside the approve button, because a silent clamp is a profile
+nobody approved presented as one they did. `check()` reports what a clamp cannot
+fix, and that list is a refusal: eleven phases is *rejected*, never trimmed to
+ten, because truncating a profile would change what it brews while claiming to
+have made it safe.
+
+On top of the bounds, crema's rule: a draft that adds, removes or moves a
+`targets` entry needs an explicit acknowledgement before it can be approved.
+Everything else in a profile changes how a shot is pulled; a stop condition
+changes how much coffee ends up in the cup. The diff normalises numbers, so `9`
+and `9.0` are not a change anybody is asked to tick a box for.
 
 **3. Round-trip verification.**
 After `req:profiles:save`, load the returned id back and compare canonical JSON
-— numbers normalised, firmware-added fields tolerated. A mismatch marks the push
-`failed`, records both documents, and offers a one-click delete of the device's
-copy. "The machine says it saved it" is not the same as "the machine stored what
-we sent".
+— numbers normalised, firmware-added fields tolerated. `writeProfile` never
+echoes what you sent: it parses into a struct and serialises the struct, so the
+document that comes back has an `id`, a `favorite`, a `selected`, a
+`transition.target` and a spelled-out phase `temperature` of 0 that the document
+going out did not. `canonical_profile_json` drops exactly that set, which is why
+a faithful machine compares equal and an unfaithful one does not.
+
+A mismatch marks the push `failed`, records both documents on the draft, and
+offers a one-click delete of the device's copy. "The machine says it saved it"
+is not the same as "the machine stored what we sent", and the difference is only
+visible by reading it back.
+
+Two more rules live at this layer rather than in the policy, because they are
+about the machine rather than about the document. A save **never overwrites**:
+`saveProfile` upserts on `/p/<id>.json`, so `save_profile` refuses a profile
+carrying an id at all and the firmware generates its own. A delete needs **two
+independent proofs** that the profile is ours — the label on the machine right
+now ends in ` [AI]`, and the `device_writes` audit holds a successful save for
+that id. A person can rename a profile to end in "[AI]"; an id can be reused
+after a delete. Together they mean it is the profile we pushed and it is still
+ours.
 
 **4. A simulator gate in CI.**
-Every profile fixture and every generated draft is saved to the firmware's
-`display-sim` and brewed to completion. The simulator runs the same parser and
-the same brew code as the device, so what it accepts, the device accepts.
-`scripts/sim.sh` is what builds and runs it.
+`tests/simulator/test_profile_push.py`: every profile fixture is saved to the
+firmware's `display-sim`, read back and compared, then one drafted profile is
+pushed through the whole flow, selected, brewed to completion and rolled back.
+Everything it creates it deletes. The simulator runs the same parser and the
+same brew code as the device, so what it accepts, the device accepts.
+`scripts/sim.sh test` is what builds and runs it.
+
+This layer is also what makes layer 3 trustworthy: if the real `writeProfile`
+emitted a field `canonical_profile_json` does not drop, every push would report
+a mismatch and the feature would be unusable. The fake device reproduces
+`writeProfile` from the source; this checks the source.
 
 ## Why the layers are ordered this way
 

@@ -66,7 +66,10 @@ class ProfileVersionSummary(BaseModel):
     label: str
     type: str
     utility: bool = False
-    #: `device` (mirrored off the machine) or `import` (a file someone loaded).
+    #: `device` (mirrored off the machine), `import` (a file someone loaded), or
+    #: `draft` (this box authored it). A drafted version becomes a
+    #: mirrored one the moment it is pushed and the next profiles run sees it —
+    #: the hash is the same document, so it keeps the source it was created with.
     source: str = "device"
     created_at: str
     #: Whether some device profile currently points at this version. An imported
@@ -346,6 +349,44 @@ class ProfilesRepository(Repository):
             WHERE machine_id = ? AND deleted_at IS NULL AND device_id NOT IN ({placeholders})
             """,  # noqa: S608 - placeholders are bound parameters, one per id
             (utc_now(), machine_id, *seen),
+        )
+        return cursor.rowcount
+
+    async def find_device_id_for_version(self, version_id: int) -> str | None:
+        """Which live device profile currently holds this version, if any.
+
+        Recorded on a draft at creation time so staleness can be checked later.
+        ``None`` is a real answer, not a failure: an imported
+        version, or a version this box drafted, was never on the machine and has
+        nothing to drift from.
+        """
+        row = await self.db.fetch_one(
+            "SELECT device_id FROM device_profiles "
+            "WHERE current_version_id = ? AND deleted_at IS NULL LIMIT 1",
+            (version_id,),
+        )
+        return str(row["device_id"]) if row is not None else None
+
+    async def mark_one_deleted(self, device_id: str, machine_id: int | None = None) -> int:
+        """Tombstone one device profile, by id, without a list to diff against.
+
+        The rollback path's only write to the mirror. `mark_missing_deleted`
+        infers deletions from a fresh listing, which is right for sync and wrong
+        here: we know exactly which profile we just removed, and waiting for the
+        next sweep would leave the Profiles page showing a file that is gone.
+
+        A tombstone rather than a DELETE, as everywhere in this table: shots and
+        Set versions reference the version, and "the profile I used in March"
+        has to keep resolving.
+        """
+        where = "device_id = ? AND deleted_at IS NULL"
+        params: list[object] = [utc_now(), device_id]
+        if machine_id is not None:
+            where += " AND machine_id = ?"
+            params.append(machine_id)
+        cursor = await self.db.execute(
+            f"UPDATE device_profiles SET deleted_at = ? WHERE {where}",  # noqa: S608 - the clause is a literal, values are bound
+            params,
         )
         return cursor.rowcount
 

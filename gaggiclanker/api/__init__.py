@@ -10,6 +10,7 @@ from gaggiclanker.api import (
     backup,
     beans,
     device,
+    drafts,
     grinders,
     health,
     imports,
@@ -38,6 +39,7 @@ api_router.include_router(sync.router)
 api_router.include_router(shots.router)
 api_router.include_router(profiles.router)
 api_router.include_router(profiles.versions_router)
+api_router.include_router(drafts.router)
 api_router.include_router(machines.router)
 api_router.include_router(vocab.router)
 api_router.include_router(beans.router)

@@ -38,9 +38,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 __all__ = [
     "DEFAULT_ENV_FILE",
     "SETTINGS_REGISTRY",
+    "SETTING_PAIRS",
     "EnvSettings",
     "ResolvedSetting",
     "SettingDefinition",
+    "SettingPair",
     "SettingType",
     "SettingValueError",
     "is_argon2_hash",
@@ -397,6 +399,89 @@ def _must_be_an_argon2_hash(value: Any) -> str | None:
     )
 
 
+#: The firmware's own hard limits, per policy key: what `profile.h` and
+#: `schema/profile.json` will actually accept. The *policy* is meant to be
+#: narrower than these; a bound set outside them is not a tuning choice, it is a
+#: safety layer configured to allow everything the layer below it allows, which
+#: is a layer that does nothing.
+#:
+#: Enforced on write rather than only on read, because the failure mode is
+#: silent: `bounds_from` falls back per key on an unusable value, so a rejected
+#: bound that was still *stored* would read as configured and behave as the
+#: default.
+_FIRMWARE_LIMITS: dict[str, tuple[float, float, str]] = {
+    "profilePolicyTemperatureMinC": (0.0, 150.0, "0-150 °C (the firmware's own range)"),
+    "profilePolicyTemperatureMaxC": (0.0, 150.0, "0-150 °C (the firmware's own range)"),
+    "profilePolicyPressureMaxBar": (0.0, 12.0, "0-12 bar (the pump's own ceiling)"),
+    "profilePolicyFlowMaxMlS": (0.0, 15.0, "0-15 ml/s (the firmware's own range)"),
+    "profilePolicyPhaseDurationMinS": (0.5, 300.0, "0.5-300 s (BREW_SAFETY_DURATION_MS)"),
+    "profilePolicyPhaseDurationMaxS": (0.5, 300.0, "0.5-300 s (BREW_SAFETY_DURATION_MS)"),
+}
+
+
+def _within_firmware_limits(key: str) -> Callable[[Any], str | None]:
+    """A validator refusing anything the firmware itself would not accept."""
+    low, high, described = _FIRMWARE_LIMITS[key]
+
+    def validate(value: Any) -> str | None:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):  # pragma: no cover - coerce ran first
+            return None
+        if low <= number <= high:
+            return None
+        return (
+            f"the safety policy is narrower than the firmware, not wider: this must be "
+            f"within {described}"
+        )
+
+    return validate
+
+
+def _at_least_one_phase(value: Any) -> str | None:
+    """A profile with zero phases crashes brew start; a policy of zero forbids every profile."""
+    try:
+        count = int(value)
+    except (TypeError, ValueError):  # pragma: no cover - coerce ran first
+        return None
+    if count >= 1:
+        return None
+    return "a profile has at least one phase, so this must be 1 or more"
+
+
+@dataclass(frozen=True, slots=True)
+class SettingPair:
+    """Two keys whose values only make sense together.
+
+    A per-key validator cannot see its sibling, and the sibling is exactly what
+    makes 100 a valid minimum or an absurd one. :meth:`SettingsService.apply`
+    checks these after every key has passed its own validator, against the
+    *effective* value of each — the one being written, or the one already
+    resolved when the PATCH only moves one half of the pair.
+    """
+
+    lower: str
+    upper: str
+    message: str
+
+
+#: Bounds that come in pairs. Inverted ones are refused rather than tolerated:
+#: `clamp` cannot clamp into an empty range, so it leaves the value alone, and a
+#: policy that silently stops clamping is worse than no policy at all.
+SETTING_PAIRS: tuple[SettingPair, ...] = (
+    SettingPair(
+        lower="profilePolicyTemperatureMinC",
+        upper="profilePolicyTemperatureMaxC",
+        message="the minimum temperature must not be above the maximum",
+    ),
+    SettingPair(
+        lower="profilePolicyPhaseDurationMinS",
+        upper="profilePolicyPhaseDurationMaxS",
+        message="the shortest phase must not be longer than the longest",
+    ),
+)
+
+
 def _registry(*definitions: SettingDefinition) -> dict[str, SettingDefinition]:
     return {definition.key: definition for definition in definitions}
 
@@ -458,6 +543,95 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description=(
             "How often to re-diff the shot index as a safety net behind "
             "evt:history-shot-saved, which is missed while the socket is down."
+        ),
+    ),
+    SettingDefinition(
+        key="deviceWritesEnabled",
+        type="bool",
+        default=False,
+        env_key="GAGGICLANKER_DEVICE_WRITES_ENABLED",
+        description=(
+            "Allow this box to write profiles to the machine: save a new one, delete one it "
+            "created, select it, star it. Off by default and it is the only thing standing "
+            "between a bug and a display that will not brew — a profile with zero phases "
+            "crashes brew start, and recovering one means a reflash plus a filesystem erase. "
+            "Nothing else is ever written: not device settings (POST /api/settings clears "
+            "every boolean key it omits), not shot history."
+        ),
+    ),
+    SettingDefinition(
+        key="profilePolicyTemperatureMinC",
+        type="float",
+        validate=_within_firmware_limits("profilePolicyTemperatureMinC"),
+        default=60.0,
+        env_key="GAGGICLANKER_PROFILE_POLICY_TEMP_MIN_C",
+        description=(
+            "Safety policy: the coldest a profile or a phase override may ask for. The "
+            "firmware accepts anything up to 150 °C; this is the bound a draft is clamped to "
+            "before it is allowed near the machine."
+        ),
+    ),
+    SettingDefinition(
+        key="profilePolicyTemperatureMaxC",
+        type="float",
+        validate=_within_firmware_limits("profilePolicyTemperatureMaxC"),
+        default=100.0,
+        env_key="GAGGICLANKER_PROFILE_POLICY_TEMP_MAX_C",
+        description="Safety policy: the hottest a profile or a phase override may ask for, in °C.",
+    ),
+    SettingDefinition(
+        key="profilePolicyPressureMaxBar",
+        type="float",
+        validate=_within_firmware_limits("profilePolicyPressureMaxBar"),
+        default=12.0,
+        env_key="GAGGICLANKER_PROFILE_POLICY_PRESSURE_MAX_BAR",
+        description=(
+            "Safety policy: the highest pump pressure or pressure stop condition a profile may "
+            "carry, in bar. Twelve is the pump's own ceiling."
+        ),
+    ),
+    SettingDefinition(
+        key="profilePolicyFlowMaxMlS",
+        type="float",
+        validate=_within_firmware_limits("profilePolicyFlowMaxMlS"),
+        default=10.0,
+        env_key="GAGGICLANKER_PROFILE_POLICY_FLOW_MAX_ML_S",
+        description=(
+            "Safety policy: the highest pump flow or flow stop condition a profile may carry, "
+            "in ml/s. The firmware takes 15; ten is already more than a 58 mm basket passes "
+            "without channelling."
+        ),
+    ),
+    SettingDefinition(
+        key="profilePolicyPhaseDurationMinS",
+        type="float",
+        validate=_within_firmware_limits("profilePolicyPhaseDurationMinS"),
+        default=0.5,
+        env_key="GAGGICLANKER_PROFILE_POLICY_PHASE_MIN_S",
+        description="Safety policy: the shortest phase a profile may contain, in seconds.",
+    ),
+    SettingDefinition(
+        key="profilePolicyPhaseDurationMaxS",
+        type="float",
+        validate=_within_firmware_limits("profilePolicyPhaseDurationMaxS"),
+        default=120.0,
+        env_key="GAGGICLANKER_PROFILE_POLICY_PHASE_MAX_S",
+        description=(
+            "Safety policy: the longest phase a profile may contain, in seconds. The firmware's "
+            "own cap is 300 s; a phase that long with no stop condition is the failure this "
+            "bound exists for."
+        ),
+    ),
+    SettingDefinition(
+        key="profilePolicyMaxPhases",
+        type="int",
+        validate=_at_least_one_phase,
+        default=10,
+        env_key="GAGGICLANKER_PROFILE_POLICY_MAX_PHASES",
+        description=(
+            "Safety policy: the most phases a profile may have. Exceeding it is refused rather "
+            "than trimmed — truncating a profile would change what it brews while claiming to "
+            "have made it safe."
         ),
     ),
     SettingDefinition(

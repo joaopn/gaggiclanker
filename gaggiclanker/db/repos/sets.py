@@ -101,6 +101,10 @@ class SetVersionPatch(BaseModel):
     intent: str = Field(default="", max_length=500)
     origin: SetVersionOrigin = "manual"
     origin_analysis_id: int | None = None
+    #: The profile id the firmware assigned when this version's profile was
+    #: pushed. Not inherited by the next version: it names a file on
+    #: the display, and a version that changed the grind did not push anything.
+    pushed_device_profile_id: str | None = Field(default=None, max_length=31)
 
 
 class SetVersionRow(BaseModel):
@@ -124,6 +128,11 @@ class SetVersionRow(BaseModel):
     intent: str = ""
     origin: SetVersionOrigin = "manual"
     origin_analysis_id: int | None = None
+    #: Where this version's profile lives on the machine, when a draft push put
+    #: it there. NULL for every version whose profile was authored on the
+    #: display, and NULL again the moment somebody deletes it from there — a
+    #: device id is the machine's to own.
+    pushed_device_profile_id: str | None = None
     created_at: str
     shot_count: int = 0
 
@@ -445,6 +454,7 @@ class SetsRepository(Repository):
             values["intent"] = patch.intent
             values["origin"] = patch.origin
             values["origin_analysis_id"] = patch.origin_analysis_id
+            values["pushed_device_profile_id"] = patch.pushed_device_profile_id
             version_id = await self._insert_version(
                 set_id, parent.version_no + 1, parent.id, values, utc_now()
             )
@@ -465,6 +475,7 @@ class SetsRepository(Repository):
             "intent": values.get("intent", ""),
             "origin": values.get("origin", "manual"),
             "origin_analysis_id": values.get("origin_analysis_id"),
+            "pushed_device_profile_id": values.get("pushed_device_profile_id"),
             "created_at": now,
         }
         for field in _INHERITED:
@@ -476,6 +487,24 @@ class SetsRepository(Repository):
             payload,
         )
         return int(cursor.lastrowid or 0)
+
+    async def clear_pushed_device_profile(self, device_id: str) -> int:
+        """Forget a device id every Set version that names it. Returns the count.
+
+        Called when a rollback deletes the machine's copy. The version keeps its
+        `profile_version_id` — what it brewed is a historical fact and does not
+        change — but it must stop naming a file that is not there, or a later
+        "select the profile this Set wants" would select whatever inherits that
+        id next.
+        """
+        if not device_id:
+            return 0
+        cursor = await self.db.execute(
+            "UPDATE set_versions SET pushed_device_profile_id = NULL "
+            "WHERE pushed_device_profile_id = ?",
+            (device_id,),
+        )
+        return cursor.rowcount
 
     async def get_version(self, version_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))
