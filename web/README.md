@@ -100,6 +100,31 @@ src/
     shots/            table, filters, sparkline, score badge, stars, drawer
 ```
 
+The LLM layer adds a third:
+
+```
+src/
+  hooks/
+    useLlm.ts         status, validate, model list, rate-limit reset, the live call list
+    usePrompts.ts     the prompt list, one prompt, save and reset
+  components/
+    LlmActivity.tsx   the header indicator and the sheet behind it
+  pages/settings/
+    LlmSection.tsx    the provider picker and everything that depends on which one
+    PromptsSection.tsx  the YAML editor, with an "edited" badge and reset
+```
+
+`LlmSection` exists because a form generated from the registry cannot know that
+`llmBaseUrl` is meaningless for OpenRouter, that `anthropicApiKey` belongs to
+exactly one provider, or that a credential is worth testing before an analysis
+fails at midnight. Everything it renders still goes through `SettingField` and
+the shared form, so "only send what changed" keeps working.
+
+`useLlmCalls` seeds from `GET /api/llm/calls` and then follows
+`/api/llm/calls/stream`: the fetch is what makes a tab that opened mid-analysis
+correct, the stream is what keeps it correct without polling a page that is
+usually idle.
+
 ## Charting: Chart.js 4, not Recharts
 
 Both were on the table. Chart.js won on four

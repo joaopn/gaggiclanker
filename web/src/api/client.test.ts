@@ -76,7 +76,7 @@ describe("fetchApi", () => {
       jsonResponse(400, failure("INVALID_REQUEST", "Request validation failed", [{ field: "x" }])),
     );
 
-    const error = await patchSettings({ llmModel: 5 as never }).catch((e) => e);
+    const error = await patchSettings({ modelAnalysis: 5 as never }).catch((e) => e);
     expect(error).toBeInstanceOf(ApiClientError);
     expect(error.code).toBe("INVALID_REQUEST");
     expect(error.status).toBe(400);

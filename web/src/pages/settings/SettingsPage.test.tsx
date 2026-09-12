@@ -14,12 +14,15 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getSettings, patchSettings, getHealth, createBackup } = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  patchSettings: vi.fn(),
-  getHealth: vi.fn(),
-  createBackup: vi.fn(),
-}));
+const { getSettings, patchSettings, getHealth, createBackup, getLlmStatus, getPrompts } =
+  vi.hoisted(() => ({
+    getSettings: vi.fn(),
+    patchSettings: vi.fn(),
+    getHealth: vi.fn(),
+    createBackup: vi.fn(),
+    getLlmStatus: vi.fn(),
+    getPrompts: vi.fn(),
+  }));
 // Partial: the page pulls ApiClientError in through useQueryErrorToast, and a
 // factory that enumerates exports would have to be edited every time the client
 // grows one.
@@ -29,6 +32,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   patchSettings,
   getHealth,
   createBackup,
+  getLlmStatus,
+  getPrompts,
 }));
 
 /** Shaped exactly like `ResolvedSetting.to_api()` in gaggiclanker/settings.py. */
@@ -64,6 +69,16 @@ function settingsFixture(): SettingsMap {
       source: "default",
       description: "How often to re-diff the shot index.",
     },
+    llmProvider: {
+      key: "llmProvider",
+      type: "string",
+      secret: false,
+      value: "openrouter",
+      default: "claude_code",
+      override: "openrouter",
+      source: "database",
+      description: "Which provider answers a call.",
+    },
     llmApiKey: {
       key: "llmApiKey",
       type: "string",
@@ -81,6 +96,20 @@ describe("SettingsPage", () => {
     vi.clearAllMocks();
     getSettings.mockResolvedValue(settingsFixture());
     getHealth.mockResolvedValue({ status: "ok", version: "0.1.0", database: "ok" });
+    // The LLM section and the prompt editor both read on mount. Neither is
+    // what these tests are about, but an unmocked fetch in jsdom is an
+    // unhandled rejection rather than a quiet failure.
+    getLlmStatus.mockResolvedValue({
+      provider: "openrouter",
+      providers: ["openrouter", "claude_code"],
+      base_url: "",
+      models: {},
+      effort_levels: ["low", "high"],
+      timeout_s: 300,
+      rate_limit: { stopped: false, retries: 2, remaining: 2 },
+      claude_code: {},
+    });
+    getPrompts.mockResolvedValue({ prompts: [] });
     patchSettings.mockImplementation(async () => settingsFixture());
   });
 

@@ -30,6 +30,50 @@ export type ImportResult = components["schemas"]["ImportResult"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
+// The LLM layer. These the schema DOES describe, so they are imported
+// rather than retyped; only the live-call record below is hand-written,
+// because the observer's ring is a plain dict on the server side.
+export type LlmStatusData = components["schemas"]["LlmStatusData"];
+export type LlmCredentialCheck = components["schemas"]["CredentialCheckData"];
+export type LlmModelsData = components["schemas"]["ModelsData"];
+export type LlmRateLimit = components["schemas"]["RateLimitData"];
+export type LlmUsageTotals = components["schemas"]["UsageTotals"];
+export type PromptSummary = components["schemas"]["PromptSummary"];
+export type PromptListData = components["schemas"]["PromptListData"];
+export type PromptData = components["schemas"]["PromptData"];
+
+/** What a purpose is called on both sides. `default` is the fallback. */
+export type LlmPurpose = "default" | "analysis" | "draft" | "chat";
+
+/**
+ * One entry in the live-call ring (`gaggiclanker/llm/observer.py`). Declared
+ * server-side as `dict[str, Any]` - the observer is a dataclass, not a
+ * response model - so OpenAPI can only say "an object".
+ */
+export type LlmCall = {
+  id: string;
+  label: string;
+  subject: string;
+  provider: string;
+  model: string;
+  purpose: string;
+  status: "running" | "succeeded" | "failed";
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  mode: string | null;
+  error: string | null;
+};
+
+export type LlmCallsData = { calls: LlmCall[]; running: number };
+
+/** The two events `/api/llm/calls/stream` carries. */
+export type LlmCallEvent = { call: LlmCall; running: number };
+export type LlmSnapshotEvent = LlmCallsData;
+
 export type SettingType = "string" | "int" | "float" | "bool";
 export type SettingSource = "database" | "environment" | "default";
 

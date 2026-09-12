@@ -25,7 +25,7 @@ type SettingValue = str | int | float | bool | None
 
 
 class SettingsPatchBody(RootModel[dict[str, SettingValue]]):
-    """``{"gaggimateHost": "10.0.0.5", "llmModel": null}``"""
+    """``{"gaggimateHost": "10.0.0.5", "modelAnalysis": null}``"""
 
 
 class SettingsData(RootModel[dict[str, Any]]):

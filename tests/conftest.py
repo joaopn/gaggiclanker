@@ -50,6 +50,14 @@ LEAKY_ENV_KEYS = (
     "GAGGIMATE_HOST",
     "GAGGIMATE_PROTOCOL",
     "GAGGIMATE_TIMEOUT_S",
+    # The LLM registry entries whose env keys are not namespaced, because they
+    # are the names the tools themselves already use. Without these a developer
+    # with a real ANTHROPIC_API_KEY exported would have it resolve into every
+    # settings test, and a claude_code test would find a live subscription.
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_BIN",
+    "CLAUDE_CODE_EFFORT",
 )
 
 

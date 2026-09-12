@@ -59,4 +59,16 @@ export const queryKeys = {
   knowledge: { all: ["knowledge"] as const, list: () => ["knowledge", "list"] as const },
   imports: { all: ["imports"] as const, list: () => ["imports", "list"] as const },
   device: { all: ["device"] as const, status: () => ["device", "status"] as const },
+  llm: {
+    all: ["llm"] as const,
+    status: () => ["llm", "status"] as const,
+    models: (provider?: string) => ["llm", "models", provider ?? "configured"] as const,
+    calls: () => ["llm", "calls"] as const,
+    usage: (since?: string) => ["llm", "usage", since ?? "all"] as const,
+  },
+  prompts: {
+    all: ["prompts"] as const,
+    list: () => ["prompts", "list"] as const,
+    detail: (name: string) => ["prompts", "detail", name] as const,
+  },
 } as const;

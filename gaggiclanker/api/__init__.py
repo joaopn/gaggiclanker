@@ -9,8 +9,10 @@ from gaggiclanker.api import (
     device,
     health,
     imports,
+    llm,
     machines,
     profiles,
+    prompts,
     settings,
     shots,
     sync,
@@ -28,5 +30,7 @@ api_router.include_router(profiles.router)
 api_router.include_router(profiles.versions_router)
 api_router.include_router(machines.router)
 api_router.include_router(imports.router)
+api_router.include_router(llm.router)
+api_router.include_router(prompts.router)
 
 health_router = health.router

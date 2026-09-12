@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
@@ -21,6 +22,8 @@ from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.infra.sse import SseEventBus
+from gaggiclanker.llm.prompts import PromptService
+from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.engine import SyncEngine
@@ -30,9 +33,11 @@ __all__ = [
     "DeviceClientDep",
     "EnvSettingsDep",
     "EventBusDep",
+    "LlmServiceDep",
     "MachinesRepoDep",
     "NotesRepoDep",
     "ProfilesRepoDep",
+    "PromptServiceDep",
     "SettingsServiceDep",
     "ShotsRepoDep",
     "SyncEngineDep",
@@ -58,6 +63,22 @@ def get_env_settings(request: Request) -> EnvSettings:
 def get_event_bus(request: Request) -> SseEventBus:
     bus: SseEventBus = request.app.state.events
     return bus
+
+
+def get_llm_service(request: Request) -> LlmService:
+    service: LlmService = request.app.state.llm
+    return service
+
+
+def get_prompt_service(request: Request) -> PromptService:
+    """The prompt renderer, built per request over the shared database handle.
+
+    Per request rather than on ``app.state`` because it memoises a parsed YAML
+    document keyed on the row's ``updated_at``; one long-lived instance would
+    be a cache shared between a writer and every reader, and the bug that
+    causes shows up as "my edit did not take" long after the commit.
+    """
+    return PromptService(PromptsRepository(get_database(request)))
 
 
 def get_device_client(request: Request) -> GaggimateClient | None:
@@ -104,6 +125,8 @@ DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
 EventBusDep = Annotated[SseEventBus, Depends(get_event_bus)]
+LlmServiceDep = Annotated[LlmService, Depends(get_llm_service)]
+PromptServiceDep = Annotated[PromptService, Depends(get_prompt_service)]
 DeviceClientDep = Annotated["GaggimateClient | None", Depends(get_device_client)]
 SyncEngineDep = Annotated["SyncEngine | None", Depends(get_sync_engine)]
 ShotsRepoDep = Annotated[ShotsRepository, Depends(get_shots_repo)]

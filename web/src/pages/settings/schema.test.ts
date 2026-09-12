@@ -106,7 +106,12 @@ describe("labels and sections", () => {
   it("routes a key to a section by prefix, defaulting to General", () => {
     expect(sectionFor("gaggimateHost")).toBe("device");
     expect(sectionFor("deviceSyncEnabled")).toBe("device");
-    expect(sectionFor("llmModel")).toBe("llm");
+    expect(sectionFor("llmProvider")).toBe("llm");
+    // The LLM keys are named after what they configure rather than sharing one
+    // prefix, so the section covers three of them.
+    expect(sectionFor("anthropicApiKey")).toBe("llm");
+    expect(sectionFor("claudeCodeBin")).toBe("llm");
+    expect(sectionFor("modelAnalysis")).toBe("llm");
     expect(sectionFor("somethingNew")).toBe("general");
   });
 });

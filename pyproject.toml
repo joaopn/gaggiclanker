@@ -25,6 +25,9 @@ dependencies = [
     # all, so it is a hard dependency rather than an extra.
     "python-multipart>=0.0.18",
     "structlog>=24.4",
+    "openai>=3.13.0",
+    "anthropic>=1.5.0",
+    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
@@ -38,6 +41,7 @@ dev = [
     "respx>=0.21",
     "ruff>=0.8",
     "mypy>=1.13",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]

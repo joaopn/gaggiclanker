@@ -89,6 +89,151 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The last 50 calls, newest first */
+        get: operations["get_calls_api_llm_calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/calls/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Server-sent stream of call state changes */
+        get: operations["stream_calls_api_llm_calls_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model ids a provider offers */
+        get: operations["list_models_api_llm_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/rate-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The process-wide rate-limit budget */
+        get: operations["get_rate_limit_api_llm_rate_limit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/rate-limit/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear the rate-limit latch and restore the budget
+         * @description Explicit, because an automatic timer would just re-enter the same wall.
+         */
+        post: operations["reset_rate_limit_api_llm_rate_limit_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Provider, per-purpose models, the latch, and the Claude Code panel */
+        get: operations["get_status_api_llm_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Token and duration totals from the call ledger */
+        get: operations["get_usage_api_llm_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check that a provider's credentials work
+         * @description The cheapest call each provider offers — a model list, or `claude auth status`.
+         *
+         *     Never an actual completion: a validate button that costs tokens is one
+         *     people stop pressing.
+         */
+        post: operations["validate_provider_api_llm_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/machines": {
         parameters: {
             query?: never;
@@ -185,6 +330,81 @@ export interface paths {
         get: operations["get_profile_api_profiles__device_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every prompt and fragment */
+        get: operations["list_prompts_api_prompts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One prompt: its live text and the shipped default */
+        get: operations["get_prompt_api_prompts__name__get"];
+        /** Replace a prompt's text */
+        put: operations["put_prompt_api_prompts__name__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/{name}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a prompt to the text that shipped */
+        post: operations["reset_prompt_api_prompts__name__reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/prompts/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-seed the table from the files on disk
+         * @description Applies the seeding rules again — new files, and defaults for edited rows.
+         *
+         *     Registered before the ``{name}`` routes below, or ``reload`` would be read
+         *     as the name of a prompt.
+         */
+        post: operations["reload_prompts_api_prompts_reload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -456,6 +676,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[CredentialCheckData] */
+        ApiResponse_CredentialCheckData_: {
+            data?: components["schemas"]["CredentialCheckData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[DeviceShotNotesRow] */
         ApiResponse_DeviceShotNotesRow_: {
             data?: components["schemas"]["DeviceShotNotesRow"] | null;
@@ -488,9 +716,33 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[LlmCallsData] */
+        ApiResponse_LlmCallsData_: {
+            data?: components["schemas"]["LlmCallsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[LlmStatusData] */
+        ApiResponse_LlmStatusData_: {
+            data?: components["schemas"]["LlmStatusData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[MachineListData] */
         ApiResponse_MachineListData_: {
             data?: components["schemas"]["MachineListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ModelsData] */
+        ApiResponse_ModelsData_: {
+            data?: components["schemas"]["ModelsData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -523,6 +775,38 @@ export interface components {
         /** ApiResponse[ProfileVersionRow] */
         ApiResponse_ProfileVersionRow_: {
             data?: components["schemas"]["ProfileVersionRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PromptData] */
+        ApiResponse_PromptData_: {
+            data?: components["schemas"]["PromptData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PromptListData] */
+        ApiResponse_PromptListData_: {
+            data?: components["schemas"]["PromptListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RateLimitData] */
+        ApiResponse_RateLimitData_: {
+            data?: components["schemas"]["RateLimitData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ReloadData] */
+        ApiResponse_ReloadData_: {
+            data?: components["schemas"]["ReloadData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -576,6 +860,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[UsageTotals] */
+        ApiResponse_UsageTotals_: {
+            data?: components["schemas"]["UsageTotals"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /**
          * BackupData
          * @description Where the backup was written.
@@ -621,6 +913,23 @@ export interface components {
              * @default false
              */
             replace: boolean;
+        };
+        /** CredentialCheckData */
+        CredentialCheckData: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
         };
         /**
          * DeviceProfileSummary
@@ -825,6 +1134,40 @@ export interface components {
             [key: string]: unknown;
         } | null;
         JsonText: string;
+        /** LlmCallsData */
+        LlmCallsData: {
+            /** Calls */
+            calls: {
+                [key: string]: unknown;
+            }[];
+            /** Running */
+            running: number;
+        };
+        /**
+         * LlmStatusData
+         * @description Everything the settings page's LLM section needs in one read.
+         */
+        LlmStatusData: {
+            /** Base Url */
+            base_url: string;
+            /** Claude Code */
+            claude_code: {
+                [key: string]: unknown;
+            };
+            /** Effort Levels */
+            effort_levels: string[];
+            /** Models */
+            models: {
+                [key: string]: string;
+            };
+            /** Provider */
+            provider: string;
+            /** Providers */
+            providers: string[];
+            rate_limit: components["schemas"]["RateLimitData"];
+            /** Timeout S */
+            timeout_s: number;
+        };
         /** MachineListData */
         MachineListData: {
             /** Items */
@@ -901,6 +1244,13 @@ export interface components {
         MachineWithCounts: {
             counts: components["schemas"]["ShotCounts"];
             machine: components["schemas"]["MachineRow"];
+        };
+        /** ModelsData */
+        ModelsData: {
+            /** Models */
+            models: string[];
+            /** Provider */
+            provider: string;
         };
         /**
          * ProfileDetailData
@@ -1001,6 +1351,80 @@ export interface components {
              */
             utility: boolean;
         };
+        /** PromptData */
+        PromptData: {
+            /** Content */
+            content: string;
+            /** Default Content */
+            default_content: string;
+            /** Edited */
+            edited: boolean;
+            /** Fragment */
+            fragment: boolean;
+            /** Name */
+            name: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** PromptListData */
+        PromptListData: {
+            /** Prompts */
+            prompts: components["schemas"]["PromptSummary"][];
+        };
+        /**
+         * PromptPutBody
+         * @description The whole YAML document, as typed in the editor.
+         */
+        PromptPutBody: {
+            /** Content */
+            content: string;
+        };
+        /** PromptSummary */
+        PromptSummary: {
+            /** Description */
+            description: string;
+            /** Edited */
+            edited: boolean;
+            /** Fragment */
+            fragment: boolean;
+            /** Name */
+            name: string;
+            /** Updated At */
+            updated_at: string;
+            /** Valid */
+            valid: boolean;
+            /** Variables */
+            variables: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * ProviderBody
+         * @description ``{"provider": "openrouter"}``, or an empty body for the configured one.
+         */
+        ProviderBody: {
+            /** Provider */
+            provider?: string | null;
+        };
+        /**
+         * RateLimitData
+         * @description The process-wide budget. ``stopped`` is the latch the UI clears.
+         */
+        RateLimitData: {
+            /** Remaining */
+            remaining: number;
+            /** Retries */
+            retries: number;
+            /** Stopped */
+            stopped: boolean;
+        };
+        /**
+         * ReloadData
+         * @description ``{"changed": 2}`` — how many rows the re-seed touched.
+         */
+        ReloadData: {
+            [key: string]: number;
+        };
         /** @enum {string} */
         RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
         /**
@@ -1012,7 +1436,7 @@ export interface components {
         };
         /**
          * SettingsPatchBody
-         * @description ``{"gaggimateHost": "10.0.0.5", "llmModel": null}``
+         * @description ``{"gaggimateHost": "10.0.0.5", "modelAnalysis": null}``
          */
         SettingsPatchBody: {
             [key: string]: components["schemas"]["SettingValue"];
@@ -1485,6 +1909,48 @@ export interface components {
              */
             running: boolean;
         };
+        /**
+         * UsageTotals
+         * @description What ``GET /api/llm/usage`` adds up.
+         */
+        UsageTotals: {
+            /** By Model */
+            by_model?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Calls
+             * @default 0
+             */
+            calls: number;
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /** Since */
+            since?: string | null;
+            /**
+             * Succeeded
+             * @default 0
+             */
+            succeeded: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1605,6 +2071,201 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ImportSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calls_api_llm_calls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_LlmCallsData_"];
+                };
+            };
+        };
+    };
+    stream_calls_api_llm_calls_stream_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_models_api_llm_models_get: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the configured provider. */
+                provider?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ModelsData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rate_limit_api_llm_rate_limit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RateLimitData_"];
+                };
+            };
+        };
+    };
+    reset_rate_limit_api_llm_rate_limit_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RateLimitData_"];
+                };
+            };
+        };
+    };
+    get_status_api_llm_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_LlmStatusData_"];
+                };
+            };
+        };
+    };
+    get_usage_api_llm_usage_get: {
+        parameters: {
+            query?: {
+                /** @description ISO-8601 timestamp. Omit for everything ever recorded. */
+                since?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_UsageTotals_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_provider_api_llm_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_CredentialCheckData_"];
                 };
             };
             /** @description Validation Error */
@@ -1763,6 +2424,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_prompts_api_prompts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PromptListData_"];
+                };
+            };
+        };
+    };
+    get_prompt_api_prompts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PromptData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_prompt_api_prompts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromptPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PromptData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_prompt_api_prompts__name__reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PromptData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reload_prompts_api_prompts_reload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ReloadData_"];
                 };
             };
         };

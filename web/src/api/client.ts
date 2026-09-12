@@ -17,9 +17,18 @@ import type {
   HealthData,
   ImportOptions,
   ImportSummary,
+  LlmCallsData,
+  LlmCredentialCheck,
+  LlmModelsData,
+  LlmPurpose,
+  LlmRateLimit,
+  LlmStatusData,
+  LlmUsageTotals,
   ProfileListData,
   ProfileVersionListData,
   ProfileVersionParams,
+  PromptData,
+  PromptListData,
   SettingsMap,
   SettingsPatch,
   ShotDetailData,
@@ -343,3 +352,63 @@ export async function importFiles(
   if (options.replace) body.append("replace", "true");
   return fetchApi<ImportSummary>("/import", { method: "POST", body });
 }
+
+// ---------------------------------------------------------------------------
+// The LLM layer. None of these makes a model call: they configure the
+// provider, watch what it is doing, and edit the prompts it renders.
+// ---------------------------------------------------------------------------
+
+export async function getLlmStatus(): Promise<LlmStatusData> {
+  return fetchApi<LlmStatusData>("/llm/status");
+}
+
+/** The cheapest call each provider offers. Never a completion. */
+export async function validateLlm(provider?: string): Promise<LlmCredentialCheck> {
+  return fetchApi<LlmCredentialCheck>("/llm/validate", {
+    method: "POST",
+    body: JSON.stringify({ provider: provider ?? null }),
+  });
+}
+
+export async function getLlmModels(provider?: string): Promise<LlmModelsData> {
+  return fetchApi<LlmModelsData>(`/llm/models${queryString({ provider })}`);
+}
+
+export async function resetLlmRateLimit(): Promise<LlmRateLimit> {
+  return fetchApi<LlmRateLimit>("/llm/rate-limit/reset", { method: "POST" });
+}
+
+export async function getLlmCalls(): Promise<LlmCallsData> {
+  return fetchApi<LlmCallsData>("/llm/calls");
+}
+
+export async function getLlmUsage(since?: string): Promise<LlmUsageTotals> {
+  return fetchApi<LlmUsageTotals>(`/llm/usage${queryString({ since })}`);
+}
+
+export async function getPrompts(): Promise<PromptListData> {
+  return fetchApi<PromptListData>("/prompts");
+}
+
+export async function getPrompt(name: string): Promise<PromptData> {
+  return fetchApi<PromptData>(`/prompts/${name}`);
+}
+
+export async function putPrompt(name: string, content: string): Promise<PromptData> {
+  return fetchApi<PromptData>(`/prompts/${name}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function resetPrompt(name: string): Promise<PromptData> {
+  return fetchApi<PromptData>(`/prompts/${name}/reset`, { method: "POST" });
+}
+
+/** Which registry key holds the model for a purpose. Mirrors config.py. */
+export const MODEL_KEYS: Record<LlmPurpose, string> = {
+  default: "modelDefault",
+  analysis: "modelAnalysis",
+  draft: "modelDraft",
+  chat: "modelChat",
+};

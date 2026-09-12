@@ -102,12 +102,28 @@ export function humanizeKey(key: string): string {
  */
 export const SETTINGS_SECTIONS = [
   { id: "device", title: "Machine", description: "How gaggiclanker reaches the GaggiMate." },
-  { id: "llm", title: "Analysis", description: "The provider behind per-shot LLM analysis." },
+  {
+    id: "llm",
+    title: "LLM",
+    description: "Which provider answers a call, what it costs, and which model does what.",
+  },
   { id: "general", title: "General", description: "Everything else in the registry." },
 ] as const;
 
+/**
+ * Which key belongs to which registry key. Prefix-based, so a new setting
+ * lands somewhere sensible without an edit here; anything unrecognised falls
+ * into "General" rather than disappearing.
+ *
+ * The LLM prefixes are three rather than one because the keys are named after
+ * the things they configure - `anthropicApiKey`, `claudeCodeBin`,
+ * `modelAnalysis` - which reads better in the API than an `llm` prefix glued
+ * onto everything would.
+ */
+const LLM_PREFIXES = ["llm", "anthropic", "claudeCode", "model"];
+
 export function sectionFor(key: string): string {
   if (key.startsWith("device") || key.startsWith("gaggimate")) return "device";
-  if (key.startsWith("llm")) return "llm";
+  if (LLM_PREFIXES.some((prefix) => key.startsWith(prefix))) return "llm";
   return "general";
 }

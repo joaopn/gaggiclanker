@@ -367,11 +367,13 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
     SettingDefinition(
         key="llmProvider",
         type="string",
-        default="openai_compatible",
+        default="claude_code",
         env_key="GAGGICLANKER_LLM_PROVIDER",
         description=(
-            "openai_compatible (OpenAI, OpenRouter, Ollama, LM Studio), anthropic, or "
-            "claude_code."
+            "Which provider answers a call: openrouter, openai, ollama, lmstudio, "
+            "openai_compatible, anthropic or claude_code. claude_code is the default because "
+            "it spends a Claude subscription the maintainer already pays for, rather than "
+            "needing an API key nobody has yet."
         ),
     ),
     SettingDefinition(
@@ -380,17 +382,11 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         default="",
         env_key="GAGGICLANKER_LLM_BASE_URL",
         description=(
-            "Base URL for the openai_compatible provider, e.g. "
-            "https://openrouter.ai/api/v1 or http://localhost:11434/v1. Empty uses the SDK "
-            "default."
+            "Endpoint for the self-hosted and generic presets (ollama, lmstudio, "
+            "openai_compatible), e.g. http://localhost:11434/v1. Ignored for the hosted "
+            "providers: redirecting one of those while still sending its key is how an API "
+            "key ends up on somebody else's server. Empty uses the preset's own URL."
         ),
-    ),
-    SettingDefinition(
-        key="llmModel",
-        type="string",
-        default="",
-        env_key="GAGGICLANKER_LLM_MODEL",
-        description="Model id for shot analysis. Empty lets the provider choose its default.",
     ),
     SettingDefinition(
         key="llmApiKey",
@@ -399,8 +395,128 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         secret=True,
         env_key="GAGGICLANKER_LLM_API_KEY",
         description=(
-            "API key for the configured LLM provider. Returned by the API as a four-character "
-            "hint only."
+            "API key for the configured openai-compatible provider. It belongs to that "
+            "provider alone and is never sent to another one. Returned by the API as a "
+            "four-character hint only."
         ),
+    ),
+    SettingDefinition(
+        key="anthropicApiKey",
+        type="string",
+        default="",
+        secret=True,
+        env_key="ANTHROPIC_API_KEY",
+        description=(
+            "API key for the anthropic provider. Deliberately separate from llmApiKey so "
+            "switching provider does not send one service's key to another. Never passed to "
+            "the claude_code CLI, which uses the subscription token instead."
+        ),
+    ),
+    SettingDefinition(
+        key="claudeCodeOauthToken",
+        type="string",
+        default="",
+        secret=True,
+        env_key="CLAUDE_CODE_OAUTH_TOKEN",
+        description=(
+            "Subscription token for the claude_code provider. Mint it with "
+            "`claude setup-token` and paste it here, or set CLAUDE_CODE_OAUTH_TOKEN in the "
+            "environment. An interactive `claude login` is NOT enough: that writes "
+            "~/.claude, and every call runs with a scratch HOME so no ambient CLAUDE.md or "
+            "session state reaches the model - which hides those credentials too. A box that "
+            "is logged in but has no token here answers `Not logged in - please run /login`."
+        ),
+    ),
+    SettingDefinition(
+        key="claudeCodeBin",
+        type="string",
+        default="claude",
+        env_key="CLAUDE_CODE_BIN",
+        description=(
+            "The Claude Code binary to run. A bare name is looked up on PATH; give an "
+            "absolute path when the CLI is installed somewhere uvicorn's PATH does not reach."
+        ),
+    ),
+    SettingDefinition(
+        key="claudeCodeEffort",
+        type="string",
+        default="",
+        env_key="CLAUDE_CODE_EFFORT",
+        description=(
+            "How hard claude_code thinks: low, medium, high, xhigh or max. Empty lets the "
+            "CLI decide. An unrecognised value is dropped rather than passed through."
+        ),
+    ),
+    SettingDefinition(
+        key="llmTimeoutSeconds",
+        type="float",
+        default=300.0,
+        env_key="GAGGICLANKER_LLM_TIMEOUT_S",
+        description=(
+            "How long one attempt may take before it is abandoned. Five minutes: a reasoning "
+            "model working through a shot's diagnostics genuinely takes minutes, and a "
+            "deadline shorter than the work turns every analysis into a timeout."
+        ),
+    ),
+    SettingDefinition(
+        key="llmRateLimitRetries",
+        type="int",
+        default=2,
+        env_key="GAGGICLANKER_LLM_RATE_LIMIT_RETRIES",
+        description=(
+            "How many times the whole process retries a rate limit before it latches and "
+            "stops calling the provider at all. Shared by every call, not per call: when the "
+            "account is throttled the next shot will be refused too, and failing sixty of "
+            "them slowly is worse than stopping once. Clear the latch from this page. 0 "
+            "stops at the first 429."
+        ),
+    ),
+    SettingDefinition(
+        key="llmStoreCallText",
+        type="bool",
+        default=True,
+        env_key="GAGGICLANKER_LLM_STORE_CALL_TEXT",
+        description=(
+            "Keep the rendered prompt and the raw reply on each row of the call ledger, "
+            "capped at 200 KB each. On by default because a prompt is editable, so without "
+            "the text an analysis stored today cannot be explained after the prompt that "
+            "produced it has been changed. Turn it off to keep only the token counts."
+        ),
+    ),
+    SettingDefinition(
+        key="modelDefault",
+        type="string",
+        default="",
+        env_key="GAGGICLANKER_MODEL",
+        description=(
+            "Model id used when a purpose has none of its own. Empty lets the provider "
+            "choose — which for claude_code is the CLI's own default."
+        ),
+    ),
+    SettingDefinition(
+        key="modelAnalysis",
+        type="string",
+        default="",
+        env_key="GAGGICLANKER_MODEL_ANALYSIS",
+        description=(
+            "Model for per-shot analysis, the slow careful one. Empty falls back to modelDefault."
+        ),
+    ),
+    SettingDefinition(
+        key="modelDraft",
+        type="string",
+        default="",
+        env_key="GAGGICLANKER_MODEL_DRAFT",
+        description=(
+            "Model for drafts and summaries, where speed beats depth. Empty falls back to "
+            "modelDefault."
+        ),
+    ),
+    SettingDefinition(
+        key="modelChat",
+        type="string",
+        default="",
+        env_key="GAGGICLANKER_MODEL_CHAT",
+        description="Model for conversational turns. Empty falls back to modelDefault.",
     ),
 )

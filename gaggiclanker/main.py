@@ -25,6 +25,7 @@ from gaggiclanker import __version__
 from gaggiclanker.api import api_router, health_router
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.infra.envelope import register_exception_handlers
@@ -32,6 +33,9 @@ from gaggiclanker.infra.logging import configure_logging, get_logger
 from gaggiclanker.infra.middleware import RequestContextMiddleware
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.llm.observer import LlmCallObserver
+from gaggiclanker.llm.prompts import seed_prompts
+from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.static import mount_spa
@@ -99,6 +103,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.events = EventBus[SseEvent]()
     app.state.tasks = TaskRegistry()
 
+    # Prompts are seeded before anything can call one: the rules in
+    # gaggiclanker/llm/prompts.py are what let a shipped wording reach an
+    # unedited row while leaving an edited one alone, and they only run here.
+    await seed_prompts(PromptsRepository(db))
+
+    app.state.llm = LlmService(
+        settings_service,
+        observer=LlmCallObserver(app.state.events),
+        calls_repo=LlmCallsRepository(db),
+    )
+
     app.state.device = await start_device_client(settings_service)
     app.state.sync = await start_sync_engine(app)
 
@@ -114,6 +129,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.device.stop()
         app.state.sync = None
         await app.state.tasks.cancel_all()
+        # After the tasks, before the database: the provider owns an HTTP
+        # client whose connections must be released on the loop that made them.
+        await app.state.llm.aclose()
         await db.close()
         log.info("app_stopped")
 

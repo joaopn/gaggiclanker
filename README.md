@@ -103,6 +103,30 @@ bridge network, and the firmware disables mDNS entirely when HomeKit is on.
 Anything you change in the Settings page is stored in the database and wins over
 the environment, so a value edited in the UI does not revert on restart.
 
+### LLM settings
+
+Per-shot analysis goes through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:
+`claude_code` (the default — it runs the Claude Code CLI against a Claude
+subscription, so there is no API key to buy), `anthropic`, `openrouter`,
+`openai`, `ollama`, `lmstudio`, or `openai_compatible` for any other gateway.
+
+Each provider has its own credential and none is ever lent to another:
+`GAGGICLANKER_LLM_API_KEY` for the OpenAI-compatible one, `ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_OAUTH_TOKEN`. For `claude_code` that token comes from
+`claude setup-token` — an interactive `claude login` is not enough, because every
+call runs the CLI with a scratch `HOME` so nothing on the box leaks into the
+prompt, and that hides `~/.claude` too.
+
+`GAGGICLANKER_MODEL` is the default model; `..._MODEL_ANALYSIS`, `..._MODEL_DRAFT`
+and `..._MODEL_CHAT` override it per kind of call, and an empty value lets the
+provider choose. `GAGGICLANKER_LLM_TIMEOUT_S` bounds one attempt, and
+`GAGGICLANKER_LLM_RATE_LIMIT_RETRIES` is a process-wide budget: when the provider
+throttles the account the whole app stops rather than failing every queued shot
+in turn, and the Settings page has the button that starts it again. The Settings
+page also edits the prompts themselves — they are rows in the database, seeded
+from the YAML files in `gaggiclanker/prompts/`, and an edit takes effect on the
+next call without a restart.
+
 ## Contributing
 
 The conventions are the response envelope, pydantic on every database write,

@@ -13,6 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHealth } from "@/hooks/useHealth";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useCreateBackup, useSettings, useUpdateSettings } from "@/hooks/useSettings";
+import { LlmSection } from "@/pages/settings/LlmSection";
+import { PromptsSection } from "@/pages/settings/PromptsSection";
 import { SettingField } from "@/pages/settings/SettingField";
 import {
   buildSettingsSchema,
@@ -135,20 +137,35 @@ export function SettingsPage() {
                 description={section.description}
                 contentClassName="space-y-5"
               >
-                {entries.map((setting) => (
-                  <SettingField
-                    key={setting.key}
-                    setting={setting}
+                {section.id === "llm" ? (
+                  // The LLM keys get their own component: which of them matter
+                  // depends on the provider, two are a closed set, and a
+                  // credential is worth testing before an analysis fails at
+                  // midnight. Everything else is still the generated form.
+                  <LlmSection
+                    entries={entries}
                     control={form.control}
-                    error={form.formState.errors[setting.key]}
+                    errors={form.formState.errors}
                     disabled={update.isPending}
                   />
-                ))}
+                ) : (
+                  entries.map((setting) => (
+                    <SettingField
+                      key={setting.key}
+                      setting={setting}
+                      control={form.control}
+                      error={form.formState.errors[setting.key]}
+                      disabled={update.isPending}
+                    />
+                  ))
+                )}
               </SectionCard>
             );
           })}
         </form>
       )}
+
+      <PromptsSection />
 
       <SectionCard
         title="Import"

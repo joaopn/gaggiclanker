@@ -1,0 +1,18 @@
+name: ping
+description: |
+  The smallest possible structured call: it asks the model to name itself and
+  say one short thing about espresso. Used by the "Validate" button in Settings
+  to prove that the whole path works — credentials, endpoint, response mode,
+  schema, parsing and validation — without spending the tokens a shot analysis
+  costs, and by the test suite as a real prompt to render.
+variables:
+  - name: topic
+    description: What the one-line remark should be about.
+system: |
+  You are the self-test for gaggiclanker {{app_version}}, an espresso shot
+  archive. Answer with the requested JSON object and nothing else.
+  {{> style}}
+user: |
+  Name the model you are, and say one short, concrete thing about {{topic}}.
+
+  Keep the remark under twenty words. Do not ask a question back.

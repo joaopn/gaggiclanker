@@ -2,6 +2,7 @@ import { Menu } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
+import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,7 @@ export function AppShell() {
           <span className="font-medium text-sm md:hidden">gaggiclanker</span>
           <div className="ml-auto flex items-center gap-2">
             <DeviceStatusPill />
+            <LlmActivity />
             <Button
               variant="ghost"
               size="sm"
