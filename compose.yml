@@ -28,7 +28,11 @@ services:
         APP_UID: ${APP_UID:-1000}
         APP_GID: ${APP_GID:-1000}
     image: gaggiclanker:local
-    container_name: gaggiclanker
+    # No container_name: a fixed one is global to the daemon, so a second copy
+    # of this file (a checkout under another directory, a worktree, a `-p`
+    # project for testing) collides with the first instead of getting its own
+    # container. Compose already names it <project>-gaggiclanker-1, which is
+    # unique per project and still obvious in `docker ps`.
     restart: unless-stopped
 
     # Everything that must survive a container recreate: the SQLite file, its
@@ -97,7 +101,7 @@ services:
       # setpriv only ever drops privileges, so this does not interfere with it.
       # Together with --bounding-set=-all the app process ends up with an empty
       # CapBnd: verify with
-      #   docker exec gaggiclanker grep CapBnd /proc/1/status   # -> 0000...000
+      #   docker compose exec gaggiclanker grep CapBnd /proc/1/status  # -> 0000...000
       - no-new-privileges:true
 
     # Shot ingest is bursty but small; this is a guard against a runaway loop,

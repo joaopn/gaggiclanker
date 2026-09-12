@@ -6,20 +6,27 @@
 # --------------------------------------------------------------------------
 # Stage 1: the React bundle.
 #
-# Until it exists, web/ holds no package.json and this stage produces an empty
-# dist/, which the app detects and simply does not mount. Written now so the
-# image does not need editing when the front end arrives.
+# node:22-alpine, matching the Node major the front end is developed against
+# (web/README.md pins the local install to the same line).
+#
+# The manifest and the lockfile are copied first so `npm ci` is cached
+# independently of the source: editing a component reuses the dependency layer,
+# which is 90% of the build time. `npm ci` (not `install`) because the lockfile
+# is committed and the image must not quietly resolve a different tree.
 # --------------------------------------------------------------------------
-FROM node:22-slim AS web-build
+FROM node:22-alpine AS web-build
 
 WORKDIR /build
+
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
 COPY web/ ./
 
-RUN if [ -f package.json ]; then \
-        npm ci --no-audit --no-fund && npm run build; \
-    else \
-        echo "no front end yet; shipping an empty dist/" && mkdir -p dist; \
-    fi
+# Type errors do not fail `vite build` (esbuild strips types without checking
+# them), so the check is explicit: an image that compiles but does not type-check
+# is a broken build that ships.
+RUN npx tsc --noEmit && npm run build
 
 
 # --------------------------------------------------------------------------

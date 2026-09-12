@@ -1,12 +1,13 @@
 """Static serving of the built SPA, and the fallback rules around it.
 
-The front-end build produces ``web/dist``. Until it exists the app must still start (it does — the
-mount is conditional), and once the build exists the deep-link fallback must
-not swallow ``/api`` or asset requests.
+The front-end build produces ``web/dist``. The mount is conditional, so the app still starts
+without a build; once the build exists the deep-link fallback must not swallow
+``/api`` or asset requests.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,68 @@ async def test_405_matches_with_and_without_the_spa(
     async with running_app(env, web_dist=web_dist) as (_app, client):
         with_spa = (await client.post("/health")).status_code
     assert without == with_spa == 405
+
+
+async def test_web_dist_env_var_is_honoured(
+    make_env: Callable[..., EnvSettings], web_dist: Path
+) -> None:
+    """The container sets ``WEB_DIST``; a source checkout relies on the default.
+
+    ``create_app(web_dist=...)`` is the test seam, but the real deployment path
+    is the environment variable — and an env var nothing reads is the kind of
+    thing that is only discovered when the image ships an empty page.
+    """
+    env = make_env(WEB_DIST=str(web_dist))
+    # web_dist=None on purpose: it is the only way to reach create_app's own
+    # fallback chain, which is what reads the environment variable.
+    async with running_app(env, web_dist=None) as (app, client):
+        assert app.state.spa_mounted is True
+        assert "<div id=root>" in (await client.get("/")).text
+
+
+async def test_every_client_route_deep_links_to_index(env: EnvSettings, web_dist: Path) -> None:
+    """One assertion per entry in the SPA's navigation table.
+
+    A refresh on any of these is a normal thing to do — the sidebar links are
+    real URLs — and each one has to come back as ``index.html`` rather than a
+    404 from Starlette.
+    """
+    routes = (
+        "/shots",
+        "/sets",
+        "/beans",
+        "/hardware",
+        "/profiles",
+        "/import",
+        "/knowledge",
+        "/settings",
+        "/shots/000129",
+    )
+    async with running_app(env, web_dist=web_dist) as (_app, client):
+        for route in routes:
+            response = await client.get(route, headers={"accept": "text/html"})
+            assert response.status_code == 200, route
+            assert "<div id=root>" in response.text, route
+
+
+async def test_settings_page_and_settings_api_do_not_collide(
+    env: EnvSettings, web_dist: Path
+) -> None:
+    """``/settings`` is a page and ``/api/settings`` is JSON; both, at once.
+
+    The client-side route and the API resource share a name, which is exactly
+    the collision the ``api/`` guard in ``mount_spa`` exists for.
+    """
+    async with running_app(env, web_dist=web_dist) as (_app, client):
+        page = await client.get("/settings", headers={"accept": "text/html"})
+        assert page.status_code == 200
+        assert "<div id=root>" in page.text
+
+        api = await client.get("/api/settings")
+        assert api.status_code == 200
+        assert api.json()["ok"] is True
+        assert "gaggimateHost" in api.json()["data"]
+
+        missing = await client.get("/api/nope", headers={"accept": "text/html"})
+        assert missing.status_code == 404
+        assert missing.json()["error"]["code"] == "NOT_FOUND"

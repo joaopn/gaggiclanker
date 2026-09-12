@@ -1,0 +1,14 @@
+# Keep the build context small and deterministic. node_modules in particular is
+# hundreds of megabytes and would be copied only for `npm ci` to replace it.
+.git
+.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/
+external/
+web/node_modules/
+web/dist/
+.env

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="gaggiclanker - the espresso shot archive" />
+    <title>gaggiclanker</title>
+    <script>
+      /* Pre-paint, so the first frame is already the right palette: a theme
+         applied from React runs after the first paint and flashes white on a
+         dark setup. Lockstep with src/lib/theme.ts — same storage key, same
+         palette ids, both stamps on every branch. src/lib/theme.test.ts pins
+         the two sides against each other. */
+      (() => {
+        try {
+          const stored = localStorage.getItem("gaggiclanker.theme");
+          const dark =
+            stored === "dark" ||
+            (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.setAttribute("data-theme", dark ? "roast" : "crema");
+        } catch {
+          /* storage blocked: fall through to the light palette in :root */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

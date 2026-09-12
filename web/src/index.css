@@ -1,0 +1,169 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Map the CSS custom properties below into Tailwind utilities, so `bg-card`,
+   `text-muted-foreground` and `text-status-warn` all resolve per palette. This
+   is the Tailwind v4 replacement for a theme block in tailwind.config.js. */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-status-good: var(--status-good);
+  --color-status-warn: var(--status-warn);
+  --color-status-bad: var(--status-bad);
+  --color-status-info: var(--status-info);
+  --color-status-good-text: var(--status-good-text);
+  --color-status-warn-text: var(--status-warn-text);
+  --color-status-bad-text: var(--status-bad-text);
+  --color-status-info-text: var(--status-info-text);
+}
+
+/* ---------------------------------------------------------------------------
+   Palettes. Two, on purpose: "crema" (light) and "roast" (dark).
+
+   data-theme on <html> selects one; the .dark CLASS is stamped alongside it
+   whenever the resolved palette is the dark one. .dark carries no colours of
+   its own — it exists purely as the hook for @custom-variant dark and every
+   `dark:` utility. Both stamps come from applyThemeClass() in lib/theme.ts and
+   from the pre-paint script in index.html, which theme.test.ts keeps in
+   lockstep.
+
+   The `--status-*-text` companions are defined once, in :root, and re-resolve
+   per palette because every [data-theme] block overrides the base variables on
+   the same <html> element. That topology breaks if a palette ever moves onto a
+   subtree element, so it does not.
+   ------------------------------------------------------------------------ */
+
+:root {
+  --radius: 0.5rem;
+
+  --background: #f7f3ec;
+  --foreground: #33291f;
+  --card: #fffdf9;
+  --card-foreground: #33291f;
+  --popover: #fffdf9;
+  --popover-foreground: #33291f;
+  --primary: #8a4b1f;
+  --primary-foreground: #fffdf9;
+  --secondary: #ece2d2;
+  --secondary-foreground: #33291f;
+  --muted: #ece2d2;
+  --muted-foreground: #6a5c4c;
+  --accent: #e0d3bf;
+  --accent-foreground: #33291f;
+  --destructive: #a33526;
+  --destructive-foreground: #fffdf9;
+  --border: #e0d3bf;
+  --input: #cbbca4;
+  --ring: #8a4b1f;
+
+  /* Shot curves: pressure, flow, temperature, weight, target. Ordered so the
+     first three are the signals a Pro board actually measures. */
+  --chart-1: #8a4b1f;
+  --chart-2: #3a6786;
+  --chart-3: #a33526;
+  --chart-4: #4a7239;
+  --chart-5: #7a5ea8;
+
+  --sidebar: #efe7db;
+  --sidebar-foreground: #33291f;
+  --sidebar-accent: #e0d3bf;
+  --sidebar-accent-foreground: #33291f;
+  --sidebar-border: #ded1bc;
+
+  --status-good: #4a7239;
+  --status-warn: #8a6417;
+  --status-bad: var(--destructive);
+  --status-info: #3a6786;
+
+  --status-good-text: color-mix(in oklab, var(--status-good) 60%, var(--foreground));
+  --status-warn-text: color-mix(in oklab, var(--status-warn) 60%, var(--foreground));
+  --status-bad-text: color-mix(in oklab, var(--status-bad) 60%, var(--foreground));
+  --status-info-text: color-mix(in oklab, var(--status-info) 60%, var(--foreground));
+
+  color-scheme: light;
+}
+
+:root[data-theme="roast"] {
+  --background: #16130f;
+  --foreground: #ece5db;
+  --card: #201b16;
+  --card-foreground: #ece5db;
+  --popover: #201b16;
+  --popover-foreground: #ece5db;
+  --primary: #d59a63;
+  --primary-foreground: #16130f;
+  --secondary: #2b241d;
+  --secondary-foreground: #ece5db;
+  --muted: #2b241d;
+  --muted-foreground: #a2968a;
+  --accent: #352d24;
+  --accent-foreground: #ece5db;
+  --destructive: #e08a7c;
+  --destructive-foreground: #16130f;
+  --border: #352d24;
+  --input: #453a2e;
+  --ring: #d59a63;
+
+  --chart-1: #d59a63;
+  --chart-2: #8fb4d0;
+  --chart-3: #e08a7c;
+  --chart-4: #92c081;
+  --chart-5: #b7a3dd;
+
+  --sidebar: #1b1713;
+  --sidebar-foreground: #ece5db;
+  --sidebar-accent: #352d24;
+  --sidebar-accent-foreground: #ece5db;
+  --sidebar-border: #2f2820;
+
+  --status-good: #92c081;
+  --status-warn: #d8b566;
+  --status-bad: var(--destructive);
+  --status-info: #8fb4d0;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+}

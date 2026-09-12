@@ -223,9 +223,21 @@ __marimo__/
 # --- gaggiclanker ---
 # The bind-mounted data directory: the SQLite file, its WAL sidecars and backups.
 /data/
-# Front-end build output. The generic `dist/` rule above already covers
-# it; named here so it is obvious where the served bundle comes from.
+# Front-end build output. The generic `dist/` rule above already covers it;
+# named here so it is obvious where the served bundle comes from.
 /web/dist/
+# Installed by `npm ci` in web/. package-lock.json IS committed.
+/web/node_modules/
+# The Python packaging rules near the top of this file (lib/, build/, dist/,
+# var/, ...) match a directory of that name ANYWHERE in the tree, so `lib/` also
+# swallowed web/src/lib -- the front end's theme store, API helpers and query
+# conventions, silently absent from the first commit that added them. Re-include
+# it explicitly; a bare `!/web/src/lib/**` would not work, because git does not
+# look inside a directory it has already excluded.
+!/web/src/lib/
+# The Node toolchain lives outside the repo (see web/README.md), but a stray
+# local install should not be committed either.
+/.tools/
 
 # Agent working files, never tracked
 /CLAUDE.md

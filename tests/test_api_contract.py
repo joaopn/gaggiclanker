@@ -19,6 +19,7 @@ import pytest
 
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
+from tests.conftest import NO_WEB_DIST
 
 API_DIR = Path(__file__).resolve().parent.parent / "gaggiclanker" / "api"
 
@@ -155,7 +156,9 @@ async def test_unhandled_exception_keeps_the_request_id_and_the_header(
     exception used to escape the request context before the envelope was built
     and the client got request_id "unknown" with no x-request-id header.
     """
-    app = create_app(env, dotenv={})
+    # NO_WEB_DIST: with a built web/dist present, the SPA catch-all is registered
+    # before the route added below and would answer this request with a 404.
+    app = create_app(env, web_dist=NO_WEB_DIST, dotenv={})
 
     @app.get("/api/_boom")
     async def boom() -> None:

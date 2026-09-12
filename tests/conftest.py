@@ -15,6 +15,7 @@ import os
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -26,6 +27,19 @@ from gaggiclanker.settings import EnvSettings
 # Environment variables that would leak a developer's real configuration into a
 # test. Cleared for every test; a test that wants one sets it explicitly.
 LEAKY_ENV_PREFIXES = ("GAGGICLANKER_",)
+# A path that does not exist, used as the default ``web_dist`` for every app a
+# test builds. Without it the suite's behaviour depends on whether the developer
+# happened to run `npm run build`: ``create_app`` falls back to ``<repo>/web/dist``,
+# and a present bundle turns "unknown route -> JSON 404" into "unknown route ->
+# index.html" for half of test_api_contract.py. A test that wants the SPA passes
+# its own fixture directory; a test that wants the real fallback chain (the
+# ``WEB_DIST`` environment variable) passes ``web_dist=None`` explicitly.
+NO_WEB_DIST = Path(__file__).resolve().parent / "fixtures" / "_no-web-dist"
+
+# Sentinel separating "caller said nothing" from "caller said None", which for
+# ``web_dist`` mean opposite things.
+_UNSET: Any = object()
+
 LEAKY_ENV_KEYS = (
     "DATA_DIR",
     "LOG_LEVEL",
@@ -75,7 +89,7 @@ def env(data_dir: Path) -> EnvSettings:
 async def running_app(
     env: EnvSettings,
     *,
-    web_dist: Path | None = None,
+    web_dist: Path | None = _UNSET,
     dotenv: Mapping[str, str | None] | None = None,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     """Build an app, run its lifespan, and hand back a client speaking ASGI to it.
@@ -83,10 +97,15 @@ async def running_app(
     ``ASGITransport`` calls the app in-process: no socket, no port to collide
     with another test, and a traceback that points at the failing handler.
 
+    ``web_dist`` defaults to a directory that does not exist, so no test sees a
+    mounted SPA by accident (see :data:`NO_WEB_DIST`). Pass a fixture directory
+    to mount one, or ``None`` to exercise the real ``WEB_DIST``/default chain.
+
     ``dotenv`` defaults to empty rather than to parsing ``./.env``, so a file in
     the working directory cannot reach a test the way it reaches production.
     """
-    app = create_app(env, web_dist=web_dist, dotenv={} if dotenv is None else dotenv)
+    resolved = NO_WEB_DIST if web_dist is _UNSET else web_dist
+    app = create_app(env, web_dist=resolved, dotenv={} if dotenv is None else dotenv)
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:

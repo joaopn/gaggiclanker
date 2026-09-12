@@ -1,0 +1,37 @@
+{
+  // One config, deliberately not a solution file with `references`.
+  //
+  // The generated Vite setup splits into tsconfig.app.json + tsconfig.node.json
+  // behind a root with `"files": []`. That root type-checks NOTHING unless every
+  // consumer remembers `-p` or `tsc -b` — so `tsc --noEmit`, which is what the
+  // check script, the Dockerfile gate and muscle memory all run, silently
+  // succeeded over zero files while eight real errors sat in the tree. One
+  // config with real inputs cannot fail that way.
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    // "node" is for vite.config.ts, which is checked here too: a broken dev
+    // proxy or test config should fail the same gate as a broken component.
+    "types": ["vitest/globals", "@testing-library/jest-dom", "node"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "vite.config.ts"]
+}
