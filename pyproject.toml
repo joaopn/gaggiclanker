@@ -72,6 +72,12 @@ ignore = [
 # ASYNC240: a test asserting on a file it just wrote is allowed to stat it
 # directly; there is no event loop latency to protect in a test.
 "tests/**" = ["S105", "S106", "S108", "ASYNC240"]
+# The diagnostics tests are a port of gaggimate-mcp's own suite (see
+# gaggiclanker/domain/VENDORED.md). They are kept as close to upstream as the
+# renamed entry points allow, because their value is the exact numbers they
+# assert — reflowing them to our house style would make the next upstream diff
+# unreadable and risk moving a threshold by accident.
+"tests/domain/test_diagnostics.py" = ["B905", "C408", "RUF003", "RUF015", "RUF059"]
 "scripts/**" = ["S603", "S607"]
 
 [tool.pytest.ini_options]
@@ -95,3 +101,18 @@ pretty = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# The diagnostics tests are a port of gaggimate-mcp's own suite (see
+# gaggiclanker/domain/VENDORED.md), kept in upstream's shape so the next
+# upstream diff stays readable. They index the diagnostics TypedDicts directly
+# — `d["resistance"]["avg"]` — where our versions are `| None` because a
+# machine without a pressure sensor has no resistance block. Threading an
+# assertion through 1 500 lines of vendored test would obscure exactly the
+# numbers those tests exist to pin. The engine they exercise is checked in
+# full; this is the one module where that is relaxed.
+module = "tests.domain.test_diagnostics"
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_return_any = false
