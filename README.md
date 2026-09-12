@@ -302,12 +302,16 @@ shots and the confirmed insights that apply, so "how is it going?" is a question
 with an answer. The **Discuss in chat** button on a shot and on a Set is the same
 thing with the question already typed.
 
-Three tools write, and each writes something you still have to decide about: a
-new Set version with `origin=chat`, a profile draft that goes through the same
-schema, safety-policy and clamp checks as one typed by hand, and an insight
-that is stored **unconfirmed** and reaches no future prompt until you confirm
-it. Nothing in the chat can touch the machine — pushing a profile and deleting a
-shot off the display stay buttons you press.
+Nineteen tools, and fourteen of them only read. The other five are `propose`:
+they either write something you still have to decide about — a new Set version
+with `origin=chat`, a profile draft that goes through the same schema,
+safety-policy and clamp checks as one typed by hand, an insight stored
+**unconfirmed** that reaches no future prompt until you confirm it — or they
+queue work that spends provider tokens, which is why `run_analysis` and
+`starting_point` are in that class rather than filed as reads. Both are rate
+limited on the same bucket as the routes they shortcut. Nothing in the chat can
+touch the machine — pushing a profile and deleting a shot off the display stay
+buttons you press.
 
 Every answer shows what was called, with the input and the output one click
 away, and citations are links: a shot id goes to the shot, a knowledge passage's
@@ -315,6 +319,34 @@ heading path goes to the passage. A turn is bounded by `chatMaxToolRounds` and
 `chatMaxToolCalls`; the Stop button cancels a run mid-answer, and the transcript
 survives a reload because the stream is replayed from the database rather than
 held in the tab.
+
+### A starting point for a new bag
+
+Open a bag nobody has brewed and the first step of **New Set** answers the
+question you actually have. It shows what this archive has already brewed on
+*this grinder* that resembles the bag — same roast level, same process, same
+origin — with how each one went: shots, mean rating, mean execution score, ratio
+and time. That half is one SQL query, costs nothing, and is worth reading on its
+own. A recipe with no shots behind it is never offered: it records an intention,
+not a result.
+
+Press **Ask for suggestions** and the model turns that plus the rule tier into
+three complete first recipes — conservative, recommended, adventurous — each
+with a grind, a dose, a yield, a temperature, a profile and a rationale citing
+what it leaned on.
+
+It will not invent a grind number. A grinder's scale is arbitrary and there is
+no conversion between two of them, so a figure on your dial is offered only when
+your usual setting or a past Set on the same grinder anchors it; otherwise the
+answer is relative and the card says so. Rest windows are stated separately,
+because a light natural two days off roast wants another week and no grind
+setting fixes that.
+
+Taking one creates the Set with `origin=starting_point`, and — when the option
+authored a whole profile rather than pointing at one you already have — a draft
+in the queue. Nothing is pushed; you approve it. The Beans page has the same
+shortcut for the bag you are looking at, and the chat can ask through the
+`starting_point` tool.
 
 ### MCP: the same tools, for other agents
 

@@ -1,6 +1,6 @@
 """The tools themselves. One module, because the set is small and domain-bound.
 
-Seventeen tools in two permission classes, and the third is empty on purpose.
+Nineteen tools in two permission classes, and the third is empty on purpose.
 The read tools answer questions about the archive; the propose tools turn a
 conclusion into a row somebody still has to confirm, or queue work that costs
 money; there are no device-write tools here at all, and that is the feature —
@@ -974,4 +974,122 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
         scope=stored.scope_label,
         text=stored.text,
         confirmed=stored.confirmed,
+    )
+
+
+# ── starting_point ───────────────────────────────────────────────────
+
+
+class StartingPointInput(_Model):
+    bean_id: int = Field(gt=0)
+    machine_id: int = Field(gt=0)
+    grinder_id: int | None = Field(
+        default=None, description="Omit for pre-ground coffee or a grinder nobody has recorded."
+    )
+    usual_grind: str = Field(
+        default="",
+        max_length=100,
+        description=(
+            "What they normally grind espresso at, in this grinder's own units. Pass it "
+            "whenever they have said it: it is the only thing that lets the answer be a "
+            "number on their dial rather than a direction."
+        ),
+    )
+    dose_hint_g: float | None = Field(default=None, gt=0, le=100)
+
+
+class StartingPointOutput(_Model):
+    run_id: int
+    status: str
+    started: bool = False
+    bean_id: int
+    #: The three options, exactly as stored. Handed back whole rather than
+    #: summarised: the model that asked for this is about to explain it, and a
+    #: summary would make it paraphrase a paraphrase.
+    output: dict[str, Any] | None = None
+    error: str | None = None
+
+
+@tool(
+    "starting_point",
+    permission="propose",
+    description=(
+        "Ask for three starting points — conservative, recommended, adventurous — for a bag "
+        "nobody has brewed yet, anchored on similar past Sets and the rule tier. Runs in the "
+        "background and returns the row; read it back with this tool's run_id once it is "
+        "done. Nothing is created until a person accepts one in the UI. It spends provider "
+        "tokens, so it is rate limited."
+    ),
+    timeout_s=30.0,
+)
+async def starting_point(ctx: ToolContext, args: StartingPointInput) -> StartingPointOutput:
+    """Propose-class and limited, for exactly `run_analysis`'s reasons.
+
+    It creates nothing a person has to decide about — the Set only exists once
+    somebody accepts an option — but it queues a provider call, and handing a
+    read-only agent a button that spends money is not a read. The limiter is the
+    analysis bucket at the analysis limit: going through a tool must not be a
+    way around what the route is already stopped from doing.
+    """
+    if ctx.rate_limits is not None:
+        try:
+            ctx.rate_limits.check(
+                "analysis",
+                f"tool:{ctx.user or ctx.caller}",
+                limit=ANALYSIS_RATE_LIMIT,
+                window=ANALYSIS_WINDOW_SECONDS,
+            )
+        except TooManyRequests as exc:
+            raise ValueError(str(exc)) from None
+    if ctx.starting is None or ctx.tasks is None:
+        raise ValueError(
+            "starting_point needs the running gaggiclanker application; this connection has "
+            "database access only."
+        )
+    try:
+        row, started = await ctx.starting.start(
+            bean_id=args.bean_id,
+            machine_id=args.machine_id,
+            grinder_id=args.grinder_id,
+            usual_grind=args.usual_grind,
+            dose_hint_g=args.dose_hint_g,
+            tasks=ctx.tasks,
+        )
+    except LookupError as exc:
+        raise ValueError(str(exc)) from None
+    return StartingPointOutput(
+        run_id=row.id,
+        status=row.status,
+        started=started,
+        bean_id=row.bean_id,
+        output=row.output if isinstance(row.output, dict) else None,
+        error=row.error,
+    )
+
+
+class ReadStartingPointInput(_Model):
+    run_id: int = Field(gt=0)
+
+
+@tool(
+    "get_starting_point",
+    permission="read",
+    description=(
+        "Read a starting-point run back: its status and, once it is done, its three options. "
+        "Use it after starting_point to see what came out."
+    ),
+)
+async def get_starting_point(ctx: ToolContext, args: ReadStartingPointInput) -> StartingPointOutput:
+    """A read, unlike `starting_point` itself: it spends nothing and creates nothing."""
+    from gaggiclanker.db.repos.starting import StartingPointRunsRepository
+
+    row = await StartingPointRunsRepository(ctx.db).get(args.run_id)
+    if row is None:
+        raise ValueError(f"No starting point {args.run_id}.")
+    return StartingPointOutput(
+        run_id=row.id,
+        status=row.status,
+        bean_id=row.bean_id,
+        output=row.output,
+        error=row.error,
     )

@@ -2,19 +2,29 @@ import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NewSetWizard } from "@/components/sets/NewSetWizard";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { bean, grinder, setRow } from "@/test/setsFixtures";
+import { bean, grinder, setRow, startingPointRun } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   Toaster: () => null,
 }));
 
-const { getBeans, getGrinders, getMachines, getProfileVersions, createSet } = vi.hoisted(() => ({
+const {
+  getBeans,
+  getGrinders,
+  getMachines,
+  getProfileVersions,
+  createSet,
+  getSimilarSets,
+  createStartingPoint,
+} = vi.hoisted(() => ({
   getBeans: vi.fn(),
   getGrinders: vi.fn(),
   getMachines: vi.fn(),
   getProfileVersions: vi.fn(),
   createSet: vi.fn(),
+  getSimilarSets: vi.fn(),
+  createStartingPoint: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -23,6 +33,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getMachines,
   getProfileVersions,
   createSet,
+  getSimilarSets,
+  createStartingPoint,
 }));
 
 beforeEach(() => {
@@ -83,6 +95,8 @@ beforeEach(() => {
     offset: 0,
   });
   createSet.mockResolvedValue(setRow());
+  getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: 1, machine_id: 1, items: [] });
+  createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
 });
 
 /** The selects render before their queries answer, so the option is the signal. */
@@ -92,15 +106,29 @@ async function pickBean() {
   await user.selectOptions(screen.getByLabelText("Bean"), "1");
 }
 
+/**
+ * Walk past the shortcut and onto the manual path.
+ *
+ * Step 0 is the suggestion, and its "next" says what it does rather than
+ * "Next" — a button labelled "Next" on a step whose whole point is that you may
+ * skip it reads as "there is more of this".
+ */
+async function skipSuggestion() {
+  const user = setupUser();
+  await user.click(await screen.findByRole("button", { name: "Set it up by hand" }));
+}
+
 describe("NewSetWizard", () => {
-  it("walks bean, hardware, profile, recipe", async () => {
+  it("walks suggest, bean, hardware, profile, recipe", async () => {
     const user = setupUser();
     renderWithQueryClient(<NewSetWizard open onOpenChange={() => {}} />);
 
-    expect(await screen.findByTestId("wizard-steps")).toHaveTextContent("1. Bean");
+    expect(await screen.findByTestId("wizard-steps")).toHaveTextContent("1. Suggest");
+    // The shortcut is never a gate: a shortcut you cannot walk past is a wall.
+    await skipSuggestion();
 
-    // Step one cannot be left until a bag is chosen: the Set's whole identity
-    // starts there.
+    // The bean step cannot be left until a bag is chosen: the Set's whole
+    // identity starts there.
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     await pickBean();
     expect(screen.getByTestId("wizard-freshness")).toHaveTextContent("light");
@@ -142,9 +170,49 @@ describe("NewSetWizard", () => {
   it("names the Set after the bag unless told otherwise", async () => {
     renderWithQueryClient(<NewSetWizard open onOpenChange={() => {}} />);
 
+    await skipSuggestion();
     await pickBean();
 
     expect(screen.getByLabelText("Call it")).toHaveValue("Ethiopia Guji");
+  });
+
+  it("carries a bag chosen on the shortcut step into the manual path", async () => {
+    renderWithQueryClient(<NewSetWizard open onOpenChange={() => {}} />);
+
+    // One `Draft` backs both paths, so changing your mind after asking for a
+    // suggestion costs nothing.
+    await pickBean();
+    await skipSuggestion();
+
+    expect(screen.getByLabelText("Bean")).toHaveValue("1");
+    expect(screen.getByLabelText("Call it")).toHaveValue("Ethiopia Guji");
+  });
+
+  it("pre-selects the bag the Beans page shortcut named", async () => {
+    renderWithQueryClient(<NewSetWizard open initialBeanId={1} onOpenChange={() => {}} />);
+
+    await screen.findByRole("option", { name: /Ethiopia Guji/ });
+    expect(screen.getByLabelText("Bean")).toHaveValue("1");
+  });
+
+  it("asks for suggestions without creating anything", async () => {
+    const user = setupUser();
+    const onCreated = vi.fn();
+    renderWithQueryClient(
+      <NewSetWizard open initialBeanId={1} onOpenChange={() => {}} onCreated={onCreated} />,
+    );
+
+    // The button is rendered disabled until the bag and the machine have both
+    // resolved — a suggestion without the hardware could only be general.
+    const ask = await screen.findByTestId("ask-for-suggestions");
+    await waitFor(() => expect(ask).toBeEnabled());
+    await user.click(ask);
+
+    await waitFor(() => expect(createStartingPoint).toHaveBeenCalled());
+    // Nothing exists until somebody takes one of the three: the wizard has not
+    // created a Set and has not closed.
+    expect(createSet).not.toHaveBeenCalled();
+    expect(onCreated).not.toHaveBeenCalled();
   });
 
   it("hands the new Set's id to the caller so the page can open it", async () => {
@@ -152,6 +220,7 @@ describe("NewSetWizard", () => {
     const onCreated = vi.fn();
     renderWithQueryClient(<NewSetWizard open onOpenChange={() => {}} onCreated={onCreated} />);
 
+    await skipSuggestion();
     await pickBean();
     await user.click(screen.getByRole("button", { name: "Next" }));
     await user.click(await screen.findByRole("button", { name: "Next" }));

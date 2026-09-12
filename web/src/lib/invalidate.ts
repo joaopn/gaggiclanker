@@ -139,6 +139,12 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
     queryKeys.knowledge.all,
   ],
   "analysis.failed": [queryKeys.analyses.all, queryKeys.shots.all],
+  // The starting-point wizard follows its own run by polling the row, so `started`
+  // buys nothing there — but a run started from the chat, or in another tab,
+  // has to reach the wizard too, and the key is what does it.
+  "starting_point.started": [queryKeys.startingPoints.all],
+  "starting_point.finished": [queryKeys.startingPoints.all],
+  "starting_point.failed": [queryKeys.startingPoints.all],
 };
 
 /**

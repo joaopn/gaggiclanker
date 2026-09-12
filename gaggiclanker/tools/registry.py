@@ -91,6 +91,10 @@ class ToolContext:
     knowledge: Any = None
     analyzer: Any = None
     drafts: Any = None
+    #: :class:`~gaggiclanker.starting.service.StartingPointService`. Untyped for
+    #: the reason the others are, and ``None`` over stdio MCP — a connection
+    #: with database access only cannot queue a provider call.
+    starting: Any = None
     tasks: Any = None
     #: :class:`~gaggiclanker.infra.ratelimit.RateLimiter`. The one tool that
     #: spends provider tokens checks it, so a model in a loop cannot do what the

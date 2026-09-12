@@ -87,6 +87,10 @@ import type {
   ShotListData,
   ShotListParams,
   ShotSamplesData,
+  SimilarSetsData,
+  StartingPointAccepted,
+  StartingPointRequest,
+  StartingPointRun,
   Suggestion,
   SuggestionListData,
   SyncStatusData,
@@ -971,4 +975,58 @@ export async function getChatTools(): Promise<ChatToolList> {
  */
 export function chatRunStreamUrl(runId: number, after = 0): string {
   return `${API_BASE}/chat/runs/${runId}/stream${queryString({ after })}`;
+}
+
+// ── the starting-point wizard ───────────────────────────────────────
+
+/**
+ * What this archive already knows about beans like this one.
+ *
+ * Free, and read before anybody presses the button that spends money — so the
+ * wizard's first step has something on it either way. `grinderId` is a filter
+ * rather than a hint: a grind number from another grinder is not weaker
+ * evidence, it is meaningless.
+ */
+export async function getSimilarSets(
+  beanId: number,
+  params: { grinderId?: number | null; machineId?: number | null } = {},
+): Promise<SimilarSetsData> {
+  return fetchApi<SimilarSetsData>(
+    `/beans/${beanId}/similar-sets${queryString({
+      grinder_id: params.grinderId ?? undefined,
+      machine_id: params.machineId ?? undefined,
+    })}`,
+  );
+}
+
+/**
+ * Ask for three starting points. Answers 202 with a `running` row.
+ *
+ * "Resolved" means *queued*, exactly as it does for an analysis: the provider
+ * call runs in the background and the row is the handle. `wait` blocks until it
+ * is done and exists for tests.
+ */
+export async function createStartingPoint(
+  body: StartingPointRequest,
+  options: { wait?: boolean } = {},
+): Promise<StartingPointRun> {
+  return fetchApi<StartingPointRun>(`/starting-points${queryString({ wait: options.wait })}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getStartingPoint(runId: number): Promise<StartingPointRun> {
+  return fetchApi<StartingPointRun>(`/starting-points/${runId}`);
+}
+
+/** Take one option: the Set, its first version and — if it carried one — a draft. */
+export async function acceptStartingPoint(
+  runId: number,
+  option: "conservative" | "recommended" | "adventurous",
+): Promise<StartingPointAccepted> {
+  return fetchApi<StartingPointAccepted>(`/starting-points/${runId}/accept`, {
+    method: "POST",
+    body: JSON.stringify({ option }),
+  });
 }

@@ -37,6 +37,7 @@ from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
+from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -59,6 +60,7 @@ from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools import registry as tool_registry
@@ -152,6 +154,7 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
             await device.stop()
     app.state.sync = None
     app.state.drafts = None
+    app.state.starting = None
     app.state.cleanup = None
     app.state.notes_writeback = None
 
@@ -259,12 +262,16 @@ async def _start(app: FastAPI, db: Database) -> None:
     # The chat's runs, for the reason an analysis's are: a `running` chat run
     # nobody owns is a spinner and a cancel button that cancels nothing.
     interrupted_chats = await ChatRepository(db).reconcile_running()
+    # The wizard's runs. Same rule again: the wizard renders a `running` row as a
+    # spinner, and nothing else would ever clear one left by a restart.
+    interrupted_starts = await StartingPointRunsRepository(db).reconcile_running()
     log.info(
         "boot_reconciled",
         analyses_interrupted=interrupted_analyses,
         sync_runs_interrupted=interrupted_syncs,
         cleanup_runs_interrupted=interrupted_cleanups,
         chat_runs_interrupted=interrupted_chats,
+        starting_points_interrupted=interrupted_starts,
         auth_sessions_expired=forgotten,
         auth_enabled=await auth.enabled(),
     )
@@ -327,10 +334,22 @@ async def _start(app: FastAPI, db: Database) -> None:
         client=app.state.device,
     )
 
+    # After the draft service, because it hands one to `accept`: an option that
+    # carries a whole profile becomes a draft through the same four layers a
+    # hand-typed one goes through, and a starting point built without that would
+    # be the one path around the write gate.
+    app.state.starting = StartingPointService(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        drafts=app.state.drafts,
+        bus=app.state.events,
+    )
+
     # App-scoped for the reason the analyzer is: it holds the cancel event of
     # every run in flight, and a per-request copy would make the cancel button a
-    # no-op. Built last, because it reaches into the analyzer and the draft
-    # service for the two tools that queue work.
+    # no-op. Built last, because it reaches into the analyzer, the draft service
+    # and the starting-point service for the three tools that queue work.
     app.state.chat = ChatRunner(
         db,
         app.state.llm,
@@ -339,6 +358,7 @@ async def _start(app: FastAPI, db: Database) -> None:
         bus=app.state.events,
         analyzer=app.state.analyzer,
         drafts=app.state.drafts,
+        starting=app.state.starting,
         knowledge=app.state.knowledge,
         tasks=app.state.tasks,
         rate_limits=app.state.rate_limits,
@@ -370,6 +390,7 @@ async def _start_mcp_if_enabled(app: FastAPI, db: Database, settings: SettingsSe
             knowledge=getattr(app.state, "knowledge", None),
             analyzer=getattr(app.state, "analyzer", None),
             drafts=getattr(app.state, "drafts", None),
+            starting=getattr(app.state, "starting", None),
             tasks=getattr(app.state, "tasks", None),
             rate_limits=getattr(app.state, "rate_limits", None),
             caller="mcp-http",

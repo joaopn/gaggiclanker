@@ -1,9 +1,11 @@
-import { Archive, ArchiveRestore, Bean, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Bean, Pencil, Plus, Sparkles } from "lucide-react";
 import { useId, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { BeanRow, BeanWrite } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { NewSetWizard } from "@/components/sets/NewSetWizard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,6 +49,11 @@ export function BeansPage() {
   const [showArchived, setShowArchived] = useState(false);
   const beans = useBeans(showArchived);
   const [editing, setEditing] = useState<BeanRow | "new" | null>(null);
+  // Which bag the wizard was opened for, or undefined when it is closed. The
+  // bean id rather than a boolean, because the shortcut's whole point is that
+  // the person does not have to find the bag again in a picker.
+  const [startingFrom, setStartingFrom] = useState<number | undefined>(undefined);
+  const navigate = useNavigate();
   useQueryErrorToast(beans.error, "Could not load the beans");
 
   const rows = beans.data?.items ?? [];
@@ -78,6 +85,19 @@ export function BeansPage() {
         <BeanForm bean={editing === "new" ? null : editing} onDone={() => setEditing(null)} />
       ) : null}
 
+      {/* Keyed on the bag, so re-opening it for a different bean remounts the
+          wizard rather than showing the previous bag's suggestions. */}
+      <NewSetWizard
+        key={startingFrom ?? "none"}
+        open={startingFrom !== undefined}
+        initialBeanId={startingFrom}
+        onOpenChange={(next) => {
+          if (!next) setStartingFrom(undefined);
+        }}
+        onCreated={(setId) => navigate(`/sets/${setId}`)}
+        onDraftCreated={() => navigate("/drafts")}
+      />
+
       {beans.isPending ? (
         <Skeleton className="h-24 w-full" />
       ) : rows.length === 0 ? (
@@ -94,7 +114,12 @@ export function BeansPage() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2" data-testid="bean-list">
           {rows.map((bean) => (
-            <BeanCard key={bean.id} bean={bean} onEdit={() => setEditing(bean)} />
+            <BeanCard
+              key={bean.id}
+              bean={bean}
+              onEdit={() => setEditing(bean)}
+              onStartSet={() => setStartingFrom(bean.id)}
+            />
           ))}
         </div>
       )}
@@ -102,7 +127,15 @@ export function BeansPage() {
   );
 }
 
-function BeanCard({ bean, onEdit }: { bean: BeanRow; onEdit: () => void }) {
+function BeanCard({
+  bean,
+  onEdit,
+  onStartSet,
+}: {
+  bean: BeanRow;
+  onEdit: () => void;
+  onStartSet: () => void;
+}) {
   const archive = useArchiveBean();
   const age = daysOffRoast(bean.roast_date);
   const fresh = freshness(age);
@@ -121,6 +154,19 @@ function BeanCard({ bean, onEdit }: { bean: BeanRow; onEdit: () => void }) {
       description={bean.roaster ?? undefined}
       actions={
         <div className="flex items-center gap-1">
+          {/* Not offered for an archived bag: archiving is how a finished bag
+              leaves the pickers, and a shortcut that put it back in one would
+              be the single path around that. */}
+          {bean.archived ? null : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onStartSet}
+              aria-label={`Start a Set from ${bean.name}`}
+            >
+              <Sparkles className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`Edit ${bean.name}`}>
             <Pencil className="size-3.5" aria-hidden="true" />
           </Button>

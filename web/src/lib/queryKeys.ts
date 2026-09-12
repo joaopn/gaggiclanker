@@ -68,6 +68,16 @@ export const queryKeys = {
   beans: {
     all: ["beans"] as const,
     list: (includeArchived?: boolean) => ["beans", "list", includeArchived ?? false] as const,
+    /**
+     * The similar-Set cards for a bag, on one grinder and machine.
+     *
+     * Under the `beans` prefix rather than under `startingPoints`, because it
+     * is a fact about the bean and it is read whether or not anybody ever asks
+     * the model anything. The hardware is in the key because changing the
+     * grinder changes the answer completely — the query filters on it.
+     */
+    similarSets: (id: string, grinderId?: number | null, machineId?: number | null) =>
+      ["beans", "similar-sets", id, grinderId ?? null, machineId ?? null] as const,
   },
   /** Grinders and machines: one page, one prefix, so one invalidation. */
   hardware: {
@@ -90,6 +100,11 @@ export const queryKeys = {
     // immutable, and keying it under the list would refetch it every time the
     // list is invalidated by a push.
     version: (id: string) => ["profiles", "version", id] as const,
+  },
+  /** The wizard's runs. One entry per run id; there is no list the UI renders. */
+  startingPoints: {
+    all: ["starting-points"] as const,
+    detail: (id: string) => ["starting-points", "detail", id] as const,
   },
   drafts: {
     all: ["drafts"] as const,

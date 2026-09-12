@@ -63,6 +63,16 @@ export type JudgementWrite = components["schemas"]["JudgementWrite"];
 export type ShotSetBadge = components["schemas"]["ShotSetBadge"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
+// The starting-point wizard. The run row, the request body and the
+// similar-Set cards are all real pydantic models, so none of them is retyped
+// here; only `StartingPointOutput` below is, for the reason `AnalysisOutput`
+// is — the server declares it as a JSON column.
+export type StartingPointRun = components["schemas"]["StartingPointRunRow"];
+export type StartingPointRequest = components["schemas"]["StartingPointRequest"];
+export type StartingPointAccepted = components["schemas"]["StartingPointAccepted"];
+export type SimilarSet = components["schemas"]["SimilarSet"];
+export type SimilarSetsData = components["schemas"]["SimilarSetsData"];
+
 // The analyzer and its knowledge tier. All real pydantic models on the
 // server, so none of them is retyped here either.
 export type Analysis = components["schemas"]["AnalysisRow"];
@@ -101,6 +111,51 @@ export type BatchResult = components["schemas"]["BatchResult"];
  * below the top level is optional because a row written by an older build, or
  * one whose provider answered a slightly different shape, still has to render.
  */
+/**
+ * The three options a starting-point run answers with, decoded.
+ *
+ * Hand-written for the reason `AnalysisOutput` is: `output` is a JSON column on
+ * `starting_point_runs`, so the server declares it as `dict[str, Any]` and the
+ * generated type is `unknown`. The authority is
+ * `gaggiclanker/starting/models.py::StartingPointResult`; when that changes,
+ * change this. Everything below the top level is optional, because a row
+ * written by an older build still has to render.
+ */
+export type StartingPointOption = {
+  option: "conservative" | "recommended" | "adventurous";
+  headline?: string;
+  grind_setting?: string;
+  /**
+   * Whether `grind_setting` is a number on this grinder's own scale.
+   *
+   * The load-bearing field on the card. False means the setting is words —
+   * "two steps finer than your usual" — because nothing anchored a number, and
+   * the card has to say so rather than letting somebody read it as a dial
+   * position.
+   */
+  grind_is_absolute?: boolean;
+  grind_note?: string;
+  dose_g?: number;
+  yield_g?: number;
+  ratio?: number;
+  temperature_c?: number;
+  profile_version_id?: number | null;
+  /** A whole profile document, when the option authored one. */
+  profile?: Record<string, unknown> | null;
+  profile_note?: string;
+  rationale?: string;
+  rules_used?: string[];
+  excerpts_used?: string[];
+  similar_set_version_ids?: number[];
+};
+
+export type StartingPointOutput = {
+  summary?: string;
+  rest_note?: string;
+  questions_for_user?: string[];
+  options?: StartingPointOption[];
+};
+
 export type AnalysisOutput = {
   shot_style?: string;
   execution?: {

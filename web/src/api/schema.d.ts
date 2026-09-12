@@ -180,6 +180,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/beans/{bean_id}/similar-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Past Set versions that resemble this bag, best first
+         * @description The similar-Set query on its own, for the wizard's first step.
+         *
+         *     ``grinder_id`` is a filter rather than a hint: a grind number from a
+         *     different grinder is not weaker evidence, it is meaningless, and putting one
+         *     on a card would invite somebody to dial it. Omitting it lifts the filter,
+         *     which is what a kitchen with no recorded grinder needs.
+         */
+        get: operations["bean_similar_sets_api_beans__bean_id__similar_sets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/beans/{bean_id}/unarchive": {
         parameters: {
             query?: never;
@@ -1785,6 +1810,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/starting-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for a starting point for a new bag
+         * @description Queue the work and answer with the `running` row. 202, not 201.
+         *
+         *     Idempotent per (bean, machine, grinder). A second tab pressing the button
+         *     gets the running row rather than a second call, because the registry name
+         *     can only be held once.
+         *
+         *     A **provider failure still answers 2xx.** The row exists, it says `failed`
+         *     and it carries the error code; a 502 would leave the client an error and no
+         *     id, and the row it could not see is the one thing that explains what
+         *     happened.
+         */
+        post: operations["create_starting_point_api_starting_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/starting-points/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One starting-point run, with its three options */
+        get: operations["get_starting_point_api_starting_points__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/starting-points/{run_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take one option: create the Set, its first version and any draft
+         * @description Create the Set this option describes.
+         *
+         *     Refused with a 409 for a run that is still running, that failed, or that
+         *     somebody has already accepted — the last one carries the ids of what the
+         *     first accept made, so the UI can take the person there rather than showing
+         *     them an error about a Set that exists.
+         *
+         *     Refused with a 422 when the option's profile document is one the safety
+         *     policy will not allow, carrying every violation at once. Nothing is created
+         *     in that case: a Set pointing at a profile that was rejected is worse than no
+         *     Set.
+         */
+        post: operations["accept_starting_point_api_starting_points__run_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/suggestions/{suggestion_id}/accept": {
         parameters: {
             query?: never;
@@ -2564,6 +2665,30 @@ export interface components {
         /** ApiResponse[ShotSamplesData] */
         ApiResponse_ShotSamplesData_: {
             data?: components["schemas"]["ShotSamplesData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SimilarSetsData] */
+        ApiResponse_SimilarSetsData_: {
+            data?: components["schemas"]["SimilarSetsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[StartingPointAccepted] */
+        ApiResponse_StartingPointAccepted_: {
+            data?: components["schemas"]["StartingPointAccepted"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[StartingPointRunRow] */
+        ApiResponse_StartingPointRunRow_: {
+            data?: components["schemas"]["StartingPointRunRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4044,6 +4169,8 @@ export interface components {
             /** Pending */
             pending: number;
         };
+        /** @enum {string} */
+        OptionKey: "conservative" | "recommended" | "adventurous";
         /**
          * PasswordBody
          * @description A password change. The plain values never leave this request.
@@ -4711,7 +4838,7 @@ export interface components {
             version: components["schemas"]["SetVersionRow"];
         };
         /** @enum {string} */
-        SetVersionOrigin: "manual" | "analysis" | "chat";
+        SetVersionOrigin: "manual" | "analysis" | "chat" | "starting_point";
         /**
          * SetVersionPatch
          * @description The body of `POST /api/sets/{id}/versions`: only what changed.
@@ -5258,6 +5385,136 @@ export interface components {
             version_no: number;
         };
         /**
+         * SimilarOutcome
+         * @description How a candidate version actually turned out, over its own shots.
+         *
+         *     Every field is nullable because every field can be genuinely unknown: a Set
+         *     pulled before anybody started judging shots has no rating, a shot with no
+         *     dose typed against it has no ratio. ``None`` is the honest answer and the
+         *     prompt renders it as "not recorded" — a zero here would read as "rated it
+         *     nothing", which is a different and much worse claim.
+         */
+        SimilarOutcome: {
+            /** Mean Duration S */
+            mean_duration_s?: number | null;
+            /** Mean Execution Score */
+            mean_execution_score?: number | null;
+            /** Mean Rating */
+            mean_rating?: number | null;
+            /** Mean Ratio */
+            mean_ratio?: number | null;
+            /**
+             * Shots
+             * @default 0
+             */
+            shots: number;
+        };
+        /**
+         * SimilarSet
+         * @description One past Set version offered as an anchor, with why it was offered.
+         */
+        SimilarSet: {
+            /** Attribute Score */
+            attribute_score: number;
+            /** Bean Id */
+            bean_id?: number | null;
+            /**
+             * Bean Name
+             * @default
+             */
+            bean_name: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Decaf
+             * @default false
+             */
+            decaf: boolean;
+            /**
+             * Decaf Match
+             * @default true
+             */
+            decaf_match: boolean;
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /**
+             * Grinder Name
+             * @default
+             */
+            grinder_name: string;
+            /** Machine Id */
+            machine_id?: number | null;
+            /** Origin */
+            origin?: string | null;
+            /**
+             * Origin Match
+             * @default false
+             */
+            origin_match: boolean;
+            /**
+             * @default {
+             *       "shots": 0
+             *     }
+             */
+            outcome: components["schemas"]["SimilarOutcome"];
+            /** Outcome Score */
+            outcome_score: number;
+            /** Process */
+            process?: string | null;
+            /**
+             * Process Match
+             * @default false
+             */
+            process_match: boolean;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Ratio */
+            ratio?: number | null;
+            /** Roast Level */
+            roast_level?: string | null;
+            /**
+             * Roast Match
+             * @default none
+             */
+            roast_match: string;
+            /** Score */
+            score: number;
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Set Version Id */
+            set_version_id: number;
+            /** Target Temperature C */
+            target_temperature_c?: number | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * SimilarSetsData
+         * @description What the archive already knows about beans like this one.
+         */
+        SimilarSetsData: {
+            /** Bean Id */
+            bean_id: number;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Items */
+            items: components["schemas"]["SimilarSet"][];
+            /** Machine Id */
+            machine_id?: number | null;
+        };
+        /**
          * SkippedShot
          * @description One shot the plan would not delete, and the sentence saying why.
          */
@@ -5271,6 +5528,135 @@ export interface components {
         };
         /** @enum {string} */
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
+        /**
+         * StartingPointAccepted
+         * @description What an accept produced.
+         *
+         *     Named for the feature rather than `AcceptedData`, because the suggestion
+         *     routes already have a model by that name and two of them collide into
+         *     module-qualified names in the OpenAPI document — which would rename the
+         *     front end's existing alias for somebody else's model.
+         *
+         *     The draft is here rather than only its id because the wizard's next step is
+         *     to open it, and a second round-trip to discover whether there even is one
+         *     would make the button feel like it did nothing.
+         */
+        StartingPointAccepted: {
+            draft?: components["schemas"]["ProfileDraftRow"] | null;
+            run: components["schemas"]["StartingPointRunRow"];
+            set: components["schemas"]["SetRow"];
+            version: components["schemas"]["SetVersionRow"];
+        };
+        /**
+         * StartingPointAcceptRequest
+         * @description `POST /api/starting-points/{id}/accept`: which of the three.
+         */
+        StartingPointAcceptRequest: {
+            option: components["schemas"]["OptionKey"];
+        };
+        /**
+         * StartingPointRequest
+         * @description `POST /api/starting-points`: which bag, on which kit.
+         */
+        StartingPointRequest: {
+            /** Bean Id */
+            bean_id: number;
+            /** Dose Hint G */
+            dose_hint_g?: number | null;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Machine Id */
+            machine_id: number;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Usual Grind
+             * @default
+             */
+            usual_grind: string;
+        };
+        /**
+         * StartingPointRunRow
+         * @description One row of `starting_point_runs`, as read back.
+         */
+        StartingPointRunRow: {
+            /** Accepted At */
+            accepted_at?: string | null;
+            /** Accepted Draft Id */
+            accepted_draft_id?: number | null;
+            /** Accepted Option */
+            accepted_option?: string | null;
+            /** Accepted Set Id */
+            accepted_set_id?: number | null;
+            /** Accepted Set Version Id */
+            accepted_set_version_id?: number | null;
+            /** Bean Id */
+            bean_id: number;
+            /** Bean Name */
+            bean_name?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Dose Hint G */
+            dose_hint_g?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Grinder Name */
+            grinder_name?: string | null;
+            /** Id */
+            id: number;
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** Llm Call Id */
+            llm_call_id?: string | null;
+            /** Machine Id */
+            machine_id: number;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Prompt Name
+             * @default
+             */
+            prompt_name: string;
+            /**
+             * Prompt Version
+             * @default
+             */
+            prompt_version: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /** @default running */
+            status: components["schemas"]["StartingPointStatus"];
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Usual Grind
+             * @default
+             */
+            usual_grind: string;
+        };
+        /** @enum {string} */
+        StartingPointStatus: "running" | "ok" | "failed" | "interrupted";
         /** @enum {string} */
         StepUnit: "clicks" | "numbers" | "microns" | "free";
         /**
@@ -6032,6 +6418,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bean_similar_sets_api_beans__bean_id__similar_sets_get: {
+        parameters: {
+            query?: {
+                grinder_id?: number | null;
+                limit?: number;
+                machine_id?: number | null;
+            };
+            header?: never;
+            path: {
+                bean_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SimilarSetsData_"];
                 };
             };
             /** @description Validation Error */
@@ -8655,6 +9076,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotDetailRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_starting_point_api_starting_points_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartingPointRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_StartingPointRunRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_starting_point_api_starting_points__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_StartingPointRunRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_starting_point_api_starting_points__run_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartingPointAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_StartingPointAccepted_"];
                 };
             };
             /** @description Validation Error */

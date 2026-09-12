@@ -1,0 +1,396 @@
+=== bean_facts ===
+bean: Kenya Nyeri
+roaster: Square Mile
+origin: Kenya
+variety: SL28
+altitude: 1900 m
+process: washed
+roast level: light
+roast date: 2026-03-06
+today: 2026-03-10
+days off roast: 4 (degassing)
+roaster's tasting notes: blackcurrant, tomato, cane sugar
+
+=== hardware_facts ===
+GRINDER
+grinder: Niche Zero NZ
+burrs: conical
+grind unit: numbers — every grind figure you give is in these, never microns
+their usual espresso setting: 22
+
+MACHINE
+machine: GaggiMate Pro
+temperature offset: -1.5 °C
+dose they want to hold: 18 g
+
+=== knowledge_excerpts ===
+[ESPRESSO_BREWING_BASICS#ratio-guidelines] Ratio Guidelines
+## Ratio Guidelines
+
+| Ratio | Style | Character |
+|---|---|---|
+| 1:1 to 1:1.5 | Ristretto | Intense, concentrated, heavy |
+| 1:2 | Classic | Balanced, full body |
+| 1:2.5 to 1:3 | Lungo/Modern | Lighter, more clarity, extended sweetness |
+| 1:3+ | Allongé/SOUP | Filter-like clarity, tea-like body |
+
+**When to adjust ratio:**
+- Want more intensity → shorter ratio
+- Want more clarity/sweetness → longer ratio
+- Light roast tasting sour at 1:2 → try 1:2.5 or 1:3
+
+## Dialing-In Process
+
+### Quick Start (New Coffee)
+
+1. **Set dose** based on basket size (e.g., 15g for 15g basket)
+2. **Set ratio** at 1:2 as starting point
+3. **Adjust grind** until shot time is ~25-30s
+4. **Taste and adjust:**
+   - Sour → finer grind
+   - Bitter → coarser grind
+5. **Fine-tune** temperature and ratio based on taste
+
+### When Stuck
+
+- If adjustments aren't helping, try a different profile style (turbo vs traditional)
+- Fresh beans (<2 weeks from roast) need longer pre-infusion for degassing
+- If nothing works, cup the beans to check if they have inherent defects
+
+## Diagnostic Decision Tree
+
+For full taste-based diagnostic trees (style-relative thresholds, branching logic), see `gaggimate://knowledge/diagnostics/DIAGNOSTIC_TREES.md`.
+
+Quick reference: Sour → grind finer / increase temp / extend extraction. Bitter → grind coarser / decrease temp / shorten extraction. Sour + bitter → channeling (fix puck prep, do NOT grind finer — see Scott Rao rule in `gaggimate://knowledge/ESPRESSO_TASTING_GUIDE.md`).
+
+[COFFEE_PROCESSING#the-methods/honey-process] The Methods > Honey Process
+### Honey Process
+
+**What happens:** Cherry skin is removed, but some or all of the mucilage is left on the bean during drying. The amount of mucilage retained defines the sub-type:
+
+| Sub-type | Mucilage retained | Drying time | Character |
+|----------|-------------------|-------------|-----------|
+| **White honey** | ~10-20% | Fastest | Closest to washed — clean, mild sweetness |
+| **Yellow honey** | ~25-50% | Fast | Light sweetness, hint of fruit, clean finish |
+| **Red honey** | ~50-75% | Moderate | Noticeable sweetness, some fruit, medium body |
+| **Black honey** | ~80-100% | Slowest | Approaching natural — heavy sweetness, fruity, full body |
+
+The more mucilage, the more fermentation, the more the bean behaves like a natural.
+
+**Flavor signature:** A spectrum between washed and natural. Yellow/white honey: clean sweetness with light fruit. Black honey: heavy body, intense sweetness, stone fruit or tropical notes. The honey process is Costa Rica's signature innovation.
+
+**Why it extracts the way it does:** Partial mucilage retention creates a bean that is denser than a natural but more soluble than a washed. The gradient from white to black mirrors the gradient from washed to natural in extraction behavior.
+
+**Espresso implications:**
+- **Yellow/white honey**: Treat like a washed coffee. Standard pressure, classic profiles
+- **Red honey**: Slight pressure reduction (0.5-1 bar below washed). Bloom optional but beneficial
+- **Black honey**: Treat closer to a natural. Lower pressure, bloom profile, extended pre-infusion
+- **Temperature**: Stay mid-range for roast level. Honey coffees reward temperature stability
+
+**Common origins:** Costa Rica (pioneer), El Salvador, Brazil, Panama
+
+[EXAMPLES#example-2-blooming-profile] Example 2: Blooming Profile
+## Example 2: Blooming Profile
+
+Enhanced sweetness with soak phase. Great for fruit-forward coffees.
+
+**Best for:** Light roasts, Ethiopian/Kenyan origins, fruit-forward coffees
+
+```json
+{
+  "label": "Bloom Profile",
+  "type": "pro",
+  "description": "Gentle bloom for fruit-forward coffees",
+  "temperature": 94,
+  "phases": [
+    {
+      "name": "Fill",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 5,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "flow",
+        "pressure": 9,
+        "flow": 2.5
+      }
+    },
+    {
+      "name": "Bloom",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 8,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "power",
+        "pressure": 0,
+        "flow": 0
+      }
+    },
+    {
+      "name": "Ramp",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 5,
+      "temperature": 0,
+      "transition": {
+        "type": "ease-in-out",
+        "duration": 4,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 9,
+        "flow": 0
+      },
+      "targets": [
+        {
+          "type": "pressure",
+          "operator": "gte",
+          "value": 8.5
+        }
+      ]
+    },
+    {
+      "name": "Hold",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 20,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 9,
+        "flow": 4
+      },
+      "targets": [
+        {
+          "type": "volumetric",
+          "operator": "gte",
+          "value": 36
+        }
+      ]
+    },
+    {
+      "name": "Taper",
+      "phase": "decline",
+      "valve": 1,
+      "duration": 6,
+      "temperature": 0,
+      "transition": {
+        "type": "linear",
+        "duration": 5,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 5,
+        "flow": 0
+      }
+    }
+  ]
+}
+```
+
+**Phase breakdown:**
+1. **Fill (5s)**: Gentle wetting at 2.5 ml/s
+2. **Bloom (8s)**: Pump off - allows CO2 to escape, enhances sweetness
+3. **Ramp (up to 5s)**: Smooth ease-in-out transition to 9 bar
+4. **Hold (up to 20s)**: Main extraction at 9 bar
+5. **Taper (6s)**: Gentle decline to 5 bar for smooth finish
+
+## Example 3: Spring Lever Simulation
+
+Declining pressure profile mimicking manual lever machines like the La Pavoni or Cremina.
+
+**Best for:** Any roast, creates smooth body with less bitterness
+
+```json
+{
+  "label": "Cremina Lever",
+  "type": "pro",
+  "description": "Spring lever-style declining pressure",
+  "temperature": 90,
+  "phases": [
+    {
+      "name": "Pre-infusion",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 5,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "flow",
+        "pressure": 9,
+        "flow": 3
+      }
+    },
+    {
+      "name": "Peak Pressure",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 5,
+      "temperature": 0,
+      "transition": {
+        "type": "linear",
+        "duration": 3,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 9,
+        "flow": 0
+      },
+      "targets": [
+        {
+          "type": "pressure",
+          "operator": "gte",
+          "value": 8.5
+        }
+      ]
+    },
+    {
+      "name": "Decline",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 30,
+      "temperature": 0,
+      "transition": {
+        "type": "linear",
+        "duration": 25,
+        "adaptive": true
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 3,
+        "flow": 0
+      },
+      "targets": [
+        {
+          "type": "volumetric",
+          "operator": "gte",
+          "value": 36
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Phase breakdown:**
+1. **Pre-infusion (5s)**: Standard wetting at 3 ml/s
+2. **Peak Pressure (up to 5s)**: Ramp to 9 bar peak
+3. **Decline (up to 30s)**: 25-second linear decline from 9 to 3 bar, mimicking spring lever
+
+=== knowledge_rules ===
+dial_in_order:
+  [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
+  [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
+  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Set version is to be able to say what a single change did.
+  [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
+
+increments:
+  [grind] Move the grinder in its own smallest meaningful step — one or two — and say which way in the grinder's units, never in microns.
+  [preinfusion_flow] Adjust pre-infusion flow in 0.5 ml/s steps.
+  [preinfusion_time] Adjust pre-infusion in 2-3 s steps.
+  [pressure] Adjust pressure in 0.5-1 bar steps.
+  [temperature] Adjust brew temperature in 1 °C steps; 2 °C at most in one move.
+  [yield] Adjust yield in 5 g steps — about half a ratio point on a normal dose.
+
+temperature_by_roast:
+  [high_altitude] Beans grown above about 1 800 m are denser: add 1-2 °C and grind a step finer than the roast level alone would say.
+  [light] Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat.
+
+pressure_matrix:
+  [compression_floor] A puck compresses at about 4 bar, so pre-infusion belongs below that: pressure applied before the bed has set is what opens a channel.
+  [decline_compensates_erosion] A declining pressure phase compensates for the puck eroding: as resistance falls, dropping the setpoint keeps flow where it was instead of letting the shot run away at the end.
+  [flow_peak] Flow through an espresso puck peaks around 9 bar. Above about 10 the extra pressure goes into deforming the bed rather than through it.
+  [washed.light] Washed light: 8-9 bar. A clean, dense bean takes full pressure.
+
+ratio_by_style:
+  [bloom] A bloom profile aims at about 1:2 to 1:2.5; the soak does the work, not the ratio.
+  [ristretto_and_milk] For milk drinks and ristretto, 1:1 to 1:1.5 is the working range.
+
+time_by_style:
+  [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
+
+freshness_windows:
+  [crema_cues] Thick, pale, bubbly crema that collapses fast means the bean is too fresh; thin tan crema means it is past its peak.
+  [degassing] One to three days off roast the bean is still shedding CO2: use a long bloom and a slow pre-infusion, and expect the shot to gush once the gas breaks through.
+
+rest_times:
+  [light] Light roasts need 10-14 days of rest before they dial in reliably.
+
+profile_design_defaults:
+  [bloom] A bloom is the pump OFF for 5-15 s — not the valve closed. The valve stays at 1.
+  [hold] Hold for 15-30 s with a volumetric target on it, so the shot ends on weight and not on time.
+
+equipment_hints:
+  [conical] Conical burrs make more fines: run 7-8 bar with a gentle ramp and a longer pre-infusion, and expect a tighter bed at the same setting than a flat burr would give.
+  [distribution_before_tamping] Distribution matters more than tamping, and tamping more than pressure. Almost every inconsistency that survives a grind change is a distribution problem.
+  [dose_is_the_basket] Dose to the basket's rating plus or minus 1 g. Underdosing leaves headspace, water pools above the puck and channels; a deeper basket wants a coarser grind for the same time.
+
+safety_bounds:
+  [never_invent_data] Never state a measurement that is not in the context. If the dose, the grind setting or the taste is missing, ask for it in questions_for_user rather than assuming a value.
+  [one_step_at_a_time] Never suggest more than one step of one variable in a single shot, and never a change larger than the increment rules allow. A big correction is two shots, not one.
+  [pressure] Never suggest a pressure outside 0-12 bar; the firmware itself refuses more.
+  [temperature] Never suggest a brew temperature outside 25-100 °C.
+
+=== planned_style ===
+bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medium 18g 1:2)
+
+=== profile_library ===
+[profile_version 1] Medium 18g 1:2 — 5 phases, 93 °C, used by 14 shots
+  shape: Pre-infusion 3s pressure 5; Bloom 7s pump 0%; Pressurise 10s pressure 9 → volumetric gte 20; Ramp down 8s pressure 5 → volumetric gte 36; Hammer 1s pump 100%
+
+=== similar_sets ===
+[set_version 1] Kenya AA on the niche v1 — Kenya AA
+  why it is similar: same roast level, same process, same origin
+  bean: light, washed, Kenya
+  grind: 21
+  dose: 18 g
+  target yield: 45 g
+  ratio: 1:2.50
+  temperature: 94 °C
+  profile: Medium 18g 1:2 (profile_version 1)
+  how it went: 5 shots, rating 4.4/5, execution 8.92/10, ratio 1:2.5, 28 s
+
+[set_version 2] Ethiopia Guji on the niche v1 — Ethiopia Guji
+  why it is similar: same roast level, different process, different origin
+  bean: light, natural, Ethiopia
+  grind: 23
+  dose: 18 g
+  target yield: 40 g
+  ratio: 1:2.22
+  temperature: 93.5 °C
+  profile: Medium 18g 1:2 (profile_version 1)
+  how it went: 3 shots, rating 3/5, execution 8/10, ratio 1:2.22, 28 s
+
+[set_version 3] Brazil Cerrado on the niche v1 — Brazil Cerrado
+  why it is similar: different roast level, same process, different origin
+  bean: medium-dark, washed, Brazil
+  grind: 26
+  dose: 18 g
+  target yield: 32 g
+  ratio: 1:1.78
+  temperature: 90 °C
+  profile: Medium 18g 1:2 (profile_version 1)
+  how it went: 2 shots, rating 4/5, execution 8.5/10, ratio 1:1.78, 28 s

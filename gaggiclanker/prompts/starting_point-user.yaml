@@ -1,0 +1,65 @@
+name: starting_point-user
+description: |
+  The user turn of the starting-point call: the facts, in the order they are
+  read.
+
+  Every variable is a block of text rendered by
+  `gaggiclanker/starting/context.py::StartingPointContext.render`, which is also
+  what is snapshotted onto the run row — so what an old suggestion says it was
+  told is exactly what it was told.
+
+  The order follows the question. The bag first, because that is the subject.
+  The hardware next, because it decides what units the answer can even be given
+  in — and the user's usual grind setting lives there, which is the single fact
+  that turns a relative answer into a dialable one. The similar Sets after that,
+  because they are this kitchen's own evidence and the prompt says they outrank
+  the rules. The profile library next, so "use the one you already have" is
+  available before the model starts authoring. The planned style after that,
+  because it is what the ratio and time rules below were selected for. Then the
+  rules, and last the retrieved prose — least authoritative, and the easiest
+  thing in the prompt to talk oneself into following.
+variables:
+  - name: bean_facts
+    description: The bag — roast level, process, origin, decaf, and how long off roast.
+  - name: hardware_facts
+    description: The grinder (its step unit and their usual setting) and the machine.
+  - name: similar_sets
+    description: Past Set versions on this hardware that resemble the bag, with how they went.
+  - name: profile_library
+    description: Profiles already in the archive, with their shape and how used they are.
+  - name: planned_style
+    description: The shot style the rules below were selected for, and why that one.
+  - name: knowledge_rules
+    description: The knowledge rules selected for this bean and style, verbatim.
+  - name: knowledge_excerpts
+    description: Passages retrieved from the knowledge base, with their citations.
+user: |
+  THE BAG THEY HAVE JUST OPENED
+
+  {{bean_facts}}
+
+  THE KIT IT WILL BE BREWED ON — every grind figure you give is in this grinder's units
+
+  {{hardware_facts}}
+
+  WHAT THIS KITCHEN HAS ALREADY BREWED THAT RESEMBLES IT — evidence, and it outranks the rules
+
+  {{similar_sets}}
+
+  PROFILES ALREADY IN THE LIBRARY — prefer one of these to authoring a new one
+
+  {{profile_library}}
+
+  THE STYLE OF SHOT BEING PLANNED — what the ratio and time rules below were chosen for
+
+  {{planned_style}}
+
+  KNOWLEDGE RULES SELECTED FOR THIS BEAN — authoritative over your own priors
+
+  {{knowledge_rules}}
+
+  REFERENCE EXCERPTS — supporting material, not authoritative. Cite by heading path.
+
+  {{knowledge_excerpts}}
+
+  Give three starting points: conservative, recommended, adventurous.

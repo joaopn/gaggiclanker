@@ -1,5 +1,6 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { SetCreate } from "@/api/types";
+import { StartingPointStep } from "@/components/sets/StartingPointStep";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,18 +21,26 @@ import { cn } from "@/lib/utils";
  * on which machine and grinder, through which profile, at what recipe, and what
  * you are trying to find out.
  *
- * A wizard rather than one long form because the four steps have different
- * answers available at different times — the bean is the only one that is
- * always known, and the recipe is the one worth thinking about. Each step
- * validates only itself, so "next" is never disabled for a reason three fields
- * down the page.
+ * A wizard rather than one long form because the steps have different answers
+ * available at different times — the bean is the only one that is always known,
+ * and the recipe is the one worth thinking about. Each step validates only
+ * itself, so "next" is never disabled for a reason three fields down the page.
  *
  * The last step is the intent, and it is optional here and only here: version 1
  * of a Set is a baseline, not a change to anything. Every version after it is
  * asked for one.
+ *
+ * **The first step is the shortcut**, and it is first because it is
+ * the step that can end the wizard. It asks for the identity — the bag, the
+ * machine, the grinder, and the one thing only the person knows, what they
+ * normally grind espresso at — and then offers two ways forward: read what this
+ * archive already brewed on that grinder and ask for three starting points, or
+ * carry on and fill the recipe in by hand. Everything it collects is the same
+ * `Draft` the manual path uses, so skipping it costs nothing and taking it and
+ * then changing your mind costs nothing either.
  */
 
-const STEPS = ["Bean", "Hardware", "Profile", "Recipe"] as const;
+const STEPS = ["Suggest", "Bean", "Hardware", "Profile", "Recipe"] as const;
 
 const FIELD = cn(
   "h-8 w-full rounded-md border border-input bg-background px-2 text-sm",
@@ -49,6 +58,12 @@ type Draft = {
   targetYieldG: string;
   targetTemperatureC: string;
   intent: string;
+  /**
+   * What they normally grind espresso at. Never sent to `POST /api/sets` — it
+   * is an input to the suggestion, not a fact about the Set — which is why
+   * `toCreateBody` ignores it.
+   */
+  usualGrind: string;
 };
 
 const EMPTY: Draft = {
@@ -62,6 +77,7 @@ const EMPTY: Draft = {
   targetYieldG: "",
   targetTemperatureC: "",
   intent: "",
+  usualGrind: "",
 };
 
 function toNumber(value: string): number | null {
@@ -94,10 +110,20 @@ export function NewSetWizard({
   open,
   onOpenChange,
   onCreated,
+  initialBeanId,
+  onDraftCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (setId: number) => void;
+  /**
+   * Pre-select a bag. The Beans page's "Start a Set from this bean" shortcut
+   * passes it, so the person who has just typed a bag in does not have to find
+   * it again in a picker.
+   */
+  initialBeanId?: number;
+  /** Where to send the person when an accepted option left a draft to approve. */
+  onDraftCreated?: (draftId: number) => void;
 }) {
   const beans = useBeans();
   const grinders = useGrinders();
@@ -106,6 +132,22 @@ export function NewSetWizard({
   const create = useCreateSet();
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  // The starting-point run this dialog is following, if any. Held here rather
+  // than inside the step so re-entering step 0 shows the options again instead
+  // of an empty form and a second paid call.
+  const [runId, setRunId] = useState<number | undefined>(undefined);
+
+  // A bag handed in by the Beans page shortcut. An effect rather than a
+  // `useState` initialiser, because the dialog is mounted once and re-opened
+  // many times — an initialiser would take the first bean it ever saw.
+  useEffect(() => {
+    if (!open) return;
+    setDraft((current) =>
+      initialBeanId === undefined || current.beanId
+        ? current
+        : { ...current, beanId: String(initialBeanId) },
+    );
+  }, [open, initialBeanId]);
   const ids = {
     name: useId(),
     bean: useId(),
@@ -124,6 +166,9 @@ export function NewSetWizard({
   }
 
   const chosenBean = beans.data?.items.find((bean) => String(bean.id) === draft.beanId);
+  const chosenGrinder = grinders.data?.items.find(
+    (grinder) => String(grinder.id) === draft.grinderId,
+  );
   // The Set's name defaults to the bag's, which is what a person would type
   // anyway, and stays editable for the case where two Sets share a bean.
   const name = draft.name || chosenBean?.name || "";
@@ -135,8 +180,10 @@ export function NewSetWizard({
   const onlyMachine = machineRows.length === 1 ? String(machineRows[0].machine.id) : "";
   const machineId = draft.machineId || onlyMachine;
 
+  // Positional, one entry per step. Step 0 (Suggest) is never a gate: it is a
+  // shortcut, and a shortcut you cannot walk past is a wall.
   const ready = useMemo(
-    () => [Boolean(draft.beanId), Boolean(machineId), true, true],
+    () => [true, Boolean(draft.beanId), Boolean(machineId), true, true],
     [draft.beanId, machineId],
   );
 
@@ -168,6 +215,90 @@ export function NewSetWizard({
 
         <div className="space-y-3">
           {step === 0 ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Labelled id={ids.bean} label="Bean">
+                  <select
+                    id={ids.bean}
+                    className={FIELD}
+                    value={draft.beanId}
+                    onChange={(event) => set("beanId", event.target.value)}
+                  >
+                    <option value="">Pick a bag</option>
+                    {(beans.data?.items ?? []).map((bean) => (
+                      <option key={bean.id} value={String(bean.id)}>
+                        {beanLabel(bean)}
+                      </option>
+                    ))}
+                  </select>
+                </Labelled>
+                <Labelled id={ids.grinder} label="Grinder">
+                  <select
+                    id={ids.grinder}
+                    className={FIELD}
+                    value={draft.grinderId}
+                    onChange={(event) => set("grinderId", event.target.value)}
+                  >
+                    <option value="">Not recorded</option>
+                    {(grinders.data?.items ?? []).map((grinder) => (
+                      <option key={grinder.id} value={String(grinder.id)}>
+                        {grinder.name}
+                      </option>
+                    ))}
+                  </select>
+                </Labelled>
+              </div>
+              {machineRows.length > 1 ? (
+                <Labelled id={ids.machine} label="Machine">
+                  <select
+                    id={ids.machine}
+                    className={FIELD}
+                    value={machineId}
+                    onChange={(event) => set("machineId", event.target.value)}
+                  >
+                    <option value="">Pick a machine</option>
+                    {machineRows.map((entry) => (
+                      <option key={entry.machine.id} value={String(entry.machine.id)}>
+                        {entry.machine.name || entry.machine.host}
+                      </option>
+                    ))}
+                  </select>
+                </Labelled>
+              ) : null}
+
+              <StartingPointStep
+                beanId={draft.beanId ? Number(draft.beanId) : undefined}
+                machineId={machineId ? Number(machineId) : undefined}
+                grinderId={draft.grinderId ? Number(draft.grinderId) : null}
+                grindUnit={chosenGrinder?.step_unit ?? "clicks"}
+                usualGrind={draft.usualGrind}
+                doseHint={draft.doseG}
+                onUsualGrindChange={(value) => set("usualGrind", value)}
+                runId={runId}
+                onRunStarted={setRunId}
+                onAccepted={(choice) => {
+                  // Accepting created the Set already — this dialog's job is
+                  // over. It closes rather than walking the person through four
+                  // more steps describing the Set they have just made.
+                  setDraft(EMPTY);
+                  setStep(0);
+                  setRunId(undefined);
+                  onOpenChange(false);
+                  // One destination, not two. Both callbacks navigate, and a
+                  // draft waiting for approval is the more urgent of the two
+                  // places to be: the Set is fine to look at later, the profile
+                  // is not on the machine until somebody approves it.
+                  if (choice.draftId !== null && onDraftCreated) {
+                    onDraftCreated(choice.draftId);
+                    return;
+                  }
+                  onCreated?.(choice.setId);
+                }}
+              />
+            </>
+          ) : null}
+
+          {step === 1 ? (
             <>
               <Labelled id={ids.bean} label="Bean">
                 <select
@@ -208,7 +339,7 @@ export function NewSetWizard({
             </>
           ) : null}
 
-          {step === 1 ? (
+          {step === 2 ? (
             <>
               <Labelled id={ids.machine} label="Machine">
                 <select
@@ -243,7 +374,7 @@ export function NewSetWizard({
             </>
           ) : null}
 
-          {step === 2 ? (
+          {step === 3 ? (
             <>
               <Labelled id={ids.profile} label="Profile version">
                 <select
@@ -268,7 +399,7 @@ export function NewSetWizard({
             </>
           ) : null}
 
-          {step === 3 ? (
+          {step === 4 ? (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <Labelled id={ids.grind} label="Grind">
@@ -332,7 +463,9 @@ export function NewSetWizard({
           </Button>
           {step < STEPS.length - 1 ? (
             <Button size="sm" disabled={!ready[step]} onClick={() => setStep((c) => c + 1)}>
-              Next
+              {/* The shortcut step is the only one whose "next" is a refusal of
+                  the shortcut, so it says what it does rather than "Next". */}
+              {step === 0 ? "Set it up by hand" : "Next"}
             </Button>
           ) : (
             <Button
@@ -348,6 +481,7 @@ export function NewSetWizard({
                 if (!row) return;
                 setDraft(EMPTY);
                 setStep(0);
+                setRunId(undefined);
                 onOpenChange(false);
                 onCreated?.(row.id);
               }}

@@ -136,6 +136,35 @@ a Knowledge page with Rules / Docs / Insights tabs, "Reference excerpts" and
 "Proposed insights" on the analysis panel, learned insights on the Set page, and
 one setting (`analysisChunkTokenBudget`). Migrations `0011` and `0012`.
 
+### A starting point for a new bag
+
+The first shot with a bag nobody has brewed, answered from what this archive
+already knows rather than from a chart.
+
+- **Similar past Sets, by SQL and for free.** The wizard shows what you have
+  already brewed on *this grinder* that resembles the new bag — same roast
+  level, same process, same origin — with how each one actually went: shots,
+  mean rating, mean execution score, ratio and time. It costs no tokens and it
+  is worth reading on its own. A recipe with no shots behind it is never
+  offered: it records an intention, not a result.
+- **Three options, not one.** Conservative, recommended, adventurous, each with
+  a grind, a dose, a yield, a temperature, a profile and a rationale citing the
+  rules and Sets it leaned on. Nobody knows what a new bag wants yet, and a
+  single confident answer hides that.
+- **It will not invent a grind number.** A grinder's scale is arbitrary and
+  there is no conversion between two of them, so a number is offered only when
+  your usual setting or a past Set on the same grinder anchors it. Otherwise the
+  answer is relative — "a little finer than your usual" — and the card says so.
+- **Rest windows are stated separately**, because a light natural two days off
+  roast wants another week and no grind setting fixes that.
+- **Taking one creates the Set** with `origin = starting_point`, and — when the
+  option authored a whole profile — a draft through the same schema, safety
+  policy and clamp a hand-typed one goes through. Nothing is pushed to the
+  machine; a person approves it. An option whose profile the policy refuses is
+  rejected with every violation and creates nothing at all.
+- **The Beans page has a shortcut** straight into the wizard for the bag you are
+  looking at, and the chat can ask for one through the `starting_point` tool.
+
 ## [0.1.0] — 2026-09-11
 
 The prototype. It archives every shot a GaggiMate has taken, shows the curves

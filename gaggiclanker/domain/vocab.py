@@ -106,7 +106,9 @@ type Decision = Literal["keep", "adjust", "discard"]
 
 #: Who proposed a Set version. Recorded rather than inferred so that "did
 #: following the model's advice actually help" is a GROUP BY a year later.
-type SetVersionOrigin = Literal["manual", "analysis", "chat"]
+#: `starting_point` is the starting-point wizard — the only origin that can appear on a
+#: *first* version, which is what makes "how good is the cold start" answerable.
+type SetVersionOrigin = Literal["manual", "analysis", "chat", "starting_point"]
 
 # ── analysis ─────────────────────────────────────────────────────────
 

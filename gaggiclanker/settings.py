@@ -988,6 +988,16 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description="Model for conversational turns. Empty falls back to modelDefault.",
     ),
     SettingDefinition(
+        key="modelStartingPoint",
+        type="string",
+        default="",
+        env_key="GAGGICLANKER_MODEL_STARTING_POINT",
+        description=(
+            "Model for the starting-point wizard, which authors a whole profile in one "
+            "call and wants the careful one. Empty falls back to modelDefault."
+        ),
+    ),
+    SettingDefinition(
         key="chatMaxToolRounds",
         type="int",
         default=8,

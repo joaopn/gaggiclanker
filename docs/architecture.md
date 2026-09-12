@@ -51,6 +51,13 @@ bug can be fixed next week, and by then the machine's copy is gone.
 |---|---|
 | `api/` | One router per resource. Routes parse input and call services; they never build a response by hand. |
 | `analyzer/`, `llm/`, `knowledge/` | One structured LLM call per shot, the context it is given, and the three tiers it is told: the rules, a few retrieved passages of prose, and the insights you have confirmed. |
+| `drafts/` | Profile drafts: the write gate, generation from advice, the four safety layers, the push and its rollback. The only code that can change a machine. |
+| `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
+| `cleanup/` | Device storage: which shots are eligible to delete off the machine, and the service that does it once the archive holds them intact. |
+| `notes/` | Judgements written back to the machine's own notes card, and only when ours is newer than its. |
+| `tools/` | The tool registry — one definition per tool, three consumers — and the SQL sandbox behind `query_shots`. |
+| `chat/` | The tool loop, the Set-scoped context a conversation starts from, and the streamed, resumable run. |
+| `mcp/` | The same tools over Streamable HTTP and stdio, for agents outside this app. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and nothing else. |

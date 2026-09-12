@@ -6,6 +6,9 @@ import type {
   SetTrends,
   SetVersionRow,
   ShotJudgement,
+  SimilarSet,
+  StartingPointOption,
+  StartingPointRun,
   Vocabulary,
 } from "@/api/types";
 
@@ -59,6 +62,7 @@ export const vocabulary: Vocabulary = {
     { value: "manual", label: "You changed it" },
     { value: "analysis", label: "From an analysis" },
     { value: "chat", label: "From the chat" },
+    { value: "starting_point", label: "From the starting-point wizard" },
   ],
   // The analyzer's own closed sets, served from the same endpoint for the same reason:
   // the suggestion cards and the Knowledge page render these words.
@@ -313,6 +317,119 @@ function point(
     duration_s: 28,
     ratio: 2,
     rating: 4,
+    ...overrides,
+  };
+}
+
+// ── the starting-point wizard ───────────────────────────────────────
+
+export function similarSet(overrides: Partial<SimilarSet> = {}): SimilarSet {
+  return {
+    set_id: 3,
+    set_name: "Kenya AA on the Niche",
+    set_version_id: 21,
+    version_no: 1,
+    created_at: "2026-03-01T00:00:00.000Z",
+    score: 8.2,
+    attribute_score: 6,
+    outcome_score: 2.2,
+    roast_match: "same",
+    process_match: true,
+    origin_match: true,
+    decaf_match: true,
+    bean_id: 2,
+    bean_name: "Kenya AA",
+    roast_level: "light",
+    process: "washed",
+    origin: "Kenya",
+    decaf: false,
+    machine_id: 1,
+    grinder_id: 1,
+    grinder_name: "Niche Zero",
+    grind_setting: "21",
+    grind_value: 21,
+    dose_g: 18,
+    target_yield_g: 45,
+    target_temperature_c: 94,
+    ratio: 2.5,
+    profile_version_id: 7,
+    profile_label: "9 Bar Espresso",
+    outcome: {
+      shots: 5,
+      mean_rating: 4.4,
+      mean_execution_score: 8.9,
+      mean_ratio: 2.5,
+      mean_duration_s: 28,
+    },
+    ...overrides,
+  };
+}
+
+/** One option, `recommended` unless told otherwise. */
+export function startingPointOption(
+  overrides: Partial<StartingPointOption> = {},
+): StartingPointOption {
+  return {
+    option: "recommended",
+    headline: "Start here: 1:2.5 at 94 °C, two finer",
+    grind_setting: "20",
+    grind_is_absolute: true,
+    grind_note: "Two numbers finer than your usual 22.",
+    dose_g: 18,
+    yield_g: 45,
+    ratio: 2.5,
+    temperature_c: 94,
+    profile_version_id: null,
+    profile: null,
+    profile_note: "",
+    rationale: "Light roasts run 93-96 °C and 1:2 to 1:3.",
+    rules_used: ["light"],
+    excerpts_used: [],
+    similar_set_version_ids: [21],
+    ...overrides,
+  };
+}
+
+/**
+ * A finished run. `status` and `output` are the two fields every test touches:
+ * the wizard polls the first and renders the second.
+ */
+export function startingPointRun(overrides: Partial<StartingPointRun> = {}): StartingPointRun {
+  return {
+    id: 11,
+    bean_id: 1,
+    bean_name: "Ethiopia Guji",
+    machine_id: 1,
+    grinder_id: 1,
+    grinder_name: "Niche Zero",
+    usual_grind: "22",
+    dose_hint_g: null,
+    provider: "fake",
+    model: "fixture-model",
+    prompt_name: "starting_point",
+    prompt_version: "1",
+    input: {},
+    output: {
+      summary: "A light washed Kenyan four days off roast.",
+      rest_note: "Four days off roast; light roasts want ten to fourteen.",
+      questions_for_user: ["What do you normally grind espresso at?"],
+      options: [
+        startingPointOption({ option: "conservative", headline: "Safe: 1:2 at 93 °C" }),
+        startingPointOption(),
+        startingPointOption({ option: "adventurous", headline: "Push it: 1:3 at 95 °C" }),
+      ],
+    },
+    usage: null,
+    status: "ok",
+    error: null,
+    llm_call_id: null,
+    accepted_option: null,
+    accepted_set_id: null,
+    accepted_set_version_id: null,
+    accepted_draft_id: null,
+    accepted_at: null,
+    created_at: "2026-04-02T00:00:00.000Z",
+    finished_at: "2026-04-02T00:00:30.000Z",
     ...overrides,
   };
 }

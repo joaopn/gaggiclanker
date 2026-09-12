@@ -131,6 +131,7 @@ class ChatRunner:
         bus: SseEventBus | None = None,
         analyzer: Any = None,
         drafts: Any = None,
+        starting: Any = None,
         knowledge: Any = None,
         tasks: TaskRegistry | None = None,
         rate_limits: Any = None,
@@ -142,6 +143,7 @@ class ChatRunner:
         self.bus = bus
         self.analyzer = analyzer
         self.drafts = drafts
+        self.starting = starting
         self.knowledge = knowledge
         self.tasks = tasks
         self.rate_limits = rate_limits
@@ -400,6 +402,7 @@ class ChatRunner:
             knowledge=self.knowledge,
             analyzer=self.analyzer,
             drafts=self.drafts,
+            starting=self.starting,
             tasks=self.tasks,
             rate_limits=self.rate_limits,
             set_id=set_id,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -11,11 +12,13 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import (
+    MIGRATIONS_DIR,
     MigrationError,
     load_migrations,
     run_migrations,
 )
 from gaggiclanker.settings import EnvSettings
+from gaggiclanker.tools.sql import run_query
 
 
 @pytest.fixture
@@ -209,3 +212,139 @@ async def test_ledger_row_is_not_written_without_the_schema(db: Database, tmp_pa
     rows = await db.fetch_all("SELECT version FROM schema_migrations")
     applied = [str(row["version"]) for row in rows]
     assert applied == ["0001"]
+
+
+async def _migrate_to_0013(db: Database, tmp_path: Path) -> None:
+    """Bring a database up to 0013 only, using copies of the shipped files.
+
+    Copies rather than a slice of `load_migrations()`, because the runner takes
+    a *directory*: this is the only way to stop at a version without teaching it
+    a concept it does not otherwise need.
+    """
+    directory = tmp_path / "upto-0013"
+    directory.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if path.name < "0014":
+            shutil.copy(path, directory / path.name)
+    await run_migrations(db, directory)
+
+
+async def test_0014_upgrades_a_populated_database(db: Database, tmp_path: Path) -> None:
+    """The rebuild of `set_versions` has to survive rows that point at it.
+
+    This is a regression test with a scar. 0014 widens a CHECK on a STRICT
+    table, which means dropping and re-creating it — and two columns reference
+    it, `set_versions.parent_version_id` and `suggestions.resulting_set_version_id`.
+    The first version of the migration relied on `PRAGMA defer_foreign_keys`
+    alone, which postpones the *check* but not the counting: the implicit DELETE
+    inside `DROP TABLE` incremented the deferred-violation counter once per
+    surviving child row, nothing decremented it, and COMMIT failed with
+    "FOREIGN KEY constraint failed".
+
+    It passed on an empty database, which is every test that had run until this
+    one. So this test populates the exact three shapes that trip it — a version
+    with a parent, an accepted suggestion pointing at a version, and a shot
+    attached to one — and then boots to HEAD.
+    """
+    await _migrate_to_0013(db, tmp_path)
+
+    await db.execute("INSERT INTO machines (host, created_at) VALUES ('kitchen.local', 'x')")
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, created_at) VALUES ('S', 1, 1, 'x')"
+    )
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "VALUES (1, 1, 'baseline', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, parent_version_id, intent, created_at) "
+        "VALUES (1, 2, 1, 'two finer', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO shots (device_id, machine_id, raw_slog, set_version_id, synced_at, "
+        "updated_at) VALUES ('000001', 1, x'00', 2, 'x', 'x')"
+    )
+    await db.execute("INSERT INTO shot_analyses (shot_id, status) VALUES (1, 'ok')")
+    await db.execute(
+        "INSERT INTO suggestions (analysis_id, variable, direction, reason, "
+        "resulting_set_version_id) VALUES (1, 'grind', 'finer', 'sour', 2)"
+    )
+    await db.execute(
+        "INSERT INTO profile_versions (content_hash, label, type, json, created_at) "
+        "VALUES ('abc', '9 Bar', 'pro', '{}', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO profile_drafts (base_version_id, change_summary, created_at, updated_at) "
+        "VALUES (1, 'by hand', 'x', 'x')"
+    )
+
+    assert await run_migrations(db) == ["0014"]
+
+    # Every row survived, and so did every link between them.
+    versions = await db.fetch_all(
+        "SELECT id, parent_version_id, intent FROM set_versions ORDER BY 1"
+    )
+    assert [(int(r["id"]), r["parent_version_id"], r["intent"]) for r in versions] == [
+        (1, None, "baseline"),
+        (2, 1, "two finer"),
+    ]
+    resulting = await db.fetch_value(
+        "SELECT resulting_set_version_id FROM suggestions WHERE id = 1"
+    )
+    assert resulting == 2
+    assert await db.fetch_value("SELECT set_version_id FROM shots WHERE id = 1") == 2
+    assert await db.fetch_value("SELECT count(*) FROM profile_drafts") == 1
+
+    # Nothing dangling, which is the assertion the broken version failed at
+    # COMMIT rather than here.
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+    # The temp stashes are gone rather than left on the connection.
+    temp = await db.fetch_all("SELECT name FROM temp.sqlite_master WHERE type = 'table'")
+    assert [str(row["name"]) for row in temp] == []
+
+    # The views the swap had to drop are back, and they still read the table.
+    view = await db.fetch_all(
+        "SELECT set_version_id, version_no, shot_count FROM v_set_versions ORDER BY 1"
+    )
+    assert [
+        (int(r["set_version_id"]), int(r["version_no"]), int(r["shot_count"])) for r in view
+    ] == [(1, 1, 0), (2, 2, 1)]
+    assert await db.fetch_value("SELECT count(*) FROM v_shots") == 1
+    assert await db.fetch_value("SELECT count(*) FROM v_sets") == 1
+
+    # And the widened CHECK is what the whole rebuild was for.
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, origin, created_at) "
+        "VALUES (1, 3, 'starting_point', 'x')"
+    )
+
+
+async def test_0014_leaves_a_starting_point_version_readable_through_the_sql_tool(
+    db: Database, tmp_path: Path
+) -> None:
+    """`query_shots` reads `v_set_versions`, and the swap re-created it by hand.
+
+    A view re-created from stale text would be the kind of bug nobody notices
+    until the chat answers a question with a column that is no longer there.
+    """
+    await _migrate_to_0013(db, tmp_path)
+    await run_migrations(db)
+
+    await db.execute("INSERT INTO machines (host, created_at) VALUES ('kitchen.local', 'x')")
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, created_at) VALUES ('S', 1, 1, 'x')"
+    )
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, origin, intent, created_at) "
+        "VALUES (1, 1, 'starting_point', 'from the wizard', 'x')"
+    )
+
+    # `run_query` opens its own read-only connection on the file, so the rows
+    # have to be committed — which they are: the connection is in autocommit
+    # outside an explicit transaction.
+    result = await run_query(db.path, "SELECT origin, intent FROM v_set_versions")
+    assert result.columns == ["origin", "intent"]
+    assert result.rows == [["starting_point", "from the wizard"]]

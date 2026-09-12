@@ -63,9 +63,12 @@ from gaggiclanker.sync.engine import downsample
 
 __all__ = [
     "CURVE_POINTS",
+    "HIGH_ALTITUDE_M",
     "TRAJECTORY_SHOTS",
     "AnalysisContext",
     "build_context",
+    "days_off_roast",
+    "freshness_window",
     "retrieval_context",
     "set_attributes",
     "signal_tokens",
@@ -105,10 +108,10 @@ _FRESHNESS_WINDOWS: tuple[tuple[int, int, str], ...] = (
 )
 
 #: Above this, a bean is dense enough that the altitude rule means something.
-_HIGH_ALTITUDE_M = 1800
+HIGH_ALTITUDE_M = 1800
 
 
-def _freshness_window(days: int | None) -> str:
+def freshness_window(days: int | None) -> str:
     """The named window this bag is in, or "" for the gaps between them."""
     if days is None:
         return ""
@@ -577,10 +580,10 @@ def signal_tokens(
         tokens.add("yield:tiny")
 
     if facts is not None:
-        window = _freshness_window(facts.days_off_roast)
+        window = freshness_window(facts.days_off_roast)
         if window:
             tokens.add(f"freshness:{window}")
-        if facts.altitude_m is not None and facts.altitude_m >= _HIGH_ALTITUDE_M:
+        if facts.altitude_m is not None and facts.altitude_m >= HIGH_ALTITUDE_M:
             tokens.add("altitude:high")
 
     if judgement is not None:
@@ -642,7 +645,7 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             process=bean.process if bean else None,
             roast_level=bean.roast_level if bean else None,
             decaf=bool(bean.decaf) if bean else False,
-            days_off_roast=_days_off_roast(bean.roast_date if bean else None, shot.started_at),
+            days_off_roast=days_off_roast(bean.roast_date if bean else None, shot.started_at),
             bag_tasting_notes=(bean.tasting_notes_bag or "") if bean else "",
             grinder_name=grinder.name if grinder else "",
             grinder_model=(grinder.model or "") if grinder else "",
@@ -663,7 +666,7 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
     )
 
 
-def _days_off_roast(roast_date: str | None, started_at: str | None) -> int | None:
+def days_off_roast(roast_date: str | None, started_at: str | None) -> int | None:
     """Days between the roast date and the shot. Never "now".
 
     Reading the clock would make an analysis of a shot from March say "180 days

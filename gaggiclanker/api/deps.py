@@ -42,6 +42,7 @@ from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.sync.engine import SyncEngine
 
 __all__ = [
@@ -72,6 +73,7 @@ __all__ = [
     "SetsRepoDep",
     "SettingsServiceDep",
     "ShotsRepoDep",
+    "StartingPointServiceDep",
     "SuggestionsRepoDep",
     "SyncEngineDep",
     "SyncRepoDep",
@@ -260,6 +262,18 @@ def get_notes_writeback_service(request: Request) -> NotesWritebackService | Non
     return service
 
 
+def get_starting_point_service(request: Request) -> StartingPointService:
+    """The starting-point wizard. App-scoped, for the analyzer's reason.
+
+    It holds the map of runs whose row is being opened right now, which is half
+    of "one run per bag and kit at a time" — the registry's name guard is the
+    other half. A per-request copy would make that map empty for every caller
+    and two browser tabs would each spend a call on the same question.
+    """
+    service: StartingPointService = request.app.state.starting
+    return service
+
+
 def get_draft_service(request: Request) -> ProfileDraftService:
     """The profile-draft service. App-scoped, because it holds the device client.
 
@@ -299,6 +313,7 @@ SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_re
 AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]
 DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_writes_repo)]
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
+StartingPointServiceDep = Annotated[StartingPointService, Depends(get_starting_point_service)]
 ChatRunnerDep = Annotated[ChatRunner, Depends(get_chat_runner)]
 CleanupServiceDep = Annotated["CleanupService | None", Depends(get_cleanup_service)]
 NotesWritebackServiceDep = Annotated[
