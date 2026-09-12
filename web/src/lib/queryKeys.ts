@@ -19,6 +19,11 @@ export const queryKeys = {
     all: ["shots"] as const,
     list: (filters?: Record<string, unknown>) => ["shots", "list", filters ?? {}] as const,
     detail: (id: string) => ["shots", "detail", id] as const,
+    samples: (id: string) => ["shots", "samples", id] as const,
+  },
+  sync: {
+    all: ["sync"] as const,
+    status: () => ["sync", "status"] as const,
   },
   sets: {
     all: ["sets"] as const,

@@ -7,15 +7,9 @@ import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import {
-  BeansPage,
-  HardwarePage,
-  ImportPage,
-  KnowledgePage,
-  ProfilesPage,
-  SetsPage,
-  ShotsPage,
-} from "@/pages/placeholders";
+import { ProfilesPage } from "@/pages/ProfilesPage";
+import { BeansPage, HardwarePage, ImportPage, KnowledgePage, SetsPage } from "@/pages/placeholders";
+import { ShotsPage } from "@/pages/ShotsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 /**
@@ -23,7 +17,18 @@ import { SettingsPage } from "@/pages/settings/SettingsPage";
  * at 2 Hz, which a consumer reads directly, and `device.connection`, which is
  * the one mapped to a query invalidation in `lib/invalidate.ts`.
  */
-const EVENT_STREAM_URL: string | null = "/api/device/live";
+const DEVICE_STREAM_URL: string | null = "/api/device/live";
+
+/**
+ * The sync engine's stream: a shot ingested, a shot quarantined, a
+ * profile changed, a run started or finished.
+ *
+ * A second EventSource rather than one merged stream, because the two have
+ * completely different tempos — telemetry at 2 Hz against a handful of events
+ * an hour — and a browser that dropped the busy one would take the quiet one
+ * with it.
+ */
+const SYNC_STREAM_URL: string | null = "/api/sync/events";
 
 export function App() {
   const navigate = useNavigate();
@@ -39,7 +44,8 @@ export function App() {
     return () => setAuthNavigator(null);
   }, [navigate]);
 
-  useEventInvalidation(EVENT_STREAM_URL);
+  useEventInvalidation(DEVICE_STREAM_URL);
+  useEventInvalidation(SYNC_STREAM_URL);
 
   return (
     <TooltipProvider delayDuration={200}>

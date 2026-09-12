@@ -35,6 +35,7 @@ from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.static import mount_spa
+from gaggiclanker.sync.engine import SyncEngine
 
 __all__ = ["app", "create_app"]
 
@@ -99,6 +100,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.tasks = TaskRegistry()
 
     app.state.device = await start_device_client(settings_service)
+    app.state.sync = await start_sync_engine(app)
 
     log.info("app_started", version=__version__, data_dir=str(env.data_dir))
     try:
@@ -110,6 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # mid-write when the file is released.
         if app.state.device is not None:
             await app.state.device.stop()
+        app.state.sync = None
         await app.state.tasks.cancel_all()
         await db.close()
         log.info("app_stopped")
@@ -144,6 +147,23 @@ async def start_device_client(settings: SettingsService) -> GaggimateClient | No
     await client.start()
     log.info("device_client_started", host=host)
     return client
+
+
+async def start_sync_engine(app: FastAPI) -> SyncEngine | None:
+    """Build the sync engine and start its loops, or return ``None`` with no machine.
+
+    Every loop it owns is registered with the app's :class:`TaskRegistry`, so
+    shutdown cancels them in one call and nothing is mid-write when the database
+    file is released. None of them blocks startup: the first thing each does is
+    wait — for a device event, or for its own timer — and the machine may well be
+    switched off.
+    """
+    client: GaggimateClient | None = app.state.device
+    if client is None:
+        return None
+    engine = SyncEngine(client, app.state.db, app.state.events)
+    await engine.start(app.state.tasks)
+    return engine
 
 
 def create_app(

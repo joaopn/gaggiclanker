@@ -93,6 +93,12 @@ DEFAULT_DEVICE_SETTINGS: dict[str, Any] = {
     "targetWaterTemp": 80,
     "mdnsName": "gaggimate",
     "pid": "58.397,1.027,249.055,0.0",
+    # The predictive brew delay a shot runs with, mirrored into every `.slog`
+    # header, and the boiler probe offset. Both are read by the sync engine's
+    # identity pass; neither is ever written back — POST /api/settings clears
+    # every boolean key it omits.
+    "brewDelay": 800,
+    "temperatureOffset": 2.5,
     "flushDuration": 5,
     "homekit": False,
     "boilerFillActive": False,
@@ -145,6 +151,21 @@ class FakeDevice:
     refuse_newcomer: bool = False
     #: Serve `index.bin` as a 404, the way a device with no history does.
     index_missing: bool = False
+    #: Shot ids whose index entry exists but whose file does not. That is what
+    #: `cleanupHistory()` leaves behind when it frees space: the entry is
+    #: flagged deleted and stays for ever, the `.slog` is gone.
+    missing_files: set[int] = field(default_factory=set)
+    #: Shot ids whose file is served but which are missing from `index.bin` —
+    #: the other half of the same race. The firmware closes the `.slog`, appends
+    #: the index entry and broadcasts `evt:history-shot-saved` in quick
+    #: succession but not atomically, so a client can be told about a shot the
+    #: index has not listed yet.
+    hidden_from_index: set[int] = field(default_factory=set)
+    #: Seconds to stall every `/api/history/*` response. The real machine takes
+    #: tens of milliseconds to read a `.slog` off LittleFS and rather longer off
+    #: an SD card, and "does the API stay responsive during a backfill" is only
+    #: a real question when the fetches are slow enough to overlap with it.
+    history_delay_s: float = 0.0
 
     # Populated by start().
     host: str = ""
@@ -258,7 +279,9 @@ class FakeDevice:
 
     def index(self) -> ShotIndex:
         """The index as the fake would encode it, newest id last."""
-        entries = [self.shots[key].entry for key in sorted(self.shots)]
+        entries = [
+            self.shots[key].entry for key in sorted(self.shots) if key not in self.hidden_from_index
+        ]
         next_id = (max(self.shots) + 1) if self.shots else 1
         return ShotIndex(
             header=IndexHeader(
@@ -330,6 +353,11 @@ class FakeDevice:
     def _record(self, request: web.Request) -> None:
         self.requests.append(request.path_qs)
 
+    async def _stall(self) -> None:
+        """Spend :attr:`history_delay_s` before answering, if one is set."""
+        if self.history_delay_s > 0:
+            await asyncio.sleep(self.history_delay_s)
+
     def _quirk(self, request: web.Request, *, history: bool) -> web.Response | None:
         """The two failures that can hit any route, before the route runs."""
         if history and self.ota_in_progress:
@@ -359,6 +387,7 @@ class FakeDevice:
         quirk = self._quirk(request, history=True)
         if quirk is not None:
             return quirk
+        await self._stall()
         if self.index_missing:
             return web.Response(status=404, text="Index not found")
         return web.Response(
@@ -390,12 +419,13 @@ class FakeDevice:
         if quirk is not None:
             return quirk
 
+        await self._stall()
         name = request.match_info["name"]
         stem, _, suffix = name.partition(".")
         # The device serves `/h/` with serveStatic, so the *padded* name is the
         # filename. An unpadded id is a 404 here exactly as it is there.
         shot = next((s for s in self.shots.values() if pad6(s.entry.id) == stem), None)
-        if shot is None:
+        if shot is None or shot.entry.id in self.missing_files:
             return web.Response(status=404, text="Not found")
 
         if suffix == "slog":
@@ -437,8 +467,14 @@ class FakeDevice:
 
         try:
             # A new client gets the full state frame immediately, as the real
-            # one does (`publishState`, WebSocketHandler.cpp:350).
-            await socket.send_str(json.dumps({"tp": "evt:status", **self._state_frame()}))
+            # one does (`publishState`, WebSocketHandler.cpp:350) — unless the
+            # eviction above closed *this* socket, which is what happens at
+            # max_clients = 0. Writing to it then raises
+            # ClientConnectionResetError and aiohttp prints the traceback, which
+            # in a test run reads like a failure rather than the scenario the
+            # test asked for.
+            if not socket.closed:
+                await socket.send_str(json.dumps({"tp": "evt:status", **self._state_frame()}))
             async for message in socket:
                 if message.type is not WSMsgType.TEXT:
                     continue

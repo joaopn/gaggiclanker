@@ -64,6 +64,33 @@ async def test_backup_lands_under_the_data_dir(env: EnvSettings, data_dir: Path)
     assert env.backups_dir.is_relative_to(env.data_dir)
 
 
+async def test_a_backup_works_while_the_sync_engine_is_writing(
+    app: FastAPI, data_dir: Path
+) -> None:
+    """The regression `scripts/repro_backup_during_sync.py` reproduces.
+
+    The whole app shares one SQLite connection, and once sync is running that connection
+    spends its time inside ``BEGIN IMMEDIATE`` — the sync engine wraps each shot
+    and its samples so they land together. ``VACUUM`` cannot run inside a
+    transaction, so a backup taken during a backfill (exactly when somebody
+    reaches for one) used to answer 500 about one time in four. The backup now
+    runs on its own connection.
+    """
+    db = app.state.db
+    async with db.transaction():
+        await db.execute("INSERT INTO machines (host) VALUES (?)", ("backup.local",))
+        result = await create_backup(db, data_dir / "backups")
+
+    assert result.path.is_file()
+    assert result.size_bytes > 0
+    with sqlite3.connect(result.path) as conn:
+        assert conn.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        # The row was still uncommitted when the snapshot was taken, so it is
+        # correctly absent: a backup is a consistent copy, not a peek at
+        # somebody else's open transaction.
+        assert conn.execute("SELECT COUNT(*) FROM machines").fetchone() == (0,)
+
+
 async def test_backup_failure_surfaces_as_an_envelope_error(app: FastAPI, tmp_path: Path) -> None:
     target = tmp_path / "not-a-directory"
     target.write_text("in the way", encoding="utf-8")

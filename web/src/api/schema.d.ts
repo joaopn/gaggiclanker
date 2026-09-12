@@ -10,7 +10,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List the backups on disk */
+        get: operations["get_backups_api_backup_get"];
         put?: never;
         /** Back up the database */
         post: operations["post_backup_api_backup_post"];
@@ -62,6 +63,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The machines this archive knows about */
+        get: operations["list_machines_api_machines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One immutable profile version */
+        get: operations["get_profile_version_api_profile_versions__version_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The profiles mirrored from the machine
+         * @description Ordered as the machine orders them: its own `profileOrder`, then label.
+         *
+         *     Deleted profiles are hidden by default and never actually removed —
+         *     `include_deleted=true` brings back the tombstones, because "the profile I
+         *     used in March" has to keep resolving after somebody deletes it from the
+         *     display.
+         */
+        get: operations["list_profiles_api_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One mirrored profile and its current version */
+        get: operations["get_profile_api_profiles__device_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -78,6 +155,196 @@ export interface paths {
         head?: never;
         /** Update runtime settings */
         patch: operations["patch_settings_api_settings_patch"];
+        trace?: never;
+    };
+    "/api/shots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List shots, newest first
+         * @description Paged, filtered, newest first.
+         *
+         *     Two paginations, and they do not mix: ``offset`` is for a table with page
+         *     numbers, ``cursor`` is keyset paging over `(started_at, id)` and is the one
+         *     that stays correct while the sync engine inserts rows underneath the reader
+         *     — which on this appliance it is doing all the time. Passing both is a 400
+         *     rather than a quiet precedence rule.
+         *
+         *     ``from``/``to`` are ISO timestamps compared against ``started_at``; a shot
+         *     from a machine whose clock never synced has none and is excluded by any date
+         *     filter, which is the honest answer.
+         *
+         *     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
+         *     query string is an injection — and only the default one supports ``cursor``,
+         *     because the cursor encodes that key. "Worst shots first" is an offset page,
+         *     which is what such a view wants anyway.
+         */
+        get: operations["list_shots_api_shots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One shot with its phases, diagnostics and device notes */
+        get: operations["get_shot_api_shots__shot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The device's own notes for this shot */
+        get: operations["get_shot_notes_api_shots__shot_id__notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the stored .slog bytes
+         * @description The bytes the machine wrote, byte for byte.
+         *
+         *     Deliberately outside the response envelope: these are the archive's product
+         *     — the thing every derived column can be rebuilt from — and base64 in a JSON
+         *     body would mean a client has to decode before it can compare them with the
+         *     device's own copy.
+         */
+        get: operations["get_shot_raw_api_shots__shot_id__raw_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shot's samples in t_ms order
+         * @description Every sample, in `t_ms` order, with all 14 fields plus `phase_number`.
+         *
+         *     ``?downsample=N`` returns at most N evenly spaced points, first and last
+         *     always kept. That is for sparklines: a list of two hundred shots must not
+         *     pull two hundred hundred-point curves over the wire, and an *averaged* curve
+         *     would hide exactly the spikes a shape is being scanned for.
+         */
+        get: operations["get_shot_samples_api_shots__shot_id__samples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server-sent stream of sync progress
+         * @description Run started/finished, shot ingested, shot quarantined, profile changed.
+         *
+         *     The same lossy bus as everything else: an event means "this family of
+         *     queries is stale, go and re-read", never "here is the new value". A tab that
+         *     misses one under backpressure re-reads on the next, and the periodic index
+         *     diff is the backstop behind both.
+         */
+        get: operations["get_sync_events_api_sync_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the sync engine to run now
+         * @description Nudge the background loops. Returns 202 without waiting for the machine.
+         *
+         *     202 rather than 200 because nothing has happened yet: the loops are woken,
+         *     they take the engine's lock in turn, and the work shows up on `/events` and
+         *     in `/status`. A synchronous variant would block the request for as long as a
+         *     backfill takes and would let two callers start two passes over a device with
+         *     two HTTP slots.
+         */
+        post: operations["post_sync_run_api_sync_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Last run per kind, archive counts and the last error
+         * @description Everything a "is the archive keeping up" panel needs, in one request.
+         */
+        get: operations["get_sync_status_api_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/health": {
@@ -129,6 +396,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[BackupListData] */
+        ApiResponse_BackupListData_: {
+            data?: components["schemas"]["BackupListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[DeviceShotNotesRow] */
+        ApiResponse_DeviceShotNotesRow_: {
+            data?: components["schemas"]["DeviceShotNotesRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[DeviceStatusData] */
         ApiResponse_DeviceStatusData_: {
             data?: components["schemas"]["DeviceStatusData"] | null;
@@ -145,9 +428,81 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[MachineListData] */
+        ApiResponse_MachineListData_: {
+            data?: components["schemas"]["MachineListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ProfileDetailData] */
+        ApiResponse_ProfileDetailData_: {
+            data?: components["schemas"]["ProfileDetailData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ProfileListData] */
+        ApiResponse_ProfileListData_: {
+            data?: components["schemas"]["ProfileListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ProfileVersionRow] */
+        ApiResponse_ProfileVersionRow_: {
+            data?: components["schemas"]["ProfileVersionRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[SettingsData] */
         ApiResponse_SettingsData_: {
             data?: components["schemas"]["SettingsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotDetailData] */
+        ApiResponse_ShotDetailData_: {
+            data?: components["schemas"]["ShotDetailData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotListData] */
+        ApiResponse_ShotListData_: {
+            data?: components["schemas"]["ShotListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotSamplesData] */
+        ApiResponse_ShotSamplesData_: {
+            data?: components["schemas"]["ShotSamplesData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SyncRunAccepted] */
+        ApiResponse_SyncRunAccepted_: {
+            data?: components["schemas"]["SyncRunAccepted"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SyncStatusData] */
+        ApiResponse_SyncStatusData_: {
+            data?: components["schemas"]["SyncStatusData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -169,6 +524,103 @@ export interface components {
             path: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /**
+         * BackupListData
+         * @description The backups on disk, newest first, and where they live.
+         */
+        BackupListData: {
+            /** Directory */
+            directory: string;
+            /** Items */
+            items: components["schemas"]["BackupData"][];
+        };
+        /**
+         * DeviceProfileSummary
+         * @description A device profile joined to its current version — what `GET /api/profiles` returns.
+         */
+        DeviceProfileSummary: {
+            /** Content Hash */
+            content_hash: string;
+            /** Current Version Id */
+            current_version_id: number;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /** Device Id */
+            device_id: string;
+            /**
+             * Favorite
+             * @default false
+             */
+            favorite: boolean;
+            /** First Seen At */
+            first_seen_at: string;
+            /** Label */
+            label: string;
+            /** Last Seen At */
+            last_seen_at: string;
+            /** Machine Id */
+            machine_id: number;
+            /** Position */
+            position?: number | null;
+            /**
+             * Selected
+             * @default false
+             */
+            selected: boolean;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /** Type */
+            type: string;
+            /**
+             * Utility
+             * @default false
+             */
+            utility: boolean;
+        };
+        /**
+         * DeviceShotNotesRow
+         * @description One row of `device_shot_notes`, as read back.
+         *
+         *     ``document`` is the device's own JSON, decoded — the record of what the
+         *     machine actually stored, numbers-as-strings and all. The typed columns
+         *     beside it are the convenience, and every one of them is allowed to be
+         *     ``None``: the firmware stores whatever object it was handed.
+         */
+        DeviceShotNotesRow: {
+            /** Balance Taste */
+            balance_taste?: string | null;
+            /** Bean Type */
+            bean_type?: string | null;
+            /** Device Timestamp */
+            device_timestamp?: number | null;
+            document?: components["schemas"]["JsonObject"];
+            /** Dose In G */
+            dose_in_g?: number | null;
+            /** Dose Out G */
+            dose_out_g?: number | null;
+            /** Fetched At */
+            fetched_at: string;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Rating */
+            rating?: number | null;
+            /** Ratio */
+            ratio?: number | null;
+            /** Shot Id */
+            shot_id: number;
+            /** Synced Rating */
+            synced_rating?: number | null;
+            /** Synced Volume G */
+            synced_volume_g?: number | null;
         };
         /**
          * DeviceStatusData
@@ -211,6 +663,134 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        JsonList: unknown[] | null;
+        JsonObject: {
+            [key: string]: unknown;
+        } | null;
+        JsonText: string;
+        /** MachineListData */
+        MachineListData: {
+            /** Items */
+            items: components["schemas"]["MachineWithCounts"][];
+        };
+        /**
+         * MachineRow
+         * @description One row of `machines`, as read back.
+         *
+         *     The two JSON columns come out decoded (see :data:`~gaggiclanker.db.repos.base.JsonObject`):
+         *     this model is what `GET /api/machines` answers with, and a JSON string
+         *     nested inside a JSON body is a parse every consumer would have to repeat.
+         */
+        MachineRow: {
+            /** Brew Delay Ms */
+            brew_delay_ms?: number | null;
+            /** Controller Version */
+            controller_version?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Display Version */
+            display_version?: string | null;
+            /** First Seen At */
+            first_seen_at: string;
+            /** Hardware String */
+            hardware_string?: string | null;
+            /**
+             * Has Dimming
+             * @default false
+             */
+            has_dimming: boolean;
+            /**
+             * Has Gear Pump
+             * @default false
+             */
+            has_gear_pump: boolean;
+            /**
+             * Has Led
+             * @default false
+             */
+            has_led: boolean;
+            /**
+             * Has Pressure
+             * @default false
+             */
+            has_pressure: boolean;
+            /** Host */
+            host: string;
+            /** Id */
+            id: number;
+            identity?: components["schemas"]["JsonObject"];
+            /** Last Seen At */
+            last_seen_at: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Pid */
+            pid?: string | null;
+            settings?: components["schemas"]["JsonObject"];
+            /** Temperature Offset C */
+            temperature_offset_c?: number | null;
+        };
+        /**
+         * MachineWithCounts
+         * @description A machine and how much of the archive came from it.
+         */
+        MachineWithCounts: {
+            counts: components["schemas"]["ShotCounts"];
+            machine: components["schemas"]["MachineRow"];
+        };
+        /**
+         * ProfileDetailData
+         * @description One device profile plus the full version document behind it.
+         */
+        ProfileDetailData: {
+            profile: components["schemas"]["DeviceProfileSummary"];
+            version: components["schemas"]["ProfileVersionRow"];
+        };
+        /**
+         * ProfileListData
+         * @description Every profile the machine has, with its current version's summary.
+         */
+        ProfileListData: {
+            /** Items */
+            items: components["schemas"]["DeviceProfileSummary"][];
+        };
+        /**
+         * ProfileVersionRow
+         * @description One immutable profile version, identified by its content hash.
+         */
+        ProfileVersionRow: {
+            /** Content Hash */
+            content_hash: string;
+            /** Created At */
+            created_at: string;
+            device_profile?: components["schemas"]["JsonObject"];
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            profile: components["schemas"]["JsonObject"];
+            /**
+             * Source
+             * @default device
+             */
+            source: string;
+            /** Type */
+            type: string;
+            /**
+             * Utility
+             * @default false
+             */
+            utility: boolean;
+        };
+        /** @enum {string} */
+        RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
         /**
          * SettingsData
          * @description Registry key -> resolved setting. Secrets carry a hint, never a value.
@@ -226,6 +806,473 @@ export interface components {
             [key: string]: components["schemas"]["SettingValue"];
         };
         SettingValue: string | number | boolean | null;
+        /**
+         * ShotCounts
+         * @description The headline numbers `GET /api/sync/status` reports.
+         */
+        ShotCounts: {
+            /**
+             * Deleted On Device
+             * @default 0
+             */
+            deleted_on_device: number;
+            /**
+             * Incomplete
+             * @default 0
+             */
+            incomplete: number;
+            /**
+             * Quarantined
+             * @default 0
+             */
+            quarantined: number;
+            /**
+             * Samples
+             * @default 0
+             */
+            samples: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * ShotDetailData
+         * @description One shot in full: the row, its phases, its diagnostics and the device's notes.
+         */
+        ShotDetailData: {
+            notes?: components["schemas"]["DeviceShotNotesRow"] | null;
+            shot: components["schemas"]["ShotDetailRow"];
+        };
+        /**
+         * ShotDetailRow
+         * @description `GET /api/shots/{id}`: the list row plus the derived blobs.
+         *
+         *     ``raw_slog`` is deliberately not here — it is a blob of a few kilobytes per
+         *     shot and has its own endpoint. Reading a hundred detail rows should not
+         *     read a megabyte of bytes nobody asked for. ``raw_bytes`` is its length, so a
+         *     caller can tell "we hold the bytes" from "we hold a row".
+         */
+        ShotDetailRow: {
+            /** Brew Delay Ms */
+            brew_delay_ms?: number | null;
+            /**
+             * Deleted On Device
+             * @default false
+             */
+            deleted_on_device: boolean;
+            /** Device Id */
+            device_id: string;
+            diagnostics?: components["schemas"]["JsonObject"];
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /** Execution Reason */
+            execution_reason?: string | null;
+            /** Execution Score */
+            execution_score?: number | null;
+            /** Fields Mask */
+            fields_mask?: number | null;
+            /** Final Exit Reason */
+            final_exit_reason?: number | null;
+            /** Final Weight G */
+            final_weight_g?: number | null;
+            /**
+             * Has Notes
+             * @default false
+             */
+            has_notes: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Incomplete
+             * @default false
+             */
+            incomplete: boolean;
+            /** Index Avg Flow Ml S */
+            index_avg_flow_ml_s?: number | null;
+            /** Index Avg Temp C */
+            index_avg_temp_c?: number | null;
+            /** Index Flags */
+            index_flags?: number | null;
+            /** Index Max Pressure Bar */
+            index_max_pressure_bar?: number | null;
+            /** Index Rating */
+            index_rating?: number | null;
+            /** Index Volume G */
+            index_volume_g?: number | null;
+            /** Machine Id */
+            machine_id: number;
+            phases?: components["schemas"]["JsonList"];
+            /**
+             * Profile Id On Device
+             * @default
+             */
+            profile_id_on_device: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /**
+             * Profile Name On Device
+             * @default
+             */
+            profile_name_on_device: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Quarantine Reason */
+            quarantine_reason?: string | null;
+            /**
+             * Quarantined
+             * @default false
+             */
+            quarantined: boolean;
+            /** Rating */
+            rating?: number | null;
+            /**
+             * Raw Bytes
+             * @default 0
+             */
+            raw_bytes: number;
+            /**
+             * Sample Count
+             * @default 0
+             */
+            sample_count: number;
+            /** Sample Interval Ms */
+            sample_interval_ms?: number | null;
+            /**
+             * Scale Connected
+             * @default false
+             */
+            scale_connected: boolean;
+            /** Set Version Id */
+            set_version_id?: number | null;
+            /** Slog Version */
+            slog_version?: number | null;
+            /**
+             * Source
+             * @default device
+             */
+            source: string;
+            /**
+             * Start Epoch
+             * @default 0
+             */
+            start_epoch: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Synced At */
+            synced_at: string;
+            /** Updated At */
+            updated_at: string;
+            /** Volume G */
+            volume_g?: number | null;
+        };
+        /**
+         * ShotListData
+         * @description One page of shots.
+         *
+         *     ``total`` counts the *filtered* set, not the archive, so a UI can render "47
+         *     quarantined shots" from the same response that draws the first page of them.
+         */
+        ShotListData: {
+            /** Items */
+            items: components["schemas"]["ShotListRow"][];
+            /** Limit */
+            limit: number;
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Offset */
+            offset?: number | null;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ShotListRow
+         * @description A row of `GET /api/shots`: enough to draw a line in a table, no curve.
+         */
+        ShotListRow: {
+            /**
+             * Deleted On Device
+             * @default false
+             */
+            deleted_on_device: boolean;
+            /** Device Id */
+            device_id: string;
+            /**
+             * Duration Ms
+             * @default 0
+             */
+            duration_ms: number;
+            /** Execution Reason */
+            execution_reason?: string | null;
+            /** Execution Score */
+            execution_score?: number | null;
+            /** Final Weight G */
+            final_weight_g?: number | null;
+            /**
+             * Has Notes
+             * @default false
+             */
+            has_notes: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Incomplete
+             * @default false
+             */
+            incomplete: boolean;
+            /** Index Avg Flow Ml S */
+            index_avg_flow_ml_s?: number | null;
+            /** Index Avg Temp C */
+            index_avg_temp_c?: number | null;
+            /** Index Max Pressure Bar */
+            index_max_pressure_bar?: number | null;
+            /** Index Rating */
+            index_rating?: number | null;
+            /** Machine Id */
+            machine_id: number;
+            /**
+             * Profile Id On Device
+             * @default
+             */
+            profile_id_on_device: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /**
+             * Profile Name On Device
+             * @default
+             */
+            profile_name_on_device: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Quarantine Reason */
+            quarantine_reason?: string | null;
+            /**
+             * Quarantined
+             * @default false
+             */
+            quarantined: boolean;
+            /** Rating */
+            rating?: number | null;
+            /**
+             * Sample Count
+             * @default 0
+             */
+            sample_count: number;
+            /**
+             * Scale Connected
+             * @default false
+             */
+            scale_connected: boolean;
+            /**
+             * Source
+             * @default device
+             */
+            source: string;
+            /**
+             * Start Epoch
+             * @default 0
+             */
+            start_epoch: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Synced At */
+            synced_at: string;
+            /** Volume G */
+            volume_g?: number | null;
+        };
+        /**
+         * ShotSampleRow
+         * @description One row of `shot_samples`, in real units.
+         *
+         *     Every field but ``t_ms`` is optional: ``None`` means the file's `fieldsMask`
+         *     bit was clear, i.e. "the firmware never recorded this", which is a different
+         *     fact from "it recorded zero" and one the diagnostics depend on.
+         */
+        ShotSampleRow: {
+            /** Cp */
+            cp?: number | null;
+            /** Ct */
+            ct?: number | null;
+            /** Ev */
+            ev?: number | null;
+            /** Fl */
+            fl?: number | null;
+            /** Pf */
+            pf?: number | null;
+            /** Phase Number */
+            phase_number?: number | null;
+            /** Pr */
+            pr?: number | null;
+            /** Si */
+            si?: number | null;
+            /** T Ms */
+            t_ms: number;
+            /** Tf */
+            tf?: number | null;
+            /** Tp */
+            tp?: number | null;
+            /** Tt */
+            tt?: number | null;
+            /** V */
+            v?: number | null;
+            /** Vf */
+            vf?: number | null;
+            /** Wp */
+            wp?: number | null;
+        };
+        /**
+         * ShotSamplesData
+         * @description The curve. ``downsampled`` says whether what you got is the whole thing.
+         */
+        ShotSamplesData: {
+            /** Count */
+            count: number;
+            /**
+             * Downsampled
+             * @default false
+             */
+            downsampled: boolean;
+            /** Sample Interval Ms */
+            sample_interval_ms?: number | null;
+            /** Samples */
+            samples: components["schemas"]["ShotSampleRow"][];
+            /** Shot Id */
+            shot_id: number;
+            /** Total */
+            total: number;
+        };
+        /** @enum {string} */
+        SortKey: "started_at" | "execution_score" | "duration" | "rating";
+        /**
+         * SyncEventRow
+         * @description One line of the sync feed.
+         */
+        SyncEventRow: {
+            /** At */
+            at: string;
+            data_json?: components["schemas"]["JsonText"] | null;
+            /** Device Id */
+            device_id?: string | null;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Run Id */
+            run_id?: number | null;
+            /** Shot Id */
+            shot_id?: number | null;
+        };
+        /**
+         * SyncRunAccepted
+         * @description What was queued. Nothing has touched the machine yet when this is sent.
+         */
+        SyncRunAccepted: {
+            /** Queued */
+            queued: string[];
+        };
+        /**
+         * SyncRunRequest
+         * @description Which pass to ask for. Omitting ``kind`` runs all of them.
+         */
+        SyncRunRequest: {
+            /** @default all */
+            kind: components["schemas"]["RunKind"];
+        };
+        /**
+         * SyncRunRow
+         * @description One pass over the device.
+         */
+        SyncRunRow: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Errors
+             * @default 0
+             */
+            errors: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /**
+             * Notes Synced
+             * @default 0
+             */
+            notes_synced: number;
+            /**
+             * Profiles Changed
+             * @default 0
+             */
+            profiles_changed: number;
+            /**
+             * Shots Inserted
+             * @default 0
+             */
+            shots_inserted: number;
+            /**
+             * Shots Quarantined
+             * @default 0
+             */
+            shots_quarantined: number;
+            /**
+             * Shots Seen
+             * @default 0
+             */
+            shots_seen: number;
+            /**
+             * Shots Updated
+             * @default 0
+             */
+            shots_updated: number;
+            /** Started At */
+            started_at: string;
+            /**
+             * Status
+             * @default running
+             */
+            status: string;
+            /**
+             * Trigger
+             * @default
+             */
+            trigger: string;
+        };
+        /**
+         * SyncStatusData
+         * @description The sync ledger in one object.
+         */
+        SyncStatusData: {
+            /** Configured */
+            configured: boolean;
+            /** Connected */
+            connected: boolean;
+            counts: components["schemas"]["ShotCounts"];
+            last_error?: components["schemas"]["SyncRunRow"] | null;
+            /** Last Runs */
+            last_runs?: {
+                [key: string]: components["schemas"]["SyncRunRow"];
+            };
+            /** Machine Id */
+            machine_id?: number | null;
+            /** Recent Events */
+            recent_events?: components["schemas"]["SyncEventRow"][];
+            /**
+             * Running
+             * @default false
+             */
+            running: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -248,6 +1295,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_backups_api_backup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BackupListData_"];
+                };
+            };
+        };
+    };
     post_backup_api_backup_post: {
         parameters: {
             query?: never;
@@ -306,6 +1373,122 @@ export interface operations {
             };
         };
     };
+    list_machines_api_machines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_MachineListData_"];
+                };
+            };
+        };
+    };
+    get_profile_version_api_profile_versions__version_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_profiles_api_profiles_get: {
+        parameters: {
+            query?: {
+                include_deleted?: boolean;
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_profile_api_profiles__device_id__get: {
+        parameters: {
+            query?: {
+                machine_id?: number | null;
+            };
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_settings_api_settings_get: {
         parameters: {
             query?: never;
@@ -355,6 +1538,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shots_api_shots_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                from?: string | null;
+                include_deleted?: boolean;
+                limit?: number;
+                machine_id?: number | null;
+                max_score?: number | null;
+                min_rating?: number | null;
+                min_score?: number | null;
+                offset?: number | null;
+                order?: "asc" | "desc";
+                profile_version_id?: number | null;
+                quarantined?: boolean | null;
+                sort?: components["schemas"]["SortKey"];
+                source?: ("device" | "import") | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shot_api_shots__shot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shot_notes_api_shots__shot_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_DeviceShotNotesRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shot_raw_api_shots__shot_id__raw_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shot_samples_api_shots__shot_id__samples_get: {
+        parameters: {
+            query?: {
+                downsample?: number | null;
+            };
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotSamplesData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_events_api_sync_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_sync_run_api_sync_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SyncRunRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SyncRunAccepted_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_status_api_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SyncStatusData_"];
                 };
             };
         };

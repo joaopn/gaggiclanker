@@ -29,14 +29,17 @@ export function invalidateShots(queryClient: QueryClient, shotId?: string): Prom
  * needs no changes.
  */
 export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[]>> = {
-  "shot.ingested": [queryKeys.shots.all],
-  "shot.updated": [queryKeys.shots.all],
-  "sync.progress": [queryKeys.shots.all, queryKeys.device.all],
+  "shot.ingested": [queryKeys.shots.all, queryKeys.sync.all],
+  "shot.updated": [queryKeys.shots.all, queryKeys.sync.all],
+  // A shot we could not parse is still a shot: it appears in the list with a
+  // flag, so the same queries are stale.
+  "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],
+  "sync.progress": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.device.all],
   // The rare one: the socket came up or went down, so re-read
   // /api/device/status. `device.live` is deliberately absent — it arrives
   // twice a second and is read straight off the stream.
   "device.connection": [queryKeys.device.all],
   "device.status": [queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
-  "profile.updated": [queryKeys.profiles.all],
+  "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all],
 };

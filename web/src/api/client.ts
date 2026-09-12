@@ -15,8 +15,14 @@ import type {
   BackupData,
   DeviceStatusData,
   HealthData,
+  ProfileListData,
   SettingsMap,
   SettingsPatch,
+  ShotDetailData,
+  ShotListData,
+  ShotListParams,
+  ShotSamplesData,
+  SyncStatusData,
 } from "@/api/types";
 import { redirectToSignIn } from "@/lib/auth-navigation";
 
@@ -240,4 +246,47 @@ export async function createBackup(): Promise<BackupData> {
 
 export async function getDeviceStatus(): Promise<DeviceStatusData> {
   return fetchApi<DeviceStatusData>("/device/status");
+}
+
+/**
+ * Only the parameters that were actually set reach the query string.
+ *
+ * A `?quarantined=` with no value is not "no filter" to FastAPI, it is a
+ * validation error, and an `undefined` stringifies to the literal "undefined" —
+ * which for `profile_version_id` would 400 every request the moment a filter is
+ * cleared.
+ */
+function queryString(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    search.set(key, String(value));
+  }
+  const rendered = search.toString();
+  return rendered ? `?${rendered}` : "";
+}
+
+export async function getShots(params: ShotListParams = {}): Promise<ShotListData> {
+  return fetchApi<ShotListData>(`/shots${queryString(params)}`);
+}
+
+export async function getShot(id: number): Promise<ShotDetailData> {
+  return fetchApi<ShotDetailData>(`/shots/${id}`);
+}
+
+export async function getShotSamples(id: number, downsample?: number): Promise<ShotSamplesData> {
+  return fetchApi<ShotSamplesData>(`/shots/${id}/samples${queryString({ downsample })}`);
+}
+
+/** The stored `.slog` bytes. A download, not JSON — hence the raw path. */
+export function shotRawUrl(id: number): string {
+  return `${API_BASE}/shots/${id}/raw`;
+}
+
+export async function getProfiles(includeDeleted = false): Promise<ProfileListData> {
+  return fetchApi<ProfileListData>(`/profiles${queryString({ include_deleted: includeDeleted })}`);
+}
+
+export async function getSyncStatus(): Promise<SyncStatusData> {
+  return fetchApi<SyncStatusData>("/sync/status");
 }

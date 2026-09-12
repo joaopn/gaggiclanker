@@ -153,7 +153,21 @@ serve() {
 
 stop() {
     [[ -f "$SIM_PID" ]] || { echo "sim.sh: nothing to stop"; return 0; }
-    kill "$(cat "$SIM_PID")" 2>/dev/null || true
+    local pid
+    pid="$(cat "$SIM_PID")"
+    kill "$pid" 2>/dev/null || true
+    # The simulator is an SDL program and does not always take SIGTERM while it
+    # is inside a frame: a `sim.sh test` that returned with the process still
+    # holding :8080 made the next run fail to bind, which reads as a broken
+    # build rather than as a leftover. Give it a second, then insist.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "sim.sh: $pid ignored SIGTERM, sending SIGKILL"
+        kill -9 "$pid" 2>/dev/null || true
+    fi
     rm -f "$SIM_PID"
     echo "sim.sh: stopped"
 }
@@ -171,6 +185,12 @@ case "${1:-test}" in
         stop
         rm -rf "$SIM_WORKDIR"
         echo "sim.sh: removed $SIM_WORKDIR"
+        # Only the scratch tree. `external/gaggimate` is a read-only reference
+        # clone and may carry git-ignored artefacts (.pio/, sim/build/) from an
+        # early attempt to build in place; they are harmless, they are not ours
+        # to delete, and `git status` never shows them. Remove them by hand if
+        # you want the space back.
+        echo "sim.sh: external/gaggimate is untouched (it may hold ignored build artefacts)"
         ;;
     test)
         serve

@@ -13,6 +13,13 @@ import type { components } from "@/api/schema";
 export type HealthData = components["schemas"]["HealthData"];
 export type BackupData = components["schemas"]["BackupData"];
 export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
+export type ShotListData = components["schemas"]["ShotListData"];
+export type ShotListRow = components["schemas"]["ShotListRow"];
+export type ShotDetailData = components["schemas"]["ShotDetailData"];
+export type ShotSamplesData = components["schemas"]["ShotSamplesData"];
+export type ProfileListData = components["schemas"]["ProfileListData"];
+export type DeviceProfileSummary = components["schemas"]["DeviceProfileSummary"];
+export type SyncStatusData = components["schemas"]["SyncStatusData"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
@@ -49,6 +56,22 @@ export type SettingsMap = Record<string, ResolvedSetting>;
 export function isSecretSetting(setting: ResolvedSetting): setting is SecretSetting {
   return setting.secret;
 }
+
+/**
+ * The filters `GET /api/shots` accepts. `cursor` and `offset` are alternatives
+ * and the server answers 400 if both are sent, so a caller picks one.
+ */
+export type ShotListParams = {
+  limit?: number;
+  offset?: number;
+  cursor?: string;
+  from?: string;
+  to?: string;
+  profile_version_id?: number;
+  machine_id?: number;
+  quarantined?: boolean;
+  include_deleted?: boolean;
+};
 
 /** A PATCH body: registry key -> value, with null meaning "drop the override". */
 export type SettingsPatch = Record<string, SettingValue>;

@@ -1,17 +1,5 @@
-import { Bean, BookOpen, Coffee, Cpu, Import, Layers, SlidersHorizontal } from "lucide-react";
+import { Bean, BookOpen, Cpu, Import, Layers } from "lucide-react";
 import { PlaceholderPage } from "@/pages/PlaceholderPage";
-
-export function ShotsPage() {
-  return (
-    <PlaceholderPage
-      title="Shots"
-      subtitle="Every shot the machine has pulled, with curves and diagnostics."
-      icon={Coffee}
-      chunk="a later release"
-      detail="The archive list, the curve view and the deterministic diagnostics land once the device client and the sync loop are filling the database."
-    />
-  );
-}
 
 export function SetsPage() {
   return (
@@ -45,18 +33,6 @@ export function HardwarePage() {
       icon={Cpu}
       chunk="a later release"
       detail="Capability flags read from the device decide which diagnostics are meaningful: pressure and flow are zero on a Standard board."
-    />
-  );
-}
-
-export function ProfilesPage() {
-  return (
-    <PlaceholderPage
-      title="Profiles"
-      subtitle="The brew profiles mirrored from the machine."
-      icon={SlidersHorizontal}
-      chunk="a later release"
-      detail="Profiles are mirrored read-only. Writing one back to the device is deliberately out of scope for now."
     />
   );
 }

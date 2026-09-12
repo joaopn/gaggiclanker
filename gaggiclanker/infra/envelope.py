@@ -17,7 +17,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -28,6 +28,7 @@ __all__ = [
     "ApiError",
     "ApiMeta",
     "ApiResponse",
+    "binary_response",
     "envelope_response",
     "error_payload",
     "register_exception_handlers",
@@ -89,6 +90,33 @@ def envelope_response(
     return JSONResponse(
         status_code=status_code, content=jsonable_encoder(success_payload(data, meta))
     )
+
+
+def binary_response(
+    body: bytes, *, media_type: str, filename: str, request_id: str | None = None
+) -> Response:
+    """The one response shape that is deliberately **not** the envelope: a file.
+
+    `GET /api/shots/{id}/raw` hands back the `.slog` bytes the machine wrote.
+    Those bytes are the archive's product — the thing every derived column can
+    be rebuilt from — and wrapping them in JSON would mean base64 and a client
+    that has to decode before it can hash them against the device's copy.
+
+    It lives here rather than in the router because the rule stands: routers do
+    not build responses by hand (``tests/test_api_contract.py`` greps for it).
+    The exception is one function, in the module that owns the contract, with
+    the reason written down.
+
+    The request id still travels, in the header, so a download that goes wrong
+    is as traceable as any other call.
+    """
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Content-Type-Options": "nosniff",
+    }
+    if request_id:
+        headers["x-request-id"] = request_id
+    return Response(content=body, media_type=media_type, headers=headers)
 
 
 def _fail(error: AppError) -> JSONResponse:

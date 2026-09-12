@@ -7,9 +7,7 @@ migrations, ASGI in-process — with the device host pointed at the fake machine
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
-from typing import Any
 
 import httpx
 import pytest
@@ -17,49 +15,7 @@ import pytest
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
-from tests.device.conftest import serving
-
-
-async def read_events(
-    response: httpx.Response, count: int, timeout: float = 5.0
-) -> list[dict[str, Any]]:
-    """Parse ``count`` SSE frames out of a streaming response.
-
-    Hand-rolled rather than borrowed from the front end's parser because this
-    asserts on what the *server* writes, including the CRLF separator
-    `sse-starlette` uses by default — the exact detail that made the browser
-    client see zero events in the front-end shell.
-    """
-    events: list[dict[str, Any]] = []
-    buffer = ""
-    async with asyncio.timeout(timeout):
-        async for chunk in response.aiter_text():
-            buffer += chunk
-            while "\r\n\r\n" in buffer or "\n\n" in buffer:
-                separator = "\r\n\r\n" if "\r\n\r\n" in buffer else "\n\n"
-                frame, buffer = buffer.split(separator, 1)
-                parsed = _parse_frame(frame)
-                if parsed is not None:
-                    events.append(parsed)
-                    if len(events) >= count:
-                        return events
-    return events
-
-
-def _parse_frame(frame: str) -> dict[str, Any] | None:
-    event = "message"
-    data: list[str] = []
-    for line in frame.splitlines():
-        if line.startswith(":"):
-            continue
-        if line.startswith("event:"):
-            event = line[6:].strip()
-        elif line.startswith("data:"):
-            data.append(line[5:].strip())
-    if not data:
-        return None
-    return {"event": event, "data": json.loads("\n".join(data))}
-
+from tests.device.conftest import read_events, serving
 
 # ── with no machine configured ───────────────────────────────────────
 
