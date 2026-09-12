@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from gaggiclanker.analyzer.service import ANALYSIS_EVENTS
 from gaggiclanker.api.deps import LlmServiceDep, SettingsServiceDep
 from gaggiclanker.db.repos.llm import LlmCallsRepository, UsageTotals
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
@@ -198,7 +199,11 @@ async def _call_stream(observer: LlmCallObserver, bus: Any) -> AsyncIterator[Sse
         },
     )
     async for event in bus.stream():
-        if event.event == LLM_CALL_EVENT:
+        # The call ring, plus the analyzer's own lifecycle. An analysis is
+        # an LLM call with a row behind it, and a client watching this stream to
+        # know what the LLM is doing should not have to open the sync stream as
+        # well to learn that one started.
+        if event.event == LLM_CALL_EVENT or event.event in ANALYSIS_EVENTS:
             yield event
 
 

@@ -77,6 +77,7 @@ function shotRow(id: number, label: string): ShotListData["items"][number] {
     quarantined: false,
     quarantine_reason: null,
     deleted_on_device: false,
+    analysis_state: "none",
     rating: null,
     has_notes: false,
     has_judgement: false,

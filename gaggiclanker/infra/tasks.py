@@ -35,6 +35,15 @@ class TaskRegistry:
     def names(self) -> list[str]:
         return sorted(self._tasks)
 
+    def get(self, name: str) -> asyncio.Task[Any] | None:
+        """The task under ``name``, if one is still running.
+
+        For a caller that wants to wait for work it queued — `?wait=1` on the
+        analysis routes. A finished task has already released its name, so
+        ``None`` means "it is over", not "it was never there".
+        """
+        return self._tasks.get(name)
+
     def spawn(self, name: str, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         """Start ``coro`` as a named task. A duplicate name is a programming error."""
         if name in self._tasks and not self._tasks[name].done():

@@ -62,6 +62,7 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     quarantined: false,
     quarantine_reason: null,
     deleted_on_device: false,
+    analysis_state: "none",
     rating: 4,
     has_notes: true,
     has_judgement: false,
@@ -196,15 +197,29 @@ describe("ShotsPage", () => {
     expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
   });
 
-  it("leaves a slot for the Set badge and the analysis state", async () => {
-    // Sets and the analyzer fill these in. The column exists now so that "no Set" reads
-    // as a state rather than a missing feature.
+  it("shows the Set badge and the analysis state on every row", async () => {
+    // Both are states with something to do behind them rather than absences,
+    // which is why "not analysed" is rendered rather than left blank.
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
 
     expect(await screen.findByTestId("set-badge-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("analysis-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("analysis-slot")).toHaveTextContent("not analysed");
+  });
+
+  it.each([
+    ["ok", "analysed"],
+    ["running", "analysing"],
+    // An interrupted run is reported as `failed` by the server: four states on
+    // a list, not five.
+    ["failed", "analysis failed"],
+  ])("renders the %s analysis state", async (state, label) => {
+    getShots.mockResolvedValue(listData([shot({ analysis_state: state })]));
+
+    renderWithQueryClient(<ShotsPage />);
+
+    expect(await screen.findByTestId("analysis-slot")).toHaveTextContent(label);
   });
 
   it("says so when a machine has no clock", async () => {

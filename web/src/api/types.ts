@@ -59,6 +59,60 @@ export type JudgementWrite = components["schemas"]["JudgementWrite"];
 export type ShotSetBadge = components["schemas"]["ShotSetBadge"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
+// The analyzer and its knowledge tier. All real pydantic models on the
+// server, so none of them is retyped here either.
+export type Analysis = components["schemas"]["AnalysisRow"];
+export type AnalysisListData = components["schemas"]["AnalysisListData"];
+export type AnalysisRequest = components["schemas"]["AnalysisRequest"];
+export type Suggestion = components["schemas"]["SuggestionRow"];
+export type SuggestionListData = components["schemas"]["SuggestionListData"];
+export type AcceptedSuggestion = components["schemas"]["AcceptedData"];
+export type KnowledgeRule = components["schemas"]["RuleRow"];
+export type KnowledgeRuleListData = components["schemas"]["RuleListData"];
+export type KnowledgeRulePatch = components["schemas"]["RulePatch"];
+export type SetAnalyseRequest = components["schemas"]["SetAnalyseRequest"];
+export type BatchResult = components["schemas"]["BatchResult"];
+
+/**
+ * The analysis document the model returns, as stored on `Analysis.output`.
+ *
+ * Declared server-side as decoded JSON of whatever `AnalysisResult` produced,
+ * so OpenAPI can only say "an object". This mirrors
+ * `gaggiclanker/analyzer/models.py`; when that changes, change this. Everything
+ * below the top level is optional because a row written by an older build, or
+ * one whose provider answered a slightly different shape, still has to render.
+ */
+export type AnalysisOutput = {
+  shot_style?: string;
+  execution?: {
+    summary?: string;
+    issues?: Array<{ signal?: string; severity?: string; evidence?: string }>;
+  };
+  taste_prediction?: { balance?: string; body?: string; confidence?: string };
+  diagnosis?: string;
+  suggestions?: Array<{
+    variable?: string;
+    direction?: string;
+    magnitude?: number | null;
+    unit?: string;
+    reason?: string;
+    confidence?: string;
+    priority?: number;
+  }>;
+  profile_patch?: Array<{
+    phase_index?: number;
+    field?: string;
+    from?: string;
+    to?: string;
+    reason?: string;
+  }>;
+  questions_for_user?: string[];
+  rules_used?: string[];
+};
+
+/** Where the newest analysis of a shot got to. Four states, not five. */
+export type AnalysisState = "none" | "running" | "ok" | "failed";
+
 // The LLM layer. These the schema DOES describe, so they are imported
 // rather than retyped; only the live-call record below is hand-written,
 // because the observer's ring is a plain dict on the server side.

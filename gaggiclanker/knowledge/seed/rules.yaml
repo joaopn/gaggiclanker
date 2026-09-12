@@ -1,0 +1,1668 @@
+# Tier 1 of the knowledge base: structured dial-in rules.
+#
+# ─────────────────────────────────────────────────────────────────────
+# ATTRIBUTION
+#
+# The dial-in heuristics below are adapted from **gaggimate-barista** by
+# Charlie Hall (MIT licence), by way of **gaggimate-mcp** by Julian Leopold
+# (MIT licence), whose `knowledge/` corpus condenses them. The condensed list
+# this file was seeded from is that corpus;
+# the originals are the ~21 000 words under `external/gaggimate-mcp/knowledge/`.
+# Individual rules cite further sources in `source` / `source_ref`: Lance
+# Hedrick for the tasting method, Scott Rao for the sour-and-bitter channeling
+# rule, INEI for the traditional espresso standard, and crema for the taste
+# vocabulary and the diagnostic bands.
+#
+# The diagnostic band meanings are **ours**. They describe the thresholds in
+# `gaggiclanker/domain/diagnostics.py`, which are upstream's calibration
+# measured against real shots.
+#
+# They are deliberately *not* word-for-word with
+# `web/src/lib/shots.ts::BAND_MEANINGS`. That table explains one label to a
+# reader looking at a card and is shared across metrics — "GOOD" means the same
+# sentence under pressure adherence and under flow adherence. These rules are
+# per metric and carry the interpretation the analyzer needs, which is the part
+# worth having: flow_adherence says *why* flow deviation is the better grind
+# signal, and the card has no room for that. What IS pinned, by
+# `tests/analyzer/test_band_parity.py`, is coverage — every band label the
+# diagnostics engine can emit has a rule here and a line there, so adding a band
+# to `diagnostics.py` and forgetting one of the two is a failing test rather
+# than a silent gap.
+# ─────────────────────────────────────────────────────────────────────
+#
+# SHAPE. Each rule carries:
+#
+#   category    one of gaggiclanker.domain.vocab.RULE_CATEGORIES
+#   key         unique within its category; stable, because the model is asked
+#               to list the keys it used and the UI links them
+#   applies     the conditions under which the rule is selected. An absent
+#               dimension means "does not care"; `signal` matches if ANY of its
+#               tokens is present. The token grammar is in
+#               gaggiclanker/knowledge/rules.py.
+#   value       the fact. `text` is the one sentence the prompt renders and the
+#               UI shows; every other key is the machine-readable form of the
+#               same fact, for a chart or a later chunk to use.
+#   unit        what the numbers in `value` are in
+#   confidence  expert | calibrated | anecdotal | learned
+#   source / source_ref   provenance, shown in the UI beside the rule
+#
+# Editing a rule here changes the shipped default. A rule someone has edited
+# through the API keeps their text and takes the new default, exactly like a
+# prompt (gaggiclanker/llm/prompts.py explains the three-way upsert).
+
+rules:
+
+  # ── dial-in order ──────────────────────────────────────────────────
+  # Always selected: this is the procedure, not a fact about a bean.
+
+  - category: dial_in_order
+    key: hierarchy
+    applies: {}
+    value:
+      text: >-
+        Work the variables in order and stop at the first that explains the
+        problem: 1 grind (shot time more than 5 s off target, or clearly sour or
+        bitter), 2 dose and yield (time is fine but the taste is not — sour or
+        salty means +5 g out, bitter or drying means -5 g out), 3 temperature
+        (flat, sharp, or no sweetness), 4 pressure and profile (character rather
+        than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot
+        inconsistency).
+      order: [grind, yield, temperature, pressure, puck_prep]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Hierarchy"
+
+  - category: dial_in_order
+    key: one_variable_at_a_time
+    applies: {}
+    value:
+      text: >-
+        Change one variable at a time. Two changes in one shot make the next cup
+        uninterpretable, and the whole point of a Set version is to be able to
+        say what a single change did.
+    unit: none
+    confidence: expert
+    source: crema
+    source_ref: "crema.md §5 — review system prompt"
+
+  - category: dial_in_order
+    key: taste_is_ground_truth
+    applies: {}
+    value:
+      text: >-
+        The user's tasting notes outrank the telemetry. Sour, weak or fast means
+        under-extracted; bitter, harsh or slow means over-extracted — whatever
+        the curve looked like. Never contradict a recorded taste with a number.
+    unit: none
+    confidence: expert
+    source: crema
+    source_ref: "crema.md §5 — TASTING NOTES are ground truth"
+
+  - category: dial_in_order
+    key: grind_before_profile
+    applies: {}
+    value:
+      text: >-
+        If grind is plausibly the problem, propose no profile change at all. A
+        profile edit made while the grind is wrong hides the grind error and
+        costs two shots to unpick.
+    unit: none
+    confidence: expert
+    source: crema
+    source_ref: "crema.md §5 — dial-in order"
+
+  # ── increments ─────────────────────────────────────────────────────
+
+  - category: increments
+    key: grind
+    applies: {}
+    value:
+      text: >-
+        Move the grinder in its own smallest meaningful step — one or two — and
+        say which way in the grinder's units, never in microns.
+      min: 1
+      max: 2
+    unit: grinder_steps
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — increments"
+
+  - category: increments
+    key: temperature
+    applies: {}
+    value:
+      text: "Adjust brew temperature in 1 °C steps; 2 °C at most in one move."
+      min: 1
+      max: 2
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — increments"
+
+  - category: increments
+    key: pressure
+    applies: {}
+    value:
+      text: "Adjust pressure in 0.5-1 bar steps."
+      min: 0.5
+      max: 1.0
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — increments"
+
+  - category: increments
+    key: yield
+    applies: {}
+    value:
+      text: "Adjust yield in 5 g steps — about half a ratio point on a normal dose."
+      step: 5
+    unit: g
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — increments"
+
+  - category: increments
+    key: preinfusion_time
+    applies: {}
+    value:
+      text: "Adjust pre-infusion in 2-3 s steps."
+      min: 2
+      max: 3
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — increments"
+
+  - category: increments
+    key: preinfusion_flow
+    applies: {}
+    value:
+      text: "Adjust pre-infusion flow in 0.5 ml/s steps."
+      step: 0.5
+    unit: ml_s
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — increments"
+
+  # ── temperature by roast ───────────────────────────────────────────
+
+  - category: temperature_by_roast
+    key: light
+    applies: { roast_level: [light] }
+    value:
+      text: "Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat."
+      min_c: 94
+      max_c: 96
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: medium_light
+    applies: { roast_level: [medium-light] }
+    value:
+      text: "Medium-light roasts sit at 93-95 °C, between the light and medium windows."
+      min_c: 93
+      max_c: 95
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: medium
+    applies: { roast_level: [medium] }
+    value:
+      text: "Medium roasts extract at 92-94 °C."
+      min_c: 92
+      max_c: 94
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: medium_dark
+    applies: { roast_level: [medium-dark] }
+    value:
+      text: "Medium-dark roasts extract at 90-92 °C; above that the bitters come out early."
+      min_c: 90
+      max_c: 92
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: dark
+    applies: { roast_level: [dark] }
+    value:
+      text: "Dark roasts extract at 88-90 °C: the cell walls are already broken down."
+      min_c: 88
+      max_c: 90
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: decaf
+    applies: { decaf: true }
+    value:
+      text: >-
+        Decaf extracts faster and hotter than its roast level suggests: take
+        2-4 °C off the window for the same roast in caffeinated beans.
+      offset_min_c: -4
+      offset_max_c: -2
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: high_altitude
+    applies: { signal: ["altitude:high"] }
+    value:
+      text: >-
+        Beans grown above about 1 800 m are denser: add 1-2 °C and grind a step
+        finer than the roast level alone would say.
+      offset_min_c: 1
+      offset_max_c: 2
+      altitude_m_above: 1800
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: taste_adjustment
+    applies: { signal: ["taste:sour", "taste:bitter", "taste:astringent",
+                    "balance:sour", "balance:bitter"] }
+    value:
+      text: >-
+        Within the roast's window, sour moves the temperature up 1-2 °C and
+        bitter or astringent moves it down 1-2 °C — after grind and yield have
+        been ruled out, not before.
+      sour_offset_c: 1.5
+      bitter_offset_c: -1.5
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
+
+  - category: temperature_by_roast
+    key: processing_offset
+    applies: { process: [natural, anaerobic, honey] }
+    value:
+      text: >-
+        More fermentation means more soluble material: heavily fermented lots
+        (natural, honey, anaerobic) extract a degree or two cooler than a washed
+        bean of the same roast, with a longer pre-infusion and a coarser grind.
+      offset_c: -1.5
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Processing"
+
+  # ── pressure matrix (roast x process) ──────────────────────────────
+  # Roast levels are bucketed the way the source matrix is: light and
+  # medium-light read the L column, medium the M, medium-dark and dark the D.
+
+  - category: pressure_matrix
+    key: washed.light
+    applies: { process: [washed], roast_level: [light, medium-light] }
+    value:
+      text: "Washed light: 8-9 bar. A clean, dense bean takes full pressure."
+      min_bar: 8
+      max_bar: 9
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: washed.medium
+    applies: { process: [washed], roast_level: [medium] }
+    value:
+      text: "Washed medium: 9 bar, the traditional setpoint."
+      min_bar: 8.5
+      max_bar: 9
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: washed.dark
+    applies: { process: [washed], roast_level: [medium-dark, dark] }
+    value:
+      text: "Washed dark: 7-8 bar. A brittle bed channels at nine."
+      min_bar: 7
+      max_bar: 8
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: natural.light
+    applies: { process: [natural], roast_level: [light, medium-light] }
+    value:
+      text: "Natural light: 7-8 bar — more soluble than washed, so less pressure."
+      min_bar: 7
+      max_bar: 8
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: natural.medium
+    applies: { process: [natural], roast_level: [medium] }
+    value:
+      text: "Natural medium: 8-9 bar."
+      min_bar: 8
+      max_bar: 9
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: natural.dark
+    applies: { process: [natural], roast_level: [medium-dark, dark] }
+    value:
+      text: "Natural dark: 6-7 bar. Muddy naturals want a bar off whatever you were using."
+      min_bar: 6
+      max_bar: 7
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: honey.light
+    applies: { process: [honey], roast_level: [light, medium-light] }
+    value:
+      text: >-
+        Honey light: 8-9 bar for a yellow honey, 7-8 for a red or black one —
+        the longer the mucilage stayed on, the lower the pressure.
+      min_bar: 7
+      max_bar: 9
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: honey.medium
+    applies: { process: [honey], roast_level: [medium] }
+    value:
+      text: "Honey medium: 8-9 bar."
+      min_bar: 8
+      max_bar: 9
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: honey.dark
+    applies: { process: [honey], roast_level: [medium-dark, dark] }
+    value:
+      text: "Honey dark: 7-8 bar."
+      min_bar: 7
+      max_bar: 8
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: anaerobic.light
+    applies: { process: [anaerobic], roast_level: [light, medium-light] }
+    value:
+      text: "Anaerobic light: 6-8 bar. The most soluble category there is."
+      min_bar: 6
+      max_bar: 8
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: anaerobic.medium
+    applies: { process: [anaerobic], roast_level: [medium] }
+    value:
+      text: "Anaerobic medium: 7-8 bar."
+      min_bar: 7
+      max_bar: 8
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: anaerobic.dark
+    applies: { process: [anaerobic], roast_level: [medium-dark, dark] }
+    value:
+      text: "Anaerobic dark: 6-7 bar."
+      min_bar: 6
+      max_bar: 7
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure matrix"
+
+  - category: pressure_matrix
+    key: compression_floor
+    applies: {}
+    value:
+      text: >-
+        A puck compresses at about 4 bar, so pre-infusion belongs below that:
+        pressure applied before the bed has set is what opens a channel.
+      bar: 4
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure"
+
+  - category: pressure_matrix
+    key: flow_peak
+    applies: {}
+    value:
+      text: >-
+        Flow through an espresso puck peaks around 9 bar. Above about 10 the
+        extra pressure goes into deforming the bed rather than through it.
+      peak_bar: 9
+      channel_above_bar: 10
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure"
+
+  - category: pressure_matrix
+    key: decline_compensates_erosion
+    applies: {}
+    value:
+      text: >-
+        A declining pressure phase compensates for the puck eroding: as
+        resistance falls, dropping the setpoint keeps flow where it was instead
+        of letting the shot run away at the end.
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Pressure"
+
+  # ── ratio by style ─────────────────────────────────────────────────
+
+  - category: ratio_by_style
+    key: classic
+    applies: { style: [classic] }
+    value:
+      text: "Classic espresso: 1:2. Start there and let the taste move it."
+      min: 1.8
+      max: 2.2
+    unit: none
+    confidence: expert
+    source: INEI / gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio"
+
+  - category: ratio_by_style
+    key: turbo
+    applies: { style: [turbo] }
+    value:
+      text: >-
+        Turbo shots need 1:2.5-1:3. A turbo that tastes sour is almost always a
+        ratio that was too short, not a grind that was too coarse.
+      min: 2.5
+      max: 3.0
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio, Fixes"
+
+  - category: ratio_by_style
+    key: allonge
+    applies: { style: [allonge] }
+    value:
+      text: "Allongé: 1:3 to 1:5, low pressure, long."
+      min: 3.0
+      max: 5.0
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio"
+
+  - category: ratio_by_style
+    key: lever
+    applies: { style: [lever] }
+    value:
+      text: "Lever profiles run about 1:2 to 1:2.5 over a long declining pressure."
+      min: 2.0
+      max: 2.5
+    unit: none
+    confidence: anecdotal
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio"
+
+  - category: ratio_by_style
+    key: dark
+    applies: { style: [dark] }
+    value:
+      text: "Dark-roast profiles are short: 1:1.5 to 1:2 keeps the bitters out."
+      min: 1.5
+      max: 2.0
+    unit: none
+    confidence: anecdotal
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio"
+
+  - category: ratio_by_style
+    key: bloom
+    applies: { style: [bloom] }
+    value:
+      text: "A bloom profile aims at about 1:2 to 1:2.5; the soak does the work, not the ratio."
+      min: 2.0
+      max: 2.5
+    unit: none
+    confidence: anecdotal
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio"
+
+  - category: ratio_by_style
+    key: ristretto_and_milk
+    applies: {}
+    value:
+      text: "For milk drinks and ristretto, 1:1 to 1:1.5 is the working range."
+      min: 1.0
+      max: 1.5
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Ratio"
+
+  # ── time by style ──────────────────────────────────────────────────
+
+  - category: time_by_style
+    key: classic
+    applies: { style: [classic] }
+    value:
+      text: "Traditional espresso runs 25-35 s from first pump to the target."
+      min_s: 25
+      max_s: 35
+    unit: seconds
+    confidence: expert
+    source: INEI / gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Time by style"
+
+  - category: time_by_style
+    key: turbo
+    applies: { style: [turbo] }
+    value:
+      text: "Turbo shots finish in 10-20 s at 5-6 bar."
+      min_s: 10
+      max_s: 20
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Time by style"
+
+  - category: time_by_style
+    key: allonge
+    applies: { style: [allonge] }
+    value:
+      text: "Allongé runs long: 25-50 s."
+      min_s: 25
+      max_s: 50
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Time by style"
+
+  - category: time_by_style
+    key: bloom
+    applies: { style: [bloom] }
+    value:
+      text: "A bloom profile totals 30-45 s, with first drip between 15 and 25 s."
+      min_s: 30
+      max_s: 45
+      first_drip_min_s: 15
+      first_drip_max_s: 25
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Time by style"
+
+  - category: time_by_style
+    key: lever
+    applies: { style: [lever] }
+    value:
+      text: "Lever profiles run 28-35 s including the soak."
+      min_s: 28
+      max_s: 35
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Time by style"
+
+  - category: time_by_style
+    key: dark
+    applies: { style: [dark] }
+    value:
+      text: "Dark-roast profiles are quick: 22-28 s."
+      min_s: 22
+      max_s: 28
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Time by style"
+
+  - category: time_by_style
+    key: first_drip
+    applies: { signal: ["first_drip:fast", "first_drip:slow"] }
+    value:
+      text: >-
+        First drip under 3 s means the grind is too coarse or the water found a
+        channel; over 10 s means it is very fine.
+      fast_below_s: 3
+      slow_above_s: 10
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  # ── freshness ──────────────────────────────────────────────────────
+
+  - category: freshness_windows
+    key: degassing
+    applies: { signal: ["freshness:degassing"] }
+    value:
+      text: >-
+        One to three days off roast the bean is still shedding CO2: use a long
+        bloom and a slow pre-infusion, and expect the shot to gush once the gas
+        breaks through.
+      min_days: 0
+      max_days: 3
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: freshness_windows
+    key: sweet_spot
+    applies: { signal: ["freshness:sweet_spot"] }
+    value:
+      text: "Seven to fourteen days off roast is the sweet spot for most espresso."
+      min_days: 7
+      max_days: 14
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: freshness_windows
+    key: peak
+    applies: { signal: ["freshness:peak"] }
+    value:
+      text: "Fourteen to twenty-one days is peak for most roasts: stable and sweet."
+      min_days: 14
+      max_days: 21
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: freshness_windows
+    key: stale
+    applies: { signal: ["freshness:stale"] }
+    value:
+      text: >-
+        Past thirty days the bean is going flat: compensate with a degree or two
+        more heat and a step finer, and expect a shorter finish whatever you do.
+      min_days: 30
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: freshness_windows
+    key: crema_cues
+    applies: { signal: ["freshness:degassing", "freshness:stale"] }
+    value:
+      text: >-
+        Thick, pale, bubbly crema that collapses fast means the bean is too
+        fresh; thin tan crema means it is past its peak.
+    unit: none
+    confidence: anecdotal
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  # ── rest times ─────────────────────────────────────────────────────
+
+  - category: rest_times
+    key: light
+    applies: { roast_level: [light, medium-light] }
+    value:
+      text: "Light roasts need 10-14 days of rest before they dial in reliably."
+      min_days: 10
+      max_days: 14
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: rest_times
+    key: medium
+    applies: { roast_level: [medium] }
+    value:
+      text: "Medium roasts need 7-10 days of rest."
+      min_days: 7
+      max_days: 10
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: rest_times
+    key: dark
+    applies: { roast_level: [medium-dark, dark] }
+    value:
+      text: "Dark roasts need only 3-5 days of rest; they degas fast."
+      min_days: 3
+      max_days: 5
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: rest_times
+    key: natural_bonus
+    applies: { process: [natural, honey] }
+    value:
+      text: "Naturals and honeys want 2-3 days more rest than a washed bean of the same roast."
+      extra_days_min: 2
+      extra_days_max: 3
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  - category: rest_times
+    key: anaerobic_bonus
+    applies: { process: [anaerobic] }
+    value:
+      text: "Anaerobic lots want 3-5 days more rest again."
+      extra_days_min: 3
+      extra_days_max: 5
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Freshness"
+
+  # ── diagnostic band meanings ───────────────────────────────────────
+  # One per band label the summary diagnostics can carry. Keys are
+  # `<metric>:<LABEL>` and the wording is kept in step with
+  # web/src/lib/shots.ts::BAND_MEANINGS so the analyzer and the shot page agree.
+
+  - category: band_meanings
+    key: "channeling_risk:LOW"
+    applies: { signal: ["channeling_risk:LOW"] }
+    value: { text: "channeling_risk LOW — no indicator crossed its threshold; the puck held." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling"
+
+  - category: band_meanings
+    key: "channeling_risk:MODERATE"
+    applies: { signal: ["channeling_risk:MODERATE"] }
+    value:
+      text: >-
+        channeling_risk MODERATE — two or three indicators fired; read them with
+        the flow shape before acting.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling"
+
+  - category: band_meanings
+    key: "channeling_risk:HIGH"
+    applies: { signal: ["channeling_risk:HIGH"] }
+    value:
+      text: >-
+        channeling_risk HIGH — four or five aligned indicators; a channel almost
+        certainly opened. Fix distribution before grind.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling"
+
+  - category: band_meanings
+    key: "channeling_risk:VERY_HIGH"
+    applies: { signal: ["channeling_risk:VERY_HIGH"] }
+    value:
+      text: >-
+        channeling_risk VERY_HIGH — six or more indicators: the water found a
+        path around the bed. Nothing else in the shot can be read past this.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling"
+
+  - category: band_meanings
+    key: "channeling_risk:INSUFFICIENT_DATA"
+    applies: { signal: ["channeling_risk:INSUFFICIENT_DATA"] }
+    value:
+      text: >-
+        channeling_risk INSUFFICIENT_DATA — fewer than five steady-state
+        samples, so nothing was assessed. Treat the other diagnostics as primary.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling"
+
+  - category: band_meanings
+    key: "resistance_level:VERY_LOW"
+    applies: { signal: ["resistance_level:VERY_LOW"] }
+    value: { text: "resistance_level VERY_LOW — under 0.5; water is passing almost unimpeded." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_level:LOW"
+    applies: { signal: ["resistance_level:LOW"] }
+    value: { text: "resistance_level LOW — 0.5-1.5; a loose bed for espresso." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_level:MODERATE"
+    applies: { signal: ["resistance_level:MODERATE"] }
+    value: { text: "resistance_level MODERATE — 1.5-3.0, the usual range for a well-packed basket." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_level:HIGH"
+    applies: { signal: ["resistance_level:HIGH"] }
+    value: { text: "resistance_level HIGH — 3.0-5.0; a tight bed, and the pump is working against it." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_level:VERY_HIGH"
+    applies: { signal: ["resistance_level:VERY_HIGH"] }
+    value: { text: "resistance_level VERY_HIGH — over 5.0; very tight, and flow will be hard to hold." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_erosion:INCREASING"
+    applies: { signal: ["resistance_erosion:INCREASING"] }
+    value:
+      text: >-
+        resistance_erosion INCREASING — resistance rose through the shot: the
+        bed compacted rather than eroded, which usually means fines migration.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_erosion:FLAT"
+    applies: { signal: ["resistance_erosion:FLAT"] }
+    value: { text: "resistance_erosion FLAT — resistance held steady: the puck kept its shape." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_erosion:GRADUAL_DECLINE"
+    applies: { signal: ["resistance_erosion:GRADUAL_DECLINE"] }
+    value: { text: "resistance_erosion GRADUAL_DECLINE — a slow fall, normal as the bed saturates." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_erosion:MODERATE_DECLINE"
+    applies: { signal: ["resistance_erosion:MODERATE_DECLINE"] }
+    value: { text: "resistance_erosion MODERATE_DECLINE — resistance fell noticeably; part of the bed gave way." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "resistance_erosion:STEEP_DECLINE"
+    applies: { signal: ["resistance_erosion:STEEP_DECLINE"] }
+    value: { text: "resistance_erosion STEEP_DECLINE — resistance collapsed: the puck lost structure under pressure." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — puck resistance"
+
+  - category: band_meanings
+    key: "temperature_stability:VERY_STABLE"
+    applies: { signal: ["temperature_stability:VERY_STABLE"] }
+    value: { text: "temperature_stability VERY_STABLE — std under 0.3 °C; as steady as the boiler gets." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — temperature"
+
+  - category: band_meanings
+    key: "temperature_stability:STABLE"
+    applies: { signal: ["temperature_stability:STABLE"] }
+    value: { text: "temperature_stability STABLE — std 0.3-0.8 °C, within normal variation." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — temperature"
+
+  - category: band_meanings
+    key: "temperature_stability:MODERATE"
+    applies: { signal: ["temperature_stability:MODERATE"] }
+    value: { text: "temperature_stability MODERATE — std 0.8-1.5 °C; neither clean nor a fault." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — temperature"
+
+  - category: band_meanings
+    key: "temperature_stability:UNSTABLE"
+    applies: { signal: ["temperature_stability:UNSTABLE"] }
+    value: { text: "temperature_stability UNSTABLE — std over 1.5 °C: the boiler never settled." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — temperature"
+
+  - category: band_meanings
+    key: "pressure_adherence:EXCELLENT"
+    applies: { signal: ["pressure_adherence:EXCELLENT"] }
+    value: { text: "pressure_adherence EXCELLENT — RMSE under 0.3 bar; the machine tracked the profile closely." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_adherence:GOOD"
+    applies: { signal: ["pressure_adherence:GOOD"] }
+    value: { text: "pressure_adherence GOOD — RMSE 0.3-0.8 bar; small, steady deviation from what was commanded." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_adherence:FAIR"
+    applies: { signal: ["pressure_adherence:FAIR"] }
+    value: { text: "pressure_adherence FAIR — RMSE 0.8-1.5 bar; visibly off the commanded curve." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_adherence:POOR"
+    applies: { signal: ["pressure_adherence:POOR"] }
+    value: { text: "pressure_adherence POOR — RMSE over 1.5 bar: the shot did not follow the profile." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_adherence:EXCELLENT"
+    applies: { signal: ["flow_adherence:EXCELLENT"] }
+    value:
+      text: >-
+        flow_adherence EXCELLENT — RMSE under 0.3 ml/s. Flow deviation is the
+        better grind signal, because the PID masks pressure error and cannot
+        mask flow.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_adherence:GOOD"
+    applies: { signal: ["flow_adherence:GOOD"] }
+    value: { text: "flow_adherence GOOD — RMSE 0.3-0.8 ml/s against the commanded flow." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_adherence:FAIR"
+    applies: { signal: ["flow_adherence:FAIR"] }
+    value: { text: "flow_adherence FAIR — RMSE 0.8-1.5 ml/s; the puck is not letting the profile happen." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_adherence:POOR"
+    applies: { signal: ["flow_adherence:POOR"] }
+    value: { text: "flow_adherence POOR — RMSE over 1.5 ml/s: grind, dose or puck prep is well off." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_overshoot:WITHIN_TOLERANCE"
+    applies: { signal: ["pressure_overshoot:WITHIN_TOLERANCE"] }
+    value: { text: "pressure_overshoot WITHIN_TOLERANCE — under 0.25 bar over target; deviation means nothing here." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_overshoot:MINOR_OVERSHOOT"
+    applies: { signal: ["pressure_overshoot:MINOR_OVERSHOOT"] }
+    value: { text: "pressure_overshoot MINOR_OVERSHOOT — 0.25-0.5 bar over target." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_overshoot:NOTABLE_OVERSHOOT"
+    applies: { signal: ["pressure_overshoot:NOTABLE_OVERSHOOT"] }
+    value: { text: "pressure_overshoot NOTABLE_OVERSHOOT — 0.5-1.0 bar over target." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "pressure_overshoot:SEVERE_OVERSHOOT"
+    applies: { signal: ["pressure_overshoot:SEVERE_OVERSHOOT"] }
+    value:
+      text: >-
+        pressure_overshoot SEVERE_OVERSHOOT — over a bar above target. The
+        controller ran out of room, which almost always means the grind is too
+        fine, the dose too large, or the puck badly prepared.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_overshoot:WITHIN_TOLERANCE"
+    applies: { signal: ["flow_overshoot:WITHIN_TOLERANCE"] }
+    value: { text: "flow_overshoot WITHIN_TOLERANCE — inside the band where flow deviation means nothing." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_overshoot:MINOR_DEVIATION"
+    applies: { signal: ["flow_overshoot:MINOR_DEVIATION"] }
+    value: { text: "flow_overshoot MINOR_DEVIATION — a small, measurable departure above target flow." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_overshoot:NOTABLE_DEVIATION"
+    applies: { signal: ["flow_overshoot:NOTABLE_DEVIATION"] }
+    value:
+      text: >-
+        flow_overshoot NOTABLE_DEVIATION — flow ran above target by more than
+        0.7 ml/s, which reads as too coarse.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: band_meanings
+    key: "flow_overshoot:SEVERE_DEVIATION"
+    applies: { signal: ["flow_overshoot:SEVERE_DEVIATION"] }
+    value: { text: "flow_overshoot SEVERE_DEVIATION — the actual flow and the target parted company." }
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  # ── taste → suspect ────────────────────────────────────────────────
+
+  - category: taste_to_suspect
+    key: sour
+    applies: { signal: ["taste:sour", "taste:sharp", "balance:sour"] }
+    value:
+      text: >-
+        Sour: under-extracted. Expect high flow, an early first drip, or a low
+        temperature. Grind finer first; if it is already fine, add 5 g of yield
+        and a degree of heat.
+      suspects: [flow_high, first_drip_early, temperature_low]
+      fix: [grind_finer, yield_up, temperature_up]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Taste → suspects"
+
+  - category: taste_to_suspect
+    key: bitter
+    applies: { signal: ["taste:bitter", "taste:harsh", "balance:bitter"] }
+    value:
+      text: >-
+        Bitter: over-extracted. Expect a long shot time, a high temperature, or
+        pressure above target. Grind coarser and take a degree off; if it is
+        already coarse, take 5 g off the yield and add a decline.
+      suspects: [time_long, temperature_high, pressure_above_target]
+      fix: [grind_coarser, temperature_down, yield_down]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Taste → suspects"
+
+  - category: taste_to_suspect
+    key: salty
+    applies: { signal: ["taste:salty"] }
+    value:
+      text: >-
+        Salty is severe under-extraction — further under than sour. Treat it as
+        a grind problem first and a yield problem second.
+    unit: none
+    confidence: expert
+    source: Lance Hedrick / gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Extraction model"
+
+  - category: taste_to_suspect
+    key: astringent
+    applies: { signal: ["taste:astringent", "taste:drying"] }
+    value:
+      text: >-
+        Astringent and drying: a pressure spike followed by a drop, erratic flow,
+        or fines migration. Look at puck prep before touching the grind.
+      suspects: [pressure_spike_then_drop, flow_erratic, fines]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Taste → suspects"
+
+  - category: taste_to_suspect
+    key: watery
+    applies: { signal: ["taste:weak_watery", "taste:thin"] }
+    value:
+      text: >-
+        Watery or thin: low pressure and high flow. That is a strength problem,
+        not an extraction one — shorten the ratio or raise the dose before
+        changing the grind.
+      suspects: [pressure_low, flow_high, time_short]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Taste → suspects"
+
+  - category: taste_to_suspect
+    key: flat
+    applies: { signal: ["taste:hollow", "taste:quick_finish"] }
+    value:
+      text: >-
+        Flat or hollow: temperature drift, a pre-infusion that was too short, or
+        stale beans. Raise the temperature half a degree or add a decline phase.
+      suspects: [temperature_drift, preinfusion_short, beans_stale]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Taste → suspects"
+
+  - category: taste_to_suspect
+    key: too_intense
+    applies: { signal: ["taste:too_intense"] }
+    value:
+      text: >-
+        Too intense or muddy: the cup is over-concentrated rather than
+        over-extracted. Lengthen the ratio before doing anything to the grind,
+        and take a bar off for a muddy natural.
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Taste → suspects"
+
+  - category: taste_to_suspect
+    key: sour_and_bitter_is_channeling
+    # Both sides at once, which is why it keys on the one token the context
+    # only emits when both are present. An any-of list would fire this on a
+    # plainly sour cup and tell the user not to grind finer — the opposite of
+    # what `sour` says one rule above.
+    applies: { signal: ["taste:sour_and_bitter"] }
+    value:
+      text: >-
+        Sour AND bitter in the same cup is channeling, not an extraction level —
+        part of the bed over-extracted while the rest was barely touched. Do NOT
+        grind finer. Fix distribution (WDT, level tamp), extend pre-infusion by
+        5-8 s at 2-2.5 ml/s, and bloom for very fresh beans.
+      do_not: [grind_finer]
+      fix: [puck_prep, preinfusion_longer]
+    unit: none
+    confidence: expert
+    source: Scott Rao / gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Channeling (Rao)"
+
+  # ── telemetry → cause ──────────────────────────────────────────────
+
+  - category: telemetry_to_cause
+    key: first_drip_fast
+    applies: { signal: ["first_drip:fast"] }
+    value:
+      text: "First drip under 3 s: the grind is too coarse, or the water channelled straight through."
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: first_drip_slow
+    applies: { signal: ["first_drip:slow"] }
+    value: { text: "First drip past 10 s: the grind is very fine, or the dose is above the basket." }
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: flow_high
+    applies: { signal: ["avg_flow:high"] }
+    value: { text: "Average flow above 3 ml/s means low bed resistance: too coarse, underdosed, or channelling." }
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: flow_low
+    applies: { signal: ["avg_flow:low"] }
+    value: { text: "Average flow under 1 ml/s is a choked puck: too fine, or too much coffee for the basket." }
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: late_flow_runaway
+    applies: { signal: ["primary:late_flow_runaway"] }
+    value:
+      text: >-
+        Flow accelerating late — say 1.5 climbing to 4 ml/s — is a channel
+        opening part-way through, not a profile doing what it was told.
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: pressure_cliff
+    applies: { signal: ["primary:pressure_cliff"] }
+    value:
+      text: >-
+        A pressure drop of 1.5 bar/s or worse is the shape a channel opening
+        makes: the bed gave way and the pump lost its load.
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling indicators"
+
+  - category: telemetry_to_cause
+    key: flow_jitter
+    applies: { signal: ["primary:flow_jitter"] }
+    value:
+      text: >-
+        Sample-to-sample flow jitter above 0.05 ml/s is puck instability with
+        the designed trajectory removed — calibrated against 26 real shots that
+        all measured 0.013-0.020.
+    unit: ml_s
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling indicators"
+
+  - category: telemetry_to_cause
+    key: flow_vs_target
+    applies: { signal: ["primary:flow_vs_target"] }
+    value:
+      text: >-
+        Deviation from the commanded flow is the better grind signal, because
+        the PID drives pump power to hold pressure and masks pressure error
+        entirely. Overshoot beyond 0.7 ml/s reads as too coarse, undershoot
+        beyond 0.7 as too fine.
+      threshold_ml_s: 0.7
+    unit: ml_s
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — compliance"
+
+  - category: telemetry_to_cause
+    key: two_indicators_rule
+    applies: { signal: ["primary:flow_jitter", "primary:flow_vs_target",
+                    "primary:pressure_cliff", "primary:late_flow_runaway",
+                    "primary:pressure_jitter_fallback",
+                    "channeling_risk:MODERATE", "channeling_risk:HIGH",
+                    "channeling_risk:VERY_HIGH"] }
+    value:
+      text: >-
+        Two aligned channeling indicators mean a real channel; one on its own is
+        usually noise. Say which ones fired rather than asserting channeling.
+      min_indicators: 2
+    unit: none
+    confidence: calibrated
+    source: crema
+    source_ref: "crema.md §4 — channeling"
+
+  - category: telemetry_to_cause
+    key: resistance_high_and_falling
+    applies: { signal: ["resistance_level:HIGH", "resistance_level:VERY_HIGH"] }
+    value:
+      text: >-
+        High puck resistance with a steep decline is too fine plus channeling:
+        the bed was tight enough to force a path and then lost structure. Low
+        resistance that increases is too coarse with fines settling.
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: temperature_cold_start
+    applies: { signal: ["temp:cold"] }
+    value:
+      text: >-
+        More than 3 °C below target means the group was not up to heat — a
+        pre-heat problem, not a PID one. Flush and pull again before changing
+        anything.
+      threshold_c: 3
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: temperature_over
+    applies: { signal: ["temp:hot"] }
+    value:
+      text: "More than 2 °C above target through the shot is a PID problem, not a recipe one."
+      threshold_c: 2
+    unit: c
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: scale_artifacts
+    applies: { signal: ["scale:absent"] }
+    value:
+      text: >-
+        With no scale the final weight is the device's own estimate. BLE scales
+        also spike or drop to zero at the end of a shot; when the reading looks
+        wrong, use the last stable value or volume x 0.82 rather than the number
+        on the row.
+      volume_to_weight: 0.82
+    unit: none
+    confidence: anecdotal
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
+
+  - category: telemetry_to_cause
+    key: dose_out_tiny
+    applies: { signal: ["yield:tiny", "scale:absent"] }
+    value:
+      text: >-
+        A recorded yield of about 0.1 g means the cup was taken off the scale
+        early, not that the shot failed. The firmware's predictive stop also
+        cuts about a second before the target.
+    unit: none
+    confidence: anecdotal
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Equipment"
+
+  # ── profile design defaults ────────────────────────────────────────
+
+  - category: profile_design_defaults
+    key: preinfusion
+    applies: { signal: ["primary:flow_jitter", "primary:flow_vs_target",
+                    "primary:pressure_cliff", "primary:late_flow_runaway",
+                    "primary:pressure_jitter_fallback", "first_drip:fast",
+                    "channeling_risk:MODERATE", "channeling_risk:HIGH",
+                    "channeling_risk:VERY_HIGH"] }
+    value:
+      text: >-
+        Pre-infusion: 2-3 ml/s for 3-10 s, held under 4 bar so the bed sets
+        before it is loaded.
+      flow_min_ml_s: 2
+      flow_max_ml_s: 3
+      seconds_min: 3
+      seconds_max: 10
+      max_bar: 4
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: bloom
+    applies: { style: [bloom] }
+    value:
+      text: "A bloom is the pump OFF for 5-15 s — not the valve closed. The valve stays at 1."
+      seconds_min: 5
+      seconds_max: 15
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: ramp
+    applies: { signal: ["pressure_overshoot:NOTABLE_OVERSHOOT",
+                    "pressure_overshoot:SEVERE_OVERSHOOT"] }
+    value:
+      text: "Ramp to pressure over 3-5 s with a `pressure gte 8.5` exit condition, then hold."
+      seconds_min: 3
+      seconds_max: 5
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: hold
+    applies: { style: [classic, bloom, lever, allonge, dark, turbo] }
+    value:
+      text: "Hold for 15-30 s with a volumetric target on it, so the shot ends on weight and not on time."
+      seconds_min: 15
+      seconds_max: 30
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: decline
+    applies: { roast_level: [medium-dark, dark] }
+    value:
+      text: "Dark roasts want a 3-6 s ease-out decline at the end rather than a flat hold."
+      seconds_min: 3
+      seconds_max: 6
+    unit: seconds
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: final_target
+    applies: { signal: ["scale:absent", "yield:tiny"] }
+    value:
+      text: >-
+        Always end on a volumetric target — or, with no scale, a pumped target of
+        about the yield plus 25-30 ml for what the puck and group retain.
+      pumped_headroom_ml_min: 25
+      pumped_headroom_ml_max: 30
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  - category: profile_design_defaults
+    key: flow_led
+    applies: { style: [turbo, allonge] }
+    value:
+      text: >-
+        Flow-led (the Automatic Pro pattern): target flow = dose x 2 / 20 s, with
+        a pressure ceiling — 12 bar capped for the first 6 s, 9 bar for the brew.
+        Pre-infusion water = dose x 1.3 + headspace.
+      flow_formula: "dose_g * 2 / 20"
+      preinfusion_ml: "dose_g * 1.3 + headspace_ml"
+      cap_start_bar: 12
+      cap_brew_bar: 9
+    unit: none
+    confidence: anecdotal
+    source: modsmthng (Automatic Pro), via gaggimate-mcp
+    source_ref: "gaggimate-mcp.md §7 — Profile design"
+
+  # ── equipment ──────────────────────────────────────────────────────
+
+  - category: equipment_hints
+    key: conical
+    applies: { burr_type: [conical] }
+    value:
+      text: >-
+        Conical burrs make more fines: run 7-8 bar with a gentle ramp and a
+        longer pre-infusion, and expect a tighter bed at the same setting than a
+        flat burr would give.
+      pressure_min_bar: 7
+      pressure_max_bar: 8
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Equipment"
+
+  - category: equipment_hints
+    key: flat
+    applies: { burr_type: [flat] }
+    value:
+      text: >-
+        Flat burrs produce fewer fines and a more unimodal grind: 9 bar suits
+        them, and they can usually be run a step finer than a conical.
+      pressure_bar: 9
+    unit: bar
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Equipment"
+
+  - category: equipment_hints
+    key: unknown_burrs
+    applies: { burr_type: [unknown] }
+    value:
+      text: >-
+        The grinder's burr type is not recorded, so do not reason about fines.
+        Give the adjustment in this grinder's own steps and leave it there.
+    unit: none
+    confidence: expert
+    source: gaggiclanker
+    source_ref: "gaggimate-mcp knowledge base (Charlie Hall, MIT)"
+
+  - category: equipment_hints
+    key: dose_is_the_basket
+    applies: {}
+    value:
+      text: >-
+        Dose to the basket's rating plus or minus 1 g. Underdosing leaves
+        headspace, water pools above the puck and channels; a deeper basket wants
+        a coarser grind for the same time.
+      tolerance_g: 1
+    unit: g
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Dose/basket"
+
+  - category: equipment_hints
+    key: distribution_before_tamping
+    applies: {}
+    value:
+      text: >-
+        Distribution matters more than tamping, and tamping more than pressure.
+        Almost every inconsistency that survives a grind change is a
+        distribution problem.
+      order: [distribution, tamping, pressure]
+    unit: none
+    confidence: expert
+    source: gaggimate-barista
+    source_ref: "gaggimate-mcp.md §7 — Extraction science"
+
+  # ── safety bounds ──────────────────────────────────────────────────
+  # Always selected: these are the walls, and a suggestion outside them is
+  # refused rather than argued with.
+
+  - category: safety_bounds
+    key: temperature
+    applies: {}
+    value:
+      text: "Never suggest a brew temperature outside 25-100 °C."
+      min_c: 25
+      max_c: 100
+    unit: c
+    confidence: expert
+    source: gaggiclanker
+    source_ref: "gaggiclanker/db/repos/sets.py — SetVersionPatch bounds"
+
+  - category: safety_bounds
+    key: pressure
+    applies: {}
+    value:
+      text: "Never suggest a pressure outside 0-12 bar; the firmware itself refuses more."
+      min_bar: 0
+      max_bar: 12
+    unit: bar
+    confidence: expert
+    source: GaggiMate firmware
+    source_ref: "GaggiMate firmware source"
+
+  - category: safety_bounds
+    key: one_step_at_a_time
+    applies: {}
+    value:
+      text: >-
+        Never suggest more than one step of one variable in a single shot, and
+        never a change larger than the increment rules allow. A big correction is
+        two shots, not one.
+    unit: none
+    confidence: expert
+    source: crema
+    source_ref: "crema.md §5 — review system prompt"
+
+  - category: safety_bounds
+    key: never_invent_data
+    applies: {}
+    value:
+      text: >-
+        Never state a measurement that is not in the context. If the dose, the
+        grind setting or the taste is missing, ask for it in
+        questions_for_user rather than assuming a value.
+    unit: none
+    confidence: expert
+    source: crema
+    source_ref: "crema.md §5 — never invent data"

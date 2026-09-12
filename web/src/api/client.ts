@@ -12,7 +12,10 @@
  */
 
 import type {
+  AcceptedSuggestion,
+  Analysis,
   BackupData,
+  BatchResult,
   BeanRow,
   BeanWrite,
   DeviceStatusData,
@@ -22,6 +25,9 @@ import type {
   ImportOptions,
   ImportSummary,
   JudgementWrite,
+  KnowledgeRule,
+  KnowledgeRuleListData,
+  KnowledgeRulePatch,
   LlmCallsData,
   LlmCredentialCheck,
   LlmModelsData,
@@ -52,6 +58,8 @@ import type {
   ShotListData,
   ShotListParams,
   ShotSamplesData,
+  Suggestion,
+  SuggestionListData,
   SyncStatusData,
   Vocabulary,
 } from "@/api/types";
@@ -551,4 +559,77 @@ export async function putShotSetVersion(
     method: "PUT",
     body: JSON.stringify({ set_version_id: setVersionId }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// The analyzer.
+//
+// `runAnalysis` is a long request on purpose: the call behind it takes thirty
+// seconds to two minutes, and the LLM stream reports `analysis.started` and
+// `analysis.finished` to anyone watching in the meantime. It resolves with the
+// stored row whatever happened — a provider failure is a `failed` row and a
+// 201, not an exception — so a caller renders the outcome rather than a toast.
+//
+// There is no wrapper for `GET /shots/{id}/analyses`: the shot detail already
+// carries them, and a second request for a list that is usually empty or one
+// row long would be a round trip for nothing. The route exists for API users.
+// ---------------------------------------------------------------------------
+
+export async function runAnalysis(
+  shotId: number,
+  options: { model?: string; force?: boolean } = {},
+): Promise<Analysis> {
+  return fetchApi<Analysis>(`/shots/${shotId}/analyses`, {
+    method: "POST",
+    body: JSON.stringify({ model: options.model ?? "", force: options.force ?? false }),
+  });
+}
+
+export async function getAnalysis(id: number): Promise<Analysis> {
+  return fetchApi<Analysis>(`/analyses/${id}`);
+}
+
+export async function analyseSet(
+  setId: number,
+  options: { onlyUnanalysed?: boolean; model?: string } = {},
+): Promise<BatchResult> {
+  return fetchApi<BatchResult>(`/sets/${setId}/analyse`, {
+    method: "POST",
+    body: JSON.stringify({
+      only_unanalysed: options.onlyUnanalysed ?? true,
+      model: options.model ?? "",
+    }),
+  });
+}
+
+export async function getSetSuggestions(setId: number): Promise<SuggestionListData> {
+  return fetchApi<SuggestionListData>(`/sets/${setId}/suggestions`);
+}
+
+export async function acceptSuggestion(id: number): Promise<AcceptedSuggestion> {
+  return fetchApi<AcceptedSuggestion>(`/suggestions/${id}/accept`, { method: "POST" });
+}
+
+export async function rejectSuggestion(id: number): Promise<Suggestion> {
+  return fetchApi<Suggestion>(`/suggestions/${id}/reject`, { method: "POST" });
+}
+
+export async function getKnowledgeRules(
+  params: { category?: string; enabled?: boolean } = {},
+): Promise<KnowledgeRuleListData> {
+  return fetchApi<KnowledgeRuleListData>(`/knowledge/rules${queryString(params)}`);
+}
+
+export async function patchKnowledgeRule(
+  id: number,
+  body: KnowledgeRulePatch,
+): Promise<KnowledgeRule> {
+  return fetchApi<KnowledgeRule>(`/knowledge/rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function reloadKnowledgeRules(): Promise<{ changed: number }> {
+  return fetchApi<{ changed: number }>("/knowledge/rules/reload", { method: "POST" });
 }

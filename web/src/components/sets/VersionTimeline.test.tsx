@@ -105,6 +105,7 @@ describe("VersionTimeline", () => {
         quarantined: false,
         quarantine_reason: null,
         deleted_on_device: false,
+        analysis_state: "none",
         rating: null,
         has_notes: false,
         has_judgement: true,

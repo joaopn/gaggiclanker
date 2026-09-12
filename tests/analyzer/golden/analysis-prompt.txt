@@ -1,0 +1,188 @@
+=== judgement ===
+rating: 3/5
+balance: sour
+taste tags: sour, thin
+dose in: 18 g
+dose out: 37.5 g
+ratio: 1:2.08
+grind as set: 22 numbers
+decision: adjust
+notes: Sharp up front, nothing behind it.
+
+=== knowledge_rules ===
+dial_in_order:
+  [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.
+  [hierarchy] Work the variables in order and stop at the first that explains the problem: 1 grind (shot time more than 5 s off target, or clearly sour or bitter), 2 dose and yield (time is fine but the taste is not — sour or salty means +5 g out, bitter or drying means -5 g out), 3 temperature (flat, sharp, or no sweetness), 4 pressure and profile (character rather than extraction), 5 puck prep (sour AND bitter together, or shot-to-shot inconsistency).
+  [one_variable_at_a_time] Change one variable at a time. Two changes in one shot make the next cup uninterpretable, and the whole point of a Set version is to be able to say what a single change did.
+  [taste_is_ground_truth] The user's tasting notes outrank the telemetry. Sour, weak or fast means under-extracted; bitter, harsh or slow means over-extracted — whatever the curve looked like. Never contradict a recorded taste with a number.
+
+increments:
+  [grind] Move the grinder in its own smallest meaningful step — one or two — and say which way in the grinder's units, never in microns.
+  [preinfusion_flow] Adjust pre-infusion flow in 0.5 ml/s steps.
+  [preinfusion_time] Adjust pre-infusion in 2-3 s steps.
+  [pressure] Adjust pressure in 0.5-1 bar steps.
+  [temperature] Adjust brew temperature in 1 °C steps; 2 °C at most in one move.
+  [yield] Adjust yield in 5 g steps — about half a ratio point on a normal dose.
+
+temperature_by_roast:
+  [high_altitude] Beans grown above about 1 800 m are denser: add 1-2 °C and grind a step finer than the roast level alone would say.
+  [light] Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat.
+  [processing_offset] More fermentation means more soluble material: heavily fermented lots (natural, honey, anaerobic) extract a degree or two cooler than a washed bean of the same roast, with a longer pre-infusion and a coarser grind.
+  [taste_adjustment] Within the roast's window, sour moves the temperature up 1-2 °C and bitter or astringent moves it down 1-2 °C — after grind and yield have been ruled out, not before.
+
+pressure_matrix:
+  [compression_floor] A puck compresses at about 4 bar, so pre-infusion belongs below that: pressure applied before the bed has set is what opens a channel.
+  [decline_compensates_erosion] A declining pressure phase compensates for the puck eroding: as resistance falls, dropping the setpoint keeps flow where it was instead of letting the shot run away at the end.
+  [flow_peak] Flow through an espresso puck peaks around 9 bar. Above about 10 the extra pressure goes into deforming the bed rather than through it.
+  [natural.light] Natural light: 7-8 bar — more soluble than washed, so less pressure.
+
+ratio_by_style:
+  [bloom] A bloom profile aims at about 1:2 to 1:2.5; the soak does the work, not the ratio.
+  [ristretto_and_milk] For milk drinks and ristretto, 1:1 to 1:1.5 is the working range.
+
+time_by_style:
+  [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
+
+freshness_windows:
+  [crema_cues] Thick, pale, bubbly crema that collapses fast means the bean is too fresh; thin tan crema means it is past its peak.
+  [degassing] One to three days off roast the bean is still shedding CO2: use a long bloom and a slow pre-infusion, and expect the shot to gush once the gas breaks through.
+
+rest_times:
+  [light] Light roasts need 10-14 days of rest before they dial in reliably.
+  [natural_bonus] Naturals and honeys want 2-3 days more rest than a washed bean of the same roast.
+
+band_meanings:
+  [channeling_risk:LOW] channeling_risk LOW — no indicator crossed its threshold; the puck held.
+  [flow_adherence:GOOD] flow_adherence GOOD — RMSE 0.3-0.8 ml/s against the commanded flow.
+  [flow_overshoot:MINOR_DEVIATION] flow_overshoot MINOR_DEVIATION — a small, measurable departure above target flow.
+  [pressure_adherence:EXCELLENT] pressure_adherence EXCELLENT — RMSE under 0.3 bar; the machine tracked the profile closely.
+  [pressure_overshoot:WITHIN_TOLERANCE] pressure_overshoot WITHIN_TOLERANCE — under 0.25 bar over target; deviation means nothing here.
+  [resistance_erosion:GRADUAL_DECLINE] resistance_erosion GRADUAL_DECLINE — a slow fall, normal as the bed saturates.
+  [resistance_level:MODERATE] resistance_level MODERATE — 1.5-3.0, the usual range for a well-packed basket.
+  [temperature_stability:STABLE] temperature_stability STABLE — std 0.3-0.8 °C, within normal variation.
+
+taste_to_suspect:
+  [sour] Sour: under-extracted. Expect high flow, an early first drip, or a low temperature. Grind finer first; if it is already fine, add 5 g of yield and a degree of heat.
+  [watery] Watery or thin: low pressure and high flow. That is a strength problem, not an extraction one — shorten the ratio or raise the dose before changing the grind.
+
+profile_design_defaults:
+  [bloom] A bloom is the pump OFF for 5-15 s — not the valve closed. The valve stays at 1.
+  [hold] Hold for 15-30 s with a volumetric target on it, so the shot ends on weight and not on time.
+
+equipment_hints:
+  [conical] Conical burrs make more fines: run 7-8 bar with a gentle ramp and a longer pre-infusion, and expect a tighter bed at the same setting than a flat burr would give.
+  [distribution_before_tamping] Distribution matters more than tamping, and tamping more than pressure. Almost every inconsistency that survives a grind change is a distribution problem.
+  [dose_is_the_basket] Dose to the basket's rating plus or minus 1 g. Underdosing leaves headspace, water pools above the puck and channels; a deeper basket wants a coarser grind for the same time.
+
+safety_bounds:
+  [never_invent_data] Never state a measurement that is not in the context. If the dose, the grind setting or the taste is missing, ask for it in questions_for_user rather than assuming a value.
+  [one_step_at_a_time] Never suggest more than one step of one variable in a single shot, and never a change larger than the increment rules allow. A big correction is two shots, not one.
+  [pressure] Never suggest a pressure outside 0-12 bar; the firmware itself refuses more.
+  [temperature] Never suggest a brew temperature outside 25-100 °C.
+
+=== previous_analysis ===
+This is the first analysis of this shot.
+
+=== set_context ===
+Set: Guji natural on the Niche — version 1
+version intent: Baseline for this bag.
+
+BEAN
+bean: Ethiopia Guji
+roaster: Hasbean
+origin: Ethiopia
+variety: Heirloom
+altitude: 2000 m
+process: natural
+roast level: light
+days off roast: 4
+roaster's tasting notes: peach, jasmine, lemon
+
+KIT
+grinder: Niche Zero NZ
+burrs: conical
+grind unit: numbers — give every grind change in these, never in microns
+machine: GaggiMate Pro
+
+RECIPE (what this version is set to)
+grind setting: 22 numbers
+grind value: 22
+dose: 18 g
+target yield: 36 g
+target temperature: 93 °C
+ratio: 1:2.00
+
+PROFILE (Medium 18g 1:2)
+{"description":"","label":"Medium 18g 1:2","phases":[{"duration":3,"name":"Pre-infusion","phase":"preinfusion","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[],"valve":1},{"duration":7,"name":"Bloom","phase":"preinfusion","pump":0,"targets":[],"valve":1},{"duration":10,"name":"Pressurise","phase":"brew","pump":{"flow":0,"pressure":9,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":20}],"valve":1},{"duration":8,"name":"Ramp down","phase":"brew","pump":{"flow":0,"pressure":5,"target":"pressure"},"targets":[{"operator":"gte","type":"volumetric","value":36}],"valve":1},{"duration":1,"name":"Hammer","phase":"brew","pump":100,"targets":[],"valve":0}],"temperature":93,"type":"standard","utility":false}
+
+=== shot_facts ===
+shot: 000106 (#6)
+started: 2026-03-03T08:25:00.000Z
+profile as brewed: Medium 18g 1:2
+duration: 24 s
+yield: 37.5 g
+exit reason: Volumetric target
+scale: connected
+brew delay: 1.2 s
+
+MEASURED
+temperature avg: 93.2 °C
+temperature target: 93 °C
+pressure peak: 9.2 bar
+pressure avg: 7.8 bar
+flow avg: 1.9 ml/s
+flow peak: 3.1 ml/s
+first drip: 8.2 s
+total volume: 36.4 ml
+pre-infusion: 10 s
+main extraction: 18 s
+
+DIAGNOSTICS
+  flow_rmse_ml_s: 0.44
+  max_flow_overshoot_ml_s: 0.55
+  max_overshoot_bar: 0.22
+  pressure_rmse_bar: 0.31
+  resistance_avg: 2.1
+  resistance_slope: -0.04
+  scale_connected: yes
+  temperature_stability_c: 0.42
+  bands: channeling_risk=LOW, flow_adherence=GOOD, flow_overshoot=MINOR_DEVIATION, pressure_adherence=EXCELLENT, pressure_overshoot=WITHIN_TOLERANCE, resistance_erosion=GRADUAL_DECLINE, resistance_level=MODERATE, temperature_stability=STABLE
+
+PHASES
+  0. Pre-infusion — 3 s, 3.9 bar, 92.8 °C, 4.2 ml [type=preinfusion, ramp=1.3 bar/s]
+  1. Bloom — 7 s, 0.6 bar, 93.1 °C, 0.4 ml [type=preinfusion, ramp=0 bar/s]
+  2. Pressurise — 18 s, 8.8 bar, 93.4 °C, 31.8 ml [type=brew, channeling=LOW, R=2.4]
+
+EXECUTION SCORE (deterministic — this is authoritative, not your opinion)
+execution score: 8.3 / 10
+confidence: high
+reason: Execution capped by flow adherence (0.07 point penalty).
+  flow_adherence: -0.05
+
+CURVE (40 points of [t s, pressure bar, puck flow ml/s, weight g, temp °C])
+[[0.0,0.0,0.0,0.0,92.8],[0.75,0.98,0.0,0.0,93.1],[1.5,1.95,0.0,0.0,93.4],[2.25,2.93,0.0,0.0,93.0],[2.75,3.58,0.0,0.0,93.2],[3.5,0.6,0.05,0.0,92.8],[4.25,0.6,0.05,0.0,93.1],[5.0,0.6,0.05,0.0,93.4],[5.75,0.6,0.05,0.0,93.0],[6.5,0.6,0.05,0.0,93.3],[7.0,0.6,0.05,0.0,92.8],[7.75,0.6,0.05,0.0,93.1],[8.5,0.6,0.05,1.0,93.4],[9.25,0.6,0.05,2.5,93.0],[10.0,9.0,1.6,4.0,93.3],[10.75,8.93,1.62,5.5,92.9],[11.5,8.85,1.65,7.0,93.2],[12.0,8.8,1.66,8.0,93.4],[12.75,8.72,1.68,9.5,93.0],[13.5,8.65,1.71,11.0,93.3],[14.25,8.57,1.73,12.5,92.9],[15.0,8.5,1.75,14.0,93.2],[15.75,8.43,1.77,15.5,92.8],[16.25,8.38,1.79,16.5,93.0],[17.0,8.3,1.81,18.0,93.3],[17.75,8.22,1.83,19.5,92.9],[18.5,8.15,1.85,21.0,93.2],[19.25,8.07,1.88,22.5,92.8],[20.0,8.0,1.9,24.0,93.1],[20.75,7.92,1.92,25.5,93.4],[21.25,7.88,1.94,26.5,92.9],[22.0,7.8,1.96,28.0,93.2],[22.75,7.72,1.98,29.5,92.8],[23.5,7.65,2.0,31.0,93.1],[24.25,7.58,2.03,32.5,93.4],[25.0,7.5,2.05,34.0,93.0],[25.5,7.45,2.06,35.0,93.2],[26.25,7.38,2.09,36.5,92.8],[27.0,7.3,2.11,38.0,93.1],[27.75,7.22,2.13,39.5,93.4]]
+
+=== shot_style ===
+bloom (detected from profile: phase 'Bloom' runs the pump at zero — a bloom, not a closed valve)
+
+=== trajectory ===
+  shot 000101 (v1, 2026-03-02T08:10:00.000Z): 21 s, 38 g, score 7.4, channeling MODERATE
+    you said: rating 2/5, balance sour, tastes sour, thin
+    notes: Gushed. Sour and thin.
+    advice that followed: grind finer 2 grinder_steps -> accepted
+  shot 000102 (v1, 2026-03-02T08:20:00.000Z): 23 s, 37.2 g, score 8.1, channeling LOW
+    you said: rating 3/5, balance sour, tastes sour
+    notes: Better, still sharp.
+    advice that followed: grind finer 1 grinder_steps -> accepted
+  shot 000103 (v1, 2026-03-02T08:30:00.000Z): 25 s, 36.4 g, score 8.6, channeling LOW
+    you said: rating 3/5, balance sour, tastes sour, quick_finish
+    notes: Still on the sour side of balanced.
+    advice that followed: temperature increase 1 c -> rejected
+  shot 000104 (v1, 2026-03-03T08:05:00.000Z): 26.5 s, 36 g, score 8.8, channeling LOW
+    you said: rating 4/5, balance balanced, tastes sweet
+    notes: Best so far.
+    advice that followed: no suggestions were made
+  shot 000105 (v1, 2026-03-03T08:15:00.000Z): 24 s, 36.8 g, score 8.2, channeling LOW
+    you said: rating 3/5, balance sour, tastes sour, thin
+    notes: Went backwards.
+    advice that followed: yield increase 5 g -> open

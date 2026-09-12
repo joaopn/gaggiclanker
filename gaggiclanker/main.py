@@ -22,9 +22,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from gaggiclanker import __version__
+from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.api import api_router, health_router
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.repos.analyses import AnalysesRepository
+from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -33,8 +36,9 @@ from gaggiclanker.infra.logging import configure_logging, get_logger
 from gaggiclanker.infra.middleware import RequestContextMiddleware
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.knowledge.rules import seed_rules
 from gaggiclanker.llm.observer import LlmCallObserver
-from gaggiclanker.llm.prompts import seed_prompts
+from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
@@ -107,11 +111,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # gaggiclanker/llm/prompts.py are what let a shipped wording reach an
     # unedited row while leaving an edited one alone, and they only run here.
     await seed_prompts(PromptsRepository(db))
+    # The knowledge tier, on the same three-way upsert and for the same reason
+    # (gaggiclanker/knowledge/rules.py).
+    await seed_rules(RulesRepository(db))
+
+    # An analysis row is only `running` while a process holds it, and no process
+    # survives a boot. Anything still in that state was cut off mid-call, and
+    # saying so turns a spinner nobody can clear into a row with an error on it.
+    interrupted = await AnalysesRepository(db).reconcile_running()
+    if interrupted:
+        log.info("analyses_reconciled", interrupted=interrupted)
 
     app.state.llm = LlmService(
         settings_service,
         observer=LlmCallObserver(app.state.events),
         calls_repo=LlmCallsRepository(db),
+    )
+
+    # App-scoped, not per request: it holds the "being opened right now" map
+    # that makes one analysis per shot an invariant across concurrent requests.
+    app.state.analyzer = AnalyzerService(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        bus=app.state.events,
     )
 
     app.state.device = await start_device_client(settings_service)

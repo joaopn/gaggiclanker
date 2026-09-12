@@ -284,7 +284,10 @@ async def test_the_shipped_prompts_parse_and_render(
     prompts_repo: PromptsRepository, prompts: PromptService
 ) -> None:
     """ping.yaml is what the Validate button sends, so it has to work."""
-    assert await seed_prompts(prompts_repo, DEFAULT_PROMPTS_DIR) == 2
+    # Counted from the directory rather than written down, so shipping a new
+    # prompt is one file and not two edits.
+    shipped = len(list(DEFAULT_PROMPTS_DIR.rglob("*.yaml")))
+    assert await seed_prompts(prompts_repo, DEFAULT_PROMPTS_DIR) == shipped
 
     rendered = await prompts.load("ping", {"topic": "puck preparation"})
 

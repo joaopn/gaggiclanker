@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getShotExport, shotRawUrl } from "@/api/client";
 import type { DeviceShotNotes, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
+import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { ShotChart } from "@/components/charts/ShotChart";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -41,9 +42,8 @@ import { cn } from "@/lib/utils";
  * Composed top to bottom in the order somebody reads a shot: what it was, what
  * the curves did, how cleanly it was executed, what each diagnostic says, which
  * phase it happened in, what the machine's own notes recorded, and finally the
- * raw header for anybody checking the archive against the device. The
- * judgement panel and the analysis slot in after the score card — see the
- * comment there.
+ * raw header for anybody checking the archive against the device. The judgement,
+ * the Set and the analysis sit after the score card — see the comment there.
  *
  * Code-split (`App.tsx` lazy-loads it) because this is the only route that
  * needs Chart.js, and a visit that only lists shots should not download it.
@@ -178,14 +178,23 @@ export function ShotDetailPage() {
       <ExecutionScoreCard row={row} diagnostics={diagnostics} />
 
       {/* Between the machine's own verdict on the shot and the numbers behind
-          it: what you thought, and which Set it belongs to. The analysis
-          panel slots in after these two. */}
+          it: what you thought, which Set it belongs to, and what the model made
+          of the two together. The analysis comes last of the three because it
+          reads both — advice given before you have said how it tasted is worth
+          markedly less, and the order says so. */}
       <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
       <AssignToSet
         shotId={row.id}
         setVersion={shot.data.set_version}
         judgement={shot.data.judgement}
       />
+      {!row.quarantined ? (
+        <AnalysisPanel
+          shotId={row.id}
+          analyses={shot.data.analyses ?? []}
+          hasSet={shot.data.set_version != null}
+        />
+      ) : null}
 
       {!row.quarantined ? (
         <div className="grid gap-4 md:grid-cols-2">

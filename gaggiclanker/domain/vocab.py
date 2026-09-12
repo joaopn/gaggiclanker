@@ -28,22 +28,39 @@ from typing import Literal, get_args
 from pydantic import BaseModel, ConfigDict
 
 __all__ = [
+    "ACTIONABLE_VARIABLES",
+    "ANALYSIS_STATUSES",
     "BALANCES",
     "BURR_TYPES",
     "DECISIONS",
     "PROCESSES",
     "ROAST_LEVELS",
+    "RULE_CATEGORIES",
+    "RULE_CONFIDENCES",
     "SET_VERSION_ORIGINS",
+    "SHOT_STYLES",
     "STEP_UNITS",
+    "SUGGESTION_DIRECTIONS",
+    "SUGGESTION_STATUSES",
+    "SUGGESTION_UNITS",
+    "SUGGESTION_VARIABLES",
     "TASTE_GROUPS",
     "TASTE_TAGS",
+    "AnalysisStatus",
     "Balance",
     "BurrType",
     "Decision",
     "Process",
     "RoastLevel",
+    "RuleCategory",
+    "RuleConfidence",
     "SetVersionOrigin",
+    "ShotStyle",
     "StepUnit",
+    "SuggestionDirection",
+    "SuggestionStatus",
+    "SuggestionUnit",
+    "SuggestionVariable",
     "TasteGroup",
     "TasteTag",
     "Vocabulary",
@@ -91,6 +108,89 @@ type Decision = Literal["keep", "adjust", "discard"]
 #: following the model's advice actually help" is a GROUP BY a year later.
 type SetVersionOrigin = Literal["manual", "analysis", "chat"]
 
+# ── analysis ─────────────────────────────────────────────────────────
+
+#: The shot styles the analyzer detects from the profile (and, failing that,
+#: from the telemetry). Six of them are gaggimate-mcp's own three-tier
+#: detection; `utility` and
+#: `unknown` are ours. `utility` is a backflush or a flush — a profile that
+#: brews nothing, so every dial-in rule about it would be nonsense — and
+#: `unknown` is the honest answer when neither the profile nor the curve says,
+#: which is better than filing an odd profile under `classic` and then advising
+#: from classic's expectations.
+type ShotStyle = Literal[
+    "classic", "turbo", "bloom", "lever", "allonge", "dark", "utility", "unknown"
+]
+
+#: What a suggestion is *about*. The first four are actionable in the prototype
+#: — accepting one writes a new Set version — and the rest are recorded and
+#: shown but have nowhere to be applied yet: pressure, flow and preinfusion are
+#: profile edits, and gaggiclanker writes nothing to the device.
+type SuggestionVariable = Literal[
+    "grind",
+    "dose",
+    "yield",
+    "temperature",
+    "pressure",
+    "flow",
+    "preinfusion",
+    "puck_prep",
+    "profile",
+]
+
+#: The variables `POST /api/suggestions/{id}/accept` can actually apply.
+ACTIONABLE_VARIABLES: tuple[str, ...] = ("grind", "dose", "yield", "temperature")
+
+#: Which way to move. `finer`/`coarser` are the grinder's words and
+#: `increase`/`decrease` everything else's; keeping both rather than one signed
+#: magnitude is what lets the UI render "two steps finer" instead of "grind
+#: minus two", which is not how anybody says it. `hold` is a real answer — "this one
+#: is right, change something else" — and is accepted as a no-op.
+type SuggestionDirection = Literal["finer", "coarser", "increase", "decrease", "hold"]
+
+#: The units a magnitude may carry, restricted so the number means something.
+#: `grinder_steps` is the grinder's own unit (clicks, numbers, microns — which
+#: one is on the grinder row), because "15 microns finer" is not actionable on
+#: a Niche and "two steps" is.
+type SuggestionUnit = Literal["grinder_steps", "g", "c", "bar", "ml_s", "seconds", "none"]
+
+#: Where a suggestion has got to. `superseded` is what happens to the open
+#: siblings for the same variable when one of them is accepted: they were not
+#: rejected, they were overtaken.
+type SuggestionStatus = Literal["open", "accepted", "rejected", "superseded"]
+
+#: An analysis row's lifecycle. `interrupted` is what a `running` row becomes at
+#: the next boot — the process died mid-call — and it is distinct from `failed`
+#: because nothing was learned about the provider.
+type AnalysisStatus = Literal["running", "ok", "failed", "interrupted"]
+
+#: How much a knowledge rule is worth. `expert` is a published heuristic,
+#: `calibrated` is a threshold measured against real shots, `anecdotal` is one
+#: person's report, and `learned` is one this archive derived from its own Sets
+#: (nothing writes those yet).
+type RuleConfidence = Literal["expert", "calibrated", "anecdotal", "learned"]
+
+#: The rule categories, in the order the analyzer's prompt lists them. The
+#: order is load-bearing: rule selection is deterministic (the acceptance
+#: criterion "two analyses of the same shot select the same rules"), and the
+#: sort key is this tuple's index followed by the rule key.
+type RuleCategory = Literal[
+    "dial_in_order",
+    "increments",
+    "temperature_by_roast",
+    "pressure_matrix",
+    "ratio_by_style",
+    "time_by_style",
+    "freshness_windows",
+    "rest_times",
+    "band_meanings",
+    "taste_to_suspect",
+    "telemetry_to_cause",
+    "profile_design_defaults",
+    "equipment_hints",
+    "safety_bounds",
+]
+
 
 PROCESSES: tuple[str, ...] = get_args(Process.__value__)
 ROAST_LEVELS: tuple[str, ...] = get_args(RoastLevel.__value__)
@@ -99,6 +199,14 @@ STEP_UNITS: tuple[str, ...] = get_args(StepUnit.__value__)
 BALANCES: tuple[str, ...] = get_args(Balance.__value__)
 DECISIONS: tuple[str, ...] = get_args(Decision.__value__)
 SET_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
+SHOT_STYLES: tuple[str, ...] = get_args(ShotStyle.__value__)
+SUGGESTION_VARIABLES: tuple[str, ...] = get_args(SuggestionVariable.__value__)
+SUGGESTION_DIRECTIONS: tuple[str, ...] = get_args(SuggestionDirection.__value__)
+SUGGESTION_UNITS: tuple[str, ...] = get_args(SuggestionUnit.__value__)
+SUGGESTION_STATUSES: tuple[str, ...] = get_args(SuggestionStatus.__value__)
+ANALYSIS_STATUSES: tuple[str, ...] = get_args(AnalysisStatus.__value__)
+RULE_CONFIDENCES: tuple[str, ...] = get_args(RuleConfidence.__value__)
+RULE_CATEGORIES: tuple[str, ...] = get_args(RuleCategory.__value__)
 
 
 class TasteTag(BaseModel):
@@ -280,6 +388,17 @@ class Vocabulary(BaseModel):
     decisions: list[Term]
     origins: list[Term]
     taste_groups: list[TasteGroup]
+    #: The analyzer's own closed sets, served for the same reason as the
+    #: rest: the Knowledge page and the suggestion cards render these words, and
+    #: a component that typed them would drift from the CHECK constraint behind
+    #: them.
+    shot_styles: list[Term]
+    suggestion_variables: list[Term]
+    suggestion_directions: list[Term]
+    suggestion_units: list[Term]
+    suggestion_statuses: list[Term]
+    rule_categories: list[Term]
+    rule_confidences: list[Term]
 
 
 def _terms(values: tuple[str, ...], labels: dict[str, str] | None = None) -> list[Term]:
@@ -306,6 +425,42 @@ _ORIGIN_LABELS = {
     "analysis": "From an analysis",
     "chat": "From the chat",
 }
+_STYLE_LABELS = {
+    "classic": "Classic — 9 bar, 1:2, 25-35 s",
+    "turbo": "Turbo — 5-6 bar, fast and long-ratio",
+    "bloom": "Bloom — pump off for a soak",
+    "lever": "Lever — a long declining pressure",
+    "allonge": "Allongé — low pressure, long ratio",
+    "dark": "Dark — under 9 bar, short",
+    "utility": "Utility — backflush or flush, not a shot",
+    "unknown": "Unknown — the profile did not say",
+}
+_VARIABLE_LABELS = {
+    "grind": "Grind",
+    "dose": "Dose in",
+    "yield": "Yield out",
+    "temperature": "Temperature",
+    "pressure": "Pressure",
+    "flow": "Flow",
+    "preinfusion": "Pre-infusion",
+    "puck_prep": "Puck prep",
+    "profile": "Profile",
+}
+_UNIT_LABELS = {
+    "grinder_steps": "grinder steps",
+    "g": "g",
+    "c": "°C",
+    "bar": "bar",
+    "ml_s": "ml/s",
+    "seconds": "s",
+    "none": "—",
+}
+_CONFIDENCE_LABELS = {
+    "expert": "Expert heuristic",
+    "calibrated": "Calibrated on real shots",
+    "anecdotal": "Anecdotal",
+    "learned": "Learned here",
+}
 
 
 def vocabulary() -> Vocabulary:
@@ -325,4 +480,11 @@ def vocabulary() -> Vocabulary:
         decisions=_terms(DECISIONS, _DECISION_LABELS),
         origins=_terms(SET_VERSION_ORIGINS, _ORIGIN_LABELS),
         taste_groups=list(TASTE_GROUPS),
+        shot_styles=_terms(SHOT_STYLES, _STYLE_LABELS),
+        suggestion_variables=_terms(SUGGESTION_VARIABLES, _VARIABLE_LABELS),
+        suggestion_directions=_terms(SUGGESTION_DIRECTIONS),
+        suggestion_units=_terms(SUGGESTION_UNITS, _UNIT_LABELS),
+        suggestion_statuses=_terms(SUGGESTION_STATUSES),
+        rule_categories=_terms(RULE_CATEGORIES),
+        rule_confidences=_terms(RULE_CONFIDENCES, _CONFIDENCE_LABELS),
     )

@@ -1,0 +1,58 @@
+name: analysis-user
+description: |
+  The user turn of the per-shot analysis: the facts, in the order they are read.
+
+  Every variable is a block of text rendered by
+  `gaggiclanker/analyzer/context.py::AnalysisContext.render`, which is also what
+  is snapshotted onto the analysis row — so what an old analysis says it was
+  told is exactly what it was told.
+
+  The order is not arbitrary. The shot first, because that is the subject; the
+  Set next, because it says what the shot was *meant* to be; the trajectory
+  after that, because advice only makes sense against what has already been
+  tried; the user's verdict last of the facts, so it is the most recent thing in
+  the model's attention when it starts reasoning; and the rules after
+  everything, because they are reference material rather than evidence.
+variables:
+  - name: shot_facts
+    description: The shot's header, measurements, diagnostics, phases, score and curve.
+  - name: shot_style
+    description: The style the server detected from the profile, with its evidence.
+  - name: set_context
+    description: Bean, grinder, machine, recipe and profile — or an explicit "no Set" block.
+  - name: trajectory
+    description: The previous shots in this Set, their verdicts and the advice that followed.
+  - name: judgement
+    description: The user's verdict on this cup. Ground truth for taste.
+  - name: knowledge_rules
+    description: The knowledge rules selected for this shot, verbatim.
+  - name: previous_analysis
+    description: What you said about this shot last time, when this is a re-run.
+user: |
+  THE SHOT
+
+  {{shot_facts}}
+
+  STYLE (detected by the server from the profile)
+
+  {{shot_style}}
+
+  WHAT THEY WERE BREWING
+
+  {{set_context}}
+
+  THE SHOTS BEFORE THIS ONE IN THE SAME SET
+
+  {{trajectory}}
+
+  WHAT THEY THOUGHT OF THE CUP — this is ground truth for taste
+
+  {{judgement}}
+
+  KNOWLEDGE RULES SELECTED FOR THIS SHOT — authoritative over your own priors
+
+  {{knowledge_rules}}
+
+  YOUR PREVIOUS READING OF THIS SHOT
+
+  {{previous_analysis}}

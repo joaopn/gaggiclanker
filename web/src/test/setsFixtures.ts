@@ -60,6 +60,48 @@ export const vocabulary: Vocabulary = {
     { value: "analysis", label: "From an analysis" },
     { value: "chat", label: "From the chat" },
   ],
+  // The analyzer's own closed sets, served from the same endpoint for the same reason:
+  // the suggestion cards and the Knowledge page render these words.
+  shot_styles: [
+    { value: "classic", label: "Classic" },
+    { value: "bloom", label: "Bloom" },
+    { value: "lever", label: "Lever" },
+  ],
+  suggestion_variables: [
+    { value: "grind", label: "Grind" },
+    { value: "dose", label: "Dose in" },
+    { value: "yield", label: "Yield out" },
+    { value: "temperature", label: "Temperature" },
+    { value: "pressure", label: "Pressure" },
+  ],
+  suggestion_directions: [
+    { value: "finer", label: "finer" },
+    { value: "coarser", label: "coarser" },
+    { value: "increase", label: "increase" },
+    { value: "decrease", label: "decrease" },
+    { value: "hold", label: "hold" },
+  ],
+  suggestion_units: [
+    { value: "grinder_steps", label: "grinder steps" },
+    { value: "g", label: "g" },
+    { value: "c", label: "°C" },
+    { value: "bar", label: "bar" },
+    { value: "none", label: "—" },
+  ],
+  suggestion_statuses: [
+    { value: "open", label: "open" },
+    { value: "accepted", label: "accepted" },
+    { value: "rejected", label: "rejected" },
+    { value: "superseded", label: "superseded" },
+  ],
+  rule_categories: [
+    { value: "dial_in_order", label: "dial in order" },
+    { value: "increments", label: "increments" },
+  ],
+  rule_confidences: [
+    { value: "expert", label: "Expert heuristic" },
+    { value: "calibrated", label: "Calibrated on real shots" },
+  ],
   taste_groups: [
     {
       value: "sour",

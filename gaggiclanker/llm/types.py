@@ -161,6 +161,11 @@ class Ok[T: BaseModel]:
     provider: str = ""
     model: str = ""
     mode: str = ""
+    #: The observer record's id, which is also the ledger row's `call_id`. It is
+    #: on the result rather than only in the observer so a caller that stores an
+    #: outcome of its own — a shot analysis, say — can point at the row holding
+    #: the rendered prompt and the raw reply without guessing which one it was.
+    call_id: str = ""
     ok: Literal[True] = True
 
 
@@ -184,6 +189,9 @@ class Err:
     mode: str = ""
     usage: Usage = field(default_factory=Usage)
     raw: str = ""
+    #: As on :class:`Ok` — a failed call has a ledger row too, and it is the one
+    #: carrying what was actually sent.
+    call_id: str = ""
     ok: Literal[False] = False
 
 

@@ -15,13 +15,24 @@ The web UI builds the real shot page on these. Everything is read-only.
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.api.deps import JudgementsRepoDep, NotesRepoDep, SetsRepoDep, ShotsRepoDep
+from gaggiclanker.analyzer.service import analysis_task_name
+from gaggiclanker.api.deps import (
+    AnalysesRepoDep,
+    AnalyzerServiceDep,
+    JudgementsRepoDep,
+    NotesRepoDep,
+    SetsRepoDep,
+    ShotsRepoDep,
+)
+from gaggiclanker.db.repos.analyses import AnalysisRow
 from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
 from gaggiclanker.db.repos.sets import SetVersionRow
@@ -77,6 +88,11 @@ class ShotDetailData(BaseModel):
     judgement: ShotJudgementRow | None = None
     #: The Set version this shot is attached to, resolved. NULL is `needs_set`.
     set_version: SetVersionRow | None = None
+    #: Every analysis of this shot, newest first. Sent with the shot
+    #: rather than fetched separately because the panel is on this page and a
+    #: second request for a list that is almost always empty or one row long is
+    #: a round trip for nothing.
+    analyses: list[AnalysisRow] = Field(default_factory=list)
 
 
 class ShotSamplesData(BaseModel):
@@ -196,6 +212,7 @@ async def get_shot(
     notes: NotesRepoDep,
     judgements: JudgementsRepoDep,
     sets: SetsRepoDep,
+    analyses: AnalysesRepoDep,
 ) -> JSONResponse:
     shot = await shots.get(shot_id)
     if shot is None:
@@ -207,6 +224,7 @@ async def get_shot(
             notes=await notes.get(shot_id),
             judgement=await judgements.get(shot_id),
             set_version=version,
+            analyses=await analyses.for_shot(shot_id),
         ).model_dump(mode="json")
     )
 
@@ -367,3 +385,118 @@ async def put_set_version(
     if row is None:  # pragma: no cover - checked above, inside the same request
         raise NotFound(f"No shot {shot_id}")
     return envelope_response(row.model_dump(mode="json"))
+
+
+class AnalysisRequest(BaseModel):
+    """`POST /api/shots/{id}/analyses`: run one, optionally on a named model.
+
+    `force` is what makes a second press of the button mean something. Without
+    it a shot that already has a successful analysis answers with that one,
+    because the common accidental double-click should not spend a second call
+    on a question that is already answered.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Overrides `modelAnalysis` for this run only. Empty takes the setting.
+    model: str = ""
+    force: bool = False
+
+
+class AnalysisListData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AnalysisRow]
+
+
+@router.get(
+    "/{shot_id}/analyses",
+    response_model=ApiResponse[AnalysisListData],
+    summary="Every analysis of this shot, newest first",
+)
+async def list_analyses(shot_id: int, analyses: AnalysesRepoDep) -> JSONResponse:
+    return envelope_response(
+        AnalysisListData(items=await analyses.for_shot(shot_id)).model_dump(mode="json")
+    )
+
+
+@router.post(
+    "/{shot_id}/analyses",
+    response_model=ApiResponse[AnalysisRow],
+    status_code=202,
+    summary="Queue an analysis of this shot",
+)
+async def run_analysis(
+    shot_id: int,
+    body: AnalysisRequest,
+    request: Request,
+    shots: ShotsRepoDep,
+    analyses: AnalysesRepoDep,
+    analyzer: AnalyzerServiceDep,
+    wait: Annotated[bool, Query()] = False,
+) -> JSONResponse:
+    """Queue the work and answer with the `running` row. 202, not 201.
+
+    The provider call takes thirty seconds to two minutes and does **not** run
+    inside this request: `docker stop` allows ten seconds, and a request holding
+    a call that long is killed mid-flight with the browser still waiting. It
+    goes to the app's task registry instead, the row is the handle, and the LLM
+    stream carries `analysis.started` / `analysis.finished` for the page to
+    follow.
+
+    Idempotent per shot. A second tab pressing the button — or this tab pressing
+    it twice — gets the running row back rather than a second call, because the
+    registry name `analysis:<id>` can only be held once.
+
+    ``?wait=1`` blocks until the work is finished and answers with the final
+    row. It exists for tests and for `curl`; a browser should follow the stream.
+
+    A **provider failure still answers 2xx.** The row exists, it says `failed`
+    and it carries the error code; turning that into a 502 would leave the
+    client an error and no id, and the row it could not see is the one thing
+    that explains what happened.
+    """
+    shot = await shots.get(shot_id)
+    if shot is None:
+        raise NotFound(f"No shot {shot_id}")
+    if shot.quarantined:
+        raise Unprocessable(
+            f"Shot {shot.device_id} is quarantined",
+            details={
+                "field": "shot_id",
+                "message": (
+                    "Its bytes never parsed, so there are no diagnostics to analyse. "
+                    "The raw file is still stored and a parser fix can re-derive it."
+                ),
+            },
+        )
+
+    # The accidental double-click should not spend a call on a question that is
+    # already answered; `force` is what makes a deliberate second press mean
+    # something. 200, because nothing was accepted.
+    previous = await analyses.latest_for_shot(shot_id)
+    if previous is not None and previous.status == "ok" and not body.force:
+        return envelope_response(previous.model_dump(mode="json"))
+
+    row, _started = await analyzer.start(
+        shot_id, tasks=request.app.state.tasks, model=body.model or None
+    )
+    if wait:
+        row = await _awaited(request, analysis_task_name(shot_id), analyses, row)
+    return envelope_response(row.model_dump(mode="json"), status_code=202)
+
+
+async def _awaited(
+    request: Request, task_name: str, analyses: AnalysesRepoDep, row: AnalysisRow
+) -> AnalysisRow:
+    """Wait for a queued task and re-read the row. ``?wait=1`` only.
+
+    A task that has already finished is not in the registry any more, which is
+    not an error — it is the whole point of the name being released on
+    completion — so a missing task means "read the row again".
+    """
+    task = request.app.state.tasks.get(task_name)
+    if task is not None:
+        with suppress(asyncio.CancelledError):
+            await asyncio.shield(task)
+    return await analyses.get(row.id) or row

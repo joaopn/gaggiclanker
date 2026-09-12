@@ -46,6 +46,21 @@ export function invalidateSets(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }).then(() => undefined);
 }
 
+/**
+ * Analyses and the suggestions hanging off them.
+ *
+ * Accepting a suggestion writes a Set version, so the caller invalidates `sets`
+ * as well — the same "name what changed, not which keys" rule the Set
+ * mutations follow.
+ */
+export function invalidateAnalyses(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.analyses.all }).then(() => undefined);
+}
+
+export function invalidateKnowledge(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.knowledge.all }).then(() => undefined);
+}
+
 export function invalidateBeans(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.beans.all }).then(() => undefined);
 }
@@ -83,6 +98,12 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "device.status": [queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
   "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all],
+  // The analyzer's own events, carried on the LLM stream. A batch
+  // started from the Set page moves rows on the shots list and the shot pages
+  // of every shot it touches, none of which asked for anything.
+  "analysis.started": [queryKeys.analyses.all, queryKeys.shots.all],
+  "analysis.finished": [queryKeys.analyses.all, queryKeys.shots.all, queryKeys.sets.all],
+  "analysis.failed": [queryKeys.analyses.all, queryKeys.shots.all],
 };
 
 /**

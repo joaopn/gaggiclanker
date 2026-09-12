@@ -10,9 +10,9 @@ runs a per-shot LLM analysis through whichever provider you point it at.
 The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
-> **Status: early.** The backend scaffold is in place: the API skeleton,
-> settings, the database with a migrations ledger, backups and the container.
-> The device client, the shots UI and the analyzer are not built yet.
+> **Status: early.** The archive works end to end — sync, the shots UI, Sets and
+> judgement, the LLM layer and the per-shot analyzer. Authentication and the
+> release hardening are not built yet.
 
 ## Quick start
 
@@ -126,6 +126,39 @@ in turn, and the Settings page has the button that starts it again. The Settings
 page also edits the prompts themselves — they are rows in the database, seeded
 from the YAML files in `gaggiclanker/prompts/`, and an edit takes effect on the
 next call without a restart.
+
+### The analysis
+
+One structured call per shot. It is handed the diagnostics with their band
+labels, the Set (bean with days off roast, grinder with its own step unit, the
+profile JSON, the grind/dose/yield targets), the previous five shots in the same
+Set with your verdict on each and the advice that followed them, your verdict on
+this one — marked as ground truth for taste — and the knowledge rules that match.
+It answers with a diagnosis and prioritised suggestions, and accepting one
+records a new Set version with that single field changed, so "did following the
+advice help" is a question the trend chart answers.
+
+The knowledge rules are on the **Knowledge** page: a small tier of dial-in
+heuristics — temperature by roast, the pressure matrix by roast and process,
+ratio and time by style, freshness windows, what each diagnostic band means,
+taste → suspect, telemetry → cause — each with its source and confidence, each
+editable, each with a switch. The model is asked to name the rules it used and
+the analysis links them back here, which is how a rule that misleads gets found
+and turned off. They are adapted from
+[gaggimate-barista](https://github.com/chall-tech/gaggimate-barista) (Charlie
+Hall, MIT) by way of gaggimate-mcp; the attribution is in the seed file.
+
+The call runs as a background task rather than inside the request: pressing the
+button answers at once with a `running` row and the page follows the event
+stream, so a restart cannot kill an analysis with the browser still waiting on
+it. Pressing it twice, or in two tabs, gets the same run back rather than paying
+for two.
+
+A failed analysis is a stored row carrying the provider's error code rather than
+an exception, and a run cut off by a restart is marked `interrupted` at the next
+boot — neither silently disappears. Token usage is recorded per analysis; the
+`cost_estimate` column stays empty until there are pricing tables to fill it
+from, because a made-up number in a money column is worse than a blank one.
 
 ## Contributing
 

@@ -3,6 +3,23 @@
  * Do not edit by hand: regenerate after changing a route or a response model.
  */
 export interface paths {
+    "/api/analyses/{analysis_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One analysis, with its suggestions */
+        get: operations["get_analysis_api_analyses__analysis_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/backup": {
         parameters: {
             query?: never;
@@ -196,6 +213,79 @@ export interface paths {
          *     machine's copy is gone and a parser fix is a re-derive away.
          */
         post: operations["import_files_api_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The knowledge rules, by category
+         * @description Every rule, or the ones a stated situation would actually select.
+         *
+         *     `?applies=` answers "what would this bean be told", which is the question
+         *     somebody editing a rule needs answered — reading it off a page of `applies`
+         *     documents by eye is how a rule gets edited on a wrong assumption about when
+         *     it fires.
+         */
+        get: operations["list_rules_api_knowledge_rules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Enable, disable or edit one rule
+         * @description Apply whichever of the two fields was sent.
+         *
+         *     An edited rule keeps its own text through every later re-seed; only its
+         *     shipped default moves (`gaggiclanker/knowledge/rules.py`). That is what
+         *     makes editing a rule safe to do — an upgrade cannot silently take it back.
+         */
+        patch: operations["patch_rule_api_knowledge_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/knowledge/rules/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-run the rule seeding from the shipped file
+         * @description Re-seed without a restart. Edited rules keep their text.
+         *
+         *     Built on the request's own database handle rather than the repository
+         *     dependency because seeding is an app-level operation that happens to be
+         *     reachable over HTTP — the same shape `POST /api/prompts/reload` has.
+         */
+        post: operations["reload_rules_api_knowledge_rules_reload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -613,6 +703,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/analyse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue an analysis of every un-analysed shot in this Set
+         * @description Queue the batch and answer with what it is about to do.
+         *
+         *     A Set of fifty un-analysed shots is twenty-five minutes of provider time, so
+         *     it runs as one registered background task rather than inside this request —
+         *     which also means shutdown cancels it in one place instead of leaving sixty
+         *     futures nobody is holding. The response carries real numbers rather than a
+         *     bare "accepted": `requested` is what was queued and `skipped` is how many
+         *     shots something else is already analysing.
+         *
+         *     One batch per Set at a time. A second press while one is running is a 409:
+         *     the first batch is already working through exactly the shots the second
+         *     would pick.
+         *
+         *     ``?wait=1`` blocks until the batch is done. For tests and `curl`; a browser
+         *     follows the LLM stream, which carries an event per shot.
+         */
+        post: operations["analyse_set_api_sets__set_id__analyse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/archive": {
         parameters: {
             query?: never;
@@ -624,6 +748,23 @@ export interface paths {
         put?: never;
         /** Retire a Set */
         post: operations["archive_set_api_sets__set_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every suggestion made about a shot in this Set */
+        get: operations["list_suggestions_api_sets__set_id__suggestions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -754,6 +895,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shots/{shot_id}/analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every analysis of this shot, newest first */
+        get: operations["list_analyses_api_shots__shot_id__analyses_get"];
+        put?: never;
+        /**
+         * Queue an analysis of this shot
+         * @description Queue the work and answer with the `running` row. 202, not 201.
+         *
+         *     The provider call takes thirty seconds to two minutes and does **not** run
+         *     inside this request: `docker stop` allows ten seconds, and a request holding
+         *     a call that long is killed mid-flight with the browser still waiting. It
+         *     goes to the app's task registry instead, the row is the handle, and the LLM
+         *     stream carries `analysis.started` / `analysis.finished` for the page to
+         *     follow.
+         *
+         *     Idempotent per shot. A second tab pressing the button — or this tab pressing
+         *     it twice — gets the running row back rather than a second call, because the
+         *     registry name `analysis:<id>` can only be held once.
+         *
+         *     ``?wait=1`` blocks until the work is finished and answers with the final
+         *     row. It exists for tests and for `curl`; a browser should follow the stream.
+         *
+         *     A **provider failure still answers 2xx.** The row exists, it says `failed`
+         *     and it carries the error code; turning that into a 502 would leave the
+         *     client an error and no id, and the row it could not see is the one thing
+         *     that explains what happened.
+         */
+        post: operations["run_analysis_api_shots__shot_id__analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shots/{shot_id}/judgement": {
         parameters: {
             query?: never;
@@ -878,6 +1059,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/suggestions/{suggestion_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a suggestion: a new Set version with that one field changed
+         * @description Create the version this suggestion asks for, and supersede its siblings.
+         *
+         *     Refused with a 409 for a suggestion that cannot be applied — a pressure or
+         *     profile change (the prototype writes nothing to the machine), a Set that has
+         *     moved on since the shot, or a version with no number to change. Each refusal
+         *     names what would have to be different; see
+         *     :mod:`gaggiclanker.analyzer.suggestions`.
+         */
+        post: operations["accept_api_suggestions__suggestion_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/suggestions/{suggestion_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a suggestion down
+         * @description Rejecting one suggestion leaves its siblings open: the backups may still be right.
+         */
+        post: operations["reject_api_suggestions__suggestion_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sync/events": {
         parameters: {
             query?: never;
@@ -988,6 +1215,91 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AcceptedData
+         * @description What an accept produced: the resolved suggestion and the new version.
+         */
+        AcceptedData: {
+            suggestion: components["schemas"]["SuggestionRow"];
+            version: components["schemas"]["SetVersionRow"];
+        };
+        /** AnalysisListData */
+        AnalysisListData: {
+            /** Items */
+            items: components["schemas"]["AnalysisRow"][];
+        };
+        /**
+         * AnalysisRequest
+         * @description `POST /api/shots/{id}/analyses`: run one, optionally on a named model.
+         *
+         *     `force` is what makes a second press of the button mean something. Without
+         *     it a shot that already has a successful analysis answers with that one,
+         *     because the common accidental double-click should not spend a second call
+         *     on a question that is already answered.
+         */
+        AnalysisRequest: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+        };
+        /**
+         * AnalysisRow
+         * @description One row of `shot_analyses`, as read back.
+         */
+        AnalysisRow: {
+            /** Cost Estimate */
+            cost_estimate?: number | null;
+            /** Created At */
+            created_at: string;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: number;
+            input?: components["schemas"]["JsonObject"];
+            /** Llm Call Id */
+            llm_call_id?: string | null;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            output?: components["schemas"]["JsonObject"];
+            /**
+             * Prompt Name
+             * @default
+             */
+            prompt_name: string;
+            /**
+             * Prompt Version
+             * @default
+             */
+            prompt_version: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /** Set Version Id */
+            set_version_id?: number | null;
+            /** Shot Id */
+            shot_id: number;
+            /** @default running */
+            status: components["schemas"]["AnalysisStatus"];
+            /** Suggestions */
+            suggestions?: components["schemas"]["SuggestionRow"][];
+            usage?: components["schemas"]["JsonObject"];
+        };
+        /** @enum {string} */
+        AnalysisStatus: "running" | "ok" | "failed" | "interrupted";
+        /**
          * ApiError
          * @description The error half of the envelope.
          */
@@ -1007,6 +1319,30 @@ export interface components {
             /** Request Id */
             request_id: string;
         };
+        /** ApiResponse[AcceptedData] */
+        ApiResponse_AcceptedData_: {
+            data?: components["schemas"]["AcceptedData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[AnalysisListData] */
+        ApiResponse_AnalysisListData_: {
+            data?: components["schemas"]["AnalysisListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[AnalysisRow] */
+        ApiResponse_AnalysisRow_: {
+            data?: components["schemas"]["AnalysisRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[BackupData] */
         ApiResponse_BackupData_: {
             data?: components["schemas"]["BackupData"] | null;
@@ -1018,6 +1354,14 @@ export interface components {
         /** ApiResponse[BackupListData] */
         ApiResponse_BackupListData_: {
             data?: components["schemas"]["BackupListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[BatchResult] */
+        ApiResponse_BatchResult_: {
+            data?: components["schemas"]["BatchResult"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -1202,9 +1546,17 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiResponse[ReloadData] */
-        ApiResponse_ReloadData_: {
-            data?: components["schemas"]["ReloadData"] | null;
+        /** ApiResponse[RuleListData] */
+        ApiResponse_RuleListData_: {
+            data?: components["schemas"]["RuleListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[RuleRow] */
+        ApiResponse_RuleRow_: {
+            data?: components["schemas"]["RuleRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -1298,6 +1650,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[SuggestionListData] */
+        ApiResponse_SuggestionListData_: {
+            data?: components["schemas"]["SuggestionListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SuggestionRow] */
+        ApiResponse_SuggestionRow_: {
+            data?: components["schemas"]["SuggestionRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[SyncRunAccepted] */
         ApiResponse_SyncRunAccepted_: {
             data?: components["schemas"]["SyncRunAccepted"] | null;
@@ -1359,6 +1727,48 @@ export interface components {
         };
         /** @enum {string} */
         Balance: "sour" | "balanced" | "bitter";
+        /**
+         * BatchResult
+         * @description What a Set batch was asked to do, and — once it has run — what it did.
+         *
+         *     Counts, not rows: a Set can hold hundreds. The route answers with this
+         *     before the work happens, so `requested` and `skipped` are the useful fields
+         *     there and the rest fill in as the task runs; `analyse_set` returns the same
+         *     shape fully populated for a caller that ran it directly.
+         */
+        BatchResult: {
+            /** Analysis Ids */
+            analysis_ids?: number[];
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /** Requested */
+            requested: number;
+            /** Set Id */
+            set_id: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Stopped
+             * @default false
+             */
+            stopped: boolean;
+            /**
+             * Succeeded
+             * @default 0
+             */
+            succeeded: number;
+            /**
+             * Task
+             * @default
+             */
+            task: string;
+        };
         /** BeanListData */
         BeanListData: {
             /** Items */
@@ -1616,6 +2026,36 @@ export interface components {
             field: string;
             /** Label */
             label: string;
+        };
+        /**
+         * ReloadData
+         * @description ``{"changed": 4}`` — how many rows the re-seed touched.
+         */
+        gaggiclanker__api__knowledge__ReloadData: {
+            [key: string]: number;
+        };
+        /**
+         * ReloadData
+         * @description ``{"changed": 2}`` — how many rows the re-seed touched.
+         */
+        gaggiclanker__api__prompts__ReloadData: {
+            [key: string]: number;
+        };
+        /** ApiResponse[ReloadData] */
+        gaggiclanker__infra__envelope__ApiResponse_ReloadData___1: {
+            data?: components["schemas"]["gaggiclanker__api__prompts__ReloadData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ReloadData] */
+        gaggiclanker__infra__envelope__ApiResponse_ReloadData___2: {
+            data?: components["schemas"]["gaggiclanker__api__knowledge__ReloadData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
         };
         /** GrinderListData */
         GrinderListData: {
@@ -2093,17 +2533,101 @@ export interface components {
             /** Stopped */
             stopped: boolean;
         };
-        /**
-         * ReloadData
-         * @description ``{"changed": 2}`` — how many rows the re-seed touched.
-         */
-        ReloadData: {
-            [key: string]: number;
-        };
         /** @enum {string} */
         RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
+        /**
+         * RuleListData
+         * @description Every rule that matched the filter, in selection order.
+         */
+        RuleListData: {
+            /** Categories */
+            categories: string[];
+            /** Items */
+            items: components["schemas"]["RuleRow"][];
+        };
+        /**
+         * RulePatch
+         * @description `PATCH /api/knowledge/rules/{id}`: turn one off, or change what it says.
+         *
+         *     Both fields optional and both meaningful: a PATCH with only `enabled` does
+         *     not touch the value, and one with only `value` does not re-enable a rule
+         *     somebody switched off.
+         */
+        RulePatch: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Value */
+            value?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * RuleRow
+         * @description One row of `knowledge_rules`, as read back.
+         */
+        RuleRow: {
+            applies?: components["schemas"]["JsonObject"];
+            /** Category */
+            category: string;
+            /**
+             * Confidence
+             * @default expert
+             */
+            confidence: string;
+            /**
+             * Edited
+             * @default false
+             */
+            edited: boolean;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /** Key */
+            key: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Source Ref
+             * @default
+             */
+            source_ref: string;
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+            /**
+             * Updated At
+             * @default
+             */
+            updated_at: string;
+            value?: components["schemas"]["JsonObject"];
+        };
         /** @enum {string} */
         RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
+        /**
+         * SetAnalyseRequest
+         * @description `POST /api/sets/{id}/analyse`: the batch, and how much of it to do.
+         */
+        SetAnalyseRequest: {
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Only Unanalysed
+             * @default true
+             */
+            only_unanalysed: boolean;
+        };
         /**
          * SetCreate
          * @description `POST /api/sets`: the identity and the first recipe, in one request.
@@ -2466,6 +2990,8 @@ export interface components {
          *     a disagreement between them visible.
          */
         ShotDetailData: {
+            /** Analyses */
+            analyses?: components["schemas"]["AnalysisRow"][];
             judgement?: components["schemas"]["ShotJudgementRow"] | null;
             notes?: components["schemas"]["DeviceShotNotesRow"] | null;
             set_version?: components["schemas"]["SetVersionRow"] | null;
@@ -2481,6 +3007,11 @@ export interface components {
          *     caller can tell "we hold the bytes" from "we hold a row".
          */
         ShotDetailRow: {
+            /**
+             * Analysis State
+             * @default none
+             */
+            analysis_state: string;
             /** Brew Delay Ms */
             brew_delay_ms?: number | null;
             /**
@@ -2671,6 +3202,11 @@ export interface components {
          */
         ShotListRow: {
             /**
+             * Analysis State
+             * @default none
+             */
+            analysis_state: string;
+            /**
              * Deleted On Device
              * @default false
              */
@@ -2849,6 +3385,71 @@ export interface components {
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
         /** @enum {string} */
         StepUnit: "clicks" | "numbers" | "microns" | "free";
+        /**
+         * SuggestionListData
+         * @description `GET /api/sets/{id}/suggestions`: every piece of advice about this Set.
+         *
+         *     Flat and newest first rather than grouped by version: the reader's question
+         *     is "what is outstanding", and grouping would bury one open suggestion from
+         *     last week under four resolved ones from today. Each row carries its shot and
+         *     its version, so the page groups them however it likes.
+         */
+        SuggestionListData: {
+            /** Items */
+            items: components["schemas"]["SuggestionRow"][];
+        };
+        /**
+         * SuggestionRow
+         * @description One row of `suggestions`, as read back.
+         */
+        SuggestionRow: {
+            /** Analysis Id */
+            analysis_id: number;
+            /**
+             * Confidence
+             * @default
+             */
+            confidence: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Direction
+             * @default
+             */
+            direction: string;
+            /** Id */
+            id: number;
+            /** Magnitude */
+            magnitude?: number | null;
+            /**
+             * Priority
+             * @default 1
+             */
+            priority: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Resulting Set Version Id */
+            resulting_set_version_id?: number | null;
+            /** Set Version Id */
+            set_version_id?: number | null;
+            /** Shot Id */
+            shot_id?: number | null;
+            /** @default open */
+            status: components["schemas"]["SuggestionStatus"];
+            /**
+             * Unit
+             * @default none
+             */
+            unit: string;
+            variable: components["schemas"]["SuggestionVariable"];
+        };
+        /** @enum {string} */
+        SuggestionStatus: "open" | "accepted" | "rejected" | "superseded";
+        /** @enum {string} */
+        SuggestionVariable: "grind" | "dose" | "yield" | "temperature" | "pressure" | "flow" | "preinfusion" | "puck_prep" | "profile";
         /**
          * SyncEventRow
          * @description One line of the sync feed.
@@ -3087,8 +3688,22 @@ export interface components {
             processes: components["schemas"]["Term"][];
             /** Roast Levels */
             roast_levels: components["schemas"]["Term"][];
+            /** Rule Categories */
+            rule_categories: components["schemas"]["Term"][];
+            /** Rule Confidences */
+            rule_confidences: components["schemas"]["Term"][];
+            /** Shot Styles */
+            shot_styles: components["schemas"]["Term"][];
             /** Step Units */
             step_units: components["schemas"]["Term"][];
+            /** Suggestion Directions */
+            suggestion_directions: components["schemas"]["Term"][];
+            /** Suggestion Statuses */
+            suggestion_statuses: components["schemas"]["Term"][];
+            /** Suggestion Units */
+            suggestion_units: components["schemas"]["Term"][];
+            /** Suggestion Variables */
+            suggestion_variables: components["schemas"]["Term"][];
             /** Taste Groups */
             taste_groups: components["schemas"]["TasteGroup"][];
         };
@@ -3101,6 +3716,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_analysis_api_analyses__analysis_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_AnalysisRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_backups_api_backup_get: {
         parameters: {
             query?: never;
@@ -3519,6 +4165,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_api_knowledge_rules_get: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated `dimension:value` tokens — `roast_level:light,process:natural,style:bloom,signal:taste:sour`. Narrows to the rules a shot in that situation would be told. */
+                applies?: string | null;
+                category?: string | null;
+                enabled?: boolean | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RuleListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_rule_api_knowledge_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RulePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_RuleRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reload_rules_api_knowledge_rules_reload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["gaggiclanker__infra__envelope__ApiResponse_ReloadData___2"];
                 };
             };
         };
@@ -4034,7 +4769,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_ReloadData_"];
+                    "application/json": components["schemas"]["gaggiclanker__infra__envelope__ApiResponse_ReloadData___1"];
                 };
             };
         };
@@ -4166,6 +4901,43 @@ export interface operations {
             };
         };
     };
+    analyse_set_api_sets__set_id__analyse_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetAnalyseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BatchResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     archive_set_api_sets__set_id__archive_post: {
         parameters: {
             query?: never;
@@ -4184,6 +4956,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_suggestions_api_sets__set_id__suggestions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SuggestionListData_"];
                 };
             };
             /** @description Validation Error */
@@ -4395,6 +5198,74 @@ export interface operations {
             };
         };
     };
+    list_analyses_api_shots__shot_id__analyses_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_AnalysisListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_analysis_api_shots__shot_id__analyses_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_AnalysisRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     put_judgement_api_shots__shot_id__judgement_put: {
         parameters: {
             query?: never;
@@ -4578,6 +5449,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotDetailRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_api_suggestions__suggestion_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_AcceptedData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_api_suggestions__suggestion_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                suggestion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SuggestionRow_"];
                 };
             };
             /** @description Validation Error */

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.llm import PromptsRepository
@@ -100,13 +99,25 @@ async def test_reload_reapplies_the_seeding_rules(client: httpx.AsyncClient) -> 
     assert (await data(await client.post("/api/prompts/reload")))["changed"] == 0
 
 
-@pytest.mark.parametrize("name", ["ping", "fragments/style"])
 async def test_every_shipped_prompt_round_trips_through_a_save(
-    client: httpx.AsyncClient, name: str
+    client: httpx.AsyncClient,
 ) -> None:
-    """Its own content must pass the validator it will be saved through."""
-    prompt = await data(await client.get(f"/api/prompts/{name}"))
+    """Its own content must pass the validator it will be saved through.
 
-    response = await client.put(f"/api/prompts/{name}", json={"content": prompt["content"]})
+    The list comes from the API rather than from a parametrize literal, so
+    shipping a prompt is one file and not two edits — and a prompt that only
+    exists because somebody added it to `gaggiclanker/prompts/` is covered the
+    moment it is seeded. A hard-coded pair is how `analysis` and
+    `analysis-user` went uncovered.
+    """
+    listing = await data(await client.get("/api/prompts"))
+    names = [prompt["name"] for prompt in listing["prompts"]]
+    assert {"ping", "fragments/style", "analysis", "analysis-user"} <= set(names)
 
-    assert response.status_code == 200
+    for name in names:
+        prompt = await data(await client.get(f"/api/prompts/{name}"))
+
+        response = await client.put(f"/api/prompts/{name}", json={"content": prompt["content"]})
+
+        assert response.status_code == 200, f"{name} does not survive its own validator"
+        assert (await data(response))["edited"] is False

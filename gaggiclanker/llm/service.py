@@ -205,6 +205,10 @@ class LlmService:
             raise
 
         duration_ms = int((time.monotonic() - started) * 1000)
+        # Stamp the ledger id on the way out, once, rather than threading it
+        # through every construction site below. A caller that stores an outcome
+        # of its own needs to be able to find the row with the prompt on it.
+        outcome = replace(outcome, call_id=handle.record.id)
         if isinstance(outcome, Ok):
             handle.succeed(outcome.usage, mode=outcome.mode)
         else:

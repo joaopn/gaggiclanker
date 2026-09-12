@@ -187,6 +187,11 @@ class ShotListRow(BaseModel):
     #: somebody to say which one it belongs to.
     set_version_id: int | None = None
     set_badge: ShotSetBadge | None = None
+    #: Where the newest LLM analysis of this shot got to: `none`,
+    #: `running`, `ok` or `failed`. An `interrupted` row — one a restart cut off
+    #: — reads as `failed`, because to somebody looking at a list the two mean
+    #: the same thing and a fifth state would only need explaining.
+    analysis_state: str = "none"
     synced_at: str
 
     @model_validator(mode="before")
@@ -301,6 +306,14 @@ _LIST_COLUMNS = """
     s.quarantined, s.quarantine_reason, s.deleted_on_device,
     n.rating AS rating,
     n.shot_id IS NOT NULL AS has_notes,
+    -- The newest analysis's status, flattened. A correlated subquery rather
+    -- than a join: a shot usually has zero or one analysis, and a join would
+    -- need a GROUP BY over the whole list to pick the newest of the few that
+    -- have several.
+    COALESCE((SELECT CASE a.status WHEN 'interrupted' THEN 'failed' ELSE a.status END
+                FROM shot_analyses a
+               WHERE a.shot_id = s.id
+               ORDER BY a.id DESC LIMIT 1), 'none') AS analysis_state,
     j.shot_id IS NOT NULL AS has_judgement,
     s.set_version_id,
     sv.set_id AS badge_set_id,

@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Sparkles } from "lucide-react";
 import { type RefObject, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ShotListRow } from "@/api/types";
@@ -141,13 +141,13 @@ function ShotRow({
 }
 
 /**
- * The badges a row can carry, including the one that is not filled in yet.
+ * The badges a row can carry.
  *
  * The Set badge is the important one: "needs a Set" is a state with a button
  * behind it, not an absence, so it is rendered rather than left out. The
- * analysis state is still a dimmed placeholder — the column exists, its
- * width is already paid for, and a reader learns it is a state rather than a
- * missing feature.
+ * analysis state is the same idea for the other half of the page: "not analysed"
+ * is a thing to do, and a row that says nothing about it would read as a shot
+ * with no analysis available rather than one waiting for a click.
  */
 function ShotFlags({ shot }: { shot: ShotListRow }) {
   return (
@@ -164,13 +164,46 @@ function ShotFlags({ shot }: { shot: ShotListRow }) {
       <span data-testid="set-badge-slot">
         <SetBadge badge={shot.set_badge ?? null} />
       </span>
-      <span
-        data-testid="analysis-slot"
-        className="text-[10px] text-muted-foreground/60"
-        title="LLM analysis arrives later"
-      >
-        no analysis
-      </span>
+      <AnalysisFlag state={shot.analysis_state} />
     </>
+  );
+}
+
+/**
+ * Where the newest analysis of this row got to.
+ *
+ * Four states, not five: an `interrupted` row — one a restart cut off — is
+ * reported as `failed` by the server, because to somebody scanning a list the
+ * two mean the same thing and a fifth word would only need explaining.
+ */
+function AnalysisFlag({ state }: { state: string }) {
+  if (state === "ok") {
+    return (
+      <Badge variant="secondary" className="gap-1" data-testid="analysis-slot">
+        <Sparkles className="size-3" aria-hidden="true" />
+        analysed
+      </Badge>
+    );
+  }
+  if (state === "running") {
+    return (
+      <Badge variant="outline" className="gap-1" data-testid="analysis-slot">
+        <Sparkles className="size-3 animate-pulse" aria-hidden="true" />
+        analysing
+      </Badge>
+    );
+  }
+  if (state === "failed") {
+    return (
+      <Badge variant="outline" className="gap-1 text-status-warn-text" data-testid="analysis-slot">
+        <AlertTriangle className="size-3" aria-hidden="true" />
+        analysis failed
+      </Badge>
+    );
+  }
+  return (
+    <span data-testid="analysis-slot" className="text-[10px] text-muted-foreground/60">
+      not analysed
+    </span>
   );
 }

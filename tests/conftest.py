@@ -61,6 +61,28 @@ LEAKY_ENV_KEYS = (
 )
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """``--update-golden`` rewrites the committed golden files instead of failing.
+
+    The analyzer's prompt is a golden test (`tests/analyzer/test_context.py`):
+    a fixture Set of six shots renders to a file in the repository, and any
+    change to the assembly shows up as a diff in review rather than as a
+    passing test nobody read. Regenerating it has to be one flag, or the
+    temptation is to loosen the assertion instead.
+    """
+    parser.addoption(
+        "--update-golden",
+        action="store_true",
+        default=False,
+        help="rewrite golden files from the current output instead of comparing",
+    )
+
+
+@pytest.fixture
+def update_golden(request: pytest.FixtureRequest) -> bool:
+    return bool(request.config.getoption("--update-golden"))
+
+
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Strip inherited configuration so tests start from the declared defaults."""

@@ -5,12 +5,14 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from gaggiclanker.api import (
+    analyses,
     backup,
     beans,
     device,
     grinders,
     health,
     imports,
+    knowledge,
     llm,
     machines,
     profiles,
@@ -40,5 +42,8 @@ api_router.include_router(sets.router)
 api_router.include_router(imports.router)
 api_router.include_router(llm.router)
 api_router.include_router(prompts.router)
+api_router.include_router(knowledge.router)
+api_router.include_router(analyses.router)
+api_router.include_router(analyses.suggestions_router)
 
 health_router = health.router

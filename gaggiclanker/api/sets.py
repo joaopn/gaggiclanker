@@ -13,13 +13,18 @@ version they were pulled with.
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
+from dataclasses import asdict, replace
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
+from gaggiclanker.analyzer.service import BatchResult
 from gaggiclanker.api.deps import (
+    AnalyzerServiceDep,
     BeansRepoDep,
     GrindersRepoDep,
     JudgementsRepoDep,
@@ -27,7 +32,9 @@ from gaggiclanker.api.deps import (
     ProfilesRepoDep,
     SetsRepoDep,
     ShotsRepoDep,
+    SuggestionsRepoDep,
 )
+from gaggiclanker.db.repos.analyses import SuggestionRow
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.sets import (
     FieldChange,
@@ -50,6 +57,18 @@ router = APIRouter(prefix="/sets", tags=["sets"])
 #: How many shots a Set page loads. A Set that has run past this is a Set worth
 #: a filtered shots list, which the page links to.
 SHOTS_PER_SET = 500
+
+
+class SetAnalyseRequest(BaseModel):
+    """`POST /api/sets/{id}/analyse`: the batch, and how much of it to do."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Skip shots that already have a *successful* analysis. A failed or
+    #: interrupted one does not count as analysed: picking up what the rate
+    #: limit or a restart dropped is what this default is for.
+    only_unanalysed: bool = True
+    model: str = ""
 
 
 class SetCreate(BaseModel):
@@ -86,6 +105,20 @@ class SetVersionDetail(BaseModel):
     #: for version 1, which is a baseline rather than a change to anything.
     changes: list[FieldChange]
     shots: list[ShotListRow]
+
+
+class SuggestionListData(BaseModel):
+    """`GET /api/sets/{id}/suggestions`: every piece of advice about this Set.
+
+    Flat and newest first rather than grouped by version: the reader's question
+    is "what is outstanding", and grouping would bury one open suggestion from
+    last week under four resolved ones from today. Each row carries its shot and
+    its version, so the page groups them however it likes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SuggestionRow]
 
 
 class SetDetailData(BaseModel):
@@ -284,3 +317,73 @@ async def get_trends(set_id: int, sets: SetsRepoDep) -> JSONResponse:
     if row is None:
         raise NotFound(f"No Set {set_id}")
     return envelope_response((await sets.trends(set_id)).model_dump(mode="json"))
+
+
+@router.get(
+    "/{set_id}/suggestions",
+    response_model=ApiResponse[SuggestionListData],
+    summary="Every suggestion made about a shot in this Set",
+)
+async def list_suggestions(
+    set_id: int, sets: SetsRepoDep, suggestions: SuggestionsRepoDep
+) -> JSONResponse:
+    if await sets.get(set_id) is None:
+        raise NotFound(f"No Set {set_id}")
+    return envelope_response(
+        SuggestionListData(items=await suggestions.for_set(set_id)).model_dump(mode="json")
+    )
+
+
+@router.post(
+    "/{set_id}/analyse",
+    response_model=ApiResponse[BatchResult],
+    status_code=202,
+    summary="Queue an analysis of every un-analysed shot in this Set",
+)
+async def analyse_set(
+    set_id: int,
+    body: SetAnalyseRequest,
+    request: Request,
+    sets: SetsRepoDep,
+    analyzer: AnalyzerServiceDep,
+    wait: Annotated[bool, Query()] = False,
+) -> JSONResponse:
+    """Queue the batch and answer with what it is about to do.
+
+    A Set of fifty un-analysed shots is twenty-five minutes of provider time, so
+    it runs as one registered background task rather than inside this request —
+    which also means shutdown cancels it in one place instead of leaving sixty
+    futures nobody is holding. The response carries real numbers rather than a
+    bare "accepted": `requested` is what was queued and `skipped` is how many
+    shots something else is already analysing.
+
+    One batch per Set at a time. A second press while one is running is a 409:
+    the first batch is already working through exactly the shots the second
+    would pick.
+
+    ``?wait=1`` blocks until the batch is done. For tests and `curl`; a browser
+    follows the LLM stream, which carries an event per shot.
+    """
+    if await sets.get(set_id) is None:
+        raise NotFound(f"No Set {set_id}")
+    try:
+        result = await analyzer.start_set(
+            set_id,
+            tasks=request.app.state.tasks,
+            only_unanalysed=body.only_unanalysed,
+            model=body.model or None,
+        )
+    except RuntimeError as exc:
+        raise Conflict(
+            f"Set {set_id} is already being analysed",
+            details={"field": "set_id", "message": "wait for the running batch to finish"},
+        ) from exc
+
+    if wait and result.task:
+        task = request.app.state.tasks.get(result.task)
+        if task is not None:
+            with suppress(asyncio.CancelledError):
+                finished = await asyncio.shield(task)
+            if isinstance(finished, BatchResult):
+                result = replace(finished, skipped=result.skipped)
+    return envelope_response(asdict(result), status_code=202)

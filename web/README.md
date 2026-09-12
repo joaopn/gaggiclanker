@@ -131,9 +131,40 @@ src/
   pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
 ```
 
+The analyzer adds a fifth:
+
+```
+src/
+  hooks/
+    useAnalysis.ts    run one, run a Set, accept or reject a suggestion
+    useKnowledge.ts   the rule tier: list, toggle, edit, reload
+  components/analysis/
+    AnalysisPanel.tsx   the shot page's panel: result, suggestions, rules used
+    SuggestionCard.tsx  one suggestion and the two buttons that resolve it
+  pages/
+    KnowledgePage.tsx   the rules by category, with a switch and an editor
+```
+
+Two of its behaviours are worth knowing before editing. **Running an analysis
+resolves as soon as it is queued**: the server answers 202 with a `running` row
+and the work happens in a background task, so `useRunAnalysis` resolving means
+"queued", not "analysed" — and a failed analysis resolves too, with a `failed`
+row carrying the error code, because a 502 would leave the caller an error and
+no id. And **the in-flight state comes from the row, not from `isPending`**:
+`analysis.started|finished|failed` on the LLM stream are mapped in
+`EVENT_INVALIDATIONS`, so the row is re-read within a frame of the server moving
+it, a run started by another tab shows up here, and one shot's batch does not
+disable another shot's button.
+
+`?rule=<key>` on the Knowledge page deep-links from an analysis's "rules it
+leaned on" list. That link is the whole point of asking the model to cite: it is
+how a rule that misleads gets found and turned off.
+
 Nothing in `src/` types a coffee word. Roast levels, processes, burr types,
 grind step units, balance, the taste chips *with their definitions*, the
-decisions and the Set-version origins all come from `GET /api/vocab`
+decisions, the Set-version origins, the shot styles, the suggestion variables,
+directions, units and statuses, and the rule categories and confidences all come
+from `GET /api/vocab`
 (`useVocabulary`, cached for the session because they change with a redeploy and
 nothing else). A UI that hard-codes an enum drifts from the CHECK constraint
 behind it, and the symptom is a 422 on a value the user picked from a dropdown

@@ -79,7 +79,21 @@ export const queryKeys = {
     versions: (filters?: Record<string, unknown>) =>
       ["profiles", "versions", filters ?? {}] as const,
   },
-  knowledge: { all: ["knowledge"] as const, list: () => ["knowledge", "list"] as const },
+  knowledge: {
+    all: ["knowledge"] as const,
+    list: (filters?: Record<string, unknown>) => ["knowledge", "list", filters ?? {}] as const,
+  },
+  /**
+   * Analyses live outside the `shots` prefix, like samples and for the same
+   * reason: a shot ingested during a backfill invalidates `shots`, and an
+   * analysis list under that prefix would be re-fetched for every row on screen
+   * for a list that changes only when somebody presses a button.
+   */
+  analyses: {
+    all: ["analyses"] as const,
+    forShot: (shotId: string) => ["analyses", "shot", shotId] as const,
+    forSet: (setId: string) => ["analyses", "set", setId] as const,
+  },
   imports: { all: ["imports"] as const, list: () => ["imports", "list"] as const },
   device: { all: ["device"] as const, status: () => ["device", "status"] as const },
   llm: {

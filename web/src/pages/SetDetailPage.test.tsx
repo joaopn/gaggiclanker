@@ -1,8 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SetDetailPage } from "@/pages/SetDetailPage";
+import { suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { setDetail, trends } from "@/test/setsFixtures";
+import { setDetail, trends, vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -48,11 +49,22 @@ function axisOf(labels: string[]): Record<string, string | undefined> {
   );
 }
 
-const { getSet, getSetTrends, addSetVersion, archiveSet } = vi.hoisted(() => ({
+const {
+  getSet,
+  getSetTrends,
+  addSetVersion,
+  archiveSet,
+  getSetSuggestions,
+  analyseSet,
+  getVocabulary,
+} = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
   addSetVersion: vi.fn(),
   archiveSet: vi.fn(),
+  getSetSuggestions: vi.fn(),
+  analyseSet: vi.fn(),
+  getVocabulary: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -60,6 +72,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSetTrends,
   addSetVersion,
   archiveSet,
+  getSetSuggestions,
+  analyseSet,
+  getVocabulary,
 }));
 
 beforeEach(() => {
@@ -69,6 +84,16 @@ beforeEach(() => {
   getSetTrends.mockResolvedValue(trends());
   addSetVersion.mockResolvedValue(setDetail().versions[0].version);
   archiveSet.mockResolvedValue({ ...setDetail().set, status: "archived", active: false });
+  getSetSuggestions.mockResolvedValue({ items: [] });
+  analyseSet.mockResolvedValue({
+    set_id: 3,
+    requested: 2,
+    succeeded: 2,
+    failed: 0,
+    stopped: false,
+    analysis_ids: [1, 2],
+  });
+  getVocabulary.mockResolvedValue(vocabulary);
 });
 
 describe("SetDetailPage", () => {
@@ -150,5 +175,42 @@ describe("SetDetailPage with a URL that is not a Set", () => {
     expect(await screen.findByText("No such Set")).toBeInTheDocument();
     expect(screen.getByText("That is not a Set id.")).toBeInTheDocument();
     expect(getSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("SetDetailPage suggestions", () => {
+  it("says so when nothing has been suggested yet", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByTestId("no-suggestions")).toHaveTextContent(
+      "No analysis has suggested anything",
+    );
+  });
+
+  it("groups the advice by the version it was about", async () => {
+    // A suggestion is a delta from the numbers it was given, so advice about v1
+    // and advice about v2 are not one conversation.
+    getSetSuggestions.mockResolvedValue({
+      items: [
+        // 21 and 22 are the fixture Set's v1 and v2.
+        suggestion({ id: 1, set_version_id: 21, variable: "grind" }),
+        suggestion({ id: 2, set_version_id: 22, variable: "yield", direction: "increase" }),
+      ],
+    });
+
+    renderWithQueryClient(<SetDetailPage />);
+
+    const group = await screen.findByTestId("set-suggestions");
+    expect(group).toHaveTextContent("about v1");
+    expect(group).toHaveTextContent("about v2");
+  });
+
+  it("runs the batch over the un-analysed shots", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByTestId("analyse-set"));
+
+    await waitFor(() => expect(analyseSet.mock.calls[0]?.[0]).toBe(3));
   });
 });

@@ -13,10 +13,13 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
+from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.db.repos.notes import NotesRepository
@@ -33,6 +36,8 @@ from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.engine import SyncEngine
 
 __all__ = [
+    "AnalysesRepoDep",
+    "AnalyzerServiceDep",
     "BeansRepoDep",
     "DatabaseDep",
     "DeviceClientDep",
@@ -45,9 +50,11 @@ __all__ = [
     "NotesRepoDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
+    "RulesRepoDep",
     "SetsRepoDep",
     "SettingsServiceDep",
     "ShotsRepoDep",
+    "SuggestionsRepoDep",
     "SyncEngineDep",
     "SyncRepoDep",
 ]
@@ -87,6 +94,23 @@ def get_prompt_service(request: Request) -> PromptService:
     causes shows up as "my edit did not take" long after the commit.
     """
     return PromptService(PromptsRepository(get_database(request)))
+
+
+def get_analyzer(request: Request) -> AnalyzerService:
+    """The analyzer. App-scoped, and it has to be.
+
+    It holds the map of shots whose analysis row is being opened right now,
+    which is half of "one analysis per shot at a time" — the registry's name
+    guard is the other half. A per-request copy would make that map empty for
+    every caller and two browser tabs would each start their own analysis.
+
+    Its prompt service can be long-lived safely: the cache is keyed on the
+    row's ``updated_at`` and the row is re-read on every load, so an edit
+    invalidates the entry by changing the key (see
+    :class:`~gaggiclanker.llm.prompts.PromptService`).
+    """
+    service: AnalyzerService = request.app.state.analyzer
+    return service
 
 
 def get_device_client(request: Request) -> GaggimateClient | None:
@@ -145,6 +169,18 @@ def get_judgements_repo(request: Request) -> JudgementsRepository:
     return JudgementsRepository(get_database(request))
 
 
+def get_rules_repo(request: Request) -> RulesRepository:
+    return RulesRepository(get_database(request))
+
+
+def get_analyses_repo(request: Request) -> AnalysesRepository:
+    return AnalysesRepository(get_database(request))
+
+
+def get_suggestions_repo(request: Request) -> SuggestionsRepository:
+    return SuggestionsRepository(get_database(request))
+
+
 DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
@@ -162,3 +198,7 @@ BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
 GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
 SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]
+RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
+AnalysesRepoDep = Annotated[AnalysesRepository, Depends(get_analyses_repo)]
+SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_repo)]
+AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]

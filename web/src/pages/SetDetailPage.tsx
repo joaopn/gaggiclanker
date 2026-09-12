@@ -1,6 +1,8 @@
-import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch, Sparkles } from "lucide-react";
 import { useId, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import type { Suggestion } from "@/api/types";
+import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,6 +11,7 @@ import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAnalyseSet, useSetSuggestions } from "@/hooks/useAnalysis";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
   useActivateSet,
@@ -48,6 +51,8 @@ export function SetDetailPage() {
   const valid = Number.isFinite(setId);
   const detail = useSet(valid ? setId : undefined);
   const trends = useSetTrends(valid ? setId : undefined);
+  const suggestions = useSetSuggestions(valid ? setId : undefined);
+  const analyse = useAnalyseSet();
   const activate = useActivateSet();
   const archive = useArchiveSet();
   const [versioning, setVersioning] = useState(false);
@@ -160,6 +165,83 @@ export function SetDetailPage() {
       >
         <VersionTimeline versions={detail.data.versions} judgements={detail.data.judgements} />
       </SectionCard>
+
+      <SectionCard
+        title="Suggestions"
+        description="Every piece of advice an analysis has given about a shot in this Set, newest first, grouped by the version it was about. Accepting one records a new version; the acceptance history is the answer to 'did following the model help'."
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={analyse.isPending}
+            data-testid="analyse-set"
+            onClick={() => analyse.mutate({ setId: row.id })}
+          >
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            {analyse.isPending ? "Analysing…" : "Analyse the un-analysed"}
+          </Button>
+        }
+      >
+        {suggestions.isPending ? (
+          <Skeleton className="h-24 w-full" />
+        ) : (
+          <SuggestionsByVersion
+            items={suggestions.data?.items ?? []}
+            versionNumbers={Object.fromEntries(
+              detail.data.versions.map((entry) => [entry.version.id, entry.version.version_no]),
+            )}
+          />
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+/**
+ * The Set's advice, grouped by the version it was about.
+ *
+ * Grouped rather than flat because a suggestion is a delta from the numbers it
+ * was given: advice about v1 and advice about v3 are not comparable, and a flat
+ * list invites reading them as one conversation. Within a version they stay in
+ * the order the server sent — newest analysis first, priority within it.
+ */
+function SuggestionsByVersion({
+  items,
+  versionNumbers,
+}: {
+  items: Suggestion[];
+  versionNumbers: Record<number, number>;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm" data-testid="no-suggestions">
+        No analysis has suggested anything for this Set yet.
+      </p>
+    );
+  }
+
+  const groups = new Map<number, Suggestion[]>();
+  for (const item of items) {
+    const key = item.set_version_id ?? 0;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(item);
+    else groups.set(key, [item]);
+  }
+
+  return (
+    <div className="space-y-4" data-testid="set-suggestions">
+      {[...groups.entries()].map(([versionId, group]) => (
+        <div key={versionId}>
+          <h4 className="mb-1.5 text-muted-foreground text-xs">
+            about v{versionNumbers[versionId] ?? "?"}
+          </h4>
+          <ul className="space-y-2">
+            {group.map((item) => (
+              <SuggestionCard key={item.id} suggestion={item} />
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }

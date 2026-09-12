@@ -3,7 +3,9 @@ import { Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
+import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { vocabulary } from "@/test/setsFixtures";
 import {
   SHOT_129_SAMPLE_COUNT,
   shot129,
@@ -16,14 +18,20 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getShot, getShotSamples } = vi.hoisted(() => ({
+const { getShot, getShotSamples, getLlmCalls, runAnalysis, getVocabulary } = vi.hoisted(() => ({
   getShot: vi.fn(),
   getShotSamples: vi.fn(),
+  getLlmCalls: vi.fn(),
+  runAnalysis: vi.fn(),
+  getVocabulary: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getShot,
   getShotSamples,
+  getLlmCalls,
+  runAnalysis,
+  getVocabulary,
 }));
 
 function renderShot(id = shot129.shot.id) {
@@ -47,6 +55,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   getShot.mockResolvedValue(shot129);
   getShotSamples.mockResolvedValue(samples());
+  getLlmCalls.mockResolvedValue({ calls: [], running: 0 });
+  getVocabulary.mockResolvedValue(vocabulary);
+  runAnalysis.mockResolvedValue(analysis());
 });
 
 describe("ShotDetailPage header", () => {
@@ -284,5 +295,30 @@ describe("ShotDetailPage render budget", () => {
 
     expect(screen.getByTestId("chart-series")).toHaveTextContent("240 points");
     expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe("ShotDetailPage analysis panel", () => {
+  it("offers to analyse a shot that has none, and renders what comes back", async () => {
+    const user = setupUser();
+    renderShot();
+
+    expect(await screen.findByTestId("analysis-empty")).toHaveTextContent("Not analysed yet");
+
+    getShot.mockResolvedValue({ ...shot129, analyses: [analysis()] });
+    await user.click(screen.getByTestId("run-analysis"));
+
+    await waitFor(() => expect(runAnalysis.mock.calls[0]?.[0]).toBe(shot129.shot.id));
+    expect(await screen.findByTestId("analysis-result")).toHaveTextContent("ran four seconds fast");
+  });
+
+  it("is not offered for a quarantined shot", async () => {
+    // Its bytes never parsed, so there are no diagnostics to reason from.
+    getShot.mockResolvedValue(detail({ quarantined: true, quarantine_reason: "bad magic" }));
+
+    renderShot();
+
+    expect(await screen.findByTestId("quarantine-reason")).toBeInTheDocument();
+    expect(screen.queryByTestId("run-analysis")).not.toBeInTheDocument();
   });
 });
