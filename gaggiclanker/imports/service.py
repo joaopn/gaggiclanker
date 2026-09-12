@@ -39,9 +39,11 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import dumps
+from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import (
     ShotExport,
@@ -190,6 +192,8 @@ class ImportService:
         self.profiles = ProfilesRepository(db)
         self.notes = NotesRepository(db)
         self.machines = MachinesRepository(db)
+        self.sets = SetsRepository(db)
+        self.judgements = JudgementsRepository(db)
 
     # ── machines ─────────────────────────────────────────────────────
 
@@ -457,15 +461,30 @@ class ImportService:
         else:
             shot_id = await self.shots.insert(shot, derived.samples)
             status = "created"
+            # Only a newly created shot is offered to auto-assignment. A replace
+            # is a better copy of a shot we already hold, and `replace_derived`
+            # deliberately keeps its `set_version_id` — re-guessing at that
+            # point could move a shot the user had already filed by hand.
+            await self.sets.auto_assign(
+                shot_id,
+                machine_id=machine_id,
+                profile_version_id=shot.profile_version_id,
+                device_profile_id=shot.profile_id_on_device,
+            )
 
         if export.notes is not None:
             # The export's `notes` is the machine's own notes document, so it
             # belongs in the same mirror the sync engine fills. A replace
             # refreshes it for the same reason it refreshes the samples: this
             # file is a newer reading of what the *device* held. The
-            # maintainer's own judgement lives in its own tables and is
-            # never touched here.
-            await self.notes.upsert(shot_id, export.notes.for_shot(device_id))
+            # maintainer's own judgement lives in its own table, and the only
+            # thing done to it here is the same one the sync engine does: a shot
+            # with notes and *no* verdict gets one seeded from them. An insert
+            # that does nothing on conflict, so re-importing a file can never
+            # overwrite a verdict somebody typed.
+            document = export.notes.for_shot(device_id)
+            await self.notes.upsert(shot_id, document)
+            await self.judgements.seed_from_device_notes(shot_id, document)
 
         message = f"{len(derived.samples)} samples"
         if derived.diagnostics_error is not None:

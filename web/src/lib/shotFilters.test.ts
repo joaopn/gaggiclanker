@@ -74,6 +74,7 @@ describe("the query string", () => {
       from: "2026-03-01",
       to: "2026-03-04",
       profileVersionId: "7",
+      set: "3",
       scoreBand: "faulted",
       minRating: "3",
       source: "import",

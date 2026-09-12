@@ -9,6 +9,8 @@ not throughput.
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -44,12 +46,21 @@ _PRAGMAS: tuple[str, ...] = (
 )
 
 
+_IN_TRANSACTION: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "gaggiclanker_in_transaction", default=False
+)
+
+
 class Database:
     """An open SQLite database, with the small query surface repositories need."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self._conn: aiosqlite.Connection | None = None
+        #: Serialises :meth:`transaction`. There is one connection, so there is
+        #: one transaction: see the method for why this is a lock rather than a
+        #: second connection.
+        self._tx_lock = asyncio.Lock()
 
     @property
     def connection(self) -> aiosqlite.Connection:
@@ -122,13 +133,48 @@ class Database:
         The connection runs in autocommit mode (``isolation_level=None``) so
         that transactions are opened here, visibly, rather than by the driver
         guessing from statement types.
+
+        **Serialised by a lock**, because there is one connection and therefore
+        one transaction. Without it, two coroutines that both reach
+        ``BEGIN IMMEDIATE`` — two browser tabs adding a Set version at the same
+        moment is enough — give the second one "cannot start a transaction
+        within a transaction", which surfaces as a 500 on a request that did
+        nothing wrong. aiosqlite serialises individual *statements* onto its
+        driver thread; it knows nothing about the transaction spanning several
+        of them, so this is the only place the invariant can live.
+
+        The alternative is a connection per transaction, which SQLite handles
+        by making the second writer wait on the file lock instead — the same
+        serialisation, one file handle and one set of pragmas per caller more
+        expensive, on an appliance whose whole write load is one sync engine.
+
+        **Nested use is unsupported and asserted rather than reference-counted.**
+        A re-entrant transaction is not a transaction: the inner block's
+        ``COMMIT`` would either publish the outer block's half-finished work or
+        be a no-op that makes its own rollback silently lose data. The assert
+        turns "somebody called a repository method that opens a transaction from
+        inside another one" into a loud failure at the call site rather than a
+        deadlock on the lock this method holds.
         """
-        conn = self.connection
-        await conn.execute("BEGIN IMMEDIATE")
-        try:
-            yield conn
-        except BaseException:
-            await conn.execute("ROLLBACK")
-            raise
-        else:
-            await conn.execute("COMMIT")
+        # Task-local, not an instance flag: a *concurrent* caller must wait on
+        # the lock, only a caller inside this task's own transaction is nested.
+        # A RuntimeError (not assert) so `python -O` cannot turn it into a
+        # deadlock on the lock.
+        if _IN_TRANSACTION.get():
+            raise RuntimeError(
+                "nested transaction(): a repository method that opens its own "
+                "transaction was called from inside one. Split the write instead."
+            )
+        async with self._tx_lock:
+            conn = self.connection
+            await conn.execute("BEGIN IMMEDIATE")
+            token = _IN_TRANSACTION.set(True)
+            try:
+                yield conn
+            except BaseException:
+                await conn.execute("ROLLBACK")
+                raise
+            else:
+                await conn.execute("COMMIT")
+            finally:
+                _IN_TRANSACTION.reset(token)

@@ -19,12 +19,22 @@ from gaggiclanker.settings_service import SettingsService
 from tests.llm.conftest import Answer, FakeProvider, api_error
 
 
-async def _until(predicate: Callable[[], bool]) -> None:
-    """Yield to the loop until ``predicate`` holds — the provider has been entered."""
-    for _ in range(1000):
+async def _until(predicate: Callable[[], bool], timeout: float = 5.0) -> None:
+    """Yield to the loop until ``predicate`` holds — the provider has been entered.
+
+    Bounded by a **deadline**, not by a number of yields. A thousand
+    ``sleep(0)``s is a spin: it only lets the other task run if that task is
+    ready, so on a loaded machine — the whole suite running, a backfill test
+    holding the GIL — the budget ran out while the call was still waiting to be
+    scheduled, and the test failed about one run in eight with "the provider was
+    never called". A short real sleep actually hands the loop over, and five
+    seconds is far longer than the microseconds this takes when it works.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
         if predicate():
             return
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.001)
     raise AssertionError("the provider was never called")
 
 

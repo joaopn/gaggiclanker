@@ -18,6 +18,14 @@ export type ShotFilterState = {
   from: string;
   to: string;
   profileVersionId: string;
+  /**
+   * "" any Set, "needs" the inbox, otherwise a Set id.
+   *
+   * One control for two different server parameters (`needs_set` and `set_id`)
+   * because to a reader they are one question — "which Set?" — and "not in one
+   * yet" is one of its answers.
+   */
+  set: string;
   scoreBand: ScoreBandValue;
   minRating: string;
   source: "" | "device" | "import";
@@ -31,6 +39,7 @@ export const DEFAULT_FILTERS: ShotFilterState = {
   from: "",
   to: "",
   profileVersionId: "",
+  set: "",
   scoreBand: "any",
   minRating: "",
   source: "",
@@ -89,6 +98,7 @@ export function fromSearchParams(params: URLSearchParams): ShotFilterState {
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",
     profileVersionId: params.get("profile_version_id") ?? "",
+    set: params.get("set") ?? "",
     scoreBand: SCORE_BANDS.some((band) => band.value === scoreBand)
       ? (scoreBand as ScoreBandValue)
       : "any",
@@ -109,6 +119,7 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
   if (state.profileVersionId) params.set("profile_version_id", state.profileVersionId);
+  if (state.set) params.set("set", state.set);
   if (state.scoreBand !== "any") params.set("score", state.scoreBand);
   if (state.minRating) params.set("min_rating", state.minRating);
   if (state.source) params.set("source", state.source);
@@ -122,11 +133,15 @@ export function toParams(state: ShotFilterState, limit: number): ShotListParams 
   const band = SCORE_BANDS.find((entry) => entry.value === state.scoreBand);
   const rating = Number.parseInt(state.minRating, 10);
   const profileVersionId = Number.parseInt(state.profileVersionId, 10);
+  const setId = Number.parseInt(state.set, 10);
   return {
     limit,
     from: dayStart(state.from),
     to: dayEnd(state.to),
     profile_version_id: Number.isFinite(profileVersionId) ? profileVersionId : undefined,
+    // "needs" is not a Set id, so the two never travel together.
+    needs_set: state.set === "needs" ? true : undefined,
+    set_id: Number.isFinite(setId) ? setId : undefined,
     min_score: band && "min" in band ? band.min : undefined,
     max_score: band && "max" in band ? band.max : undefined,
     min_rating: Number.isFinite(rating) ? rating : undefined,

@@ -21,6 +21,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/beans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The beans, freshest first */
+        get: operations["list_beans_api_beans_get"];
+        put?: never;
+        /** Record a bean */
+        post: operations["create_bean_api_beans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/beans/{bean_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One bean */
+        get: operations["get_bean_api_beans__bean_id__get"];
+        /**
+         * Edit a bean
+         * @description A whole-object PUT, not a PATCH.
+         *
+         *     The form sends every field it renders, and a bean is a dozen short strings:
+         *     partial-update semantics would buy nothing and would make "clear the
+         *     roaster" indistinguishable from "leave the roaster alone".
+         */
+        put: operations["update_bean_api_beans__bean_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/beans/{bean_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hide a finished bag without breaking its Sets */
+        post: operations["archive_bean_api_beans__bean_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/beans/{bean_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put an archived bean back in the pickers */
+        post: operations["unarchive_bean_api_beans__bean_id__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device/live": {
         parameters: {
             query?: never;
@@ -56,6 +133,42 @@ export interface paths {
         /** Connection state, identity and the last known live status */
         get: operations["get_device_status_api_device_status_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/grinders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The grinders */
+        get: operations["list_grinders_api_grinders_get"];
+        put?: never;
+        /** Record a grinder */
+        post: operations["create_grinder_api_grinders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/grinders/{grinder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One grinder */
+        get: operations["get_grinder_api_grinders__grinder_id__get"];
+        /** Edit a grinder */
+        put: operations["update_grinder_api_grinders__grinder_id__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -251,6 +364,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/machines/{machine_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename a machine or annotate it
+         * @description Name and notes only. Identity comes from the device and stays there.
+         */
+        patch: operations["patch_machine_api_machines__machine_id__patch"];
+        trace?: never;
+    };
     "/api/profile-versions": {
         parameters: {
             query?: never;
@@ -411,6 +544,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Sets, active one first */
+        get: operations["list_sets_api_sets_get"];
+        put?: never;
+        /**
+         * Start a Set, with its first version
+         * @description Create the Set and version 1 atomically.
+         *
+         *     Every reference is checked here rather than left to the foreign keys. A
+         *     failed key raises `IntegrityError` from inside the transaction, which the
+         *     envelope can only report as an internal error — a 500 on a request whose
+         *     only problem is a stale id in a dropdown, and with nothing in the body
+         *     saying which of the four ids was wrong. Each check answers that instead:
+         *     422, with `details.field` naming the one at fault.
+         */
+        post: operations["create_set_api_sets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One Set with its versions, their diffs and their shots */
+        get: operations["get_set_api_sets__set_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make this the Set the machine is set up for
+         * @description Switches the flag off the machine's previous Set. Archives nothing.
+         *
+         *     An archived Set is a 409 rather than a silent no-op: activating one would
+         *     clear the flag from the live Set and leave the machine with no usable active
+         *     Set at all, after which every shot lands in the inbox for no visible reason.
+         */
+        post: operations["activate_set_api_sets__set_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a Set */
+        post: operations["archive_set_api_sets__set_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Score, duration, ratio and rating across the Set's versions
+         * @description The chart's data: one point per shot, one summary per version.
+         *
+         *     Both from one pass over the Set's shots, so a bar can never sit off its own
+         *     points because two queries rounded differently.
+         */
+        get: operations["get_trends_api_sets__set_id__trends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change something: a new version, with its parent and its intent
+         * @description Append a version made of the current one plus the fields that were sent.
+         *
+         *     Omitting a field inherits it; sending it as `null` clears it. That
+         *     distinction is the reason the body is read with ``exclude_unset`` rather
+         *     than compared against defaults — "no dose" and "same dose as before" are
+         *     different statements about the coffee.
+         */
+        post: operations["add_version_api_sets__set_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -450,6 +717,12 @@ export interface paths {
          *     from a machine whose clock never synced has none and is excluded by any date
          *     filter, which is the honest answer.
          *
+         *     ``set_id`` and ``set_version_id`` narrow to one Set or one of its versions;
+         *     ``needs_set=1`` is the inbox — shots the archive could not attach to a Set
+         *     on its own and is waiting for an answer on. Quarantined shots are excluded
+         *     from it: their bytes never parsed, so there is nothing to judge and the
+         *     count would never reach zero.
+         *
          *     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
          *     query string is an injection — and only the default one supports ``cursor``,
          *     because the cursor encodes that key. "Worst shots first" is an offset page,
@@ -476,6 +749,39 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}/judgement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record or replace what you thought of this cup
+         * @description An upsert. The verdict is one row per shot and the form sends all of it.
+         *
+         *     Saving here marks the row as the user's: a judgement seeded from the
+         *     machine's notes card loses its `seeded_from_device_note` flag the moment
+         *     somebody edits it, and the sync engine only ever *creates* judgements that
+         *     do not exist. That is what makes "user edits are never overwritten by sync"
+         *     a property of the data rather than of a code path somebody has to remember.
+         */
+        put: operations["put_judgement_api_shots__shot_id__judgement_put"];
+        post?: never;
+        /**
+         * Withdraw a verdict
+         * @description Deleting is not "rating zero": it puts the shot back to unjudged.
+         *
+         *     Worth having as its own verb, because a judgement seeded from a device note
+         *     the user disagrees with should be removable without inventing a rating.
+         */
+        delete: operations["delete_judgement_api_shots__shot_id__judgement_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -541,6 +847,30 @@ export interface paths {
          */
         get: operations["get_shot_samples_api_shots__shot_id__samples_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}/set-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Assign this shot to a Set version, or detach it
+         * @description The correction path, so unlike auto-assignment it overwrites.
+         *
+         *     Auto-assignment only ever fills a NULL (`db/repos/sets.py`), which is what
+         *     keeps a hand correction from being undone by the next sync pass. This is the
+         *     hand.
+         */
+        put: operations["put_set_version_api_shots__shot_id__set_version_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -619,6 +949,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vocab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every closed vocabulary the judgement and Set forms use */
+        get: operations["get_vocabulary_api_vocab_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -676,6 +1023,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[BeanListData] */
+        ApiResponse_BeanListData_: {
+            data?: components["schemas"]["BeanListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[BeanRow] */
+        ApiResponse_BeanRow_: {
+            data?: components["schemas"]["BeanRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[CredentialCheckData] */
         ApiResponse_CredentialCheckData_: {
             data?: components["schemas"]["CredentialCheckData"] | null;
@@ -695,6 +1058,33 @@ export interface components {
         /** ApiResponse[DeviceStatusData] */
         ApiResponse_DeviceStatusData_: {
             data?: components["schemas"]["DeviceStatusData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[dict[str, bool]] */
+        ApiResponse_dict_str__bool__: {
+            /** Data */
+            data?: {
+                [key: string]: boolean;
+            } | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[GrinderListData] */
+        ApiResponse_GrinderListData_: {
+            data?: components["schemas"]["GrinderListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[GrinderRow] */
+        ApiResponse_GrinderRow_: {
+            data?: components["schemas"]["GrinderRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -735,6 +1125,14 @@ export interface components {
         /** ApiResponse[MachineListData] */
         ApiResponse_MachineListData_: {
             data?: components["schemas"]["MachineListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[MachineRow] */
+        ApiResponse_MachineRow_: {
+            data?: components["schemas"]["MachineRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -812,6 +1210,30 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[SetDetailData] */
+        ApiResponse_SetDetailData_: {
+            data?: components["schemas"]["SetDetailData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetListData] */
+        ApiResponse_SetListData_: {
+            data?: components["schemas"]["SetListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetRow] */
+        ApiResponse_SetRow_: {
+            data?: components["schemas"]["SetRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[SettingsData] */
         ApiResponse_SettingsData_: {
             data?: components["schemas"]["SettingsData"] | null;
@@ -820,9 +1242,41 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[SetTrends] */
+        ApiResponse_SetTrends_: {
+            data?: components["schemas"]["SetTrends"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetVersionRow] */
+        ApiResponse_SetVersionRow_: {
+            data?: components["schemas"]["SetVersionRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ShotDetailData] */
         ApiResponse_ShotDetailData_: {
             data?: components["schemas"]["ShotDetailData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotDetailRow] */
+        ApiResponse_ShotDetailRow_: {
+            data?: components["schemas"]["ShotDetailRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotJudgementRow] */
+        ApiResponse_ShotJudgementRow_: {
+            data?: components["schemas"]["ShotJudgementRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -868,6 +1322,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[Vocabulary] */
+        ApiResponse_Vocabulary_: {
+            data?: components["schemas"]["Vocabulary"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /**
          * BackupData
          * @description Where the backup was written.
@@ -895,6 +1357,101 @@ export interface components {
             /** Items */
             items: components["schemas"]["BackupData"][];
         };
+        /** @enum {string} */
+        Balance: "sour" | "balanced" | "bitter";
+        /** BeanListData */
+        BeanListData: {
+            /** Items */
+            items: components["schemas"]["BeanRow"][];
+        };
+        /**
+         * BeanRow
+         * @description One row of `beans`, as read back.
+         */
+        BeanRow: {
+            /** Altitude M */
+            altitude_m?: number | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Created At */
+            created_at: string;
+            /**
+             * Decaf
+             * @default false
+             */
+            decaf: boolean;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Origin */
+            origin?: string | null;
+            process?: components["schemas"]["Process"] | null;
+            /** Roast Date */
+            roast_date?: string | null;
+            roast_level?: components["schemas"]["RoastLevel"] | null;
+            /** Roaster */
+            roaster?: string | null;
+            /**
+             * Set Count
+             * @default 0
+             */
+            set_count: number;
+            /**
+             * Tasting Notes Bag
+             * @default
+             */
+            tasting_notes_bag: string;
+            /** Variety */
+            variety?: string | null;
+        };
+        /**
+         * BeanWrite
+         * @description A bean as the API accepts it. The only way a row reaches `beans`.
+         *
+         *     Every field but the name is optional, because a bag with nothing on it but
+         *     a name is still a bag worth recording, and a `None` is an honest "not
+         *     stated" where a default would be a claim about the coffee.
+         */
+        BeanWrite: {
+            /** Altitude M */
+            altitude_m?: number | null;
+            /**
+             * Decaf
+             * @default false
+             */
+            decaf: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Origin */
+            origin?: string | null;
+            process?: components["schemas"]["Process"] | null;
+            /** Roast Date */
+            roast_date?: string | null;
+            roast_level?: components["schemas"]["RoastLevel"] | null;
+            /** Roaster */
+            roaster?: string | null;
+            /**
+             * Tasting Notes Bag
+             * @default
+             */
+            tasting_notes_bag: string;
+            /** Variety */
+            variety?: string | null;
+        };
         /** Body_import_files_api_import_post */
         Body_import_files_api_import_post: {
             /**
@@ -914,6 +1471,8 @@ export interface components {
              */
             replace: boolean;
         };
+        /** @enum {string} */
+        BurrType: "conical" | "flat" | "unknown";
         /** CredentialCheckData */
         CredentialCheckData: {
             /**
@@ -931,6 +1490,8 @@ export interface components {
             /** Provider */
             provider: string;
         };
+        /** @enum {string} */
+        Decision: "keep" | "adjust" | "discard";
         /**
          * DeviceProfileSummary
          * @description A device profile joined to its current version — what `GET /api/profiles` returns.
@@ -1043,6 +1604,72 @@ export interface components {
             } | null;
         };
         /**
+         * FieldChange
+         * @description One difference between a version and its parent.
+         */
+        FieldChange: {
+            /** After */
+            after?: string | null;
+            /** Before */
+            before?: string | null;
+            /** Field */
+            field: string;
+            /** Label */
+            label: string;
+        };
+        /** GrinderListData */
+        GrinderListData: {
+            /** Items */
+            items: components["schemas"]["GrinderRow"][];
+        };
+        /**
+         * GrinderRow
+         * @description One row of `grinders`, as read back.
+         */
+        GrinderRow: {
+            /** @default unknown */
+            burr_type: components["schemas"]["BurrType"];
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Model */
+            model?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Set Count
+             * @default 0
+             */
+            set_count: number;
+            /** @default clicks */
+            step_unit: components["schemas"]["StepUnit"];
+        };
+        /**
+         * GrinderWrite
+         * @description A grinder as the API accepts it.
+         */
+        GrinderWrite: {
+            /** @default unknown */
+            burr_type: components["schemas"]["BurrType"];
+            /** Model */
+            model?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** @default clicks */
+            step_unit: components["schemas"]["StepUnit"];
+        };
+        /**
          * HealthData
          * @description The health payload.
          */
@@ -1134,6 +1761,33 @@ export interface components {
             [key: string]: unknown;
         } | null;
         JsonText: string;
+        /**
+         * JudgementWrite
+         * @description A verdict as the API accepts it. Every field optional; all of them mean something.
+         *
+         *     There is no "empty judgement" guard: a row with nothing but a decision is a
+         *     legitimate thing to record ("discard, I knocked the portafilter"), and
+         *     refusing it would make the form argue with the user.
+         */
+        JudgementWrite: {
+            balance?: components["schemas"]["Balance"] | null;
+            decision?: components["schemas"]["Decision"] | null;
+            /** Dose In G */
+            dose_in_g?: number | null;
+            /** Dose Out G */
+            dose_out_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Rating */
+            rating?: number | null;
+            /** Taste Tags */
+            taste_tags?: string[];
+        };
         /** LlmCallsData */
         LlmCallsData: {
             /** Calls */
@@ -1172,6 +1826,25 @@ export interface components {
         MachineListData: {
             /** Items */
             items: components["schemas"]["MachineWithCounts"][];
+        };
+        /**
+         * MachinePatch
+         * @description The two fields a person owns on a machine row.
+         *
+         *     Everything else — the hardware string, the firmware versions, the capability
+         *     flags, the device's own settings document — is the machine's account of
+         *     itself and is rewritten by the next sync pass. Accepting an edit to one of
+         *     those would be accepting an edit that silently reverts, so the body forbids
+         *     extras rather than ignoring them.
+         *
+         *     ``None`` means "leave it alone", so a rename does not have to resend the
+         *     notes.
+         */
+        MachinePatch: {
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * MachineRow
@@ -1252,6 +1925,8 @@ export interface components {
             /** Provider */
             provider: string;
         };
+        /** @enum {string} */
+        Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
         /**
          * ProfileDetailData
          * @description One device profile plus the full version document behind it.
@@ -1426,7 +2101,110 @@ export interface components {
             [key: string]: number;
         };
         /** @enum {string} */
+        RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
+        /** @enum {string} */
         RunKind: "all" | "shots" | "backfill" | "notes" | "profiles" | "identity";
+        /**
+         * SetCreate
+         * @description `POST /api/sets`: the identity and the first recipe, in one request.
+         */
+        SetCreate: {
+            /**
+             * Activate
+             * @default true
+             */
+            activate: boolean;
+            /** Bean Id */
+            bean_id: number;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Machine Id */
+            machine_id: number;
+            /** Name */
+            name: string;
+            /**
+             * @default {
+             *       "intent": "",
+             *       "origin": "manual"
+             *     }
+             */
+            version: components["schemas"]["SetVersionWrite"];
+        };
+        /**
+         * SetDetailData
+         * @description `GET /api/sets/{id}`: everything the Set page draws.
+         */
+        SetDetailData: {
+            /** Judgements */
+            judgements: {
+                [key: string]: components["schemas"]["ShotJudgementRow"];
+            };
+            set: components["schemas"]["SetRow"];
+            /** Versions */
+            versions: components["schemas"]["SetVersionDetail"][];
+        };
+        /** SetListData */
+        SetListData: {
+            /** Items */
+            items: components["schemas"]["SetRow"][];
+        };
+        /**
+         * SetRow
+         * @description One row of `sets`, with the current version and the joined names.
+         */
+        SetRow: {
+            /**
+             * Active
+             * @default false
+             */
+            active: boolean;
+            /** Bean Id */
+            bean_id: number;
+            /** Bean Name */
+            bean_name?: string | null;
+            /** Bean Roast Date */
+            bean_roast_date?: string | null;
+            /** Created At */
+            created_at: string;
+            /** Current Version Id */
+            current_version_id?: number | null;
+            /**
+             * Current Version No
+             * @default 0
+             */
+            current_version_no: number;
+            /** Grinder Id */
+            grinder_id?: number | null;
+            /** Grinder Name */
+            grinder_name?: string | null;
+            /** Id */
+            id: number;
+            /** Machine Id */
+            machine_id: number;
+            /** Machine Name */
+            machine_name?: string | null;
+            /** Name */
+            name: string;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
+        };
         /**
          * SettingsData
          * @description Registry key -> resolved setting. Secrets carry a hint, never a value.
@@ -1443,6 +2221,205 @@ export interface components {
         };
         SettingValue: string | number | boolean | null;
         /**
+         * SetTrendPoint
+         * @description One shot on the Set's trend chart.
+         */
+        SetTrendPoint: {
+            /** Device Id */
+            device_id: string;
+            /** Duration S */
+            duration_s?: number | null;
+            /** Execution Score */
+            execution_score?: number | null;
+            /** Rating */
+            rating?: number | null;
+            /** Ratio */
+            ratio?: number | null;
+            /** Set Version Id */
+            set_version_id: number;
+            /** Shot Id */
+            shot_id: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * SetTrends
+         * @description `GET /api/sets/{id}/trends`: the per-version summary and every shot.
+         */
+        SetTrends: {
+            /** Set Id */
+            set_id: number;
+            /** Shots */
+            shots: components["schemas"]["SetTrendPoint"][];
+            /** Versions */
+            versions: components["schemas"]["SetTrendVersion"][];
+        };
+        /**
+         * SetTrendVersion
+         * @description One version's averages, for the bars behind the per-shot line.
+         */
+        SetTrendVersion: {
+            /** Avg Duration S */
+            avg_duration_s?: number | null;
+            /** Avg Execution Score */
+            avg_execution_score?: number | null;
+            /** Avg Rating */
+            avg_rating?: number | null;
+            /** Avg Ratio */
+            avg_ratio?: number | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /**
+             * Origin
+             * @default manual
+             */
+            origin: string;
+            /** Set Version Id */
+            set_version_id: number;
+            /**
+             * Shots
+             * @default 0
+             */
+            shots: number;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * SetVersionAssignment
+         * @description `PUT /api/shots/{id}/set-version`: which Set version this shot belongs to.
+         *
+         *     A body with an explicit `null` rather than a DELETE, because "this shot was
+         *     not part of any Set" is a statement the user makes, and it lands in the same
+         *     place a correction does.
+         */
+        SetVersionAssignment: {
+            /** Set Version Id */
+            set_version_id?: number | null;
+        };
+        /**
+         * SetVersionDetail
+         * @description One version, its diff against its parent, and the shots pulled with it.
+         */
+        SetVersionDetail: {
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            /** Shots */
+            shots: components["schemas"]["ShotListRow"][];
+            version: components["schemas"]["SetVersionRow"];
+        };
+        /** @enum {string} */
+        SetVersionOrigin: "manual" | "analysis" | "chat";
+        /**
+         * SetVersionPatch
+         * @description The body of `POST /api/sets/{id}/versions`: only what changed.
+         *
+         *     Every field is optional *and* "not sent" is distinguishable from "sent as
+         *     null", which is the whole point — omitting `dose_g` inherits the parent's
+         *     dose, sending `null` clears it. That is what ``exclude_unset`` in
+         *     :meth:`SetsRepository.add_version` reads.
+         */
+        SetVersionPatch: {
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** @default manual */
+            origin: components["schemas"]["SetVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Target Temperature C */
+            target_temperature_c?: number | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+        };
+        /**
+         * SetVersionRow
+         * @description One row of `set_versions`, with the labels a reader needs beside it.
+         */
+        SetVersionRow: {
+            /** Created At */
+            created_at: string;
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** @default manual */
+            origin: components["schemas"]["SetVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            /** Parent Version Id */
+            parent_version_id?: number | null;
+            /** Profile Label */
+            profile_label?: string | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Set Id */
+            set_id: number;
+            /**
+             * Shot Count
+             * @default 0
+             */
+            shot_count: number;
+            /** Target Temperature C */
+            target_temperature_c?: number | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+            /** Version No */
+            version_no: number;
+        };
+        /**
+         * SetVersionWrite
+         * @description A complete recipe. What `POST /api/sets` stores as version 1.
+         */
+        SetVersionWrite: {
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** @default manual */
+            origin: components["schemas"]["SetVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Target Temperature C */
+            target_temperature_c?: number | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+        };
+        /**
          * ShotCounts
          * @description The headline numbers `GET /api/sync/status` reports.
          */
@@ -1457,6 +2434,11 @@ export interface components {
              * @default 0
              */
             incomplete: number;
+            /**
+             * Needs Set
+             * @default 0
+             */
+            needs_set: number;
             /**
              * Quarantined
              * @default 0
@@ -1475,10 +2457,18 @@ export interface components {
         };
         /**
          * ShotDetailData
-         * @description One shot in full: the row, its phases, its diagnostics and the device's notes.
+         * @description One shot in full: the row, its blobs, the device's notes and your verdict.
+         *
+         *     ``notes`` and ``judgement`` are both here and are different things. The
+         *     notes are a read-only mirror of what the *machine's* UI recorded; the
+         *     judgement is the archive's own, editable, and seeded from the notes the
+         *     first time a shot arrives with them. Showing both side by side is what makes
+         *     a disagreement between them visible.
          */
         ShotDetailData: {
+            judgement?: components["schemas"]["ShotJudgementRow"] | null;
             notes?: components["schemas"]["DeviceShotNotesRow"] | null;
+            set_version?: components["schemas"]["SetVersionRow"] | null;
             shot: components["schemas"]["ShotDetailRow"];
         };
         /**
@@ -1516,6 +2506,11 @@ export interface components {
             final_exit_reason?: number | null;
             /** Final Weight G */
             final_weight_g?: number | null;
+            /**
+             * Has Judgement
+             * @default false
+             */
+            has_judgement: boolean;
             /**
              * Has Notes
              * @default false
@@ -1583,6 +2578,7 @@ export interface components {
              * @default false
              */
             scale_connected: boolean;
+            set_badge?: components["schemas"]["ShotSetBadge"] | null;
             /** Set Version Id */
             set_version_id?: number | null;
             /** Slog Version */
@@ -1605,6 +2601,50 @@ export interface components {
             updated_at: string;
             /** Volume G */
             volume_g?: number | null;
+        };
+        /**
+         * ShotJudgementRow
+         * @description One row of `shot_judgements`, as read back.
+         */
+        ShotJudgementRow: {
+            balance?: components["schemas"]["Balance"] | null;
+            decision?: components["schemas"]["Decision"] | null;
+            /** Device Synced At */
+            device_synced_at?: string | null;
+            /** Dose In G */
+            dose_in_g?: number | null;
+            /** Dose Out G */
+            dose_out_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Rating */
+            rating?: number | null;
+            /**
+             * Ratio
+             * @description Brew ratio from the judgement's own doses, when both are known.
+             *
+             *     Computed here rather than stored: it is a division, and a stored copy is
+             *     a third number that can disagree with the two it came from. The device's
+             *     notes carry their own `ratio` string, which is what the *machine* was
+             *     told — a different fact, kept in its own table.
+             */
+            readonly ratio: number | null;
+            /**
+             * Seeded From Device Note
+             * @default false
+             */
+            seeded_from_device_note: boolean;
+            /** Shot Id */
+            shot_id: number;
+            /** Taste Tags */
+            taste_tags?: string[];
+            /** Updated At */
+            updated_at: string;
         };
         /**
          * ShotListData
@@ -1648,6 +2688,11 @@ export interface components {
             execution_score?: number | null;
             /** Final Weight G */
             final_weight_g?: number | null;
+            /**
+             * Has Judgement
+             * @default false
+             */
+            has_judgement: boolean;
             /**
              * Has Notes
              * @default false
@@ -1703,6 +2748,9 @@ export interface components {
              * @default false
              */
             scale_connected: boolean;
+            set_badge?: components["schemas"]["ShotSetBadge"] | null;
+            /** Set Version Id */
+            set_version_id?: number | null;
             /**
              * Source
              * @default device
@@ -1781,8 +2829,26 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * ShotSetBadge
+         * @description The Set a shot belongs to, in the three fields a badge renders.
+         *
+         *     Nested on the list row rather than three flat columns because it is one
+         *     fact — "this shot is Ethiopia natural v3" — and a row with
+         *     `set_name: null, set_version_no: 2` would be a shape nothing can render.
+         */
+        ShotSetBadge: {
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Version No */
+            version_no: number;
+        };
         /** @enum {string} */
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
+        /** @enum {string} */
+        StepUnit: "clicks" | "numbers" | "microns" | "free";
         /**
          * SyncEventRow
          * @description One line of the sync feed.
@@ -1910,6 +2976,42 @@ export interface components {
             running: boolean;
         };
         /**
+         * TasteGroup
+         * @description A named group of chips, with the direction it points.
+         */
+        TasteGroup: {
+            /** Label */
+            label: string;
+            /** Meaning */
+            meaning: string;
+            /** Tags */
+            tags: components["schemas"]["TasteTag"][];
+            /** Value */
+            value: string;
+        };
+        /**
+         * TasteTag
+         * @description One taste chip: the stored slug, the word a person reads, what it means.
+         */
+        TasteTag: {
+            /** Label */
+            label: string;
+            /** Meaning */
+            meaning: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * Term
+         * @description One member of a simple vocabulary: the stored value and its label.
+         */
+        Term: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * UsageTotals
          * @description What ``GET /api/llm/usage`` adds up.
          */
@@ -1964,6 +3066,32 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * Vocabulary
+         * @description Everything `GET /api/vocab` answers with.
+         *
+         *     One request on page load, and the front end has every enum it needs. A UI
+         *     that hard-codes these drifts from the database the first time one changes,
+         *     and the symptom is a 422 on a value the user picked from a dropdown.
+         */
+        Vocabulary: {
+            /** Balances */
+            balances: components["schemas"]["Term"][];
+            /** Burr Types */
+            burr_types: components["schemas"]["Term"][];
+            /** Decisions */
+            decisions: components["schemas"]["Term"][];
+            /** Origins */
+            origins: components["schemas"]["Term"][];
+            /** Processes */
+            processes: components["schemas"]["Term"][];
+            /** Roast Levels */
+            roast_levels: components["schemas"]["Term"][];
+            /** Step Units */
+            step_units: components["schemas"]["Term"][];
+            /** Taste Groups */
+            taste_groups: components["schemas"]["TasteGroup"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -2013,6 +3141,198 @@ export interface operations {
             };
         };
     };
+    list_beans_api_beans_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_bean_api_beans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeanWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bean_api_beans__bean_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bean_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_bean_api_beans__bean_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bean_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeanWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_bean_api_beans__bean_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bean_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unarchive_bean_api_beans__bean_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bean_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_device_live_api_device_live_get: {
         parameters: {
             query?: never;
@@ -2047,6 +3367,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DeviceStatusData_"];
+                };
+            };
+        };
+    };
+    list_grinders_api_grinders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GrinderListData_"];
+                };
+            };
+        };
+    };
+    create_grinder_api_grinders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrinderWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GrinderRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_grinder_api_grinders__grinder_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grinder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GrinderRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_grinder_api_grinders__grinder_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grinder_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrinderWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_GrinderRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2295,6 +3734,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_MachineListData_"];
+                };
+            };
+        };
+    };
+    patch_machine_api_machines__machine_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                machine_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MachinePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_MachineRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2565,6 +4039,230 @@ export interface operations {
             };
         };
     };
+    list_sets_api_sets_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+                machine_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_set_api_sets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_set_api_sets__set_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_set_api_sets__set_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_set_api_sets__set_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_trends_api_sets__set_id__trends_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetTrends_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_version_api_sets__set_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetVersionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_settings_api_settings_get: {
         parameters: {
             query?: never;
@@ -2629,10 +4327,13 @@ export interface operations {
                 max_score?: number | null;
                 min_rating?: number | null;
                 min_score?: number | null;
+                needs_set?: boolean | null;
                 offset?: number | null;
                 order?: "asc" | "desc";
                 profile_version_id?: number | null;
                 quarantined?: boolean | null;
+                set_id?: number | null;
+                set_version_id?: number | null;
                 sort?: components["schemas"]["SortKey"];
                 source?: ("device" | "import") | null;
                 to?: string | null;
@@ -2681,6 +4382,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_judgement_api_shots__shot_id__judgement_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JudgementWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotJudgementRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_judgement_api_shots__shot_id__judgement_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__bool__"];
                 };
             };
             /** @description Validation Error */
@@ -2789,6 +4556,41 @@ export interface operations {
             };
         };
     };
+    put_set_version_api_shots__shot_id__set_version_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetVersionAssignment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotDetailRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sync_events_api_sync_events_get: {
         parameters: {
             query?: never;
@@ -2856,6 +4658,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SyncStatusData_"];
+                };
+            };
+        };
+    };
+    get_vocabulary_api_vocab_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Vocabulary_"];
                 };
             };
         };

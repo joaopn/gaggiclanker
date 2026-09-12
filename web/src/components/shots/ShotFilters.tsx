@@ -1,6 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import { useId } from "react";
-import type { ProfileVersionSummary, ShotSort } from "@/api/types";
+import type { ProfileVersionSummary, SetRow, ShotSort } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_FILTERS, isDefaultFilters, type ShotFilterState } from "@/lib/shotFilters";
 import { SCORE_BANDS, type ScoreBandValue } from "@/lib/shots";
@@ -26,15 +26,18 @@ export function ShotFilters({
   value,
   onChange,
   versions,
+  sets = [],
 }: {
   value: ShotFilterState;
   onChange: (next: ShotFilterState) => void;
   versions: ProfileVersionSummary[];
+  sets?: SetRow[];
 }) {
   const ids = {
     from: useId(),
     to: useId(),
     profile: useId(),
+    set: useId(),
     score: useId(),
     rating: useId(),
     source: useId(),
@@ -80,6 +83,24 @@ export function ShotFilters({
           {versions.map((version) => (
             <option key={version.id} value={String(version.id)}>
               {version.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field id={ids.set} label="Set">
+        <select
+          id={ids.set}
+          className={cn(FIELD, "max-w-[14rem]")}
+          value={value.set}
+          onChange={(event) => set("set", event.target.value)}
+        >
+          <option value="">Any Set</option>
+          {/* The inbox, first: it is the only option anybody comes here to
+              click twice, and it is not a Set id. */}
+          <option value="needs">Needs a Set</option>
+          {sets.map((row) => (
+            <option key={row.id} value={String(row.id)}>
+              {row.name}
             </option>
           ))}
         </select>

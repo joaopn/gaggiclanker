@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { type RefObject, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ShotListRow } from "@/api/types";
+import { SetBadge } from "@/components/sets/SetBadge";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
@@ -140,13 +141,13 @@ function ShotRow({
 }
 
 /**
- * The badges a row can carry, including the two that are not filled in yet.
+ * The badges a row can carry, including the one that is not filled in yet.
  *
- * The Set badge and the analysis state are rendered as a dimmed
- * placeholder rather than left out: the column exists, its width is already
- * paid for, and a reader learns that "no Set" is a state rather than a missing
- * feature. When those chunks land they replace the contents of this function
- * and nothing else moves.
+ * The Set badge is the important one: "needs a Set" is a state with a button
+ * behind it, not an absence, so it is rendered rather than left out. The
+ * analysis state is still a dimmed placeholder — the column exists, its
+ * width is already paid for, and a reader learns it is a state rather than a
+ * missing feature.
  */
 function ShotFlags({ shot }: { shot: ShotListRow }) {
   return (
@@ -160,12 +161,8 @@ function ShotFlags({ shot }: { shot: ShotListRow }) {
       {shot.deleted_on_device ? <Badge variant="outline">gone from machine</Badge> : null}
       {shot.incomplete ? <Badge variant="outline">incomplete</Badge> : null}
       {shot.source === "import" ? <Badge variant="secondary">imported</Badge> : null}
-      <span
-        data-testid="set-badge-slot"
-        className="text-[10px] text-muted-foreground/60"
-        title="Sets arrive later"
-      >
-        no set
+      <span data-testid="set-badge-slot">
+        <SetBadge badge={shot.set_badge ?? null} />
       </span>
       <span
         data-testid="analysis-slot"

@@ -69,7 +69,14 @@ function syncStatus(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
       },
     },
     last_error: null,
-    counts: { total: 120, quarantined: 1, deleted_on_device: 4, incomplete: 0, samples: 25_000 },
+    counts: {
+      total: 120,
+      quarantined: 1,
+      deleted_on_device: 4,
+      incomplete: 0,
+      samples: 25_000,
+      needs_set: 0,
+    },
     recent_events: [],
     ...overrides,
   };

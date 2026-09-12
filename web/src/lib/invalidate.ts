@@ -34,6 +34,27 @@ export function invalidateShotSamples(queryClient: QueryClient, shotId: string):
 }
 
 /**
+ * A Set, its versions, its shots and its chart.
+ *
+ * Deliberately coarse. Saving a judgement changes the shot row, the Set
+ * detail's own copy of that row and the trend chart's averages; three named
+ * invalidations that a call site has to remember all three of is how one of
+ * them gets forgotten. Everything under `sets` is at most a handful of
+ * queries.
+ */
+export function invalidateSets(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.sets.all }).then(() => undefined);
+}
+
+export function invalidateBeans(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.beans.all }).then(() => undefined);
+}
+
+export function invalidateHardware(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.hardware.all }).then(() => undefined);
+}
+
+/**
  * Which query families each server event touches.
  *
  * The bus is lossy (gaggiclanker/infra/sse.py), so an event means "go and
@@ -46,8 +67,11 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   // these per shot, and a prefix that reached the curves would re-fetch every
   // sparkline on screen fifty times over — TanStack refetches active queries
   // on invalidation whatever their staleTime says.
-  "shot.ingested": [queryKeys.shots.all, queryKeys.sync.all],
-  "shot.updated": [queryKeys.shots.all, queryKeys.sync.all],
+  // `sets` is in here because an ingested shot is auto-assigned to the active
+  // Set: its page gains a row and its chart gains a point, with nothing on the
+  // client having asked for either.
+  "shot.ingested": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.sets.all],
+  "shot.updated": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.sets.all],
   // A shot we could not parse is still a shot: it appears in the list with a
   // flag, so the same queries are stale.
   "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],

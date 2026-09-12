@@ -11,6 +11,7 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { publishLiveStatus, resetLiveStatus } from "@/lib/liveStatus";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { setRow } from "@/test/setsFixtures";
 import { syntheticSamples } from "@/test/shotFixture";
 
 vi.mock("sonner", () => ({
@@ -18,11 +19,12 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getShots, getSyncStatus, getProfileVersions, getShotSamples } = vi.hoisted(() => ({
+const { getShots, getSyncStatus, getProfileVersions, getShotSamples, getSets } = vi.hoisted(() => ({
   getShots: vi.fn(),
   getSyncStatus: vi.fn(),
   getProfileVersions: vi.fn(),
   getShotSamples: vi.fn(),
+  getSets: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -30,6 +32,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSyncStatus,
   getProfileVersions,
   getShotSamples,
+  getSets,
 }));
 
 /** Shaped exactly like `ShotListRow` in gaggiclanker/db/repos/shots.py. */
@@ -61,6 +64,9 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     deleted_on_device: false,
     rating: 4,
     has_notes: true,
+    has_judgement: false,
+    set_version_id: null,
+    set_badge: null,
     source: "device",
     synced_at: "2026-03-04T08:15:30.000Z",
     ...overrides,
@@ -79,7 +85,14 @@ function statusData(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
     running: false,
     last_runs: {},
     last_error: null,
-    counts: { total: 2, quarantined: 1, deleted_on_device: 0, incomplete: 0, samples: 236 },
+    counts: {
+      total: 2,
+      quarantined: 1,
+      deleted_on_device: 0,
+      incomplete: 0,
+      samples: 236,
+      needs_set: 0,
+    },
     recent_events: [],
     ...overrides,
   };
@@ -133,6 +146,7 @@ beforeEach(() => {
   getSyncStatus.mockResolvedValue(statusData());
   getProfileVersions.mockResolvedValue(versions);
   getShotSamples.mockResolvedValue(samplesData);
+  getSets.mockResolvedValue({ items: [setRow()] });
 });
 
 describe("ShotsPage", () => {
@@ -464,5 +478,77 @@ describe("ShotsPage deep links", () => {
       expect(getShots).toHaveBeenCalledWith(expect.objectContaining({ profile_version_id: 9 })),
     );
     await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("9"));
+  });
+});
+
+describe("ShotsPage and Sets", () => {
+  it("badges a shot with the Set it belongs to, and says so when it has none", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          id: 1,
+          set_version_id: 22,
+          set_badge: { set_id: 3, set_name: "Guji on the Niche", version_no: 2 },
+        }),
+        shot({ id: 2, device_id: "000102", set_version_id: null, set_badge: null }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+
+    const badges = await screen.findAllByTestId("set-badge");
+    expect(badges[0]).toHaveTextContent("Guji on the Niche");
+    expect(badges[0]).toHaveTextContent("v2");
+    // "No Set" is a state with a button behind it, not an absence.
+    expect(badges[1]).toHaveAttribute("data-state", "needs-set");
+    expect(badges[1]).toHaveTextContent("needs a Set");
+  });
+
+  it("filters to the inbox, and to one Set", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await screen.findByText("9 Bar Espresso");
+
+    await user.selectOptions(screen.getByLabelText("Set"), "needs");
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_set: true })),
+    );
+
+    await user.selectOptions(screen.getByLabelText("Set"), "3");
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ set_id: 3 })),
+    );
+  });
+
+  it("puts the size of the inbox in the header, as a way into it", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        counts: {
+          total: 12,
+          quarantined: 0,
+          deleted_on_device: 0,
+          incomplete: 0,
+          samples: 900,
+          needs_set: 4,
+        },
+      }),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+
+    const button = await screen.findByTestId("needs-set-count");
+    expect(button).toHaveTextContent("4 need a Set");
+
+    await user.click(button);
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ needs_set: true })),
+    );
+    // Clicking it is how you get into the inbox, so it goes away once you are
+    // in it rather than sitting there as a no-op.
+    expect(screen.queryByTestId("needs-set-count")).not.toBeInTheDocument();
   });
 });

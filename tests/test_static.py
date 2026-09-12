@@ -173,6 +173,7 @@ async def test_every_client_route_deep_links_to_index(env: EnvSettings, web_dist
         "/knowledge",
         "/settings",
         "/shots/000129",
+        "/sets/1",
     )
     async with running_app(env, web_dist=web_dist) as (_app, client):
         for route in routes:

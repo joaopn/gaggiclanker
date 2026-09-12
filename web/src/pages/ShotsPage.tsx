@@ -1,4 +1,4 @@
-import { Activity, Coffee, GitCompare } from "lucide-react";
+import { Activity, Coffee, GitCompare, Layers } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ShotListRow } from "@/api/types";
@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions, useShotsInfinite, useSyncStatus } from "@/hooks/useArchive";
 import { useIsBrewing, useLiveStatus } from "@/hooks/useDeviceLive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
+import { useSets } from "@/hooks/useSets";
 import {
   fromSearchParams,
   isDefaultFilters,
@@ -51,6 +52,8 @@ export function ShotsPage() {
   // Both sources, so an imported profile can be filtered on even though no
   // device profile points at it.
   const versions = useProfileVersions({ limit: 200 });
+  // The filter bar's Set picker, and the header's "needs a Set" count.
+  const sets = useSets();
   // A boolean, not the frame: reading the whole snapshot here re-rendered the
   // table twice a second for the length of every shot (`hooks/useDeviceLive`).
   // The banner itself reads the frame, and it is four spans.
@@ -80,6 +83,10 @@ export function ShotsPage() {
     ? `${counts.total} archived · ${counts.samples.toLocaleString()} samples` +
       (counts.quarantined ? ` · ${counts.quarantined} quarantined` : "")
     : "Every shot the machine has pulled.";
+  // A shot with no Set is invisible to every trend and to the analyser's view
+  // of what has been tried, so the count is a call to action in the header
+  // rather than a number buried in the filter bar.
+  const needsSet = counts?.needs_set ?? 0;
 
   return (
     <div className="space-y-4">
@@ -87,18 +94,36 @@ export function ShotsPage() {
         title="Shots"
         subtitle={subtitle}
         actions={
-          selected.length > 0 ? (
-            <Button variant="outline" size="sm" onClick={() => setCompareOpen(true)}>
-              <GitCompare className="size-3.5" aria-hidden="true" />
-              Compare {selected.length}
-            </Button>
-          ) : null
+          <div className="flex items-center gap-2">
+            {needsSet > 0 && filters.set !== "needs" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="needs-set-count"
+                onClick={() => setFilters({ ...filters, set: "needs" })}
+              >
+                <Layers className="size-3.5" aria-hidden="true" />
+                {needsSet} need a Set
+              </Button>
+            ) : null}
+            {selected.length > 0 ? (
+              <Button variant="outline" size="sm" onClick={() => setCompareOpen(true)}>
+                <GitCompare className="size-3.5" aria-hidden="true" />
+                Compare {selected.length}
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
       {brewing ? <LiveBanner /> : null}
 
-      <ShotFilters value={filters} onChange={setFilters} versions={versions.data?.items ?? []} />
+      <ShotFilters
+        value={filters}
+        onChange={setFilters}
+        versions={versions.data?.items ?? []}
+        sets={sets.data?.items ?? []}
+      />
 
       {shots.isPending ? (
         <div className="space-y-2" data-testid="shots-loading">

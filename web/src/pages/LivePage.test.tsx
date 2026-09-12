@@ -79,6 +79,9 @@ function shotRow(id: number, label: string): ShotListData["items"][number] {
     deleted_on_device: false,
     rating: null,
     has_notes: false,
+    has_judgement: false,
+    set_version_id: null,
+    set_badge: null,
     synced_at: "2026-03-04T08:15:30.000Z",
   };
 }

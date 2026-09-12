@@ -13,10 +13,15 @@
 
 import type {
   BackupData,
+  BeanRow,
+  BeanWrite,
   DeviceStatusData,
+  GrinderRow,
+  GrinderWrite,
   HealthData,
   ImportOptions,
   ImportSummary,
+  JudgementWrite,
   LlmCallsData,
   LlmCredentialCheck,
   LlmModelsData,
@@ -24,18 +29,31 @@ import type {
   LlmRateLimit,
   LlmStatusData,
   LlmUsageTotals,
+  MachineListData,
+  MachinePatch,
+  MachineRow,
   ProfileListData,
   ProfileVersionListData,
   ProfileVersionParams,
   PromptData,
   PromptListData,
+  SetCreate,
+  SetDetailData,
+  SetListData,
+  SetRow,
+  SetTrends,
   SettingsMap,
   SettingsPatch,
+  SetVersionPatch,
+  SetVersionRow,
   ShotDetailData,
+  ShotDetailRow,
+  ShotJudgement,
   ShotListData,
   ShotListParams,
   ShotSamplesData,
   SyncStatusData,
+  Vocabulary,
 } from "@/api/types";
 import { redirectToSignIn } from "@/lib/auth-navigation";
 
@@ -412,3 +430,125 @@ export const MODEL_KEYS: Record<LlmPurpose, string> = {
   draft: "modelDraft",
   chat: "modelChat",
 };
+
+// ---------------------------------------------------------------------------
+// Sets, beans, grinders and the judgement. The half of a shot the machine
+// knows nothing about: what was in the hopper, what you were trying, and
+// whether it was any good.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every closed vocabulary, in one request.
+ *
+ * Fetched once and cached for the session (`useVocabulary`): nothing here
+ * changes without a redeploy, and a UI that typed its own copy of these words
+ * would drift from the CHECK constraints the moment one of them did.
+ */
+export async function getVocabulary(): Promise<Vocabulary> {
+  return fetchApi<Vocabulary>("/vocab");
+}
+
+export async function getBeans(includeArchived = false): Promise<{ items: BeanRow[] }> {
+  return fetchApi<{ items: BeanRow[] }>(
+    `/beans${queryString({ include_archived: includeArchived })}`,
+  );
+}
+
+export async function createBean(body: BeanWrite): Promise<BeanRow> {
+  return fetchApi<BeanRow>("/beans", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateBean(id: number, body: BeanWrite): Promise<BeanRow> {
+  return fetchApi<BeanRow>(`/beans/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+/** Hide a finished bag. Never a delete: its Sets still point at it. */
+export async function setBeanArchived(id: number, archived: boolean): Promise<BeanRow> {
+  return fetchApi<BeanRow>(`/beans/${id}/${archived ? "archive" : "unarchive"}`, {
+    method: "POST",
+  });
+}
+
+export async function getGrinders(): Promise<{ items: GrinderRow[] }> {
+  return fetchApi<{ items: GrinderRow[] }>("/grinders");
+}
+
+export async function createGrinder(body: GrinderWrite): Promise<GrinderRow> {
+  return fetchApi<GrinderRow>("/grinders", { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateGrinder(id: number, body: GrinderWrite): Promise<GrinderRow> {
+  return fetchApi<GrinderRow>(`/grinders/${id}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function getMachines(): Promise<MachineListData> {
+  return fetchApi<MachineListData>("/machines");
+}
+
+/** Name and notes only. Everything else is the machine's own account of itself. */
+export async function patchMachine(id: number, body: MachinePatch): Promise<MachineRow> {
+  return fetchApi<MachineRow>(`/machines/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getSets(includeArchived = false): Promise<SetListData> {
+  return fetchApi<SetListData>(`/sets${queryString({ include_archived: includeArchived })}`);
+}
+
+export async function getSet(id: number): Promise<SetDetailData> {
+  return fetchApi<SetDetailData>(`/sets/${id}`);
+}
+
+export async function createSet(body: SetCreate): Promise<SetRow> {
+  return fetchApi<SetRow>("/sets", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * A new version: the current one plus whatever is in `patch`.
+ *
+ * Only send what changed. Omitting a field inherits the parent's value and
+ * sending `null` clears it, so building this body from a whole form would
+ * record every field as changed.
+ */
+export async function addSetVersion(id: number, patch: SetVersionPatch): Promise<SetVersionRow> {
+  return fetchApi<SetVersionRow>(`/sets/${id}/versions`, {
+    method: "POST",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function activateSet(id: number): Promise<SetRow> {
+  return fetchApi<SetRow>(`/sets/${id}/activate`, { method: "POST" });
+}
+
+export async function archiveSet(id: number): Promise<SetRow> {
+  return fetchApi<SetRow>(`/sets/${id}/archive`, { method: "POST" });
+}
+
+export async function getSetTrends(id: number): Promise<SetTrends> {
+  return fetchApi<SetTrends>(`/sets/${id}/trends`);
+}
+
+export async function putJudgement(shotId: number, body: JudgementWrite): Promise<ShotJudgement> {
+  return fetchApi<ShotJudgement>(`/shots/${shotId}/judgement`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteJudgement(shotId: number): Promise<{ deleted: boolean }> {
+  return fetchApi<{ deleted: boolean }>(`/shots/${shotId}/judgement`, { method: "DELETE" });
+}
+
+/** Assign a shot to a Set version, or pass null to detach it. */
+export async function putShotSetVersion(
+  shotId: number,
+  setVersionId: number | null,
+): Promise<ShotDetailRow> {
+  return fetchApi<ShotDetailRow>(`/shots/${shotId}/set-version`, {
+    method: "PUT",
+    body: JSON.stringify({ set_version_id: setVersionId }),
+  });
+}

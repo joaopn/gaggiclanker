@@ -45,11 +45,34 @@ export const queryKeys = {
   },
   sets: {
     all: ["sets"] as const,
-    list: () => ["sets", "list"] as const,
+    list: (includeArchived?: boolean) => ["sets", "list", includeArchived ?? false] as const,
     detail: (id: string) => ["sets", "detail", id] as const,
+    /**
+     * Under the `sets` prefix on purpose, unlike `samples` under `shots`.
+     *
+     * A Set's trends change whenever one of its shots does — a judgement
+     * saved, a shot reassigned — and both of those already invalidate
+     * `sets.all`. There is exactly one chart on screen at a time, so the
+     * over-fetch the shots list could not afford costs one request here.
+     */
+    trends: (id: string) => ["sets", "trends", id] as const,
   },
-  beans: { all: ["beans"] as const, list: () => ["beans", "list"] as const },
-  hardware: { all: ["hardware"] as const, list: () => ["hardware", "list"] as const },
+  beans: {
+    all: ["beans"] as const,
+    list: (includeArchived?: boolean) => ["beans", "list", includeArchived ?? false] as const,
+  },
+  /** Grinders and machines: one page, one prefix, so one invalidation. */
+  hardware: {
+    all: ["hardware"] as const,
+    grinders: () => ["hardware", "grinders"] as const,
+    machines: () => ["hardware", "machines"] as const,
+  },
+  /**
+   * The closed vocabularies. Fetched once and never invalidated: they change
+   * with a redeploy, and a refetch on every page would be a request that can
+   * only ever return the same bytes.
+   */
+  vocab: { all: ["vocab"] as const, current: () => ["vocab", "current"] as const },
   profiles: {
     all: ["profiles"] as const,
     list: () => ["profiles", "list"] as const,

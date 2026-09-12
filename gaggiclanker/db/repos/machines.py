@@ -176,6 +176,36 @@ class MachinesRepository(Repository):
         rows = await self.db.fetch_all("SELECT * FROM machines ORDER BY id")
         return self.to_models(MachineRow, rows)
 
+    async def update_editable(
+        self, machine_id: int, *, name: str | None = None, notes: str | None = None
+    ) -> MachineRow | None:
+        """Change the two fields a person owns on this row.
+
+        Everything else here is the machine's own account of itself and is
+        rewritten by the next sync pass, so an editable `hardware_string` would
+        be a field that silently reverts. `name` and `notes` are the exceptions:
+        the firmware has no concept of either, so nothing overwrites them and
+        "the kitchen one" is a better label than an IP address.
+
+        ``None`` means "leave it alone", matching :class:`MachineUpsert`.
+        """
+        assignments = []
+        values: dict[str, Any] = {"id": machine_id}
+        if name is not None:
+            assignments.append("name = :name")
+            values["name"] = name
+        if notes is not None:
+            assignments.append("notes = :notes")
+            values["notes"] = notes
+        if assignments:
+            cursor = await self.db.execute(
+                f"UPDATE machines SET {', '.join(assignments)} WHERE id = :id",  # noqa: S608 - the assignments are the literals above
+                values,
+            )
+            if cursor.rowcount == 0:
+                return None
+        return await self.get(machine_id)
+
     async def touch(self, machine_id: int) -> None:
         """Record that we have just heard from this machine."""
         await self.db.execute(

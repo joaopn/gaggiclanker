@@ -28,6 +28,35 @@ export type SyncStatusData = components["schemas"]["SyncStatusData"];
 export type ImportSummary = components["schemas"]["ImportSummary"];
 export type ImportResult = components["schemas"]["ImportResult"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
+export type MachineListData = components["schemas"]["MachineListData"];
+export type MachineRow = components["schemas"]["MachineRow"];
+export type MachinePatch = components["schemas"]["MachinePatch"];
+
+// Sets, beans, grinders and the judgement. Every one of these is a real
+// pydantic model on the server, so none of them is retyped here.
+export type Vocabulary = components["schemas"]["Vocabulary"];
+export type TasteGroup = components["schemas"]["TasteGroup"];
+export type TasteTag = components["schemas"]["TasteTag"];
+export type VocabTerm = components["schemas"]["Term"];
+export type BeanRow = components["schemas"]["BeanRow"];
+export type BeanWrite = components["schemas"]["BeanWrite"];
+export type GrinderRow = components["schemas"]["GrinderRow"];
+export type GrinderWrite = components["schemas"]["GrinderWrite"];
+export type SetRow = components["schemas"]["SetRow"];
+export type SetCreate = components["schemas"]["SetCreate"];
+export type SetListData = components["schemas"]["SetListData"];
+export type SetDetailData = components["schemas"]["SetDetailData"];
+export type SetVersionRow = components["schemas"]["SetVersionRow"];
+export type SetVersionDetail = components["schemas"]["SetVersionDetail"];
+export type SetVersionPatch = components["schemas"]["SetVersionPatch"];
+export type SetVersionWrite = components["schemas"]["SetVersionWrite"];
+export type FieldChange = components["schemas"]["FieldChange"];
+export type SetTrends = components["schemas"]["SetTrends"];
+export type SetTrendPoint = components["schemas"]["SetTrendPoint"];
+export type SetTrendVersion = components["schemas"]["SetTrendVersion"];
+export type ShotJudgement = components["schemas"]["ShotJudgementRow"];
+export type JudgementWrite = components["schemas"]["JudgementWrite"];
+export type ShotSetBadge = components["schemas"]["ShotSetBadge"];
 export type SettingValue = components["schemas"]["SettingValue"];
 
 // The LLM layer. These the schema DOES describe, so they are imported
@@ -124,6 +153,10 @@ export type ShotListParams = {
   machine_id?: number;
   quarantined?: boolean;
   include_deleted?: boolean;
+  set_id?: number;
+  set_version_id?: number;
+  /** The inbox: shots the archive could not attach to a Set on its own. */
+  needs_set?: boolean;
   source?: "device" | "import";
   min_score?: number;
   max_score?: number;

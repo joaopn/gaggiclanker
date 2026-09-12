@@ -14,10 +14,14 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.grinders import GrindersRepository
+from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -29,15 +33,19 @@ from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.engine import SyncEngine
 
 __all__ = [
+    "BeansRepoDep",
     "DatabaseDep",
     "DeviceClientDep",
     "EnvSettingsDep",
     "EventBusDep",
+    "GrindersRepoDep",
+    "JudgementsRepoDep",
     "LlmServiceDep",
     "MachinesRepoDep",
     "NotesRepoDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
+    "SetsRepoDep",
     "SettingsServiceDep",
     "ShotsRepoDep",
     "SyncEngineDep",
@@ -121,6 +129,22 @@ def get_sync_repo(request: Request) -> SyncRepository:
     return SyncRepository(get_database(request))
 
 
+def get_beans_repo(request: Request) -> BeansRepository:
+    return BeansRepository(get_database(request))
+
+
+def get_grinders_repo(request: Request) -> GrindersRepository:
+    return GrindersRepository(get_database(request))
+
+
+def get_sets_repo(request: Request) -> SetsRepository:
+    return SetsRepository(get_database(request))
+
+
+def get_judgements_repo(request: Request) -> JudgementsRepository:
+    return JudgementsRepository(get_database(request))
+
+
 DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
@@ -134,3 +158,7 @@ ProfilesRepoDep = Annotated[ProfilesRepository, Depends(get_profiles_repo)]
 NotesRepoDep = Annotated[NotesRepository, Depends(get_notes_repo)]
 MachinesRepoDep = Annotated[MachinesRepository, Depends(get_machines_repo)]
 SyncRepoDep = Annotated[SyncRepository, Depends(get_sync_repo)]
+BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
+GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
+SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
+JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]

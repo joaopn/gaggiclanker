@@ -8,12 +8,15 @@ import { useDeviceLiveStream } from "@/hooks/useDeviceLive";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
+import { BeansPage } from "@/pages/BeansPage";
 import { DevicePage } from "@/pages/DevicePage";
+import { HardwarePage } from "@/pages/HardwarePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { LivePage } from "@/pages/LivePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
-import { BeansPage, HardwarePage, KnowledgePage, SetsPage } from "@/pages/placeholders";
+import { KnowledgePage } from "@/pages/placeholders";
+import { SetsPage } from "@/pages/SetsPage";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
@@ -25,6 +28,11 @@ import { SettingsPage } from "@/pages/settings/SettingsPage";
  */
 const ShotDetailPage = lazy(() =>
   import("@/pages/ShotDetailPage").then((module) => ({ default: module.ShotDetailPage })),
+);
+
+/** The other route that draws a chart, split for the same reason. */
+const SetDetailPage = lazy(() =>
+  import("@/pages/SetDetailPage").then((module) => ({ default: module.SetDetailPage })),
 );
 
 /**
@@ -82,6 +90,14 @@ export function App() {
           <Route path="/live" element={<LivePage />} />
           <Route path="/device" element={<DevicePage />} />
           <Route path="/sets" element={<SetsPage />} />
+          <Route
+            path="/sets/:setId"
+            element={
+              <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+                <SetDetailPage />
+              </Suspense>
+            }
+          />
           <Route path="/beans" element={<BeansPage />} />
           <Route path="/hardware" element={<HardwarePage />} />
           <Route path="/profiles" element={<ProfilesPage />} />

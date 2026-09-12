@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
 from gaggiclanker.db.repository import Repository
@@ -30,6 +30,7 @@ __all__ = [
     "ShotListRow",
     "ShotPage",
     "ShotSampleRow",
+    "ShotSetBadge",
     "ShotState",
     "ShotsRepository",
 ]
@@ -128,6 +129,21 @@ class ShotInsert(BaseModel):
     index_flags: int | None = None
 
 
+class ShotSetBadge(BaseModel):
+    """The Set a shot belongs to, in the three fields a badge renders.
+
+    Nested on the list row rather than three flat columns because it is one
+    fact — "this shot is Ethiopia natural v3" — and a row with
+    `set_name: null, set_version_no: 2` would be a shape nothing can render.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    set_id: int
+    set_name: str
+    version_no: int
+
+
 class ShotListRow(BaseModel):
     """A row of `GET /api/shots`: enough to draw a line in a table, no curve."""
 
@@ -163,7 +179,40 @@ class ShotListRow(BaseModel):
     #: the machine's UI edits.
     rating: int | None = None
     has_notes: bool = False
+    #: Whether the user has recorded a verdict on the cup. The list shows it as
+    #: a dot; `needs_set` has an equivalent on the Set side.
+    has_judgement: bool = False
+    #: What the user says they were brewing. NULL is the `needs_set`
+    #: state: the shot arrived while no Set matched it, and it is waiting for
+    #: somebody to say which one it belongs to.
+    set_version_id: int | None = None
+    set_badge: ShotSetBadge | None = None
     synced_at: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_set_badge(cls, data: Any) -> Any:
+        """Fold the three joined badge columns into one nested object.
+
+        The SQL has to select them flat — there is no other way to get three
+        columns out of two joins — and the model has `extra="forbid"`, so
+        without this every list query would fail validation. Done here rather
+        than in the repository so that the projection and the model stay in one
+        file and a new caller cannot forget it.
+        """
+        if not isinstance(data, dict) or "set_badge" in data:
+            return data
+        payload = dict(data)
+        badge_set_id = payload.pop("badge_set_id", None)
+        badge_set_name = payload.pop("badge_set_name", None)
+        badge_version_no = payload.pop("badge_version_no", None)
+        if badge_set_id is not None and badge_version_no is not None:
+            payload["set_badge"] = {
+                "set_id": badge_set_id,
+                "set_name": badge_set_name or "",
+                "version_no": badge_version_no,
+            }
+        return payload
 
 
 class ShotDetailRow(ShotListRow):
@@ -177,7 +226,6 @@ class ShotDetailRow(ShotListRow):
 
     model_config = ConfigDict(extra="forbid")
 
-    set_version_id: int | None = None
     final_exit_reason: int | None = None
     brew_delay_ms: int | None = None
     slog_version: int | None = None
@@ -222,6 +270,10 @@ class ShotCounts(BaseModel):
     deleted_on_device: int = 0
     incomplete: int = 0
     samples: int = 0
+    #: Shots with no Set version, quarantined ones excluded. The Shots page
+    #: header shows it as a call to action, because an unassigned shot is
+    #: invisible to every Set trend and to the analyzer's trajectory.
+    needs_set: int = 0
 
 
 class ShotPage(BaseModel):
@@ -249,13 +301,25 @@ _LIST_COLUMNS = """
     s.quarantined, s.quarantine_reason, s.deleted_on_device,
     n.rating AS rating,
     n.shot_id IS NOT NULL AS has_notes,
+    j.shot_id IS NOT NULL AS has_judgement,
+    s.set_version_id,
+    sv.set_id AS badge_set_id,
+    st.name AS badge_set_name,
+    sv.version_no AS badge_version_no,
     s.synced_at
 """
 
+# The Set joins are LEFT for the obvious reason and one less obvious one:
+# `shots.set_version_id` carries no foreign key (migration 0005 explains why),
+# so a row pointing at a version that no longer exists must list as unassigned
+# rather than disappear from the archive.
 _LIST_FROM = """
     FROM shots s
     LEFT JOIN profile_versions v ON v.id = s.profile_version_id
     LEFT JOIN device_shot_notes n ON n.shot_id = s.id
+    LEFT JOIN shot_judgements j ON j.shot_id = s.id
+    LEFT JOIN set_versions sv ON sv.id = s.set_version_id
+    LEFT JOIN sets st ON st.id = sv.set_id
 """
 
 #: The default sort key. `COALESCE(started_at, '')` rather than `started_at` so
@@ -503,7 +567,7 @@ class ShotsRepository(Repository):
         row = await self.db.fetch_one(
             f"""
             SELECT {_LIST_COLUMNS},
-                   s.set_version_id, s.final_exit_reason, s.brew_delay_ms, s.slog_version,
+                   s.final_exit_reason, s.brew_delay_ms, s.slog_version,
                    s.sample_interval_ms, s.fields_mask, s.index_volume_g, s.index_flags,
                    s.phases_json, s.diagnostics_json,
                    LENGTH(s.raw_slog) AS raw_bytes, s.updated_at
@@ -548,7 +612,8 @@ class ShotsRepository(Repository):
             SELECT COUNT(*) AS total,
                    COALESCE(SUM(quarantined), 0) AS quarantined,
                    COALESCE(SUM(deleted_on_device), 0) AS deleted_on_device,
-                   COALESCE(SUM(incomplete), 0) AS incomplete
+                   COALESCE(SUM(incomplete), 0) AS incomplete,
+                   COALESCE(SUM(set_version_id IS NULL AND quarantined = 0), 0) AS needs_set
             FROM shots{clause}
             """,  # noqa: S608 - the clause is one of two literals
             params,
@@ -576,6 +641,9 @@ class ShotsRepository(Repository):
         start_to: str | None = None,
         profile_version_id: int | None = None,
         machine_id: int | None = None,
+        set_id: int | None = None,
+        set_version_id: int | None = None,
+        needs_set: bool | None = None,
         quarantined: bool | None = None,
         include_deleted_on_device: bool = True,
         source: str | None = None,
@@ -629,6 +697,22 @@ class ShotsRepository(Repository):
         if profile_version_id is not None:
             where.append("s.profile_version_id = ?")
             params.append(profile_version_id)
+        if set_id is not None:
+            where.append("sv.set_id = ?")
+            params.append(set_id)
+        if set_version_id is not None:
+            where.append("s.set_version_id = ?")
+            params.append(set_version_id)
+        if needs_set is not None:
+            # "Which shots is the archive still waiting for an answer on?" A
+            # quarantined shot is excluded from the wanted set: its bytes never
+            # parsed, so there is no profile to match and nothing to judge, and
+            # leaving it in the queue would mean the count never reached zero.
+            where.append(
+                "(s.set_version_id IS NULL AND s.quarantined = 0)"
+                if needs_set
+                else "s.set_version_id IS NOT NULL"
+            )
         if quarantined is not None:
             where.append("s.quarantined = ?")
             params.append(int(quarantined))

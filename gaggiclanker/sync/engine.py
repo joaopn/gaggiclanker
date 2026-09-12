@@ -42,9 +42,11 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import dumps
+from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.machines import MachineRow, MachinesRepository, identity_to_upsert
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository, ShotState
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunRow, SyncRunUpdate
 from gaggiclanker.device.client import GaggimateClient, SlogFetch
@@ -183,6 +185,8 @@ class SyncEngine:
         self.shots = ShotsRepository(db)
         self.notes = NotesRepository(db)
         self.runs = SyncRepository(db)
+        self.sets = SetsRepository(db)
+        self.judgements = JudgementsRepository(db)
 
         self._machine: MachineRow | None = None
         self._shot_poke = _Poke()
@@ -658,6 +662,16 @@ class SyncEngine:
 
         shot.profile_version_id = await self._version_for(machine.id, shot.profile_id_on_device)
         shot_id = await self.shots.insert(shot, samples)
+        # The user's half of the shot: which Set was this, and what did they
+        # think of it. Both are best-effort and neither can fail an ingest —
+        # the archive's job is to hold the bytes, and a Set that does not match
+        # leaves the shot in the `needs_set` inbox rather than losing it.
+        set_version_id = await self.sets.auto_assign(
+            shot_id,
+            machine_id=machine.id,
+            profile_version_id=shot.profile_version_id,
+            device_profile_id=shot.profile_id_on_device,
+        )
         update.shots_inserted += 1
         await self.runs.add_event(
             "shot_ingested",
@@ -665,7 +679,11 @@ class SyncEngine:
             shot_id=shot_id,
             device_id=shot.device_id,
             message=f"{len(samples)} samples",
-            data={"samples": len(samples), "score": shot.execution_score},
+            data={
+                "samples": len(samples),
+                "score": shot.execution_score,
+                "set_version_id": set_version_id,
+            },
         )
         self._publish(
             SHOT_INGESTED_EVENT,
@@ -677,6 +695,7 @@ class SyncEngine:
             device_id=shot.device_id,
             samples=len(samples),
             quarantined=False,
+            set_version_id=set_version_id,
         )
 
     async def _store_quarantined(
@@ -885,6 +904,14 @@ class SyncEngine:
                     index_rating=entry.rating,
                     index_volume_g=entry.volume_g,
                 )
+                # The machine's notes card is the same five fields the judgement
+                # form asks for, so a shot that arrives with notes and no
+                # verdict gets one for free. Exactly once: the repository's
+                # insert does nothing on conflict, which is what stops a re-pull
+                # — and notes are re-pulled precisely *because* the user edited
+                # them on the machine — from overwriting a verdict typed here.
+                if await self.judgements.seed_from_device_notes(state.id, notes):
+                    log.info("judgement_seeded", shot_id=state.id, device_id=device_id)
                 update.notes_synced += 1
                 await self.runs.add_event(
                     "notes_synced", run_id=run_id, shot_id=state.id, device_id=device_id

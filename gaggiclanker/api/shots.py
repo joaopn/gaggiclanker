@@ -21,11 +21,13 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 
-from gaggiclanker.api.deps import NotesRepoDep, ShotsRepoDep
+from gaggiclanker.api.deps import JudgementsRepoDep, NotesRepoDep, SetsRepoDep, ShotsRepoDep
+from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
+from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListRow, ShotSampleRow
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
-from gaggiclanker.infra.errors import BadRequest, NotFound
+from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
 from gaggiclanker.infra.request_context import get_request_id
 from gaggiclanker.sync.engine import downsample
 
@@ -59,12 +61,22 @@ class ShotListData(BaseModel):
 
 
 class ShotDetailData(BaseModel):
-    """One shot in full: the row, its phases, its diagnostics and the device's notes."""
+    """One shot in full: the row, its blobs, the device's notes and your verdict.
+
+    ``notes`` and ``judgement`` are both here and are different things. The
+    notes are a read-only mirror of what the *machine's* UI recorded; the
+    judgement is the archive's own, editable, and seeded from the notes the
+    first time a shot arrives with them. Showing both side by side is what makes
+    a disagreement between them visible.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     shot: ShotDetailRow
     notes: DeviceShotNotesRow | None = None
+    judgement: ShotJudgementRow | None = None
+    #: The Set version this shot is attached to, resolved. NULL is `needs_set`.
+    set_version: SetVersionRow | None = None
 
 
 class ShotSamplesData(BaseModel):
@@ -97,6 +109,9 @@ async def list_shots(
     to: Annotated[str | None, Query()] = None,
     profile_version_id: Annotated[int | None, Query()] = None,
     machine_id: Annotated[int | None, Query()] = None,
+    set_id: Annotated[int | None, Query()] = None,
+    set_version_id: Annotated[int | None, Query()] = None,
+    needs_set: Annotated[bool | None, Query()] = None,
     quarantined: Annotated[bool | None, Query()] = None,
     include_deleted: Annotated[bool, Query()] = True,
     source: Annotated[Literal["device", "import"] | None, Query()] = None,
@@ -118,6 +133,12 @@ async def list_shots(
     from a machine whose clock never synced has none and is excluded by any date
     filter, which is the honest answer.
 
+    ``set_id`` and ``set_version_id`` narrow to one Set or one of its versions;
+    ``needs_set=1`` is the inbox — shots the archive could not attach to a Set
+    on its own and is waiting for an answer on. Quarantined shots are excluded
+    from it: their bytes never parsed, so there is nothing to judge and the
+    count would never reach zero.
+
     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
     query string is an injection — and only the default one supports ``cursor``,
     because the cursor encodes that key. "Worst shots first" is an offset page,
@@ -137,6 +158,9 @@ async def list_shots(
             start_to=to,
             profile_version_id=profile_version_id,
             machine_id=machine_id,
+            set_id=set_id,
+            set_version_id=set_version_id,
+            needs_set=needs_set,
             quarantined=quarantined,
             include_deleted_on_device=include_deleted,
             source=source,
@@ -166,12 +190,24 @@ async def list_shots(
     response_model=ApiResponse[ShotDetailData],
     summary="One shot with its phases, diagnostics and device notes",
 )
-async def get_shot(shot_id: int, shots: ShotsRepoDep, notes: NotesRepoDep) -> JSONResponse:
+async def get_shot(
+    shot_id: int,
+    shots: ShotsRepoDep,
+    notes: NotesRepoDep,
+    judgements: JudgementsRepoDep,
+    sets: SetsRepoDep,
+) -> JSONResponse:
     shot = await shots.get(shot_id)
     if shot is None:
         raise NotFound(f"No shot {shot_id}")
+    version = None if shot.set_version_id is None else await sets.get_version(shot.set_version_id)
     return envelope_response(
-        ShotDetailData(shot=shot, notes=await notes.get(shot_id)).model_dump(mode="json")
+        ShotDetailData(
+            shot=shot,
+            notes=await notes.get(shot_id),
+            judgement=await judgements.get(shot_id),
+            set_version=version,
+        ).model_dump(mode="json")
     )
 
 
@@ -247,3 +283,87 @@ async def get_shot_raw(shot_id: int, shots: ShotsRepoDep) -> Response:
         filename=f"{row.device_id}.slog",
         request_id=get_request_id(),
     )
+
+
+# ---------------------------------------------------------------------------
+# The two things a person writes about a shot: what they thought of it, and
+# which Set it belongs to. Everything above this line is read-only.
+# ---------------------------------------------------------------------------
+
+
+class SetVersionAssignment(BaseModel):
+    """`PUT /api/shots/{id}/set-version`: which Set version this shot belongs to.
+
+    A body with an explicit `null` rather than a DELETE, because "this shot was
+    not part of any Set" is a statement the user makes, and it lands in the same
+    place a correction does.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    set_version_id: int | None = None
+
+
+@router.put(
+    "/{shot_id}/judgement",
+    response_model=ApiResponse[ShotJudgementRow],
+    summary="Record or replace what you thought of this cup",
+)
+async def put_judgement(
+    shot_id: int, body: JudgementWrite, shots: ShotsRepoDep, judgements: JudgementsRepoDep
+) -> JSONResponse:
+    """An upsert. The verdict is one row per shot and the form sends all of it.
+
+    Saving here marks the row as the user's: a judgement seeded from the
+    machine's notes card loses its `seeded_from_device_note` flag the moment
+    somebody edits it, and the sync engine only ever *creates* judgements that
+    do not exist. That is what makes "user edits are never overwritten by sync"
+    a property of the data rather than of a code path somebody has to remember.
+    """
+    if await shots.get(shot_id) is None:
+        raise NotFound(f"No shot {shot_id}")
+    row = await judgements.upsert(shot_id, body)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.delete(
+    "/{shot_id}/judgement",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Withdraw a verdict",
+)
+async def delete_judgement(shot_id: int, judgements: JudgementsRepoDep) -> JSONResponse:
+    """Deleting is not "rating zero": it puts the shot back to unjudged.
+
+    Worth having as its own verb, because a judgement seeded from a device note
+    the user disagrees with should be removable without inventing a rating.
+    """
+    if not await judgements.delete(shot_id):
+        raise NotFound(f"No judgement for shot {shot_id}")
+    return envelope_response({"deleted": True})
+
+
+@router.put(
+    "/{shot_id}/set-version",
+    response_model=ApiResponse[ShotDetailRow],
+    summary="Assign this shot to a Set version, or detach it",
+)
+async def put_set_version(
+    shot_id: int, body: SetVersionAssignment, shots: ShotsRepoDep, sets: SetsRepoDep
+) -> JSONResponse:
+    """The correction path, so unlike auto-assignment it overwrites.
+
+    Auto-assignment only ever fills a NULL (`db/repos/sets.py`), which is what
+    keeps a hand correction from being undone by the next sync pass. This is the
+    hand.
+    """
+    if await shots.get(shot_id) is None:
+        raise NotFound(f"No shot {shot_id}")
+    if not await sets.assign_shot(shot_id, body.set_version_id):
+        raise Unprocessable(
+            f"No Set version {body.set_version_id}",
+            details={"field": "set_version_id", "message": "that Set version does not exist"},
+        )
+    row = await shots.get(shot_id)
+    if row is None:  # pragma: no cover - checked above, inside the same request
+        raise NotFound(f"No shot {shot_id}")
+    return envelope_response(row.model_dump(mode="json"))

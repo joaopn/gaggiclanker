@@ -1,0 +1,154 @@
+import { screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SetDetailPage } from "@/pages/SetDetailPage";
+import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { setDetail, trends } from "@/test/setsFixtures";
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  Toaster: () => null,
+}));
+
+/**
+ * The options the chart was handed.
+ *
+ * `<Line>` is replaced rather than inspected: the real component draws to a
+ * canvas, which is opaque to a test, and what is under test here is which axis
+ * a dataset was assigned — a decision made before anything is drawn.
+ */
+type ChartProps = {
+  data?: { datasets?: Array<{ label?: string; yAxisID?: string }> };
+  "aria-label"?: string;
+};
+let lastChartProps: ChartProps | null = null;
+vi.mock("react-chartjs-2", () => ({
+  Line: (props: ChartProps) => {
+    lastChartProps = props;
+    return <canvas aria-label={props["aria-label"]} />;
+  },
+}));
+
+/** The route param, so one test can make it something that is not a number. */
+let setId = "3";
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useParams: () => ({ setId }),
+}));
+
+/**
+ * Which y axis each dataset was put on.
+ *
+ * The chart is a canvas, so this reads the options Chart.js was handed rather
+ * than anything drawn. `react-chartjs-2` is mocked below to capture them.
+ */
+function axisOf(labels: string[]): Record<string, string | undefined> {
+  const datasets = lastChartProps?.data?.datasets ?? [];
+  return Object.fromEntries(
+    labels.map((label) => [label, datasets.find((dataset) => dataset.label === label)?.yAxisID]),
+  );
+}
+
+const { getSet, getSetTrends, addSetVersion, archiveSet } = vi.hoisted(() => ({
+  getSet: vi.fn(),
+  getSetTrends: vi.fn(),
+  addSetVersion: vi.fn(),
+  archiveSet: vi.fn(),
+}));
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  getSet,
+  getSetTrends,
+  addSetVersion,
+  archiveSet,
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  setId = "3";
+  getSet.mockResolvedValue(setDetail());
+  getSetTrends.mockResolvedValue(trends());
+  addSetVersion.mockResolvedValue(setDetail().versions[0].version);
+  archiveSet.mockResolvedValue({ ...setDetail().set, status: "archived", active: false });
+});
+
+describe("SetDetailPage", () => {
+  it("draws the trend chart for a Set with several versions and its shots", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    // The canvas is invisible to a test, so each chart renders what it drew as
+    // text (see web/README.md).
+    const summary = await screen.findByTestId("set-trend-summary");
+    expect(summary).toHaveTextContent("Execution score: 4 points");
+    // A shot with no rating is a gap, not a zero.
+    expect(summary).toHaveTextContent("Your rating: 3 points");
+    expect(summary).toHaveTextContent("Version 2 begins at shot 3");
+  });
+
+  it("shows the current recipe and the version history", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText("Now brewing: v2")).toBeInTheDocument();
+    expect(screen.getAllByTestId("version-entry")).toHaveLength(2);
+  });
+
+  it("sends only the fields that changed when a version is recorded", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await user.type(await screen.findByLabelText("Grind"), "20");
+    await user.type(screen.getByLabelText("What are you trying?"), "finer still");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    const [setId, patch] = addSetVersion.mock.calls[0];
+    expect(setId).toBe(3);
+    // Not sent means inherited: a body carrying every field would record all of
+    // them as changed and the timeline's diff would say nothing.
+    expect(patch).toEqual({
+      intent: "finer still",
+      origin: "manual",
+      grind_setting: "20",
+      grind_value: 20,
+    });
+  });
+
+  it("keeps the ratio off the duration axis so it is not a flat line", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("set-trend-summary");
+    // The ratio lives around 2 while duration lives around 28; sharing an axis
+    // squashes the one series that answers "did the recipe change" onto the
+    // baseline.
+    const axes = axisOf(["Duration (s)", "Ratio", "Execution score", "Your rating"]);
+    expect(axes.Ratio).not.toBe(axes["Duration (s)"]);
+    expect(axes["Execution score"]).toBe(axes["Your rating"]);
+  });
+
+  it("says so when a Set has collected nothing yet", async () => {
+    getSetTrends.mockResolvedValue({ set_id: 3, versions: [], shots: [] });
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText(/No shots yet/)).toBeInTheDocument();
+  });
+
+  it("reports a Set that is not there rather than rendering an empty page", async () => {
+    getSet.mockRejectedValue(new Error("No Set 3"));
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText("No such Set")).toBeInTheDocument();
+  });
+});
+
+describe("SetDetailPage with a URL that is not a Set", () => {
+  it("says so rather than showing a skeleton for ever", async () => {
+    // The query is never enabled for a non-numeric id, so "pending" is a state
+    // it can never leave.
+    setId = "nonsense";
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText("No such Set")).toBeInTheDocument();
+    expect(screen.getByText("That is not a Set id.")).toBeInTheDocument();
+    expect(getSet).not.toHaveBeenCalled();
+  });
+});

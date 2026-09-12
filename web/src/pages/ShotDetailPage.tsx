@@ -7,6 +7,7 @@ import { ShotChart } from "@/components/charts/ShotChart";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { AssignToSet } from "@/components/shots/AssignToSet";
 import {
   ChannelingCard,
   ComplianceCard,
@@ -15,6 +16,7 @@ import {
   TemperatureCard,
   WeightCard,
 } from "@/components/shots/DiagnosticsCards";
+import { JudgementForm } from "@/components/shots/JudgementForm";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { Button } from "@/components/ui/button";
@@ -91,7 +93,13 @@ export function ShotDetailPage() {
   const diagnostics = (row.diagnostics ?? {}) as ShotDiagnosticsBlob;
   const phases = (row.phases ?? []) as ShotPhase[];
   const hasPressure = diagnostics.has_pressure !== false;
-  const ratio = formatRatio(notes?.dose_in_g, row.volume_g ?? null);
+  // The judgement's dose first: the machine's notes card is a mirror of what
+  // was typed on the machine, and the archive's own copy is the one the user
+  // edits here.
+  const ratio = formatRatio(
+    shot.data.judgement?.dose_in_g ?? notes?.dose_in_g,
+    shot.data.judgement?.dose_out_g ?? row.volume_g ?? null,
+  );
 
   return (
     <div className="space-y-4">
@@ -102,7 +110,9 @@ export function ShotDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             <ScoreBadge score={row.execution_score ?? null} className="text-sm" />
-            <RatingStars rating={row.rating ?? row.index_rating ?? null} />
+            <RatingStars
+              rating={shot.data.judgement?.rating ?? row.rating ?? row.index_rating ?? null}
+            />
           </div>
         }
       />
@@ -167,9 +177,15 @@ export function ShotDetailPage() {
 
       <ExecutionScoreCard row={row} diagnostics={diagnostics} />
 
-      {/* The judgement panel mounts here — between the machine's own verdict
-          on the shot and the numbers behind it — and the analysis beside it.
-          Both read `row` and need nothing else from this page. */}
+      {/* Between the machine's own verdict on the shot and the numbers behind
+          it: what you thought, and which Set it belongs to. The analysis
+          panel slots in after these two. */}
+      <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
+      <AssignToSet
+        shotId={row.id}
+        setVersion={shot.data.set_version}
+        judgement={shot.data.judgement}
+      />
 
       {!row.quarantined ? (
         <div className="grid gap-4 md:grid-cols-2">

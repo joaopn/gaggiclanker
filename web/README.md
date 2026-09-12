@@ -114,6 +114,39 @@ src/
     PromptsSection.tsx  the YAML editor, with an "edited" badge and reset
 ```
 
+Sets and judgement add a fourth:
+
+```
+src/
+  lib/
+    sets.ts           freshness from a roast date, and how a recipe is written down
+  hooks/
+    useCatalog.ts     the vocabularies, the beans, the grinders, the machines
+    useSets.ts        Sets, versions, trends, the verdict and the assignment
+  components/
+    charts/
+      SetTrendChart.tsx   score, rating, duration and ratio across a Set's versions
+    sets/             SetBadge, VersionTimeline, NewSetWizard
+    shots/            JudgementForm, AssignToSet
+  pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
+```
+
+Nothing in `src/` types a coffee word. Roast levels, processes, burr types,
+grind step units, balance, the taste chips *with their definitions*, the
+decisions and the Set-version origins all come from `GET /api/vocab`
+(`useVocabulary`, cached for the session because they change with a redeploy and
+nothing else). A UI that hard-codes an enum drifts from the CHECK constraint
+behind it, and the symptom is a 422 on a value the user picked from a dropdown
+we shipped.
+
+Two conventions worth knowing before editing a Set form. The **new-version form
+starts empty**: `POST /api/sets/{id}/versions` inherits any field that is not
+sent, so prefilling it with the current recipe would record all six as changed
+and the timeline's diff would say nothing. And the mutations in `useSets`
+deliberately invalidate `shots` *and* `sets` together — saving a judgement moves
+a shot row, a Set page's copy of that row and a chart average at once, and
+naming three keys per call site is how one of them gets forgotten.
+
 `LlmSection` exists because a form generated from the registry cannot know that
 `llmBaseUrl` is meaningless for OpenRouter, that `anthropicApiKey` belongs to
 exactly one provider, or that a credential is worth testing before an analysis

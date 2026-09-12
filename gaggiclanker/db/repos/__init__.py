@@ -6,6 +6,13 @@ never hold a cursor.
 """
 
 from gaggiclanker.db.repos.base import JsonText, dumps, from_iso, to_iso, utc_now
+from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, BeanWrite
+from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository, GrinderWrite
+from gaggiclanker.db.repos.judgements import (
+    JudgementsRepository,
+    JudgementWrite,
+    ShotJudgementRow,
+)
 from gaggiclanker.db.repos.machines import MachineRow, MachinesRepository, MachineUpsert
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow, NotesRepository
 from gaggiclanker.db.repos.profiles import (
@@ -14,11 +21,23 @@ from gaggiclanker.db.repos.profiles import (
     ProfilesRepository,
     ProfileVersionRow,
 )
+from gaggiclanker.db.repos.sets import (
+    FieldChange,
+    SetRow,
+    SetsRepository,
+    SetTrends,
+    SetVersionPatch,
+    SetVersionRow,
+    SetVersionWrite,
+    SetWrite,
+    version_changes,
+)
 from gaggiclanker.db.repos.shots import (
     ShotDetailRow,
     ShotInsert,
     ShotListRow,
     ShotSampleRow,
+    ShotSetBadge,
     ShotsRepository,
     ShotState,
 )
@@ -30,20 +49,38 @@ from gaggiclanker.db.repos.sync import (
 )
 
 __all__ = [
+    "BeanRow",
+    "BeanWrite",
+    "BeansRepository",
     "DeviceProfileRow",
     "DeviceProfileSummary",
     "DeviceShotNotesRow",
+    "FieldChange",
+    "GrinderRow",
+    "GrinderWrite",
+    "GrindersRepository",
     "JsonText",
+    "JudgementWrite",
+    "JudgementsRepository",
     "MachineRow",
     "MachineUpsert",
     "MachinesRepository",
     "NotesRepository",
     "ProfileVersionRow",
     "ProfilesRepository",
+    "SetRow",
+    "SetTrends",
+    "SetVersionPatch",
+    "SetVersionRow",
+    "SetVersionWrite",
+    "SetWrite",
+    "SetsRepository",
     "ShotDetailRow",
     "ShotInsert",
+    "ShotJudgementRow",
     "ShotListRow",
     "ShotSampleRow",
+    "ShotSetBadge",
     "ShotState",
     "ShotsRepository",
     "SyncEventRow",
@@ -54,4 +91,5 @@ __all__ = [
     "from_iso",
     "to_iso",
     "utc_now",
+    "version_changes",
 ]
