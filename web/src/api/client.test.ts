@@ -6,6 +6,9 @@ import {
   fetchApi,
   getHealth,
   getSettings,
+  hasAuthenticatedSession,
+  login,
+  logout,
   patchSettings,
   setAuthToken,
 } from "@/api/client";
@@ -181,5 +184,69 @@ describe("fetchApi", () => {
     );
     await expect(createBackup()).rejects.toThrow(/Database is unavailable/);
     expect(redirectToSignIn).not.toHaveBeenCalled();
+  });
+});
+
+describe("the auth endpoints", () => {
+  beforeEach(() => {
+    __resetApiClientAuthForTests(null);
+    redirectToSignIn.mockClear();
+  });
+
+  it("keeps the token a successful login returned", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(200, success({ token: "fresh", expires_in: 2592000, user: "barista" })),
+    );
+
+    await expect(login("barista", "secret")).resolves.toMatchObject({ user: "barista" });
+    expect(hasAuthenticatedSession()).toBe(true);
+    expect(window.localStorage.getItem("gaggiclanker.token")).toBe("fresh");
+  });
+
+  it("keeps no token when the credentials are refused", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(401, failure("UNAUTHORIZED", "Invalid username or password")),
+    );
+
+    await expect(login("barista", "wrong")).rejects.toThrow(/Invalid username or password/);
+    expect(hasAuthenticatedSession()).toBe(false);
+  });
+
+  it("sends the password in the body, never in the URL", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(200, success({ token: "t", expires_in: 60, user: "barista" })),
+      );
+
+    await login("barista", "secret");
+
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/api/auth/login");
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.body).toBe('{"username":"barista","password":"secret"}');
+  });
+
+  it("forgets the token even when logout fails on the server", async () => {
+    // The one case where this matters is also the likeliest: the token had
+    // already expired, so the revoke 401s. A sign-out that left you signed in
+    // there would be worse than no button at all.
+    setAuthToken("stale");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(401, failure("UNAUTHORIZED", "Authentication required")),
+    );
+
+    await expect(logout()).rejects.toThrow();
+    expect(hasAuthenticatedSession()).toBe(false);
+  });
+
+  it("forgets the token on a clean logout", async () => {
+    setAuthToken("live");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(200, success({ revoked: true })),
+    );
+
+    await logout();
+    expect(hasAuthenticatedSession()).toBe(false);
+    expect(window.localStorage.getItem("gaggiclanker.token")).toBeNull();
   });
 });

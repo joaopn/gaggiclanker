@@ -2,21 +2,34 @@
 #
 #   cp .env.example .env      # then set GAGGIMATE_HOST
 #   docker compose up -d
-#   open http://localhost:8000
+#   open http://localhost:8000        # or http://<this box>:8000 from elsewhere
 #
-# Networking, which is the only decision this file forces:
+# Networking, which is the only decision this file forces.
 #
-#   The GaggiMate is on the LAN and the container has to reach it. Published
-#   ports (the default below) work whenever the machine has a routable IP from
-#   the Docker bridge, which is the normal case on a home network — put its IP
-#   or a DHCP-reserved hostname in GAGGIMATE_HOST and you are done.
+# **Host networking is the default.** The GaggiMate is a device on your LAN that
+# gaggiclanker holds a WebSocket to for days at a time, and sharing the host's
+# network stack is the arrangement with the fewest ways to go wrong:
 #
-#   Host networking (the commented block) is only needed if you want mDNS
-#   discovery (gaggimate.local) to resolve, which does not work from a bridge
-#   network. Note that the firmware turns mDNS off entirely when HomeKit is
-#   enabled, so a fixed IP is the more reliable answer either way. If you do
-#   switch to host networking, remove the `ports:` block — the two are mutually
-#   exclusive — and the app listens on PORT directly on the host.
+#   * mDNS works, so `gaggimate.local` resolves. It does not resolve from a
+#     bridge network — a name that works in your browser fails in the container,
+#     which is a confusing first hour. (The firmware also disables mDNS entirely
+#     when HomeKit is on, so a fixed IP is still the more reliable answer.)
+#   * No NAT between a long-lived WebSocket and the machine, and no bridge to
+#     time out an idle connection behind your back.
+#   * The app listens on PORT (8000 by default) directly on the host, so the
+#     UI is at http://<this box>:8000 with no port mapping to reason about.
+#
+# The cost: `ports:` does not apply, the container shares the host's loopback,
+# and Docker Desktop on macOS and Windows does not support it at all.
+#
+# **The bridge alternative.** Swap the two marked blocks below — comment out
+# `network_mode: host`, uncomment `ports:` — and put the machine's IP or a
+# DHCP-reserved hostname in GAGGIMATE_HOST. That works whenever the GaggiMate
+# has an address routable from the Docker bridge, which on an ordinary home
+# network it does. It is the right choice on Docker Desktop, on a box where
+# 8000 is already taken (set HOST_PORT), or anywhere you would rather the
+# container not see the host's other services. mDNS will not resolve, so
+# GAGGIMATE_HOST must be an address, not a name.
 
 services:
   gaggiclanker:
@@ -27,7 +40,7 @@ services:
       args:
         APP_UID: ${APP_UID:-1000}
         APP_GID: ${APP_GID:-1000}
-    image: gaggiclanker:local
+    image: gaggiclanker:0.1.0
     # No container_name: a fixed one is global to the daemon, so a second copy
     # of this file (a checkout under another directory, a worktree, a `-p`
     # project for testing) collides with the first instead of getting its own
@@ -54,10 +67,17 @@ services:
       - ./data:/app/data
       # - gaggiclanker-data:/app/data
 
-    ports:
-      - "${HOST_PORT:-8000}:8000"
+    # --- Networking: host by default. See the note at the top of this file. ---
+    #
+    # `ports:` and `network_mode: host` are mutually exclusive; exactly one of
+    # the two blocks below is active at a time.
+    network_mode: host
 
-    # network_mode: host   # see the note above; remove `ports:` if you use it
+    # The bridge alternative: comment out `network_mode:` above and uncomment
+    # this. GAGGIMATE_HOST must then be an IP or a DHCP-reserved hostname,
+    # because mDNS does not resolve from a bridge network.
+    # ports:
+    #   - "${HOST_PORT:-8000}:8000"
 
     environment:
       # Hostname or IP of the display board. Required for anything to sync.
@@ -66,17 +86,29 @@ services:
       # Passed through only when set on the host or in .env, so an unset key
       # does not shadow one stored in the settings table.
       GAGGICLANKER_LLM_API_KEY: ${GAGGICLANKER_LLM_API_KEY:-}
+      # Auth is off unless a username and a password reach the container. They
+      # are listed here as well as coming in through env_file so that
+      #   AUTH_USER=me AUTH_PASSWORD=... docker compose up -d
+      # works: a variable set only in the invoking shell reaches the container
+      # only if this file names it.
+      AUTH_USER: ${AUTH_USER:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
 
     env_file:
       - path: .env
         required: false
 
+    # PORT is read from the environment rather than baked in, the way the
+    # Dockerfile's own HEALTHCHECK does it: with host networking the operator
+    # may well move the app off 8000, and a healthcheck pointing at the old
+    # port reports a perfectly healthy container as unhealthy for ever.
     healthcheck:
       test:
         - CMD
         - python
         - -c
-        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)
+        - import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8000'), timeout=4).status == 200 else 1)
       interval: 30s
       timeout: 5s
       retries: 3

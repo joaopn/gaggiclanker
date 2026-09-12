@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHealth } from "@/hooks/useHealth";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useCreateBackup, useSettings, useUpdateSettings } from "@/hooks/useSettings";
+import { AuthSection } from "@/pages/settings/AuthSection";
 import { LlmSection } from "@/pages/settings/LlmSection";
 import { PromptsSection } from "@/pages/settings/PromptsSection";
 import { SettingField } from "@/pages/settings/SettingField";
@@ -137,7 +138,17 @@ export function SettingsPage() {
                 description={section.description}
                 contentClassName="space-y-5"
               >
-                {section.id === "llm" ? (
+                {section.id === "auth" ? (
+                  // The password is not a registry field and must not be one:
+                  // see AuthSection. The other auth keys still go through the
+                  // generated form.
+                  <AuthSection
+                    entries={entries}
+                    control={form.control}
+                    errors={form.formState.errors}
+                    disabled={update.isPending}
+                  />
+                ) : section.id === "llm" ? (
                   // The LLM keys get their own component: which of them matter
                   // depends on the provider, two are a closed set, and a
                   // credential is worth testing before an analysis fails at

@@ -33,9 +33,23 @@ export function fieldSchema(setting: ResolvedSetting): z.ZodTypeAny {
   }
 }
 
+/**
+ * Keys the generated form leaves alone.
+ *
+ * `PATCH /api/settings` refuses them, because a dedicated endpoint owns the
+ * write. `authPasswordHash` is the one: rendered as an ordinary masked box it
+ * read "Auth password hash", which invited typing the *password* into it — and
+ * a stored value argon2 cannot verify is a credential that authenticates
+ * nobody. `AuthSection` shows its state and offers "Set password" instead.
+ */
+export function isEditable(setting: ResolvedSetting): boolean {
+  return !setting.readonly;
+}
+
 export function buildSettingsSchema(settings: SettingsMap): z.ZodType<SettingsFormValues> {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const setting of Object.values(settings)) {
+    if (!isEditable(setting)) continue;
     shape[setting.key] = fieldSchema(setting);
   }
   return z.object(shape) as unknown as z.ZodType<SettingsFormValues>;
@@ -45,6 +59,7 @@ export function buildSettingsSchema(settings: SettingsMap): z.ZodType<SettingsFo
 export function toFormValues(settings: SettingsMap): SettingsFormValues {
   const values: SettingsFormValues = {};
   for (const setting of Object.values(settings)) {
+    if (!isEditable(setting)) continue;
     if (setting.secret) {
       values[setting.key] = "";
     } else if (setting.type === "bool") {
@@ -75,6 +90,7 @@ function parseField(setting: ResolvedSetting, raw: string | boolean): SettingVal
 export function toPatch(settings: SettingsMap, values: SettingsFormValues): SettingsPatch {
   const patch: SettingsPatch = {};
   for (const setting of Object.values(settings)) {
+    if (!isEditable(setting)) continue;
     const raw = values[setting.key];
     if (raw === undefined) continue;
     if (setting.secret) {
@@ -107,6 +123,12 @@ export const SETTINGS_SECTIONS = [
     title: "LLM",
     description: "Which provider answers a call, what it costs, and which model does what.",
   },
+  {
+    id: "auth",
+    title: "Authentication",
+    description:
+      "Off unless a username and a password are both set. Turn it on if anything you do not trust can reach this box.",
+  },
   { id: "general", title: "General", description: "Everything else in the registry." },
 ] as const;
 
@@ -125,5 +147,6 @@ const LLM_PREFIXES = ["llm", "anthropic", "claudeCode", "model"];
 export function sectionFor(key: string): string {
   if (key.startsWith("device") || key.startsWith("gaggimate")) return "device";
   if (LLM_PREFIXES.some((prefix) => key.startsWith(prefix))) return "llm";
+  if (key.startsWith("auth")) return "auth";
   return "general";
 }

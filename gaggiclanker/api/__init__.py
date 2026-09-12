@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from gaggiclanker.api import (
     analyses,
+    auth,
     backup,
     beans,
     device,
@@ -27,6 +28,9 @@ from gaggiclanker.api import (
 __all__ = ["api_router", "health_router"]
 
 api_router = APIRouter(prefix="/api")
+# First, so the two public auth routes are impossible to miss when reading the
+# mount order. The guard keeps them public by path, not by position.
+api_router.include_router(auth.router)
 api_router.include_router(settings.router)
 api_router.include_router(backup.router)
 api_router.include_router(device.router)

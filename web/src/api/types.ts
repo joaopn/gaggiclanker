@@ -11,6 +11,9 @@ import type { components } from "@/api/schema";
  */
 
 export type HealthData = components["schemas"]["HealthData"];
+export type AuthStatusData = components["schemas"]["AuthStatusData"];
+export type LoginData = components["schemas"]["LoginData"];
+export type PasswordData = components["schemas"]["PasswordData"];
 export type BackupData = components["schemas"]["BackupData"];
 export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
 export type ShotListData = components["schemas"]["ShotListData"];
@@ -165,6 +168,8 @@ export type PlainSetting = {
   key: string;
   type: SettingType;
   secret: false;
+  /** A dedicated endpoint owns this key; `PATCH /api/settings` refuses it. */
+  readonly: boolean;
   value: SettingValue;
   default: SettingValue;
   override: SettingValue;
@@ -177,6 +182,8 @@ export type SecretSetting = {
   key: string;
   type: SettingType;
   secret: true;
+  /** A dedicated endpoint owns this key; `PATCH /api/settings` refuses it. */
+  readonly: boolean;
   configured: boolean;
   hint: string | null;
   source: SettingSource;

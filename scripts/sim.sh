@@ -140,7 +140,20 @@ serve() {
     echo "sim.sh: starting the simulator, logging to $SIM_LOG"
     # SDL_VIDEODRIVER=dummy so it runs without an X server; the web UI and the
     # WebSocket are what we are after, not the panel.
-    ( cd "$SIM_WORKDIR" && SDL_VIDEODRIVER=dummy nohup "$PROGRAM" >"$SIM_LOG" 2>&1 & echo $! >"$SIM_PID" )
+    #
+    # `setsid` so the simulator leads its own process group: `stop` kills the
+    # group rather than one pid, because the SDL program spawns helpers and
+    # killing only the leader left them holding :8080 — which made the *next*
+    # run fail to bind and read as a broken build rather than as a leftover.
+    #
+    # `exec` keeps that leader's pid equal to `$!` (the subshell is replaced
+    # rather than waited on), and `disown` stops this script waiting for it, so
+    # `serve` returns and the simulator stays.
+    ( cd "$SIM_WORKDIR" && exec setsid env SDL_VIDEODRIVER=dummy "$PROGRAM" ) \
+        >"$SIM_LOG" 2>&1 </dev/null &
+    local pid=$!
+    disown "%%" 2>/dev/null || true
+    echo "$pid" >"$SIM_PID"
     for _ in $(seq 1 60); do
         if curl -fsS --max-time 1 "http://127.0.0.1:$SIM_PORT/api/status" >/dev/null 2>&1; then
             echo "sim.sh: up on http://127.0.0.1:$SIM_PORT"
@@ -151,25 +164,58 @@ serve() {
     die "the simulator did not answer /api/status within 60s; see $SIM_LOG"
 }
 
+# Is anything still listening on the simulator's port? The only question that
+# actually matters: a leftover holding :8080 makes the *next* run fail to bind,
+# which reads as a broken build rather than as a leftover.
+port_is_free() {
+    ! curl -fsS --max-time 1 "http://127.0.0.1:$SIM_PORT/api/status" >/dev/null 2>&1
+}
+
 stop() {
-    [[ -f "$SIM_PID" ]] || { echo "sim.sh: nothing to stop"; return 0; }
-    local pid
-    pid="$(cat "$SIM_PID")"
-    kill "$pid" 2>/dev/null || true
-    # The simulator is an SDL program and does not always take SIGTERM while it
-    # is inside a frame: a `sim.sh test` that returned with the process still
-    # holding :8080 made the next run fail to bind, which reads as a broken
-    # build rather than as a leftover. Give it a second, then insist.
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-        kill -0 "$pid" 2>/dev/null || break
+    if [[ -f "$SIM_PID" ]]; then
+        local pid
+        pid="$(cat "$SIM_PID")"
+        # Never kill our own group. A stale or mis-written pid file that names
+        # this script (or its caller) would otherwise turn `sim.sh stop` into a
+        # kill of the terminal that ran it — a spectacular way to lose a test
+        # run. The port sweep below handles that case instead.
+        if [[ "$pid" == "$$" || "$pid" == "$(ps -o pgid= -p $$ | tr -d ' ')" ]]; then
+            echo "sim.sh: $SIM_PID names this process group; ignoring it" >&2
+            pid=""
+            rm -f "$SIM_PID"
+        fi
+    fi
+    if [[ -n "${pid:-}" ]]; then
+        # The process *group*, not the pid. `serve` starts it under setsid, so
+        # the pid is the group leader and `kill -- -$pid` reaches the SDL
+        # helpers too; killing the single pid left them alive holding the port.
+        kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+        # The simulator is an SDL program and does not always take SIGTERM
+        # while it is inside a frame. Give it a second, then insist.
+        for _ in $(seq 1 20); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "sim.sh: $pid ignored SIGTERM, sending SIGKILL to the group"
+            kill -9 -- "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+        fi
+        rm -f "$SIM_PID"
+    fi
+
+    # Whatever the pid file said, and whatever was started by hand: the port is
+    # the contract. Wait for it, then take anything still holding it.
+    for _ in $(seq 1 20); do
+        port_is_free && { echo "sim.sh: stopped"; return 0; }
         sleep 0.1
     done
-    if kill -0 "$pid" 2>/dev/null; then
-        echo "sim.sh: $pid ignored SIGTERM, sending SIGKILL"
-        kill -9 "$pid" 2>/dev/null || true
-    fi
-    rm -f "$SIM_PID"
-    echo "sim.sh: stopped"
+    echo "sim.sh: something is still on :$SIM_PORT, killing it by name"
+    pkill -9 -f "$PROGRAM" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+        port_is_free && { echo "sim.sh: stopped"; return 0; }
+        sleep 0.1
+    done
+    die "port $SIM_PORT is still in use after stop; find it with \`ss -lptn 'sport = :$SIM_PORT'\`"
 }
 
 case "${1:-test}" in

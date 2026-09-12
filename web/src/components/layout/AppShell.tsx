@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
 import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
+import { SignOutButton } from "@/components/SignOutButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -117,6 +118,8 @@ export function AppShell() {
               Shortcuts
             </Button>
             <ThemeToggle />
+            {/* Last, and absent entirely when auth is off — see SignOutButton. */}
+            <SignOutButton />
           </div>
         </header>
 

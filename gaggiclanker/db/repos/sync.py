@@ -134,6 +134,33 @@ class SyncRepository(Repository):
             ),
         )
 
+    async def reconcile_running(self) -> int:
+        """Close every run still marked `running` at boot. Returns how many.
+
+        Same argument as the analyses ledger: a run is only `running` while a
+        process is holding it, so anything in that state after a restart was cut
+        off — and `GET /api/sync/status` reporting a backfill that has been
+        "running" since Tuesday is worse than reporting that it was interrupted.
+
+        It lands as `error`, not as a status of its own. The `sync_runs.status`
+        CHECK in migration 0002 allows exactly `running`, `ok` and `error`, and
+        widening it would mean rebuilding the table — which, with `sync_events`
+        holding an `ON DELETE CASCADE` reference to it and foreign keys on,
+        would take the event feed with it. `error` with an explicit message says
+        the same thing to the page and to a query, and costs nothing.
+        """
+        cursor = await self.db.execute(
+            """
+            UPDATE sync_runs
+               SET status = 'error',
+                   finished_at = ?,
+                   error = COALESCE(error, 'the process stopped before this sync run finished')
+             WHERE status = 'running'
+            """,
+            (utc_now(),),
+        )
+        return cursor.rowcount
+
     async def get_run(self, run_id: int) -> SyncRunRow | None:
         row = await self.db.fetch_one("SELECT * FROM sync_runs WHERE id = ?", (run_id,))
         return self.to_model(SyncRunRow, row)

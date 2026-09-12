@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -24,16 +24,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from gaggiclanker import __version__
 from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.api import api_router, health_router
+from gaggiclanker.auth.guard import AuthGuardMiddleware
+from gaggiclanker.auth.service import AuthService, validate_env_secret
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.analyses import AnalysesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
+from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.infra.envelope import register_exception_handlers
 from gaggiclanker.infra.logging import configure_logging, get_logger
 from gaggiclanker.infra.middleware import RequestContextMiddleware
+from gaggiclanker.infra.ratelimit import RateLimiter
+from gaggiclanker.infra.security import BodyLimitMiddleware, SecurityHeadersMiddleware
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.knowledge.rules import seed_rules
@@ -45,7 +50,7 @@ from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.static import mount_spa
 from gaggiclanker.sync.engine import SyncEngine
 
-__all__ = ["app", "create_app"]
+__all__ = ["app", "check_configuration", "create_app"]
 
 log = get_logger(__name__)
 
@@ -90,15 +95,102 @@ def ensure_data_dir(data_dir: Path) -> None:
         ) from exc
 
 
+def check_configuration(env: EnvSettings) -> None:
+    """Every check that needs nothing but the environment. Runs first, always.
+
+    "First" is the whole point. Anything that raises **after** ``db.connect()``
+    leaves a live aiosqlite worker thread behind: aiosqlite builds it as a plain
+    ``threading.Thread`` with no ``daemon=True``, so the only thing that stops
+    it is our ``close()``. Whether a leaked one actually holds the interpreter
+    open at ``sys.exit`` comes down to a ``__del__`` in aiosqlite's own
+    ``Connection`` happening to run during garbage collection — which it does on
+    0.22.1, and which is not a thing to depend on. A container that logged
+    "Application startup failed" and then hung would never exit non-zero,
+    ``restart: unless-stopped`` would never fire, and a typo in a compose file
+    would become a box that is simply dead rather than one that restart-loops
+    with the reason in its log.
+
+    So a check that can be made without opening anything is made here, and the
+    teardown in :func:`lifespan` covers the ones that cannot.
+    ``tests/test_startup.py`` holds both halves in place.
+    """
+    validate_env_secret(env.auth_jwt_secret)
+
+
+async def _shutdown(app: FastAPI, db: Database) -> None:
+    """Release everything the lifespan acquired, in reverse, tolerating gaps.
+
+    Called from two places: the ordinary shutdown, and a failed startup — where
+    only some of these exist. Hence ``getattr`` throughout rather than direct
+    attribute access: a startup that died building the analyzer must still close
+    the database, and a teardown that raised ``AttributeError`` on the way would
+    leave the very thread this exists to reap.
+
+    The order is the acquisition order reversed. The device client first: its
+    supervisor owns a socket and an aiohttp session, and both have to be closed
+    before the loop stops accepting callbacks. Then the registry, so nothing is
+    mid-write. Then the LLM service, whose provider owns an HTTP client whose
+    connections must be released on the loop that made them. The database last.
+    """
+    device: GaggimateClient | None = getattr(app.state, "device", None)
+    if device is not None:
+        with suppress(Exception):
+            await device.stop()
+    app.state.sync = None
+
+    tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
+    if tasks is not None:
+        with suppress(Exception):
+            await tasks.cancel_all()
+
+    llm: LlmService | None = getattr(app.state, "llm", None)
+    if llm is not None:
+        with suppress(Exception):
+            await llm.aclose()
+
+    await db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Open the database, migrate, wire the services, and tear it all down."""
     env: EnvSettings = app.state.env
 
+    # Before anything is opened: see check_configuration for why the order is
+    # not a matter of taste.
+    check_configuration(env)
     ensure_data_dir(env.data_dir)
 
     db = Database(env.database_path)
     await db.connect()
+    try:
+        await _start(app, db)
+    except BaseException:
+        # BaseException, not Exception: a cancellation or a Ctrl-C during
+        # startup leaves the same open connection behind, and the same
+        # non-daemon thread holding the interpreter open.
+        log.exception("app_startup_failed")
+        try:
+            await _shutdown(app, db)
+        except BaseException:
+            # Best effort. A teardown that is itself cancelled must neither
+            # mask the failure that caused it nor stop us re-raising.
+            log.warning("app_shutdown_after_failed_startup_incomplete", exc_info=True)
+        # Re-raised so uvicorn reports the failure and exits non-zero, rather
+        # than serving an app that is half built.
+        raise
+
+    log.info("app_started", version=__version__, data_dir=str(env.data_dir))
+    try:
+        yield
+    finally:
+        await _shutdown(app, db)
+        log.info("app_stopped")
+
+
+async def _start(app: FastAPI, db: Database) -> None:
+    """Migrate, wire every service onto ``app.state``, and start the loops."""
+    env: EnvSettings = app.state.env
     await run_migrations(db)
 
     app.state.db = db
@@ -106,6 +198,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings_service = settings_service
     app.state.events = EventBus[SseEvent]()
     app.state.tasks = TaskRegistry()
+    app.state.rate_limits = RateLimiter()
+
+    # Built before anything can serve a request, and before reconciliation:
+    # the guard reads `app.state.auth` on every request, and boot work runs in
+    # the lifespan precisely so it happens with no request in flight.
+    auth = AuthService(db, settings_service, env_secret=env.auth_jwt_secret)
+    app.state.auth = auth
+    await auth.bootstrap(env.auth_password)
+    forgotten = await auth.cleanup()
 
     # Prompts are seeded before anything can call one: the rules in
     # gaggiclanker/llm/prompts.py are what let a shipped wording reach an
@@ -115,12 +216,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # (gaggiclanker/knowledge/rules.py).
     await seed_rules(RulesRepository(db))
 
-    # An analysis row is only `running` while a process holds it, and no process
-    # survives a boot. Anything still in that state was cut off mid-call, and
-    # saying so turns a spinner nobody can clear into a row with an error on it.
-    interrupted = await AnalysesRepository(db).reconcile_running()
-    if interrupted:
-        log.info("analyses_reconciled", interrupted=interrupted)
+    # Boot reconciliation. A row is only `running` while a process holds it, and
+    # no process survives a boot: anything still in that state was cut off
+    # mid-flight. Saying so turns a spinner nobody can clear into a row with an
+    # error on it, for an analysis and for a sync run alike.
+    #
+    # One line either way, even when the counts are zero, because "what did the
+    # last restart interrupt" is the first question after an unexpected one and
+    # an absent log line does not answer it.
+    interrupted_analyses = await AnalysesRepository(db).reconcile_running()
+    interrupted_syncs = await SyncRepository(db).reconcile_running()
+    log.info(
+        "boot_reconciled",
+        analyses_interrupted=interrupted_analyses,
+        sync_runs_interrupted=interrupted_syncs,
+        auth_sessions_expired=forgotten,
+        auth_enabled=await auth.enabled(),
+    )
 
     app.state.llm = LlmService(
         settings_service,
@@ -139,24 +251,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.device = await start_device_client(settings_service)
     app.state.sync = await start_sync_engine(app)
-
-    log.info("app_started", version=__version__, data_dir=str(env.data_dir))
-    try:
-        yield
-    finally:
-        # The device client first: its supervisor owns a socket and an aiohttp
-        # session, and both have to be closed before the loop stops accepting
-        # callbacks. Then the registry, then the database, so nothing is
-        # mid-write when the file is released.
-        if app.state.device is not None:
-            await app.state.device.stop()
-        app.state.sync = None
-        await app.state.tasks.cancel_all()
-        # After the tasks, before the database: the provider owns an HTTP
-        # client whose connections must be released on the loop that made them.
-        await app.state.llm.aclose()
-        await db.close()
-        log.info("app_stopped")
 
 
 async def start_device_client(settings: SettingsService) -> GaggimateClient | None:
@@ -237,9 +331,32 @@ def create_app(
     app.state.env = env
     app.state.dotenv = load_dotenv_values() if dotenv is None else dotenv
 
-    # Middleware is applied outermost-last, so CORS goes on first and the
-    # request context wraps it: a preflight response carries a request id too,
-    # and an exception raised inside CORS handling still lands in the envelope.
+    # Middleware is applied outermost-last, so this block reads bottom-up. The
+    # resulting order, outermost first:
+    #
+    #   RequestContextMiddleware   request id, the access log line, the error
+    #                              boundary — everything below it is inside a
+    #                              request context and lands in the envelope
+    #   SecurityHeadersMiddleware  stamps every response, error envelopes and
+    #                              the SPA included
+    #   CORSMiddleware             only when origins are configured; off by
+    #                              default, because the SPA is same-origin
+    #   BodyLimitMiddleware        refuses an oversized body before the guard
+    #                              spends argon2 time on it
+    #   AuthGuardMiddleware        401s everything under /api without a token
+    #
+    # **CORS has to be outside the guard**, and that is not a detail. A browser
+    # cannot read a cross-origin response that carries no
+    # `Access-Control-Allow-Origin` — it does not see a 401, it sees a network
+    # error. With CORS inside, the guard's own 401 came back bare, so the Vite
+    # dev server's SPA could not tell "your token expired" from "the backend is
+    # down" and never redirected to the sign-in page. Outside, the rejection is
+    # a readable 401 and `fetchApi`'s handler does its job. (A preflight never
+    # reaches the guard anyway: `requires_auth` lets OPTIONS through, because a
+    # preflight carries no credentials by definition.)
+    app.add_middleware(AuthGuardMiddleware)
+    app.add_middleware(BodyLimitMiddleware)
+
     origins = env.cors_origin_list
     if origins:
         app.add_middleware(
@@ -251,6 +368,7 @@ def create_app(
             expose_headers=["x-request-id"],
         )
 
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
 
     register_exception_handlers(app)

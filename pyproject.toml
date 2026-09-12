@@ -28,6 +28,12 @@ dependencies = [
     "openai>=3.13.0",
     "anthropic>=1.5.0",
     "pyyaml>=6.0.3",
+    # Auth. PyJWT signs and verifies the HS256 session token; argon2-cffi
+    # hashes the password. argon2id rather than bcrypt because bcrypt silently
+    # truncates at 72 bytes and has no memory cost, and this password protects a
+    # box on a home LAN where the only rate limit is the one we wrote.
+    "pyjwt>=2.10",
+    "argon2-cffi>=23.1",
 ]
 
 [project.scripts]

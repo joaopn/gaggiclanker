@@ -14,6 +14,8 @@ from typing import Any
 
 import structlog
 
+from gaggiclanker.infra.redact import redact_processor
+
 __all__ = ["configure_logging", "get_logger"]
 
 _LEVELS = {
@@ -83,6 +85,7 @@ def configure_logging(level: str = "info", *, json_output: bool = True) -> None:
         structlog.stdlib.ExtraAdder(),
         _drop_uvicorn_color_message,
         _add_request_id,
+        redact_processor,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
     ]
     handler = logging.StreamHandler(stream=sys.stdout)
@@ -120,6 +123,10 @@ def configure_logging(level: str = "info", *, json_output: bool = True) -> None:
         processors=[
             structlog.contextvars.merge_contextvars,
             _add_request_id,
+            # Last thing before the level and the timestamp, and therefore
+            # before the renderer: every event from every module passes through
+            # it, whatever else it was built out of.
+            redact_processor,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             structlog.processors.StackInfoRenderer(),

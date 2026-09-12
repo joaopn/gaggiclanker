@@ -19,7 +19,7 @@ import asyncio
 from contextlib import suppress
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,6 +39,7 @@ from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListRow, ShotSampleRow
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
 from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
+from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
 from gaggiclanker.sync.engine import downsample
 
@@ -425,6 +426,10 @@ async def list_analyses(shot_id: int, analyses: AnalysesRepoDep) -> JSONResponse
     response_model=ApiResponse[AnalysisRow],
     status_code=202,
     summary="Queue an analysis of this shot",
+    # One of the two routes in this API that spends money. The registry already
+    # makes a repeat request for the *same* shot idempotent; this bounds a loop
+    # walking different ones. See gaggiclanker/infra/ratelimit.py.
+    dependencies=[Depends(rate_limit("analysis", ANALYSIS_RATE_LIMIT))],
 )
 async def run_analysis(
     shot_id: int,

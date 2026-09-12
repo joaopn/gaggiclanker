@@ -120,7 +120,12 @@ def binary_response(
 
 
 def _fail(error: AppError) -> JSONResponse:
-    return JSONResponse(status_code=error.status, content=error_payload(error))
+    # `Retry-After` when the error carries one (429s from the login throttle and
+    # the analysis rate limit). A client that honours the header backs off on
+    # its own; one that does not still gets the seconds in `error.details`.
+    retry_after = getattr(error, "retry_after", None)
+    headers = {"Retry-After": str(int(retry_after))} if retry_after else None
+    return JSONResponse(status_code=error.status, content=error_payload(error), headers=headers)
 
 
 def _validation_details(exc: RequestValidationError | ValidationError) -> list[dict[str, Any]]:

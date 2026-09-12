@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
@@ -18,6 +18,7 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
 import { SetsPage } from "@/pages/SetsPage";
 import { ShotsPage } from "@/pages/ShotsPage";
+import { SignInPage } from "@/pages/SignInPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 /**
@@ -55,13 +56,18 @@ const SYNC_STREAM_URL: string | null = "/api/sync/events";
 
 export function App() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  // No streams on the sign-in page. Both would 401, which the SSE helper treats
+  // as fatal and handles by sending the user to sign in — where they already
+  // are. Nothing breaks, but two pointless requests and a redirect-to-self on
+  // every failed login is not what the page should be doing.
+  const signedOut = pathname === "/sign-in";
 
   // Let the API client send an expired session to the sign-in page through the
-  // router rather than a full page load.
-  //
-  // There is no /sign-in route yet -- auth, the login endpoint and that page all
-  // arrive with auth. Until then nothing answers UNAUTHORIZED, so this never fires;
-  // registering it now means auth adds a route and a page, and no call site.
+  // router rather than a full page load, which would throw away the query cache
+  // and flash white. Registered here because `fetchApi` is a plain module with
+  // no hooks and no router context.
   useEffect(() => {
     setAuthNavigator((nextPath) => navigate(buildSignInPath(nextPath), { replace: true }));
     return () => setAuthNavigator(null);
@@ -70,12 +76,15 @@ export function App() {
   // One subscription to the device stream, not two: the hook both feeds the
   // live-status store (`device.live`, read straight off the wire) and
   // invalidates `/api/device/status` on `device.connection`.
-  useDeviceLiveStream(DEVICE_STREAM_URL);
-  useEventInvalidation(SYNC_STREAM_URL);
+  useDeviceLiveStream(signedOut ? null : DEVICE_STREAM_URL);
+  useEventInvalidation(signedOut ? null : SYNC_STREAM_URL);
 
   return (
     <TooltipProvider delayDuration={200}>
       <Routes>
+        {/* Outside AppShell: the shell's own queries need a token, so rendering
+            it around the sign-in page would 401 the user straight back here. */}
+        <Route path="/sign-in" element={<SignInPage />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<Navigate to={DEFAULT_ROUTE} replace />} />
           <Route path="/shots" element={<ShotsPage />} />

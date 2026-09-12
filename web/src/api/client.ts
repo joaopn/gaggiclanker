@@ -14,6 +14,7 @@
 import type {
   AcceptedSuggestion,
   Analysis,
+  AuthStatusData,
   BackupData,
   BatchResult,
   BeanRow,
@@ -35,9 +36,11 @@ import type {
   LlmRateLimit,
   LlmStatusData,
   LlmUsageTotals,
+  LoginData,
   MachineListData,
   MachinePatch,
   MachineRow,
+  PasswordData,
   ProfileListData,
   ProfileVersionListData,
   ProfileVersionParams,
@@ -102,8 +105,9 @@ type Envelope<T> =
     };
 
 // ---------------------------------------------------------------------------
-// Token handling. Auth lands later; the plumbing is here so every request
-// already carries the header and nothing has to be retrofitted into call sites.
+// Token handling. Every request already carries the header, so a call site
+// never thinks about auth; only the sign-in page and the header's sign-out
+// control touch the functions below.
 // ---------------------------------------------------------------------------
 
 function loadStoredToken(): string | null {
@@ -266,6 +270,64 @@ function describeBody(text: string): string {
 
 export async function getHealth(): Promise<HealthData> {
   return fetchPath<HealthData>("/health");
+}
+
+/**
+ * Whether this server wants a token, and whether ours is still good.
+ *
+ * Public, so it answers before we have signed in — which is what lets the app
+ * show a sign-in page up front instead of bouncing off the first 401. This is
+ * the one endpoint that must NOT clear the session on a 401, and it cannot:
+ * the route never returns one.
+ */
+export async function getAuthStatus(): Promise<AuthStatusData> {
+  return fetchApi<AuthStatusData>("/auth/status");
+}
+
+/** Sign in and keep the token. Throws `ApiClientError` on bad credentials. */
+export async function login(username: string, password: string): Promise<LoginData> {
+  const data = await fetchApi<LoginData>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  setAuthToken(data.token);
+  return data;
+}
+
+/**
+ * Set the sign-in password. The plain value is hashed on the server.
+ *
+ * `authPasswordHash` is read-only through `PATCH /api/settings` precisely so
+ * this is the only way: a browser never holds a hash, and nothing can store a
+ * value in that field that argon2 cannot verify. Every session is revoked,
+ * including this one, so the caller is signed out on success.
+ */
+export async function setPassword(input: {
+  currentPassword?: string;
+  newPassword: string;
+}): Promise<PasswordData> {
+  return fetchApi<PasswordData>("/auth/password", {
+    method: "POST",
+    body: JSON.stringify({
+      ...(input.currentPassword ? { current_password: input.currentPassword } : {}),
+      new_password: input.newPassword,
+    }),
+  });
+}
+
+/**
+ * Revoke this session on the server, then forget it here.
+ *
+ * The local half runs whatever the server said. A logout that failed because
+ * the token had already expired must still clear the token, or the sign-out
+ * button does nothing on the one page where it is most obviously needed.
+ */
+export async function logout(): Promise<void> {
+  try {
+    await fetchApi<unknown>("/auth/logout", { method: "POST" });
+  } finally {
+    clearAuthSession();
+  }
 }
 
 export async function getSettings(): Promise<SettingsMap> {

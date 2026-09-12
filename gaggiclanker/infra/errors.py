@@ -19,8 +19,10 @@ __all__ = [
     "InternalError",
     "MethodNotAllowed",
     "NotFound",
+    "PayloadTooLarge",
     "RequestTimeout",
     "ServiceUnavailable",
+    "TooManyRequests",
     "Unauthorized",
     "Unprocessable",
     "UpstreamError",
@@ -38,7 +40,9 @@ _CODE_BY_STATUS: dict[int, str] = {
     405: "METHOD_NOT_ALLOWED",
     408: "REQUEST_TIMEOUT",
     409: "CONFLICT",
+    413: "PAYLOAD_TOO_LARGE",
     422: "UNPROCESSABLE_ENTITY",
+    429: "RATE_LIMITED",
     500: "INTERNAL_ERROR",
     502: "UPSTREAM_ERROR",
     503: "SERVICE_UNAVAILABLE",
@@ -156,6 +160,38 @@ class Unprocessable(AppError):
 
     status = 422
     code = "UNPROCESSABLE_ENTITY"
+
+
+class PayloadTooLarge(AppError):
+    """The request body is larger than this route will read."""
+
+    status = 413
+    code = "PAYLOAD_TOO_LARGE"
+
+    def __init__(self, message: str = "Request body too large", **kwargs: Any) -> None:
+        super().__init__(message, **kwargs)
+
+
+class TooManyRequests(AppError):
+    """Refused for now, not refused outright: come back after ``retry_after``.
+
+    ``retry_after`` is carried on the error rather than only in ``details`` so
+    the envelope handler can put it in the ``Retry-After`` header, which is what
+    a well-behaved client already knows how to read.
+    """
+
+    status = 429
+    code = "RATE_LIMITED"
+
+    def __init__(
+        self,
+        message: str = "Too many requests",
+        *,
+        retry_after: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(message, **kwargs)
+        self.retry_after = retry_after
 
 
 class UpstreamError(AppError):

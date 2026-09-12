@@ -20,6 +20,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange credentials for a bearer token */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the session this token names */
+        post: operations["logout_api_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the sign-in password, hashing it on the server
+         * @description The only way the password is set from a browser.
+         *
+         *     The plain password is hashed here and the hash is stored; the browser never
+         *     sees a hash and the settings API refuses to take one
+         *     (``authPasswordHash`` is read-only there). That is the whole reason this
+         *     route exists: a masked text box on the Settings page labelled "password
+         *     hash" invites somebody to type the *password* into it, and a stored value
+         *     that is not a hash cannot authenticate anybody.
+         *
+         *     Every open session is revoked, including the caller's own. A password is
+         *     changed because the old one may be known to somebody else, and the tokens
+         *     already issued are the credential now.
+         */
+        post: operations["set_password_api_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether this server needs a token, and whether you have a valid one */
+        get: operations["status_api_auth_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/backup": {
         parameters: {
             query?: never;
@@ -833,7 +915,17 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update runtime settings */
+        /**
+         * Update runtime settings
+         * @description Apply the patch, and end every session if it changed who may sign in.
+         *
+         *     `AuthService.verify` already refuses a token whose subject is not the
+         *     configured user, so renaming the user locks the old tokens out on its own.
+         *     Revoking is still worth doing: it leaves no live rows claiming a user who
+         *     no longer exists, so `auth_sessions` answers "who is signed in" honestly,
+         *     and it makes the rule one thing — **the credential changed, the sessions
+         *     end** — rather than two behaviours that happen to coincide today.
+         */
         patch: operations["patch_settings_api_settings_patch"];
         trace?: never;
     };
@@ -1343,6 +1435,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[AuthStatusData] */
+        ApiResponse_AuthStatusData_: {
+            data?: components["schemas"]["AuthStatusData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[BackupData] */
         ApiResponse_BackupData_: {
             data?: components["schemas"]["BackupData"] | null;
@@ -1466,6 +1566,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[LoginData] */
+        ApiResponse_LoginData_: {
+            data?: components["schemas"]["LoginData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[LogoutData] */
+        ApiResponse_LogoutData_: {
+            data?: components["schemas"]["LogoutData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[MachineListData] */
         ApiResponse_MachineListData_: {
             data?: components["schemas"]["MachineListData"] | null;
@@ -1485,6 +1601,14 @@ export interface components {
         /** ApiResponse[ModelsData] */
         ApiResponse_ModelsData_: {
             data?: components["schemas"]["ModelsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PasswordData] */
+        ApiResponse_PasswordData_: {
+            data?: components["schemas"]["PasswordData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -1697,6 +1821,18 @@ export interface components {
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
             ok: boolean;
+        };
+        /**
+         * AuthStatusData
+         * @description ``auth_required`` is what the SPA reads before it has any token at all.
+         */
+        AuthStatusData: {
+            /** Auth Required */
+            auth_required: boolean;
+            /** Authenticated */
+            authenticated: boolean;
+            /** User */
+            user?: string | null;
         };
         /**
          * BackupData
@@ -2262,6 +2398,33 @@ export interface components {
             /** Timeout S */
             timeout_s: number;
         };
+        /**
+         * LoginBody
+         * @description Credentials. Never logged, and never echoed in a validation error.
+         */
+        LoginBody: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /**
+         * LoginData
+         * @description What a successful login returns. The token is the whole credential.
+         */
+        LoginData: {
+            /** Expires In */
+            expires_in: number;
+            /** Token */
+            token: string;
+            /** User */
+            user: string;
+        };
+        /** LogoutData */
+        LogoutData: {
+            /** Revoked */
+            revoked: boolean;
+        };
         /** MachineListData */
         MachineListData: {
             /** Items */
@@ -2364,6 +2527,26 @@ export interface components {
             models: string[];
             /** Provider */
             provider: string;
+        };
+        /**
+         * PasswordBody
+         * @description A password change. The plain values never leave this request.
+         */
+        PasswordBody: {
+            /** Current Password */
+            current_password?: string | null;
+            /** New Password */
+            new_password: string;
+        };
+        /**
+         * PasswordData
+         * @description What changed, and what it cost.
+         */
+        PasswordData: {
+            /** Auth Required */
+            auth_required: boolean;
+            /** Sessions Revoked */
+            sessions_revoked: boolean;
         };
         /** @enum {string} */
         Process: "washed" | "natural" | "honey" | "anaerobic" | "other";
@@ -3743,6 +3926,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_LoginData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_LogoutData_"];
+                };
+            };
+        };
+    };
+    set_password_api_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PasswordData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_auth_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_AuthStatusData_"];
                 };
             };
         };

@@ -58,6 +58,14 @@ LEAKY_ENV_KEYS = (
     "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_CODE_BIN",
     "CLAUDE_CODE_EFFORT",
+    # Auth. A developer with these exported would have every test in the
+    # suite running behind a token, and the failure would read as "every route
+    # is broken" rather than as "your shell has AUTH_USER in it".
+    "AUTH_USER",
+    "AUTH_PASSWORD",
+    "AUTH_PASSWORD_HASH",
+    "AUTH_TOKEN_TTL_S",
+    "AUTH_JWT_SECRET",
 )
 
 

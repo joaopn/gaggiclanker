@@ -73,7 +73,7 @@ src/
     queryKeys.ts      the key factory - every useQuery takes its key from here
     invalidate.ts     named invalidations + the event -> query-key map
     navigation.ts     NAV_LINKS: sidebar, shortcuts and the route table in one table
-  hooks/              useSse, useEventInvalidation, useHotkeys, useHealth, useSettings
+  hooks/              useSse, useEventInvalidation, useHotkeys, useHealth, useSettings, useAuth
   components/
     ui/               shadcn primitives (see the React 18 note below)
     layout/           AppShell, PageHeader, SectionCard, EmptyState, ShortcutsDialog
@@ -144,6 +144,36 @@ src/
   pages/
     KnowledgePage.tsx   the rules by category, with a switch and an editor
 ```
+
+Auth adds a sixth, and it is small because the plumbing was already here:
+
+```
+src/
+  hooks/
+    useAuth.ts          the status probe, the sign-in mutation, the sign-out one
+  components/
+    SignOutButton.tsx   the header control; renders nothing when auth is off
+  pages/
+    SignInPage.tsx      the only page outside AppShell
+```
+
+`api/client.ts` has carried the bearer header and the 401 handler from the start, so
+no call site changed: `fetchApi` attaches `Authorization` when there is a token,
+and an `UNAUTHORIZED` envelope clears the session and calls `redirectToSignIn()`
+from `lib/auth-navigation.ts`. `lib/sse.ts` reads event streams with `fetch`
+rather than `EventSource` for exactly this reason — `EventSource` cannot send a
+header — and treats a 401 as fatal, because reconnecting with a token the server
+has revoked only hammers it.
+
+Three things to know before editing that corner. **`SignInPage` renders outside
+`AppShell`**: every query the shell makes needs a token, so wrapping it would
+401 the user straight back to the page they are on. **`App` stops subscribing to
+both SSE streams while `/sign-in` is showing**, or every failed login costs two
+doomed requests and a redirect to the page you are already on. And
+**`GET /api/auth/status` is the one public route under `/api`** — it is what
+lets the app know auth is on before it has a token, which is the difference
+between showing a sign-in form and flashing a page of empty tables on the way to
+a 401.
 
 Two of its behaviours are worth knowing before editing. **Running an analysis
 resolves as soon as it is queued**: the server answers 202 with a `running` row

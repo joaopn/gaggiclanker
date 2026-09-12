@@ -25,6 +25,7 @@ from "the wrong key is loaded" without putting the key in a browser tab.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -41,9 +42,22 @@ __all__ = [
     "ResolvedSetting",
     "SettingDefinition",
     "SettingType",
+    "SettingValueError",
+    "is_argon2_hash",
     "load_dotenv_values",
     "secret_hint",
 ]
+
+
+class SettingValueError(ValueError):
+    """A value a setting's own validator rejected, with a message safe to echo.
+
+    ``SettingsService.apply`` puts this message in ``error.details``, which goes
+    to the client — so every message a validator raises must be a **fixed
+    string** that says what the field wants, and must never quote the value it
+    was given. The value can be a password.
+    """
+
 
 # Where both layers look for a dotenv file: the working directory, which is the
 # repository root in a checkout and /app in the container.
@@ -135,6 +149,27 @@ class EnvSettings(BaseSettings):
             "sets this explicitly."
         ),
     )
+    auth_password: str = Field(
+        default="",
+        validation_alias=AliasChoices("AUTH_PASSWORD", "GAGGICLANKER_AUTH_PASSWORD"),
+        description=(
+            "The sign-in password in plain text, hashed once at boot into the settings table "
+            "and never stored as given. Bootstrap-only and deliberately NOT a registry key, so "
+            "it can never come back out of GET /api/settings - not even as a hint. Use "
+            "AUTH_PASSWORD_HASH instead if you would rather the plain password never reached "
+            "the environment at all."
+        ),
+    )
+    auth_jwt_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("AUTH_JWT_SECRET", "GAGGICLANKER_AUTH_JWT_SECRET"),
+        description=(
+            "HS256 signing key for session tokens. Empty (the normal case) generates one into "
+            "the runtime_secrets table on first boot and keeps it, so sessions survive a "
+            "restart and a restored backup. Set it only to share sessions between processes; "
+            "at least 32 characters, or the app refuses to sign anything with it."
+        ),
+    )
     cors_origins: str = Field(
         default="",
         validation_alias=AliasChoices("CORS_ORIGINS", "GAGGICLANKER_CORS_ORIGINS"),
@@ -167,6 +202,16 @@ class SettingDefinition:
     description: str
     secret: bool = False
     env_key: str | None = None
+    #: An extra rule on top of the type, run on every write. Returns an error
+    #: message — a fixed string, never quoting the value — or ``None``.
+    validate: Callable[[Any], str | None] | None = None
+    #: Not settable through ``PATCH /api/settings``. The value still resolves
+    #: from the environment and the database like any other, and the service
+    #: can still write it through :meth:`SettingsService.store`; what this
+    #: forbids is a browser form putting an arbitrary string in it. Used where
+    #: a dedicated endpoint owns the write (``authPasswordHash``), because a
+    #: masked text box invites somebody to type the password itself into it.
+    readonly: bool = False
 
     @property
     def expected(self) -> str:
@@ -211,7 +256,24 @@ class SettingDefinition:
         return str(value)
 
     def coerce(self, value: Any) -> Any:
-        """Validate an inbound JSON value from a PATCH body.
+        """Validate an inbound JSON value, then apply the setting's own rule.
+
+        Two steps because they answer different questions: the type check says
+        "this could be stored", :attr:`validate` says "this is worth storing".
+        """
+        return self._checked(self._coerce_type(value))
+
+    def _checked(self, value: Any) -> Any:
+        """Run :attr:`validate`, if there is one, and raise on its message."""
+        if self.validate is None:
+            return value
+        problem = self.validate(value)
+        if problem is not None:
+            raise SettingValueError(problem)
+        return value
+
+    def _coerce_type(self, value: Any) -> Any:
+        """The type half of :meth:`coerce`.
 
         Booleans are rejected where an int is expected: JSON's ``true`` is a
         Python ``bool`` and ``int(True) == 1``, so without this a typo silently
@@ -260,6 +322,10 @@ class ResolvedSetting:
     source: Literal["database", "environment", "default"]
     secret: bool
     description: str
+    #: Mirrors :attr:`SettingDefinition.readonly`. The UI reads it to render
+    #: the key's state without an editable control, and the form skips it when
+    #: building a PATCH.
+    readonly: bool = False
 
     def to_api(self) -> dict[str, Any]:
         """The JSON shape ``GET /api/settings`` returns.
@@ -272,6 +338,7 @@ class ResolvedSetting:
                 "key": self.key,
                 "type": self.type,
                 "secret": True,
+                "readonly": self.readonly,
                 "configured": bool(self.value),
                 "hint": secret_hint(self.value),
                 "source": self.source,
@@ -281,6 +348,7 @@ class ResolvedSetting:
             "key": self.key,
             "type": self.type,
             "secret": False,
+            "readonly": self.readonly,
             "value": self.value,
             "default": self.default,
             "override": self.override,
@@ -299,6 +367,34 @@ def secret_hint(value: Any) -> str | None:
         # nothing more.
         return "*" * len(text)
     return text[:SECRET_HINT_LENGTH]
+
+
+#: The PHC prefixes argon2 writes. A pure string check, kept here rather than in
+#: ``auth/passwords.py`` so the registry can validate a value without importing
+#: the auth package — settings is the bottom of the stack and stays there.
+_ARGON2_PREFIXES: tuple[str, ...] = ("$argon2id$", "$argon2i$", "$argon2d$")
+
+
+def is_argon2_hash(value: str) -> bool:
+    """Whether ``value`` looks like an argon2 PHC string.
+
+    Shape only; it says nothing about whether the hash verifies. What it
+    catches is somebody typing the *password* into a field that wants its hash,
+    which without this check is a value that can never authenticate anybody.
+    """
+    return value.startswith(_ARGON2_PREFIXES)
+
+
+def _must_be_an_argon2_hash(value: Any) -> str | None:
+    # Empty is allowed and means "no password configured", which is how auth is
+    # switched off. Anything else has to be a hash.
+    if not value or is_argon2_hash(str(value)):
+        return None
+    return (
+        "expected an argon2id hash (a '$argon2id$...' string), not a password. "
+        "Set the password with POST /api/auth/password, or put the plain "
+        "password in AUTH_PASSWORD and restart."
+    )
 
 
 def _registry(*definitions: SettingDefinition) -> dict[str, SettingDefinition]:
@@ -510,6 +606,46 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description=(
             "Model for drafts and summaries, where speed beats depth. Empty falls back to "
             "modelDefault."
+        ),
+    ),
+    SettingDefinition(
+        key="authUser",
+        type="string",
+        default="",
+        env_key="AUTH_USER",
+        description=(
+            "Sign-in username. Auth is enabled exactly when this and a password hash are both "
+            "set, and the switch is re-read on every request - so turning it on from this page "
+            "takes effect without a restart. Empty means the whole app is open, which is the "
+            "right default for a machine only your LAN can reach."
+        ),
+    ),
+    SettingDefinition(
+        key="authPasswordHash",
+        type="string",
+        default="",
+        secret=True,
+        env_key="AUTH_PASSWORD_HASH",
+        readonly=True,
+        validate=_must_be_an_argon2_hash,
+        description=(
+            "argon2id hash of the sign-in password (a `$argon2id$...` PHC string). Read-only "
+            "through the settings API: change the password with POST /api/auth/password, which "
+            "hashes it on the server and revokes every open session, or seed the first one with "
+            "AUTH_PASSWORD in the environment. A stored value that is not an argon2 hash cannot "
+            "authenticate anybody, so auth stays ON and refuses every sign-in rather than "
+            "quietly letting the whole API open."
+        ),
+    ),
+    SettingDefinition(
+        key="authTokenTtlSeconds",
+        type="int",
+        default=2592000,
+        env_key="AUTH_TOKEN_TTL_S",
+        description=(
+            "How long a session token stays valid, in seconds. Thirty days by default: this is "
+            "a home appliance whose tab stays open for weeks, and signing out is a button that "
+            "revokes the session server-side rather than something the expiry has to do."
         ),
     ),
     SettingDefinition(

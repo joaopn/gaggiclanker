@@ -11,6 +11,14 @@
  */
 export const queryKeys = {
   health: () => ["health"] as const,
+  /**
+   * Outside every other namespace, and it has to be: signing out clears the
+   * whole cache, and the answer to "does this server want a token" is the one
+   * thing that must survive being cleared long enough to render the form.
+   */
+  auth: {
+    status: () => ["auth", "status"] as const,
+  },
   settings: {
     all: ["settings"] as const,
     current: () => ["settings", "current"] as const,

@@ -18,7 +18,7 @@ from contextlib import suppress
 from dataclasses import asdict, replace
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -49,6 +49,7 @@ from gaggiclanker.db.repos.sets import (
 from gaggiclanker.db.repos.shots import ShotListRow
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
+from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
 
 __all__ = ["router"]
 
@@ -339,6 +340,10 @@ async def list_suggestions(
     response_model=ApiResponse[BatchResult],
     status_code=202,
     summary="Queue an analysis of every un-analysed shot in this Set",
+    # The other money-spending route. Same bucket as the per-shot one on
+    # purpose: a caller alternating between the two would otherwise get twice
+    # the allowance for the same provider account.
+    dependencies=[Depends(rate_limit("analysis", ANALYSIS_RATE_LIMIT))],
 )
 async def analyse_set(
     set_id: int,

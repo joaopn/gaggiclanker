@@ -7,8 +7,9 @@
  * a client-side navigation instead of a full page load (which would throw away
  * the query cache and flash white).
  *
- * Auth itself arrives later. Until then nothing answers UNAUTHORIZED, the
- * navigator is registered anyway, and this costs one module.
+ * The path it builds is always in-app and never absolute: `next` is fed
+ * straight back into the router by `SignInPage`, so an absolute URL here would
+ * be an open redirect.
  */
 
 type AuthNavigator = (nextPath: string | null) => void;

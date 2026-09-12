@@ -19,9 +19,18 @@ from gaggiclanker.settings import (
     SETTINGS_REGISTRY,
     ResolvedSetting,
     SettingDefinition,
+    SettingValueError,
 )
 
-__all__ = ["SettingsService"]
+__all__ = ["READ_ONLY_MESSAGE", "SettingsService"]
+
+#: What a PATCH gets for a key a dedicated endpoint owns. Only one key is
+#: read-only today, so the message can name its endpoint; if a second ever
+#: appears, this becomes a per-definition string.
+READ_ONLY_MESSAGE = (
+    "read-only through this endpoint. Change the sign-in password with "
+    "POST /api/auth/password, or seed the first one with AUTH_PASSWORD in the environment."
+)
 
 log = structlog.get_logger(__name__)
 
@@ -118,6 +127,7 @@ class SettingsService:
             source=source,  # type: ignore[arg-type]
             secret=definition.secret,
             description=definition.description,
+            readonly=definition.readonly,
         )
 
     async def resolve_all(self) -> dict[str, ResolvedSetting]:
@@ -155,11 +165,22 @@ class SettingsService:
             if definition is None:
                 failures.append({"field": key, "message": "unknown setting"})
                 continue
+            if definition.readonly:
+                # A dedicated endpoint owns this key. Refused here rather than
+                # validated, because the message that helps is "use that one",
+                # not "that is the wrong shape".
+                failures.append({"field": key, "message": READ_ONLY_MESSAGE})
+                continue
             if value is None:
                 validated[key] = None
                 continue
             try:
                 validated[key] = definition.serialize(definition.coerce(value))
+            except SettingValueError as exc:
+                # A validator's message is a fixed string by contract, so it is
+                # safe to send on; it is also the only thing that says what the
+                # field actually wants.
+                failures.append({"field": key, "message": str(exc)})
             except ValueError:
                 # definition.expected, not str(exc): the message goes to the
                 # client and the rejected value may be the secret being set.
@@ -176,3 +197,18 @@ class SettingsService:
 
         log.info("settings_updated", keys=sorted(validated))
         return await self.resolve_all()
+
+    async def store(self, key: str, value: Any) -> None:
+        """Write one setting, read-only flag and all.
+
+        The service's own way in, for the code that legitimately owns a key a
+        browser form must not touch: the ``AUTH_PASSWORD`` bootstrap and
+        ``POST /api/auth/password`` both write ``authPasswordHash`` through
+        here. The value still goes through the definition's validation — being
+        allowed to write a key is not the same as being allowed to write
+        rubbish into it — but the read-only rule, which is about *where* a
+        write may come from, does not apply.
+        """
+        definition = self.definition(key)
+        await self.repo.set(key, definition.serialize(definition.coerce(value)))
+        log.info("setting_stored", setting=key)

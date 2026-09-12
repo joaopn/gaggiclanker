@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from gaggiclanker.analyzer.service import AnalyzerService
+from gaggiclanker.auth.service import AuthService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.beans import BeansRepository
@@ -38,6 +39,7 @@ from gaggiclanker.sync.engine import SyncEngine
 __all__ = [
     "AnalysesRepoDep",
     "AnalyzerServiceDep",
+    "AuthServiceDep",
     "BeansRepoDep",
     "DatabaseDep",
     "DeviceClientDep",
@@ -67,6 +69,16 @@ def get_database(request: Request) -> Database:
 
 def get_settings_service(request: Request) -> SettingsService:
     service: SettingsService = request.app.state.settings_service
+    return service
+
+
+def get_auth_service(request: Request) -> AuthService:
+    """The auth policy. App-scoped, because the login throttle is in memory.
+
+    A per-request instance would count every failed attempt against a fresh
+    counter, which is a throttle that never throttles.
+    """
+    service: AuthService = request.app.state.auth
     return service
 
 
@@ -184,6 +196,7 @@ def get_suggestions_repo(request: Request) -> SuggestionsRepository:
 DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 EventBusDep = Annotated[SseEventBus, Depends(get_event_bus)]
 LlmServiceDep = Annotated[LlmService, Depends(get_llm_service)]
 PromptServiceDep = Annotated[PromptService, Depends(get_prompt_service)]
