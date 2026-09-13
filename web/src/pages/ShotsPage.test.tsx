@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -11,6 +11,7 @@ import type {
 } from "@/api/types";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { ShotsPage } from "@/pages/ShotsPage";
+import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { judgement, setRow } from "@/test/setsFixtures";
 import { shot129, syntheticSamples } from "@/test/shotFixture";
@@ -32,6 +33,7 @@ const {
   getDeviceStatus,
   runSync,
   importFiles,
+  runAnalysis,
 } = vi.hoisted(() => ({
   getShots: vi.fn(),
   getSyncStatus: vi.fn(),
@@ -44,6 +46,7 @@ const {
   getDeviceStatus: vi.fn(),
   runSync: vi.fn(),
   importFiles: vi.fn(),
+  runAnalysis: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -58,6 +61,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getDeviceStatus,
   runSync,
   importFiles,
+  runAnalysis,
 }));
 
 /** Shaped exactly like `ShotListRow` in gaggiclanker/db/repos/shots.py. */
@@ -351,23 +355,29 @@ describe("ShotsPage", () => {
     // The archive keeps bytes it cannot parse, so the list has to say so:
     // a shot that silently vanished would look like a shot that was never
     // pulled, which is the one thing this project must never do.
+    const user = setupUser();
     getShots.mockResolvedValue(
       listData([shot({ id: 2, quarantined: true, execution_score: null, volume_g: null })]),
     );
 
     renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Flags");
 
     expect(await screen.findByText("quarantined")).toBeInTheDocument();
     // No curve to draw, so no request for one.
     expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
   });
 
-  it("shows the Set badge and the analysis state on every row", async () => {
+  it("shows the Set badge and, with Flags on, the analysis state on every row", async () => {
     // Both are states with something to do behind them rather than absences,
     // which is why "not analysed" is rendered rather than left blank.
+    const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Flags");
 
     expect(await screen.findByTestId("set-badge-slot")).toBeInTheDocument();
     expect(screen.getByTestId("analysis-slot")).toHaveTextContent("not analysed");
@@ -379,10 +389,13 @@ describe("ShotsPage", () => {
     // An interrupted run is reported as `failed` by the server: four states on
     // a list, not five.
     ["failed", "analysis failed"],
-  ])("renders the %s analysis state", async (state, label) => {
+  ])("renders the %s analysis state among the flags", async (state, label) => {
+    const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ analysis_state: state })]));
 
     renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Flags");
 
     expect(await screen.findByTestId("analysis-slot")).toHaveTextContent(label);
   });
@@ -539,6 +552,159 @@ describe("ShotsPage column widths", () => {
     expect(template()).not.toContain("12rem");
     expect(template().split(" ")[1]).toBe("7.5rem");
     expect(screen.getByTestId("reset-widths")).toBeDisabled();
+  });
+});
+
+describe("ShotsPage Analyse column", () => {
+  /** The list with somewhere to navigate to, so a navigation is visible. */
+  function renderList() {
+    return renderWithQueryClient(
+      <Routes>
+        <Route path="/" element={<ShotsPage />} />
+        <Route path="/shots/:shotId" element={<ShotPageProbe />} />
+      </Routes>,
+    );
+  }
+
+  /** Stands in for the shot page and says which fragment it was opened at. */
+  function ShotPageProbe() {
+    const { hash } = useLocation();
+    return <p>the shot page{hash}</p>;
+  }
+
+  function cell(): HTMLElement {
+    return screen.getByTestId("analyse-cell");
+  }
+
+  it("is in the default columns in place of Flags", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.getByTestId("header-analyze")).toHaveTextContent("Analyse");
+    expect(screen.queryByTestId("header-flags")).not.toBeInTheDocument();
+  });
+
+  it("analyses a shot that has none, once, however fast the clicks come", async () => {
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          set_version_id: 22,
+          set_badge: { set_id: 3, set_name: "Guji", version_no: 2 },
+        }),
+      ]),
+    );
+    runAnalysis.mockResolvedValue(analysis({ shot_id: 1, status: "running" }));
+
+    renderList();
+    await listed();
+
+    const button = within(cell()).getByRole("button", { name: "Analyse shot 000101" });
+    // A shot in a Set carries no warning.
+    expect(button).not.toHaveAttribute("title");
+    // Two clicks inside one act: both handlers run before React re-renders,
+    // which is a double click on a slow machine — the button that would
+    // disappear after the first is still there for the second.
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    await waitFor(() => expect(runAnalysis).toHaveBeenCalledTimes(1));
+    expect(runAnalysis).toHaveBeenCalledWith(1, { model: undefined, force: false });
+    // Still on the list, and still saying it is on it until the row catches up.
+    expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
+    expect(cell()).toHaveAttribute("data-state", "running");
+    expect(within(cell()).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("follows the row to Analysed when the analysis finishes", async () => {
+    getShots.mockResolvedValue(listData([shot({ analysis_state: "running" })]));
+
+    const { queryClient } = renderList();
+    await listed();
+    expect(cell()).toHaveAttribute("data-state", "running");
+    expect(cell()).toHaveTextContent("Analysing…");
+
+    // What the LLM stream's `analysis.finished` does to this page.
+    getShots.mockResolvedValue(listData([shot({ analysis_state: "ok" })]));
+    for (const queryKey of EVENT_INVALIDATIONS["analysis.finished"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() => expect(cell()).toHaveAttribute("data-state", "ok"));
+  });
+
+  it("links an analysed shot to the analysis on its page", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ analysis_state: "ok" })]));
+
+    renderList();
+    await listed();
+
+    const link = screen.getByRole("link", { name: /^Analysed/ });
+    expect(link).toHaveAttribute("href", "/shots/1#analysis");
+    await user.click(link);
+    expect(await screen.findByText("the shot page#analysis")).toBeInTheDocument();
+    expect(runAnalysis).not.toHaveBeenCalled();
+  });
+
+  it("offers a retry with the reason when the last one failed, forcing a re-run", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ analysis_state: "failed", analysis_error: "rate_limited: slow down" })]),
+    );
+    runAnalysis.mockResolvedValue(analysis({ shot_id: 1, status: "running" }));
+
+    renderList();
+    await listed();
+
+    const retry = screen.getByRole("button", { name: "Retry the analysis of shot 000101" });
+    expect(retry).toHaveAttribute("title", "The last analysis failed: rate_limited: slow down");
+    await user.click(retry);
+
+    await waitFor(() =>
+      expect(runAnalysis).toHaveBeenCalledWith(1, { model: undefined, force: true }),
+    );
+  });
+
+  it("stops waiting when a retry fails again straight away", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ analysis_state: "failed" })]));
+    runAnalysis.mockResolvedValue(
+      analysis({ shot_id: 1, status: "failed", error: "auth: no key" }),
+    );
+
+    renderList();
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Retry the analysis of shot 000101" }));
+
+    await waitFor(() => expect(cell()).toHaveAttribute("data-state", "failed"));
+    expect(toast.error).toHaveBeenCalledWith("auth: no key");
+  });
+
+  it("refuses a quarantined shot, as the shot page does, and says why", async () => {
+    getShots.mockResolvedValue(listData([shot({ quarantined: true, analysis_state: "none" })]));
+
+    renderList();
+    await listed();
+
+    expect(cell()).toHaveAttribute("data-state", "unavailable");
+    expect(cell()).toHaveAttribute("title", expect.stringMatching(/^Quarantined/));
+    expect(within(cell()).getByRole("button", { name: "Analyse shot 000101" })).toBeDisabled();
+  });
+
+  it("warns, without refusing, that a shot with no Set has no recipe to reason from", async () => {
+    getShots.mockResolvedValue(listData([shot({ set_badge: null })]));
+
+    renderList();
+    await listed();
+
+    const button = within(cell()).getByRole("button", { name: "Analyse shot 000101" });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("title", expect.stringMatching(/^Not in a Set/));
   });
 });
 

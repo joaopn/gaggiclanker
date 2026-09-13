@@ -3,6 +3,7 @@ import { type RefObject, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
+import { AnalyseCell } from "@/components/shots/AnalyseCell";
 import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
@@ -474,6 +475,10 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
           {shot.judgement_notes || ""}
         </span>
       );
+    case "analyze":
+      // Lifted like the stars: a click on the button — or on the "Analysing…"
+      // beside where it was — is never a click on the row.
+      return <AnalyseCell shot={shot} className={INTERACTIVE} />;
     case "flags":
       return (
         <span className="flex flex-wrap justify-center gap-1">

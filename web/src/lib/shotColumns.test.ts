@@ -6,6 +6,7 @@ import {
   gridTemplates,
   loadShotColumns,
   loadShotWidths,
+  PREVIOUS_DEFAULT_SHOT_COLUMNS,
   SHOT_COLUMNS,
   SHOT_COLUMNS_KEY,
   SHOT_WIDTHS_KEY,
@@ -53,6 +54,37 @@ describe("loadShotColumns", () => {
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("profile");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("curve");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("notes");
+  });
+
+  it("shows Analyse by default, and Flags only to somebody who asks", () => {
+    expect(DEFAULT_SHOT_COLUMNS).toContain("analyze");
+    expect(DEFAULT_SHOT_COLUMNS).not.toContain("flags");
+  });
+
+  it("reads a stored copy of the previous default as the new default", () => {
+    // Stored by somebody who toggled a column and put it back: what they had
+    // was what they were given, so they get what is given now.
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(PREVIOUS_DEFAULT_SHOT_COLUMNS));
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    // In whatever order it was stored: the order of a stored list means nothing.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify([...PREVIOUS_DEFAULT_SHOT_COLUMNS].reverse()),
+    );
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+  });
+
+  it.each([
+    ["one column fewer", ["time", "duration", "score", "rating", "set", "flags"]],
+    ["one column more", ["time", "duration", "yield", "score", "rating", "set", "notes", "flags"]],
+    ["Flags without the Set", ["time", "duration", "yield", "score", "rating", "flags"]],
+    [
+      "the default with a duplicate",
+      ["time", "duration", "yield", "score", "rating", "set", "set"],
+    ],
+  ])("keeps any other stored choice as it was made: %s", (_why, stored) => {
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(stored));
+    expect(loadShotColumns()).toEqual(stored);
   });
 
   it("round-trips a choice", () => {

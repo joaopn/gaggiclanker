@@ -353,6 +353,30 @@ describe("ShotDetailPage Set panel", () => {
     expect(document.getElementById("set")).toContainElement(screen.getByTestId("assign-to-set"));
   });
 
+  it("scrolls to the analysis when the link asks for it", async () => {
+    // The shots list's Analyse column links an analysed shot here with
+    // `#analysis`.
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/shots/:shotId" element={<ShotDetailPage />} />
+      </Routes>,
+      { initialEntries: [`/shots/${shot129.shot.id}#analysis`] },
+    );
+
+    expect(await screen.findByTestId("run-analysis")).toBeInTheDocument();
+    await waitFor(() => expect(scrolled).toContain("analysis"));
+    expect(document.getElementById("analysis")).toContainElement(
+      screen.getByTestId("run-analysis"),
+    );
+  });
+
   it("stays at the top without the fragment", async () => {
     const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
 

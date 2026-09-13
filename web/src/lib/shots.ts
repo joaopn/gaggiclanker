@@ -19,6 +19,13 @@ import type { ShotListRow } from "@/api/types";
  */
 export const ASSIGN_ANCHOR = "set";
 
+/**
+ * The shot page's analysis panel, as a fragment. The shots list's "Analysed"
+ * links here: the link promises the analysis, and landing at the top of a long
+ * page would leave the reader to find it.
+ */
+export const ANALYSIS_ANCHOR = "analysis";
+
 // ── numbers ──────────────────────────────────────────────────────────
 
 export function formatTime(value: string | null | undefined): string {

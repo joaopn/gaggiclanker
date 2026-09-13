@@ -27,6 +27,7 @@ import { useShot, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { availableSeries, DEFAULT_SERIES, SHOT_SERIES } from "@/lib/shotChart";
 import {
+  ANALYSIS_ANCHOR,
   ASSIGN_ANCHOR,
   exitReasonLabel,
   formatGrams,
@@ -65,13 +66,15 @@ export function ShotDetailPage() {
   const { hash } = useLocation();
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
-  // rest here with `#set`. The panel is far down a long page, and landing at
-  // the top of it would leave the reader to find the thing the link promised.
-  // It waits for the shot, because until then the panel does not exist.
+  // rest here with `#set`, and its Analyse column links an analysed shot here
+  // with `#analysis`. Both panels are far down a long page, and landing at the
+  // top of it would leave the reader to find the thing the link promised. It
+  // waits for the shot, because until then the panels do not exist.
   const arrived = shot.isSuccess;
   useEffect(() => {
-    if (!arrived || hash !== `#${ASSIGN_ANCHOR}`) return;
-    document.getElementById(ASSIGN_ANCHOR)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const anchor = hash.slice(1);
+    if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== ANALYSIS_ANCHOR)) return;
+    document.getElementById(anchor)?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [arrived, hash]);
 
   useQueryErrorToast(shot.error, "Could not load this shot");
@@ -209,12 +212,14 @@ export function ShotDetailPage() {
         />
       </section>
       {!row.quarantined ? (
-        <AnalysisPanel
-          shotId={row.id}
-          analyses={shot.data.analyses ?? []}
-          hasSet={shot.data.set_version != null}
-          profileVersionId={row.profile_version_id}
-        />
+        <section id={ANALYSIS_ANCHOR} className="scroll-mt-20">
+          <AnalysisPanel
+            shotId={row.id}
+            analyses={shot.data.analyses ?? []}
+            hasSet={shot.data.set_version != null}
+            profileVersionId={row.profile_version_id}
+          />
+        </section>
       ) : null}
 
       {!row.quarantined ? (

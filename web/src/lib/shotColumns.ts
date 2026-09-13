@@ -23,6 +23,7 @@ export type ShotColumnId =
   | "rating"
   | "set"
   | "notes"
+  | "analyze"
   | "flags";
 
 export type ShotColumn = {
@@ -79,6 +80,8 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
   { id: "notes", label: "Notes", size: { track: "minmax(8rem,1.2fr)" }, narrowHidden: true },
+  // "Analysing…" is the widest thing the cell says, with its icon.
+  { id: "analyze", label: "Analyse", size: { rem: 7, min: 5.5, max: 12 }, narrowHidden: true },
   { id: "flags", label: "Flags", size: { rem: 9, min: 4, max: 24 }, narrowHidden: true },
 ];
 
@@ -92,6 +95,12 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * were brewing, and whether it worked) say everything and were the two hardest
  * things to see. Notes is off because it is long: it is there for somebody who
  * wants to read a session back, not for scanning.
+ *
+ * Analyse replaced Flags. The flags are mostly absences (imported, gone from
+ * the machine, incomplete) that matter on a handful of rows, while "has the
+ * model looked at this yet, and if not, look" is a question for every row —
+ * and a column that answers it with a button is worth more than a badge that
+ * only reports it. Flags stays in the chooser.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",
@@ -100,8 +109,42 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "yield",
   "score",
   "rating",
+  "analyze",
+];
+
+/**
+ * The default before Analyse replaced Flags, as a v1 value could hold it.
+ *
+ * A stored value only exists once somebody has used the chooser, so a stored
+ * copy of the old default means "I looked, and this is what I wanted" only in
+ * the sense that it was what they were given — they toggled something and put
+ * it back. That exact value is read as the new default. Anything else is a
+ * choice somebody made and is kept as they made it, Flags included: an upgrade
+ * that rewrote chosen columns would be the release deciding for them.
+ */
+export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly ShotColumnId[] = [
+  "time",
+  "duration",
+  "yield",
+  "score",
+  "rating",
+  "set",
   "flags",
 ];
+
+/**
+ * Whether a stored choice is the previous default. Compared as a set, because
+ * the order a list was stored in carries nothing: the table draws columns in
+ * the canonical order whatever the list says.
+ */
+function isPreviousDefault(ids: ShotColumnId[]): boolean {
+  const stored = new Set(ids);
+  return (
+    stored.size === ids.length &&
+    stored.size === PREVIOUS_DEFAULT_SHOT_COLUMNS.length &&
+    PREVIOUS_DEFAULT_SHOT_COLUMNS.every((id) => stored.has(id))
+  );
+}
 
 /** Bump the suffix when the meaning of a stored value changes, never the keys. */
 export const SHOT_COLUMNS_KEY = "shots.columns.v1";
@@ -127,7 +170,8 @@ export function loadShotColumns(storage: Storage | undefined = safeStorage()): S
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return DEFAULT_SHOT_COLUMNS;
     const known = parsed.filter(isColumnId);
-    return known.length > 0 ? known : DEFAULT_SHOT_COLUMNS;
+    if (known.length === 0 || isPreviousDefault(known)) return DEFAULT_SHOT_COLUMNS;
+    return known;
   } catch {
     return DEFAULT_SHOT_COLUMNS;
   }
