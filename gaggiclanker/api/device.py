@@ -140,7 +140,6 @@ class CleanupRunAccepted(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    machine_id: int
     planned: int
     task: str
 
@@ -158,10 +157,7 @@ class CleanupRunsData(BaseModel):
     response_model=ApiResponse[CleanupPlan],
     summary="What a cleanup would delete from the machine right now",
 )
-async def get_cleanup_plan(
-    cleanup: CleanupServiceDep,
-    machine_id: Annotated[int | None, Query()] = None,
-) -> JSONResponse:
+async def get_cleanup_plan(cleanup: CleanupServiceDep) -> JSONResponse:
     """A dry run. Reads the archive and the last identity frame; writes nothing.
 
     This is the preview a person approves, and it lists what it will **not**
@@ -169,7 +165,7 @@ async def get_cleanup_plan(
     bytes do not match its header is named with the reason, because "why is that
     shot still on my machine" is otherwise unanswerable from this page.
     """
-    plan = await _require_cleanup(cleanup).plan(machine_id)
+    plan = await _require_cleanup(cleanup).plan()
     return envelope_response(plan.model_dump(mode="json"))
 
 
@@ -179,41 +175,31 @@ async def get_cleanup_plan(
     status_code=202,
     summary="Delete what the policy says, oldest first",
 )
-async def post_cleanup_run(
-    request: Request,
-    cleanup: CleanupServiceDep,
-    machine_id: Annotated[int | None, Query()] = None,
-) -> JSONResponse:
+async def post_cleanup_run(request: Request, cleanup: CleanupServiceDep) -> JSONResponse:
     """202, and the work happens in a background task.
 
     Not in the request, for the same reason an analysis is not: a run is one
     WebSocket frame per shot paced at two a second, so a hundred shots is most
     of a minute and `docker stop` allows ten seconds. The task is named
-    `cleanup:<machine id>`, claimed synchronously, so a second tab pressing the
-    button gets a 409 rather than a second pass fighting this one over the
-    device's two HTTP slots.
+    `cleanup`, claimed synchronously, so a second tab pressing the button gets a
+    409 rather than a second pass fighting this one over the device's two HTTP
+    slots.
 
     Every delete is still authorised by the write gate on its way out, which is
     what makes this route safe to expose at all: it cannot delete anything the
     archive does not already hold intact.
     """
     service = _require_cleanup(cleanup)
-    plan = await service.plan(machine_id)
-    if plan.machine_id is None:
-        raise ServiceUnavailable(
-            plan.blocked or "No machine has been synced yet, so there is nothing to clean up."
-        )
-    if not service.spawn(request.app.state.tasks, plan.machine_id, trigger="manual"):
+    plan = await service.plan()
+    if not service.spawn(request.app.state.tasks, trigger="manual"):
         raise Conflict(
-            "A cleanup is already running for this machine. Wait for it to finish; "
-            "its result appears under Storage on the Device page."
+            "A cleanup is already running. Wait for it to finish; its result appears "
+            "under Storage on the Device page."
         )
     return envelope_response(
-        CleanupRunAccepted(
-            machine_id=plan.machine_id,
-            planned=len(plan.planned),
-            task=cleanup_task_name(plan.machine_id),
-        ).model_dump(mode="json"),
+        CleanupRunAccepted(planned=len(plan.planned), task=cleanup_task_name()).model_dump(
+            mode="json"
+        ),
         status_code=202,
     )
 
@@ -225,11 +211,10 @@ async def post_cleanup_run(
 )
 async def list_cleanup_runs(
     request: Request,
-    machine_id: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
 ) -> JSONResponse:
     """Newest first. A run that stopped early shows both figures: planned and deleted."""
-    items = await CleanupRepository(request.app.state.db).list_runs(machine_id, limit=limit)
+    items = await CleanupRepository(request.app.state.db).list_runs(limit=limit)
     return envelope_response(CleanupRunsData(items=items).model_dump(mode="json"))
 
 
@@ -258,7 +243,6 @@ class NotesPushAccepted(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    machine_id: int
     pending: int
 
 
@@ -267,10 +251,7 @@ class NotesPushAccepted(BaseModel):
     response_model=ApiResponse[PendingNotesData],
     summary="Judgements the machine's own notes cards do not have yet",
 )
-async def get_pending_notes(
-    notes: NotesWritebackServiceDep,
-    machine_id: Annotated[int | None, Query()] = None,
-) -> JSONResponse:
+async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
     """The backlog, plus both switches — a page has to say *why* the list is idle."""
     service = _require_writeback(notes)
     policy = await service.policy()
@@ -279,7 +260,7 @@ async def get_pending_notes(
             enabled=policy.enabled,
             writes_enabled=policy.writes_enabled,
             fields=policy.fields,
-            shot_ids=await service.pending(machine_id),
+            shot_ids=await service.pending(),
         ).model_dump(mode="json")
     )
 
@@ -290,24 +271,13 @@ async def get_pending_notes(
     status_code=202,
     summary="Send every pending judgement to the machine's notes cards",
 )
-async def post_notes_push(
-    request: Request,
-    notes: NotesWritebackServiceDep,
-    cleanup: CleanupServiceDep,
-    machine_id: Annotated[int | None, Query()] = None,
-) -> JSONResponse:
+async def post_notes_push(request: Request, notes: NotesWritebackServiceDep) -> JSONResponse:
     """202: one frame per shot, in a background task, stopping on the first device error."""
     service = _require_writeback(notes)
-    resolved = machine_id
-    if resolved is None:
-        plan = await _require_cleanup(cleanup).plan()
-        resolved = plan.machine_id
-    if resolved is None:
-        raise ServiceUnavailable("No machine has been synced yet.")
-    pending = await service.pending(resolved)
-    if not service.spawn_bulk(request.app.state.tasks, resolved):
-        raise Conflict("A notes push is already running for this machine.")
+    pending = await service.pending()
+    if not service.spawn_bulk(request.app.state.tasks):
+        raise Conflict("A notes push is already running.")
     return envelope_response(
-        NotesPushAccepted(machine_id=resolved, pending=len(pending)).model_dump(mode="json"),
+        NotesPushAccepted(pending=len(pending)).model_dump(mode="json"),
         status_code=202,
     )

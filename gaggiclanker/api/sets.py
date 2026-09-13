@@ -28,7 +28,6 @@ from gaggiclanker.api.deps import (
     BeansRepoDep,
     GrindersRepoDep,
     JudgementsRepoDep,
-    MachinesRepoDep,
     ProfilesRepoDep,
     SetsRepoDep,
     ShotsRepoDep,
@@ -79,12 +78,11 @@ class SetCreate(BaseModel):
 
     name: str
     bean_id: int
-    machine_id: int
     grinder_id: int | None = None
     #: Version 1. Everything on it is optional — a Set can start as "this bean,
     #: this grinder, we will see" — and the wizard fills it in.
     version: SetVersionWrite = SetVersionWrite()
-    #: Whether this becomes the machine's active Set. True by default: a Set is
+    #: Whether this becomes the active Set. True by default: a Set is
     #: created by somebody who has just put that bag in the hopper, and one that
     #: did not start collecting shots would look broken.
     activate: bool = True
@@ -146,9 +144,8 @@ def _missing(field: str, value: int, noun: str) -> NoReturn:
 async def list_sets(
     sets: SetsRepoDep,
     include_archived: Annotated[bool, Query()] = False,
-    machine_id: Annotated[int | None, Query()] = None,
 ) -> JSONResponse:
-    rows = await sets.list_sets(include_archived=include_archived, machine_id=machine_id)
+    rows = await sets.list_sets(include_archived=include_archived)
     return envelope_response(SetListData(items=rows).model_dump(mode="json"))
 
 
@@ -163,7 +160,6 @@ async def create_set(
     sets: SetsRepoDep,
     beans: BeansRepoDep,
     grinders: GrindersRepoDep,
-    machines: MachinesRepoDep,
     profiles: ProfilesRepoDep,
 ) -> JSONResponse:
     """Create the Set and version 1 atomically.
@@ -172,15 +168,13 @@ async def create_set(
     failed key raises `IntegrityError` from inside the transaction, which the
     envelope can only report as an internal error — a 500 on a request whose
     only problem is a stale id in a dropdown, and with nothing in the body
-    saying which of the four ids was wrong. Each check answers that instead:
+    saying which of the three ids was wrong. Each check answers that instead:
     422, with `details.field` naming the one at fault.
     """
     # A null grinder and a null profile are legitimate — a Set can name neither —
     # so only a stated id is looked up.
     if await beans.get(body.bean_id) is None:
         _missing("bean_id", body.bean_id, "bean")
-    if await machines.get(body.machine_id) is None:
-        _missing("machine_id", body.machine_id, "machine")
     if body.grinder_id is not None and await grinders.get(body.grinder_id) is None:
         _missing("grinder_id", body.grinder_id, "grinder")
     profile_version_id = body.version.profile_version_id
@@ -191,7 +185,6 @@ async def create_set(
         SetWrite(
             name=body.name,
             bean_id=body.bean_id,
-            machine_id=body.machine_id,
             grinder_id=body.grinder_id,
         ),
         body.version,
@@ -275,7 +268,7 @@ async def add_version(set_id: int, body: SetVersionPatch, sets: SetsRepoDep) -> 
     summary="Make this the Set the machine is set up for",
 )
 async def activate_set(set_id: int, sets: SetsRepoDep) -> JSONResponse:
-    """Switches the flag off the machine's previous Set. Archives nothing.
+    """Switches the flag off the previous active Set. Archives nothing.
 
     An archived Set is a 409 rather than a silent no-op: activating one would
     clear the flag from the live Set and leave the machine with no usable active

@@ -419,7 +419,6 @@ async def _set_attributes(
         process=bean.process if bean else None,
         origin=bean.origin if bean else None,
         grinder_id=row.grinder_id,
-        machine_id=row.machine_id,
     )
 
 

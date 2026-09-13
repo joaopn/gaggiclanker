@@ -58,10 +58,6 @@ async def import_files(
         list[UploadFile],
         File(description="Shot exports, profile exports, or zips containing them."),
     ],
-    machine_id: Annotated[
-        int | None,
-        Form(description="Which machine the shots belong to. Defaults to the configured one."),
-    ] = None,
     replace: Annotated[
         bool,
         Form(description="Overwrite shots already in the archive rather than skipping them."),
@@ -95,7 +91,7 @@ async def import_files(
         payloads.append(ImportFile(filename=upload.filename or "upload", data=data))
 
     service = ImportService(db, settings)
-    summary = await service.import_files(payloads, machine_id=machine_id, replace=replace)
+    summary = await service.import_files(payloads, replace=replace)
 
     # One event per kind, not one per file: the bus is lossy and an event only
     # ever means "this family is stale, go and re-read" (infra/sse.py), so a

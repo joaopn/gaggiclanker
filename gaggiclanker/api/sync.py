@@ -67,7 +67,6 @@ class SyncStatusData(BaseModel):
 
     configured: bool
     connected: bool
-    machine_id: int | None = None
     running: bool = False
     #: The most recent run of each kind, keyed by kind.
     last_runs: dict[str, SyncRunRow] = Field(default_factory=dict)
@@ -132,12 +131,10 @@ async def get_sync_status(
 ) -> JSONResponse:
     """Everything a "is the archive keeping up" panel needs, in one request."""
     last_runs = await runs.last_runs()
-    machine = engine.machine if engine is not None else None
     return envelope_response(
         SyncStatusData(
             configured=client is not None,
             connected=bool(client is not None and client.connected),
-            machine_id=machine.id if machine is not None else None,
             running=any(run.status == "running" for run in last_runs.values()),
             last_runs=last_runs,
             last_error=await runs.last_error(),

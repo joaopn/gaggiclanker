@@ -17,7 +17,7 @@ from gaggiclanker.api import (
     imports,
     knowledge,
     llm,
-    machines,
+    machine,
     profiles,
     prompts,
     sets,
@@ -42,7 +42,7 @@ api_router.include_router(shots.router)
 api_router.include_router(profiles.router)
 api_router.include_router(profiles.versions_router)
 api_router.include_router(drafts.router)
-api_router.include_router(machines.router)
+api_router.include_router(machine.router)
 api_router.include_router(vocab.router)
 api_router.include_router(beans.router)
 api_router.include_router(grinders.router)

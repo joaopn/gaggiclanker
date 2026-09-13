@@ -27,7 +27,7 @@ from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.knowledge_docs import KnowledgeDocsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.llm import PromptsRepository
-from gaggiclanker.db.repos.machines import MachinesRepository
+from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
@@ -64,7 +64,7 @@ __all__ = [
     "KnowledgeDocsRepoDep",
     "KnowledgeServiceDep",
     "LlmServiceDep",
-    "MachinesRepoDep",
+    "MachineRepoDep",
     "NotesRepoDep",
     "NotesWritebackServiceDep",
     "ProfilesRepoDep",
@@ -186,8 +186,8 @@ def get_notes_repo(request: Request) -> NotesRepository:
     return NotesRepository(get_database(request))
 
 
-def get_machines_repo(request: Request) -> MachinesRepository:
-    return MachinesRepository(get_database(request))
+def get_machine_repo(request: Request) -> MachineRepository:
+    return MachineRepository(get_database(request))
 
 
 def get_sync_repo(request: Request) -> SyncRepository:
@@ -298,7 +298,7 @@ SyncEngineDep = Annotated["SyncEngine | None", Depends(get_sync_engine)]
 ShotsRepoDep = Annotated[ShotsRepository, Depends(get_shots_repo)]
 ProfilesRepoDep = Annotated[ProfilesRepository, Depends(get_profiles_repo)]
 NotesRepoDep = Annotated[NotesRepository, Depends(get_notes_repo)]
-MachinesRepoDep = Annotated[MachinesRepository, Depends(get_machines_repo)]
+MachineRepoDep = Annotated[MachineRepository, Depends(get_machine_repo)]
 SyncRepoDep = Annotated[SyncRepository, Depends(get_sync_repo)]
 BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
 GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]

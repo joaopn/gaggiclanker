@@ -459,7 +459,7 @@ async def start_sync_engine(app: FastAPI) -> SyncEngine | None:
     return engine
 
 
-def _cleanup_poke(app: FastAPI) -> Callable[[int], None]:
+def _cleanup_poke(app: FastAPI) -> Callable[[], None]:
     """The callback the sync engine calls after a clean index diff.
 
     A closure over the app rather than a method on the engine, because what
@@ -469,12 +469,12 @@ def _cleanup_poke(app: FastAPI) -> Callable[[int], None]:
     loop pays one ``create_task`` and never a database read.
     """
 
-    def poke(machine_id: int) -> None:
+    def poke() -> None:
         service: CleanupService | None = getattr(app.state, "cleanup", None)
         tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
         if service is None or tasks is None:  # pragma: no cover - torn-down app
             return
-        service.maybe_spawn_auto(tasks, machine_id)
+        service.maybe_spawn_auto(tasks)
 
     return poke
 

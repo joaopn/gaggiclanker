@@ -43,10 +43,9 @@ class SimilarSetsData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bean_id: int
-    #: Echoed back so the card can say "on the Niche, on this machine" rather
-    #: than leaving the reader to remember what they filtered by.
+    #: Echoed back so the card can say "on the Niche" rather than leaving the
+    #: reader to remember what they filtered by.
     grinder_id: int | None = None
-    machine_id: int | None = None
     items: list[SimilarSet]
 
 
@@ -121,7 +120,6 @@ async def bean_similar_sets(
     beans: BeansRepoDep,
     db: DatabaseDep,
     grinder_id: Annotated[int | None, Query()] = None,
-    machine_id: Annotated[int | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=10)] = DEFAULT_LIMIT,
 ) -> JSONResponse:
     """The similar-Set query on its own, for the wizard's first step.
@@ -141,14 +139,8 @@ async def bean_similar_sets(
         origin=bean.origin,
         decaf=bean.decaf,
         grinder_id=grinder_id,
-        machine_id=machine_id,
         limit=limit,
     )
     return envelope_response(
-        SimilarSetsData(
-            bean_id=bean_id,
-            grinder_id=grinder_id,
-            machine_id=machine_id,
-            items=items,
-        ).model_dump(mode="json")
+        SimilarSetsData(bean_id=bean_id, grinder_id=grinder_id, items=items).model_dump(mode="json")
     )

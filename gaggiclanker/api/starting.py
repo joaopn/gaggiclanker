@@ -50,7 +50,6 @@ class StartingPointRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bean_id: int = Field(gt=0)
-    machine_id: int = Field(gt=0)
     #: Optional for the reason `sets.grinder_id` is: pre-ground coffee, and a
     #: grinder nobody has recorded, are both real.
     grinder_id: int | None = None
@@ -108,7 +107,7 @@ async def create_starting_point(
 ) -> JSONResponse:
     """Queue the work and answer with the `running` row. 202, not 201.
 
-    Idempotent per (bean, machine, grinder). A second tab pressing the button
+    Idempotent per (bean, grinder). A second tab pressing the button
     gets the running row rather than a second call, because the registry name
     can only be held once.
 
@@ -120,7 +119,6 @@ async def create_starting_point(
     try:
         row, _started = await starting.start(
             bean_id=body.bean_id,
-            machine_id=body.machine_id,
             grinder_id=body.grinder_id,
             usual_grind=body.usual_grind,
             dose_hint_g=body.dose_hint_g,
@@ -189,9 +187,7 @@ async def _awaited(
     not an error — it is the point of the name being released on completion — so
     a missing task means "read the row again".
     """
-    task = request.app.state.tasks.get(
-        starting_point_task_name(body.bean_id, body.machine_id, body.grinder_id)
-    )
+    task = request.app.state.tasks.get(starting_point_task_name(body.bean_id, body.grinder_id))
     if task is not None:
         with suppress(asyncio.CancelledError):
             await asyncio.shield(task)

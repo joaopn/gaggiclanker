@@ -69,7 +69,6 @@ class ProfileDetailData(BaseModel):
 )
 async def list_profiles(
     profiles: ProfilesRepoDep,
-    machine_id: Annotated[int | None, Query()] = None,
     include_deleted: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
     """Ordered as the machine orders them: its own `profileOrder`, then label.
@@ -79,7 +78,7 @@ async def list_profiles(
     used in March" has to keep resolving after somebody deletes it from the
     display.
     """
-    items = await profiles.list_device_profiles(machine_id, include_deleted=include_deleted)
+    items = await profiles.list_device_profiles(include_deleted=include_deleted)
     return envelope_response(ProfileListData(items=items).model_dump(mode="json"))
 
 
@@ -91,9 +90,8 @@ async def list_profiles(
 async def get_profile(
     device_id: str,
     profiles: ProfilesRepoDep,
-    machine_id: Annotated[int | None, Query()] = None,
 ) -> JSONResponse:
-    summary = await profiles.get_device_profile_summary(device_id, machine_id)
+    summary = await profiles.get_device_profile_summary(device_id)
     if summary is None:
         raise NotFound(f"No mirrored profile {device_id!r}")
     version = await profiles.get_version(summary.current_version_id)
