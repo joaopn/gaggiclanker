@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileVersionListData } from "@/api/types";
 import { ProfilesPage } from "@/pages/ProfilesPage";
@@ -179,6 +180,24 @@ describe("ProfilesPage staging queue", () => {
     expect(screen.queryByTestId("writes-disabled-banner")).not.toBeInTheDocument();
   });
 
+  it("stays quiet about switched-off writes when nothing is still open", async () => {
+    // "Show everything" widens the list to drafts that have already been
+    // pushed or discarded. Those are not blocked by anything, and a banner
+    // that fires on them says the queue is stuck when it is empty.
+    const user = setupUser();
+    getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
+    getProfileDrafts.mockImplementation(async (params: { open?: boolean } = {}) =>
+      params.open ? { items: [] } : { items: [draft({ status: "pushed" })] },
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findByTestId("staged-empty");
+    await user.click(screen.getByRole("button", { name: /Show everything/ }));
+
+    await screen.findByTestId("draft-list");
+    expect(screen.queryByTestId("writes-disabled-banner")).not.toBeInTheDocument();
+  });
+
   it("stays quiet about switched-off writes when nothing is staged", async () => {
     // Nothing is queued, so nothing is blocked. A warning that is always on is
     // one nobody reads by the second week.
@@ -224,8 +243,34 @@ describe("ProfilesPage staging a version", () => {
     expect(createProfileDraft).toHaveBeenCalledWith({
       base_version_id: 7,
       profile: baseProfile(),
-      change_summary: "Staged unchanged from 9 Bar Espresso",
+      // "No edits" rather than "unchanged": nobody edited it, but the safety
+      // policy may still have moved a number, and the next test is why that
+      // distinction is not pedantry.
+      change_summary: "Staged from 9 Bar Espresso, no edits",
     });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Staged for the machine"));
+  });
+
+  it("says so when the safety policy moved a value on the way", async () => {
+    // A version mirrored off a machine at 118 °C is stored at 100: nobody
+    // edited it and it is still not the document that was posted. The card
+    // lists what moved; the toast is what stops the person scrolling past it.
+    const user = setupUser();
+    createProfileDraft.mockResolvedValue(
+      draft({
+        clamp_changes: [
+          { path: "temperature", from: 118, to: 100, reason: "above the policy maximum" },
+        ],
+      }),
+    );
+
+    renderWithQueryClient(<ProfilesPage />);
+    const rows = await screen.findAllByTestId("profile-version-row");
+    await user.click(within(rows[0]).getByTestId("stage-as-is"));
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Staged — the safety policy moved 1 value"),
+    );
   });
 
   it("uploads a profile export and reports what it did", async () => {

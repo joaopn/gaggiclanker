@@ -18,13 +18,14 @@ import {
   refineProfileDraft,
   rollbackProfileDraft,
 } from "@/api/client";
-import type {
-  DraftCreateBody,
-  DraftPreview,
-  DraftPushResult,
-  ProfileDraft,
-  ProfileDraftDetail,
-  ProfileDraftListData,
+import {
+  clampChangesOf,
+  type DraftCreateBody,
+  type DraftPreview,
+  type DraftPushResult,
+  type ProfileDraft,
+  type ProfileDraftDetail,
+  type ProfileDraftListData,
 } from "@/api/types";
 import { invalidateDeviceWrites, invalidateDrafts, invalidateProfiles } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
@@ -75,7 +76,7 @@ export function useCreateDraft(): UseMutationResult<ProfileDraft, Error, DraftCr
 }
 
 /**
- * Stage a stored version exactly as it is, with nothing edited.
+ * Stage a stored version with nothing edited.
  *
  * The plain path to the machine, and the common one: a profile that is already
  * right and only needs to get there should not have to go through a JSON
@@ -84,6 +85,15 @@ export function useCreateDraft(): UseMutationResult<ProfileDraft, Error, DraftCr
  * here and posted straight back through the same manual draft path the editor
  * uses, which is what keeps the schema, the safety policy and the audit in the
  * way.
+ *
+ * **The summary says "no edits", not "unchanged".** Those are not the same
+ * claim: the safety policy is narrower than the firmware, so a version
+ * mirrored off a machine at 118 °C is stored at 100 and the draft genuinely
+ * differs from the document that was posted. Nobody edited it, and the card's
+ * clamp list is where what moved is stated — a summary promising an unchanged
+ * profile beside a clamp list saying otherwise is the one sentence in this
+ * flow that must not be wrong. The toast says so too, because the clamp
+ * happens on a page the person may scroll straight past.
  */
 export function useStageVersionAsIs(): UseMutationResult<
   ProfileDraft,
@@ -97,10 +107,17 @@ export function useStageVersionAsIs(): UseMutationResult<
       return createProfileDraft({
         base_version_id: versionId,
         profile: version.profile as Record<string, unknown>,
-        change_summary: `Staged unchanged from ${label}`,
+        change_summary: `Staged from ${label}, no edits`,
       });
     },
-    onSuccess: () => toast.success("Staged for the machine"),
+    onSuccess: (draft) => {
+      const clamped = clampChangesOf(draft).length;
+      toast.success(
+        clamped > 0
+          ? `Staged — the safety policy moved ${clamped} value${clamped === 1 ? "" : "s"}`
+          : "Staged for the machine",
+      );
+    },
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);

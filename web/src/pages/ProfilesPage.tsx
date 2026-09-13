@@ -47,6 +47,12 @@ export function ProfilesPage() {
   const editingVersion = useProfileVersion(editing ?? undefined);
   const [showAllDrafts, setShowAllDrafts] = useState(false);
   const drafts = useProfileDrafts(showAllDrafts ? {} : { open: true });
+  // Asked for separately from the list above, which the toggle can widen to
+  // everything ever staged. The banner is about work that is stuck, and a page
+  // showing six pushed drafts and nothing open is not stuck. When the toggle is
+  // off these are the same query key, so it costs no second request — and
+  // "open" stays the server's definition of open rather than a second one here.
+  const openDrafts = useProfileDrafts({ open: true });
   const writes = useDeviceWrites();
   const importFiles = useImportFiles();
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -58,9 +64,9 @@ export function ProfilesPage() {
 
   const draftItems = drafts.data?.items ?? [];
   // The banner is about a queue that will not move, so it only speaks when
-  // there is a queue. A page with nothing staged has nothing to warn about,
-  // and a permanent warning is one nobody reads by the second week.
-  const writesBlocked = writes.data?.enabled === false && draftItems.length > 0;
+  // there is a queue. A page with nothing open has nothing to warn about, and a
+  // permanent warning is one nobody reads by the second week.
+  const writesBlocked = writes.data?.enabled === false && (openDrafts.data?.items.length ?? 0) > 0;
 
   // Everything that creates a draft elsewhere — an accepted analysis
   // suggestion, the starting-point wizard, the JSON editor, a chat tool — comes
