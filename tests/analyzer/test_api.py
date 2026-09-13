@@ -347,6 +347,37 @@ async def test_the_shots_list_carries_the_analysis_state(
     assert states[shot_id] == "ok"
 
 
+async def test_the_shots_list_carries_the_newest_failure_and_only_that(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    """The list's Retry button says what went wrong without a request per row."""
+    app, client, provider = api
+    data = await _build_fixture(app)
+    shot_id = data.shots[-1]
+
+    async def listed() -> dict[str, object]:
+        items = (await client.get("/api/shots")).json()["data"]["items"]
+        return next(row for row in items if row["id"] == shot_id)
+
+    assert (await listed())["analysis_error"] is None
+
+    good = list(provider.script)
+    provider.script = [api_error(429, "slow down")]
+    await client.post(f"/api/shots/{shot_id}/analyses?wait=1", json={})
+    row = await listed()
+    assert row["analysis_state"] == "failed"
+    assert str(row["analysis_error"]).startswith("rate_limited:")
+
+    # A later run that worked supersedes the failure: the error goes with it.
+    # The 429 latched the process-wide budget, which is what Settings clears.
+    await client.post("/api/llm/rate-limit/reset")
+    provider.script = good
+    await client.post(f"/api/shots/{shot_id}/analyses?wait=1", json={"force": True})
+    row = await listed()
+    assert row["analysis_state"] == "ok", row["analysis_error"]
+    assert row["analysis_error"] is None
+
+
 async def test_the_vocabulary_serves_the_analysis_words(
     api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
 ) -> None:

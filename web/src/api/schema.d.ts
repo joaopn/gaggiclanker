@@ -4936,6 +4936,8 @@ export interface components {
          *     caller can tell "we hold the bytes" from "we hold a row".
          */
         ShotDetailRow: {
+            /** Analysis Error */
+            analysis_error?: string | null;
             /**
              * Analysis State
              * @default none
@@ -5132,6 +5134,8 @@ export interface components {
          * @description A row of `GET /api/shots`: enough to draw a line in a table, no curve.
          */
         ShotListRow: {
+            /** Analysis Error */
+            analysis_error?: string | null;
             /**
              * Analysis State
              * @default none

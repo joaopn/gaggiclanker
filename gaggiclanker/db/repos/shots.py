@@ -200,6 +200,10 @@ class ShotListRow(BaseModel):
     #: — reads as `failed`, because to somebody looking at a list the two mean
     #: the same thing and a fifth state would only need explaining.
     analysis_state: str = "none"
+    #: The newest analysis's error when `analysis_state` is `failed`, and
+    #: ``None`` otherwise: a failure from an earlier run that a later one
+    #: superseded is not this shot's problem any more.
+    analysis_error: str | None = None
     synced_at: str
 
     @model_validator(mode="before")
@@ -322,6 +326,14 @@ _LIST_COLUMNS = """
                 FROM shot_analyses a
                WHERE a.shot_id = s.id
                ORDER BY a.id DESC LIMIT 1), 'none') AS analysis_state,
+    -- And its error when that newest one failed, so the list's Retry button can
+    -- say what went wrong without a request per row. A second subquery on the
+    -- same (shot_id, id DESC) walk as the one above, not a join, for the same
+    -- reason.
+    (SELECT CASE WHEN a.status IN ('failed', 'interrupted') THEN a.error END
+       FROM shot_analyses a
+      WHERE a.shot_id = s.id
+      ORDER BY a.id DESC LIMIT 1) AS analysis_error,
     j.shot_id IS NOT NULL AS has_judgement,
     j.rating AS judgement_rating,
     j.notes AS judgement_notes,
