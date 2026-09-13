@@ -109,7 +109,7 @@ async def test_the_planned_style_comes_from_the_closest_similar_set(
 async def test_the_selected_rules_cover_the_categories_the_wizard_needs(
     fixture: Fixture,
 ) -> None:
-    """Temperature, pressure, ratio, time, rest and increments, all present.
+    """Temperature, pressure, ratio, time and increments, all present.
 
     `ratio_by_style` and `time_by_style` are the two that would silently vanish
     if the planned style were `unknown`, which is the whole reason it is not.
@@ -121,9 +121,10 @@ async def test_the_selected_rules_cover_the_categories_the_wizard_needs(
         "pressure_matrix",
         "ratio_by_style",
         "time_by_style",
-        "rest_times",
         "increments",
     } <= categories
+    # Nothing about how long a bag has rested: that needs a date nobody records.
+    assert not any(category in categories for category in ("rest_times", "freshness_windows"))
 
 
 async def test_the_signals_are_the_coffee_not_a_shot(fixture: Fixture) -> None:

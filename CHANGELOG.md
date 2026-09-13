@@ -49,12 +49,14 @@ aged the old row silently or forced a duplicate bean.
   API, the days-off-roast line in the analysis prompt, and the rest note in the
   starting point. The bean list is alphabetical now that there is no freshest to
   put first.
-- **The four freshness rules leave the seeded knowledge tier**, with their
-  category: advice about resting a bag is unactionable without a date and would
-  only be prompt weight. An archive that already holds them keeps them —
-  seeding never deletes a row somebody may have edited — but nothing emits the
-  signal they match on, so they are never selected. The seeded prose on bean
-  freshness and storage stays; it is retrieved by a question, not injected.
+- **Ten rules leave the seeded knowledge tier**, and with them two whole
+  categories: the five `freshness_windows` and the five `rest_times`. Both are
+  advice about how long a bag has been open, which is unactionable without a
+  date and would only be prompt weight. An archive that already holds those
+  rows keeps them — seeding never deletes a row somebody may have edited — but
+  a retired category is never selected and sorts last in the rule list. The
+  seeded prose on bean freshness and storage stays; it is retrieved by a
+  question, not injected.
 - **Bag ageing is not tracked at all for now.** It is a real thing about coffee
   and it may come back as its own row with its own dates.
 

@@ -201,10 +201,6 @@ ratio_by_style:
 time_by_style:
   [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
 
-rest_times:
-  [light] Light roasts need 10-14 days of rest before they dial in reliably.
-  [natural_bonus] Naturals and honeys want 2-3 days more rest than a washed bean of the same roast.
-
 band_meanings:
   [channeling_risk:LOW] channeling_risk LOW — no indicator crossed its threshold; the puck held.
   [flow_adherence:GOOD] flow_adherence GOOD — RMSE 0.3-0.8 ml/s against the commanded flow.

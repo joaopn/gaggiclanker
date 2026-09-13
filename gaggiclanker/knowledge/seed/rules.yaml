@@ -675,68 +675,6 @@ rules:
     source: gaggimate-barista
     source_ref: "gaggimate-mcp.md §7 — Telemetry → diagnosis"
 
-  # ── rest times ─────────────────────────────────────────────────────
-
-  - category: rest_times
-    key: light
-    applies: { roast_level: [light, medium-light] }
-    value:
-      text: "Light roasts need 10-14 days of rest before they dial in reliably."
-      min_days: 10
-      max_days: 14
-    unit: none
-    confidence: expert
-    source: gaggimate-barista
-    source_ref: "gaggimate-mcp.md §7 — Freshness"
-
-  - category: rest_times
-    key: medium
-    applies: { roast_level: [medium] }
-    value:
-      text: "Medium roasts need 7-10 days of rest."
-      min_days: 7
-      max_days: 10
-    unit: none
-    confidence: expert
-    source: gaggimate-barista
-    source_ref: "gaggimate-mcp.md §7 — Freshness"
-
-  - category: rest_times
-    key: dark
-    applies: { roast_level: [medium-dark, dark] }
-    value:
-      text: "Dark roasts need only 3-5 days of rest; they degas fast."
-      min_days: 3
-      max_days: 5
-    unit: none
-    confidence: expert
-    source: gaggimate-barista
-    source_ref: "gaggimate-mcp.md §7 — Freshness"
-
-  - category: rest_times
-    key: natural_bonus
-    applies: { process: [natural, honey] }
-    value:
-      text: "Naturals and honeys want 2-3 days more rest than a washed bean of the same roast."
-      extra_days_min: 2
-      extra_days_max: 3
-    unit: none
-    confidence: expert
-    source: gaggimate-barista
-    source_ref: "gaggimate-mcp.md §7 — Freshness"
-
-  - category: rest_times
-    key: anaerobic_bonus
-    applies: { process: [anaerobic] }
-    value:
-      text: "Anaerobic lots want 3-5 days more rest again."
-      extra_days_min: 3
-      extra_days_max: 5
-    unit: none
-    confidence: expert
-    source: gaggimate-barista
-    source_ref: "gaggimate-mcp.md §7 — Freshness"
-
   # ── diagnostic band meanings ───────────────────────────────────────
   # One per band label the summary diagnostics can carry. Keys are
   # `<metric>:<LABEL>` and the wording is kept in step with

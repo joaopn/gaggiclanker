@@ -330,9 +330,6 @@ ratio_by_style:
 time_by_style:
   [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
 
-rest_times:
-  [light] Light roasts need 10-14 days of rest before they dial in reliably.
-
 profile_design_defaults:
   [bloom] A bloom is the pump OFF for 5-15 s — not the valve closed. The valve stays at 1.
   [hold] Hold for 15-30 s with a volumetric target on it, so the shot ends on weight and not on time.

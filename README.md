@@ -312,7 +312,7 @@ advice help" is a question the trend chart answers.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
-ratio and time by style, rest times, what each diagnostic band means,
+ratio and time by style, what each diagnostic band means,
 taste → suspect, telemetry → cause — each with its source and confidence, each
 editable, each with a switch. The model is asked to name the rules it used and
 the analysis links them back here, which is how a rule that misleads gets found
