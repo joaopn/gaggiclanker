@@ -146,7 +146,6 @@ class SetRow(BaseModel):
     name: str
     bean_id: int
     bean_name: str | None = None
-    bean_roast_date: str | None = None
     machine_id: int
     machine_name: str | None = None
     grinder_id: int | None = None
@@ -296,7 +295,6 @@ _INHERITED = (
 _SET_SELECT = """
     SELECT s.*,
            b.name AS bean_name,
-           b.roast_date AS bean_roast_date,
            m.name AS machine_name,
            g.name AS grinder_name,
            cur.id AS current_version_id,

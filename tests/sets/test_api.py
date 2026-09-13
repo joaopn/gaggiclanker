@@ -118,10 +118,11 @@ class TestBeans:
         updated = data(
             await client.put(
                 f"/api/beans/{created['id']}",
-                json={"name": "Kenya Kiambu AA", "roast_date": "2026-04-02"},
+                json={"name": "Kenya Kiambu AA", "roast_level": "medium"},
             )
         )
         assert updated["name"] == "Kenya Kiambu AA"
+        assert updated["roast_level"] == "medium"
         # A whole-object PUT: the roaster was not sent, so it was cleared.
         assert updated["roaster"] is None
 

@@ -1,13 +1,20 @@
-"""`beans` — what was in the hopper.
+"""`beans` — the coffees, not the bags.
+
+A row here is a *type*: this coffee, from this roaster, this process, this roast
+level. Buying the same coffee again is the same row. Nothing here describes an
+individual bag — no roast date, no weight, no ageing — because an attribute of
+one bag written onto the type is wrong for every other bag of it, and advice
+derived from a date nobody maintains is worse than no advice.
 
 The machine knows nothing about this table and never will: the whole of its
 notes card is one free-text `beanType` string. Everything the knowledge tier
-reasons from — roast level, process, days off roast — lives here, typed and from
-a closed vocabulary (`gaggiclanker/domain/vocab.py`), because a rule keyed on
+reasons from — roast level, process, origin — lives here, typed and from a
+closed vocabulary (`gaggiclanker/domain/vocab.py`), because a rule keyed on
 "medium-light" cannot match "med light".
 
-Beans are archived rather than deleted. A finished bag is still the bag a
-hundred shots were pulled with, and a Set that points at it must keep resolving.
+Beans are archived rather than deleted. A coffee you have stopped buying is
+still the coffee a hundred shots were pulled with, and a Set that points at it
+must keep resolving.
 """
 
 from __future__ import annotations
@@ -26,8 +33,8 @@ __all__ = ["BeanRow", "BeanWrite", "BeansRepository"]
 class BeanWrite(BaseModel):
     """A bean as the API accepts it. The only way a row reaches `beans`.
 
-    Every field but the name is optional, because a bag with nothing on it but
-    a name is still a bag worth recording, and a `None` is an honest "not
+    Every field but the name is optional, because a coffee with nothing on it
+    but a name is still one worth recording, and a `None` is an honest "not
     stated" where a default would be a claim about the coffee.
     """
 
@@ -42,8 +49,6 @@ class BeanWrite(BaseModel):
     altitude_m: int | None = Field(default=None, ge=0, le=4000)
     process: Process | None = None
     roast_level: RoastLevel | None = None
-    #: 'YYYY-MM-DD'. A date rather than a timestamp: roasters print a day.
-    roast_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     decaf: bool = False
     #: What the bag claims it tastes of, verbatim.
     tasting_notes_bag: str = Field(default="", max_length=500)
@@ -73,7 +78,6 @@ _WRITABLE = (
     "altitude_m",
     "process",
     "roast_level",
-    "roast_date",
     "decaf",
     "tasting_notes_bag",
     "notes",
@@ -131,15 +135,13 @@ class BeansRepository(Repository):
         return self.to_model(BeanRow, row)
 
     async def list_all(self, *, include_archived: bool = False) -> list[BeanRow]:
-        """Every bean, freshest roast first.
+        """Every bean, by name.
 
-        Sorted by roast date rather than by name: the question asked of this
-        list is "which bag am I on", and the answer is almost always the most
-        recently roasted one. A bean with no roast date sorts last, which is
-        where an undated bag belongs.
+        Alphabetical because nothing here ages: a coffee is a type, so there is
+        no "most recent" to sort by and a list you can find a name in beats one
+        ordered by when it was typed. The id breaks ties, so two coffees with
+        the same name keep a stable order.
         """
         clause = "" if include_archived else " WHERE b.archived = 0"
-        rows = await self.db.fetch_all(
-            f"{_SELECT}{clause} ORDER BY COALESCE(b.roast_date, '') DESC, b.id DESC"
-        )
+        rows = await self.db.fetch_all(f"{_SELECT}{clause} ORDER BY b.name COLLATE NOCASE, b.id")
         return self.to_models(BeanRow, rows)

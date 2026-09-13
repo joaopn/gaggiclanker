@@ -43,7 +43,6 @@ class TestBeans:
                 roaster="Square Mile",
                 roast_level="medium-light",
                 process="washed",
-                roast_date="2026-03-28",
                 altitude_m=1750,
             )
         )
@@ -57,12 +56,22 @@ class TestBeans:
         assert await beans.list_all() == []
         assert [row.id for row in await beans.list_all(include_archived=True)] == [bean.id]
 
-    async def test_freshest_roast_sorts_first_and_undated_last(self, db: Database) -> None:
+    async def test_the_list_is_alphabetical(self, db: Database) -> None:
+        """A bean is a type, so there is no "most recent" to sort by.
+
+        Case-insensitively, because a list where `apple` sorts after `Zambia`
+        is a list nobody can find a name in.
+        """
         beans = BeansRepository(db)
-        old = await beans.create(BeanWrite(name="old bag", roast_date="2026-01-01"))
-        fresh = await beans.create(BeanWrite(name="fresh bag", roast_date="2026-04-01"))
-        undated = await beans.create(BeanWrite(name="no date on it"))
-        assert [row.id for row in await beans.list_all()] == [fresh.id, old.id, undated.id]
+        zambia = await beans.create(BeanWrite(name="Zambia Ngoli"))
+        guji = await beans.create(BeanWrite(name="guji natural"))
+        colombia = await beans.create(BeanWrite(name="Colombia Huila"))
+        assert [row.id for row in await beans.list_all()] == [colombia.id, guji.id, zambia.id]
+
+    async def test_a_bean_cannot_carry_a_roast_date(self, db: Database) -> None:
+        """The one bag-shaped field there was. `extra="forbid"` is the check."""
+        with pytest.raises(ValueError, match="roast_date"):
+            BeanWrite(name="x", roast_date="2026-01-01")  # type: ignore[call-arg]
 
     async def test_a_closed_vocabulary_is_closed(self, db: Database) -> None:
         with pytest.raises(ValueError, match="roast_level"):

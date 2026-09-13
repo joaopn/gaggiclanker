@@ -18,7 +18,7 @@ from gaggiclanker.db.migrations import (
     run_migrations,
 )
 from gaggiclanker.settings import EnvSettings
-from gaggiclanker.tools.sql import run_query
+from gaggiclanker.tools.sql import SqlRefused, run_query
 
 
 @pytest.fixture
@@ -214,19 +214,23 @@ async def test_ledger_row_is_not_written_without_the_schema(db: Database, tmp_pa
     assert applied == ["0001"]
 
 
-async def _migrate_to_0013(db: Database, tmp_path: Path) -> None:
-    """Bring a database up to 0013 only, using copies of the shipped files.
+async def _migrate_below(db: Database, tmp_path: Path, version: str) -> None:
+    """Bring a database up to just below `version`, using the shipped files.
 
     Copies rather than a slice of `load_migrations()`, because the runner takes
     a *directory*: this is the only way to stop at a version without teaching it
     a concept it does not otherwise need.
     """
-    directory = tmp_path / "upto-0013"
+    directory = tmp_path / f"below-{version}"
     directory.mkdir()
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        if path.name < "0014":
+        if path.name < version:
             shutil.copy(path, directory / path.name)
     await run_migrations(db, directory)
+
+
+async def _migrate_to_0013(db: Database, tmp_path: Path) -> None:
+    await _migrate_below(db, tmp_path, "0014")
 
 
 async def test_0014_upgrades_a_populated_database(db: Database, tmp_path: Path) -> None:
@@ -279,7 +283,10 @@ async def test_0014_upgrades_a_populated_database(db: Database, tmp_path: Path) 
         "VALUES (1, 'by hand', 'x', 'x')"
     )
 
-    assert await run_migrations(db) == ["0014"]
+    # Everything from 0014 up, so the assertions below are made against HEAD
+    # rather than against a version nobody ships.
+    applied = await run_migrations(db)
+    assert applied[0] == "0014"
 
     # Every row survived, and so did every link between them.
     versions = await db.fetch_all(
@@ -348,3 +355,79 @@ async def test_0014_leaves_a_starting_point_version_readable_through_the_sql_too
     result = await run_query(db.path, "SELECT origin, intent FROM v_set_versions")
     assert result.columns == ["origin", "intent"]
     assert result.rows == [["starting_point", "from the wizard"]]
+
+
+async def test_0015_upgrades_a_populated_database(db: Database, tmp_path: Path) -> None:
+    """Dropping `beans.roast_date` has to survive beans that had one.
+
+    The column is read by two curated views, and SQLite re-parses every view in
+    the schema when a table is altered — so `ALTER TABLE ... DROP COLUMN` fails
+    outright while `v_beans` and `v_sets` still name it. The migration drops
+    them, drops the column and re-creates them underneath; this test is the
+    check that the whole sequence works on a database that has rows in it,
+    which an empty one would not show.
+    """
+    await _migrate_below(db, tmp_path, "0015")
+
+    await db.execute("INSERT INTO machines (host, created_at) VALUES ('kitchen.local', 'x')")
+    await db.execute(
+        "INSERT INTO beans (name, roaster, roast_level, roast_date, created_at) "
+        "VALUES ('Guji', 'Square Mile', 'light', '2026-02-20', 'x')"
+    )
+    await db.execute("INSERT INTO beans (name, roast_date, created_at) VALUES ('Decaf', NULL, 'x')")
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, created_at) VALUES ('S', 1, 1, 'x')"
+    )
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "VALUES (1, 1, 'baseline', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO shots (device_id, machine_id, raw_slog, set_version_id, synced_at, "
+        "updated_at) VALUES ('000001', 1, x'00', 1, 'x', 'x')"
+    )
+
+    assert await run_migrations(db) == ["0015"]
+
+    columns = {str(row["name"]) for row in await db.fetch_all("PRAGMA table_info(beans)")}
+    assert "roast_date" not in columns
+    # Everything else about the bean survived: this drops one column, not a row.
+    assert await db.fetch_value("SELECT roaster FROM beans WHERE id = 1") == "Square Mile"
+    assert await db.fetch_value("SELECT count(*) FROM beans") == 2
+
+    # The two views the drop had to remove are back and still read the table.
+    assert await db.fetch_value("SELECT count(*) FROM v_beans") == 2
+    assert await db.fetch_value("SELECT bean_name FROM v_sets WHERE set_id = 1") == "Guji"
+    assert await db.fetch_value("SELECT count(*) FROM v_shots") == 1
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+
+async def test_0015_leaves_the_bean_views_readable_through_the_sql_tool(
+    db: Database, tmp_path: Path
+) -> None:
+    """`query_shots` reads these views, and the migration re-typed them by hand.
+
+    A view re-created from stale text is the kind of bug nobody notices until
+    the chat answers a question with a column that is no longer there — or
+    fails on one that is.
+    """
+    await _migrate_below(db, tmp_path, "0015")
+    await run_migrations(db)
+
+    await db.execute("INSERT INTO machines (host, created_at) VALUES ('kitchen.local', 'x')")
+    await db.execute(
+        "INSERT INTO beans (name, roast_level, created_at) VALUES ('Guji', 'light', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, created_at) VALUES ('S', 1, 1, 'x')"
+    )
+
+    beans = await run_query(db.path, "SELECT name, roast_level FROM v_beans")
+    assert beans.rows == [["Guji", "light"]]
+
+    sets = await run_query(db.path, "SELECT name, bean_name, roast_level FROM v_sets")
+    assert sets.rows == [["S", "Guji", "light"]]
+
+    # And the column is gone from the view, rather than merely unselected.
+    with pytest.raises(SqlRefused, match="no such column"):
+        await run_query(db.path, "SELECT roast_date FROM v_beans")

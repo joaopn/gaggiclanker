@@ -2860,8 +2860,6 @@ export interface components {
             /** Origin */
             origin?: string | null;
             process?: components["schemas"]["Process"] | null;
-            /** Roast Date */
-            roast_date?: string | null;
             roast_level?: components["schemas"]["RoastLevel"] | null;
             /** Roaster */
             roaster?: string | null;
@@ -2882,8 +2880,8 @@ export interface components {
          * BeanWrite
          * @description A bean as the API accepts it. The only way a row reaches `beans`.
          *
-         *     Every field but the name is optional, because a bag with nothing on it but
-         *     a name is still a bag worth recording, and a `None` is an honest "not
+         *     Every field but the name is optional, because a coffee with nothing on it
+         *     but a name is still one worth recording, and a `None` is an honest "not
          *     stated" where a default would be a claim about the coffee.
          */
         BeanWrite: {
@@ -2904,8 +2902,6 @@ export interface components {
             /** Origin */
             origin?: string | null;
             process?: components["schemas"]["Process"] | null;
-            /** Roast Date */
-            roast_date?: string | null;
             roast_level?: components["schemas"]["RoastLevel"] | null;
             /** Roaster */
             roaster?: string | null;
@@ -4660,8 +4656,6 @@ export interface components {
             bean_id: number;
             /** Bean Name */
             bean_name?: string | null;
-            /** Bean Roast Date */
-            bean_roast_date?: string | null;
             /** Created At */
             created_at: string;
             /** Current Version Id */
