@@ -77,7 +77,7 @@ src/
   components/
     ui/               shadcn primitives (see the React 18 note below)
     layout/           AppShell, PageHeader, SectionCard, EmptyState, ShortcutsDialog
-  pages/              one file per route
+  pages/              one file per route (a few routes are redirects instead)
   test/               renderWithQueryClient, setupUser, the shot-129 fixture
   setupTests.ts       jest-dom, matchMedia/ResizeObserver/pointer-capture mocks
 ```
@@ -97,7 +97,7 @@ src/
     useVirtualRows.ts the list window, and "has this row been on screen yet"
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
-    shots/            table, filters, columns, pull button, drop zone, row editor
+    shots/            table, filters, columns, pull button, drop zone, import results, row editor
 ```
 
 The LLM layer adds a third:
@@ -119,7 +119,7 @@ Sets and judgement add a fourth:
 ```
 src/
   lib/
-    sets.ts           freshness from a roast date, and how a recipe is written down
+    sets.ts           how a recipe, a Set and a bean are written down
   hooks/
     useCatalog.ts     the vocabularies, the beans, the grinders, the machines
     useSets.ts        Sets, versions, trends, the verdict and the assignment
@@ -355,6 +355,19 @@ uv run python scripts/build_web_shot_fixture.py
 3. Add the `<Route>` to `src/App.tsx`, inside the `AppShell` layout route.
 4. Extend `tests/test_static.py::test_every_client_route_deep_links_to_index`
    with the new path, so a hard refresh on it stays covered.
+
+**A route is not a nav entry.** `NAV_LINKS` is the sidebar, and the sidebar is
+places you *decide to go*; a page reached from the one place you are already
+standing does not earn a row. `/device` has a route, a page and tests and no
+entry — the status pill in the header is the way in, and the pill says so in
+screen-reader text. `/import` and `/drafts` are `<Navigate>` redirects to the
+drop zone on the shots page and to `/profiles#staged`: the pages behind them
+became a strip and a section, and the routes stay so old bookmarks and a hard
+refresh still land somewhere. All three are still in the deep-link test, which
+is what keeps the SPA fallback serving them.
+
+Removing a page is the same list backwards, plus one: leave a redirect behind
+unless the URL never existed.
 
 A page that draws a chart is lazy (`React.lazy` in `App.tsx`) and wrapped in a
 `<Suspense>` with a skeleton, so it does not pull Chart.js into the main chunk.

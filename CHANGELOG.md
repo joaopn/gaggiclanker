@@ -10,6 +10,59 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Fewer pages, and beans are coffees
+
+Twelve destinations in the sidebar, three of which were not places you decide to
+go. They are folded into the page you are already on when you want them.
+
+**The sidebar is eight entries**, in the order they are used: Shots, Chat,
+Profiles, Sets, Beans, Hardware, Knowledge, Settings. The `g` chords are
+unchanged; `g i`, `g d` and `g r` do nothing now.
+
+- **Import is the drop zone on the Shots page.** It already took the files; it
+  now shows what each one did, collapsed to a summary line with a **Show files**
+  toggle. `/import` redirects to `/shots`.
+- **The device page is behind the header pill**, which is where you are looking
+  when you want it. The page, its route and its tests are unchanged, and the
+  pill now names its destination for screen readers.
+- **Drafts are the staging queue on the Profiles page**, under **Staged for the
+  machine**. A draft is the step between a profile version and the machine, not
+  a destination: everything that creates one starts from a version or ends by
+  linking back to it. `/drafts` redirects to `/profiles#staged`, and every link
+  that used to point at the queue points at that anchor.
+
+**Two new ways to stage a profile**, both through the existing manual draft
+path, so the schema, the safety policy and the audit are unchanged:
+
+- **Stage as is** on a version row, for a profile that is already right and only
+  needs to get onto the machine without a trip through the JSON editor.
+- **Upload profile** in the Profiles header runs a profile export through the
+  importer, so a file becomes a version with its own staging button.
+
+**A bean is a type of coffee, not a bag**, and `beans.roast_date` is gone.
+Roaster, origin, variety, process and roast level stay true of every bag you
+ever buy of that coffee; the date was true of one of them, so re-buying either
+aged the old row silently or forced a duplicate bean.
+
+- **Removed**: the field on the Beans form, the freshness pill on the Beans and
+  Sets pages, `bean_roast_date` on the Set list row, `roast_date` on the bean
+  API, the days-off-roast line in the analysis prompt, and the rest note in the
+  starting point. The bean list is alphabetical now that there is no freshest to
+  put first.
+- **The four freshness rules leave the seeded knowledge tier**, with their
+  category: advice about resting a bag is unactionable without a date and would
+  only be prompt weight. An archive that already holds them keeps them —
+  seeding never deletes a row somebody may have edited — but nothing emits the
+  signal they match on, so they are never selected. The seeded prose on bean
+  freshness and storage stays; it is retrieved by a question, not injected.
+- **Bag ageing is not tracked at all for now.** It is a real thing about coffee
+  and it may come back as its own row with its own dates.
+
+Migration `0015` drops the column, and with it the two curated views that name
+it, re-creating them underneath — SQLite re-parses every view when a table is
+altered, so the drop fails outright while they stand. The chat's SQL views lose
+`roast_date` and answer everything else as before.
+
 ### The archive is pulled into, not pushed at
 
 The prototype mirrored the machine continuously: a pass every fifteen minutes,
@@ -53,7 +106,7 @@ status poll alone. Chart.js stays for the shot, compare and Set trend charts.
   or "Never pulled".
 - **A drop zone** under the header takes shot and profile exports — `.json`,
   `.slog` or a zip of either — with a file picker for keyboards and phones and a
-  result line that links to the Import page for the per-file detail.
+  result line that unfolds into a row per file.
 - **Filters behind one button** with a count of how many are on, instead of
   eight dropdowns across the top of the page. The URL contract is unchanged.
 - **Column headers sort**, with an arrow and `aria-sort`; the sort dropdown is
@@ -103,8 +156,9 @@ person has approved it — saves it to the display as a **new** profile.
   `scripts/profile_gate.py` runs the same four layers over a file from a shell.
 
 New: `GET/POST /api/profile-drafts` and its approve / push / rollback / discard
-/ refine routes, `GET /api/device/writes`, a Drafts page, "Draft profile" on the
-shot analysis panel, and "Edit as draft" on a profile version. Migration `0008`.
+/ refine routes, `GET /api/device/writes`, a staging section on the Profiles
+page, "Draft profile" on the shot analysis panel, and "Stage as is" and "Edit"
+on a profile version. Migration `0008`.
 
 ### Device storage cleanup
 
@@ -197,34 +251,32 @@ a Knowledge page with Rules / Docs / Insights tabs, "Reference excerpts" and
 "Proposed insights" on the analysis panel, learned insights on the Set page, and
 one setting (`analysisChunkTokenBudget`). Migrations `0011` and `0012`.
 
-### A starting point for a new bag
+### A starting point for a new coffee
 
-The first shot with a bag nobody has brewed, answered from what this archive
+The first shot with a coffee nobody has brewed, answered from what this archive
 already knows rather than from a chart.
 
 - **Similar past Sets, by SQL and for free.** The wizard shows what you have
-  already brewed on *this grinder* that resembles the new bag — same roast
+  already brewed on *this grinder* that resembles the new coffee — same roast
   level, same process, same origin — with how each one actually went: shots,
   mean rating, mean execution score, ratio and time. It costs no tokens and it
   is worth reading on its own. A recipe with no shots behind it is never
   offered: it records an intention, not a result.
 - **Three options, not one.** Conservative, recommended, adventurous, each with
   a grind, a dose, a yield, a temperature, a profile and a rationale citing the
-  rules and Sets it leaned on. Nobody knows what a new bag wants yet, and a
+  rules and Sets it leaned on. Nobody knows what a new coffee wants yet, and a
   single confident answer hides that.
 - **It will not invent a grind number.** A grinder's scale is arbitrary and
   there is no conversion between two of them, so a number is offered only when
   your usual setting or a past Set on the same grinder anchors it. Otherwise the
   answer is relative — "a little finer than your usual" — and the card says so.
-- **Rest windows are stated separately**, because a light natural two days off
-  roast wants another week and no grind setting fixes that.
 - **Taking one creates the Set** with `origin = starting_point`, and — when the
   option authored a whole profile — a draft through the same schema, safety
   policy and clamp a hand-typed one goes through. Nothing is pushed to the
   machine; a person approves it. An option whose profile the policy refuses is
   rejected with every violation and creates nothing at all.
-- **The Beans page has a shortcut** straight into the wizard for the bag you are
-  looking at, and the chat can ask for one through the `starting_point` tool.
+- **The Beans page has a shortcut** straight into the wizard for the coffee you
+  are looking at, and the chat can ask for one through the `starting_point` tool.
 
 ## [0.1.0] — 2026-09-11
 

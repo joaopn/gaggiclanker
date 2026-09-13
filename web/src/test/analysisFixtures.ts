@@ -65,7 +65,7 @@ export function analysis(overrides: Partial<Analysis> = {}): Analysis {
           field: "duration",
           from: "7",
           to: "10",
-          reason: "A longer bloom for a bean four days off roast.",
+          reason: "A longer bloom for a light natural.",
         },
       ],
       questions_for_user: ["What did the last shot taste like at the same grind?"],

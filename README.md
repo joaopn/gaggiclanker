@@ -70,6 +70,48 @@ Your data lives in `./data` — one SQLite file plus `backups/`. Back it up by
 copying that directory, or call `POST /api/backup` for a consistent snapshot
 taken while the app is running.
 
+### The pages
+
+Eight of them, in the order the sidebar lists them:
+
+| Page | `g` | What it is |
+| --- | --- | --- |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. The pull button and the import drop zone are both here. |
+| **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
+| **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
+| **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
+| **Beans** | `g b` | The coffees: roaster, origin, variety, process, roast level. |
+| **Hardware** | `g h` | Grinders and machines. |
+| **Knowledge** | `g k` | The dial-in rules, the prose documents, and the insights waiting for a decision. |
+| **Settings** | `g ,` | The machine, the provider, the prompts, backup, and the device-write switch. |
+
+Two more pages exist without a sidebar row, because each has a better way in.
+The device page is behind the status pill in the header — you go there when the
+pill says something is wrong — and the old import page is now the drop zone on
+the Shots page. `/device`, `/import` and `/drafts` all still resolve, the last
+two by redirecting.
+
+### Putting a profile on the machine
+
+Nothing reaches the machine without passing through the **Staged for the
+machine** section of the Profiles page. A version gets there in one of three
+ways: **Stage as is**, for a profile that is already right and only needs to be
+on the machine; **Edit**, which opens the JSON editor and validates what you
+type against the strict schema and the safety policy; or an analysis, the chat
+or the starting-point wizard proposing one, which lands in the same place with
+the same buttons on it.
+
+A staged profile is then approved and pushed, and the push is refused before
+anything reaches the wire unless **Device writes enabled** is on. It is always
+saved as a new profile with an `[AI]` suffix, never over an existing one and
+never selected for you; what came back off the machine is compared against what
+was sent, and a mismatch offers a rollback. `docs/safety-layers.md` is the whole
+contract.
+
+Profile exports can be uploaded straight into the library with **Upload
+profile** in the Profiles header — it runs them through the same importer as the
+shots page, so the new version appears below with its own staging button.
+
 You do not need to create `./data` first. Docker creates a missing bind-mount
 source as `root:root`, so the container's entrypoint starts as root, hands that
 one directory to the unprivileged app user, and drops to it before any
@@ -119,9 +161,11 @@ uv run gaggiclanker import tests/fixtures/exports       # or any folder, file or
 uv run gaggiclanker import ~/exports --replace          # overwrite what is already stored
 ```
 
-The same thing is `POST /api/import` and the Import page in the UI. Importing
-the same shot twice is a no-op, and a file that does not parse is reported on
-its own — the rest of the batch still lands.
+The same thing is `POST /api/import` and the strip at the top of the **Shots**
+page: drop a folder of exports on it, or press **Choose files**, and it reports
+what each file did. Importing the same shot twice is a no-op, and a file that
+does not parse is reported on its own — the rest of the batch still lands. A
+profile export dropped on the **Profiles** page lands the same way.
 
 The whole offline suite runs against it, so "works against the fake" means
 rather more than it usually does. `scripts/sim.sh test` is the next step up: it
@@ -258,8 +302,8 @@ next call without a restart.
 ### The analysis
 
 One structured call per shot. It is handed the diagnostics with their band
-labels, the Set (bean with days off roast, grinder with its own step unit, the
-profile JSON, the grind/dose/yield targets), the previous five shots in the same
+labels, the Set (the bean with its roast level and process, the grinder with its
+own step unit, the profile JSON, the grind/dose/yield targets), the previous five shots in the same
 Set with your verdict on each and the advice that followed them, your verdict on
 this one — marked as ground truth for taste — and the knowledge rules that match.
 It answers with a diagnosis and prioritised suggestions, and accepting one
@@ -268,7 +312,7 @@ advice help" is a question the trend chart answers.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
-ratio and time by style, freshness windows, what each diagnostic band means,
+ratio and time by style, rest times, what each diagnostic band means,
 taste → suspect, telemetry → cause — each with its source and confidence, each
 editable, each with a switch. The model is asked to name the rules it used and
 the analysis links them back here, which is how a rule that misleads gets found
@@ -320,11 +364,11 @@ heading path goes to the passage. A turn is bounded by `chatMaxToolRounds` and
 survives a reload because the stream is replayed from the database rather than
 held in the tab.
 
-### A starting point for a new bag
+### A starting point for a new coffee
 
-Open a bag nobody has brewed and the first step of **New Set** answers the
+Open a coffee nobody has brewed and the first step of **New Set** answers the
 question you actually have. It shows what this archive has already brewed on
-*this grinder* that resembles the bag — same roast level, same process, same
+*this grinder* that resembles it — same roast level, same process, same
 origin — with how each one went: shots, mean rating, mean execution score, ratio
 and time. That half is one SQL query, costs nothing, and is worth reading on its
 own. A recipe with no shots behind it is never offered: it records an intention,
@@ -338,15 +382,13 @@ what it leaned on.
 It will not invent a grind number. A grinder's scale is arbitrary and there is
 no conversion between two of them, so a figure on your dial is offered only when
 your usual setting or a past Set on the same grinder anchors it; otherwise the
-answer is relative and the card says so. Rest windows are stated separately,
-because a light natural two days off roast wants another week and no grind
-setting fixes that.
+answer is relative and the card says so.
 
 Taking one creates the Set with `origin=starting_point`, and — when the option
 authored a whole profile rather than pointing at one you already have — a draft
-in the queue. Nothing is pushed; you approve it. The Beans page has the same
-shortcut for the bag you are looking at, and the chat can ask through the
-`starting_point` tool.
+staged on the **Profiles** page. Nothing is pushed; you approve it. The Beans
+page has the same shortcut for the coffee you are looking at, and the chat can
+ask through the `starting_point` tool.
 
 ### MCP: the same tools, for other agents
 

@@ -408,7 +408,7 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
     prompt_version: "1",
     input: {},
     output: {
-      summary: "A light washed Kenyan four days off roast.",
+      summary: "A light washed Kenyan.",
       questions_for_user: ["What do you normally grind espresso at?"],
       options: [
         startingPointOption({ option: "conservative", headline: "Safe: 1:2 at 93 °C" }),
