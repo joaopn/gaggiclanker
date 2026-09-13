@@ -86,9 +86,9 @@ function renderShot129() {
 }
 
 describe.each([
-  { theme: LIGHT_THEME_ID, dark: false, muted: "#ece2d2" },
-  { theme: DARK_THEME_ID, dark: true, muted: "#2b241d" },
-])("ShotChart phase bands in the $theme palette", ({ theme, dark, muted }) => {
+  { theme: LIGHT_THEME_ID, dark: false, muted: "#ece2d2", band: "#33291f14" },
+  { theme: DARK_THEME_ID, dark: true, muted: "#2b241d", band: "#ece5db12" },
+])("ShotChart phase bands in the $theme palette", ({ theme, dark, muted, band }) => {
   let style: HTMLStyleElement;
 
   beforeEach(() => {
@@ -135,6 +135,14 @@ describe.each([
     // At least one band is actually shaded: a fix that made every band
     // transparent would lose the phase boundaries altogether.
     expect(fills.some((fill) => alphaOf(fill) > 0)).toBe(true);
+    // And the shade is the stylesheet's own token, not the fallback that
+    // happens to match it: a palette that lost `--chart-band` would otherwise
+    // pass here on the fallback and drift from the stylesheet unnoticed.
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--chart-band");
+    expect(token.trim()).toBe(band);
+    expect(fills.filter((fill) => fill !== "transparent")).toEqual(
+      fills.filter((fill) => fill !== "transparent").map(() => band),
+    );
   });
 
   it("shades the bands translucent on the fallback palette too", () => {
