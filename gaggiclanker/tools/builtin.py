@@ -440,7 +440,6 @@ async def _set_insights(ctx: ToolContext, row: Any) -> list[Any]:
         process=getattr(bean, "process", None),
         origin=getattr(bean, "origin", None),
         grinder_id=row.grinder_id,
-        machine_id=row.machine_id,
     )
     return await InsightsRepository(ctx.db).select(attributes)
 
@@ -922,7 +921,6 @@ class RecordInsightInput(_Model):
     origin: str | None = None
     grinder_id: int | None = None
     profile_style: str | None = None
-    machine_id: int | None = None
 
 
 class RecordInsightOutput(_Model):
@@ -952,7 +950,6 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
                 "origin",
                 "grinder_id",
                 "profile_style",
-                "machine_id",
             )
             if getattr(args, key) is not None
         }
@@ -982,7 +979,6 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
 
 class StartingPointInput(_Model):
     bean_id: int = Field(gt=0)
-    machine_id: int = Field(gt=0)
     grinder_id: int | None = Field(
         default=None, description="Omit for pre-ground coffee or a grinder nobody has recorded."
     )
@@ -1049,7 +1045,6 @@ async def starting_point(ctx: ToolContext, args: StartingPointInput) -> Starting
     try:
         row, started = await ctx.starting.start(
             bean_id=args.bean_id,
-            machine_id=args.machine_id,
             grinder_id=args.grinder_id,
             usual_grind=args.usual_grind,
             dose_hint_g=args.dose_hint_g,
