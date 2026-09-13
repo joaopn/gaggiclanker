@@ -127,7 +127,7 @@ src/
     charts/
       SetTrendChart.tsx   score, rating, duration and ratio across a Set's versions
     sets/             SetBadge, VersionTimeline, NewSetDialog
-    shots/            JudgementForm, AssignToSet
+    shots/            JudgementForm, AssignToSet, NeedsSetMenu
   pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
 ```
 
@@ -427,8 +427,8 @@ floating-ui, and floating-ui under jsdom costs **about fifteen seconds per
 positioning pass** — every collision check walks the tree calling
 `getComputedStyle`, and this project has no headless browser to escape to. A
 primitive whose panel cannot be opened in a test is a primitive nothing checks,
-and the two places it is used (the shots page's filter panel and its row
-editor) are where the behaviour matters. It does CSS positioning plus the
+and the places it is used (the shots page's filter panel, column chooser, row
+editor and needs-a-Set menu) are where the behaviour matters. It does CSS positioning plus the
 behaviour a reader expects: Escape closes and returns focus to the trigger, a
 click outside closes, the trigger reports `aria-expanded`.
 

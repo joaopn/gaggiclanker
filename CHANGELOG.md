@@ -10,6 +10,20 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Filing a shot from the list
+
+**"needs a Set" is a button.** In the shots list the dashed badge opens a small
+menu anchored to it with the first three Sets the Set list returns (the active
+one first, then the newest), each at its latest version with its bean, grinder
+and profile on one line. Choosing one files the shot under that version and the
+row's badge becomes the Set's. With no Sets the menu links to the Sets page;
+with more than three, **Another Set…** opens the shot page scrolled to its Set
+panel (`/shots/<id>#set`). A failed assignment says why and leaves the menu
+open.
+
+**An assigned badge's link works in the list.** It was painted under the row's
+own link, so clicking it opened the shot instead of the Set.
+
 ### Starting a Set is one form
 
 **New Set is a single dialog** with every manual option on one screen: the bean
