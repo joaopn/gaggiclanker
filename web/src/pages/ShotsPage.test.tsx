@@ -248,8 +248,32 @@ describe("ShotsPage", () => {
     expect(screen.getByText("36.4 g")).toBeInTheDocument();
     expect(screen.getByTestId("score-badge")).toHaveTextContent("8.3");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "4");
-    // The row is a link, because the shot page is where everything else is.
-    expect(screen.getByRole("link", { name: /28.4 s/ })).toHaveAttribute("href", "/shots/1");
+    // The row is a link, because the shot page is where everything else is —
+    // one stretched link across the row rather than an `<a>` wrapped around
+    // the cells, because two of those cells hold buttons.
+    expect(screen.getByRole("link", { name: "Open shot 000101" })).toHaveAttribute(
+      "href",
+      "/shots/1",
+    );
+  });
+
+  it("keeps the row's controls out of its link", async () => {
+    // Interactive content inside an `<a>` is invalid HTML, and five stars plus
+    // an editor button inside one is six extra tab stops per row that all
+    // announce as part of the link.
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const link = screen.getByRole("link", { name: "Open shot 000101" });
+    for (const control of [
+      screen.getByRole("checkbox", { name: "Compare shot 000101" }),
+      screen.getByRole("button", { name: "Edit shot 000101" }),
+      ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
+    ]) {
+      expect(link.contains(control)).toBe(false);
+    }
   });
 
   it("leaves Profile and Curve out until somebody asks for them", async () => {
@@ -760,6 +784,63 @@ describe("ShotsPage row editing", () => {
     expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: null });
   });
 
+  it("does not navigate when a star is clicked", async () => {
+    // The row is a link with the stars above it. A star that followed the link
+    // would take you to the shot page every time you rated one.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    // Still on the list: the table is here and no shot page replaced it.
+    expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
+  });
+
+  it("records the machine's own rating rather than clearing it", async () => {
+    // A row with no verdict shows the machine's notes-card rating. Clicking
+    // that star means "yes, three", not "clear" — and clearing a verdict that
+    // does not exist would write an empty one.
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ judgement_rating: null, rating: 3, has_judgement: false })]),
+    );
+    getShot.mockResolvedValue({ ...shot129, judgement: null });
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "3");
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: 3 });
+  });
+
+  it("writes nothing when there is no rating to clear", async () => {
+    // The one click in the list that could create a verdict out of nothing:
+    // an empty row lights up `has_judgement`, dates itself later than the
+    // machine's notes card, and puts a null point on the Set's trend.
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ judgement_rating: null, rating: 3, has_judgement: false })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    // Star three is the displayed value but not a verdict, so there is no
+    // "clear" button at all; the nearest thing is rating it 3, above. Assert
+    // the negative through the editor's Save instead — see the editor tests —
+    // and here that no star announces itself as a clear.
+    expect(screen.queryByRole("button", { name: /^Clear the rating/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 1 of 5/ }));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+  });
+
   it("leaves the rest of a verdict alone when a star is clicked", async () => {
     // `PUT` replaces the whole row, so a rating set from the list has to carry
     // back everything typed on the detail page. Losing somebody's taste tags
@@ -810,6 +891,47 @@ describe("ShotsPage row editing", () => {
     expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
   });
 
+  it("closes the editor when the list scrolls under it", async () => {
+    // The panel is fixed, positioned once against a row's rectangle. Scrolling
+    // the list moves the row out from under it and, past the overscan,
+    // unmounts the row entirely — which would take the panel and anything
+    // typed into it with it, silently. It closes on the first pixel instead.
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData(
+        Array.from({ length: 200 }, (_, index) =>
+          shot({ id: index + 1, device_id: String(index + 1).padStart(6, "0") }),
+        ),
+        { total: 200 },
+      ),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000001" }));
+    expect(await screen.findByTestId("row-editor")).toBeInTheDocument();
+
+    fireEvent.scroll(screen.getByTestId("shots-scroll"));
+
+    await waitFor(() => expect(screen.queryByTestId("row-editor")).not.toBeInTheDocument());
+  });
+
+  it("lets a panel taller than the viewport scroll itself", async () => {
+    // The clamp puts a too-tall panel's top at the margin; without this its
+    // Save button would still be below the bottom of the screen, and a fixed
+    // element cannot be scrolled to.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+
+    expect(await screen.findByTestId("row-editor")).toHaveClass("overflow-y-auto");
+  });
+
   it("writes nothing when the editor is cancelled", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
@@ -825,6 +947,70 @@ describe("ShotsPage row editing", () => {
     await waitFor(() => expect(screen.queryByTestId("row-editor")).not.toBeInTheDocument());
     expect(putJudgement).not.toHaveBeenCalled();
     expect(putShotSetVersion).not.toHaveBeenCalled();
+  });
+
+  it("does not write a verdict when only the Set moved", async () => {
+    // `PUT` creates a row for `{rating: null, notes: ""}` — the server has no
+    // empty-judgement guard, by design — so filing an unjudged shot under a
+    // Set would claim somebody had an opinion about it.
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          judgement_rating: null,
+          judgement_notes: null,
+          has_judgement: false,
+          set_version_id: null,
+        }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+    const editor = await screen.findByTestId("row-editor");
+    await user.selectOptions(within(editor).getByLabelText("Set"), "22");
+    await user.click(within(editor).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 22));
+    expect(putJudgement).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing at all when Save is pressed on an untouched panel", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ judgement_rating: null, judgement_notes: null, has_judgement: false })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+    const editor = await screen.findByTestId("row-editor");
+    await user.click(within(editor).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.queryByTestId("row-editor")).not.toBeInTheDocument());
+    expect(putJudgement).not.toHaveBeenCalled();
+    expect(putShotSetVersion).not.toHaveBeenCalled();
+  });
+
+  it("says whose rating the row is showing when this box has no verdict", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ judgement_rating: null, rating: 3, has_judgement: false })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+
+    // Otherwise a panel showing no stars beside a row showing three looks
+    // like a bug rather than like the two different facts they are.
+    expect(await screen.findByTestId("device-rating-hint")).toHaveTextContent(
+      "The machine's own notes say 3",
+    );
   });
 
   it("does not touch the Set when only the verdict changed", async () => {

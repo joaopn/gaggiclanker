@@ -17,11 +17,25 @@ import { cn } from "@/lib/utils";
  */
 export function RatingStars({
   rating,
+  ownRating,
   className,
   onRate,
   label,
 }: {
   rating: number | null;
+  /**
+   * The rating *this* reader has recorded, when that is a different fact from
+   * the one being displayed.
+   *
+   * The list shows a verdict's rating falling back to the machine's own notes
+   * card, so a row can show three stars for a shot nobody here has judged.
+   * Clicking the third star then has to mean "yes, three" and not "clear",
+   * which is what comparing against the displayed value would have made it —
+   * and clearing a rating that does not exist writes an empty verdict for a
+   * shot nobody has an opinion about. Defaults to `rating`, which is right
+   * wherever the two are the same thing.
+   */
+  ownRating?: number | null;
   className?: string;
   /** Makes the stars clickable. `null` means the rating was cleared. */
   onRate?: (rating: number | null) => void;
@@ -55,36 +69,38 @@ export function RatingStars({
     );
   }
 
-  const current = rating != null && rating > 0 ? rating : 0;
+  const shown = rating != null && rating > 0 ? rating : 0;
+  const own = ownRating === undefined ? shown : (ownRating ?? 0) > 0 ? (ownRating as number) : 0;
   const of = label ? ` ${label}` : "";
   return (
     <span
       className={cn("inline-flex items-center gap-0.5", className)}
       data-testid="rating-stars"
-      data-rating={current || undefined}
+      data-rating={shown || undefined}
+      data-own-rating={own || undefined}
     >
       {[1, 2, 3, 4, 5].map((step) => (
         <button
           key={step}
           type="button"
-          // The row is a link; a star inside it must not follow it.
+          // The row carries a link across it; a star must not follow it.
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            onRate(step === current ? null : step);
+            onRate(step === own ? null : step);
           }}
           className="rounded-sm p-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-pressed={step <= current}
+          aria-pressed={step <= own}
           aria-label={
-            step === current
+            step === own
               ? `Clear the rating${of}`
-              : `Rate${of} ${step} of 5${current ? `, currently ${current}` : ""}`
+              : `Rate${of} ${step} of 5${own ? `, currently ${own}` : ""}`
           }
         >
-          <Star aria-hidden="true" className={starClass(step, current)} />
+          <Star aria-hidden="true" className={starClass(step, shown)} />
         </button>
       ))}
-      {current === 0 ? <span className="sr-only">not rated</span> : null}
+      {shown === 0 ? <span className="sr-only">not rated</span> : null}
     </span>
   );
 }

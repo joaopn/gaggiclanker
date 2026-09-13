@@ -204,11 +204,24 @@ function ShotRow({
       data-testid="shot-row"
       data-shot={shot.id}
       style={{ height: ROW_HEIGHT }}
-      className="flex items-center gap-2 border-border border-b pr-3 pl-2 last:border-0 hover:bg-muted/40"
+      className={cn(
+        "relative flex items-center gap-2 border-border border-b pr-3 pl-2",
+        "last:border-0 hover:bg-muted/40",
+      )}
     >
+      {/* The whole row is a link, but the link does not *wrap* the row: the
+          rating cell holds five buttons and the row ends in another, and
+          interactive content inside an `<a>` is invalid HTML and five extra tab
+          stops per row inside a single link. So the link is one stretched
+          overlay and the controls sit above it. */}
+      <Link
+        to={`/shots/${shot.id}`}
+        aria-label={`Open shot ${shot.device_id}`}
+        className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      />
       <input
         type="checkbox"
-        className="size-3.5 shrink-0 accent-primary"
+        className={cn(INTERACTIVE, "size-3.5 shrink-0 accent-primary")}
         checked={selected}
         // Three is the limit the compare drawer draws; a fourth line makes an
         // overlay unreadable rather than more informative.
@@ -216,12 +229,16 @@ function ShotRow({
         onChange={() => onToggleSelected(shot.id)}
         aria-label={`Compare shot ${shot.device_id}`}
       />
-      <Link to={`/shots/${shot.id}`} className={cn(GRID, "min-w-0 flex-1 py-1")}>
+      <div className={cn(GRID, "min-w-0 flex-1 py-1")}>
         {columns.map((column) => (
           <span
             key={column.id}
             className={cn(
               "min-w-0",
+              // Only the cells that can be clicked come above the stretched
+              // link. The rest stay under it, which is what keeps the whole
+              // row a link rather than only its gaps.
+              column.id === "rating" && INTERACTIVE,
               column.numeric && "text-right",
               column.narrowHidden && "hidden md:block",
             )}
@@ -229,11 +246,14 @@ function ShotRow({
             <Cell shot={shot} id={column.id} />
           </span>
         ))}
-      </Link>
-      <ShotRowEditor shot={shot} />
+      </div>
+      <ShotRowEditor shot={shot} className={INTERACTIVE} />
     </div>
   );
 }
+
+/** Above the stretched link, so a click here is a click on this and not the row. */
+const INTERACTIVE = "relative z-10";
 
 function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
   switch (id) {
@@ -284,14 +304,27 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
  * than a page visit. The write merges into whatever verdict already exists
  * (`usePatchJudgement`), because `PUT` replaces the row and the taste tags,
  * doses, grind and decision typed on the detail page must survive a star.
+ *
+ * What is shown and what a click means are two different numbers, which is why
+ * `ownRating` is passed separately. A row shows the machine's own notes-card
+ * rating when this box holds no verdict; clicking that star has to record the
+ * value, not clear a verdict that does not exist — and "clear" on a shot with
+ * no judgement would write an empty one, which is a row that claims somebody
+ * had an opinion, ages past the machine's notes card, and would be pushed back
+ * over what was typed at the machine.
  */
 function RatingCell({ shot }: { shot: ShotListRow }) {
   const patch = usePatchJudgement();
+  const own = shot.judgement_rating ?? null;
   return (
     <RatingStars
       rating={ratingOf(shot)}
+      ownRating={own}
       label={`shot ${shot.device_id}`}
       onRate={(rating) => {
+        // Clearing a rating nobody set is not a change, and it is the one
+        // click here that could create a verdict out of nothing.
+        if (rating === null && own === null) return;
         void attempt(() => patch.mutateAsync({ shotId: shot.id, patch: { rating } }));
       }}
     />

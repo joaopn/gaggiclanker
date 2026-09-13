@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
  * list is a scrolling container and an absolutely positioned panel inside one
  * is clipped by it.
  */
-export function ShotRowEditor({ shot }: { shot: ShotListRow }) {
+export function ShotRowEditor({ shot, className }: { shot: ShotListRow; className?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -34,6 +34,7 @@ export function ShotRowEditor({ shot }: { shot: ShotListRow }) {
           className={cn(
             "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
             "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className,
           )}
         >
           <ChevronDown className="size-4" aria-hidden="true" />
@@ -62,8 +63,16 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
   const assign = useAssignShot();
   const ids = { notes: useId(), set: useId() };
 
-  const [rating, setRating] = useState<number | null>(shot.judgement_rating ?? null);
-  const [notes, setNotes] = useState(shot.judgement_notes ?? "");
+  // What the verdict said when the panel opened — the verdict's own fields,
+  // never the machine's notes-card rating the row falls back to. Prefilling
+  // from that fallback and saving would adopt somebody else's opinion as this
+  // box's, silently.
+  const loaded = {
+    rating: shot.judgement_rating ?? null,
+    notes: shot.judgement_notes ?? "",
+  };
+  const [rating, setRating] = useState<number | null>(loaded.rating);
+  const [notes, setNotes] = useState(loaded.notes);
   const [setVersion, setSetVersion] = useState(
     shot.set_version_id ? String(shot.set_version_id) : "",
   );
@@ -73,14 +82,27 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
   const setMoved = chosen !== (shot.set_version_id ?? null);
   const saving = patch.isPending || assign.isPending;
 
+  // Saving a panel where only the Set moved must not write a verdict. The
+  // server has no empty-judgement guard by design — "discard, I knocked the
+  // portafilter" is a legitimate row with nothing else in it — so a PUT of
+  // `{rating: null, notes: ""}` creates one, and that row then lights up
+  // `has_judgement`, puts a null point on the Set's trend, and dates itself
+  // later than the machine's notes card, which is what notes write-back
+  // compares against before pushing a rating of zero over what was typed at
+  // the machine.
+  const verdictChanged = rating !== loaded.rating || notes !== loaded.notes;
+  const deviceRating = shot.rating ?? shot.index_rating ?? null;
+
   async function save() {
     // The verdict first, the Set second, and the panel closes only if both
     // went through: a panel that shut on a failed write would leave the toast
     // explaining a change the list is not showing.
-    const saved = await attempt(() =>
-      patch.mutateAsync({ shotId: shot.id, patch: { rating, notes } }),
-    );
-    if (saved === undefined) return;
+    if (verdictChanged) {
+      const saved = await attempt(() =>
+        patch.mutateAsync({ shotId: shot.id, patch: { rating, notes } }),
+      );
+      if (saved === undefined) return;
+    }
     if (setMoved) {
       const assigned = await attempt(() =>
         assign.mutateAsync({ shotId: shot.id, setVersionId: chosen }),
@@ -100,6 +122,14 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
           label={`shot ${shot.device_id}`}
           className="gap-1"
         />
+        {/* Why the stars can be empty on a row that shows three: the row falls
+            back to the machine's own notes card, and this panel is about what
+            *you* thought. Saying so is better than looking like a bug. */}
+        {rating === null && deviceRating !== null ? (
+          <p className="mt-1 text-muted-foreground text-xs" data-testid="device-rating-hint">
+            The machine's own notes say {deviceRating}. Pick a star to record your own.
+          </p>
+        ) : null}
       </div>
 
       <div>
