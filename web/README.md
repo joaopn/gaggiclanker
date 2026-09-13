@@ -428,9 +428,9 @@ positioning pass** — every collision check walks the tree calling
 `getComputedStyle`, and this project has no headless browser to escape to. A
 primitive whose panel cannot be opened in a test is a primitive nothing checks,
 and the places it is used (the shots page's filter panel, column chooser, row
-editor and needs-a-Set menu) are where the behaviour matters. It does CSS positioning plus the
-behaviour a reader expects: Escape closes and returns focus to the trigger, a
-click outside closes, the trigger reports `aria-expanded`.
+editor and needs-a-Set menu) are where the behaviour matters. It does CSS
+positioning plus the behaviour a reader expects: Escape closes and returns focus
+to the trigger, a click outside closes, the trigger reports `aria-expanded`.
 
 The same limit applies to anything else radix positions. `DropdownMenu`,
 `Select` and `Tooltip` are fine to *render* in a test — opening their content
