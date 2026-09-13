@@ -59,6 +59,19 @@ def test_schemas_are_sorted_so_the_prompt_cache_survives() -> None:
     assert names == sorted(names)
 
 
+def test_no_tool_asks_for_a_machine() -> None:
+    """A property of the whole list, pinned deliberately.
+
+    The archive holds one machine, so a `machine_id` argument would be a number
+    with exactly one correct value — and a model asked for one will sometimes
+    invent it. This is the assertion that stops one coming back by habit when a
+    tool is added.
+    """
+    for spec in registry.specs(ALL_PERMISSIONS):
+        properties = spec.openai_schema()["function"]["parameters"].get("properties", {})
+        assert "machine_id" not in properties, spec.name
+
+
 def test_the_chat_never_sees_a_device_write_tool() -> None:
     """Not a policy the runner applies — a property of what it is handed."""
     assert all(spec.permission != "device_write" for spec in registry.specs(CHAT_PERMISSIONS))
