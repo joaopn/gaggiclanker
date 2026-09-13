@@ -140,8 +140,33 @@ const samplesData: ShotSamplesData = {
   samples: syntheticSamples(40),
 };
 
+/**
+ * The list has loaded. Not "the profile name is on screen", which it used to
+ * be: the Profile column is off by default now, and a test that waited for a
+ * string in a column nobody asked for would be testing the column chooser.
+ */
+async function listed(): Promise<HTMLElement> {
+  return screen.findByTestId("shot-rows");
+}
+
+/** The filters live behind a button, so a test that sets one opens it first. */
+async function openFilters(user: ReturnType<typeof setupUser>): Promise<void> {
+  await user.click(await screen.findByTestId("filters-button"));
+  await screen.findByTestId("shot-filters");
+}
+
+/** Turn a column on through the chooser, the way a reader would. */
+async function showColumn(user: ReturnType<typeof setupUser>, label: string): Promise<void> {
+  await user.click(await screen.findByTestId("columns-button"));
+  await user.click(await screen.findByRole("checkbox", { name: label }));
+  await user.keyboard("{Escape}");
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // The visible columns are stored per browser, so one test's chooser must not
+  // decide what the next one renders.
+  window.localStorage.clear();
   getSyncStatus.mockResolvedValue(statusData());
   getProfileVersions.mockResolvedValue(versions);
   getShotSamples.mockResolvedValue(samplesData);
@@ -149,21 +174,52 @@ beforeEach(() => {
 });
 
 describe("ShotsPage", () => {
-  it("renders a row per shot with what a table column needs", async () => {
+  it("renders a row per shot with what the default columns need", async () => {
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
 
-    expect(await screen.findByText("9 Bar Espresso")).toBeInTheDocument();
+    await listed();
     expect(screen.getByText("28.4 s")).toBeInTheDocument();
     expect(screen.getByText("36.4 g")).toBeInTheDocument();
     expect(screen.getByTestId("score-badge")).toHaveTextContent("8.3");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "4");
     // The row is a link, because the shot page is where everything else is.
-    expect(screen.getByRole("link", { name: /9 Bar Espresso/ })).toHaveAttribute(
-      "href",
-      "/shots/1",
-    );
+    expect(screen.getByRole("link", { name: /28.4 s/ })).toHaveAttribute("href", "/shots/1");
+  });
+
+  it("leaves Profile and Curve out until somebody asks for them", async () => {
+    // A sparkline per row is a request and a canvas per row, and the profile
+    // name is the same string on almost every row of an archive built around
+    // three profiles. Both cost a lot and say little, so neither is the
+    // default; what a reader does want — which Set, and whether it was any
+    // good — is.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.queryByText("9 Bar Espresso")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
+    expect(getShotSamples).not.toHaveBeenCalled();
+
+    await showColumn(user, "Profile");
+    expect(await screen.findByText("9 Bar Espresso")).toBeInTheDocument();
+  });
+
+  it("remembers the chosen columns in this browser", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    const first = renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Profile");
+    await screen.findByText("9 Bar Espresso");
+    first.unmount();
+
+    renderWithQueryClient(<ShotsPage />);
+    expect(await screen.findByText("9 Bar Espresso")).toBeInTheDocument();
   });
 
   it("colours the score by band rather than linearly", async () => {
@@ -249,10 +305,13 @@ describe("ShotsPage", () => {
     expect(screen.getByText(/gaggimateHost/)).toBeInTheDocument();
   });
 
-  it("fetches a sparkline per row, thinned", async () => {
+  it("fetches a sparkline per row, thinned, once the Curve column is on", async () => {
+    const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Curve");
 
     await waitFor(() => expect(getShotSamples).toHaveBeenCalledWith(1, 40));
     expect(await screen.findByTestId("shot-sparkline")).toBeInTheDocument();
@@ -265,7 +324,8 @@ describe("ShotsPage filters", () => {
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await listed();
+    await openFilters(user);
 
     await user.selectOptions(screen.getByLabelText("Score"), "clean");
     await waitFor(() =>
@@ -283,12 +343,41 @@ describe("ShotsPage filters", () => {
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ source: "import" })),
     );
+
+    // …and the button says how many are on, which is the whole point of
+    // hiding them: the page can be scanned for "why am I seeing so few rows".
+    expect(screen.getByTestId("filters-count")).toHaveTextContent("3");
   });
 
-  it("offers every stored profile version, imported ones included", async () => {
+  it("clears the filters without clearing the sort", async () => {
+    // "Clear all" is about which shots are listed. Somebody who chose "worst
+    // executed first" and then cleared their filters did not ask to be put
+    // back at newest-first.
+    const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("sort-score"));
+    await openFilters(user);
+    await user.selectOptions(screen.getByLabelText("Rating"), "4");
+
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "execution_score", min_rating: undefined }),
+      ),
+    );
+    expect(screen.queryByTestId("filters-count")).not.toBeInTheDocument();
+  });
+
+  it("offers every stored profile version, imported ones included", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await openFilters(user);
 
     expect(
       await screen.findByRole("option", { name: "Cremina v2 (imported)" }),
@@ -304,14 +393,26 @@ describe("ShotsPage filters", () => {
     getShots.mockResolvedValue(listData([shot()], { total: 200, next_cursor: "abc" }));
 
     renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await listed();
 
-    await user.selectOptions(screen.getByLabelText("Sort"), "execution_score:asc");
+    // A column that is not the active one takes over descending; clicking the
+    // active one reverses it.
+    await user.click(screen.getByTestId("sort-score"));
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "execution_score", order: "desc" }),
+      ),
+    );
+    expect(screen.getByTestId("header-score")).toHaveAttribute("aria-sort", "descending");
+
+    await user.click(screen.getByTestId("sort-score"));
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "execution_score", order: "asc" }),
       ),
     );
+    expect(screen.getByTestId("header-score")).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByTestId("header-time")).toHaveAttribute("aria-sort", "none");
 
     await user.click(await screen.findByRole("button", { name: "Load more" }));
     await waitFor(() =>
@@ -334,9 +435,9 @@ describe("ShotsPage filters", () => {
       );
 
     renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await listed();
 
-    await user.selectOptions(screen.getByLabelText("Sort"), "started_at:asc");
+    await user.click(screen.getByTestId("sort-time"));
     await waitFor(() =>
       expect(getShots).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "started_at", order: "asc" }),
@@ -345,7 +446,7 @@ describe("ShotsPage filters", () => {
 
     await user.click(await screen.findByRole("button", { name: "Load more" }));
 
-    expect(await screen.findByText("The second page")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 2 of 3")).toBeInTheDocument();
     expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ order: "asc", offset: 1 }));
   });
 
@@ -356,6 +457,7 @@ describe("ShotsPage filters", () => {
     renderWithQueryClient(<ShotsPage />);
     await screen.findByText("No shots archived yet");
 
+    await openFilters(user);
     await user.selectOptions(screen.getByLabelText("Score"), "poor");
 
     expect(await screen.findByText("No shots match")).toBeInTheDocument();
@@ -374,13 +476,12 @@ describe("ShotsPage paging", () => {
       );
 
     renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await listed();
 
     await user.click(screen.getByRole("button", { name: "Load more" }));
 
-    expect(await screen.findByText("Cremina v2")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 2 of 2")).toBeInTheDocument();
     expect(getShots).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-1" }));
-    expect(screen.getByText("Showing 2 of 2")).toBeInTheDocument();
   });
 });
 
@@ -392,7 +493,7 @@ describe("ShotsPage refresh on events", () => {
     getShots.mockResolvedValue(listData([shot({ id: 1 })]));
 
     const { queryClient } = renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await screen.findByText("Showing 1 of 1");
 
     getShots.mockResolvedValue(
       listData([shot({ id: 2, profile_label: "Fresh off the machine" }), shot({ id: 1 })]),
@@ -401,7 +502,7 @@ describe("ShotsPage refresh on events", () => {
       await queryClient.invalidateQueries({ queryKey });
     }
 
-    expect(await screen.findByText("Fresh off the machine")).toBeInTheDocument();
+    expect(await screen.findByText("Showing 2 of 2")).toBeInTheDocument();
   });
 });
 
@@ -437,7 +538,7 @@ describe("ShotsPage compare drawer", () => {
     );
 
     renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await listed();
 
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000102" }));
@@ -476,6 +577,7 @@ describe("ShotsPage deep links", () => {
     await waitFor(() =>
       expect(getShots).toHaveBeenCalledWith(expect.objectContaining({ profile_version_id: 9 })),
     );
+    await openFilters(setupUser());
     await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("9"));
   });
 });
@@ -508,7 +610,8 @@ describe("ShotsPage and Sets", () => {
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
+    await listed();
+    await openFilters(user);
 
     await user.selectOptions(screen.getByLabelText("Set"), "needs");
     await waitFor(() =>

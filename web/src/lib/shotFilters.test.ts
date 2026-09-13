@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeFilterCount,
   DEFAULT_FILTERS,
   fromSearchParams,
   isDefaultFilters,
@@ -7,6 +8,27 @@ import {
   toParams,
   toSearchParams,
 } from "@/lib/shotFilters";
+
+describe("activeFilterCount", () => {
+  it("counts nothing when nothing is filtered", () => {
+    expect(activeFilterCount(DEFAULT_FILTERS)).toBe(0);
+  });
+
+  it("counts one per narrowed field", () => {
+    expect(
+      activeFilterCount({ ...DEFAULT_FILTERS, set: "needs", minRating: "4", source: "import" }),
+    ).toBe(3);
+  });
+
+  it("does not count the sort", () => {
+    // The badge answers "why am I seeing so few rows". An order is not a
+    // reason, and counting it would send somebody looking for a filter that
+    // does not exist.
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, sort: "execution_score", order: "asc" })).toBe(
+      0,
+    );
+  });
+});
 
 describe("toParams", () => {
   it("sends nothing but the page size when nothing is filtered", () => {

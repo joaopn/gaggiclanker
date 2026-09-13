@@ -1,9 +1,10 @@
 import { Coffee, GitCompare, Layers } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { ShotListRow } from "@/api/types";
+import type { ShotListRow, ShotSort } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ColumnChooser } from "@/components/shots/ColumnChooser";
 import { CompareDrawer, MAX_COMPARE } from "@/components/shots/CompareDrawer";
 import { ShotFilters } from "@/components/shots/ShotFilters";
 import { ShotsTable } from "@/components/shots/ShotsTable";
@@ -12,6 +13,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions, useShotsInfinite, useSyncStatus } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSets } from "@/hooks/useSets";
+import {
+  loadShotColumns,
+  type ShotColumnId,
+  saveShotColumns,
+  visibleColumns,
+} from "@/lib/shotColumns";
 import {
   fromSearchParams,
   isDefaultFilters,
@@ -23,12 +30,18 @@ import {
 /**
  * The archive, and the front page of the whole application.
  *
- * Three things happen here that do not happen on a plain table. The list is
- * windowed, because a year of shots is a thousand rows and each one carries a
- * curve. It refreshes from the server's own events rather than a timer — a
- * shot pulled on the machine appears at the top without a reload, which is the
- * chunk's acceptance criterion. And a live shot puts a banner at the top,
- * because the most interesting shot in the archive is the one happening now.
+ * It is a dataset, and it is laid out like one. The filters are behind a
+ * button with a count on it rather than spread across the top; the column
+ * headers sort; the reader picks which columns to see and the choice sticks in
+ * their browser. The list is windowed, because a year of shots is a thousand
+ * rows. It refreshes from the server's own events rather than a timer, so a
+ * pull started in another tab shows up here.
+ *
+ * Three pieces of state, in three different places, on purpose. The filters
+ * and the sort are in the query string, so a link carries them and the back
+ * button undoes them. The visible columns are in `localStorage`, because they
+ * are about this reader and not about this list. The selection is component
+ * state, because it is about this minute.
  */
 
 const PAGE_SIZE = 50;
@@ -43,6 +56,29 @@ export function ShotsPage() {
   const [selected, setSelected] = useState<number[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Read once, lazily: `loadShotColumns` touches storage, which can throw, and
+  // doing it in the initialiser keeps that to one call per mount rather than
+  // one per render.
+  const [columnIds, setColumnIds] = useState<ShotColumnId[]>(() => loadShotColumns());
+  const columns = useMemo(() => visibleColumns(columnIds), [columnIds]);
+
+  function chooseColumns(next: ShotColumnId[]) {
+    setColumnIds(next);
+    saveShotColumns(next);
+  }
+
+  /**
+   * Clicking a header: the active column flips its order, another column
+   * takes over descending. Descending because for every one of these — newest,
+   * best, longest, highest rated — the interesting end is the top.
+   */
+  function sortBy(key: ShotSort) {
+    if (key === filters.sort) {
+      setFilters({ ...filters, order: filters.order === "asc" ? "desc" : "asc" });
+      return;
+    }
+    setFilters({ ...filters, sort: key, order: "desc" });
+  }
 
   const params = useMemo(() => toParams(filters, PAGE_SIZE), [filters]);
   const shots = useShotsInfinite(params);
@@ -50,7 +86,7 @@ export function ShotsPage() {
   // Both sources, so an imported profile can be filtered on even though no
   // device profile points at it.
   const versions = useProfileVersions({ limit: 200 });
-  // The filter bar's Set picker, and the header's "needs a Set" count.
+  // The filter popover's Set picker, and the header's "needs a Set" count.
   const sets = useSets();
   useQueryErrorToast(shots.error, "Could not load shots");
 
@@ -87,7 +123,14 @@ export function ShotsPage() {
         title="Shots"
         subtitle={subtitle}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ShotFilters
+              value={filters}
+              onChange={setFilters}
+              versions={versions.data?.items ?? []}
+              sets={sets.data?.items ?? []}
+            />
+            <ColumnChooser visible={columnIds} onChange={chooseColumns} />
             {needsSet > 0 && filters.set !== "needs" ? (
               <Button
                 variant="outline"
@@ -109,13 +152,6 @@ export function ShotsPage() {
         }
       />
 
-      <ShotFilters
-        value={filters}
-        onChange={setFilters}
-        versions={versions.data?.items ?? []}
-        sets={sets.data?.items ?? []}
-      />
-
       {shots.isPending ? (
         <div className="space-y-2" data-testid="shots-loading">
           {[0, 1, 2, 3, 4].map((row) => (
@@ -133,10 +169,14 @@ export function ShotsPage() {
           >
             <ShotsTable
               shots={rows}
+              columns={columns}
               selected={selected}
               onToggleSelected={toggleSelected}
               scrollRef={scrollRef}
               maxCompare={MAX_COMPARE}
+              sort={filters.sort}
+              order={filters.order}
+              onSort={sortBy}
             />
           </div>
           <div className="flex items-center justify-between gap-3">

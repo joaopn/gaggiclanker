@@ -55,6 +55,27 @@ export function isDefaultFilters(state: ShotFilterState): boolean {
 }
 
 /**
+ * The keys that narrow the list. Sorting is not one of them: it changes the
+ * order of an answer, not which shots are in it, and a "3 filters" badge that
+ * counted "newest first" would be lying about why rows are missing.
+ */
+const FILTER_KEYS: Array<keyof ShotFilterState> = [
+  "from",
+  "to",
+  "profileVersionId",
+  "set",
+  "scoreBand",
+  "minRating",
+  "source",
+  "quarantined",
+];
+
+/** How many filters are on — the number on the Filters button's badge. */
+export function activeFilterCount(state: ShotFilterState): number {
+  return FILTER_KEYS.filter((key) => state[key] !== DEFAULT_FILTERS[key]).length;
+}
+
+/**
  * A date input gives a day; `started_at` is an instant.
  *
  * The day is read in the browser's own zone and converted, so "shots from the
