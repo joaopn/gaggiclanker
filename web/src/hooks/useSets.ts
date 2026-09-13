@@ -229,6 +229,12 @@ export function useAssignShot(): UseMutationResult<
       void invalidateShots(queryClient, String(variables.shotId));
       void invalidateShots(queryClient);
       void invalidateSets(queryClient);
+      // The shots page's "N need a Set" count comes from the sync status, not
+      // from the list, and filing a shot publishes no event that would refresh
+      // it — so the header kept counting a shot that was just filed. The status
+      // key by name rather than the `sync` prefix, so nothing added under that
+      // prefix later is refetched by every assignment.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
     },
   });
 }

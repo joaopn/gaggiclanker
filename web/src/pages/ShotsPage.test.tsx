@@ -898,6 +898,38 @@ describe("ShotsPage needs-a-Set menu", () => {
     expect(screen.getByRole("link", { name: /Kenya AA/ })).toHaveAttribute("href", "/sets/4");
   });
 
+  it("refreshes the header's count of shots that need a Set once one is filed", async () => {
+    // The count comes from the sync status, not the list, and an assignment
+    // publishes no event: without its own invalidation the header would keep
+    // counting the shot that was just filed.
+    const user = setupUser();
+    const counts = statusData().counts;
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+    getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_set: 4 } }));
+    putShotSetVersion.mockImplementation(async () => {
+      getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_set: 3 } }));
+      return shot({
+        set_version_id: 41,
+        set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2 },
+      });
+    });
+
+    renderList();
+    await listed();
+    expect(await screen.findByTestId("needs-set-count")).toHaveTextContent("4 need a Set");
+    const statusCalls = getSyncStatus.mock.calls.length;
+
+    await user.click(badgeButton());
+    await user.click(await screen.findByRole("button", { name: /^Kenya AA/ }));
+
+    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 41));
+    await waitFor(() =>
+      expect(screen.getByTestId("needs-set-count")).toHaveTextContent("3 need a Set"),
+    );
+    expect(getSyncStatus.mock.calls.length).toBeGreaterThan(statusCalls);
+  });
+
   it("keeps the menu open and says so when the assignment fails", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
