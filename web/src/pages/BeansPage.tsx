@@ -38,7 +38,6 @@ const EMPTY: BeanWrite = {
   roaster: null,
   origin: null,
   variety: null,
-  altitude_m: null,
   process: null,
   roast_level: null,
   decaf: false,
@@ -143,7 +142,6 @@ function BeanCard({
     bean.variety,
     bean.process,
     bean.roast_level,
-    bean.altitude_m ? `${bean.altitude_m} m` : null,
     bean.decaf ? "decaf" : null,
   ].filter(Boolean);
 
@@ -219,7 +217,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
           roaster: bean.roaster,
           origin: bean.origin,
           variety: bean.variety,
-          altitude_m: bean.altitude_m,
           process: bean.process,
           roast_level: bean.roast_level,
           decaf: bean.decaf ?? false,
@@ -233,7 +230,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
     roaster: useId(),
     origin: useId(),
     variety: useId(),
-    altitude: useId(),
     process: useId(),
     roast: useId(),
     decaf: useId(),
@@ -323,18 +319,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
               className={FIELD}
               value={draft.variety ?? ""}
               onChange={(event) => set("variety", event.target.value || null)}
-            />
-          </Labelled>
-          <Labelled id={ids.altitude} label="Altitude (m)">
-            <input
-              id={ids.altitude}
-              className={FIELD}
-              inputMode="numeric"
-              value={draft.altitude_m == null ? "" : String(draft.altitude_m)}
-              onChange={(event) => {
-                const parsed = Number.parseInt(event.target.value, 10);
-                set("altitude_m", Number.isFinite(parsed) ? parsed : null);
-              }}
             />
           </Labelled>
           <div className="flex items-end gap-2">

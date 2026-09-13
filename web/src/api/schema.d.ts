@@ -2818,8 +2818,6 @@ export interface components {
          * @description One row of `beans`, as read back.
          */
         BeanRow: {
-            /** Altitude M */
-            altitude_m?: number | null;
             /**
              * Archived
              * @default false
@@ -2869,8 +2867,6 @@ export interface components {
          *     stated" where a default would be a claim about the coffee.
          */
         BeanWrite: {
-            /** Altitude M */
-            altitude_m?: number | null;
             /**
              * Decaf
              * @default false

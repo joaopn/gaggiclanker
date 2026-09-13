@@ -146,7 +146,6 @@ export function bean(overrides: Partial<BeanRow> = {}): BeanRow {
     roaster: "Hasbean",
     origin: "Ethiopia",
     variety: null,
-    altitude_m: 1900,
     process: "natural",
     roast_level: "light",
     decaf: false,
