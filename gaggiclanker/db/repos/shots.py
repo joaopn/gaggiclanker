@@ -178,10 +178,20 @@ class ShotListRow(BaseModel):
     #: index also carries a rating; this one is the document's, which is the one
     #: the machine's UI edits.
     rating: int | None = None
+    #: The rating from this box's own verdict, which is a different fact from
+    #: the one above: the machine's notes card is what was typed at the
+    #: machine, this is what was decided here. The list shows this first and
+    #: falls back to the device's, and it is what the stars in a row write.
+    judgement_rating: int | None = None
     has_notes: bool = False
     #: Whether the user has recorded a verdict on the cup. The list shows it as
     #: a dot; `needs_set` has an equivalent on the Set side.
     has_judgement: bool = False
+    #: The verdict's own notes, so the list can show what the cup was like and
+    #: its row editor can open with what is already written rather than empty.
+    #: The join that carries `rating` and `has_judgement` is already here, so
+    #: this costs a column and no query.
+    judgement_notes: str | None = None
     #: What the user says they were brewing. NULL is the `needs_set`
     #: state: the shot arrived while no Set matched it, and it is waiting for
     #: somebody to say which one it belongs to.
@@ -315,6 +325,8 @@ _LIST_COLUMNS = """
                WHERE a.shot_id = s.id
                ORDER BY a.id DESC LIMIT 1), 'none') AS analysis_state,
     j.shot_id IS NOT NULL AS has_judgement,
+    j.rating AS judgement_rating,
+    j.notes AS judgement_notes,
     s.set_version_id,
     sv.set_id AS badge_set_id,
     st.name AS badge_set_name,
@@ -348,11 +360,19 @@ _ORDER_KEY = "COALESCE(s.started_at, '')"
 #: What `GET /api/shots?sort=` accepts, and the column each name means. Only
 #: these: a sort taken from the query string and pasted into SQL is an injection,
 #: so the parameter selects a key from here and never becomes one.
+#: What "the rating" means when something has to pick one number.
+_RATING_KEY = "COALESCE(j.rating, n.rating, s.index_rating)"
+
 SORT_KEYS: dict[str, str] = {
     "started_at": _ORDER_KEY,
     "execution_score": "s.execution_score",
     "duration": "s.duration_ms",
-    "rating": "COALESCE(n.rating, s.index_rating)",
+    # The same expression the list's Rating column renders and the `min_rating`
+    # filter applies, in that order of authority: this box's verdict, then the
+    # machine's notes card, then the index's figure. Three places reading the
+    # rating three different ways is how "sort by rating" and "rating" stop
+    # agreeing on a page where both are visible.
+    "rating": _RATING_KEY,
 }
 
 
@@ -699,7 +719,7 @@ class ShotsRepository(Repository):
             where.append("s.execution_score <= ?")
             params.append(max_score)
         if min_rating is not None:
-            where.append("COALESCE(n.rating, s.index_rating) >= ?")
+            where.append(f"{_RATING_KEY} >= ?")
             params.append(min_rating)
         if start_from is not None:
             where.append("s.started_at >= ?")

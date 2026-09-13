@@ -5044,6 +5044,10 @@ export interface components {
             index_rating?: number | null;
             /** Index Volume G */
             index_volume_g?: number | null;
+            /** Judgement Notes */
+            judgement_notes?: string | null;
+            /** Judgement Rating */
+            judgement_rating?: number | null;
             /** Machine Id */
             machine_id: number;
             phases?: components["schemas"]["JsonList"];
@@ -5227,6 +5231,10 @@ export interface components {
             index_max_pressure_bar?: number | null;
             /** Index Rating */
             index_rating?: number | null;
+            /** Judgement Notes */
+            judgement_notes?: string | null;
+            /** Judgement Rating */
+            judgement_rating?: number | null;
             /** Machine Id */
             machine_id: number;
             /**

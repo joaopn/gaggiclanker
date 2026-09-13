@@ -288,6 +288,36 @@ class TestJudgementAndAssignment:
         assert (await client.delete(f"/api/shots/{shot_id}/judgement")).status_code == 404
         assert data(await client.get(f"/api/shots/{shot_id}"))["judgement"] is None
 
+    async def test_the_list_row_carries_the_verdict_s_notes(
+        self, client: httpx.AsyncClient, shot_id: int
+    ) -> None:
+        """The list shows what the cup was like, and edits it in place.
+
+        Without this column the row's editor would have to fetch the whole shot
+        before it could show what is already written — one request per row
+        opened, for a string the list query's own join already has.
+        """
+        listed = data(await client.get("/api/shots"))["items"]
+        assert [row["judgement_notes"] for row in listed] == [None]
+        assert [row["judgement_rating"] for row in listed] == [None]
+
+        await client.put(
+            f"/api/shots/{shot_id}/judgement",
+            json={"rating": 4, "notes": "sharp, and short by a gram"},
+        )
+
+        listed = data(await client.get("/api/shots"))["items"]
+        assert listed[0]["judgement_notes"] == "sharp, and short by a gram"
+        assert listed[0]["judgement_rating"] == 4
+        # …and the filter agrees with the column, which it would not if the
+        # verdict's rating were invisible to the query.
+        assert data(await client.get("/api/shots", params={"min_rating": 4}))["total"] == 1
+
+        await client.delete(f"/api/shots/{shot_id}/judgement")
+        listed = data(await client.get("/api/shots"))["items"]
+        assert listed[0]["judgement_notes"] is None
+        assert listed[0]["judgement_rating"] is None
+
     async def test_an_unknown_taste_tag_is_refused(
         self, client: httpx.AsyncClient, shot_id: int
     ) -> None:
