@@ -229,11 +229,26 @@ describe("NewSetDialog", () => {
     it("is folded away until asked for", async () => {
       renderWithQueryClient(<NewSetDialog open initialBeanId={1} onOpenChange={() => {}} />);
 
+      const user = setupUser();
       const toggle = await screen.findByTestId("suggest-starting-point");
       expect(toggle).toHaveAttribute("aria-expanded", "false");
-      expect(screen.queryByTestId("ask-for-suggestions")).not.toBeInTheDocument();
+      // The controlled region exists folded too, so `aria-controls` resolves.
+      const region = screen.getByTestId("suggest-region");
+      expect(toggle.getAttribute("aria-controls")).toBe(region.id);
+      expect(region).not.toBeVisible();
+      expect(region).toBeEmptyDOMElement();
+      expect(screen.queryByTestId("starting-point-step")).not.toBeInTheDocument();
       // Folded, it costs nothing: not even the free similar-Set query runs.
+      await screen.findByRole("option", { name: "Niche Zero" });
+      await user.selectOptions(screen.getByLabelText("Grinder"), "1");
       expect(getSimilarSets).not.toHaveBeenCalled();
+      expect(createStartingPoint).not.toHaveBeenCalled();
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(document.getElementById(toggle.getAttribute("aria-controls") ?? "")).toBe(region);
+      expect(region).toBeVisible();
+      expect(await screen.findByTestId("starting-point-step")).toBeInTheDocument();
     });
 
     it("asks with the bean and grinder from the form, without creating anything", async () => {

@@ -59,6 +59,12 @@ type Draft = {
    * `toCreateBody` ignores it.
    */
   usualGrind: string;
+  /**
+   * Which recipe numbers a profile filled, and with what. Kept on the draft
+   * rather than in a state of its own so a profile pick reads and writes both
+   * in one functional update, never a stale half of either. Not sent either.
+   */
+  filled: AutoFilled;
 };
 
 const EMPTY: Draft = {
@@ -72,6 +78,7 @@ const EMPTY: Draft = {
   targetTemperatureC: "",
   intent: "",
   usualGrind: "",
+  filled: { targetYieldG: null, targetTemperatureC: null },
 };
 
 function toNumber(value: string): number | null {
@@ -102,8 +109,6 @@ export function toCreateBody(draft: Draft): SetCreate {
 /** The recipe fields a profile can fill, and what each was last filled with, by which profile. */
 type RecipeKey = "targetYieldG" | "targetTemperatureC";
 export type AutoFilled = Record<RecipeKey, { value: string; from: string } | null>;
-
-const NOTHING_FILLED: AutoFilled = { targetYieldG: null, targetTemperatureC: null };
 
 /**
  * Fill the recipe from a picked profile version, never over a person's value.
@@ -170,7 +175,6 @@ export function NewSetDialog({
   const versions = useProfileVersions({ limit: 200 });
   const create = useCreateSet();
   const [draft, setDraft] = useState<Draft>(EMPTY);
-  const [filled, setFilled] = useState<AutoFilled>(NOTHING_FILLED);
   const [suggestOpen, setSuggestOpen] = useState(false);
   // The starting-point run this dialog is following, if any. Held here rather
   // than inside the suggestion section so folding it and opening it again
@@ -206,14 +210,14 @@ export function NewSetDialog({
 
   function pickProfile(versionId: string) {
     const version = versions.data?.items.find((item) => String(item.id) === versionId);
-    const result = fillFromProfile(draft, filled, version);
-    setDraft((current) => ({ ...current, ...result.values, profileVersionId: versionId }));
-    setFilled(result.filled);
+    setDraft((current) => {
+      const result = fillFromProfile(current, current.filled, version);
+      return { ...current, ...result.values, filled: result.filled, profileVersionId: versionId };
+    });
   }
 
   function reset() {
     setDraft(EMPTY);
-    setFilled(NOTHING_FILLED);
     setSuggestOpen(false);
     setRunId(undefined);
   }
@@ -226,7 +230,7 @@ export function NewSetDialog({
   // anyway, and stays editable for the case where two Sets share a bean.
   const name = draft.name || chosenBean?.name || "";
 
-  const fromProfile = recipeHint(draft, filled);
+  const fromProfile = recipeHint(draft, draft.filled);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -459,11 +463,12 @@ function SuggestStartingPoint({
         <Chevron className="size-3.5" aria-hidden="true" />
         Suggest a starting point instead
       </Button>
-      {open ? (
-        <div id={regionId} className="mt-2">
-          <StartingPointStep {...step} />
-        </div>
-      ) : null}
+      {/* The region is always in the document so `aria-controls` names an
+          element that exists; only its contents mount when open, so a folded
+          section runs no query and cannot start a paid call. */}
+      <div id={regionId} className="mt-2" hidden={!open} data-testid="suggest-region">
+        {open ? <StartingPointStep {...step} /> : null}
+      </div>
     </div>
   );
 }
