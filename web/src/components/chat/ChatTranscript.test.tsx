@@ -146,6 +146,42 @@ describe("ChatTranscript", () => {
     );
   });
 
+  it("points a drafted profile at the staging section of the profiles page", () => {
+    // The queue is a section rather than a page, so the link carries the
+    // anchor: landing at the top of the profiles page and leaving the reader
+    // to find the draft they were just told about is half a link.
+    const messages: ChatMessage[] = [
+      message({ id: 1, role: "user", content: "draft me a softer ramp" }),
+      message({
+        id: 2,
+        role: "assistant",
+        tool_calls: [{ id: "c1", name: "draft_profile", arguments: { notes: "softer" } }],
+      }),
+      message({
+        id: 3,
+        role: "tool",
+        tool_results: [
+          {
+            id: "c1",
+            name: "draft_profile",
+            ok: true,
+            content: JSON.stringify({ draft_id: 12, change_summary: "Softer ramp." }),
+          },
+        ],
+      }),
+    ];
+
+    renderWithQueryClient(
+      <ChatTranscript messages={messages} runs={[]} permissions={PERMISSIONS} />,
+    );
+
+    const card = screen.getByTestId("propose-card-draft");
+    expect(within(card).getByRole("link", { name: /Profile draft #12/ })).toHaveAttribute(
+      "href",
+      "/profiles#staged",
+    );
+  });
+
   it("says an insight is unconfirmed, because that is the whole rule", () => {
     const messages: ChatMessage[] = [
       message({

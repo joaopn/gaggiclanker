@@ -1,8 +1,16 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { analysis, knowledgeInsight, suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+
+/** Where the panel sent the reader, since jsdom has no address bar. */
+function LocationProbe() {
+  const { pathname, hash } = useLocation();
+  return <span data-testid="location">{`${pathname}${hash}`}</span>;
+}
+
 import { vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
@@ -185,6 +193,24 @@ describe("AnalysisPanel", () => {
 
     await waitFor(() =>
       expect(createProfileDraft).toHaveBeenCalledWith({ base_version_id: 7, analysis_id: 1 }),
+    );
+  });
+
+  it("lands on the staging section once the draft exists", async () => {
+    // The queue is a section of the profiles page, and the anchor is what
+    // makes "I made you a draft" land on the draft rather than at the top.
+    const user = setupUser();
+    renderWithQueryClient(
+      <>
+        <AnalysisPanel shotId={6} analyses={[analysis()]} hasSet profileVersionId={7} />
+        <LocationProbe />
+      </>,
+    );
+
+    await user.click(screen.getByTestId("draft-profile"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent("/profiles#staged"),
     );
   });
 

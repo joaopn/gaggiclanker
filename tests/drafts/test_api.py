@@ -418,6 +418,49 @@ async def test_a_hand_edited_document_becomes_a_draft_without_calling_a_model(
     assert draft["status"] == "draft"
 
 
+async def test_a_version_staged_unchanged_reaches_the_machine_and_round_trips(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+) -> None:
+    """The plainest path there is: this profile, as it stands, on the machine.
+
+    A profile that is already right should not have to be edited to get there,
+    so the document posted is byte-for-byte the stored version. Everything that
+    makes a push safe still applies — the suffix, a new profile rather than an
+    overwrite, nothing selected — and the machine serving back what was sent is
+    what `verified` means.
+    """
+    app, client = writes_on
+    version_id = await base_version_id(app)
+    profile = await base_profile(app)
+    document = profile.model_dump(mode="json", exclude={"annotations", "id"})
+
+    draft = data(
+        await client.post(
+            "/api/profile-drafts",
+            json={
+                "base_version_id": version_id,
+                "profile": document,
+                "change_summary": f"Staged unchanged from {BASE_LABEL}",
+            },
+        )
+    )
+    assert draft["change_summary"] == f"Staged unchanged from {BASE_LABEL}"
+    # Nothing moved, so there is nothing to acknowledge and nothing to clamp.
+    assert draft["stop_condition_changes"] == []
+    assert draft["clamp_changes"] == []
+
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+    before = {entry["id"] for entry in fake_device.profiles}
+
+    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
+
+    assert pushed["status"] == "pushed"
+    assert pushed["pushed_device_profile_id"] not in before
+    assert fake_device.selected_profile_id != pushed["pushed_device_profile_id"]
+    mirrored = data(await client.get("/api/profiles"))["items"]
+    assert any(row["label"] == f"{BASE_LABEL} [AI]" for row in mirrored)
+
+
 async def test_a_hand_edited_document_that_is_not_a_profile_names_the_field(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
