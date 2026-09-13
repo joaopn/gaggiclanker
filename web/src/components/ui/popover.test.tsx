@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button";
 import { anchoredPosition, Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { setupUser } from "@/test/renderWithQueryClient";
@@ -132,6 +132,43 @@ describe("Popover", () => {
 
     expect(screen.getByRole("dialog", { name: "A panel" })).toBeInTheDocument();
     expect(screen.getByTestId("trigger")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("does not focus an anchored panel until it has been positioned", async () => {
+    // An anchored panel spends its first commit `visibility: hidden` while it
+    // is measured. jsdom will focus a hidden element; Chromium and Firefox
+    // refuse, so focusing before the measurement lands means focus never
+    // entering the row editor anywhere it matters. `restoreMocks` in the vitest
+    // config puts the prototype back after this test.
+    const user = setupUser();
+    const real = HTMLElement.prototype.focus;
+    const visibilityWhenFocused: string[] = [];
+    vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function focus(
+      this: HTMLElement,
+      options?: FocusOptions,
+    ) {
+      const panel = this.closest<HTMLElement>('[role="dialog"]');
+      if (panel !== null) visibilityWhenFocused.push(panel.style.visibility);
+      real.call(this, options);
+    });
+
+    render(<Fixture anchored />);
+    await user.click(screen.getByTestId("trigger"));
+
+    expect(visibilityWhenFocused).not.toHaveLength(0);
+    expect(visibilityWhenFocused).not.toContain("hidden");
+    expect(screen.getByTestId("inside")).toHaveFocus();
+  });
+
+  it("asks not to be scrolled into view, because a scroll would close it", async () => {
+    const user = setupUser();
+    const focusSpy = vi.spyOn(HTMLElement.prototype, "focus");
+
+    render(<Fixture anchored />);
+    await user.click(screen.getByTestId("trigger"));
+
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+    expect(screen.getByTestId("panel")).toBeInTheDocument();
   });
 
   it("closes an anchored panel as soon as anything scrolls", async () => {

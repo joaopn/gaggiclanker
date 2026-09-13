@@ -243,28 +243,38 @@ export function PopoverContent({
     return () => document.removeEventListener("scroll", onScroll, true);
   }, [open, anchored, setOpen]);
 
-  // Focus goes in on open and back to the trigger on every close — Escape, a
-  // click outside, and a Save or Cancel button that simply flips the state.
-  // Landing on `<body>` is how a keyboard user loses their place. The guard is
-  // that focus has not already gone somewhere deliberate: clicking a different
-  // control *outside* the panel moves focus there and should keep it there,
-  // while a button inside the panel is about to be removed from the document.
+  // Whether the panel is where it is going to be. An anchored one spends its
+  // first commit hidden while it is measured, and a hidden element cannot take
+  // focus — jsdom allows it, but Chromium and Firefox refuse, which would mean
+  // focus never entering the row editor in the only place it matters. So the
+  // focus effect waits for this rather than running on `open`.
+  const positioned = !anchored || fixedStyle !== null;
+
+  // Focus goes in once the panel is placed, and back to the trigger on every
+  // close — Escape, a click outside, and a Save or Cancel button that simply
+  // flips the state. Landing on `<body>` is how a keyboard user loses their
+  // place. The guard is that focus has not already gone somewhere deliberate:
+  // clicking a different control *outside* the panel moves focus there and
+  // should keep it there, while a button inside the panel is about to be
+  // removed from the document.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !positioned) return;
     const panel = contentRef.current;
     const trigger = triggerRef.current;
     focusFirst(panel);
     return () => {
       const active = document.activeElement;
       if (active === null || active === document.body || panel?.contains(active)) {
-        trigger?.focus();
+        // `preventScroll`, here and above: focusing an element inside a fixed
+        // panel can scroll an ancestor to "reveal" it, and a scroll is what
+        // closes an anchored panel. Without this, opening one could close it.
+        trigger?.focus({ preventScroll: true });
       }
     };
-  }, [open, triggerRef]);
+  }, [open, positioned, triggerRef]);
 
   if (!open) return null;
 
-  const positioned = !anchored || fixedStyle !== null;
   return (
     <div
       ref={contentRef}
@@ -340,5 +350,5 @@ function focusFirst(panel: HTMLElement | null): void {
   const focusable = panel.querySelector<HTMLElement>(
     'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
   );
-  (focusable ?? panel).focus();
+  (focusable ?? panel).focus({ preventScroll: true });
 }

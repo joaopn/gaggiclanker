@@ -120,6 +120,29 @@ describe("pullSummary", () => {
     );
   });
 
+  it("says what landed when a run failed part of the way through", () => {
+    // A pass that stored three shots and then hit two it could not fetch ends
+    // `error` — sometimes with no message at all, because the per-shot
+    // failures are counted rather than raised. "The pull failed" would be
+    // telling somebody nothing happened when most of it did.
+    expect(pullSummary(run({ status: "error", error: null, shots_inserted: 3, errors: 2 }))).toBe(
+      "3 new shots, 2 failed. The Device page has the details.",
+    );
+  });
+
+  it("still names the fault when a partial run has one", () => {
+    expect(
+      pullSummary(
+        run({
+          status: "error",
+          error: "the machine stopped answering",
+          shots_inserted: 1,
+          errors: 3,
+        }),
+      ),
+    ).toBe("1 new shot, 3 failed. the machine stopped answering");
+  });
+
   it("still says something when a failure carries no message", () => {
     expect(pullSummary(run({ status: "error", error: null }))).toMatch(/failed/);
   });

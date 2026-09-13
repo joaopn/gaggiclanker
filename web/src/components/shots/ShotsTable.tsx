@@ -252,8 +252,14 @@ function ShotRow({
   );
 }
 
-/** Above the stretched link, so a click here is a click on this and not the row. */
-const INTERACTIVE = "relative z-10";
+/**
+ * Above the stretched link, so a click here is a click on this and not the row.
+ *
+ * `z-[1]`, not `z-10`: all it has to beat is the link's own `z-auto`, and the
+ * sticky header is `z-10` in the same stacking context — at `z-10` these
+ * painted *over* the header as the list scrolled under it.
+ */
+const INTERACTIVE = "relative z-[1]";
 
 function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
   switch (id) {
@@ -283,7 +289,14 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
       );
     case "notes":
       return (
-        <span className="block truncate text-muted-foreground text-xs" data-testid="notes-cell">
+        <span
+          className="block truncate text-muted-foreground text-xs"
+          data-testid="notes-cell"
+          // Two hundred characters into a column a few wide: the whole note on
+          // hover is the difference between a column worth turning on and a
+          // column of first words.
+          title={shot.judgement_notes ?? undefined}
+        >
           {shot.judgement_notes || ""}
         </span>
       );

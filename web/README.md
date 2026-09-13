@@ -250,8 +250,8 @@ has revoked only hammers it.
 Three things to know before editing that corner. **`SignInPage` renders outside
 `AppShell`**: every query the shell makes needs a token, so wrapping it would
 401 the user straight back to the page they are on. **`App` stops subscribing to
-both SSE streams while `/sign-in` is showing**, or every failed login costs two
-doomed requests and a redirect to the page you are already on. And
+the sync stream while `/sign-in` is showing**, or every failed login costs a
+doomed request and a redirect to the page you are already on. And
 **`GET /api/auth/status` is the one public route under `/api`** — it is what
 lets the app know auth is on before it has a token, which is the difference
 between showing a sign-in form and flashing a page of empty tables on the way to

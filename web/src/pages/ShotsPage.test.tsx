@@ -1092,7 +1092,13 @@ describe("ShotsPage pull button", () => {
     getSyncStatus.mockResolvedValue(
       statusData({
         last_runs: {
-          backfill: shotRun({ id: 7, status: "error", error: "the machine stopped answering" }),
+          backfill: shotRun({
+            id: 7,
+            status: "error",
+            error: "the machine stopped answering",
+            shots_inserted: 0,
+            shots_updated: 0,
+          }),
         },
       }),
     );
@@ -1101,6 +1107,45 @@ describe("ShotsPage pull button", () => {
     }
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("the machine stopped answering"));
+  });
+
+  it("says what landed when a pull failed part of the way through", async () => {
+    // The common shape of a failure: eleven shots stored, three the machine
+    // would not serve, and no message at all — the per-shot failures are
+    // counted, not raised. Saying "the pull failed" would be wrong about the
+    // eleven.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+
+    const { queryClient } = renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("pull-button"));
+    await waitFor(() => expect(runSync).toHaveBeenCalled());
+
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: {
+          backfill: shotRun({
+            id: 7,
+            status: "error",
+            error: null,
+            shots_inserted: 11,
+            shots_updated: 0,
+            errors: 3,
+          }),
+        },
+      }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "11 new shots, 3 failed. The Device page has the details.",
+      ),
+    );
   });
 
   it("still toasts when the ledger moved before the 202 came back", async () => {

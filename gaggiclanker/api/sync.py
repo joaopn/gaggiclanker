@@ -157,8 +157,8 @@ async def get_sync_events(request: Request, bus: EventBusDep) -> EventSourceResp
 
     The same lossy bus as everything else: an event means "this family of
     queries is stale, go and re-read", never "here is the new value". A tab that
-    misses one under backpressure re-reads on the next, and the periodic index
-    diff is the backstop behind both.
+    misses one under backpressure re-reads on the next, and `GET /api/sync/status`
+    is the backstop behind both — there is no pass on a timer to be one.
     """
     _ = request  # the stream ends when the client disconnects, which cancels us
     return sse_response(_stream(bus.stream()))

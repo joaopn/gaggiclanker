@@ -1920,8 +1920,8 @@ export interface paths {
          *
          *     The same lossy bus as everything else: an event means "this family of
          *     queries is stale, go and re-read", never "here is the new value". A tab that
-         *     misses one under backpressure re-reads on the next, and the periodic index
-         *     diff is the backstop behind both.
+         *     misses one under backpressure re-reads on the next, and `GET /api/sync/status`
+         *     is the backstop behind both — there is no pass on a timer to be one.
          */
         get: operations["get_sync_events_api_sync_events_get"];
         put?: never;

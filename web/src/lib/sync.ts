@@ -59,9 +59,28 @@ export function lastFinishedShotRun(status: SyncStatusData | undefined): SyncRun
  * business.
  */
 export function pullSummary(run: SyncRunRow): string {
-  if (run.status !== "ok") {
-    return run.error ?? "The pull failed. The Device page has the details.";
-  }
+  const counts = countsSentence(run);
+  if (run.status === "ok") return counts ?? "Nothing new";
+
+  // A failed run is not an empty one. A pass that stored eleven shots and then
+  // hit three it could not fetch ends `error`, sometimes with no message at
+  // all — the per-shot failures are counted, not raised — and "The pull
+  // failed" would be telling somebody nothing happened when most of it did.
+  const detail = run.error ?? "The Device page has the details.";
+  if (counts === null) return run.error ?? "The pull failed. The Device page has the details.";
+  const failed = run.errors > 0 ? `${run.errors} failed` : "some failed";
+  return `${counts}, ${failed}. ${detail}`;
+}
+
+/**
+ * What a run moved, as a sentence, or `null` when it moved nothing.
+ *
+ * Quarantined shots count as landed: the bytes are in the archive and the row
+ * is in the list, which is what the person who pressed the button wanted to
+ * know. Why it would not parse is the shot page's business — but it is said
+ * here too, because a "new shot" with no curve is otherwise a surprise.
+ */
+function countsSentence(run: SyncRunRow): string | null {
   const parts: string[] = [];
   const landed = run.shots_inserted + run.shots_quarantined;
   if (landed > 0) parts.push(`${landed} new shot${landed === 1 ? "" : "s"}`);
@@ -69,7 +88,7 @@ export function pullSummary(run: SyncRunRow): string {
   if (run.shots_quarantined > 0) {
     parts.push(`${run.shots_quarantined} could not be parsed`);
   }
-  return parts.length > 0 ? parts.join(", ") : "Nothing new";
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 /**

@@ -179,6 +179,11 @@ export function usePatchJudgement(): UseMutationResult<
       const detail = await queryClient.fetchQuery({
         queryKey: queryKeys.shots.detail(String(shotId)),
         queryFn: () => getShot(shotId),
+        // The app's default `staleTime` is thirty seconds, and `fetchQuery`
+        // honours it: without this, "read the current verdict" could read one
+        // from half a minute ago and write it back over a newer edit made on
+        // the detail page in another tab.
+        staleTime: 0,
       });
       return putJudgement(shotId, { ...toWrite(detail.judgement), ...patch });
     },
