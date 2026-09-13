@@ -85,7 +85,7 @@ async def test_an_edited_label_is_a_new_version(small_archive: Archive) -> None:
     await small_archive.engine.sync_profiles(trigger="test")
     before = await _versions(small_archive)
     target = small_archive.device.profiles[0]
-    original_version = await small_archive.engine.profiles.get_device_profile(1, target["id"])
+    original_version = await small_archive.engine.profiles.get_device_profile(target["id"])
     assert original_version is not None
     target["label"] = "Renamed by the user"
 
@@ -93,7 +93,7 @@ async def test_an_edited_label_is_a_new_version(small_archive: Archive) -> None:
 
     assert await _versions(small_archive) == before + 1
     assert run.profiles_changed == 1
-    current = await small_archive.engine.profiles.get_device_profile(1, target["id"])
+    current = await small_archive.engine.profiles.get_device_profile(target["id"])
     assert current is not None
     assert current.current_version_id != original_version.current_version_id
 
@@ -122,7 +122,7 @@ async def test_a_profile_removed_from_the_machine_is_tombstoned(small_archive: A
 
     await small_archive.engine.sync_profiles(trigger="test")
 
-    gone = await small_archive.engine.profiles.get_device_profile(1, removed["id"])
+    gone = await small_archive.engine.profiles.get_device_profile(removed["id"])
     assert gone is not None
     assert gone.deleted_at is not None
 
@@ -140,7 +140,7 @@ async def test_a_restored_profile_loses_its_tombstone(small_archive: Archive) ->
     small_archive.device.profiles.append(removed)
     await small_archive.engine.sync_profiles(trigger="test")
 
-    back = await small_archive.engine.profiles.get_device_profile(1, removed["id"])
+    back = await small_archive.engine.profiles.get_device_profile(removed["id"])
     assert back is not None
     assert back.deleted_at is None
 

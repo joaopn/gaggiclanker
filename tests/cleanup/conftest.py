@@ -30,7 +30,6 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.cleanup.service import CleanupService
-from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
@@ -55,7 +54,6 @@ __all__ = [
     "data",
     "drain_tasks",
     "error",
-    "machine_id",
 ]
 
 #: Free space the fake reports, in bytes, so a `free_space` policy has something
@@ -138,13 +136,6 @@ async def drain_tasks(app: FastAPI, prefix: str, *, timeout: float = 5.0) -> Non
         await asyncio.wait(pending, timeout=timeout)
         await asyncio.sleep(0)
     raise AssertionError(f"background tasks matching {prefix!r} did not finish")
-
-
-async def machine_id(app: FastAPI) -> int:
-    """The machine row the sync pass created."""
-    rows = await MachinesRepository(app.state.db).list_all()
-    assert rows, "the sync pass created no machine row"
-    return rows[0].id
 
 
 def service(app: FastAPI) -> CleanupService:

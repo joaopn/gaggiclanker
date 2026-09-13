@@ -190,6 +190,13 @@ async def post_cleanup_run(request: Request, cleanup: CleanupServiceDep) -> JSON
     archive does not already hold intact.
     """
     service = _require_cleanup(cleanup)
+    if service.client is None:
+        # The archive still answers the reads — browsing works with the machine
+        # unplugged — but there is genuinely nothing to delete from.
+        raise ServiceUnavailable(
+            "No machine is configured, so there is nothing to clean up. "
+            "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
+        )
     plan = await service.plan()
     if not service.spawn(request.app.state.tasks, trigger="manual"):
         raise Conflict(
@@ -274,6 +281,8 @@ async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
 async def post_notes_push(request: Request, notes: NotesWritebackServiceDep) -> JSONResponse:
     """202: one frame per shot, in a background task, stopping on the first device error."""
     service = _require_writeback(notes)
+    if service.client is None:
+        raise ServiceUnavailable("No machine is configured, so there is nowhere to write notes to.")
     pending = await service.pending()
     if not service.spawn_bulk(request.app.state.tasks):
         raise Conflict("A notes push is already running.")

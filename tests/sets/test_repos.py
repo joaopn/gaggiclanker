@@ -1,7 +1,7 @@
 """Beans, grinders, Sets and versions at the repository level.
 
 The properties here are the ones the schema is supposed to guarantee — version
-numbering, parent linkage, one active Set per machine — so every one of them is
+numbering, parent linkage, one active Set — so every one of them is
 asserted against the real file rather than against a mock that would agree with
 whatever the code did.
 """
@@ -15,7 +15,6 @@ import pytest
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
@@ -29,7 +28,7 @@ from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 
 async def _new_set(wired: Fixtures, name: str = "Guji on the Niche", **version: object) -> SetRow:
     return await wired.sets.create(
-        SetWrite(name=name, bean_id=wired.bean_id, machine_id=wired.machine_id),
+        SetWrite(name=name, bean_id=wired.bean_id),
         SetVersionWrite(**version),  # type: ignore[arg-type]
     )
 
@@ -168,7 +167,7 @@ class TestSets:
         assert [v.version_no for v in await wired.sets.versions(first.id)] == [2, 1]
         assert [v.version_no for v in await wired.sets.versions(second.id)] == [2, 1]
 
-    async def test_only_one_set_per_machine_is_active(self, wired: Fixtures) -> None:
+    async def test_only_one_set_is_active(self, wired: Fixtures) -> None:
         first = await _new_set(wired, name="Bag one")
         second = await _new_set(wired, name="Bag two")
         # Creating the second switched the flag rather than colliding on the
@@ -183,18 +182,6 @@ class TestSets:
         assert other is not None
         assert (other.active, other.status) == (False, "active")
 
-    async def test_two_machines_each_keep_their_own_active_set(self, wired: Fixtures) -> None:
-        second_machine = await MachinesRepository(wired.db).upsert(
-            MachineUpsert(host="office.local")
-        )
-        mine = await _new_set(wired, name="Kitchen")
-        theirs = await wired.sets.create(
-            SetWrite(name="Office", bean_id=wired.bean_id, machine_id=second_machine.id),
-            SetVersionWrite(),
-        )
-        assert (await wired.sets.get(mine.id)).active is True  # type: ignore[union-attr]
-        assert theirs.active is True
-
     async def test_archiving_clears_active(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
         archived = await wired.sets.archive(row.id)
@@ -203,13 +190,13 @@ class TestSets:
         assert await wired.sets.list_sets() == []
         assert len(await wired.sets.list_sets(include_archived=True)) == 1
         # And it no longer collects shots.
-        assert await wired.sets.active_version_for_machine(wired.machine_id) is None
+        assert await wired.sets.active_version() is None
 
     async def test_shot_counts_roll_up_from_the_versions(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
         version = (await wired.sets.versions(row.id))[0]
         for index in range(3):
-            shot_id = await make_shot(wired.db, wired.machine_id, f"00010{index}")
+            shot_id = await make_shot(wired.db, f"00010{index}")
             assert await wired.sets.assign_shot(shot_id, version.id)
         refreshed = await wired.sets.get(row.id)
         assert refreshed is not None and refreshed.shot_count == 3
@@ -218,7 +205,7 @@ class TestSets:
     async def test_assigning_to_a_version_that_does_not_exist_is_refused(
         self, wired: Fixtures
     ) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000200")
+        shot_id = await make_shot(wired.db, "000200")
         assert await wired.sets.assign_shot(shot_id, 4040) is False
         # The column carries no foreign key, so this check is the only thing
         # standing between a typo and a dangling reference.
@@ -228,7 +215,7 @@ class TestSets:
     async def test_unassigning_is_assigning_to_nothing(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
         version = (await wired.sets.versions(row.id))[0]
-        shot_id = await make_shot(wired.db, wired.machine_id, "000201")
+        shot_id = await make_shot(wired.db, "000201")
         await wired.sets.assign_shot(shot_id, version.id)
         assert await wired.sets.assign_shot(shot_id, None)
         shot = await wired.shots.get(shot_id)
@@ -328,7 +315,7 @@ class TestActivationRefusals:
     async def test_an_archived_set_cannot_be_made_active(self, wired: Fixtures) -> None:
         """Otherwise the machine ends up with no usable active Set at all.
 
-        `active_version_for_machine` requires `status = 'active'`, so flipping
+        `active_version` requires `status = 'active'`, so flipping
         the flag onto an archived Set clears it from the live one and leaves
         every later shot landing in the inbox for no visible reason.
         """
@@ -340,13 +327,13 @@ class TestActivationRefusals:
         assert await wired.sets.activate(old.id) is None
 
         assert (await wired.sets.get(live.id)).active is True  # type: ignore[union-attr]
-        assert await wired.sets.active_version_for_machine(wired.machine_id) is not None
+        assert await wired.sets.active_version() is not None
 
     async def test_a_shot_cannot_be_filed_under_an_archived_set(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
         version = (await wired.sets.versions(row.id))[0]
         await wired.sets.archive(row.id)
-        shot_id = await make_shot(wired.db, wired.machine_id, "000500")
+        shot_id = await make_shot(wired.db, "000500")
 
         assert await wired.sets.assign_shot(shot_id, version.id) is False
 
@@ -354,23 +341,18 @@ class TestActivationRefusals:
         """A deleted profile id has been freed and may point at something else."""
         version_id = await make_profile_version(wired.db, "Adaptive v2")
         profiles = ProfilesRepository(wired.db)
-        await profiles.upsert_device_profile(
-            machine_id=wired.machine_id, device_id="adapt", version_id=version_id
-        )
+        await profiles.upsert_device_profile(device_id="adapt", version_id=version_id)
         await _new_set(wired, profile_version_id=version_id)
         # The user deleted it on the machine, so the next profiles pass listed
         # everything except it. (An *empty* list is a failed read and tombstones
         # nothing — see `mark_missing_deleted`.)
-        await profiles.upsert_device_profile(
-            machine_id=wired.machine_id, device_id="9bar", version_id=version_id
-        )
-        assert await profiles.mark_missing_deleted(wired.machine_id, ["9bar"]) == 1
+        await profiles.upsert_device_profile(device_id="9bar", version_id=version_id)
+        assert await profiles.mark_missing_deleted(["9bar"]) == 1
 
-        shot_id = await make_shot(wired.db, wired.machine_id, "000501")
+        shot_id = await make_shot(wired.db, "000501")
         assert (
             await wired.sets.auto_assign(
                 shot_id,
-                machine_id=wired.machine_id,
                 profile_version_id=None,
                 device_profile_id="adapt",
             )

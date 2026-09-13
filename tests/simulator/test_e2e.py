@@ -194,10 +194,10 @@ async def test_the_whole_prototype_against_the_simulator(
     # the `res:ota-settings` broadcast to have arrived and been stored — a
     # moment later. Asserting on the row the instant the socket is up fails
     # about one run in ten, and it is the test that is wrong, not the app.
-    machines = await _until(
-        lambda: _machine_identified(client), timeout=30.0, what="the identity pass to store a row"
+    machine = await _until(
+        lambda: _machine_identified(client), timeout=30.0, what="the identity pass to fill the row"
     )
-    assert machines[0]["display_version"], machines
+    assert machine["display_version"], machine
 
     # 2. Profiles. A fresh install ships the seed profiles in `data/p/` — and
     #    nothing mirrors them until somebody asks, so this is the first pull.
@@ -267,7 +267,6 @@ async def test_the_whole_prototype_against_the_simulator(
             json={
                 "name": "Simulator baseline",
                 "bean_id": bean["id"],
-                "machine_id": machines[0]["id"],
                 "grinder_id": grinder["id"],
                 "version": {
                     "grind_setting": "22",
@@ -316,10 +315,10 @@ async def _device_identified(client: httpx.AsyncClient) -> dict[str, Any] | None
     return status if status.get("connected") else None
 
 
-async def _machine_identified(client: httpx.AsyncClient) -> list[dict[str, Any]] | None:
-    """The machine rows, once the first of them carries a firmware version."""
-    rows = [entry["machine"] for entry in data(await client.get("/api/machines"))["items"]]
-    return rows if rows and rows[0].get("display_version") else None
+async def _machine_identified(client: httpx.AsyncClient) -> dict[str, Any] | None:
+    """The machine row, once it carries a firmware version."""
+    row: dict[str, Any] = data(await client.get("/api/machine"))["machine"]
+    return row if row.get("display_version") else None
 
 
 async def _profiles_mirrored(client: httpx.AsyncClient) -> list[dict[str, Any]] | None:

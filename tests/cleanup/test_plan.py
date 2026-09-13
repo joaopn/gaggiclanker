@@ -25,7 +25,6 @@ async def test_the_default_policy_plans_nothing(
     plan = await service(app).plan()
     assert plan.policy.mode == "off"
     assert plan.planned == []
-    assert plan.machine_id is not None
 
 
 async def test_the_plan_counts_what_the_archive_thinks_is_on_the_machine(
@@ -138,7 +137,7 @@ async def test_free_space_refuses_to_act_on_a_machine_that_reported_no_figures(
     await app.state.settings_service.apply(
         {"deviceCleanupMode": "free_space", "deviceCleanupMinFreeKb": 4096}
     )
-    plan = await blind.plan(await _machine(app))
+    plan = await blind.plan()
     assert plan.planned == []
     assert plan.blocked is not None
     assert "free space" in plan.blocked
@@ -155,9 +154,3 @@ async def test_the_sd_card_wins_when_the_machine_has_one(
     plan = await service(app).plan()
     assert plan.free_bytes == 12_345
     assert plan.free_source == "sd"
-
-
-async def _machine(app: FastAPI) -> int:
-    from tests.cleanup.conftest import machine_id
-
-    return await machine_id(app)

@@ -70,7 +70,6 @@ def _rewire(app: FastAPI, provider: FakeProvider) -> None:
 def _body(fixture: Fixture, **overrides: object) -> dict[str, object]:
     return {
         "bean_id": fixture.new_bean_id,
-        "machine_id": fixture.machine_id,
         "grinder_id": fixture.grinder_id,
         "usual_grind": "22",
         **overrides,
@@ -87,7 +86,7 @@ async def test_similar_sets_is_readable_without_spending_anything(
     _app, client, fixture, provider = api
     response = await client.get(
         f"/api/beans/{fixture.new_bean_id}/similar-sets",
-        params={"grinder_id": fixture.grinder_id, "machine_id": fixture.machine_id},
+        params={"grinder_id": fixture.grinder_id},
     )
     assert response.status_code == 200
     data = response.json()["data"]

@@ -37,7 +37,7 @@ NEW_SHOT_ID = 900
 async def _wait_for_shot(archive: Archive, device_id: str, timeout: float) -> None:
     async with asyncio.timeout(timeout):
         while True:
-            if await archive.engine.shots.get_by_device_id(1, device_id) is not None:
+            if await archive.engine.shots.get_by_device_id(device_id) is not None:
                 return
             await asyncio.sleep(0.02)
 
@@ -67,7 +67,7 @@ async def test_a_saved_shot_waits_for_a_pull(small_archive: Archive, tasks: Task
     # Nothing. Not on the push, not on a timer, not on the reconnect the brew
     # did not cause either.
     await asyncio.sleep(IDLE_WATCH_S)
-    assert await small_archive.engine.shots.get_by_device_id(1, pad6(NEW_SHOT_ID)) is None
+    assert await small_archive.engine.shots.get_by_device_id(pad6(NEW_SHOT_ID)) is None
     assert not [event for event in small_archive.drain() if event.event == SHOT_INGESTED_EVENT]
 
     small_archive.engine.request_shot_sync("manual")
@@ -75,7 +75,7 @@ async def test_a_saved_shot_waits_for_a_pull(small_archive: Archive, tasks: Task
     event = await small_archive.wait_for(SHOT_INGESTED_EVENT, timeout=PULL_DEADLINE_S)
     assert event.data["device_id"] == pad6(NEW_SHOT_ID)
 
-    stored = await small_archive.engine.shots.get_by_device_id(1, pad6(NEW_SHOT_ID))
+    stored = await small_archive.engine.shots.get_by_device_id(pad6(NEW_SHOT_ID))
     assert stored is not None
     assert stored.sample_count == 40
     assert stored.quarantined is False
@@ -152,7 +152,7 @@ async def test_an_announced_shot_the_index_has_not_listed_is_still_pulled(
     await small_archive.device.emit_shot_saved(NEW_SHOT_ID)
     # Give the announcement time to be recorded — and to not start a pass.
     await asyncio.sleep(0.2)
-    assert await small_archive.engine.shots.get_by_device_id(1, pad6(NEW_SHOT_ID)) is None
+    assert await small_archive.engine.shots.get_by_device_id(pad6(NEW_SHOT_ID)) is None
 
     small_archive.engine.request_shot_sync("manual")
     await _wait_for_shot(small_archive, pad6(NEW_SHOT_ID), timeout=PULL_DEADLINE_S)

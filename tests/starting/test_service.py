@@ -33,7 +33,6 @@ from tests.starting.conftest import (
 async def _propose(starting: StartingPointService, fixture: Fixture, **overrides: object) -> object:
     kwargs: dict[str, object] = {
         "bean_id": fixture.new_bean_id,
-        "machine_id": fixture.machine_id,
         "grinder_id": fixture.grinder_id,
         "usual_grind": "22",
         "as_of": AS_OF,
@@ -138,7 +137,6 @@ async def test_accepting_creates_the_set_with_origin_starting_point(
     accepted = await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
 
     assert accepted.set_row.bean_id == fixture.new_bean_id
-    assert accepted.set_row.machine_id == fixture.machine_id
     assert accepted.set_row.grinder_id == fixture.grinder_id
     # Named after the bag and the grinder: the same bean on a second grinder is
     # exactly the comparison this feature invites.

@@ -15,7 +15,7 @@ from tests.sets.conftest import Fixtures, make_shot
 
 async def _three_versions_and_ten_shots(wired: Fixtures) -> int:
     row = await wired.sets.create(
-        SetWrite(name="Guji on the Niche", bean_id=wired.bean_id, machine_id=wired.machine_id),
+        SetWrite(name="Guji on the Niche", bean_id=wired.bean_id),
         SetVersionWrite(dose_g=18.0, target_yield_g=36.0, grind_setting="22"),
     )
     versions = [(await wired.sets.current_version(row.id))]
@@ -36,7 +36,6 @@ async def _three_versions_and_ten_shots(wired: Fixtures) -> int:
         for _ in range(count):
             shot_id = await make_shot(
                 wired.db,
-                wired.machine_id,
                 f"0006{shot_number:02d}",
                 execution_score=score,
                 duration_ms=26_000 + shot_number * 500,
@@ -89,7 +88,7 @@ class TestTrends:
     ) -> None:
         """A zero would draw a bar at the bottom saying the recipe was terrible."""
         row = await wired.sets.create(
-            SetWrite(name="Fresh start", bean_id=wired.bean_id, machine_id=wired.machine_id),
+            SetWrite(name="Fresh start", bean_id=wired.bean_id),
             SetVersionWrite(),
         )
         trends = await wired.sets.trends(row.id)

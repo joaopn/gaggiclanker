@@ -143,10 +143,7 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
 
 
 async def _archived(app: FastAPI, device_shot_id: int) -> int | None:
-    machines = await app.state.sync.machines.list_all()
-    if not machines:
-        return None
-    row = await ShotsRepository(app.state.db).get_by_device_id(machines[0].id, pad6(device_shot_id))
+    row = await ShotsRepository(app.state.db).get_by_device_id(pad6(device_shot_id))
     return row.id if row is not None else None
 
 

@@ -38,7 +38,7 @@ from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import PromptsRepository
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
+from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -227,7 +227,6 @@ class Fixture:
     """The ids the starting-point tests reach for."""
 
     db: Database
-    machine_id: int
     grinder_id: int
     other_grinder_id: int
     #: The bag nobody has opened: light, washed, Kenya.
@@ -377,7 +376,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     if seed_knowledge:
         await KnowledgeService(db).seed_docs()
 
-    machine = await MachinesRepository(db).upsert(
+    await MachineRepository(db).update_identity(
         MachineUpsert(
             host="kitchen.local",
             name="Kitchen",
@@ -413,7 +412,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             SetWrite(
                 name=f"{entry['bean']['name']} on the {entry['grinder']}",
                 bean_id=bean.id,
-                machine_id=machine.id,
                 grinder_id=grinder_ids[str(entry["grinder"])],
             ),
             SetVersionWrite(
@@ -425,7 +423,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 target_temperature_c=float(entry["temperature"]),
                 intent="Baseline for this bag.",
             ),
-            # Only one Set may be active per machine and the flag is not what
+            # Only one Set may be active and the flag is not what
             # this suite is about; leaving them all inactive keeps the inserts
             # independent of their order.
             activate=False,
@@ -440,7 +438,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             shot_id = await shots.insert(
                 ShotInsert(
                     device_id=f"{device_id:06d}",
-                    machine_id=machine.id,
                     raw_slog=b"fixture",
                     started_at=f"2026-02-{(device_id % 27) + 1:02d}T08:00:00.000Z",
                     duration_ms=28_000,
@@ -484,7 +481,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
 
     return Fixture(
         db=db,
-        machine_id=machine.id,
         grinder_id=niche.id,
         other_grinder_id=mazzer.id,
         new_bean_id=new_bean.id,

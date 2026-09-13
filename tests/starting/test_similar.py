@@ -32,7 +32,6 @@ async def _for_the_new_bag(
         origin="Kenya" if origin is _UNSET else origin,
         decaf=decaf,
         grinder_id=fixture.grinder_id if grinder_id == -1 else grinder_id,
-        machine_id=fixture.machine_id,
         exclude_set_id=exclude_set_id,
         limit=5,
     )
@@ -157,8 +156,8 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     # would change the first one's shot count — so copy the *Set* instead.
     await fixture.db.execute(
         """
-        INSERT INTO sets (name, bean_id, machine_id, grinder_id, status, active, created_at)
-        SELECT name || ' (copy)', bean_id, machine_id, grinder_id, status, 0, created_at
+        INSERT INTO sets (name, bean_id, grinder_id, status, active, created_at)
+        SELECT name || ' (copy)', bean_id, grinder_id, status, 0, created_at
           FROM sets WHERE id = ?
         """,
         (fixture.sets["kenya"],),
@@ -180,12 +179,12 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     for index in range(5):
         cursor = await fixture.db.execute(
             """
-            INSERT INTO shots (device_id, machine_id, raw_slog, started_at, duration_ms,
+            INSERT INTO shots (device_id, raw_slog, started_at, duration_ms,
                                execution_score, set_version_id, synced_at, updated_at)
-            VALUES (?, ?, x'00', '2026-02-20T08:00:00.000Z', 28000, ?, ?,
+            VALUES (?, x'00', '2026-02-20T08:00:00.000Z', 28000, ?, ?,
                     '2026-02-20T08:00:00.000Z', '2026-02-20T08:00:00.000Z')
             """,
-            (f"9000{index:02d}", fixture.machine_id, 8.8 + index * 0.1, copy_version),
+            (f"9000{index:02d}", 8.8 + index * 0.1, copy_version),
         )
         await fixture.db.execute(
             "INSERT INTO shot_judgements (shot_id, rating, dose_in_g, dose_out_g, updated_at) "
@@ -272,7 +271,6 @@ async def test_a_decaf_mismatch_is_spelled_out_in_the_prompt(fixture: Fixture) -
     context = await build_context(
         fixture.db,
         bean_id=fixture.new_bean_id,
-        machine_id=fixture.machine_id,
         grinder_id=fixture.grinder_id,
         as_of=AS_OF,
     )

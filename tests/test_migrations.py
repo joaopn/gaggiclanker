@@ -670,6 +670,7 @@ async def test_0016_leaves_the_shot_views_readable_through_the_sql_tool(
     assert judgements.rows == [[1, 5]]
 
     # And the column is gone from the views, rather than merely unselected.
-    for view in ("v_shots", "v_sets"):
-        with pytest.raises(SqlRefused, match="no such column"):
-            await run_query(db.path, f"SELECT machine_id FROM {view}")
+    with pytest.raises(SqlRefused, match="no such column"):
+        await run_query(db.path, "SELECT machine_id FROM v_shots")
+    with pytest.raises(SqlRefused, match="no such column"):
+        await run_query(db.path, "SELECT machine_id FROM v_sets")

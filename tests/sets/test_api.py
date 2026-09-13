@@ -1,4 +1,4 @@
-"""The HTTP surface for beans, grinders, machines, Sets, judgement and vocab.
+"""The HTTP surface for beans, grinders, the machine, Sets, judgement and vocab.
 
 Against the real app: its lifespan opens the database and migrates it, and no
 machine is configured, which is the configuration most of these routes are used
@@ -13,7 +13,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
+from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 
 
@@ -31,14 +31,14 @@ def error(response: httpx.Response) -> dict[str, Any]:
 
 
 @pytest.fixture
-async def machine_id(app: FastAPI) -> int:
-    """A machine row, inserted the way a connect would.
+async def machine(app: FastAPI) -> None:
+    """The machine row, as a connect would leave it.
 
-    There is no HTTP route that creates one — identity comes from the device —
-    so this goes through the repository, which is what the sync engine does.
+    There is no HTTP route that creates one — the row always exists and identity
+    comes from the device — so this goes through the repository, which is what
+    the sync engine does.
     """
-    row = await MachinesRepository(app.state.db).upsert(MachineUpsert(host="kitchen.local"))
-    return row.id
+    await MachineRepository(app.state.db).update_identity(MachineUpsert(host="kitchen.local"))
 
 
 @pytest.fixture
@@ -51,11 +51,10 @@ async def bean_id(client: httpx.AsyncClient) -> int:
     return int(data(response)["id"])
 
 
-async def _make_set(client: httpx.AsyncClient, machine_id: int, bean_id: int, **over: Any) -> Any:
+async def _make_set(client: httpx.AsyncClient, bean_id: int, **over: Any) -> Any:
     body: dict[str, Any] = {
         "name": "Guji on the Niche",
         "bean_id": bean_id,
-        "machine_id": machine_id,
         "version": {"dose_g": 18.0, "target_yield_g": 36.0, "grind_setting": "22"},
     }
     body.update(over)
@@ -163,31 +162,36 @@ class TestGrinders:
         assert data(await client.get("/api/grinders"))["items"][0]["id"] == created["id"]
 
 
-class TestMachinePatch:
-    async def test_name_and_notes_are_editable_and_nothing_else_is(
-        self, client: httpx.AsyncClient, machine_id: int
+class TestMachine:
+    async def test_the_machine_is_a_singleton_with_its_shot_counts(
+        self, client: httpx.AsyncClient, machine: None
     ) -> None:
-        patched = data(
-            await client.patch(f"/api/machines/{machine_id}", json={"name": "the kitchen one"})
-        )
+        body = data(await client.get("/api/machine"))
+        assert body["machine"]["host"] == "kitchen.local"
+        assert body["counts"]["total"] == 0
+
+    async def test_there_is_a_machine_before_anything_has_connected(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """A fresh install has the row, with an empty host, so the page can render."""
+        body = data(await client.get("/api/machine"))
+        assert body["machine"]["host"] == ""
+
+    async def test_name_and_notes_are_editable_and_nothing_else_is(
+        self, client: httpx.AsyncClient, machine: None
+    ) -> None:
+        patched = data(await client.patch("/api/machine", json={"name": "the kitchen one"}))
         assert patched["name"] == "the kitchen one"
         # Not sent, so untouched — a rename must not have to resend the notes.
         assert patched["notes"] == ""
 
-        refused = await client.patch(
-            f"/api/machines/{machine_id}", json={"hardware_string": "made up"}
-        )
+        refused = await client.patch("/api/machine", json={"hardware_string": "made up"})
         assert refused.status_code == 400
-
-    async def test_missing_machine_is_a_404(self, client: httpx.AsyncClient) -> None:
-        assert (await client.patch("/api/machines/404", json={"name": "x"})).status_code == 404
 
 
 class TestSets:
-    async def test_create_get_and_version(
-        self, client: httpx.AsyncClient, machine_id: int, bean_id: int
-    ) -> None:
-        created = await _make_set(client, machine_id, bean_id)
+    async def test_create_get_and_version(self, client: httpx.AsyncClient, bean_id: int) -> None:
+        created = await _make_set(client, bean_id)
         assert created["current_version_no"] == 1
         assert created["active"] is True
 
@@ -209,19 +213,17 @@ class TestSets:
         assert detail["versions"][1]["changes"] == []
 
     async def test_a_set_on_a_bean_that_is_not_there_names_the_field(
-        self, client: httpx.AsyncClient, machine_id: int
+        self, client: httpx.AsyncClient
     ) -> None:
-        response = await client.post(
-            "/api/sets", json={"name": "x", "bean_id": 909, "machine_id": machine_id}
-        )
+        response = await client.post("/api/sets", json={"name": "x", "bean_id": 909})
         assert response.status_code == 422
         assert error(response)["details"]["field"] == "bean_id"
 
     async def test_activation_switches_and_archives_nothing(
-        self, client: httpx.AsyncClient, machine_id: int, bean_id: int
+        self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        first = await _make_set(client, machine_id, bean_id)
-        second = await _make_set(client, machine_id, bean_id, name="A different bag")
+        first = await _make_set(client, bean_id)
+        second = await _make_set(client, bean_id, name="A different bag")
 
         assert data(await client.get(f"/api/sets/{first['id']}"))["set"]["active"] is False
         back = data(await client.post(f"/api/sets/{first['id']}/activate"))
@@ -230,9 +232,9 @@ class TestSets:
         assert (other["active"], other["status"]) == (False, "active")
 
     async def test_archive_hides_it_from_the_list(
-        self, client: httpx.AsyncClient, machine_id: int, bean_id: int
+        self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        created = await _make_set(client, machine_id, bean_id)
+        created = await _make_set(client, bean_id)
         assert data(await client.post(f"/api/sets/{created['id']}/archive"))["status"] == "archived"
         assert data(await client.get("/api/sets"))["items"] == []
         assert len(data(await client.get("/api/sets?include_archived=true"))["items"]) == 1
@@ -249,11 +251,10 @@ class TestSets:
 
 class TestJudgementAndAssignment:
     @pytest.fixture
-    async def shot_id(self, app: FastAPI, machine_id: int) -> int:
+    async def shot_id(self, app: FastAPI) -> int:
         return await ShotsRepository(app.state.db).insert(
             ShotInsert(
                 device_id="000500",
-                machine_id=machine_id,
                 raw_slog=b"not-a-slog",
                 started_at="2026-04-01T08:00:00.000Z",
                 duration_ms=28_000,
@@ -335,10 +336,9 @@ class TestJudgementAndAssignment:
         self,
         client: httpx.AsyncClient,
         shot_id: int,
-        machine_id: int,
         bean_id: int,
     ) -> None:
-        created = await _make_set(client, machine_id, bean_id)
+        created = await _make_set(client, bean_id)
         detail = data(await client.get(f"/api/sets/{created['id']}"))
         version_id = detail["versions"][0]["version"]["id"]
 
@@ -370,13 +370,12 @@ class TestJudgementAndAssignment:
         self,
         client: httpx.AsyncClient,
         shot_id: int,
-        machine_id: int,
         bean_id: int,
     ) -> None:
         assert data(await client.get("/api/shots?needs_set=true"))["total"] == 1
         assert data(await client.get("/api/sync/status"))["counts"]["needs_set"] == 1
 
-        created = await _make_set(client, machine_id, bean_id)
+        created = await _make_set(client, bean_id)
         version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
             "id"
         ]
@@ -393,14 +392,13 @@ class TestSetReferencesAndRefusals:
 
     Every one of these used to reach the foreign key and come back as an
     IntegrityError, which the envelope can only report as an internal error —
-    with nothing in the body saying which of the four ids was wrong.
+    with nothing in the body saying which of the three ids was wrong.
     """
 
     @pytest.mark.parametrize(
         ("field", "body"),
         [
             ("bean_id", {"bean_id": 909}),
-            ("machine_id", {"machine_id": 909}),
             ("grinder_id", {"grinder_id": 909}),
             ("version.profile_version_id", {"version": {"profile_version_id": 909}}),
         ],
@@ -408,7 +406,6 @@ class TestSetReferencesAndRefusals:
     async def test_a_reference_that_does_not_resolve_names_itself(
         self,
         client: httpx.AsyncClient,
-        machine_id: int,
         bean_id: int,
         field: str,
         body: dict[str, Any],
@@ -416,7 +413,6 @@ class TestSetReferencesAndRefusals:
         payload: dict[str, Any] = {
             "name": "Guji on the Niche",
             "bean_id": bean_id,
-            "machine_id": machine_id,
             **body,
         }
         response = await client.post("/api/sets", json=payload)
@@ -425,7 +421,7 @@ class TestSetReferencesAndRefusals:
         assert error(response)["details"]["field"] == field
 
     async def test_a_null_grinder_and_a_null_profile_are_fine(
-        self, client: httpx.AsyncClient, machine_id: int, bean_id: int
+        self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         """A Set can name neither, so only a *stated* id is checked."""
         response = await client.post(
@@ -433,7 +429,6 @@ class TestSetReferencesAndRefusals:
             json={
                 "name": "Whatever is loaded",
                 "bean_id": bean_id,
-                "machine_id": machine_id,
                 "grinder_id": None,
                 "version": {"profile_version_id": None},
             },
@@ -441,10 +436,10 @@ class TestSetReferencesAndRefusals:
         assert response.status_code == 201
 
     async def test_activating_an_archived_set_is_a_conflict(
-        self, client: httpx.AsyncClient, machine_id: int, bean_id: int
+        self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        live = await _make_set(client, machine_id, bean_id, name="The live one")
-        old = await _make_set(client, machine_id, bean_id, name="Last month's bag")
+        live = await _make_set(client, bean_id, name="The live one")
+        old = await _make_set(client, bean_id, name="Last month's bag")
         await client.post(f"/api/sets/{old['id']}/archive")
         await client.post(f"/api/sets/{live['id']}/activate")
 
@@ -457,15 +452,15 @@ class TestSetReferencesAndRefusals:
         assert data(await client.get(f"/api/sets/{live['id']}"))["set"]["active"] is True
 
     async def test_filing_a_shot_under_an_archived_set_is_refused(
-        self, client: httpx.AsyncClient, app: FastAPI, machine_id: int, bean_id: int
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        created = await _make_set(client, machine_id, bean_id)
+        created = await _make_set(client, bean_id)
         version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
             "id"
         ]
         await client.post(f"/api/sets/{created['id']}/archive")
         shot_id = await ShotsRepository(app.state.db).insert(
-            ShotInsert(device_id="000600", machine_id=machine_id, raw_slog=b"not-a-slog")
+            ShotInsert(device_id="000600", raw_slog=b"not-a-slog")
         )
 
         response = await client.put(
@@ -478,16 +473,15 @@ class TestSetReferencesAndRefusals:
 
 class TestTrendsRoute:
     async def test_the_route_answers_the_shape_the_chart_draws(
-        self, client: httpx.AsyncClient, app: FastAPI, machine_id: int, bean_id: int
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
-        created = await _make_set(client, machine_id, bean_id)
+        created = await _make_set(client, bean_id)
         version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
             "id"
         ]
         shot_id = await ShotsRepository(app.state.db).insert(
             ShotInsert(
                 device_id="000601",
-                machine_id=machine_id,
                 raw_slog=b"not-a-slog",
                 started_at="2026-04-01T08:00:00.000Z",
                 duration_ms=28_000,

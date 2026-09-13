@@ -47,7 +47,7 @@ async def test_the_deleted_entry_is_never_fetched(archive: Archive) -> None:
     """
     await archive.engine.sync_shots(trigger="test")
 
-    stored = await archive.engine.shots.known_states(1)
+    stored = await archive.engine.shots.known_states()
     assert pad6(DELETED_ID) not in stored
     assert f"/api/history/{pad6(DELETED_ID)}.slog" not in archive.device.requests
 
@@ -55,7 +55,7 @@ async def test_the_deleted_entry_is_never_fetched(archive: Archive) -> None:
 async def test_a_corrupt_slog_is_quarantined_with_its_bytes(archive: Archive) -> None:
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(CORRUPT_ID))
+    shot = await archive.engine.shots.get_by_device_id(pad6(CORRUPT_ID))
     assert shot is not None
     assert shot.quarantined is True
     assert shot.quarantine_reason
@@ -72,7 +72,7 @@ async def test_a_corrupt_slog_is_quarantined_with_its_bytes(archive: Archive) ->
 async def test_the_quarantined_bytes_are_the_bytes_the_device_served(archive: Archive) -> None:
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(CORRUPT_ID))
+    shot = await archive.engine.shots.get_by_device_id(pad6(CORRUPT_ID))
     assert shot is not None
     raw = await archive.engine.shots.raw_slog(shot.id)
     assert raw == archive.device.shots[CORRUPT_ID].slog_bytes
@@ -88,7 +88,7 @@ async def test_a_header_only_file_is_retried_until_it_is_complete(archive: Archi
     """
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(HEADER_ONLY_ID))
+    shot = await archive.engine.shots.get_by_device_id(pad6(HEADER_ONLY_ID))
     assert shot is not None
     assert shot.quarantined is False
     assert shot.sample_count > 100
@@ -101,7 +101,7 @@ async def test_a_header_only_file_is_retried_until_it_is_complete(archive: Archi
 async def test_samples_are_ordered_and_carry_every_field(archive: Archive) -> None:
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(101))
+    shot = await archive.engine.shots.get_by_device_id(pad6(101))
     assert shot is not None
     samples = await archive.engine.shots.samples(shot.id)
 
@@ -122,7 +122,7 @@ async def test_stored_samples_match_the_parsed_file(archive: Archive) -> None:
     """The row values are the parser's, in real units — not a second decoding."""
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(101))
+    shot = await archive.engine.shots.get_by_device_id(pad6(101))
     assert shot is not None
     raw = await archive.engine.shots.raw_slog(shot.id)
     assert raw is not None
@@ -150,7 +150,7 @@ async def test_a_second_run_inserts_nothing(archive: Archive) -> None:
 async def test_derived_columns_are_filled_in(archive: Archive) -> None:
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(101))
+    shot = await archive.engine.shots.get_by_device_id(pad6(101))
     assert shot is not None
     assert shot.phases, "per-phase statistics are derived at ingest"
     assert shot.diagnostics is not None
@@ -202,7 +202,7 @@ async def test_an_index_rating_change_is_reconciled(archive: Archive) -> None:
     run = await archive.engine.sync_shots(trigger="test")
 
     assert run.shots_updated == 1
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(101))
+    shot = await archive.engine.shots.get_by_device_id(pad6(101))
     assert shot is not None
     assert shot.index_rating == 5
     assert shot.index_volume_g == 41.5
@@ -221,7 +221,7 @@ async def test_a_shot_deleted_on_the_device_is_flagged_not_dropped(archive: Arch
 
     await archive.engine.sync_shots(trigger="test")
 
-    shot = await archive.engine.shots.get_by_device_id(1, pad6(101))
+    shot = await archive.engine.shots.get_by_device_id(pad6(101))
     assert shot is not None
     assert shot.deleted_on_device is True
     assert shot.sample_count > 0, "the samples we archived are not the device's to delete"

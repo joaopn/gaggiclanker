@@ -15,7 +15,7 @@ from tests.sync.conftest import NOTES_ID, Archive
 async def test_notes_are_pulled_verbatim_and_parsed(small_archive: Archive) -> None:
     await small_archive.engine.sync_shots(trigger="test")
 
-    shot = await small_archive.engine.shots.get_by_device_id(1, pad6(NOTES_ID))
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(NOTES_ID))
     assert shot is not None
     notes = await small_archive.engine.notes.get(shot.id)
     assert notes is not None
@@ -36,7 +36,7 @@ async def test_the_shot_row_carries_the_rating(small_archive: Archive) -> None:
     """The list view shows a rating without a second request per row."""
     await small_archive.engine.sync_shots(trigger="test")
 
-    shot = await small_archive.engine.shots.get_by_device_id(1, pad6(NOTES_ID))
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(NOTES_ID))
     assert shot is not None
     assert shot.rating == 4
     assert shot.has_notes is True
@@ -73,7 +73,7 @@ async def test_a_changed_index_rating_triggers_a_re_pull(small_archive: Archive)
 
     await small_archive.engine.sync_shots(trigger="test")
 
-    shot = await small_archive.engine.shots.get_by_device_id(1, pad6(NOTES_ID))
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(NOTES_ID))
     assert shot is not None
     notes = await small_archive.engine.notes.get(shot.id)
     assert notes is not None
@@ -92,7 +92,7 @@ async def test_a_changed_dose_out_triggers_a_re_pull(small_archive: Archive) -> 
 
     await small_archive.engine.sync_shots(trigger="test")
 
-    shot = await small_archive.engine.shots.get_by_device_id(1, pad6(NOTES_ID))
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(NOTES_ID))
     assert shot is not None
     notes = await small_archive.engine.notes.get(shot.id)
     assert notes is not None
@@ -110,7 +110,7 @@ async def test_notes_that_appear_later_are_picked_up(small_archive: Archive) -> 
 
     await small_archive.engine.sync_shots(trigger="test")
 
-    shot = await small_archive.engine.shots.get_by_device_id(1, pad6(101))
+    shot = await small_archive.engine.shots.get_by_device_id(pad6(101))
     assert shot is not None
     stored = await small_archive.engine.notes.get(shot.id)
     assert stored is not None

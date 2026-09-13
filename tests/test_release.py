@@ -121,14 +121,10 @@ async def interrupted(env: EnvSettings) -> EnvSettings:
     """A data directory left as a killed process would leave it."""
     async with running_app(env) as (app, _client):
         db = app.state.db
-        await db.execute("INSERT INTO machines (host, name) VALUES ('sim', 'test')")
-        machine_id = int(await db.fetch_value("SELECT id FROM machines") or 0)
+        await db.execute("UPDATE machines SET host = 'sim', name = 'test'")
         await db.execute(
-            """
-            INSERT INTO shots (device_id, machine_id, started_at, raw_slog)
-            VALUES (?, ?, ?, ?)
-            """,
-            ("000001", machine_id, "2026-01-01T00:00:00.000Z", b"SHOT"),
+            "INSERT INTO shots (device_id, started_at, raw_slog) VALUES (?, ?, ?)",
+            ("000001", "2026-01-01T00:00:00.000Z", b"SHOT"),
         )
         shot_id = int(await db.fetch_value("SELECT id FROM shots") or 0)
         # Through the repository, so the row is exactly the shape a killed

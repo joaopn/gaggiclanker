@@ -23,7 +23,6 @@ GOLDEN = Path(__file__).resolve().parent / "golden" / "starting-point-prompt.txt
 async def _build(fixture: Fixture, **overrides: object) -> object:
     kwargs: dict[str, object] = {
         "bean_id": fixture.new_bean_id,
-        "machine_id": fixture.machine_id,
         "grinder_id": fixture.grinder_id,
         "usual_grind": "22",
         "dose_hint_g": 18.0,
@@ -144,11 +143,10 @@ async def test_the_profile_library_is_offered_most_used_first(fixture: Fixture) 
     assert all(entry.shape for entry in context.profiles)  # type: ignore[attr-defined]
 
 
-async def test_a_missing_bean_or_machine_is_a_lookup_error(fixture: Fixture) -> None:
+async def test_a_missing_bean_or_grinder_is_a_lookup_error(fixture: Fixture) -> None:
     """The caller's mistake, so it becomes a 404 rather than a stored failure."""
     for kwargs in (
         {"bean_id": 9999},
-        {"machine_id": 9999},
         {"grinder_id": 9999},
     ):
         try:

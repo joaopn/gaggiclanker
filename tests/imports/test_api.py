@@ -52,7 +52,6 @@ async def test_importing_the_two_real_files_over_multipart(client: httpx.AsyncCl
     data = body["data"]
     assert data["created"] == 2
     assert data["failed"] == 0
-    assert data["machine_id"]
 
     shot = next(item for item in data["items"] if item["kind"] == "shot")
     profile = next(item for item in data["items"] if item["kind"] == "profile")
@@ -136,15 +135,6 @@ async def test_a_v7_export_imports_over_the_wire(client: httpx.AsyncClient) -> N
     detail = await client.get(f"/api/shots/{shot_id}")
     assert detail.json()["data"]["shot"]["slog_version"] == 7
     assert detail.json()["data"]["shot"]["brew_delay_ms"] == 900
-
-
-async def test_an_unknown_machine_is_a_404_in_the_envelope(client: httpx.AsyncClient) -> None:
-    response = await post_import(client, [upload(SHOT_FIXTURE)], machine_id=999)
-
-    assert response.status_code == 404
-    body = response.json()
-    assert_envelope(body)
-    assert body["error"]["code"] == "NOT_FOUND"
 
 
 async def test_a_request_with_no_files_is_a_400(client: httpx.AsyncClient) -> None:

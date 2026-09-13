@@ -390,7 +390,6 @@ async def test_sync_status_reports_the_ledger(
 
     assert body["configured"] is True
     assert body["connected"] is True
-    assert body["machine_id"] == 1
     assert body["counts"]["total"] == STORED
     assert body["counts"]["quarantined"] == 1
     assert body["last_runs"]["backfill"]["status"] == "ok"
@@ -459,19 +458,18 @@ async def test_the_profile_mirror_is_listed(
     assert version["content_hash"] == first["content_hash"]
 
 
-async def test_machines_reports_the_identity_and_the_counts(
+async def test_the_machine_route_reports_the_identity_and_the_counts(
     served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
 ) -> None:
     device, _app, client = served
 
-    body = (await client.get("/api/machines")).json()["data"]
+    body = (await client.get("/api/machine")).json()["data"]
 
-    assert len(body["items"]) == 1
-    machine = body["items"][0]["machine"]
+    machine = body["machine"]
     assert machine["host"] == device.address
     assert machine["hardware_string"] == device.identity["hardware"]
     assert machine["has_pressure"] is True
-    assert body["items"][0]["counts"]["total"] == STORED
+    assert body["counts"]["total"] == STORED
 
 
 async def test_backup_can_be_listed(

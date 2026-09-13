@@ -80,22 +80,18 @@ async def _profile_version(db: Database, label: str) -> int:
 
 async def _mirror(archive: Archive, device_profile_id: str, label: str) -> int:
     """Point a device profile id at a stored version, as a profiles pass would."""
-    machine = archive.engine.machine
-    assert machine is not None
     version_id = await _profile_version(archive.db, label)
     await ProfilesRepository(archive.db).upsert_device_profile(
-        machine_id=machine.id, device_id=device_profile_id, version_id=version_id
+        device_id=device_profile_id, version_id=version_id
     )
     return version_id
 
 
 async def _set_naming(archive: Archive, version_id: int) -> int:
-    """A Set on the synced machine whose current version names this profile."""
-    machine = archive.engine.machine
-    assert machine is not None, "the engine has not created the machine row yet"
+    """A Set whose current version names this profile."""
     bean = await BeansRepository(archive.db).create(BeanWrite(name="Ethiopia Guji"))
     row = await archive.engine.sets.create(
-        SetWrite(name="Guji on the Niche", bean_id=bean.id, machine_id=machine.id),
+        SetWrite(name="Guji on the Niche", bean_id=bean.id),
         SetVersionWrite(profile_version_id=version_id, dose_g=18.0, target_yield_g=36.0),
     )
     return row.id
@@ -108,9 +104,9 @@ class TestSyncAutoAssignment:
         await device.start()
         try:
             async with archive_for(device, tmp_path) as archive:
-                # Identity first, so the machine row exists and the Set can name
-                # it. This is the real order too: a Set is created from the UI,
-                # which cannot show a machine picker before a machine exists.
+                # Identity first, so the machine row carries the host it was
+                # pulled from. The Set does not name it — there is only one —
+                # but the profile mirror the Set matches on is written by a pass.
                 await archive.engine.sync_identity()
                 wanted = await _mirror(archive, matching, "Adaptive v2")
                 await _mirror(archive, other, "9 Bar Espresso")
@@ -118,10 +114,8 @@ class TestSyncAutoAssignment:
 
                 await archive.engine.sync_shots()
 
-                machine = archive.engine.machine
-                assert machine is not None
-                assigned = await archive.engine.shots.get_by_device_id(machine.id, "000300")
-                unassigned = await archive.engine.shots.get_by_device_id(machine.id, "000301")
+                assigned = await archive.engine.shots.get_by_device_id("000300")
+                unassigned = await archive.engine.shots.get_by_device_id("000301")
                 assert assigned is not None and unassigned is not None
 
                 version = await archive.engine.sets.current_version(set_id)
@@ -160,9 +154,7 @@ class TestSyncAutoAssignment:
         try:
             async with archive_for(device, tmp_path) as archive:
                 await archive.engine.sync_shots()
-                machine = archive.engine.machine
-                assert machine is not None
-                shot = await archive.engine.shots.get_by_device_id(machine.id, "000300")
+                shot = await archive.engine.shots.get_by_device_id("000300")
                 assert shot is not None
 
                 seeded = await archive.engine.judgements.get(shot.id)
@@ -191,17 +183,16 @@ class TestImporterAutoAssignment:
         version_id = await _profile_version(wired.db, "Gratus 16:32 trad")
         # shot-129's header names this profile id; the mirror is what maps it.
         await ProfilesRepository(wired.db).upsert_device_profile(
-            machine_id=wired.machine_id, device_id="rV4GhUcSZc", version_id=version_id
+            device_id="rV4GhUcSZc", version_id=version_id
         )
         created = await wired.sets.create(
-            SetWrite(name="Imported archive", bean_id=wired.bean_id, machine_id=wired.machine_id),
+            SetWrite(name="Imported archive", bean_id=wired.bean_id),
             SetVersionWrite(profile_version_id=version_id),
         )
 
         service = ImportService(wired.db)
         result = await service.import_shot(
             (FIXTURES / "exports" / "shot-129.json").read_bytes(),
-            machine_id=wired.machine_id,
             filename="shot-129.json",
         )
         assert result.status == "created"
@@ -222,7 +213,6 @@ class TestImporterAutoAssignment:
         service = ImportService(wired.db)
         result = await service.import_shot(
             (FIXTURES / "exports" / "shot-129.json").read_bytes(),
-            machine_id=wired.machine_id,
             filename="shot-129.json",
         )
         assert result.shot_id is not None
@@ -239,23 +229,22 @@ class TestAutoAssignmentRules:
         fills a NULL.
         """
         first = await wired.sets.create(
-            SetWrite(name="One", bean_id=wired.bean_id, machine_id=wired.machine_id),
+            SetWrite(name="One", bean_id=wired.bean_id),
             SetVersionWrite(),
         )
         version = await wired.sets.current_version(first.id)
         assert version is not None
-        shot_id = await make_shot(wired.db, wired.machine_id, "000400")
+        shot_id = await make_shot(wired.db, "000400")
         await wired.sets.assign_shot(shot_id, version.id)
 
         second = await wired.sets.create(
-            SetWrite(name="Two", bean_id=wired.bean_id, machine_id=wired.machine_id),
+            SetWrite(name="Two", bean_id=wired.bean_id),
             SetVersionWrite(),
         )
         assert second.active is True
         assert (
             await wired.sets.auto_assign(
                 shot_id,
-                machine_id=wired.machine_id,
                 profile_version_id=None,
                 device_profile_id="",
             )
@@ -272,13 +261,12 @@ class TestAutoAssignmentRules:
         path anyway.
         """
         await wired.sets.create(
-            SetWrite(name="Whatever is loaded", bean_id=wired.bean_id, machine_id=wired.machine_id),
+            SetWrite(name="Whatever is loaded", bean_id=wired.bean_id),
             SetVersionWrite(),
         )
-        shot_id = await make_shot(wired.db, wired.machine_id, "000401")
+        shot_id = await make_shot(wired.db, "000401")
         assigned = await wired.sets.auto_assign(
             shot_id,
-            machine_id=wired.machine_id,
             profile_version_id=None,
             device_profile_id="anything",
         )
@@ -286,15 +274,14 @@ class TestAutoAssignmentRules:
 
     async def test_an_archived_set_collects_nothing(self, wired: Fixtures) -> None:
         created = await wired.sets.create(
-            SetWrite(name="Finished bag", bean_id=wired.bean_id, machine_id=wired.machine_id),
+            SetWrite(name="Finished bag", bean_id=wired.bean_id),
             SetVersionWrite(),
         )
         await wired.sets.archive(created.id)
-        shot_id = await make_shot(wired.db, wired.machine_id, "000402")
+        shot_id = await make_shot(wired.db, "000402")
         assert (
             await wired.sets.auto_assign(
                 shot_id,
-                machine_id=wired.machine_id,
                 profile_version_id=None,
                 device_profile_id="",
             )
@@ -336,10 +323,8 @@ class TestNotesTheFirmwareAcceptsSurviveBothPaths:
                 run = await archive.engine.sync_shots()
                 assert run.status == "ok"
 
-                machine = archive.engine.machine
-                assert machine is not None
-                first = await archive.engine.shots.get_by_device_id(machine.id, "000300")
-                second = await archive.engine.shots.get_by_device_id(machine.id, "000301")
+                first = await archive.engine.shots.get_by_device_id("000300")
+                second = await archive.engine.shots.get_by_device_id("000301")
                 assert first is not None and second is not None
 
                 # The notes themselves are stored verbatim either way: the
@@ -360,9 +345,7 @@ class TestNotesTheFirmwareAcceptsSurviveBothPaths:
         document = json.loads((FIXTURES / "exports" / "shot-129.json").read_text())
         document["notes"] = {"id": "129", "rating": 4, **bad}
 
-        result = await ImportService(wired.db).import_shot(
-            document, machine_id=wired.machine_id, filename="shot-129.json"
-        )
+        result = await ImportService(wired.db).import_shot(document, filename="shot-129.json")
 
         assert result.status == "created"
         assert result.shot_id is not None

@@ -40,7 +40,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
 )
 from gaggiclanker.db.repos.llm import PromptsRepository
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
+from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
@@ -149,7 +149,6 @@ class Fixture:
     """The ids the analyzer tests reach for."""
 
     db: Database
-    machine_id: int
     bean_id: int
     grinder_id: int
     set_id: int
@@ -388,7 +387,7 @@ async def build_fixture(db: Database) -> Fixture:
     await seed_prompts(PromptsRepository(db), DEFAULT_PROMPTS_DIR)
     await seed_rules(RulesRepository(db))
     await KnowledgeService(db).seed_docs()
-    machine = await MachinesRepository(db).upsert(
+    await MachineRepository(db).update_identity(
         MachineUpsert(host="kitchen.local", name="Kitchen", hardware_string="GaggiMate Pro")
     )
     bean = await BeansRepository(db).create(
@@ -414,7 +413,6 @@ async def build_fixture(db: Database) -> Fixture:
         SetWrite(
             name="Guji natural on the Niche",
             bean_id=bean.id,
-            machine_id=machine.id,
             grinder_id=grinder.id,
         ),
         SetVersionWrite(
@@ -440,7 +438,6 @@ async def build_fixture(db: Database) -> Fixture:
         shot_id = await shots_repo.insert(
             ShotInsert(
                 device_id=str(entry["device_id"]),
-                machine_id=machine.id,
                 raw_slog=b"fixture",
                 started_at=str(entry["started_at"]),
                 duration_ms=int(entry["duration_ms"]),
@@ -506,7 +503,6 @@ async def build_fixture(db: Database) -> Fixture:
     subject = await shots_repo.insert(
         ShotInsert(
             device_id="000106",
-            machine_id=machine.id,
             raw_slog=b"fixture",
             started_at="2026-03-03T08:25:00.000Z",
             duration_ms=24_000,
@@ -581,7 +577,6 @@ async def build_fixture(db: Database) -> Fixture:
 
     return Fixture(
         db=db,
-        machine_id=machine.id,
         bean_id=bean.id,
         grinder_id=grinder.id,
         set_id=stored_set.id,

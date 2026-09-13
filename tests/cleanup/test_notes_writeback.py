@@ -26,7 +26,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import SHOT_FLAG_HAS_NOTES, ShotNotes
 from gaggiclanker.notes.writeback import NotesWritebackService, compose_device_notes
-from tests.cleanup.conftest import FIRST_ID, NOTES_ID, data, drain_tasks, machine_id
+from tests.cleanup.conftest import FIRST_ID, NOTES_ID, data, drain_tasks
 
 ALL_FIELDS = ["rating", "balance", "doseIn", "doseOut", "grindSetting", "notes"]
 
@@ -113,9 +113,7 @@ async def _judge(app: FastAPI, shot_id: int, **fields: object) -> None:
 
 
 async def _shot_id(app: FastAPI, device_id: int) -> int:
-    row = await ShotsRepository(app.state.db).get_by_device_id(
-        await machine_id(app), pad6(device_id)
-    )
+    row = await ShotsRepository(app.state.db).get_by_device_id(pad6(device_id))
     assert row is not None
     return row.id
 

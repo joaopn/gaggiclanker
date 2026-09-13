@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.cleanup.service import cleanup_task_name
 from gaggiclanker.domain.ids import pad6
-from tests.cleanup.conftest import FIRST_ID, SMALL_COUNT, data, error, machine_id, service
+from tests.cleanup.conftest import FIRST_ID, SMALL_COUNT, data, error, service
 
 
 async def test_the_plan_route_is_a_dry_run(
@@ -58,14 +58,13 @@ async def test_a_second_run_while_one_is_going_is_a_conflict(
     await app.state.settings_service.apply(
         {"deviceCleanupMode": "keep_newest", "deviceCleanupKeepNewest": 5}
     )
-    identifier = await machine_id(app)
-    assert service(app).spawn(app.state.tasks, identifier) is True
+    assert service(app).spawn(app.state.tasks) is True
     try:
         response = await client.post("/api/device/cleanup/run")
         assert response.status_code == 409
         assert "already running" in error(response)["message"]
     finally:
-        task = app.state.tasks.get(cleanup_task_name(identifier))
+        task = app.state.tasks.get(cleanup_task_name())
         assert task is not None
         await asyncio.shield(task)
 
@@ -80,9 +79,8 @@ async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machin
     genuinely nothing to run against.
     """
     plan = data(await client.get("/api/device/cleanup/plan"))
-    assert plan["machine_id"] is None
     assert plan["planned"] == []
-    assert plan["blocked"] is not None
+    assert plan["on_device_count"] == 0
 
     pending = data(await client.get("/api/device/notes/pending"))
     assert pending["shot_ids"] == []

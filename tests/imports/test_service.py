@@ -18,14 +18,11 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
+from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
-from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.imports import service as import_service
-from gaggiclanker.imports.service import IMPORT_MACHINE_HOST, ImportFile, ImportService
-from gaggiclanker.infra.errors import NotFound
-from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.imports.service import ImportFile, ImportService
 from tests.domain.helpers import load_export
 from tests.imports.helpers import PROFILE_ARRAY_EXPORT, V7_EXPORT, fixture_bytes
 
@@ -145,12 +142,11 @@ async def test_replace_keeps_what_the_machine_and_the_user_said(
     rating typed on the display, the dose entered in its notes card, the deleted
     flag. Re-importing a saved copy of the same shot must not erase them.
     """
-    machine = await MachinesRepository(db).upsert(MachineUpsert(host="gaggimate.local"))
+    await MachineRepository(db).update_identity(MachineUpsert(host="gaggimate.local"))
     shots = ShotsRepository(db)
     existing = await shots.insert(
         ShotInsert(
             device_id="000129",
-            machine_id=machine.id,
             raw_slog=b"not a slog",
             quarantined=True,
             quarantine_reason="the device served HTML",
@@ -160,7 +156,7 @@ async def test_replace_keeps_what_the_machine_and_the_user_said(
         )
     )
 
-    summary = await service.import_files(files(SHOT_FIXTURE), machine_id=machine.id, replace=True)
+    summary = await service.import_files(files(SHOT_FIXTURE), replace=True)
 
     assert summary.updated == 1
     shot = await shots.get(existing)
@@ -414,63 +410,43 @@ async def test_a_zip_nested_too_deep_is_refused_not_followed(service: ImportServ
     assert "nested" in summary.items[0].message
 
 
-# ── machines ─────────────────────────────────────────────────────────
+# ── the machine ──────────────────────────────────────────────────────
 
 
-async def test_with_no_machine_configured_imports_get_a_synthetic_one(
+async def test_an_import_before_the_machine_is_connected_lands_in_one_place(
     service: ImportService, db: Database
 ) -> None:
+    """The order a new install actually does things in.
+
+    Import the archive first, connect the machine afterwards. There is no
+    placeholder machine and nothing to reconcile later: the singleton row is
+    already there, and the shot the sync engine pulls next week is recognised as
+    the same shot by its device id.
+    """
     summary = await service.import_files(files(SHOT_FIXTURE))
+    assert summary.created == 1
 
-    machine = await MachinesRepository(db).get(summary.machine_id)
+    # The singleton is there, unconfigured, and the shot is filed against it.
+    machine = await MachineRepository(db).get()
     assert machine is not None
-    assert machine.host == IMPORT_MACHINE_HOST
+    assert machine.host == ""
+
+    # The machine turns up a week later. The shot it serves is the one already
+    # in the archive, so the import was not a fork that has to be merged.
+    await MachineRepository(db).update_identity(MachineUpsert(host="gaggimate.local"))
+    again = await service.import_files(files(SHOT_FIXTURE))
+    assert (again.created, again.skipped) == (0, 1)
+    assert (await ShotsRepository(db).counts()).total == 1
 
 
-async def test_the_configured_machine_wins_when_we_have_seen_it(db: Database) -> None:
-    """An export of a shot from *this* machine belongs beside its other shots."""
-    machine = await MachinesRepository(db).upsert(MachineUpsert(host="gaggimate.local"))
-    settings = SettingsService(SettingsRepository(db))
-    await settings.apply({"gaggimateHost": "gaggimate.local"})
-
-    summary = await ImportService(db, settings).import_files(files(SHOT_FIXTURE))
-
-    assert summary.machine_id == machine.id
-
-
-async def test_an_explicit_machine_id_overrides_everything(db: Database) -> None:
-    machines = MachinesRepository(db)
-    await machines.upsert(MachineUpsert(host="gaggimate.local"))
-    other = await machines.upsert(MachineUpsert(host="import:2024-archive"))
-    settings = SettingsService(SettingsRepository(db))
-    await settings.apply({"gaggimateHost": "gaggimate.local"})
-
-    summary = await ImportService(db, settings).import_files(
-        files(SHOT_FIXTURE), machine_id=other.id
-    )
-
-    assert summary.machine_id == other.id
-
-
-async def test_importing_onto_a_machine_that_does_not_exist_is_an_error(
-    service: ImportService,
-) -> None:
-    """The one failure worth losing the batch over: the caller's own mistake."""
-    with pytest.raises(NotFound):
-        await service.import_files(files(SHOT_FIXTURE), machine_id=404)
-
-
-async def test_the_same_shot_on_two_machines_is_two_shots(db: Database) -> None:
-    """De-duplication is per machine, because shot ids are per machine."""
-    machines = MachinesRepository(db)
-    first = await machines.upsert(MachineUpsert(host="kitchen.local"))
-    second = await machines.upsert(MachineUpsert(host="import:old-box"))
+async def test_the_same_shot_imported_twice_is_one_shot(db: Database) -> None:
+    """De-duplication is on the device id, which is now the whole of a shot's identity."""
     service = ImportService(db)
 
-    await service.import_files(files(SHOT_FIXTURE), machine_id=first.id)
-    await service.import_files(files(SHOT_FIXTURE), machine_id=second.id)
+    await service.import_files(files(SHOT_FIXTURE))
+    await service.import_files(files(SHOT_FIXTURE))
 
-    assert (await ShotsRepository(db).counts()).total == 2
+    assert (await ShotsRepository(db).counts()).total == 1
 
 
 async def test_a_shot_links_to_the_profile_version_when_the_mirror_has_it(
@@ -480,15 +456,12 @@ async def test_a_shot_links_to_the_profile_version_when_the_mirror_has_it(
     from gaggiclanker.db.repos.profiles import ProfilesRepository
     from gaggiclanker.domain.exports import profile_export_to_profiles
 
-    machine = await MachinesRepository(db).upsert(MachineUpsert(host="kitchen.local"))
     profiles = ProfilesRepository(db)
     [profile] = profile_export_to_profiles(document(PROFILE_FIXTURE))
     version, _ = await profiles.ensure_version(profile)
-    await profiles.upsert_device_profile(
-        machine_id=machine.id, device_id="rV4GhUcSZc", version_id=version.id
-    )
+    await profiles.upsert_device_profile(device_id="rV4GhUcSZc", version_id=version.id)
 
-    summary = await ImportService(db).import_files(files(SHOT_FIXTURE), machine_id=machine.id)
+    summary = await ImportService(db).import_files(files(SHOT_FIXTURE))
 
     shot = await ShotsRepository(db).get(summary.items[0].shot_id or 0)
     assert shot is not None
@@ -567,17 +540,13 @@ async def test_an_id_match_is_never_overridden_by_a_label_match(db: Database) ->
     from gaggiclanker.db.repos.profiles import ProfilesRepository
     from gaggiclanker.domain.exports import profile_export_to_profiles
 
-    machine = await MachinesRepository(db).upsert(MachineUpsert(host="kitchen.local"))
     profiles = ProfilesRepository(db)
     [profile] = profile_export_to_profiles(json.loads(fixture_bytes(PROFILE_FIXTURE)))
     version, _ = await profiles.ensure_version(profile)
-    await profiles.upsert_device_profile(
-        machine_id=machine.id, device_id="rV4GhUcSZc", version_id=version.id
-    )
+    await profiles.upsert_device_profile(device_id="rV4GhUcSZc", version_id=version.id)
 
     summary = await ImportService(db).import_files(
         [*files(SHOT_FIXTURE), profile_labelled(GRATUS)],
-        machine_id=machine.id,
     )
 
     shot_result = next(item for item in summary.items if item.kind == "shot")

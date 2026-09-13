@@ -52,7 +52,7 @@ async def test_a_read_only_caller_is_refused_and_the_refusal_is_audited(
     outcome = await registry.dispatch(
         ctx,
         "starting_point",
-        {"bean_id": fixture.new_bean_id, "machine_id": fixture.machine_id},
+        {"bean_id": fixture.new_bean_id},
     )
     assert outcome.status == "refused"
     assert outcome.ok is False
@@ -71,7 +71,7 @@ async def test_a_connection_with_no_service_says_so_rather_than_crashing(
     outcome = await registry.dispatch(
         ctx,
         "starting_point",
-        {"bean_id": fixture.new_bean_id, "machine_id": fixture.machine_id},
+        {"bean_id": fixture.new_bean_id},
     )
     assert outcome.status == "error"
     assert "running gaggiclanker application" in outcome.error
@@ -88,7 +88,6 @@ async def test_the_tool_queues_a_run_and_the_read_tool_gets_it_back(
             "starting_point",
             {
                 "bean_id": fixture.new_bean_id,
-                "machine_id": fixture.machine_id,
                 "grinder_id": fixture.grinder_id,
                 "usual_grind": "22",
             },
@@ -98,9 +97,7 @@ async def test_the_tool_queues_a_run_and_the_read_tool_gets_it_back(
         run_id = outcome.data["run_id"]
         assert outcome.data["status"] == "running"
 
-        task = tasks.get(
-            starting_point_task_name(fixture.new_bean_id, fixture.machine_id, fixture.grinder_id)
-        )
+        task = tasks.get(starting_point_task_name(fixture.new_bean_id, fixture.grinder_id))
         assert task is not None
         await task
     finally:
@@ -127,7 +124,6 @@ async def test_a_second_call_for_the_same_bag_gets_the_running_row(
     ctx = _context(fixture, settings=llm.settings, starting=starting, tasks=tasks)
     args = {
         "bean_id": fixture.new_bean_id,
-        "machine_id": fixture.machine_id,
         "grinder_id": fixture.grinder_id,
     }
     try:
@@ -146,9 +142,7 @@ async def test_a_bean_that_does_not_exist_is_an_error_value(
     tasks = TaskRegistry()
     ctx = _context(fixture, settings=llm.settings, starting=starting, tasks=tasks)
     try:
-        outcome = await registry.dispatch(
-            ctx, "starting_point", {"bean_id": 9999, "machine_id": fixture.machine_id}
-        )
+        outcome = await registry.dispatch(ctx, "starting_point", {"bean_id": 9999})
     finally:
         await tasks.cancel_all()
     assert outcome.ok is False

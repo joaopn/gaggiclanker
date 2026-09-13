@@ -1,9 +1,9 @@
-"""A real database, and a Set already wired to a machine, a bean and a grinder.
+"""A real database, and a Set already wired to a bean and a grinder.
 
 Same rule as the rest of the suite: a real SQLite file, real migrations, no
 mocked repositories. Half of what these tests assert is a constraint —
-``UNIQUE(set_id, version_no)``, the partial "one active Set per machine" index,
-the CHECK on every vocabulary column — and none of those exist in a mock.
+``UNIQUE(set_id, version_no)``, the partial "one active Set" index, the CHECK on
+every vocabulary column — and none of those exist in a mock.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -45,7 +44,6 @@ class Fixtures:
     """The ids a Set needs to exist, plus the repositories under test."""
 
     db: Database
-    machine_id: int
     bean_id: int
     grinder_id: int
     sets: SetsRepository
@@ -55,7 +53,6 @@ class Fixtures:
 
 @pytest.fixture
 async def wired(db: Database) -> Fixtures:
-    machine = await MachinesRepository(db).upsert(MachineUpsert(host="kitchen.local"))
     bean = await BeansRepository(db).create(
         BeanWrite(name="Ethiopia Guji", roaster="Hasbean", roast_level="light", process="natural")
     )
@@ -64,7 +61,6 @@ async def wired(db: Database) -> Fixtures:
     )
     return Fixtures(
         db=db,
-        machine_id=machine.id,
         bean_id=bean.id,
         grinder_id=grinder.id,
         sets=SetsRepository(db),
@@ -94,7 +90,6 @@ async def make_profile_version(db: Database, label: str) -> int:
 
 async def make_shot(
     db: Database,
-    machine_id: int,
     device_id: str,
     *,
     profile_version_id: int | None = None,
@@ -113,7 +108,6 @@ async def make_shot(
     return await ShotsRepository(db).insert(
         ShotInsert(
             device_id=device_id,
-            machine_id=machine_id,
             raw_slog=b"not-a-slog",
             started_at=started_at,
             duration_ms=duration_ms,

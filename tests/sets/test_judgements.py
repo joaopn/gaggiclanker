@@ -24,7 +24,7 @@ def _note(shot_id: str, **fields: object) -> ShotNotes:
 
 class TestJudgement:
     async def test_write_read_and_the_ratio_is_computed(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000300")
+        shot_id = await make_shot(wired.db, "000300")
         row = await wired.judgements.upsert(
             shot_id,
             JudgementWrite(
@@ -44,12 +44,12 @@ class TestJudgement:
         assert row.seeded_from_device_note is False
 
     async def test_a_judgement_with_no_doses_has_no_ratio(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000301")
+        shot_id = await make_shot(wired.db, "000301")
         row = await wired.judgements.upsert(shot_id, JudgementWrite(rating=3))
         assert row.ratio is None
 
     async def test_upsert_replaces_rather_than_merges(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000302")
+        shot_id = await make_shot(wired.db, "000302")
         await wired.judgements.upsert(shot_id, JudgementWrite(rating=2, notes="undrinkable"))
         row = await wired.judgements.upsert(shot_id, JudgementWrite(rating=5))
         assert row.rating == 5
@@ -69,14 +69,14 @@ class TestJudgement:
             JudgementWrite(notes="x" * 201)
 
     async def test_delete_puts_the_shot_back_to_unjudged(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000303")
+        shot_id = await make_shot(wired.db, "000303")
         await wired.judgements.upsert(shot_id, JudgementWrite(rating=3))
         assert await wired.judgements.delete(shot_id) is True
         assert await wired.judgements.get(shot_id) is None
         assert await wired.judgements.delete(shot_id) is False
 
     async def test_for_shots_reads_a_batch(self, wired: Fixtures) -> None:
-        ids = [await make_shot(wired.db, wired.machine_id, f"00031{n}") for n in range(3)]
+        ids = [await make_shot(wired.db, f"00031{n}") for n in range(3)]
         await wired.judgements.upsert(ids[0], JudgementWrite(rating=5))
         await wired.judgements.upsert(ids[2], JudgementWrite(rating=1))
         found = await wired.judgements.for_shots(ids)
@@ -86,7 +86,7 @@ class TestJudgement:
 
 class TestSeedingFromDeviceNotes:
     async def test_a_note_becomes_the_first_judgement(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000320")
+        shot_id = await make_shot(wired.db, "000320")
         created = await wired.judgements.seed_from_device_notes(
             shot_id,
             _note(
@@ -110,7 +110,7 @@ class TestSeedingFromDeviceNotes:
         assert row.device_synced_at is not None
 
     async def test_seeding_happens_exactly_once(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000321")
+        shot_id = await make_shot(wired.db, "000321")
         note = _note("000321", rating=3, doseIn="18")
         assert await wired.judgements.seed_from_device_notes(shot_id, note) is True
         assert await wired.judgements.seed_from_device_notes(shot_id, note) is False
@@ -123,7 +123,7 @@ class TestSeedingFromDeviceNotes:
         seeding were a read-then-write, the verdict typed here would be replaced
         by the machine's version of it.
         """
-        shot_id = await make_shot(wired.db, wired.machine_id, "000322")
+        shot_id = await make_shot(wired.db, "000322")
         await wired.judgements.seed_from_device_notes(shot_id, _note("000322", rating=2))
 
         await wired.judgements.upsert(
@@ -149,12 +149,12 @@ class TestSeedingFromDeviceNotes:
         it" looks like. Seeding from that would mark the shot judged and hide it
         from every "not judged yet" view for ever.
         """
-        shot_id = await make_shot(wired.db, wired.machine_id, "000323")
+        shot_id = await make_shot(wired.db, "000323")
         assert await wired.judgements.seed_from_device_notes(shot_id, _note("000323")) is False
         assert await wired.judgements.get(shot_id) is None
 
     async def test_rating_zero_means_unrated_not_zero(self, wired: Fixtures) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000324")
+        shot_id = await make_shot(wired.db, "000324")
         await wired.judgements.seed_from_device_notes(shot_id, _note("000324", doseIn="18"))
         row = await wired.judgements.get(shot_id)
         assert row is not None and row.rating is None
@@ -185,7 +185,7 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
     async def test_seeding_never_raises_and_drops_what_it_cannot_believe(
         self, wired: Fixtures, field: str, value: str
     ) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000330")
+        shot_id = await make_shot(wired.db, "000330")
         # A rating too, so there is something left to seed from once the
         # unbelievable field has been dropped.
         created = await wired.judgements.seed_from_device_notes(
@@ -209,7 +209,7 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
     async def test_a_note_with_nothing_believable_left_is_skipped_not_raised(
         self, wired: Fixtures
     ) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000331")
+        shot_id = await make_shot(wired.db, "000331")
 
         assert (
             await wired.judgements.seed_from_device_notes(shot_id, _note("000331", doseIn="0"))
@@ -220,7 +220,7 @@ class TestNotesTheFirmwareAcceptsAndWeDoNot:
     async def test_a_user_edit_stops_claiming_to_be_in_step_with_the_machine(
         self, wired: Fixtures
     ) -> None:
-        shot_id = await make_shot(wired.db, wired.machine_id, "000332")
+        shot_id = await make_shot(wired.db, "000332")
         await wired.judgements.seed_from_device_notes(shot_id, _note("000332", rating=3))
         seeded = await wired.judgements.get(shot_id)
         assert seeded is not None and seeded.device_synced_at is not None

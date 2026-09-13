@@ -41,7 +41,7 @@ async def slow_device() -> FakeDevice:
 
 
 async def _stored(archive: Archive, device_id: str) -> bool:
-    return await archive.engine.shots.get_by_device_id(1, device_id) is not None
+    return await archive.engine.shots.get_by_device_id(device_id) is not None
 
 
 async def test_a_shot_saved_during_a_pull_lands_on_the_next_one(
@@ -93,7 +93,7 @@ async def test_a_shot_saved_during_a_pull_lands_on_the_next_one(
             # can drain a 256-deep queue is the bus working as designed, and a
             # lost telemetry frame at 2 Hz is invisible.
             assert archive.client.events.dropped > 0, "the flood did not actually flood"
-            stored = await archive.engine.shots.get_by_device_id(1, pad6(NEW_SHOT_ID))
+            stored = await archive.engine.shots.get_by_device_id(pad6(NEW_SHOT_ID))
             assert stored is not None
             assert stored.sample_count == 40
     finally:

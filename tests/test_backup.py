@@ -78,7 +78,7 @@ async def test_a_backup_works_while_the_sync_engine_is_writing(
     """
     db = app.state.db
     async with db.transaction():
-        await db.execute("INSERT INTO machines (host) VALUES (?)", ("backup.local",))
+        await db.execute("INSERT INTO beans (name) VALUES (?)", ("Backup bean",))
         result = await create_backup(db, data_dir / "backups")
 
     assert result.path.is_file()
@@ -88,7 +88,7 @@ async def test_a_backup_works_while_the_sync_engine_is_writing(
         # The row was still uncommitted when the snapshot was taken, so it is
         # correctly absent: a backup is a consistent copy, not a peek at
         # somebody else's open transaction.
-        assert conn.execute("SELECT COUNT(*) FROM machines").fetchone() == (0,)
+        assert conn.execute("SELECT COUNT(*) FROM beans").fetchone() == (0,)
 
 
 async def test_backup_failure_surfaces_as_an_envelope_error(app: FastAPI, tmp_path: Path) -> None:

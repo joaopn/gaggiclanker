@@ -28,7 +28,6 @@ from tests.cleanup.conftest import (
     NOTES_ID,
     SMALL_COUNT,
     drain_tasks,
-    machine_id,
     service,
 )
 
@@ -37,9 +36,7 @@ EDITED = "reworded on the machine"
 
 
 async def _shot_id(app: FastAPI, device_id: int) -> int:
-    row = await ShotsRepository(app.state.db).get_by_device_id(
-        await machine_id(app), pad6(device_id)
-    )
+    row = await ShotsRepository(app.state.db).get_by_device_id(pad6(device_id))
     assert row is not None
     return row.id
 
@@ -84,7 +81,7 @@ async def test_a_run_marks_the_archive_locally_rather_than_waiting_for_the_next_
     plan = await service(app).plan()
     await service(app).run()
 
-    states = await ShotsRepository(app.state.db).known_states(await machine_id(app))
+    states = await ShotsRepository(app.state.db).known_states()
     for item in plan.planned:
         assert states[item.device_id].deleted_on_device is True
 
@@ -172,20 +169,19 @@ async def test_deletes_are_paced_to_two_a_second(
     assert time.monotonic() - started >= MIN_DELETE_INTERVAL_S
 
 
-async def test_only_one_run_at_a_time_per_machine(
+async def test_only_one_run_at_a_time(
     writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     """The registry name is claimed synchronously, so two tabs get one run."""
     app, _ = writes_on
     await _keep(app, 5)
-    identifier = await machine_id(app)
     tasks = app.state.tasks
 
-    assert service(app).spawn(tasks, identifier) is True
-    assert service(app).spawn(tasks, identifier) is False
+    assert service(app).spawn(tasks) is True
+    assert service(app).spawn(tasks) is False
 
-    await _await_task(app, cleanup_task_name(identifier))
-    runs = await CleanupRepository(app.state.db).list_runs(identifier)
+    await _await_task(app, cleanup_task_name())
+    runs = await CleanupRepository(app.state.db).list_runs()
     assert len(runs) == 1
 
 
@@ -211,7 +207,6 @@ async def test_a_run_cut_off_by_a_restart_is_closed_at_the_next_boot(
     app, _ = writes_on
     repo = CleanupRepository(app.state.db)
     run_id = await repo.start_run(
-        await machine_id(app),
         mode="keep_newest",
         target=5,
         trigger="test",
@@ -234,16 +229,15 @@ async def test_auto_cleanup_fires_only_with_both_switches_on(
     """`deviceCleanupAuto` says *when*; `deviceWritesEnabled` says *whether*."""
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
-    identifier = await machine_id(app)
     repo = CleanupRepository(app.state.db)
 
     # Auto off: the poke costs a task that reads two settings and returns.
-    await _poke(app, identifier)
-    assert await repo.list_runs(identifier) == []
+    await _poke(app)
+    assert await repo.list_runs() == []
 
     await app.state.settings_service.apply({"deviceCleanupAuto": True})
-    await _poke(app, identifier)
-    runs = await repo.list_runs(identifier)
+    await _poke(app)
+    runs = await repo.list_runs()
     assert len(runs) == 1
     assert runs[0].trigger == "auto"
     assert runs[0].deleted == 2
@@ -255,9 +249,8 @@ async def test_auto_cleanup_does_nothing_with_writes_off(
     app, _ = live
     await _keep(app, 5)
     await app.state.settings_service.apply({"deviceCleanupAuto": True})
-    identifier = await machine_id(app)
-    await _poke(app, identifier)
-    assert await CleanupRepository(app.state.db).list_runs(identifier) == []
+    await _poke(app)
+    assert await CleanupRepository(app.state.db).list_runs() == []
 
 
 async def test_the_poke_does_not_hold_the_run_s_name_while_it_decides(
@@ -272,16 +265,15 @@ async def test_the_poke_does_not_hold_the_run_s_name_while_it_decides(
     """
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
-    identifier = await machine_id(app)
 
-    service(app).maybe_spawn_auto(app.state.tasks, identifier)
+    service(app).maybe_spawn_auto(app.state.tasks)
     # The decision is running; the run's name is still free, so a manual run
     # starts rather than being told one is already going.
-    assert app.state.tasks.get(auto_task_name(identifier)) is not None
-    assert service(app).spawn(app.state.tasks, identifier) is True
+    assert app.state.tasks.get(auto_task_name()) is not None
+    assert service(app).spawn(app.state.tasks) is True
 
     await drain_tasks(app, "cleanup")
-    runs = await CleanupRepository(app.state.db).list_runs(identifier)
+    runs = await CleanupRepository(app.state.db).list_runs()
     assert [row.trigger for row in runs] == ["manual"]
 
 
@@ -290,11 +282,11 @@ async def test_the_sync_engine_pokes_after_a_clean_index_pass(
 ) -> None:
     """The hook the lifespan wires, and it fires outside the engine's lock."""
     app, _ = writes_on
-    seen: list[int] = []
-    app.state.sync.on_index_synced = seen.append
+    seen: list[bool] = []
+    app.state.sync.on_index_synced = lambda: seen.append(True)
     run = await app.state.sync.sync_shots(trigger="test")
     assert run.status == "ok"
-    assert seen == [await machine_id(app)]
+    assert seen == [True]
 
 
 async def test_the_engine_does_not_poke_when_it_could_not_read_the_index(
@@ -302,23 +294,23 @@ async def test_the_engine_does_not_poke_when_it_could_not_read_the_index(
 ) -> None:
     """A pass that learned nothing about the machine must not drive a retention policy."""
     app, _ = writes_on
-    seen: list[int] = []
-    app.state.sync.on_index_synced = seen.append
+    seen: list[bool] = []
+    app.state.sync.on_index_synced = lambda: seen.append(True)
     fake_device.index_missing = True
     await app.state.sync.sync_shots(trigger="test")
     assert seen == []
 
 
-async def _poke(app: FastAPI, identifier: int) -> None:
+async def _poke(app: FastAPI) -> None:
     """Fire the engine's hook and wait for whatever it decides to do.
 
     Two tasks, and which of them exists is the point: the poke always spawns the
     *decision*, and only a decision that says yes goes on to claim the run's own
     name.
     """
-    service(app).maybe_spawn_auto(app.state.tasks, identifier)
-    await _await_task(app, auto_task_name(identifier))
-    await drain_tasks(app, cleanup_task_name(identifier))
+    service(app).maybe_spawn_auto(app.state.tasks)
+    await _await_task(app, auto_task_name())
+    await drain_tasks(app, cleanup_task_name())
 
 
 async def _await_task(app: FastAPI, name: str) -> None:
@@ -370,7 +362,7 @@ async def test_a_note_edited_since_the_last_pull_is_mirrored_before_the_delete(
     saved = await NotesRepository(app.state.db).get(shot_id)
     assert saved is not None
     assert saved.notes == EDITED, "the card was deleted without being read first"
-    states = await ShotsRepository(app.state.db).known_states(await machine_id(app))
+    states = await ShotsRepository(app.state.db).known_states()
     assert states[pad6(NOTES_ID)].deleted_on_device is True
 
 
@@ -397,7 +389,7 @@ async def test_a_shot_whose_notes_cannot_be_read_is_skipped_rather_than_deleted(
     assert run.errors == 1
     assert run.error is not None and "notes card could not be read" in run.error
 
-    states = await ShotsRepository(app.state.db).known_states(await machine_id(app))
+    states = await ShotsRepository(app.state.db).known_states()
     assert states[pad6(NOTES_ID)].deleted_on_device is False
     assert fake_device.shots[NOTES_ID].notes is not None
 

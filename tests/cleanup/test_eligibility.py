@@ -20,7 +20,7 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.device.writes import DeviceWriteRefused
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.slog import header_size_for, sample_size_for
-from tests.cleanup.conftest import CORRUPT_ID, FIRST_ID, machine_id
+from tests.cleanup.conftest import CORRUPT_ID, FIRST_ID
 
 
 def _candidate(**overrides: object) -> CleanupCandidate:
@@ -29,7 +29,6 @@ def _candidate(**overrides: object) -> CleanupCandidate:
     values: dict[str, object] = {
         "id": 1,
         "device_id": "000100",
-        "machine_id": 1,
         "slog_version": version,
         "fields_mask": mask,
         "sample_count": samples,
@@ -41,38 +40,31 @@ def _candidate(**overrides: object) -> CleanupCandidate:
 
 def test_a_complete_archived_shot_is_eligible() -> None:
     candidate = _candidate()
-    assert ineligible_reason(candidate, machine_id=1, device_id="000100") is None
+    assert ineligible_reason(candidate, device_id="000100") is None
     assert expected_slog_bytes(candidate) == candidate.raw_bytes
 
 
 def test_a_shot_the_archive_has_never_seen_is_refused() -> None:
-    reason = ineligible_reason(None, machine_id=1, device_id="000999")
+    reason = ineligible_reason(None, device_id="000999")
     assert reason is not None
     assert "not in the archive" in reason
 
 
-def test_a_shot_belonging_to_another_machine_is_refused() -> None:
-    """Ids are a per-device counter, so a matching number proves nothing."""
-    reason = ineligible_reason(_candidate(machine_id=2), machine_id=1, device_id="000100")
-    assert reason is not None
-    assert "different machine" in reason
-
-
 def test_a_quarantined_shot_is_refused() -> None:
     """Its bytes did not parse, so a parser fix is still worth having the file for."""
-    reason = ineligible_reason(_candidate(quarantined=True), machine_id=1, device_id="000100")
+    reason = ineligible_reason(_candidate(quarantined=True), device_id="000100")
     assert reason is not None
     assert "quarantined" in reason
 
 
 def test_a_shot_shorter_than_its_header_implies_is_refused() -> None:
-    reason = ineligible_reason(_candidate(raw_bytes=512), machine_id=1, device_id="000100")
+    reason = ineligible_reason(_candidate(raw_bytes=512), device_id="000100")
     assert reason is not None
     assert "the machine may hold bytes this box does not" in reason.lower()
 
 
 def test_a_shot_with_no_stored_bytes_is_refused() -> None:
-    reason = ineligible_reason(_candidate(raw_bytes=0), machine_id=1, device_id="000100")
+    reason = ineligible_reason(_candidate(raw_bytes=0), device_id="000100")
     assert reason is not None
     assert "no raw bytes" in reason
 
@@ -85,13 +77,13 @@ def test_a_short_file_the_archive_already_called_incomplete_is_eligible() -> Non
     recorded that, and there is nothing more on the machine to lose.
     """
     candidate = _candidate(raw_bytes=600, incomplete=True)
-    assert ineligible_reason(candidate, machine_id=1, device_id="000100") is None
+    assert ineligible_reason(candidate, device_id="000100") is None
 
 
 def test_a_row_with_no_header_fields_is_refused() -> None:
     candidate = _candidate(slog_version=None, fields_mask=None)
     assert expected_slog_bytes(candidate) is None
-    reason = ineligible_reason(candidate, machine_id=1, device_id="000100")
+    reason = ineligible_reason(candidate, device_id="000100")
     assert reason is not None
     assert "cannot be checked" in reason
 
@@ -144,11 +136,10 @@ async def test_the_gate_allows_a_shot_the_archive_holds_intact(
     assert write.device_id == pad6(FIRST_ID)
 
 
-async def test_the_candidate_query_only_sees_this_machine(
+async def test_the_candidate_query_finds_a_shot_by_the_id_the_machine_knows(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     app, _ = live
-    identifier = await machine_id(app)
     repo = CleanupRepository(app.state.db)
-    assert await repo.candidate(identifier, pad6(FIRST_ID)) is not None
-    assert await repo.candidate(identifier + 1, pad6(FIRST_ID)) is None
+    assert await repo.candidate(pad6(FIRST_ID)) is not None
+    assert await repo.candidate("999999") is None

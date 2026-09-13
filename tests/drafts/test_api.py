@@ -558,7 +558,6 @@ async def test_the_detail_route_carries_both_documents_for_the_diff(
 async def a_set(live: tuple[FastAPI, httpx.AsyncClient]) -> int:
     """A Set with one version, so a push has somewhere to record itself."""
     _app, client = live
-    machine = data(await client.get("/api/machines"))["items"][0]["machine"]
     bean = data(await client.post("/api/beans", json={"name": "Draft test", "roaster": "nobody"}))
     stored = data(
         await client.post(
@@ -566,7 +565,6 @@ async def a_set(live: tuple[FastAPI, httpx.AsyncClient]) -> int:
             json={
                 "name": "Draft baseline",
                 "bean_id": bean["id"],
-                "machine_id": machine["id"],
                 "version": {"dose_g": 18.0, "target_yield_g": 36.0},
             },
         )
