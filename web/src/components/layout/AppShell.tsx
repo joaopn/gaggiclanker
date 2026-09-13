@@ -21,7 +21,13 @@ import { cn } from "@/lib/utils";
  */
 const COLLAPSED_KEY = "sidebar.collapsed.v1";
 
-/** The nav element the toggle's `aria-controls` points at. */
+/**
+ * The id of the desktop rail's nav, which the toggle's `aria-controls` names.
+ *
+ * Only the rail carries it. `NavItems` renders twice — the rail and the mobile
+ * sheet — and an id on both would be two elements sharing one id whenever the
+ * sheet is open, which is invalid and makes `aria-controls` ambiguous.
+ */
 const NAV_ID = "sidebar-nav";
 
 function readCollapsed(): boolean {
@@ -46,14 +52,17 @@ function writeCollapsed(collapsed: boolean): void {
 function NavItems({
   onNavigate,
   collapsed = false,
+  id,
 }: {
   onNavigate?: () => void;
   /** Icon rail: the label is still rendered, for assistive tech only. */
   collapsed?: boolean;
+  /** Set on the desktop rail only — see {@link NAV_ID}. */
+  id?: string;
 }) {
   const { pathname } = useLocation();
   return (
-    <nav id={NAV_ID} aria-label="Main" className="flex flex-col gap-0.5">
+    <nav id={id} aria-label="Main" className="flex flex-col gap-0.5">
       {NAV_LINKS.map((link) => {
         const Icon = link.icon;
         const active = isNavActive(link, pathname);
@@ -177,7 +186,7 @@ export function AppShell() {
             </>
           )}
         </div>
-        <NavItems collapsed={collapsed} />
+        <NavItems id={NAV_ID} collapsed={collapsed} />
 
         {/* At the foot of the rail rather than in the header: it belongs to the
             thing it changes, and the header is already the busiest row. */}

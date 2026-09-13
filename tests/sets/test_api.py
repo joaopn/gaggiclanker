@@ -177,6 +177,26 @@ class TestMachine:
         body = data(await client.get("/api/machine"))
         assert body["machine"]["host"] == ""
 
+    async def test_a_missing_machine_row_is_a_404_envelope(
+        self, client: httpx.AsyncClient, app: FastAPI
+    ) -> None:
+        """Unreachable through the app, and answered anyway.
+
+        The migration guarantees the row and the schema's `CHECK (id = 1)`
+        refuses a second, so nothing here can delete it. A database somebody has
+        been editing by hand can, and "the machine row is missing" in the
+        envelope is a better answer than a 500 from an attribute on ``None``.
+        """
+        await app.state.db.execute("DELETE FROM machines")
+
+        for response in (
+            await client.get("/api/machine"),
+            await client.patch("/api/machine", json={"name": "x"}),
+        ):
+            assert response.status_code == 404, response.text
+            assert error(response)["code"] == "NOT_FOUND"
+            assert "machine row is missing" in error(response)["message"]
+
     async def test_name_and_notes_are_editable_and_nothing_else_is(
         self, client: httpx.AsyncClient, machine: None
     ) -> None:

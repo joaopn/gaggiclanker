@@ -247,6 +247,35 @@ describe("AppShell", () => {
       expect(current.map((el) => el.getAttribute("aria-label"))).toEqual(["Beans (g b)"]);
     });
 
+    it("keeps the nav id unique with the mobile sheet open", async () => {
+      // `NavItems` renders twice — the rail and the sheet — and the toggle's
+      // `aria-controls` names one of them. Two elements sharing that id would
+      // make the reference ambiguous for anything that resolves it.
+      const user = setupUser();
+      renderApp();
+
+      // The toggle names the rail's nav. Asserted before the sheet opens: the
+      // sheet is a modal, so radix hides the rest of the page from the
+      // accessibility tree while it is up.
+      expect(screen.getByRole("button", { name: "Collapse sidebar" })).toHaveAttribute(
+        "aria-controls",
+        "sidebar-nav",
+      );
+
+      await user.click(screen.getByRole("button", { name: "Open navigation" }));
+      await screen.findByRole("dialog");
+
+      expect(document.querySelectorAll("#sidebar-nav")).toHaveLength(1);
+      // And the one that is left is the rail's, which is what the toggle names.
+      expect(screen.getByTestId("sidebar").querySelector("#sidebar-nav")).not.toBeNull();
+      // The sheet still renders every destination; it just does not claim the id.
+      const sheetNav = within(screen.getByRole("dialog")).getByRole("navigation", {
+        name: "Main",
+      });
+      expect(sheetNav).not.toHaveAttribute("id");
+      expect(sheetNav).toHaveTextContent("Shots");
+    });
+
     it("lists the fold chord in the shortcut sheet", async () => {
       const user = setupUser();
       renderApp();

@@ -225,6 +225,16 @@ DELETE FROM machines WHERE id NOT IN (SELECT id FROM _survivor);
 
 DROP TABLE _survivor;
 
+-- An insight's scope is a JSON document rather than columns, so it is the one
+-- place a machine id can outlive the column it came from. `_decode` drops a key
+-- it does not recognise, which is why a stale one changes no answer — but the
+-- stored document would still *say* the insight was scoped to a machine, and an
+-- insight is a claim somebody confirmed and may read back. Every other stated
+-- key is left exactly as it was, so what still applies still matches.
+UPDATE knowledge_insights
+   SET scope_json = json_remove(scope_json, '$.machine_id')
+ WHERE json_type(scope_json, '$.machine_id') IS NOT NULL;
+
 -- ── 6. the three tables that can drop the column in place ────────────
 --
 -- `sets`, `cleanup_runs` and `starting_point_runs` carry `machine_id` as a

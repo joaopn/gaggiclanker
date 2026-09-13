@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from collections.abc import AsyncIterator
@@ -17,6 +18,7 @@ from gaggiclanker.db.migrations import (
     load_migrations,
     run_migrations,
 )
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.sql import SqlRefused, run_query
 
@@ -483,8 +485,8 @@ async def test_0016_merges_the_import_placeholder_into_the_real_machine(
         "VALUES (1, 'grind', 'finer', 'sour')"
     )
     await db.execute(
-        "INSERT INTO knowledge_insights (scope_json, text, analysis_id) "
-        "VALUES ('{}', 'this bag likes it finer', 1)"
+        "INSERT INTO knowledge_insights (scope_json, text, analysis_id, confirmed) "
+        "VALUES ('{\"bean_id\": 1, \"machine_id\": 2}', 'this bag likes it finer', 1, 1)"
     )
     await db.execute("INSERT INTO sync_events (kind, shot_id) VALUES ('shot_ingested', 1)")
 
@@ -514,6 +516,15 @@ async def test_0016_merges_the_import_placeholder_into_the_real_machine(
     # rebuild that let the analysis go would have unlinked it silently.
     assert await db.fetch_value("SELECT count(*) FROM suggestions") == 1
     assert await db.fetch_value("SELECT analysis_id FROM knowledge_insights") == 1
+
+    # An insight's scope is JSON, so it is the one place a machine id can
+    # outlive its column. The key is gone from the stored document and every
+    # other stated key is untouched, so the insight still applies to the bag it
+    # was confirmed about.
+    scope = json.loads(str(await db.fetch_value("SELECT scope_json FROM knowledge_insights")))
+    assert scope == {"bean_id": 1}
+    selected = await InsightsRepository(db).select({"bean_id": 1, "grinder_id": None})
+    assert [row.text for row in selected] == ["this bag likes it finer"]
     # The sync feed's shot id carries no foreign key, so nothing else would have
     # caught it pointing at a row that is gone.
     assert await db.fetch_value("SELECT shot_id FROM sync_events") == 2

@@ -60,7 +60,13 @@ class MachinePatch(BaseModel):
 @router.get("", response_model=ApiResponse[MachineData], summary="The machine")
 async def get_machine(machines: MachineRepoDep, shots: ShotsRepoDep) -> JSONResponse:
     row = await machines.get()
-    if row is None:  # pragma: no cover - the schema holds exactly one row
+    # Unreachable through the app: 0016 guarantees the row and `CHECK (id = 1)`
+    # refuses a second. Answered anyway rather than asserted, because a database
+    # somebody has been editing by hand is a thing that happens, and saying the
+    # row is missing beats a 500 from an attribute on `None`. A comment rather
+    # than a docstring: a route's docstring is its OpenAPI description, and this
+    # is about the inside.
+    if row is None:
         raise NotFound("The machine row is missing from this archive")
     data = MachineData(machine=row, counts=await shots.counts())
     return envelope_response(data.model_dump(mode="json"))
@@ -74,6 +80,6 @@ async def get_machine(machines: MachineRepoDep, shots: ShotsRepoDep) -> JSONResp
 async def patch_machine(body: MachinePatch, machines: MachineRepoDep) -> JSONResponse:
     """Name and notes only. Identity comes from the device and stays there."""
     row = await machines.update_editable(name=body.name, notes=body.notes)
-    if row is None:  # pragma: no cover - the schema holds exactly one row
+    if row is None:
         raise NotFound("The machine row is missing from this archive")
     return envelope_response(row.model_dump(mode="json"))
