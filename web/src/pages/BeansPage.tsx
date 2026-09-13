@@ -5,7 +5,7 @@ import type { BeanRow, BeanWrite } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { NewSetWizard } from "@/components/sets/NewSetWizard";
+import { NewSetDialog } from "@/components/sets/NewSetDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,7 +49,7 @@ export function BeansPage() {
   const [showArchived, setShowArchived] = useState(false);
   const beans = useBeans(showArchived);
   const [editing, setEditing] = useState<BeanRow | "new" | null>(null);
-  // Which coffee the wizard was opened for, or undefined when it is closed.
+  // Which coffee the New Set dialog was opened for, or undefined when it is closed.
   // The bean id rather than a boolean, because the shortcut's whole point is
   // that the person does not have to find it again in a picker.
   const [startingFrom, setStartingFrom] = useState<number | undefined>(undefined);
@@ -86,8 +86,8 @@ export function BeansPage() {
       ) : null}
 
       {/* Keyed on the bean, so re-opening it for a different coffee remounts
-          the wizard rather than showing the previous one's suggestions. */}
-      <NewSetWizard
+          the dialog rather than showing the previous one's suggestions. */}
+      <NewSetDialog
         key={startingFrom ?? "none"}
         open={startingFrom !== undefined}
         initialBeanId={startingFrom}

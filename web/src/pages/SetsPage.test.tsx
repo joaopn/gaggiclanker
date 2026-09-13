@@ -86,12 +86,12 @@ describe("SetsPage", () => {
     expect(screen.getByText(/needs a Set/)).toBeInTheDocument();
   });
 
-  it("opens the wizard from the header", async () => {
+  it("opens the New Set dialog from the header", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetsPage />);
 
     await user.click(await screen.findByRole("button", { name: /New Set/ }));
 
-    expect(await screen.findByTestId("new-set-wizard")).toBeInTheDocument();
+    expect(await screen.findByTestId("new-set-dialog")).toBeInTheDocument();
   });
 });

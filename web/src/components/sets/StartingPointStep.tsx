@@ -12,8 +12,9 @@ import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
 /**
- * The wizard's first step: what the archive already knows, and what the model
- * makes of it.
+ * The New Set dialog's suggestion section: what the archive already knows, and
+ * what the model makes of it. It reads the bean and grinder picked in the form
+ * above it.
  *
  * Two halves, and the split is deliberate. The similar Sets are **free** — one
  * SQL query over Sets already pulled on this grinder — so they render as soon
@@ -75,8 +76,8 @@ export function StartingPointStep({
     <div className="space-y-3" data-testid="starting-point-step">
       {ready ? null : (
         <p className="text-muted-foreground text-xs">
-          Pick a bag below first — a suggestion with nothing to anchor it could only be given in
-          general terms.
+          Pick a bag in the form above first — a suggestion with nothing to anchor it could only be
+          given in general terms.
         </p>
       )}
 
@@ -161,7 +162,7 @@ export function StartingPointStep({
                   const accepted = await attempt(() =>
                     accept.mutateAsync({ runId, option: option.option }),
                   );
-                  // The wizard stays open when the server refuses — an option
+                  // The dialog stays open when the server refuses — an option
                   // whose profile the safety policy will not allow is the usual
                   // cause, and the other two options are still there to take.
                   if (!accepted) return;

@@ -50,7 +50,7 @@ beforeEach(() => {
   createBean.mockResolvedValue(bean({ id: 2, name: "Kenya Kiambu" }));
   updateBean.mockResolvedValue(bean({ name: "Kenya Kiambu" }));
   setBeanArchived.mockResolvedValue(bean({ archived: true }));
-  // The "Start a Set" shortcut mounts the wizard, which asks for these.
+  // The "Start a Set" shortcut mounts the New Set dialog, which asks for these.
   getGrinders.mockResolvedValue({ items: [grinder()] });
   getMachines.mockResolvedValue({ items: [] });
   getProfileVersions.mockResolvedValue({ items: [], total: 0, limit: 200, offset: 0 });
@@ -113,7 +113,7 @@ describe("BeansPage", () => {
     expect(setBeanArchived.mock.calls[0].slice(0, 2)).toEqual([1, true]);
   });
 
-  it("opens the Set wizard on the coffee you pressed it from", async () => {
+  it("opens the New Set dialog on the coffee you pressed it from", async () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
@@ -121,8 +121,8 @@ describe("BeansPage", () => {
 
     // Pre-selected, because the whole point of the shortcut is not having to
     // find the coffee you are looking at in a picker.
-    const wizard = await screen.findByTestId("new-set-wizard");
-    expect(wizard).toHaveTextContent("1. Suggest");
+    const dialog = await screen.findByTestId("new-set-dialog");
+    expect(dialog).toHaveTextContent("Start the Set");
     await waitFor(() => expect(screen.getByLabelText("Bean")).toHaveValue("1"));
   });
 

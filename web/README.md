@@ -126,7 +126,7 @@ src/
   components/
     charts/
       SetTrendChart.tsx   score, rating, duration and ratio across a Set's versions
-    sets/             SetBadge, VersionTimeline, NewSetWizard
+    sets/             SetBadge, VersionTimeline, NewSetDialog
     shots/            JudgementForm, AssignToSet
   pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
 ```

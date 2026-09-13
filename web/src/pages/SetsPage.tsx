@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { SetRow } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { NewSetWizard } from "@/components/sets/NewSetWizard";
+import { NewSetDialog } from "@/components/sets/NewSetDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import { setSummary } from "@/lib/sets";
 export function SetsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const sets = useSets(showArchived);
-  const [wizardOpen, setWizardOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const navigate = useNavigate();
   useQueryErrorToast(sets.error, "Could not load the Sets");
 
@@ -45,7 +45,7 @@ export function SetsPage() {
             >
               {showArchived ? "Hide archived" : "Show archived"}
             </Button>
-            <Button size="sm" onClick={() => setWizardOpen(true)}>
+            <Button size="sm" onClick={() => setDialogOpen(true)}>
               <Plus className="size-3.5" aria-hidden="true" />
               New Set
             </Button>
@@ -53,9 +53,9 @@ export function SetsPage() {
         }
       />
 
-      <NewSetWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
+      <NewSetDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
         onCreated={(setId) => navigate(`/sets/${setId}`)}
         // An accepted starting point whose option carried a whole profile left
         // a draft staged on the profiles page, and that is the more urgent of
@@ -76,7 +76,7 @@ export function SetsPage() {
           title="No Sets yet"
           description="Until a Set exists, every shot lands in the “needs a Set” inbox: the archive has no way to know which bag was in the hopper. Start one and the next shot files itself."
           action={
-            <Button size="sm" onClick={() => setWizardOpen(true)}>
+            <Button size="sm" onClick={() => setDialogOpen(true)}>
               New Set
             </Button>
           }
