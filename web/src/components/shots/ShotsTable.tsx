@@ -5,9 +5,12 @@ import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
+import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
 import { Badge } from "@/components/ui/badge";
+import { usePatchJudgement } from "@/hooks/useSets";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
+import { attempt } from "@/lib/mutations";
 import { gridTemplates, type ShotColumn, type ShotColumnId } from "@/lib/shotColumns";
 import { formatGrams, formatSeconds, formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
@@ -227,7 +230,7 @@ function ShotRow({
           </span>
         ))}
       </Link>
-      <span className="size-7 shrink-0" />
+      <ShotRowEditor shot={shot} />
     </div>
   );
 }
@@ -251,7 +254,7 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
     case "score":
       return <ScoreBadge score={shot.execution_score ?? null} />;
     case "rating":
-      return <RatingStars rating={ratingOf(shot)} />;
+      return <RatingCell shot={shot} />;
     case "set":
       return (
         <span data-testid="set-badge-slot">
@@ -271,6 +274,28 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
         </span>
       );
   }
+}
+
+/**
+ * The stars, clickable where they sit.
+ *
+ * A rating is the one thing about a cup somebody records for every shot, and
+ * for most shots it is the only thing — so it is a click in the list rather
+ * than a page visit. The write merges into whatever verdict already exists
+ * (`usePatchJudgement`), because `PUT` replaces the row and the taste tags,
+ * doses, grind and decision typed on the detail page must survive a star.
+ */
+function RatingCell({ shot }: { shot: ShotListRow }) {
+  const patch = usePatchJudgement();
+  return (
+    <RatingStars
+      rating={ratingOf(shot)}
+      label={`shot ${shot.device_id}`}
+      onRate={(rating) => {
+        void attempt(() => patch.mutateAsync({ shotId: shot.id, patch: { rating } }));
+      }}
+    />
+  );
 }
 
 /**

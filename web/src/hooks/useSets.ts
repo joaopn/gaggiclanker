@@ -15,6 +15,7 @@ import {
   getSet,
   getSets,
   getSetTrends,
+  getShot,
   putJudgement,
   putShotSetVersion,
 } from "@/api/client";
@@ -126,6 +127,61 @@ export function useSaveJudgement(): UseMutationResult<
   return useMutation({
     mutationFn: ({ shotId, body }) => putJudgement(shotId, body),
     onSuccess: () => toast.success("Judgement saved"),
+    onError: (error) => toast.error(`Could not save: ${error.message}`),
+    onSettled: (_data, _error, variables) => {
+      void invalidateShots(queryClient, String(variables.shotId));
+      void invalidateShots(queryClient);
+      void invalidateSets(queryClient);
+    },
+  });
+}
+
+/**
+ * The fields a verdict is made of, as the API takes them back.
+ *
+ * `PUT /api/shots/{id}/judgement` **replaces** the row — the detail form sends
+ * everything it renders, so a field left out is a field the user cleared. That
+ * is right for a form and wrong for anything that changes one thing, which is
+ * what a list row does: a rating clicked in the list must not take the taste
+ * tags, the doses, the grind and the decision with it.
+ */
+function toWrite(judgement: ShotJudgement | null | undefined): JudgementWrite {
+  return {
+    rating: judgement?.rating ?? null,
+    balance: judgement?.balance ?? null,
+    taste_tags: judgement?.taste_tags ?? [],
+    dose_in_g: judgement?.dose_in_g ?? null,
+    dose_out_g: judgement?.dose_out_g ?? null,
+    grind_setting: judgement?.grind_setting ?? null,
+    notes: judgement?.notes ?? "",
+    decision: judgement?.decision ?? null,
+  };
+}
+
+/**
+ * Change part of a verdict, leaving the rest of it alone.
+ *
+ * The current judgement is read before every write rather than merged from
+ * whatever the list happens to hold: the list row carries a rating and a notes
+ * string and nothing else, so merging from it would quietly clear the four
+ * fields it does not know about. One extra GET per edit, against a row that is
+ * usually already in the cache, buys the property that a click in a list
+ * cannot destroy something typed on the detail page.
+ */
+export function usePatchJudgement(): UseMutationResult<
+  ShotJudgement,
+  Error,
+  { shotId: number; patch: Partial<JudgementWrite> }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ shotId, patch }) => {
+      const detail = await queryClient.fetchQuery({
+        queryKey: queryKeys.shots.detail(String(shotId)),
+        queryFn: () => getShot(shotId),
+      });
+      return putJudgement(shotId, { ...toWrite(detail.judgement), ...patch });
+    },
     onError: (error) => toast.error(`Could not save: ${error.message}`),
     onSettled: (_data, _error, variables) => {
       void invalidateShots(queryClient, String(variables.shotId));

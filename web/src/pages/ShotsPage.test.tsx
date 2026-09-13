@@ -10,20 +10,32 @@ import type {
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { setRow } from "@/test/setsFixtures";
-import { syntheticSamples } from "@/test/shotFixture";
+import { judgement, setRow } from "@/test/setsFixtures";
+import { shot129, syntheticSamples } from "@/test/shotFixture";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   Toaster: () => null,
 }));
 
-const { getShots, getSyncStatus, getProfileVersions, getShotSamples, getSets } = vi.hoisted(() => ({
+const {
+  getShots,
+  getSyncStatus,
+  getProfileVersions,
+  getShotSamples,
+  getSets,
+  getShot,
+  putJudgement,
+  putShotSetVersion,
+} = vi.hoisted(() => ({
   getShots: vi.fn(),
   getSyncStatus: vi.fn(),
   getProfileVersions: vi.fn(),
   getShotSamples: vi.fn(),
   getSets: vi.fn(),
+  getShot: vi.fn(),
+  putJudgement: vi.fn(),
+  putShotSetVersion: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -32,6 +44,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getProfileVersions,
   getShotSamples,
   getSets,
+  getShot,
+  putJudgement,
+  putShotSetVersion,
 }));
 
 /** Shaped exactly like `ShotListRow` in gaggiclanker/db/repos/shots.py. */
@@ -171,6 +186,9 @@ beforeEach(() => {
   getProfileVersions.mockResolvedValue(versions);
   getShotSamples.mockResolvedValue(samplesData);
   getSets.mockResolvedValue({ items: [setRow()] });
+  getShot.mockResolvedValue({ ...shot129, judgement: judgement() });
+  putJudgement.mockImplementation((_id: number, body: unknown) => Promise.resolve(body));
+  putShotSetVersion.mockResolvedValue(shot());
 });
 
 describe("ShotsPage", () => {
@@ -652,5 +670,122 @@ describe("ShotsPage and Sets", () => {
     // Clicking it is how you get into the inbox, so it goes away once you are
     // in it rather than sitting there as a no-op.
     expect(screen.queryByTestId("needs-set-count")).not.toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage row editing", () => {
+  it("sets a rating from the row", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 4 of 5/ }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: 4 });
+  });
+
+  it("clears the rating when the star that is already lit is clicked", async () => {
+    // A mis-click has to be undoable where it was made. Without this the only
+    // way back is the detail page, for a field that is one click to set.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: 4 })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "4");
+
+    await user.click(screen.getByRole("button", { name: "Clear the rating shot 000101" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    expect(putJudgement.mock.calls[0][1]).toMatchObject({ rating: null });
+  });
+
+  it("leaves the rest of a verdict alone when a star is clicked", async () => {
+    // `PUT` replaces the whole row, so a rating set from the list has to carry
+    // back everything typed on the detail page. Losing somebody's taste tags
+    // to a star is exactly the kind of data loss this project must not do.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 2 of 5/ }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    expect(putJudgement.mock.calls[0][1]).toEqual({
+      rating: 2,
+      balance: "sour",
+      taste_tags: ["sour"],
+      dose_in_g: 18,
+      dose_out_g: 36,
+      grind_setting: "22",
+      notes: "sharp at the end",
+      decision: "adjust",
+    });
+  });
+
+  it("edits notes and the Set from the row without navigating", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_notes: "sharp at the end" })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+    const editor = await screen.findByTestId("row-editor");
+
+    const notes = within(editor).getByLabelText("Notes");
+    expect(notes).toHaveValue("sharp at the end");
+    await user.clear(notes);
+    await user.type(notes, "better, still short");
+    await user.selectOptions(within(editor).getByLabelText("Set"), "22");
+    await user.click(within(editor).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    expect(putJudgement.mock.calls[0][1]).toMatchObject({ notes: "better, still short" });
+    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 22));
+
+    // It is a panel over the list, not a page: the row is still there.
+    expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
+  });
+
+  it("writes nothing when the editor is cancelled", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+    const editor = await screen.findByTestId("row-editor");
+    await user.type(within(editor).getByLabelText("Notes"), " and thin");
+    await user.click(within(editor).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByTestId("row-editor")).not.toBeInTheDocument());
+    expect(putJudgement).not.toHaveBeenCalled();
+    expect(putShotSetVersion).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the Set when only the verdict changed", async () => {
+    // Assigning is a second write against a second endpoint; sending it every
+    // time would put a "Filed under…" toast on screen for somebody who only
+    // fixed a typo.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ set_version_id: 22 })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+    const editor = await screen.findByTestId("row-editor");
+    await user.type(within(editor).getByLabelText("Notes"), "fine");
+    await user.click(within(editor).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalled());
+    expect(putShotSetVersion).not.toHaveBeenCalled();
   });
 });
