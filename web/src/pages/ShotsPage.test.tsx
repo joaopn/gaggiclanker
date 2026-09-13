@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { Route, Routes } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -268,6 +269,7 @@ describe("ShotsPage", () => {
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
+      screen.getByRole("button", { name: /^needs a Set/ }),
       ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
     ]) {
       expect(link.contains(control)).toBe(false);
@@ -749,6 +751,288 @@ describe("ShotsPage and Sets", () => {
     // Clicking it is how you get into the inbox, so it goes away once you are
     // in it rather than sitting there as a no-op.
     expect(screen.queryByTestId("needs-set-count")).not.toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage needs-a-Set menu", () => {
+  /**
+   * Five Sets in the order `GET /api/sets` returns them: the active one first,
+   * then newest first. Each at a different latest version, so a menu that
+   * showed a version number it did not get from `current_version_no` shows up.
+   */
+  const fiveSets = [
+    setRow({
+      id: 5,
+      name: "Guji on the Niche",
+      active: true,
+      current_version_id: 51,
+      current_version_no: 4,
+    }),
+    setRow({
+      id: 4,
+      name: "Kenya AA",
+      active: false,
+      current_version_id: 41,
+      current_version_no: 2,
+      grinder_name: null,
+    }),
+    setRow({
+      id: 3,
+      name: "Colombia decaf",
+      active: false,
+      current_version_id: 31,
+      current_version_no: 7,
+    }),
+    setRow({
+      id: 2,
+      name: "House blend",
+      active: false,
+      current_version_id: 21,
+      current_version_no: 1,
+    }),
+    setRow({
+      id: 1,
+      name: "The first bag",
+      active: false,
+      current_version_id: 11,
+      current_version_no: 3,
+    }),
+  ];
+
+  /** The list page with somewhere to navigate to, so a navigation is visible. */
+  function renderList() {
+    return renderWithQueryClient(
+      <Routes>
+        <Route path="/" element={<ShotsPage />} />
+        <Route path="/shots/:shotId" element={<p>the shot page</p>} />
+        <Route path="/sets/:setId" element={<p>the Set page</p>} />
+      </Routes>,
+    );
+  }
+
+  function badgeButton(): HTMLElement {
+    return screen.getByRole("button", { name: /^needs a Set: choose one for shot 000101/ });
+  }
+
+  it("opens the Sets from the badge, three of five, active first, at their latest version", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+
+    renderList();
+    await listed();
+
+    const button = badgeButton();
+    expect(button).toHaveAttribute("data-state", "needs-set");
+    expect(button).toHaveAttribute("aria-haspopup", "dialog");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(button);
+
+    const menu = await screen.findByRole("dialog", { name: "File shot 000101 under a Set" });
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    const options = await within(menu).findAllByTestId("needs-set-option");
+    expect(options).toHaveLength(3);
+    expect(options.map((option) => option.getAttribute("data-set"))).toEqual(["5", "4", "3"]);
+    expect(options[0]).toHaveTextContent("Guji on the Niche");
+    expect(options[0]).toHaveTextContent("v4");
+    expect(options[0]).toHaveTextContent("active");
+    expect(options[1]).toHaveTextContent("Kenya AA");
+    expect(options[1]).toHaveTextContent("v2");
+    expect(options[1]).not.toHaveTextContent("active");
+    expect(options[2]).toHaveTextContent("v7");
+    // The one-line summary comes from the list row; nothing is fetched per Set.
+    expect(options[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso");
+    expect(within(menu).queryByText("House blend")).not.toBeInTheDocument();
+    // Opening the menu did not follow the row's link.
+    expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
+  });
+
+  it("files the shot under the chosen Set's latest version without navigating", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+    const menu = await screen.findByTestId("needs-set-menu");
+    await user.click(await within(menu).findByRole("button", { name: /^Kenya AA/ }));
+
+    await waitFor(() => expect(putShotSetVersion).toHaveBeenCalledWith(1, 41));
+    await waitFor(() => expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument());
+    expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
+    expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
+  });
+
+  it("turns the row's badge into the assigned one once the shot is filed", async () => {
+    // The assignment invalidates the shots prefix, and the list row is under
+    // it: the refetched row carries the badge, not a local patch of the old one.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+    putShotSetVersion.mockImplementation(async () => {
+      getShots.mockResolvedValue(
+        listData([
+          shot({
+            set_version_id: 41,
+            set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2 },
+          }),
+        ]),
+      );
+      return shot({
+        set_version_id: 41,
+        set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2 },
+      });
+    });
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+    await user.click(await screen.findByRole("button", { name: /^Kenya AA/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("set-badge")).toHaveAttribute("data-state", "assigned"),
+    );
+    expect(screen.getByTestId("set-badge")).toHaveTextContent("Kenya AA");
+    expect(screen.getByRole("link", { name: /Kenya AA/ })).toHaveAttribute("href", "/sets/4");
+  });
+
+  it("keeps the menu open and says so when the assignment fails", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+    putShotSetVersion.mockRejectedValue(new Error("version is archived"));
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+    await user.click(await screen.findByRole("button", { name: /^Guji on the Niche/ }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Could not assign: version is archived"),
+    );
+    expect(screen.getByTestId("needs-set-menu")).toBeInTheDocument();
+    expect(screen.getAllByTestId("needs-set-option")).toHaveLength(3);
+  });
+
+  it("points at the Sets page when there is no Set to offer", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: [] });
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+
+    const menu = await screen.findByTestId("needs-set-menu");
+    expect(await within(menu).findByRole("link", { name: "Start a Set" })).toHaveAttribute(
+      "href",
+      "/sets",
+    );
+    expect(within(menu).queryByTestId("needs-set-option")).not.toBeInTheDocument();
+  });
+
+  it("sends the fourth and later Sets to the shot page's Assign panel", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+
+    const menu = await screen.findByTestId("needs-set-menu");
+    expect(await within(menu).findByRole("link", { name: "Another Set…" })).toHaveAttribute(
+      "href",
+      "/shots/1#set",
+    );
+  });
+
+  it("offers no way out to a longer list when three Sets are all there are", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets.slice(0, 3) });
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+
+    const menu = await screen.findByTestId("needs-set-menu");
+    expect(await within(menu).findAllByTestId("needs-set-option")).toHaveLength(3);
+    expect(within(menu).queryByRole("link", { name: "Another Set…" })).not.toBeInTheDocument();
+  });
+
+  it("says so when the Sets cannot be loaded, rather than showing an empty menu", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockRejectedValue(new Error("database is locked"));
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+
+    expect(await screen.findByTestId("needs-set-state")).toHaveTextContent(
+      "Could not load the Sets: database is locked",
+    );
+  });
+
+  it("focuses the first Set once placed, and gives focus back to the badge on Escape", async () => {
+    // Focus must wait for the anchored panel to be positioned: jsdom focuses a
+    // hidden element, browsers refuse. See the popover's own test.
+    const user = setupUser();
+    const real = HTMLElement.prototype.focus;
+    const visibilityWhenFocused: string[] = [];
+    vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function focus(
+      this: HTMLElement,
+      options?: FocusOptions,
+    ) {
+      const panel = this.closest<HTMLElement>('[role="dialog"]');
+      if (panel !== null) visibilityWhenFocused.push(panel.style.visibility);
+      real.call(this, options);
+    });
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({ items: fiveSets });
+
+    renderList();
+    await listed();
+    await user.click(badgeButton());
+
+    // The options arrive after the Set query, so the panel itself takes focus
+    // first and hands it to the first Set when they land; never while hidden.
+    const options = await screen.findAllByTestId("needs-set-option");
+    await waitFor(() => expect(options[0]).toHaveFocus());
+    expect(visibilityWhenFocused).not.toHaveLength(0);
+    expect(visibilityWhenFocused).not.toContain("hidden");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument());
+    expect(badgeButton()).toHaveFocus();
+  });
+
+  it("still links an assigned badge to its Set, above the row's own link", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          set_version_id: 22,
+          set_badge: { set_id: 3, set_name: "Guji on the Niche", version_no: 2 },
+        }),
+      ]),
+    );
+
+    renderList();
+    await listed();
+
+    const setLink = screen.getByRole("link", { name: /Guji on the Niche/ });
+    expect(setLink).toHaveAttribute("href", "/sets/3");
+    // Lifted like the other row controls: under the stretched row link, a
+    // click on the badge would open the shot instead.
+    expect(setLink).toHaveClass("z-[1]");
+    expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument();
+
+    await user.click(setLink);
+    expect(await screen.findByText("the Set page")).toBeInTheDocument();
   });
 });
 

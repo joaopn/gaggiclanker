@@ -3,6 +3,7 @@ import { type RefObject, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
+import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
@@ -230,8 +231,10 @@ function ShotRow({
         aria-label={`Compare shot ${shot.device_id}`}
       />
       <div className={cn(GRID, "min-w-0 flex-1 py-1")}>
+        {/* Cells are divs, not spans: the Set cell can hold an anchored
+            panel, which is block content. */}
         {columns.map((column) => (
-          <span
+          <div
             key={column.id}
             className={cn(
               "min-w-0",
@@ -244,7 +247,7 @@ function ShotRow({
             )}
           >
             <Cell shot={shot} id={column.id} />
-          </span>
+          </div>
         ))}
       </div>
       <ShotRowEditor shot={shot} className={INTERACTIVE} />
@@ -282,10 +285,19 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
     case "rating":
       return <RatingCell shot={shot} />;
     case "set":
+      // The badge itself is lifted above the row's stretched link, not the
+      // cell: the empty rest of the cell stays part of the row link, and no
+      // ancestor of the menu gets a z-index — one would trap the menu's own
+      // `z-50` inside this row, under the next row's controls and the sticky
+      // header.
       return (
-        <span data-testid="set-badge-slot">
-          <SetBadge badge={shot.set_badge ?? null} />
-        </span>
+        <div data-testid="set-badge-slot">
+          {shot.set_badge ? (
+            <SetBadge badge={shot.set_badge} className={INTERACTIVE} />
+          ) : (
+            <NeedsSetMenu shot={shot} className={INTERACTIVE} />
+          )}
+        </div>
       );
     case "notes":
       return (

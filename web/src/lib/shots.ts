@@ -10,6 +10,15 @@ import type { ShotListRow } from "@/api/types";
  * nobody notices until they are comparing two shots side by side.
  */
 
+// ── places ───────────────────────────────────────────────────────────
+
+/**
+ * The fragment that lands the shot page on its Assign panel. Links to it are
+ * made from the shots list, which offers only a few Sets and sends the rest
+ * there; the page reads it and scrolls. One constant, so the two cannot drift.
+ */
+export const ASSIGN_ANCHOR = "set";
+
 // ── numbers ──────────────────────────────────────────────────────────
 
 export function formatTime(value: string | null | undefined): string {

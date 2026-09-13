@@ -11,6 +11,10 @@ import { cn } from "@/lib/utils";
  * waiting for an answer, and saying "needs a Set" is what turns it into
  * something a reader can act on. Rendering nothing would make the whole inbox
  * invisible.
+ *
+ * This null rendering is the inert one. The shots list renders
+ * `NeedsSetMenu` in its place, where the same words are a button that files
+ * the shot.
  */
 export function SetBadge({ badge, className }: { badge: ShotSetBadge | null; className?: string }) {
   if (!badge) {
