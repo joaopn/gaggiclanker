@@ -10,6 +10,67 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The archive is pulled into, not pushed at
+
+The prototype mirrored the machine continuously: a pass every fifteen minutes,
+a pass on every reconnect, a pass on every `evt:history-shot-saved`, a live shot
+view redrawing at 2 Hz, and a fake device that brewed on a timer to feed it. In
+use none of it earned its place — the GaggiMate's own web UI already draws the
+shot that is happening now, and duplicating it here was a second, worse copy
+that spent the machine's two HTTP slots on it. What a person wants from an
+archive is: press a button and have the new shots, drop a file and have it
+archived, then say what the cup was like without leaving the list.
+
+**Getting data is a request.**
+
+- `POST /api/sync/run` is the only trigger for shots, profiles and notes. No
+  timer, no pass on a device event, no pass at startup. The worker loops wait on
+  their poke with no timeout at all, so there is no interval left to set.
+- Identity stays automatic — one `res:ota-settings` frame plus one
+  `GET /api/settings`, at startup and on every connect. It is what tells the
+  header whether the machine is there, and a pull has nowhere to store a shot
+  until the machines row exists.
+- The WebSocket is still held: it is what the header pill reads, and what a
+  profile push, a notes write-back and a storage cleanup travel over.
+- Automatic cleanup, where it is switched on, now runs after a pull — which is
+  the right moment for it.
+- **Removed:** `GET /api/device/live` (the 2 Hz telemetry stream), the
+  `devicePollIntervalSeconds` setting, and the fake device's `--brew-every`. An
+  archive that still holds a row for the removed setting ignores it.
+
+**No live view.** The `/live` page, its nav entry and its `g l` chord are gone,
+along with the streaming chart, the live-status store and the device page's
+"Right now" and "Warnings" cards. The header pill keeps its four states from the
+status poll alone. Chart.js stays for the shot, compare and Set trend charts.
+
+**The shots page is a dataset.**
+
+- **"Pull from machine"** in the header: disabled with a reason when no machine
+  is configured or it is unreachable, a spinner while a pull is running —
+  whoever started it — and a toast when the one you started finishes, counted
+  off the ledger ("3 new shots, 1 updated", "Nothing new", or what the machine
+  said when it failed). The subtitle says when the archive was last pulled into,
+  or "Never pulled".
+- **A drop zone** under the header takes shot and profile exports — `.json`,
+  `.slog` or a zip of either — with a file picker for keyboards and phones and a
+  result line that links to the Import page for the per-file detail.
+- **Filters behind one button** with a count of how many are on, instead of
+  eight dropdowns across the top of the page. The URL contract is unchanged.
+- **Column headers sort**, with an arrow and `aria-sort`; the sort dropdown is
+  gone.
+- **A column chooser**, remembered per browser. Profile and Curve are off by
+  default — a sparkline is a request and a canvas per row, and the profile name
+  is the same string on nearly every row — and Set is a column of its own.
+- **Rating, notes and Set can be set from a row**: click a star to rate, click
+  the lit one to clear, or open a small panel at the end of the row for all
+  three. A rating set from the list merges into whatever verdict already exists,
+  so taste tags, doses, grind and decision typed on the detail page survive it.
+- The list row carries the verdict's rating and notes, and the rating a row
+  shows is the verdict's, falling back to the machine's notes card and then to
+  the index — the same expression the "rating" sort and the minimum-rating
+  filter use, so a page that can set a rating agrees with itself about what the
+  rating is.
+
 ### Profile drafts and push to the machine
 
 The first thing gaggiclanker writes to a GaggiMate. It turns an analysis's

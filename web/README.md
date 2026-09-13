@@ -23,16 +23,16 @@ npm run gen:api     # regenerate src/api/schema.d.ts from the backend's OpenAPI
 
 `npm run dev` expects the backend on `http://127.0.0.1:8000`
 (`uv run uvicorn gaggiclanker.main:app --reload --no-access-log` from the repo
-root). For the live view and the shots list there has to be a machine pushing
-frames, so run the fake with a brew interval and point the backend at it:
+root). For a shots list with anything in it, run the fake machine and pull from
+it — the fake holds the fixture archive, so one press of "Pull from machine"
+fills the UI with real shots and real curves:
 
 ```bash
-uv run python -m gaggiclanker.device.fake --port 8090 --brew-every 30
+uv run python -m gaggiclanker.device.fake --port 8090
 GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload --no-access-log
 ```
 
-Without `--brew-every` the fake only heartbeats, and `/live` correctly shows
-"no shot running" for ever. Point it elsewhere with `GAGGICLANKER_BACKEND=http://host:port npm run dev`.
+Point the dev server elsewhere with `GAGGICLANKER_BACKEND=http://host:port npm run dev`.
 Because the dev server proxies rather than talking cross-origin, `CORS_ORIGINS`
 is not needed for this setup — and production, where FastAPI serves the bundle
 from the same origin, exercises the same code path.
@@ -89,15 +89,15 @@ src/
   lib/
     shots.ts          formatting, score bands, exit reasons, band-label meanings
     shotChart.ts      samples -> series and phase bands; the sparkline path
-    shotFilters.ts    the filter bar's state, and how it becomes a query string
-    liveStatus.ts     the device's live status, held once for the tab
+    shotFilters.ts    the filter panel's state, and how it becomes a query string
+    shotColumns.ts    the columns, their grid tracks, and the stored choice
+    sync.ts           reading the sync ledger: last pull, and what it archived
   hooks/
     useArchive.ts     shots (paged and infinite), one shot, samples, versions
-    useDeviceLive.ts  the single writer into the live store, and its reader
     useVirtualRows.ts the list window, and "has this row been on screen yet"
   components/
-    charts/           chartSetup (registration + palette), Shot/Live/Compare
-    shots/            table, filters, sparkline, score badge, stars, drawer
+    charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
+    shots/            table, filters, columns, pull button, drop zone, row editor
 ```
 
 The LLM layer adds a third:
@@ -309,15 +309,11 @@ counts, in order of weight:
 1. **It draws to a canvas.** A shot is 213 samples times up to nine series, and
    a list of a thousand rows sits behind it; Recharts renders SVG, so every
    point is a DOM node the browser lays out and hit-tests. At this point count
-   the difference is not subtle, and the live view redraws twice a second for
-   the length of a shot.
-2. **The live view is a streaming chart.** Chart.js updates a dataset in place
-   with no animation and no reconciliation; a React-component charting library
-   re-renders the tree for every frame it receives.
-3. **The firmware's own web UI uses Chart.js**, so a curve here and a curve on
+   the difference is not subtle.
+2. **The firmware's own web UI uses Chart.js**, so a curve here and a curve on
    the machine are drawn by the same code with the same defaults. When they
    disagree, the data disagrees.
-4. **Phase bands and the exit marker are one plugin** (`chartjs-plugin-annotation`)
+3. **Phase bands and the exit marker are one plugin** (`chartjs-plugin-annotation`)
    rather than hand-placed `ReferenceArea` elements.
 
 What it costs: the chart is imperative, so it does not compose with React state
@@ -328,8 +324,9 @@ fixture, and each chart renders a `sr-only` text summary of what it drew, which
 is what the page tests assert on.
 
 Chart.js is registered once in `components/charts/chartSetup.ts` and reaches the
-bundle through `React.lazy`: `/shots/:id`, the compare drawer and the live chart
-are code-split, so listing shots never downloads 200 kB of charting library.
+bundle through `React.lazy`: `/shots/:id`, the compare drawer and the Set trend
+chart are code-split, so listing shots never downloads 200 kB of charting
+library.
 `npm run build` prints the split — look for `chartSetup-*.js`.
 
 Canvas rendering in tests comes from `vitest-canvas-mock` (a setup file in
@@ -400,6 +397,23 @@ silently dropped — a tooltip with no anchor positions itself at the origin.
 added later that can end up as a `Slot` child needs the same treatment. The
 suite is the check: a stray `Warning: Function components cannot be given refs`
 in `npm run check` output is this, and it is not cosmetic.
+
+### …and the one primitive that is not radix
+
+`ui/popover.tsx` is written by hand. Radix positions its overlays with
+floating-ui, and floating-ui under jsdom costs **about fifteen seconds per
+positioning pass** — every collision check walks the tree calling
+`getComputedStyle`, and this project has no headless browser to escape to. A
+primitive whose panel cannot be opened in a test is a primitive nothing checks,
+and the two places it is used (the shots page's filter panel and its row
+editor) are where the behaviour matters. It does CSS positioning plus the
+behaviour a reader expects: Escape closes and returns focus to the trigger, a
+click outside closes, the trigger reports `aria-expanded`.
+
+The same limit applies to anything else radix positions. `DropdownMenu`,
+`Select` and `Tooltip` are fine to *render* in a test — opening their content
+is what costs the fifteen seconds, so a test that has to drive an open menu
+should use this popover instead.
 
 ## One tsconfig, on purpose
 

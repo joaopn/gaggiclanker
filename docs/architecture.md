@@ -40,10 +40,21 @@ has forgotten how it works.
 storage pressure. gaggiclanker is the archive.**
 
 That is why the raw `.slog` bytes are stored before anything tries to parse
-them, why a shot that fails validation is quarantined rather than dropped, why
-sync is prompt rather than scheduled, and why the device client is read-only.
-Losing a shot to a parser bug is worse than storing one nobody can read yet: the
-bug can be fixed next week, and by then the machine's copy is gone.
+them, why a shot that fails validation is quarantined rather than dropped, and
+why the device client is read-only. Losing a shot to a parser bug is worse than
+storing one nobody can read yet: the bug can be fixed next week, and by then the
+machine's copy is gone.
+
+**Filling the archive is something a person asks for.** `POST /api/sync/run` —
+the button on the shots page — is the only thing that starts a pass over the
+shots, the profiles or the notes. There is no timer and no pass triggered by a
+device event. The engine that ran on its own duplicated what the machine's own
+web UI already shows and spent the device's two HTTP slots doing it; what an
+archive is actually asked for is "I have pulled some coffee, take it". The one
+exception is identity — one `res:ota-settings` frame plus one `GET
+/api/settings` at startup and on every connect — because it is what tells the
+header whether the machine is there at all, and because a pull has nowhere to
+store a shot until the machines row exists.
 
 ## The layers
 
@@ -81,7 +92,7 @@ middleware — anything caught there has already lost the request-id context.
 
 **Middleware is pure ASGI throughout.** `BaseHTTPMiddleware` buffers responses
 through an anyio task group, which is fatal to a server-sent event stream, and
-the live shot view is one.
+the sync feed a pull reports its progress on is one.
 
 **Every write to the database goes through a pydantic model.** No dicts into
 SQL. Repositories are the only code that writes SQL, services hold the logic,
@@ -129,8 +140,8 @@ and a rule of their own. See [`safety-layers.md`](safety-layers.md).
   the auth password bootstrap, boot reconciliation, then the services, then the
   background tasks. Shutdown is the reverse, and it cancels the task registry
   before closing the database so nothing is mid-write when the file is released.
-* **In a background task**: the device supervisor, the sync loops, and every
-  analysis.
+* **In a background task**: the device supervisor, the sync loops — which do
+  nothing until something pokes them — and every analysis.
 * **In the request**: everything else, which is all SQLite reads a millisecond
   wide.
 

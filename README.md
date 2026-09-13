@@ -1,11 +1,16 @@
 # gaggiclanker
 
 A self-hosted archive and analyst for a [GaggiMate](https://gaggimate.eu)
-espresso machine. It keeps every shot the machine has ever pulled — raw `.slog`
-bytes, every sample, phases, the device's own notes and profiles — shows them
-with curves and deterministic diagnostics, lets you judge each shot and group
-shots into versioned **Sets** (bean + hardware + profile + grind/dose/yield), and
-runs a per-shot LLM analysis through whichever provider you point it at.
+espresso machine. Press a button and it pulls in every shot the machine holds —
+raw `.slog` bytes, every sample, phases, the device's own notes and profiles —
+shows them with curves and deterministic diagnostics, lets you judge each shot
+from the list and group shots into versioned **Sets** (bean + hardware + profile
++ grind/dose/yield), and runs a per-shot LLM analysis through whichever provider
+you point it at.
+
+It does not watch the machine. Nothing leaves the GaggiMate until you ask for
+it: the machine's own web UI already draws the shot that is happening now, and
+what an archive is for is the hundred before it.
 
 The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
@@ -40,12 +45,13 @@ an IP in `GAGGIMATE_HOST`.
    fixed IP or a DHCP reservation — see Troubleshooting for why the name your
    browser resolves may not resolve here.
 2. **Open the UI** at `http://<this box>:8000`. The pill in the header goes
-   green within a few seconds of the WebSocket connecting; the first sync then
-   walks the machine's whole history, which for a few hundred shots takes a
-   minute or two. Watch it on the **Device** page.
-3. **Pull a shot.** It appears in the list within a second or two of the machine
-   saving it, with its curve and diagnostics. Shots under 7.5 seconds never
-   appear: the firmware discards them.
+   green within a few seconds of the WebSocket connecting.
+3. **Press "Pull from machine"** on the Shots page. The first pull walks the
+   machine's whole history, which for a few hundred shots takes a minute or
+   two; when it finishes it says what it archived. Shots under 7.5 seconds
+   never appear: the firmware discards them. After that, pull whenever you have
+   pulled some coffee — or drop exported files on the strip under the header,
+   which is the only way back for shots the machine has already deleted.
 4. **Turn on authentication** if this box is reachable by anything you do not
    trust — see below. Off by default, and that is the right default for a
    machine only your own LAN can reach.
@@ -100,14 +106,8 @@ uv run python -m gaggiclanker.device.fake --port 8090   # in one terminal
 GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload
 ```
 
-Add `--brew-every SECONDS` and the fake pulls a shot on that interval — fill,
-soak, ramp and decline at 2 Hz against a volumetric target, then the firmware's
-own save sequence — which is what the live view and the "a new shot appeared"
-refresh are developed against:
-
-```bash
-uv run python -m gaggiclanker.device.fake --port 8090 --brew-every 30
-```
+It holds the fixture archive, so pressing "Pull from machine" against it fills
+the UI with real shots and real curves.
 
 Or seed the archive from files, with no machine at all. The web UI on the
 display exports a shot as `shot-<id>.json` and a profile as `profile-<id>.json`;
@@ -182,7 +182,7 @@ If the stored hash is somehow not a hash, auth stays **on** and refuses every
 sign-in, with the fix named in the log. A configuration mistake must never be
 the thing that takes the lock off the door.
 
-With it on, **every** route under `/api` needs a bearer token — the live event
+With it on, **every** route under `/api` needs a bearer token — the event
 streams and the OpenAPI docs included. `/health` stays public, because a
 healthcheck that needs a token is not a healthcheck, and so does the web app
 itself; everything the app can actually *do* is an API call. Signing out revokes
@@ -425,8 +425,8 @@ want the machine left alone entirely, set
 
 **Everything under `/api/history` returns 503.**
 The machine is doing an OTA update. It is not an error and it is not lost: the
-sync engine backs off and picks up where it left off. Wait for the update to
-finish.
+pull records the failure and nothing is half-written. Wait for the update to
+finish and pull again.
 
 **Shots appear with no pressure and no flow.**
 Those are zero on **Standard** boards — the sensor is a Pro part. Every
