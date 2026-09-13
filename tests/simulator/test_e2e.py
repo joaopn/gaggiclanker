@@ -199,8 +199,12 @@ async def test_the_whole_prototype_against_the_simulator(
     )
     assert machines[0]["display_version"], machines
 
-    # 2. Profiles. A fresh install ships the seed profiles in `data/p/`.
-    profiles = data(await client.get("/api/profiles"))["items"]
+    # 2. Profiles. A fresh install ships the seed profiles in `data/p/` — and
+    #    nothing mirrors them until somebody asks, so this is the first pull.
+    assert data(await client.post("/api/sync/run", json={"kind": "profiles"}))["queued"]
+    profiles = await _until(
+        lambda: _profiles_mirrored(client), timeout=60.0, what="the profile mirror to run"
+    )
     assert profiles, "the simulator listed no profiles"
 
     before = data(await client.get("/api/shots"))["total"]
@@ -217,8 +221,8 @@ async def test_the_whole_prototype_against_the_simulator(
         "req:change-mode + req:process:activate; see /tmp/gaggimate-sim.log"
     )
 
-    # 4. Ask for it. Nothing moves off the machine until somebody does — the
-    #    archive is pulled into, not pushed at — and this is the request the
+    # 4. Ask for the shot. Nothing moves off the machine until somebody does —
+    #    the archive is pulled into, not pushed at — and this is the request the
     #    "Pull from machine" button makes. The assertion is still that the app
     #    does the rest: no polling from the test, no reaching into the database.
     assert data(await client.post("/api/sync/run", json={"kind": "all"}))["queued"]
@@ -316,6 +320,11 @@ async def _machine_identified(client: httpx.AsyncClient) -> list[dict[str, Any]]
     """The machine rows, once the first of them carries a firmware version."""
     rows = [entry["machine"] for entry in data(await client.get("/api/machines"))["items"]]
     return rows if rows and rows[0].get("display_version") else None
+
+
+async def _profiles_mirrored(client: httpx.AsyncClient) -> list[dict[str, Any]] | None:
+    items: list[dict[str, Any]] = data(await client.get("/api/profiles"))["items"]
+    return items or None
 
 
 async def _shot_arrived(client: httpx.AsyncClient, before: int) -> dict[str, Any] | None:

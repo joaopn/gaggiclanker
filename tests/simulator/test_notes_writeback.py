@@ -89,8 +89,11 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
     device_shot_id = await trigger_a_brew()
     assert device_shot_id is not None, "the simulator did not save a shot"
 
-    # The sync engine notices `evt:history-shot-saved` on its own; this waits
-    # for the archive to hold the shot, because a write-back needs the row.
+    # Ask for the shot. Nothing comes off the machine unasked, and a write-back
+    # needs the archive's own row: it is what proves the verdict is this box's
+    # rather than something the machine's notes card was seeded with.
+    accepted = await client.post("/api/sync/run", json={"kind": "all"})
+    assert accepted.status_code == 202, accepted.text
     shot = await _until(
         lambda: _archived(app, device_shot_id), INGEST_TIMEOUT_S, "the shot to be archived"
     )
