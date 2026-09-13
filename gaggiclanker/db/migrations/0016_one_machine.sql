@@ -489,6 +489,13 @@ ALTER TABLE machines_new RENAME TO machines;
 INSERT INTO machines (id, host)
 SELECT 1, '' WHERE NOT EXISTS (SELECT 1 FROM machines);
 
+-- An archive that only ever imported has the placeholder as its survivor, and
+-- `import:default` was never an address anything could reach. The host is a
+-- setting now, so the honest value is the empty one the page reads as "not
+-- connected yet" — the same state a fresh install is in, which is what an
+-- import-only install actually is.
+UPDATE machines SET host = '' WHERE host LIKE 'import:%';
+
 -- ── the views, back ──────────────────────────────────────────────────
 --
 -- `v_shots` and `v_sets` without `machine_id`; the other three verbatim. What

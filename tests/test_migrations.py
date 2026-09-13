@@ -637,6 +637,35 @@ async def test_0016_gives_an_archive_with_no_machine_the_placeholder_row(
         await db.execute("INSERT INTO machines (id, host) VALUES (2, 'other.local')")
 
 
+async def test_0016_leaves_an_import_only_archive_with_an_unconfigured_machine(
+    db: Database, tmp_path: Path
+) -> None:
+    """The placeholder survives as *the* machine, but not as an address.
+
+    `import:default` was the importer's way of giving a shot an owner when
+    `shots.machine_id` was NOT NULL. It was never something anything could
+    reach, so carrying it into a column the Hardware page renders as the host
+    would be showing a person a made-up address.
+    """
+    await _migrate_below(db, tmp_path, "0016")
+
+    await db.execute(
+        "INSERT INTO machines (id, host, name) VALUES (1, 'import:default', 'Imported shots')"
+    )
+    await db.execute(
+        "INSERT INTO shots (device_id, machine_id, raw_slog, source, synced_at, updated_at) "
+        "VALUES ('000001', 1, x'00', 'import', 'x', 'x')"
+    )
+
+    assert await run_migrations(db) == ["0016"]
+
+    rows = await db.fetch_all("SELECT id, host, name FROM machines")
+    assert [(int(r["id"]), r["host"], r["name"]) for r in rows] == [(1, "", "Imported shots")]
+    # The shot is still there, filed against the machine the sync engine will
+    # later write its real host onto.
+    assert await db.fetch_value("SELECT count(*) FROM shots") == 1
+
+
 async def test_0016_leaves_the_shot_views_readable_through_the_sql_tool(
     db: Database, tmp_path: Path
 ) -> None:
