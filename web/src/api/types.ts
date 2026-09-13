@@ -33,7 +33,7 @@ export type SyncRunRow = components["schemas"]["SyncRunRow"];
 export type ImportSummary = components["schemas"]["ImportSummary"];
 export type ImportResult = components["schemas"]["ImportResult"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
-export type MachineListData = components["schemas"]["MachineListData"];
+export type MachineData = components["schemas"]["MachineData"];
 export type MachineRow = components["schemas"]["MachineRow"];
 export type MachinePatch = components["schemas"]["MachinePatch"];
 
@@ -298,7 +298,6 @@ export type ShotListParams = {
   from?: string;
   to?: string;
   profile_version_id?: number;
-  machine_id?: number;
   quarantined?: boolean;
   include_deleted?: boolean;
   set_id?: number;
@@ -444,7 +443,6 @@ export type ShotDiagnosticsBlob = {
 
 /** The form fields `POST /api/import` accepts beside the files themselves. */
 export type ImportOptions = {
-  machineId?: number;
   /** Overwrite shots already in the archive instead of skipping them. */
   replace?: boolean;
 };

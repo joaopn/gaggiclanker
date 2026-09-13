@@ -26,7 +26,6 @@ const IDENTITY = { spiffsTotal: 4_194_304, spiffsUsed: 3_145_728, spiffsFree: 1_
 
 function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
   return {
-    machine_id: 1,
     policy: {
       mode: "keep_newest",
       keep_newest: 20,
@@ -70,7 +69,6 @@ function runs(): CleanupRunsData {
     items: [
       {
         id: 4,
-        machine_id: 1,
         mode: "keep_newest",
         target: 20,
         trigger: "manual",
@@ -92,7 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getCleanupPlan.mockResolvedValue(plan());
   getCleanupRuns.mockResolvedValue(runs());
-  runCleanup.mockResolvedValue({ machine_id: 1, planned: 2, task: "cleanup:1" });
+  runCleanup.mockResolvedValue({ planned: 2, task: "cleanup" });
 });
 
 describe("StorageCard", () => {

@@ -64,7 +64,6 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
   return {
     id: 1,
     device_id: "000101",
-    machine_id: 1,
     started_at: "2026-03-04T08:15:00.000Z",
     start_epoch: 1_772_611_200,
     duration_ms: 28_400,
@@ -106,7 +105,6 @@ function statusData(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
   return {
     configured: true,
     connected: true,
-    machine_id: 1,
     running: false,
     last_runs: {},
     last_error: null,

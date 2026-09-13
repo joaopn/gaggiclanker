@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * saved out of the machine's own web UI are the only copy left. That belongs on
  * the front page next to the pull button, because "get my shots in" is one
  * question with two answers and burying one of them on another page made it
- * look like the archive only did machines.
+ * look like the archive only did live pulls.
  *
  * A strip rather than a page-sized target: this is a thing you drop a file on
  * while looking at your list. The per-file detail — which of the fourteen files

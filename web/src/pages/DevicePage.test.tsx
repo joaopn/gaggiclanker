@@ -63,7 +63,6 @@ function syncStatus(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
   return {
     configured: true,
     connected: true,
-    machine_id: 1,
     running: false,
     last_runs: {
       shots: {
@@ -107,7 +106,6 @@ beforeEach(() => {
   // Their own suites cover what they render; here they only have to answer, so
   // the page is not asserting on a card stuck in its error state.
   getCleanupPlan.mockResolvedValue({
-    machine_id: 1,
     policy: {
       mode: "off",
       keep_newest: 50,

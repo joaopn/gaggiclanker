@@ -54,7 +54,7 @@ beforeEach(() => {
   getGrinders.mockResolvedValue({ items: [grinder()] });
   getMachines.mockResolvedValue({ items: [] });
   getProfileVersions.mockResolvedValue({ items: [], total: 0, limit: 200, offset: 0 });
-  getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: null, machine_id: null, items: [] });
+  getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: null, items: [] });
 });
 
 describe("BeansPage", () => {

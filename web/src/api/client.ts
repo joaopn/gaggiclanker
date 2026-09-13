@@ -57,7 +57,7 @@ import type {
   LlmStatusData,
   LlmUsageTotals,
   LoginData,
-  MachineListData,
+  MachineData,
   MachinePatch,
   MachineRow,
   NotesPushAccepted,
@@ -591,7 +591,7 @@ export async function getSyncStatus(): Promise<SyncStatusData> {
  *
  * A failed *file* is not a failed request — it comes back as an item with
  * `status: "failed"` — so the only rejections here are a request that never
- * arrived, was too large, or named a machine that does not exist.
+ * arrived or was too large.
  */
 export async function importFiles(
   files: File[],
@@ -599,7 +599,6 @@ export async function importFiles(
 ): Promise<ImportSummary> {
   const body = new FormData();
   for (const file of files) body.append("files", file, file.name);
-  if (options.machineId !== undefined) body.append("machine_id", String(options.machineId));
   if (options.replace) body.append("replace", "true");
   return fetchApi<ImportSummary>("/import", { method: "POST", body });
 }
@@ -714,13 +713,14 @@ export async function updateGrinder(id: number, body: GrinderWrite): Promise<Gri
   return fetchApi<GrinderRow>(`/grinders/${id}`, { method: "PUT", body: JSON.stringify(body) });
 }
 
-export async function getMachines(): Promise<MachineListData> {
-  return fetchApi<MachineListData>("/machines");
+/** The machine. One row, always there, with how much of the archive came off it. */
+export async function getMachine(): Promise<MachineData> {
+  return fetchApi<MachineData>("/machine");
 }
 
 /** Name and notes only. Everything else is the machine's own account of itself. */
-export async function patchMachine(id: number, body: MachinePatch): Promise<MachineRow> {
-  return fetchApi<MachineRow>(`/machines/${id}`, {
+export async function patchMachine(body: MachinePatch): Promise<MachineRow> {
+  return fetchApi<MachineRow>("/machine", {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -989,12 +989,11 @@ export function chatRunStreamUrl(runId: number, after = 0): string {
  */
 export async function getSimilarSets(
   beanId: number,
-  params: { grinderId?: number | null; machineId?: number | null } = {},
+  params: { grinderId?: number | null } = {},
 ): Promise<SimilarSetsData> {
   return fetchApi<SimilarSetsData>(
     `/beans/${beanId}/similar-sets${queryString({
       grinder_id: params.grinderId ?? undefined,
-      machine_id: params.machineId ?? undefined,
     })}`,
   );
 }

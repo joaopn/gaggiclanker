@@ -9,12 +9,12 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getGrinders, createGrinder, updateGrinder, getMachines, patchMachine, getVocabulary } =
+const { getGrinders, createGrinder, updateGrinder, getMachine, patchMachine, getVocabulary } =
   vi.hoisted(() => ({
     getGrinders: vi.fn(),
     createGrinder: vi.fn(),
     updateGrinder: vi.fn(),
-    getMachines: vi.fn(),
+    getMachine: vi.fn(),
     patchMachine: vi.fn(),
     getVocabulary: vi.fn(),
   }));
@@ -23,7 +23,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getGrinders,
   createGrinder,
   updateGrinder,
-  getMachines,
+  getMachine,
   patchMachine,
   getVocabulary,
 }));
@@ -57,20 +57,16 @@ beforeEach(() => {
   createGrinder.mockResolvedValue(grinder({ id: 2, name: "DF64" }));
   updateGrinder.mockResolvedValue(grinder({ name: "Niche Zero" }));
   patchMachine.mockResolvedValue({ ...machine, name: "the kitchen one" });
-  getMachines.mockResolvedValue({
-    items: [
-      {
-        machine,
-        counts: {
-          total: 120,
-          quarantined: 0,
-          deleted_on_device: 0,
-          incomplete: 0,
-          samples: 14_000,
-          needs_set: 0,
-        },
-      },
-    ],
+  getMachine.mockResolvedValue({
+    machine,
+    counts: {
+      total: 120,
+      quarantined: 0,
+      deleted_on_device: 0,
+      incomplete: 0,
+      samples: 14_000,
+      needs_set: 0,
+    },
   });
 });
 
@@ -108,10 +104,11 @@ describe("HardwarePage", () => {
   it("shows the machine's own account of itself, and says it is not editable", async () => {
     renderWithQueryClient(<HardwarePage />);
 
-    const list = await screen.findByTestId("machine-list");
-    expect(list).toHaveTextContent("GaggiMate Pro");
-    expect(list).toHaveTextContent("pressure sensor");
-    expect(list).toHaveTextContent(/rewritten by the next sync pass/);
+    const card = await screen.findByTestId("machine-form");
+    expect(card).toHaveTextContent("GaggiMate Pro");
+    expect(card).toHaveTextContent("pressure sensor");
+    expect(card).toHaveTextContent(/rewritten by the next sync pass/);
+    expect(screen.getByText(/kitchen.local · 120 shots archived/)).toBeInTheDocument();
   });
 
   it("sends only the name and the notes", async () => {
@@ -123,16 +120,26 @@ describe("HardwarePage", () => {
     await user.click(within(form).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(patchMachine).toHaveBeenCalled());
-    expect(patchMachine.mock.calls[0].slice(0, 2)).toEqual([
-      1,
-      { name: "the kitchen one", notes: "" },
-    ]);
+    expect(patchMachine.mock.calls[0][0]).toEqual({ name: "the kitchen one", notes: "" });
   });
 
-  it("explains an empty machine list rather than showing nothing", async () => {
-    getMachines.mockResolvedValue({ items: [] });
+  it("says the machine is not connected rather than showing an empty card", async () => {
+    // A fresh install: the row exists, with nothing in it, because the archive
+    // holds exactly one machine whether or not anything has ever reached it.
+    getMachine.mockResolvedValue({
+      machine: { ...machine, host: "", hardware_string: null, display_version: null },
+      counts: {
+        total: 0,
+        quarantined: 0,
+        deleted_on_device: 0,
+        incomplete: 0,
+        samples: 0,
+        needs_set: 0,
+      },
+    });
     renderWithQueryClient(<HardwarePage />);
 
-    expect(await screen.findByText("No machine has been seen")).toBeInTheDocument();
+    expect(await screen.findByText("Not connected yet")).toBeInTheDocument();
+    expect(screen.getByText(/Set gaggimateHost in Settings/)).toBeInTheDocument();
   });
 });

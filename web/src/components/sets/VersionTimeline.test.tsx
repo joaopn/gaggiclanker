@@ -82,7 +82,6 @@ describe("VersionTimeline", () => {
       {
         id: 41,
         device_id: "000141",
-        machine_id: 1,
         source: "device",
         started_at: "2026-04-03T08:15:00.000Z",
         start_epoch: 1_775_000_000,

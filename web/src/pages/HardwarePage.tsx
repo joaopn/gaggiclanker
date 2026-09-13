@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useGrinders,
-  useMachines,
+  useMachine,
   useSaveGrinder,
   useSaveMachine,
   useVocabulary,
@@ -19,14 +19,19 @@ import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
 /**
- * Grinders and machines.
+ * The machine, and the grinders.
  *
  * Two halves with opposite ownership, which is the thing this page has to make
- * obvious. A grinder is entirely the user's: nothing else knows it exists. A
- * machine is the *device's* account of itself — hardware string, firmware
- * versions, capability flags, all rewritten by the next sync pass — and exactly
- * two fields on it are editable, because those are the two the firmware has no
- * concept of and therefore never overwrites.
+ * obvious. The machine is the *device's* account of itself — hardware string,
+ * firmware versions, capability flags, all rewritten by the next sync pass —
+ * and exactly two fields on it are editable, because those are the two the
+ * firmware has no concept of and therefore never overwrites. A grinder is
+ * entirely the user's: nothing else knows it exists.
+ *
+ * The machine comes first and is singular. There is one, it always exists, and
+ * its host is a setting rather than an identity — so this page never asks which
+ * one. Grinders stay plural: a kitchen really does have several, and a grind
+ * number only means something on the grinder it was set on.
  */
 
 const FIELD = cn(
@@ -36,18 +41,17 @@ const FIELD = cn(
 
 export function HardwarePage() {
   const grinders = useGrinders();
-  const machines = useMachines();
+  const machine = useMachine();
   const [editing, setEditing] = useState<GrinderRow | "new" | null>(null);
   useQueryErrorToast(grinders.error, "Could not load the hardware");
 
   const grinderRows = grinders.data?.items ?? [];
-  const machineRows = machines.data?.items ?? [];
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Hardware"
-        subtitle="The grinder you turn, and the machine that tells you what it is."
+        subtitle="The machine that tells you what it is, and the grinders you turn."
         actions={
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus className="size-3.5" aria-hidden="true" />
@@ -59,6 +63,15 @@ export function HardwarePage() {
       {editing ? (
         <GrinderForm grinder={editing === "new" ? null : editing} onDone={() => setEditing(null)} />
       ) : null}
+
+      <section className="space-y-3">
+        <h2 className="font-medium text-sm">Machine</h2>
+        {machine.isPending ? (
+          <Skeleton className="h-20 w-full" />
+        ) : machine.data ? (
+          <MachineCard machine={machine.data.machine} shots={machine.data.counts.total} />
+        ) : null}
+      </section>
 
       <section className="space-y-3">
         <h2 className="font-medium text-sm">Grinders</h2>
@@ -108,27 +121,6 @@ export function HardwarePage() {
           </div>
         )}
       </section>
-
-      <section className="space-y-3">
-        <h2 className="font-medium text-sm">Machines</h2>
-        {machineRows.length === 0 ? (
-          <EmptyState
-            icon={Cpu}
-            title="No machine has been seen"
-            description="A machine appears here the first time the sync engine reaches one. Set `gaggimateHost` in Settings, or import shots and they will be filed under a synthetic machine."
-          />
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2" data-testid="machine-list">
-            {machineRows.map((entry) => (
-              <MachineCard
-                key={entry.machine.id}
-                machine={entry.machine}
-                shots={entry.counts.total}
-              />
-            ))}
-          </div>
-        )}
-      </section>
     </div>
   );
 }
@@ -148,15 +140,19 @@ function MachineCard({ machine, shots }: { machine: MachineRow; shots: number })
 
   return (
     <SectionCard
-      title={machine.name || machine.host}
-      description={`${machine.host} · ${shots} shots archived`}
+      title={machine.name || machine.host || "Not connected yet"}
+      description={
+        machine.host
+          ? `${machine.host} · ${shots} shots archived`
+          : `Set gaggimateHost in Settings to reach it · ${shots} shots archived`
+      }
     >
       <form
         className="space-y-3"
         data-testid="machine-form"
         onSubmit={(event) => {
           event.preventDefault();
-          save.mutate({ id: machine.id, body: { name, notes } });
+          save.mutate({ name, notes });
         }}
       >
         <div className="flex flex-wrap gap-1">
@@ -165,6 +161,15 @@ function MachineCard({ machine, shots }: { machine: MachineRow; shots: number })
           ) : null}
           {machine.display_version ? (
             <Badge variant="outline">display {machine.display_version}</Badge>
+          ) : null}
+          {machine.controller_version ? (
+            <Badge variant="outline">controller {machine.controller_version}</Badge>
+          ) : null}
+          {machine.temperature_offset_c !== null ? (
+            <Badge variant="outline">offset {machine.temperature_offset_c} °C</Badge>
+          ) : null}
+          {machine.brew_delay_ms !== null ? (
+            <Badge variant="outline">brew delay {machine.brew_delay_ms} ms</Badge>
           ) : null}
           {capabilities.map((capability) => (
             <Badge key={String(capability)} variant="ghost" className="text-muted-foreground">

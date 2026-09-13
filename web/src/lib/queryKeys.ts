@@ -69,21 +69,21 @@ export const queryKeys = {
     all: ["beans"] as const,
     list: (includeArchived?: boolean) => ["beans", "list", includeArchived ?? false] as const,
     /**
-     * The similar-Set cards for a bag, on one grinder and machine.
+     * The similar-Set cards for a bag, on one grinder.
      *
      * Under the `beans` prefix rather than under `startingPoints`, because it
      * is a fact about the bean and it is read whether or not anybody ever asks
-     * the model anything. The hardware is in the key because changing the
-     * grinder changes the answer completely — the query filters on it.
+     * the model anything. The grinder is in the key because changing it changes
+     * the answer completely — the query filters on it.
      */
-    similarSets: (id: string, grinderId?: number | null, machineId?: number | null) =>
-      ["beans", "similar-sets", id, grinderId ?? null, machineId ?? null] as const,
+    similarSets: (id: string, grinderId?: number | null) =>
+      ["beans", "similar-sets", id, grinderId ?? null] as const,
   },
-  /** Grinders and machines: one page, one prefix, so one invalidation. */
+  /** The grinders and the machine: one page, one prefix, so one invalidation. */
   hardware: {
     all: ["hardware"] as const,
     grinders: () => ["hardware", "grinders"] as const,
-    machines: () => ["hardware", "machines"] as const,
+    machine: () => ["hardware", "machine"] as const,
   },
   /**
    * The closed vocabularies. Fetched once and never invalidated: they change

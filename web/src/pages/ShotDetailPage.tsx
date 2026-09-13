@@ -135,7 +135,6 @@ export function ShotDetailPage() {
             "Brew delay",
             row.brew_delay_ms == null ? "—" : `${(row.brew_delay_ms / 1000).toFixed(2)} s`,
           ],
-          ["Machine", `#${row.machine_id}`],
           ["Source", row.source === "import" ? "imported file" : "device sync"],
         ]}
       />

@@ -41,7 +41,6 @@ export type StartingPointChoice = {
 
 export function StartingPointStep({
   beanId,
-  machineId,
   grinderId,
   usualGrind,
   doseHint,
@@ -52,7 +51,6 @@ export function StartingPointStep({
   grindUnit,
 }: {
   beanId: number | undefined;
-  machineId: number | undefined;
   grinderId: number | null;
   usualGrind: string;
   doseHint: string;
@@ -63,12 +61,12 @@ export function StartingPointStep({
   /** The chosen grinder's step unit, so the anchor field asks in its words. */
   grindUnit: string;
 }) {
-  const similar = useSimilarSets(beanId, { grinderId, machineId });
+  const similar = useSimilarSets(beanId, { grinderId });
   const create = useCreateStartingPoint();
   const run = useStartingPoint(runId);
   const accept = useAcceptStartingPoint();
 
-  const ready = beanId !== undefined && machineId !== undefined;
+  const ready = beanId !== undefined;
   const running = run.data?.status === "running";
   const output = (run.data?.output ?? null) as StartingPointOutput | null;
   const options = output?.options ?? [];
@@ -77,8 +75,8 @@ export function StartingPointStep({
     <div className="space-y-3" data-testid="starting-point-step">
       {ready ? null : (
         <p className="text-muted-foreground text-xs">
-          Pick a bag, a machine and a grinder below first — a suggestion without the hardware could
-          only be given in general terms.
+          Pick a bag below first — a suggestion with nothing to anchor it could only be given in
+          general terms.
         </p>
       )}
 
@@ -118,11 +116,10 @@ export function StartingPointStep({
         data-testid="ask-for-suggestions"
         disabled={!ready || create.isPending || running}
         onClick={async () => {
-          if (beanId === undefined || machineId === undefined) return;
+          if (beanId === undefined) return;
           const row = await attempt(() =>
             create.mutateAsync({
               bean_id: beanId,
-              machine_id: machineId,
               grinder_id: grinderId,
               usual_grind: usualGrind.trim(),
               dose_hint_g: toNumber(doseHint),

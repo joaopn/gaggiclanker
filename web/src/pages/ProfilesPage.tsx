@@ -162,7 +162,7 @@ export function ProfilesPage() {
             <tbody>
               {profiles.data.items.map((profile) => (
                 <tr
-                  key={`${profile.machine_id}:${profile.device_id}`}
+                  key={profile.device_id}
                   className="border-border border-b last:border-0 hover:bg-muted/40"
                 >
                   <td className="py-2 pr-4">

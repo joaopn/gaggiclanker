@@ -11,7 +11,7 @@ import {
   createGrinder,
   getBeans,
   getGrinders,
-  getMachines,
+  getMachine,
   getVocabulary,
   patchMachine,
   setBeanArchived,
@@ -23,7 +23,7 @@ import type {
   BeanWrite,
   GrinderRow,
   GrinderWrite,
-  MachineListData,
+  MachineData,
   MachinePatch,
   MachineRow,
   Vocabulary,
@@ -118,18 +118,15 @@ export function useSaveGrinder(): UseMutationResult<
   });
 }
 
-export function useMachines(): UseQueryResult<MachineListData, Error> {
-  return useQuery({ queryKey: queryKeys.hardware.machines(), queryFn: getMachines });
+/** The machine. One row, so no id and no list. */
+export function useMachine(): UseQueryResult<MachineData, Error> {
+  return useQuery({ queryKey: queryKeys.hardware.machine(), queryFn: getMachine });
 }
 
-export function useSaveMachine(): UseMutationResult<
-  MachineRow,
-  Error,
-  { id: number; body: MachinePatch }
-> {
+export function useSaveMachine(): UseMutationResult<MachineRow, Error, MachinePatch> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }) => patchMachine(id, body),
+    mutationFn: (body) => patchMachine(body),
     onSuccess: () => toast.success("Machine saved"),
     onError: (error) => toast.error(`Could not save the machine: ${error.message}`),
     onSettled: () => invalidateHardware(queryClient),

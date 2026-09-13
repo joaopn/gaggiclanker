@@ -46,7 +46,6 @@ function summary(items: ImportResult[]): ImportSummary {
   const count = (status: string) => items.filter((item) => item.status === status).length;
   return {
     items,
-    machine_id: 1,
     created: count("created"),
     updated: count("updated"),
     skipped: count("skipped"),

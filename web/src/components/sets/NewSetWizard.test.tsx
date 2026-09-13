@@ -95,7 +95,7 @@ beforeEach(() => {
     offset: 0,
   });
   createSet.mockResolvedValue(setRow());
-  getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: 1, machine_id: 1, items: [] });
+  getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: 1, items: [] });
   createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
 });
 
@@ -153,7 +153,6 @@ describe("NewSetWizard", () => {
     expect(createSet.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         bean_id: 1,
-        machine_id: 1,
         grinder_id: 1,
         // A new Set is what the machine is set up for now, or it would collect
         // nothing and look broken.

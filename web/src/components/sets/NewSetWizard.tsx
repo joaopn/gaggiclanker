@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useProfileVersions } from "@/hooks/useArchive";
-import { useBeans, useGrinders, useMachines } from "@/hooks/useCatalog";
+import { useBeans, useGrinders } from "@/hooks/useCatalog";
 import { useCreateSet } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
 import { beanLabel } from "@/lib/sets";
@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Starting a Set, in the order the question is actually answered: which bag,
- * on which machine and grinder, through which profile, at what recipe, and what
- * you are trying to find out.
+ * through which grinder and profile, at what recipe, and what you are trying to
+ * find out.
  *
  * A wizard rather than one long form because the steps have different answers
  * available at different times — the bean is the only one that is always known,
@@ -32,8 +32,8 @@ import { cn } from "@/lib/utils";
  *
  * **The first step is the shortcut**, and it is first because it is
  * the step that can end the wizard. It asks for the identity — the bag, the
- * machine, the grinder, and the one thing only the person knows, what they
- * normally grind espresso at — and then offers two ways forward: read what this
+ * grinder, and the one thing only the person knows, what they normally grind
+ * espresso at — and then offers two ways forward: read what this
  * archive already brewed on that grinder and ask for three starting points, or
  * carry on and fill the recipe in by hand. Everything it collects is the same
  * `Draft` the manual path uses, so skipping it costs nothing and taking it and
@@ -50,7 +50,6 @@ const FIELD = cn(
 type Draft = {
   name: string;
   beanId: string;
-  machineId: string;
   grinderId: string;
   profileVersionId: string;
   grindSetting: string;
@@ -69,7 +68,6 @@ type Draft = {
 const EMPTY: Draft = {
   name: "",
   beanId: "",
-  machineId: "",
   grinderId: "",
   profileVersionId: "",
   grindSetting: "",
@@ -89,7 +87,6 @@ export function toCreateBody(draft: Draft): SetCreate {
   return {
     name: draft.name.trim(),
     bean_id: Number(draft.beanId),
-    machine_id: Number(draft.machineId),
     grinder_id: draft.grinderId ? Number(draft.grinderId) : null,
     activate: true,
     version: {
@@ -127,7 +124,6 @@ export function NewSetWizard({
 }) {
   const beans = useBeans();
   const grinders = useGrinders();
-  const machines = useMachines();
   const versions = useProfileVersions({ limit: 200 });
   const create = useCreateSet();
   const [step, setStep] = useState(0);
@@ -151,7 +147,6 @@ export function NewSetWizard({
   const ids = {
     name: useId(),
     bean: useId(),
-    machine: useId(),
     grinder: useId(),
     profile: useId(),
     grind: useId(),
@@ -173,19 +168,10 @@ export function NewSetWizard({
   // anyway, and stays editable for the case where two Sets share a bean.
   const name = draft.name || chosenBean?.name || "";
 
-  const machineRows = machines.data?.items ?? [];
-  // One machine is the overwhelming case, so it is chosen rather than offered.
-  // The effective id — not the draft's — is what gates the step, or a single
-  // machine would show as selected and still refuse to let anybody past.
-  const onlyMachine = machineRows.length === 1 ? String(machineRows[0].machine.id) : "";
-  const machineId = draft.machineId || onlyMachine;
-
   // Positional, one entry per step. Step 0 (Suggest) is never a gate: it is a
-  // shortcut, and a shortcut you cannot walk past is a wall.
-  const ready = useMemo(
-    () => [true, Boolean(draft.beanId), Boolean(machineId), true, true],
-    [draft.beanId, machineId],
-  );
+  // shortcut, and a shortcut you cannot walk past is a wall. The machine is not
+  // a gate either: there is one, and it is a fact rather than a choice.
+  const ready = useMemo(() => [true, Boolean(draft.beanId), true, true, true], [draft.beanId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,7 +179,7 @@ export function NewSetWizard({
         <DialogHeader>
           <DialogTitle>Start a Set</DialogTitle>
           <DialogDescription>
-            A Set is one bag, on one machine, through one grinder. Every change you make to the
+            A Set is one bag, through one grinder, on the machine. Every change you make to the
             recipe from here on becomes a version, so the archive can tell you what the change did.
           </DialogDescription>
         </DialogHeader>
@@ -248,27 +234,8 @@ export function NewSetWizard({
                   </select>
                 </Labelled>
               </div>
-              {machineRows.length > 1 ? (
-                <Labelled id={ids.machine} label="Machine">
-                  <select
-                    id={ids.machine}
-                    className={FIELD}
-                    value={machineId}
-                    onChange={(event) => set("machineId", event.target.value)}
-                  >
-                    <option value="">Pick a machine</option>
-                    {machineRows.map((entry) => (
-                      <option key={entry.machine.id} value={String(entry.machine.id)}>
-                        {entry.machine.name || entry.machine.host}
-                      </option>
-                    ))}
-                  </select>
-                </Labelled>
-              ) : null}
-
               <StartingPointStep
                 beanId={draft.beanId ? Number(draft.beanId) : undefined}
-                machineId={machineId ? Number(machineId) : undefined}
                 grinderId={draft.grinderId ? Number(draft.grinderId) : null}
                 grindUnit={chosenGrinder?.step_unit ?? "clicks"}
                 usualGrind={draft.usualGrind}
@@ -341,21 +308,6 @@ export function NewSetWizard({
 
           {step === 2 ? (
             <>
-              <Labelled id={ids.machine} label="Machine">
-                <select
-                  id={ids.machine}
-                  className={FIELD}
-                  value={machineId}
-                  onChange={(event) => set("machineId", event.target.value)}
-                >
-                  <option value="">Pick a machine</option>
-                  {machineRows.map((entry) => (
-                    <option key={entry.machine.id} value={String(entry.machine.id)}>
-                      {entry.machine.name || entry.machine.host}
-                    </option>
-                  ))}
-                </select>
-              </Labelled>
               <Labelled id={ids.grinder} label="Grinder">
                 <select
                   id={ids.grinder}
@@ -394,7 +346,7 @@ export function NewSetWizard({
               <p className="text-muted-foreground text-xs">
                 This is what auto-assignment matches on: a shot pulled with this profile joins the
                 Set on its own, and one pulled with another waits for you to say where it belongs.
-                Leave it on "any profile" and the Set takes every shot from this machine.
+                Leave it on "any profile" and the Set takes every shot the machine pulls.
               </p>
             </>
           ) : null}
@@ -470,10 +422,10 @@ export function NewSetWizard({
           ) : (
             <Button
               size="sm"
-              disabled={create.isPending || !draft.beanId || !machineId}
+              disabled={create.isPending || !draft.beanId}
               onClick={async () => {
                 const row = await attempt(() =>
-                  create.mutateAsync(toCreateBody({ ...draft, name, machineId })),
+                  create.mutateAsync(toCreateBody({ ...draft, name })),
                 );
                 // The wizard stays open and keeps the draft when the server
                 // refuses — a stale bean id in the picker is the usual cause,

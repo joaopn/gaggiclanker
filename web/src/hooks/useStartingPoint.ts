@@ -44,10 +44,10 @@ const POLL_MS = 1500;
 
 export function useSimilarSets(
   beanId: number | undefined,
-  params: { grinderId?: number | null; machineId?: number | null } = {},
+  params: { grinderId?: number | null } = {},
 ): UseQueryResult<SimilarSetsData, Error> {
   return useQuery({
-    queryKey: queryKeys.beans.similarSets(String(beanId), params.grinderId, params.machineId),
+    queryKey: queryKeys.beans.similarSets(String(beanId), params.grinderId),
     queryFn: () => getSimilarSets(beanId as number, params),
     enabled: beanId !== undefined && Number.isFinite(beanId),
   });

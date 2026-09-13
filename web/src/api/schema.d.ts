@@ -399,9 +399,9 @@ export interface paths {
          *     Not in the request, for the same reason an analysis is not: a run is one
          *     WebSocket frame per shot paced at two a second, so a hundred shots is most
          *     of a minute and `docker stop` allows ten seconds. The task is named
-         *     `cleanup:<machine id>`, claimed synchronously, so a second tab pressing the
-         *     button gets a 409 rather than a second pass fighting this one over the
-         *     device's two HTTP slots.
+         *     `cleanup`, claimed synchronously, so a second tab pressing the button gets a
+         *     409 rather than a second pass fighting this one over the device's two HTTP
+         *     slots.
          *
          *     Every delete is still authorised by the write gate on its way out, which is
          *     what makes this route safe to expose at all: it cannot delete anything the
@@ -957,41 +957,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/machines": {
+    "/api/machine": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The machines this archive knows about */
-        get: operations["list_machines_api_machines_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/machines/{machine_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
+        /** The machine */
+        get: operations["get_machine_api_machine_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /**
-         * Rename a machine or annotate it
+         * Rename the machine or annotate it
          * @description Name and notes only. Identity comes from the device and stays there.
          */
-        patch: operations["patch_machine_api_machines__machine_id__patch"];
+        patch: operations["patch_machine_api_machine_patch"];
         trace?: never;
     };
     "/api/profile-drafts": {
@@ -1338,7 +1322,7 @@ export interface paths {
          *     failed key raises `IntegrityError` from inside the transaction, which the
          *     envelope can only report as an internal error — a 500 on a request whose
          *     only problem is a stale id in a dropdown, and with nothing in the body
-         *     saying which of the four ids was wrong. Each check answers that instead:
+         *     saying which of the three ids was wrong. Each check answers that instead:
          *     422, with `details.field` naming the one at fault.
          */
         post: operations["create_set_api_sets_post"];
@@ -1376,7 +1360,7 @@ export interface paths {
         put?: never;
         /**
          * Make this the Set the machine is set up for
-         * @description Switches the flag off the machine's previous Set. Archives nothing.
+         * @description Switches the flag off the previous active Set. Archives nothing.
          *
          *     An archived Set is a 409 rather than a silent no-op: activating one would
          *     clear the flag from the live Set and leave the machine with no usable active
@@ -1798,7 +1782,7 @@ export interface paths {
          * Ask for a starting point for a new bag
          * @description Queue the work and answer with the `running` row. 202, not 201.
          *
-         *     Idempotent per (bean, machine, grinder). A second tab pressing the button
+         *     Idempotent per (bean, grinder). A second tab pressing the button
          *     gets the running row rather than a second call, because the registry name
          *     can only be held once.
          *
@@ -2397,9 +2381,9 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiResponse[MachineListData] */
-        ApiResponse_MachineListData_: {
-            data?: components["schemas"]["MachineListData"] | null;
+        /** ApiResponse[MachineData] */
+        ApiResponse_MachineData_: {
+            data?: components["schemas"]["MachineData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2921,11 +2905,6 @@ export interface components {
              */
             files: string[];
             /**
-             * Machine Id
-             * @description Which machine the shots belong to. Defaults to the configured one.
-             */
-            machine_id?: number | null;
-            /**
              * Replace
              * @description Overwrite shots already in the archive rather than skipping them.
              * @default false
@@ -3124,8 +3103,6 @@ export interface components {
             free_bytes?: number | null;
             /** Free Source */
             free_source?: string | null;
-            /** Machine Id */
-            machine_id?: number | null;
             /**
              * On Device Count
              * @default 0
@@ -3173,8 +3150,6 @@ export interface components {
          * @description What was queued. Nothing has been deleted when this is sent.
          */
         CleanupRunAccepted: {
-            /** Machine Id */
-            machine_id: number;
             /** Planned */
             planned: number;
             /** Task */
@@ -3205,8 +3180,6 @@ export interface components {
             free_before?: number | null;
             /** Id */
             id: number;
-            /** Machine Id */
-            machine_id: number;
             /** Mode */
             mode: string;
             /**
@@ -3283,8 +3256,6 @@ export interface components {
             label: string;
             /** Last Seen At */
             last_seen_at: string;
-            /** Machine Id */
-            machine_id: number;
             /** Position */
             position?: number | null;
             /**
@@ -3812,8 +3783,6 @@ export interface components {
             failed: number;
             /** Items */
             items: components["schemas"]["ImportResult"][];
-            /** Machine Id */
-            machine_id: number;
             /**
              * Skipped
              * @default 0
@@ -3923,8 +3892,6 @@ export interface components {
             bean_id?: number | null;
             /** Grinder Id */
             grinder_id?: number | null;
-            /** Machine Id */
-            machine_id?: number | null;
             /** Origin */
             origin?: string | null;
             /** Process */
@@ -4027,20 +3994,26 @@ export interface components {
             /** Revoked */
             revoked: boolean;
         };
-        /** MachineListData */
-        MachineListData: {
-            /** Items */
-            items: components["schemas"]["MachineWithCounts"][];
+        /**
+         * MachineData
+         * @description The machine, and how much of the archive came off it.
+         */
+        MachineData: {
+            counts: components["schemas"]["ShotCounts"];
+            machine: components["schemas"]["MachineRow"];
         };
         /**
          * MachinePatch
-         * @description The two fields a person owns on a machine row.
+         * @description The two fields a person owns on the machine row.
          *
          *     Everything else — the hardware string, the firmware versions, the capability
          *     flags, the device's own settings document — is the machine's account of
          *     itself and is rewritten by the next sync pass. Accepting an edit to one of
          *     those would be accepting an edit that silently reverts, so the body forbids
          *     extras rather than ignoring them.
+         *
+         *     The host is not here either: it is a setting (`gaggimateHost`), and the sync
+         *     engine writes it onto this row when it connects.
          *
          *     ``None`` means "leave it alone", so a rename does not have to resend the
          *     notes.
@@ -4056,7 +4029,7 @@ export interface components {
          * @description One row of `machines`, as read back.
          *
          *     The two JSON columns come out decoded (see :data:`~gaggiclanker.db.repos.base.JsonObject`):
-         *     this model is what `GET /api/machines` answers with, and a JSON string
+         *     this model is what `GET /api/machine` answers with, and a JSON string
          *     nested inside a JSON body is a parse every consumer would have to repeat.
          */
         MachineRow: {
@@ -4115,14 +4088,6 @@ export interface components {
             /** Temperature Offset C */
             temperature_offset_c?: number | null;
         };
-        /**
-         * MachineWithCounts
-         * @description A machine and how much of the archive came from it.
-         */
-        MachineWithCounts: {
-            counts: components["schemas"]["ShotCounts"];
-            machine: components["schemas"]["MachineRow"];
-        };
         /** ModelsData */
         ModelsData: {
             /** Models */
@@ -4135,8 +4100,6 @@ export interface components {
          * @description What was queued for the bulk push.
          */
         NotesPushAccepted: {
-            /** Machine Id */
-            machine_id: number;
             /** Pending */
             pending: number;
         };
@@ -4612,8 +4575,6 @@ export interface components {
             bean_id: number;
             /** Grinder Id */
             grinder_id?: number | null;
-            /** Machine Id */
-            machine_id: number;
             /** Name */
             name: string;
             /**
@@ -4671,10 +4632,6 @@ export interface components {
             grinder_name?: string | null;
             /** Id */
             id: number;
-            /** Machine Id */
-            machine_id: number;
-            /** Machine Name */
-            machine_name?: string | null;
             /** Name */
             name: string;
             /** Profile Label */
@@ -5042,8 +4999,6 @@ export interface components {
             judgement_notes?: string | null;
             /** Judgement Rating */
             judgement_rating?: number | null;
-            /** Machine Id */
-            machine_id: number;
             phases?: components["schemas"]["JsonList"];
             /**
              * Profile Id On Device
@@ -5229,8 +5184,6 @@ export interface components {
             judgement_notes?: string | null;
             /** Judgement Rating */
             judgement_rating?: number | null;
-            /** Machine Id */
-            machine_id: number;
             /**
              * Profile Id On Device
              * @default
@@ -5425,8 +5378,6 @@ export interface components {
              * @default
              */
             grinder_name: string;
-            /** Machine Id */
-            machine_id?: number | null;
             /** Origin */
             origin?: string | null;
             /**
@@ -5488,8 +5439,6 @@ export interface components {
             grinder_id?: number | null;
             /** Items */
             items: components["schemas"]["SimilarSet"][];
-            /** Machine Id */
-            machine_id?: number | null;
         };
         /**
          * SkippedShot
@@ -5542,8 +5491,6 @@ export interface components {
             dose_hint_g?: number | null;
             /** Grinder Id */
             grinder_id?: number | null;
-            /** Machine Id */
-            machine_id: number;
             /**
              * Model
              * @default
@@ -5594,8 +5541,6 @@ export interface components {
             };
             /** Llm Call Id */
             llm_call_id?: string | null;
-            /** Machine Id */
-            machine_id: number;
             /**
              * Model
              * @default
@@ -5843,8 +5788,6 @@ export interface components {
             last_runs?: {
                 [key: string]: components["schemas"]["SyncRunRow"];
             };
-            /** Machine Id */
-            machine_id?: number | null;
             /** Recent Events */
             recent_events?: components["schemas"]["SyncEventRow"][];
             /**
@@ -6413,7 +6356,6 @@ export interface operations {
             query?: {
                 grinder_id?: number | null;
                 limit?: number;
-                machine_id?: number | null;
             };
             header?: never;
             path: {
@@ -6786,9 +6728,7 @@ export interface operations {
     };
     get_cleanup_plan_api_device_cleanup_plan_get: {
         parameters: {
-            query?: {
-                machine_id?: number | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -6804,22 +6744,11 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_CleanupPlan_"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     post_cleanup_run_api_device_cleanup_run_post: {
         parameters: {
-            query?: {
-                machine_id?: number | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -6835,22 +6764,12 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_CleanupRunAccepted_"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_cleanup_runs_api_device_cleanup_runs_get: {
         parameters: {
             query?: {
                 limit?: number;
-                machine_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -6880,9 +6799,7 @@ export interface operations {
     };
     get_pending_notes_api_device_notes_pending_get: {
         parameters: {
-            query?: {
-                machine_id?: number | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -6898,22 +6815,11 @@ export interface operations {
                     "application/json": components["schemas"]["ApiResponse_PendingNotesData_"];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     post_notes_push_api_device_notes_push_post: {
         parameters: {
-            query?: {
-                machine_id?: number | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -6927,15 +6833,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_NotesPushAccepted_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7711,7 +7608,7 @@ export interface operations {
             };
         };
     };
-    list_machines_api_machines_get: {
+    get_machine_api_machine_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -7726,18 +7623,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiResponse_MachineListData_"];
+                    "application/json": components["schemas"]["ApiResponse_MachineData_"];
                 };
             };
         };
     };
-    patch_machine_api_machines__machine_id__patch: {
+    patch_machine_api_machine_patch: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                machine_id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
@@ -8131,7 +8026,6 @@ export interface operations {
         parameters: {
             query?: {
                 include_deleted?: boolean;
-                machine_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -8161,9 +8055,7 @@ export interface operations {
     };
     get_profile_api_profiles__device_id__get: {
         parameters: {
-            query?: {
-                machine_id?: number | null;
-            };
+            query?: never;
             header?: never;
             path: {
                 device_id: string;
@@ -8333,7 +8225,6 @@ export interface operations {
         parameters: {
             query?: {
                 include_archived?: boolean;
-                machine_id?: number | null;
             };
             header?: never;
             path?: never;
@@ -8681,7 +8572,6 @@ export interface operations {
                 from?: string | null;
                 include_deleted?: boolean;
                 limit?: number;
-                machine_id?: number | null;
                 max_score?: number | null;
                 min_rating?: number | null;
                 min_score?: number | null;

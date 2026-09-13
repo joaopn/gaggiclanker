@@ -87,7 +87,6 @@ beforeEach(() => {
     items: [
       {
         device_id: "9bar",
-        machine_id: 1,
         current_version_id: 7,
         favorite: true,
         selected: true,
@@ -280,7 +279,6 @@ describe("ProfilesPage staging a version", () => {
       updated: 0,
       skipped: 0,
       failed: 0,
-      machine_id: 1,
       items: [
         {
           filename: "cremina.json",

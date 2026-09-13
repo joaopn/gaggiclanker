@@ -33,7 +33,7 @@ function pending(overrides: Partial<PendingNotesData> = {}): PendingNotesData {
 beforeEach(() => {
   vi.clearAllMocks();
   getPendingNotes.mockResolvedValue(pending());
-  pushPendingNotes.mockResolvedValue({ machine_id: 1, pending: 3 });
+  pushPendingNotes.mockResolvedValue({ pending: 3 });
 });
 
 describe("NotesWritebackCard", () => {

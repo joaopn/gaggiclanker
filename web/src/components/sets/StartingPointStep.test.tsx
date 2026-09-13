@@ -30,7 +30,6 @@ beforeEach(() => {
   getSimilarSets.mockResolvedValue({
     bean_id: 1,
     grinder_id: 1,
-    machine_id: 1,
     items: [similarSet()],
   });
   createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
@@ -47,7 +46,6 @@ function render(props: Partial<Parameters<typeof StartingPointStep>[0]> = {}) {
   return renderWithQueryClient(
     <StartingPointStep
       beanId={1}
-      machineId={1}
       grinderId={1}
       grindUnit="numbers"
       usualGrind="22"
@@ -74,7 +72,7 @@ describe("StartingPointStep", () => {
   });
 
   it("says why there is nothing to show when no grinder is chosen", async () => {
-    getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: null, machine_id: 1, items: [] });
+    getSimilarSets.mockResolvedValue({ bean_id: 1, grinder_id: null, items: [] });
     render({ grinderId: null });
     expect(await screen.findByTestId("similar-sets-empty")).toHaveTextContent(
       /grind number from a different grinder/i,
@@ -92,7 +90,6 @@ describe("StartingPointStep", () => {
     expect(createStartingPoint.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         bean_id: 1,
-        machine_id: 1,
         grinder_id: 1,
         usual_grind: "22",
         dose_hint_g: 18,

@@ -32,7 +32,6 @@ function status(runs: Record<string, SyncRunRow>): SyncStatusData {
   return {
     configured: true,
     connected: true,
-    machine_id: 1,
     running: false,
     last_runs: runs,
     last_error: null,
