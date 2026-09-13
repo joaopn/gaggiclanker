@@ -276,6 +276,29 @@ describe("ShotsPage", () => {
     }
   });
 
+  it("leads with the Set and centres every heading and every cell", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const headings = screen.getAllByTestId(/^header-/);
+    expect(headings[0]).toHaveAttribute("data-testid", "header-set");
+    for (const heading of headings) expect(heading).toHaveClass("text-center");
+    // The sort buttons centre their label and arrow as one group; nothing is
+    // pushed to the right for being a number any more.
+    expect(screen.getByTestId("sort-score")).toHaveClass("justify-center");
+    expect(screen.getByTestId("sort-score")).not.toHaveClass("flex-row-reverse");
+
+    const row = screen.getByTestId("shot-row");
+    const cells = row.querySelectorAll("[data-column]");
+    expect(cells[0]).toHaveAttribute("data-column", "set");
+    for (const cell of Array.from(cells)) {
+      expect(cell).toHaveClass("text-center");
+      expect(cell).not.toHaveClass("text-right");
+    }
+  });
+
   it("leaves Profile and Curve out until somebody asks for them", async () => {
     // A sparkline per row is a request and a canvas per row, and the profile
     // name is the same string on almost every row of an archive built around

@@ -33,24 +33,28 @@ export type ShotColumn = {
   width: string;
   /** Hidden below `md`, whatever the chooser says: a phone has five columns of room. */
   narrowHidden?: boolean;
-  /** Right-aligned, for the numbers. */
-  numeric?: boolean;
 };
 
 /**
  * Every column, in the order they are drawn. Reordering is not offered: the
- * order carries meaning (when, what, how it went, what you thought) and a
- * table whose columns move is a table nobody can read at a glance.
+ * order carries meaning (what you were brewing, when, what, how it went, what
+ * you thought) and a table whose columns move is a table nobody can read at a
+ * glance.
+ *
+ * The Set leads. A session is read Set by Set — this bag on this grinder, then
+ * the next — and an archive scanned for "which shots were the Guji" is scanned
+ * down its first column; the time beside it then says where in that bag a shot
+ * fell.
  */
 export const SHOT_COLUMNS: ShotColumn[] = [
+  { id: "set", label: "Set", width: "minmax(6rem,auto)", narrowHidden: true },
   { id: "time", label: "Time", width: "10.5rem" },
   { id: "profile", label: "Profile", width: "minmax(8rem,1fr)" },
   { id: "curve", label: "Curve", width: "6rem", narrowHidden: true },
-  { id: "duration", label: "Duration", width: "4.5rem", numeric: true },
-  { id: "yield", label: "Yield", width: "4.5rem", numeric: true, narrowHidden: true },
-  { id: "score", label: "Score", width: "3.25rem", numeric: true },
+  { id: "duration", label: "Duration", width: "4.5rem" },
+  { id: "yield", label: "Yield", width: "4.5rem", narrowHidden: true },
+  { id: "score", label: "Score", width: "3.25rem" },
   { id: "rating", label: "Rating", width: "5.5rem" },
-  { id: "set", label: "Set", width: "minmax(6rem,auto)", narrowHidden: true },
   { id: "notes", label: "Notes", width: "minmax(8rem,1.2fr)", narrowHidden: true },
   { id: "flags", label: "Flags", width: "minmax(6rem,auto)", narrowHidden: true },
 ];
@@ -67,12 +71,12 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * wants to read a session back, not for scanning.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
+  "set",
   "time",
   "duration",
   "yield",
   "score",
   "rating",
-  "set",
   "flags",
 ];
 

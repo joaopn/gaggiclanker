@@ -78,6 +78,14 @@ describe("loadShotColumns", () => {
   });
 });
 
+describe("SHOT_COLUMNS", () => {
+  it("puts the Set first, in the chooser and in the default table", () => {
+    // A session is read Set by Set, so the Set is the column scanned first.
+    expect(SHOT_COLUMNS[0].id).toBe("set");
+    expect(visibleColumns(DEFAULT_SHOT_COLUMNS)[0].id).toBe("set");
+  });
+});
+
 describe("visibleColumns", () => {
   it("keeps the canonical order whatever order the ids arrive in", () => {
     // The order carries meaning — when, what, how it went, what you thought —

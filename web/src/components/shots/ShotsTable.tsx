@@ -133,14 +133,18 @@ function HeaderCell({
 }) {
   const key = SORTABLE[column.id];
   const active = key !== undefined && key === sort;
-  const className = cn(
-    column.numeric && "text-right",
-    column.narrowHidden && "hidden md:block",
-    "min-w-0 truncate",
-  );
+  // Centred, titles and content alike: the columns are narrow and mostly a
+  // badge, a star row or a short figure, and a centred heading over a centred
+  // value reads as one column where a right-aligned number under a left-aligned
+  // badge read as two.
+  const className = cn(column.narrowHidden && "hidden md:block", "min-w-0 truncate text-center");
 
   if (key === undefined) {
-    return <span className={className}>{column.label}</span>;
+    return (
+      <span className={className} data-testid={`header-${column.id}`}>
+        {column.label}
+      </span>
+    );
   }
   return (
     // `aria-sort` goes on the header cell, not on the button: it describes the
@@ -162,8 +166,7 @@ function HeaderCell({
         data-testid={`sort-${column.id}`}
         onClick={() => onSort(key)}
         className={cn(
-          "inline-flex items-center gap-1 uppercase tracking-wide hover:text-foreground",
-          column.numeric && "flex-row-reverse",
+          "inline-flex items-center justify-center gap-1 uppercase tracking-wide hover:text-foreground",
           active && "text-foreground",
         )}
       >
@@ -236,13 +239,17 @@ function ShotRow({
         {columns.map((column) => (
           <div
             key={column.id}
+            data-column={column.id}
             className={cn(
               "min-w-0",
               // Only the cells that can be clicked come above the stretched
               // link. The rest stay under it, which is what keeps the whole
               // row a link rather than only its gaps.
               column.id === "rating" && INTERACTIVE,
-              column.numeric && "text-right",
+              // Every cell's content is inline-level (a badge, the stars, a
+              // figure), so centring the text centres the content; the text
+              // columns stay `block truncate` inside it.
+              "text-center",
               column.narrowHidden && "hidden md:block",
             )}
           >
@@ -268,7 +275,7 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
   switch (id) {
     case "time":
       return (
-        <span className="truncate whitespace-nowrap text-sm tabular-nums">
+        <span className="block truncate whitespace-nowrap text-sm tabular-nums">
           {formatTime(shot.started_at)}
         </span>
       );
@@ -314,7 +321,7 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
       );
     case "flags":
       return (
-        <span className="flex flex-wrap gap-1">
+        <span className="flex flex-wrap justify-center gap-1">
           <ShotFlags shot={shot} />
         </span>
       );
