@@ -5,31 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 /**
- * Which Set a shot belongs to, in the width of a table cell.
+ * Which Set a shot belongs to, in the width of a table cell, as a link to it.
  *
- * `null` is a state, not a gap: a shot the archive could not attach to a Set is
- * waiting for an answer, and saying "needs a Set" is what turns it into
- * something a reader can act on. Rendering nothing would make the whole inbox
- * invisible.
- *
- * This null rendering is the inert one. The shots list renders
- * `NeedsSetMenu` in its place, where the same words are a button that files
- * the shot.
+ * Only for a shot that has one. A shot without a Set is waiting for an answer,
+ * and the shots list renders `NeedsSetMenu` in this place: the same dashed
+ * "needs a Set" words, as a button that gives it one.
  */
-export function SetBadge({ badge, className }: { badge: ShotSetBadge | null; className?: string }) {
-  if (!badge) {
-    return (
-      <Badge
-        variant="outline"
-        data-testid="set-badge"
-        data-state="needs-set"
-        title="This shot is not attached to a Set yet"
-        className={cn("border-dashed text-muted-foreground", className)}
-      >
-        needs a Set
-      </Badge>
-    );
-  }
+export function SetBadge({ badge, className }: { badge: ShotSetBadge; className?: string }) {
   return (
     <Badge
       variant="secondary"
