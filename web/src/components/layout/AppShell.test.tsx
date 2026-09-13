@@ -51,6 +51,35 @@ describe("AppShell", () => {
     }
   });
 
+  it("lists the eight destinations in order, and nothing else", () => {
+    renderApp();
+    const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    // The label span, not the anchor: the anchor's text carries the chord too.
+    const labels = Array.from(nav.querySelectorAll("a")).map((link) =>
+      link.querySelector("span")?.textContent?.trim(),
+    );
+    expect(labels).toEqual([
+      "Shots",
+      "Chat",
+      "Profiles",
+      "Sets",
+      "Beans",
+      "Hardware",
+      "Knowledge",
+      "Settings",
+    ]);
+  });
+
+  // The three retired chords. `g i`, `g d` and `g r` used to be Import, Device
+  // and Drafts; the pages they led to are a drop zone, a pill and a section
+  // now, so the letters must be free rather than quietly landing somewhere.
+  it.each(["gi", "gd", "gr"])("does nothing on the retired chord %s", async (chord) => {
+    const user = setupUser();
+    renderApp("/beans");
+    await user.keyboard(chord);
+    expect(screen.getByRole("heading", { name: "Beans" })).toBeInTheDocument();
+  });
+
   it("marks the current route", () => {
     renderApp("/beans");
     const current = screen.getAllByRole("link", { current: "page" });

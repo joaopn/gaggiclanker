@@ -4,9 +4,6 @@ import {
   BookOpen,
   Coffee,
   Cpu,
-  FilePen,
-  HardDrive,
-  Import,
   Layers,
   MessageSquare,
   Settings as SettingsIcon,
@@ -29,6 +26,12 @@ export type NavLink = {
  * The sidebar, in order. One table drives the sidebar, the mobile sheet, the
  * route table and the `g <key>` shortcuts, so adding a page is one entry here
  * plus one `<Route>` in App.tsx.
+ *
+ * Not every route is here, and that is the point of a sidebar. The device page
+ * is reached from the header's status pill, which is where somebody is already
+ * looking when they want it; importing files is the drop zone on the shots
+ * page; staging a profile is a section of the profiles page. A destination
+ * earns a row here by being somewhere you decide to go, not by existing.
  */
 export const NAV_LINKS: NavLink[] = [
   {
@@ -38,9 +41,13 @@ export const NAV_LINKS: NavLink[] = [
     shortcut: "g s",
     shortcutLabel: "g s",
   },
-  { to: "/sets", label: "Sets", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
-  { to: "/beans", label: "Beans", icon: Bean, shortcut: "g b", shortcutLabel: "g b" },
-  { to: "/hardware", label: "Hardware", icon: Cpu, shortcut: "g h", shortcutLabel: "g h" },
+  // Its own entry rather than a panel on a page: a conversation is a place you
+  // go back to, and the "Discuss in chat" buttons on a shot and a Set both land
+  // here with a thread already scoped.
+  { to: "/chat", label: "Chat", icon: MessageSquare, shortcut: "g c", shortcutLabel: "g c" },
+  // Profiles owns the staging queue as well as the mirror: a draft is the step
+  // between a profile version and the machine, so it lives with the versions it
+  // is made from rather than on a page of its own.
   {
     to: "/profiles",
     label: "Profiles",
@@ -48,16 +55,9 @@ export const NAV_LINKS: NavLink[] = [
     shortcut: "g p",
     shortcutLabel: "g p",
   },
-  // Its own entry rather than a tab under Profiles: a draft is a thing with a
-  // queue and a state, and something waiting for a decision has to be visible
-  // from wherever you are.
-  { to: "/drafts", label: "Drafts", icon: FilePen, shortcut: "g r", shortcutLabel: "g r" },
-  // Its own entry rather than a panel on a page: a conversation is a place you
-  // go back to, and the "Discuss in chat" buttons on a shot and a Set both land
-  // here with a thread already scoped.
-  { to: "/chat", label: "Chat", icon: MessageSquare, shortcut: "g c", shortcutLabel: "g c" },
-  { to: "/import", label: "Import", icon: Import, shortcut: "g i", shortcutLabel: "g i" },
-  { to: "/device", label: "Device", icon: HardDrive, shortcut: "g d", shortcutLabel: "g d" },
+  { to: "/sets", label: "Sets", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
+  { to: "/beans", label: "Beans", icon: Bean, shortcut: "g b", shortcutLabel: "g b" },
+  { to: "/hardware", label: "Hardware", icon: Cpu, shortcut: "g h", shortcutLabel: "g h" },
   { to: "/knowledge", label: "Knowledge", icon: BookOpen, shortcut: "g k", shortcutLabel: "g k" },
   {
     to: "/settings",
