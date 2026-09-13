@@ -13,7 +13,7 @@ from gaggiclanker.db.repos.judgements import (
     JudgementWrite,
     ShotJudgementRow,
 )
-from gaggiclanker.db.repos.machines import MachineRow, MachinesRepository, MachineUpsert
+from gaggiclanker.db.repos.machines import MachineRepository, MachineRow, MachineUpsert
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow, NotesRepository
 from gaggiclanker.db.repos.profiles import (
     DeviceProfileRow,
@@ -62,9 +62,9 @@ __all__ = [
     "JsonText",
     "JudgementWrite",
     "JudgementsRepository",
+    "MachineRepository",
     "MachineRow",
     "MachineUpsert",
-    "MachinesRepository",
     "NotesRepository",
     "ProfileVersionRow",
     "ProfilesRepository",

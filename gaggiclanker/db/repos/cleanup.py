@@ -47,7 +47,6 @@ class CleanupCandidate(BaseModel):
 
     id: int
     device_id: str
-    machine_id: int
     started_at: str | None = None
     start_epoch: int = 0
     quarantined: bool = False
@@ -66,7 +65,6 @@ class CleanupRunRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    machine_id: int
     mode: str
     target: int = 0
     trigger: str = "manual"
@@ -95,7 +93,7 @@ class CleanupRunUpdate(BaseModel):
 class CleanupRepository(Repository):
     """Candidate rows to delete, and the ledger of what was deleted."""
 
-    async def candidates(self, machine_id: int) -> list[CleanupCandidate]:
+    async def candidates(self) -> list[CleanupCandidate]:
         """Every shot still on the machine, **oldest first**.
 
         Oldest first, and "oldest" means **by id**, not by timestamp: that is
@@ -115,48 +113,43 @@ class CleanupRepository(Repository):
         """
         rows = await self.db.fetch_all(
             """
-            SELECT id, device_id, machine_id, started_at, start_epoch, quarantined,
+            SELECT id, device_id, started_at, start_epoch, quarantined,
                    deleted_on_device, incomplete, sample_count, slog_version, fields_mask,
                    LENGTH(raw_slog) AS raw_bytes, profile_name_on_device
             FROM shots
-            WHERE machine_id = ? AND deleted_on_device = 0
+            WHERE deleted_on_device = 0
             ORDER BY device_id ASC
-            """,
-            (machine_id,),
+            """
         )
         return self.to_models(CleanupCandidate, rows)
 
-    async def candidate(self, machine_id: int, device_id: str) -> CleanupCandidate | None:
-        """One shot by the id the machine knows it as, for this machine only.
+    async def candidate(self, device_id: str) -> CleanupCandidate | None:
+        """One shot by the id the machine knows it as.
 
-        Scoped to the machine on purpose: shot ids are a per-device counter, so
-        `000129` exists on every GaggiMate that has pulled a hundred and
+        Shot ids are a per-device counter, so `000129` exists on every
+        GaggiMate that has pulled a hundred and
         twenty-nine shots. A delete authorised against another machine's row
         would be a delete of somebody else's shot.
         """
         row = await self.db.fetch_one(
             """
-            SELECT id, device_id, machine_id, started_at, start_epoch, quarantined,
+            SELECT id, device_id, started_at, start_epoch, quarantined,
                    deleted_on_device, incomplete, sample_count, slog_version, fields_mask,
                    LENGTH(raw_slog) AS raw_bytes, profile_name_on_device
             FROM shots
-            WHERE machine_id = ? AND device_id = ?
+            WHERE device_id = ?
             """,
-            (machine_id, device_id),
+            (device_id,),
         )
         return self.to_model(CleanupCandidate, row)
 
-    async def on_device_count(self, machine_id: int) -> int:
+    async def on_device_count(self) -> int:
         """How many shots the archive believes the machine still holds."""
-        value = await self.db.fetch_value(
-            "SELECT count(*) FROM shots WHERE machine_id = ? AND deleted_on_device = 0",
-            (machine_id,),
-        )
+        value = await self.db.fetch_value("SELECT count(*) FROM shots WHERE deleted_on_device = 0")
         return int(value or 0)
 
     async def start_run(
         self,
-        machine_id: int,
         *,
         mode: str,
         target: int,
@@ -167,10 +160,10 @@ class CleanupRepository(Repository):
         cursor = await self.db.execute(
             """
             INSERT INTO cleanup_runs
-                (machine_id, mode, target, trigger, status, planned, free_before, started_at)
-            VALUES (?, ?, ?, ?, 'running', ?, ?, ?)
+                (mode, target, trigger, status, planned, free_before, started_at)
+            VALUES (?, ?, ?, 'running', ?, ?, ?)
             """,
-            (machine_id, mode, target, trigger, planned, free_before, utc_now()),
+            (mode, target, trigger, planned, free_before, utc_now()),
         )
         return int(cursor.lastrowid or 0)
 
@@ -196,23 +189,12 @@ class CleanupRepository(Repository):
         row = await self.db.fetch_one("SELECT * FROM cleanup_runs WHERE id = ?", (run_id,))
         return self.to_model(CleanupRunRow, row)
 
-    async def list_runs(
-        self, machine_id: int | None = None, *, limit: int = 20
-    ) -> list[CleanupRunRow]:
+    async def list_runs(self, *, limit: int = 20) -> list[CleanupRunRow]:
         """Newest first. The Device page's history, and nothing else reads it."""
-        if machine_id is None:
-            rows = await self.db.fetch_all(
-                "SELECT * FROM cleanup_runs ORDER BY started_at DESC, id DESC LIMIT ?",
-                (limit,),
-            )
-        else:
-            rows = await self.db.fetch_all(
-                """
-                SELECT * FROM cleanup_runs WHERE machine_id = ?
-                ORDER BY started_at DESC, id DESC LIMIT ?
-                """,
-                (machine_id, limit),
-            )
+        rows = await self.db.fetch_all(
+            "SELECT * FROM cleanup_runs ORDER BY started_at DESC, id DESC LIMIT ?",
+            (limit,),
+        )
         return self.to_models(CleanupRunRow, rows)
 
     async def reconcile_running(self) -> int:

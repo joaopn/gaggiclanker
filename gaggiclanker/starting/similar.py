@@ -123,7 +123,6 @@ class SimilarSet(BaseModel):
     origin: str | None = None
     decaf: bool = False
 
-    machine_id: int | None = None
     grinder_id: int | None = None
     grinder_name: str = ""
 
@@ -194,7 +193,6 @@ SELECT v.id                                         AS set_version_id,
        v.profile_version_id,
        pv.label                                     AS profile_label,
        s.name                                       AS set_name,
-       s.machine_id,
        s.grinder_id,
        g.name                                       AS grinder_name,
        b.id                                         AS bean_id,
@@ -237,7 +235,6 @@ SELECT v.id                                         AS set_version_id,
   LEFT JOIN grinders g          ON g.id = s.grinder_id
   LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
  WHERE (:grinder_id IS NULL OR s.grinder_id = :grinder_id)
-   AND (:machine_id IS NULL OR s.machine_id = :machine_id)
    AND (:exclude_set_id IS NULL OR s.id <> :exclude_set_id)
  ORDER BY (attribute_score + outcome_score) DESC, o.shots DESC, v.id DESC
  LIMIT :limit
@@ -252,7 +249,6 @@ async def similar_sets(
     origin: str | None,
     grinder_id: int | None,
     decaf: bool = False,
-    machine_id: int | None = None,
     exclude_set_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[SimilarSet]:
@@ -261,14 +257,13 @@ async def similar_sets(
     ``grinder_id`` is a filter rather than a score term, and deliberately: a
     grind number from a different grinder is not a weaker signal, it is a
     meaningless one, and putting it on a card next to "22" would invite
-    somebody to dial 22 on the wrong machine. ``None`` lifts the filter, which
+    somebody to dial 22 on the wrong grinder. ``None`` lifts the filter, which
     is what a Set with no recorded grinder needs — the recipe is still worth
     seeing, and the caller renders it without a grind number.
 
-    ``machine_id`` is the same idea one level softer: the temperature offset
-    and the boiler are the machine's, so a version from another machine is
-    worth less. It is optional because most kitchens have one machine and a
-    filter that matched nothing would be a wizard with no evidence at all.
+    There is no machine term: the archive holds one, so every past Set was
+    brewed on the same boiler at the same offset and a filter on it would
+    always match.
 
     ``exclude_set_id`` keeps a Set out of its own suggestions, for the "suggest
     a new version of this Set" caller. The wizard leaves it ``None``: a
@@ -285,7 +280,6 @@ async def similar_sets(
             "origin": origin,
             "decaf": int(decaf),
             "grinder_id": grinder_id,
-            "machine_id": machine_id,
             "exclude_set_id": exclude_set_id,
             "confidence_shots": OUTCOME_CONFIDENCE_SHOTS,
             "limit": max(1, limit),
@@ -318,7 +312,6 @@ def _to_model(row: dict[str, Any]) -> SimilarSet:
         process=row["process"],
         origin=row["origin"],
         decaf=bool(row["decaf"]),
-        machine_id=row["machine_id"],
         grinder_id=row["grinder_id"],
         grinder_name=str(row["grinder_name"] or ""),
         grind_setting=row["grind_setting"],

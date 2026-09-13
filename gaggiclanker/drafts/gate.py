@@ -23,7 +23,6 @@ from gaggiclanker.cleanup.eligibility import ineligible_reason
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
-from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.device.writes import DeviceWriteRefused, PendingWrite
 from gaggiclanker.settings_service import SettingsService
 
@@ -70,7 +69,6 @@ class SettingsWriteGate:
         # a database there is nothing to prove a shot is safely archived with,
         # so `shot_delete` is refused outright rather than allowed by default.
         self.cleanup = CleanupRepository(db) if db is not None else None
-        self.machines = MachinesRepository(db) if db is not None else None
 
     async def enabled(self) -> bool:
         return bool(await self.settings.get("deviceWritesEnabled"))
@@ -111,20 +109,14 @@ class SettingsWriteGate:
         Device page is asked.
         """
         device_id = write.device_id or ""
-        if self.cleanup is None or self.machines is None:
+        if self.cleanup is None:
             raise DeviceWriteRefused(
                 f"Shot {device_id} was not deleted: this client has no archive to check it "
                 "against, and a shot is only ever deleted from a machine once this box "
                 "holds its bytes."
             )
-        machine = await self.machines.get_by_host(write.host)
-        if machine is None:
-            raise DeviceWriteRefused(
-                f"Shot {device_id} was not deleted: there is no machine row for "
-                f"{write.host!r}, so nothing here has ever synced with it."
-            )
-        candidate = await self.cleanup.candidate(machine.id, device_id)
-        reason = ineligible_reason(candidate, machine_id=machine.id, device_id=device_id)
+        candidate = await self.cleanup.candidate(device_id)
+        reason = ineligible_reason(candidate, device_id=device_id)
         if reason is not None:
             raise DeviceWriteRefused(reason)
 

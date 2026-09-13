@@ -15,7 +15,7 @@ the same three reasons and with the same consequences:
   nobody can look up;
 * the call does not run inside the HTTP request. `start` hands the work to the
   app's `TaskRegistry` and the route answers 202; the task name
-  (`starting_point:<bean>:<machine>:<grinder>`) is claimed synchronously inside
+  (`starting_point:<bean>:<grinder>`) is claimed synchronously inside
   `spawn`, so a second tab pressing the button gets the running row rather than
   a second paid call for the same bag on the same kit.
 
@@ -102,14 +102,15 @@ RETRY_DELAY_S = 0.5
 SYNTHETIC_BASE_LABEL = "Empty baseline"
 
 
-def starting_point_task_name(bean_id: int, machine_id: int, grinder_id: int | None) -> str:
-    """The registry name that makes one run per bag-and-kit an invariant.
+def starting_point_task_name(bean_id: int, grinder_id: int | None) -> str:
+    """The registry name that makes one run per bag-and-grinder an invariant.
 
-    Keyed on the whole triple rather than on the bean: asking about the same bag
+    Keyed on the pair rather than on the bean alone: asking about the same bag
     on a second grinder is a different question with a different answer, and
-    refusing it because the first is still running would be wrong.
+    refusing it because the first is still running would be wrong. The machine
+    is not in the key because there is only one of it.
     """
-    return f"starting_point:{bean_id}:{machine_id}:{grinder_id or 0}"
+    return f"starting_point:{bean_id}:{grinder_id or 0}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,7 +170,6 @@ class StartingPointService:
         self,
         *,
         bean_id: int,
-        machine_id: int,
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
@@ -182,11 +182,11 @@ class StartingPointService:
         the handle: the wizard renders it as `running`, the LLM stream says when
         it moves, and the caller never holds a two-minute request open.
 
-        Raises ``LookupError`` for a bean, machine or grinder that does not
-        exist — the caller's mistake rather than the provider's, and it wants to
-        be a 404 rather than a stored `failed` row.
+        Raises ``LookupError`` for a bean or a grinder that does not exist — the
+        caller's mistake rather than the provider's, and it wants to be a 404
+        rather than a stored `failed` row.
         """
-        name = starting_point_task_name(bean_id, machine_id, grinder_id)
+        name = starting_point_task_name(bean_id, grinder_id)
         # No await before the spawn, so this check and the registry's own name
         # guard together leave no window.
         pending = self._opening.get(name)
@@ -197,7 +197,6 @@ class StartingPointService:
         self._opening[name] = opened
         spec: dict[str, Any] = {
             "bean_id": bean_id,
-            "machine_id": machine_id,
             "grinder_id": grinder_id,
             "usual_grind": usual_grind,
             "dose_hint_g": dose_hint_g,
@@ -210,7 +209,7 @@ class StartingPointService:
             # removed itself from `_opening` when it did.
             del self._opening[name]
             opened.cancel()
-            running = await self._latest_running(bean_id, machine_id, grinder_id)
+            running = await self._latest_running(bean_id, grinder_id)
             if running is not None:
                 return running, False
             raise
@@ -239,7 +238,6 @@ class StartingPointService:
         self,
         *,
         bean_id: int,
-        machine_id: int,
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
@@ -254,7 +252,6 @@ class StartingPointService:
         """
         prepared = await self._prepare(
             bean_id=bean_id,
-            machine_id=machine_id,
             grinder_id=grinder_id,
             usual_grind=usual_grind,
             dose_hint_g=dose_hint_g,
@@ -267,7 +264,6 @@ class StartingPointService:
         self,
         *,
         bean_id: int,
-        machine_id: int,
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
@@ -284,7 +280,6 @@ class StartingPointService:
         context = await build_context(
             self.db,
             bean_id=bean_id,
-            machine_id=machine_id,
             grinder_id=grinder_id,
             usual_grind=usual_grind,
             dose_hint_g=dose_hint_g,
@@ -296,7 +291,6 @@ class StartingPointService:
         run_id = await self.runs.start(
             StartingPointStart(
                 bean_id=bean_id,
-                machine_id=machine_id,
                 grinder_id=grinder_id,
                 usual_grind=usual_grind.strip(),
                 dose_hint_g=dose_hint_g,
@@ -609,7 +603,6 @@ class StartingPointService:
             SetWrite(
                 name=name,
                 bean_id=run.bean_id,
-                machine_id=run.machine_id,
                 grinder_id=run.grinder_id,
             ),
             SetVersionWrite(
@@ -638,14 +631,10 @@ class StartingPointService:
         return run
 
     async def _latest_running(
-        self, bean_id: int, machine_id: int, grinder_id: int | None
+        self, bean_id: int, grinder_id: int | None
     ) -> StartingPointRunRow | None:
         for row in await self.runs.for_bean(bean_id, limit=5):
-            if (
-                row.status == "running"
-                and row.machine_id == machine_id
-                and row.grinder_id == grinder_id
-            ):
+            if row.status == "running" and row.grinder_id == grinder_id:
                 return row
         return None
 

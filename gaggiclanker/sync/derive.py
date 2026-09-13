@@ -67,7 +67,6 @@ def derive_shot(
     slog: Slog,
     raw: bytes,
     *,
-    machine_id: int,
     device_id: str,
     source: str = "device",
     has_pressure: bool | None = None,
@@ -99,7 +98,6 @@ def derive_shot(
 
     shot = ShotInsert(
         device_id=device_id,
-        machine_id=machine_id,
         source=source,
         raw_slog=raw,
         started_at=epoch_to_iso(slog.timestamp),

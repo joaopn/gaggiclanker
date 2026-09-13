@@ -12,8 +12,8 @@ back door the archive is otherwise missing, and the rules follow from that:
   its `raw_slog` — the same bargain the sync engine makes with bytes it cannot
   parse. The file is the only copy left; a parser fix
   next month can re-derive it, and a discarded file cannot.
-* **Re-importing is free.** Shots de-duplicate on `(machine_id, device_id)` and
-  profiles on their content hash, so pointing the importer at the same folder
+* **Re-importing is free.** Shots de-duplicate on their device id and profiles
+  on their content hash, so pointing the importer at the same folder
   twice reports skips rather than writing the archive twice over.
 * **An imported shot is a shot.** It goes through the same
   :func:`~gaggiclanker.sync.derive.derive_shot` the sync engine uses, so its
@@ -40,7 +40,6 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import dumps
 from gaggiclanker.db.repos.judgements import JudgementsRepository
-from gaggiclanker.db.repos.machines import MachinesRepository, MachineUpsert
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
@@ -55,12 +54,10 @@ from gaggiclanker.domain.exports import (
     slog_to_raw,
 )
 from gaggiclanker.domain.slog import SlogError
-from gaggiclanker.infra.errors import NotFound
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.derive import derive_shot
 
 __all__ = [
-    "IMPORT_MACHINE_HOST",
     "IMPORT_SOURCE",
     "MAX_EXPANDED_BYTES",
     "MAX_ZIP_DEPTH",
@@ -75,16 +72,6 @@ log = structlog.get_logger(__name__)
 #: `shots.source` for everything this module writes. The column has a CHECK
 #: constraint listing exactly two values; this is the other one.
 IMPORT_SOURCE = "import"
-
-#: The machine imported shots belong to when no live machine is configured.
-#:
-#: `shots.machine_id` is NOT NULL on purpose — every shot has an owner, and the
-#: `UNIQUE (machine_id, device_id)` index that makes re-import a no-op only
-#: works if it does (SQLite treats NULLs as distinct, so a nullable owner would
-#: let the same shot in twice). `machines.host` is the identity and nothing
-#: validates that it resolves, so a synthetic one costs nothing and can never
-#: collide with a real device's address.
-IMPORT_MACHINE_HOST = "import:default"
 
 #: How deep to look inside nested zips. One zip of exports is the normal case
 #: and a zip of zips happens; deeper than that is a zip bomb or a mistake, and
@@ -141,18 +128,17 @@ class ImportSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ImportResult]
-    machine_id: int
     created: int = 0
     updated: int = 0
     skipped: int = 0
     failed: int = 0
 
     @classmethod
-    def of(cls, items: list[ImportResult], machine_id: int) -> ImportSummary:
+    def of(cls, items: list[ImportResult]) -> ImportSummary:
         counts = dict.fromkeys(("created", "updated", "skipped", "failed"), 0)
         for item in items:
             counts[item.status] += 1
-        return cls(items=items, machine_id=machine_id, **counts)
+        return cls(items=items, **counts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,73 +177,35 @@ class ImportService:
         self.shots = ShotsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.notes = NotesRepository(db)
-        self.machines = MachinesRepository(db)
         self.sets = SetsRepository(db)
         self.judgements = JudgementsRepository(db)
-
-    # ── machines ─────────────────────────────────────────────────────
-
-    async def resolve_machine_id(self, machine_id: int | None = None) -> int:
-        """Which machine the imported shots belong to.
-
-        Three answers in order of authority. An explicit ``machine_id`` wins and
-        must exist — importing a shot onto a machine that is not there would
-        create a row nothing can ever find. Otherwise the configured machine, if
-        we have ever heard from it: an export of a shot from *this* machine
-        belongs beside the shots the sync engine pulled from it, and landing on
-        the same `(machine_id, device_id)` is what makes the duplicate check
-        work at all. Failing that, the synthetic :data:`IMPORT_MACHINE_HOST`.
-
-        The export itself cannot settle it: it carries a profile id, a profile
-        name and a shot id, none of which identify a machine.
-        """
-        if machine_id is not None:
-            if await self.machines.get(machine_id) is None:
-                raise NotFound(f"No machine {machine_id}")
-            return machine_id
-
-        host = ""
-        if self.settings is not None:
-            host = str(await self.settings.get("gaggimateHost") or "").strip()
-        if host:
-            configured = await self.machines.get_by_host(host)
-            if configured is not None:
-                return configured.id
-
-        row = await self.machines.upsert(
-            MachineUpsert(host=IMPORT_MACHINE_HOST, name="Imported shots")
-        )
-        return row.id
 
     # ── the batch ────────────────────────────────────────────────────
 
     async def import_files(
-        self,
-        files: Sequence[ImportFile],
-        *,
-        machine_id: int | None = None,
-        replace: bool = False,
+        self, files: Sequence[ImportFile], *, replace: bool = False
     ) -> ImportSummary:
         """Import every file, reporting each one separately.
 
         A file may be a shot export, a profile export, a JSON array of profiles,
-        or a zip of any of those. Nothing here raises: the one exception is a
-        ``machine_id`` that does not exist, which is the caller's mistake rather
-        than a file's and is worth failing the whole request over.
+        or a zip of any of those. Nothing here raises: a file that cannot be read
+        is a failed row in the result list.
+
+        There is no machine to choose. The archive holds one, it exists before
+        any pull, and an import done before the machine was ever connected lands
+        in the same place the sync engine will later write to — which is what
+        makes importing first and connecting afterwards an ordinary order to do
+        things in rather than a permanent fork in the archive.
         """
-        resolved = await self.resolve_machine_id(machine_id)
         budget = _Budget(MAX_EXPANDED_BYTES)
         items: list[ImportResult] = []
         for file in files:
-            items.extend(
-                await self._import_file(file, machine_id=resolved, replace=replace, budget=budget)
-            )
+            items.extend(await self._import_file(file, replace=replace, budget=budget))
         await self._link_versions_by_label(items)
-        summary = ImportSummary.of(items, resolved)
+        summary = ImportSummary.of(items)
         log.info(
             "import_batch_finished",
             files=len(files),
-            machine_id=resolved,
             created=summary.created,
             updated=summary.updated,
             skipped=summary.skipped,
@@ -269,16 +217,13 @@ class ImportService:
         self,
         file: ImportFile,
         *,
-        machine_id: int,
         replace: bool,
         budget: _Budget,
         depth: int = 0,
     ) -> list[ImportResult]:
         """One file: a zip to expand, or a JSON document to read."""
         if zipfile.is_zipfile(io.BytesIO(file.data)):
-            return await self._import_zip(
-                file, machine_id=machine_id, replace=replace, budget=budget, depth=depth
-            )
+            return await self._import_zip(file, replace=replace, budget=budget, depth=depth)
 
         try:
             document = json.loads(file.data)
@@ -295,7 +240,6 @@ class ImportService:
             return [
                 await self.import_shot(
                     document,
-                    machine_id=machine_id,
                     replace=replace,
                     filename=file.filename,
                     raw=file.data,
@@ -315,7 +259,7 @@ class ImportService:
         ]
 
     async def _import_zip(
-        self, file: ImportFile, *, machine_id: int, replace: bool, budget: _Budget, depth: int
+        self, file: ImportFile, *, replace: bool, budget: _Budget, depth: int
     ) -> list[ImportResult]:
         """Expand one zip, within the batch's decompression budget."""
         if depth >= MAX_ZIP_DEPTH:
@@ -351,7 +295,6 @@ class ImportService:
                     items.extend(
                         await self._import_file(
                             ImportFile(filename=label, data=data),
-                            machine_id=machine_id,
                             replace=replace,
                             budget=budget,
                             depth=depth + 1,
@@ -377,7 +320,6 @@ class ImportService:
         self,
         data: bytes | dict[str, Any],
         *,
-        machine_id: int,
         replace: bool = False,
         filename: str = "",
         raw: bytes | None = None,
@@ -401,7 +343,6 @@ class ImportService:
             return await self._quarantine(
                 document,
                 raw_bytes,
-                machine_id=machine_id,
                 replace=replace,
                 filename=filename,
                 reason=_reason(exc),
@@ -416,7 +357,7 @@ class ImportService:
                 message="the export has no shot id, so it cannot be told apart from another",
             )
 
-        existing = await self.shots.get_by_device_id(machine_id, device_id)
+        existing = await self.shots.get_by_device_id(device_id)
         if existing is not None and not replace:
             return ImportResult(
                 filename=filename,
@@ -430,7 +371,6 @@ class ImportService:
         derived = derive_shot(
             slog,
             slog_bytes,
-            machine_id=machine_id,
             device_id=device_id,
             source=IMPORT_SOURCE,
             # Not `False`, and not the machine's stored flag: nobody told us
@@ -440,7 +380,7 @@ class ImportService:
             incomplete=slog.incomplete,
         )
         shot = derived.shot
-        shot.profile_version_id = await self._version_for(machine_id, export.profile_id)
+        shot.profile_version_id = await self._version_for(export.profile_id)
 
         status: ImportStatus = "updated"
         if existing is not None:
@@ -467,7 +407,6 @@ class ImportService:
             # point could move a shot the user had already filed by hand.
             await self.sets.auto_assign(
                 shot_id,
-                machine_id=machine_id,
                 profile_version_id=shot.profile_version_id,
                 device_profile_id=shot.profile_id_on_device,
             )
@@ -510,7 +449,6 @@ class ImportService:
         document: Any,
         raw_bytes: bytes,
         *,
-        machine_id: int,
         replace: bool,
         filename: str,
         reason: str,
@@ -526,7 +464,7 @@ class ImportService:
         if not device_id:
             return ImportResult(filename=filename, kind="shot", status="failed", message=reason)
 
-        existing = await self.shots.get_by_device_id(machine_id, device_id)
+        existing = await self.shots.get_by_device_id(device_id)
         if existing is not None and not replace:
             return ImportResult(
                 filename=filename,
@@ -539,7 +477,6 @@ class ImportService:
 
         shot = ShotInsert(
             device_id=device_id,
-            machine_id=machine_id,
             source=IMPORT_SOURCE,
             raw_slog=raw_bytes,
             quarantined=True,
@@ -608,7 +545,7 @@ class ImportService:
                 label=shot.profile_name_on_device,
             )
 
-    async def _version_for(self, machine_id: int, profile_id: str) -> int | None:
+    async def _version_for(self, profile_id: str) -> int | None:
         """The mirrored profile version this shot's `profileId` points at, if any.
 
         Usually ``None`` for an import: the profile the shot was brewed with was
@@ -618,7 +555,7 @@ class ImportService:
         """
         if not profile_id:
             return None
-        version = await self.profiles.find_version_for_device_profile(machine_id, profile_id)
+        version = await self.profiles.find_version_for_device_profile(profile_id)
         return None if version is None else version.id
 
     # ── profiles ─────────────────────────────────────────────────────

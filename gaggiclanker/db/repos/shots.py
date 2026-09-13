@@ -90,7 +90,6 @@ class ShotInsert(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: str = Field(min_length=1)
-    machine_id: int
     raw_slog: bytes
     #: Where these bytes came from: the sync engine (``device``) or a JSON
     #: export of a shot the machine has already deleted (``import``).
@@ -151,7 +150,6 @@ class ShotListRow(BaseModel):
 
     id: int
     device_id: str
-    machine_id: int
     source: str = "device"
     started_at: str | None = None
     start_epoch: int = 0
@@ -305,7 +303,7 @@ class ShotPage(BaseModel):
 # the tests must all agree on what "volume" means: the scale's final weight when
 # there was a scale, and the device index's figure otherwise.
 _LIST_COLUMNS = """
-    s.id, s.device_id, s.machine_id, s.source, s.started_at, s.start_epoch, s.duration_ms,
+    s.id, s.device_id, s.source, s.started_at, s.start_epoch, s.duration_ms,
     s.profile_version_id, s.profile_id_on_device, s.profile_name_on_device,
     v.label AS profile_label,
     s.final_weight_g,
@@ -543,9 +541,7 @@ class ShotsRepository(Repository):
             (version_id, utc_now(), shot_id),
         )
 
-    async def link_unlinked_by_device_profile(
-        self, machine_id: int, device_profile_id: str, version_id: int
-    ) -> int:
+    async def link_unlinked_by_device_profile(self, device_profile_id: str, version_id: int) -> int:
         """Link every still-unlinked shot brewed with this device profile.
 
         Shots arrive before the profile mirror on a first boot (the index diff
@@ -557,16 +553,16 @@ class ShotsRepository(Repository):
         cursor = await self.db.execute(
             """
             UPDATE shots SET profile_version_id = ?, updated_at = ?
-            WHERE machine_id = ? AND profile_id_on_device = ? AND profile_version_id IS NULL
+            WHERE profile_id_on_device = ? AND profile_version_id IS NULL
             """,
-            (version_id, utc_now(), machine_id, device_profile_id),
+            (version_id, utc_now(), device_profile_id),
         )
         return cursor.rowcount
 
     # ── reading ──────────────────────────────────────────────────────
 
-    async def known_states(self, machine_id: int) -> dict[str, ShotState]:
-        """Every shot we already have for this machine, keyed by padded device id.
+    async def known_states(self) -> dict[str, ShotState]:
+        """Every shot we already have, keyed by padded device id.
 
         One query per pass rather than one per index entry: a full index is a
         few hundred rows and the diff is a set difference, not a lookup loop.
@@ -578,9 +574,7 @@ class ShotsRepository(Repository):
                    n.shot_id IS NOT NULL AS has_notes
             FROM shots s
             LEFT JOIN device_shot_notes n ON n.shot_id = s.id
-            WHERE s.machine_id = ?
-            """,
-            (machine_id,),
+            """
         )
         return {
             str(row["device_id"]): ShotState(
@@ -611,11 +605,9 @@ class ShotsRepository(Repository):
         )
         return self.to_model(ShotDetailRow, row)
 
-    async def get_by_device_id(self, machine_id: int, device_id: str) -> ShotDetailRow | None:
-        row = await self.db.fetch_value(
-            "SELECT id FROM shots WHERE machine_id = ? AND device_id = ?",
-            (machine_id, device_id),
-        )
+    async def get_by_device_id(self, device_id: str) -> ShotDetailRow | None:
+        """The shot the machine knows by that id. Unique since 0016."""
+        row = await self.db.fetch_value("SELECT id FROM shots WHERE device_id = ?", (device_id,))
         return None if row is None else await self.get(int(row))
 
     async def raw_slog(self, shot_id: int) -> bytes | None:
@@ -637,27 +629,18 @@ class ShotsRepository(Repository):
         )
         return self.to_models(ShotSampleRow, rows)
 
-    async def counts(self, machine_id: int | None = None) -> ShotCounts:
-        clause = "" if machine_id is None else " WHERE machine_id = ?"
-        params: tuple[Any, ...] = () if machine_id is None else (machine_id,)
+    async def counts(self) -> ShotCounts:
         row = await self.db.fetch_one(
-            f"""
+            """
             SELECT COUNT(*) AS total,
                    COALESCE(SUM(quarantined), 0) AS quarantined,
                    COALESCE(SUM(deleted_on_device), 0) AS deleted_on_device,
                    COALESCE(SUM(incomplete), 0) AS incomplete,
                    COALESCE(SUM(set_version_id IS NULL AND quarantined = 0), 0) AS needs_set
-            FROM shots{clause}
-            """,  # noqa: S608 - the clause is one of two literals
-            params,
+            FROM shots
+            """
         )
-        samples = await self.db.fetch_value(
-            "SELECT COUNT(*) FROM shot_samples"
-            if machine_id is None
-            else "SELECT COUNT(*) FROM shot_samples WHERE shot_id IN "
-            "(SELECT id FROM shots WHERE machine_id = ?)",
-            params,
-        )
+        samples = await self.db.fetch_value("SELECT COUNT(*) FROM shot_samples")
         counts = self.to_model(ShotCounts, row)
         if counts is None:  # pragma: no cover - COUNT(*) always returns a row
             return ShotCounts()
@@ -673,7 +656,6 @@ class ShotsRepository(Repository):
         start_from: str | None = None,
         start_to: str | None = None,
         profile_version_id: int | None = None,
-        machine_id: int | None = None,
         set_id: int | None = None,
         set_version_id: int | None = None,
         needs_set: bool | None = None,
@@ -706,9 +688,6 @@ class ShotsRepository(Repository):
 
         where = ["1 = 1"]
         params: list[Any] = []
-        if machine_id is not None:
-            where.append("s.machine_id = ?")
-            params.append(machine_id)
         if source is not None:
             where.append("s.source = ?")
             params.append(source)

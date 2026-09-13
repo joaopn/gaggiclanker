@@ -105,9 +105,7 @@ class NotesRepository(Repository):
         )
         return self.to_model(DeviceShotNotesRow, row)
 
-    async def stale_shot_ids(
-        self, machine_id: int
-    ) -> dict[str, tuple[int, int | None, float | None]]:
+    async def stale_shot_ids(self) -> dict[str, tuple[int, int | None, float | None]]:
         """Device id → (shot row id, synced rating, synced volume) for shots we hold notes for.
 
         The caller compares those two figures with the current index entry and
@@ -118,9 +116,7 @@ class NotesRepository(Repository):
             SELECT s.device_id, n.shot_id, n.synced_rating, n.synced_volume_g
             FROM device_shot_notes n
             JOIN shots s ON s.id = n.shot_id
-            WHERE s.machine_id = ?
-            """,
-            (machine_id,),
+            """
         )
         return {
             str(row["device_id"]): (

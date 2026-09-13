@@ -44,7 +44,7 @@ from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.knowledge_insights import set_attributes as insight_set_attributes
-from gaggiclanker.db.repos.machines import MachinesRepository
+from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotsRepository
@@ -134,7 +134,6 @@ class SetFacts(BaseModel):
     #: on the row too.
     bean_id: int | None = None
     grinder_id: int | None = None
-    machine_id: int | None = None
     bean_name: str = ""
     roaster: str = ""
     origin: str = ""
@@ -459,7 +458,6 @@ def set_attributes(facts: SetFacts | None, style: str) -> dict[str, Any]:
         origin=facts.origin,
         grinder_id=facts.grinder_id,
         profile_style=style,
-        machine_id=facts.machine_id,
     )
 
 
@@ -586,7 +584,7 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
 
     bean = await BeansRepository(db).get(row.bean_id)
     grinder = None if row.grinder_id is None else await GrindersRepository(db).get(row.grinder_id)
-    machine = await MachinesRepository(db).get(row.machine_id)
+    machine = await MachineRepository(db).get()
     profile = None
     if version.profile_version_id is not None:
         stored = await ProfilesRepository(db).get_version(version.profile_version_id)
@@ -601,7 +599,6 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             intent=version.intent,
             bean_id=row.bean_id,
             grinder_id=row.grinder_id,
-            machine_id=row.machine_id,
             bean_name=bean.name if bean else "",
             roaster=(bean.roaster or "") if bean else "",
             origin=(bean.origin or "") if bean else "",

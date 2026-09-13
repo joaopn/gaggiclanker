@@ -53,7 +53,6 @@ SCOPE_KEYS = (
     "origin",
     "grinder_id",
     "profile_style",
-    "machine_id",
 )
 
 type InsightSource = Literal["analysis", "chat", "user"]
@@ -76,7 +75,6 @@ class InsightScope(BaseModel):
     origin: str | None = None
     grinder_id: int | None = None
     profile_style: str | None = None
-    machine_id: int | None = None
 
     def stated(self) -> dict[str, Any]:
         """Only the keys this scope actually names, in :data:`SCOPE_KEYS` order."""
@@ -128,7 +126,6 @@ def set_attributes(
     origin: str | None = None,
     grinder_id: int | None = None,
     profile_style: str | None = None,
-    machine_id: int | None = None,
 ) -> dict[str, Any]:
     """A Set's attributes in the shape :func:`scope_matches` reads them.
 
@@ -150,7 +147,6 @@ def set_attributes(
         "origin": origin,
         "grinder_id": grinder_id,
         "profile_style": None if profile_style == "unknown" else profile_style,
-        "machine_id": machine_id,
     }
     return {
         key: (None if isinstance(value, str) and not value.strip() else value)

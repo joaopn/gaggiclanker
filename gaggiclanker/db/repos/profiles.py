@@ -95,7 +95,6 @@ class DeviceProfileRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: str
-    machine_id: int
     current_version_id: int
     favorite: bool = False
     selected: bool = False
@@ -111,7 +110,6 @@ class DeviceProfileSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: str
-    machine_id: int
     current_version_id: int
     favorite: bool = False
     selected: bool = False
@@ -251,9 +249,7 @@ class ProfilesRepository(Repository):
             total=int(total_row["n"]) if total_row is not None else 0,
         )
 
-    async def find_version_for_device_profile(
-        self, machine_id: int, device_id: str
-    ) -> ProfileVersionRow | None:
+    async def find_version_for_device_profile(self, device_id: str) -> ProfileVersionRow | None:
         """The version a device id currently holds, if we have mirrored it.
 
         How a shot gets its `profile_version_id`: the `.slog` header records the
@@ -265,9 +261,9 @@ class ProfilesRepository(Repository):
             """
             SELECT v.* FROM profile_versions v
             JOIN device_profiles d ON d.current_version_id = v.id
-            WHERE d.machine_id = ? AND d.device_id = ?
+            WHERE d.device_id = ?
             """,
-            (machine_id, device_id),
+            (device_id,),
         )
         return self.to_model(ProfileVersionRow, row)
 
@@ -276,7 +272,6 @@ class ProfilesRepository(Repository):
     async def upsert_device_profile(
         self,
         *,
-        machine_id: int,
         device_id: str,
         version_id: int,
         favorite: bool = False,
@@ -294,10 +289,10 @@ class ProfilesRepository(Repository):
         await self.db.execute(
             """
             INSERT INTO device_profiles
-                (device_id, machine_id, current_version_id, favorite, selected, position,
+                (device_id, current_version_id, favorite, selected, position,
                  first_seen_at, last_seen_at, deleted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
-            ON CONFLICT(machine_id, device_id) DO UPDATE SET
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(device_id) DO UPDATE SET
                 current_version_id = excluded.current_version_id,
                 favorite = excluded.favorite,
                 selected = excluded.selected,
@@ -307,7 +302,6 @@ class ProfilesRepository(Repository):
             """,
             (
                 device_id,
-                machine_id,
                 version_id,
                 int(favorite),
                 int(selected),
@@ -316,19 +310,18 @@ class ProfilesRepository(Repository):
                 now,
             ),
         )
-        row = await self.get_device_profile(machine_id, device_id)
+        row = await self.get_device_profile(device_id)
         if row is None:  # pragma: no cover - the upsert above guarantees it
             raise RuntimeError(f"device profile {device_id!r} vanished between write and read")
         return row
 
-    async def get_device_profile(self, machine_id: int, device_id: str) -> DeviceProfileRow | None:
+    async def get_device_profile(self, device_id: str) -> DeviceProfileRow | None:
         row = await self.db.fetch_one(
-            "SELECT * FROM device_profiles WHERE machine_id = ? AND device_id = ?",
-            (machine_id, device_id),
+            "SELECT * FROM device_profiles WHERE device_id = ?", (device_id,)
         )
         return self.to_model(DeviceProfileRow, row)
 
-    async def mark_missing_deleted(self, machine_id: int, seen: list[str]) -> int:
+    async def mark_missing_deleted(self, seen: list[str]) -> int:
         """Tombstone every device profile the machine no longer lists.
 
         A *tombstone*, never a delete: shots reference the version, the user's
@@ -346,9 +339,9 @@ class ProfilesRepository(Repository):
         cursor = await self.db.execute(
             f"""
             UPDATE device_profiles SET deleted_at = ?
-            WHERE machine_id = ? AND deleted_at IS NULL AND device_id NOT IN ({placeholders})
+            WHERE deleted_at IS NULL AND device_id NOT IN ({placeholders})
             """,  # noqa: S608 - placeholders are bound parameters, one per id
-            (utc_now(), machine_id, *seen),
+            (utc_now(), *seen),
         )
         return cursor.rowcount
 
@@ -367,7 +360,7 @@ class ProfilesRepository(Repository):
         )
         return str(row["device_id"]) if row is not None else None
 
-    async def mark_one_deleted(self, device_id: str, machine_id: int | None = None) -> int:
+    async def mark_one_deleted(self, device_id: str) -> int:
         """Tombstone one device profile, by id, without a list to diff against.
 
         The rollback path's only write to the mirror. `mark_missing_deleted`
@@ -379,34 +372,25 @@ class ProfilesRepository(Repository):
         Set versions reference the version, and "the profile I used in March"
         has to keep resolving.
         """
-        where = "device_id = ? AND deleted_at IS NULL"
-        params: list[object] = [utc_now(), device_id]
-        if machine_id is not None:
-            where += " AND machine_id = ?"
-            params.append(machine_id)
         cursor = await self.db.execute(
-            f"UPDATE device_profiles SET deleted_at = ? WHERE {where}",  # noqa: S608 - the clause is a literal, values are bound
-            params,
+            "UPDATE device_profiles SET deleted_at = ? WHERE device_id = ? AND deleted_at IS NULL",
+            (utc_now(), device_id),
         )
         return cursor.rowcount
 
     async def list_device_profiles(
-        self, machine_id: int | None = None, *, include_deleted: bool = False
+        self, *, include_deleted: bool = False
     ) -> list[DeviceProfileSummary]:
         """The mirror, joined to the current version and counting shots."""
         where = ["1 = 1"]
         params: list[object] = []
-        if machine_id is not None:
-            where.append("d.machine_id = ?")
-            params.append(machine_id)
         if not include_deleted:
             where.append("d.deleted_at IS NULL")
         rows = await self.db.fetch_all(
             f"""
             SELECT d.*, v.label, v.type, v.utility, v.content_hash,
                    (SELECT COUNT(*) FROM shots s
-                     WHERE s.machine_id = d.machine_id
-                       AND s.profile_id_on_device = d.device_id) AS shot_count
+                     WHERE s.profile_id_on_device = d.device_id) AS shot_count
             FROM device_profiles d
             JOIN profile_versions v ON v.id = d.current_version_id
             WHERE {" AND ".join(where)}
@@ -417,8 +401,6 @@ class ProfilesRepository(Repository):
         )
         return self.to_models(DeviceProfileSummary, rows)
 
-    async def get_device_profile_summary(
-        self, device_id: str, machine_id: int | None = None
-    ) -> DeviceProfileSummary | None:
-        summaries = await self.list_device_profiles(machine_id, include_deleted=True)
+    async def get_device_profile_summary(self, device_id: str) -> DeviceProfileSummary | None:
+        summaries = await self.list_device_profiles(include_deleted=True)
         return next((s for s in summaries if s.device_id == device_id), None)

@@ -275,9 +275,7 @@ class JudgementsRepository(Repository):
             (utc_now(), shot_id),
         )
 
-    async def pending_writeback(
-        self, machine_id: int | None = None, *, limit: int = 200
-    ) -> list[int]:
+    async def pending_writeback(self, *, limit: int = 200) -> list[int]:
         """Shot ids whose verdict this box has that the machine does not.
 
         Three conditions, and each is one half of a rule the write-back states:
@@ -303,9 +301,6 @@ class JudgementsRepository(Repository):
               AND s.deleted_on_device = 0
         """
         params: list[object] = []
-        if machine_id is not None:
-            sql += " AND s.machine_id = ?"
-            params.append(machine_id)
         sql += " ORDER BY j.updated_at ASC, j.shot_id ASC LIMIT ?"
         params.append(limit)
         rows = await self.db.fetch_all(sql, params)

@@ -1,6 +1,6 @@
 """`sets` and `set_versions` — what you were trying, and what you changed.
 
-A **Set** is a stable identity: this bean, on this machine, through this
+A **Set** is a stable identity: this bean, on the machine, through this
 grinder. A **set version** is one concrete recipe that was actually brewed with
 — a profile version, a grind, a dose, a target yield, a temperature — plus the
 one sentence saying why it differs from the version before it.
@@ -12,9 +12,9 @@ one of them true:
   anything appends a new version whose `parent_version_id` is the one it came
   from, because the product's whole question is "what did changing this do" and
   an edited row answers it with today's value for every shot ever attached.
-* **one Set per machine is active at a time**, enforced by a partial unique
-  index rather than by whoever remembers to clear the old flag. It is what
-  auto-assignment consults when a shot lands.
+* **one Set is active at a time**, enforced by a partial unique index rather
+  than by whoever remembers to clear the old flag. It is what auto-assignment
+  consults when a shot lands.
 * **a shot's Set is never guessed twice.** Auto-assignment only ever writes over
   a NULL, so a correction made by hand survives every later sync pass.
 """
@@ -50,7 +50,6 @@ class SetWrite(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     bean_id: int
-    machine_id: int
     #: Nullable: pre-ground coffee and a grinder nobody has got round to
     #: recording are both real, and refusing the Set over it helps nobody.
     grinder_id: int | None = None
@@ -146,13 +145,11 @@ class SetRow(BaseModel):
     name: str
     bean_id: int
     bean_name: str | None = None
-    machine_id: int
-    machine_name: str | None = None
     grinder_id: int | None = None
     grinder_name: str | None = None
     status: str = "active"
-    #: "This is what the machine is set up for right now". At most one Set per
-    #: machine holds it; archiving clears it.
+    #: "This is what the machine is set up for right now". At most one Set holds
+    #: it; archiving clears it.
     active: bool = False
     created_at: str
     current_version_id: int | None = None
@@ -295,7 +292,6 @@ _INHERITED = (
 _SET_SELECT = """
     SELECT s.*,
            b.name AS bean_name,
-           m.name AS machine_name,
            g.name AS grinder_name,
            cur.id AS current_version_id,
            COALESCE(cur.version_no, 0) AS current_version_no,
@@ -307,7 +303,6 @@ _SET_SELECT = """
             WHERE v2.set_id = s.id) AS shot_count
     FROM sets s
     JOIN beans b ON b.id = s.bean_id
-    LEFT JOIN machines m ON m.id = s.machine_id
     LEFT JOIN grinders g ON g.id = s.grinder_id
     -- The current version is the highest `version_no`, not the newest row id:
     -- version numbers are the thing the user sees and the UNIQUE(set_id,
@@ -344,23 +339,22 @@ class SetsRepository(Repository):
 
         ``activate`` defaults to true: a Set is created by somebody who has just
         put that bag in the hopper, and a new Set that did not start collecting
-        shots would look broken. It switches the flag on the machine's previous
-        Set off (the partial unique index would otherwise refuse the insert) and
+        shots would look broken. It switches the flag on the previous active Set
+        off (the partial unique index would otherwise refuse the insert) and
         archives nothing.
         """
         now = utc_now()
         async with self.db.transaction():
             if activate:
-                await self._clear_active(spec.machine_id)
+                await self._clear_active()
             cursor = await self.db.execute(
                 """
-                INSERT INTO sets (name, bean_id, machine_id, grinder_id, status, active, created_at)
-                VALUES (:name, :bean_id, :machine_id, :grinder_id, 'active', :active, :created_at)
+                INSERT INTO sets (name, bean_id, grinder_id, status, active, created_at)
+                VALUES (:name, :bean_id, :grinder_id, 'active', :active, :created_at)
                 """,
                 {
                     "name": spec.name,
                     "bean_id": spec.bean_id,
-                    "machine_id": spec.machine_id,
                     "grinder_id": spec.grinder_id,
                     "active": int(activate),
                     "created_at": now,
@@ -377,17 +371,12 @@ class SetsRepository(Repository):
         row = await self.db.fetch_one(f"{_SET_SELECT} WHERE s.id = ?", (set_id,))
         return self.to_model(SetRow, row)
 
-    async def list_sets(
-        self, *, include_archived: bool = False, machine_id: int | None = None
-    ) -> list[SetRow]:
+    async def list_sets(self, *, include_archived: bool = False) -> list[SetRow]:
         """Every Set, the active one first and the newest after it."""
         where: list[str] = []
         params: list[Any] = []
         if not include_archived:
             where.append("s.status = 'active'")
-        if machine_id is not None:
-            where.append("s.machine_id = ?")
-            params.append(machine_id)
         clause = f" WHERE {' AND '.join(where)}" if where else ""
         rows = await self.db.fetch_all(
             f"{_SET_SELECT}{clause} ORDER BY s.active DESC, s.created_at DESC, s.id DESC",
@@ -403,7 +392,7 @@ class SetsRepository(Repository):
         going back a new Set with no history.
 
         An **archived** Set is refused, and the refusal matters more than it
-        looks: `active_version_for_machine` requires `status = 'active'`, so
+        looks: `active_version` requires `status = 'active'`, so
         flipping the flag onto an archived Set would clear it from the live one
         and leave the machine with no usable active Set at all — every shot from
         then on landing in the inbox for no visible reason. The route turns the
@@ -413,7 +402,7 @@ class SetsRepository(Repository):
         if row is None or row.status != "active":
             return None
         async with self.db.transaction():
-            await self._clear_active(row.machine_id)
+            await self._clear_active()
             await self.db.execute(
                 "UPDATE sets SET active = 1 WHERE id = ? AND status = 'active'", (set_id,)
             )
@@ -426,10 +415,8 @@ class SetsRepository(Repository):
         )
         return None if cursor.rowcount == 0 else await self.get(set_id)
 
-    async def _clear_active(self, machine_id: int) -> None:
-        await self.db.execute(
-            "UPDATE sets SET active = 0 WHERE machine_id = ? AND active = 1", (machine_id,)
-        )
+    async def _clear_active(self) -> None:
+        await self.db.execute("UPDATE sets SET active = 0 WHERE active = 1")
 
     # ── versions ─────────────────────────────────────────────────────
 
@@ -525,20 +512,19 @@ class SetsRepository(Repository):
         """The version a shot pulled right now would be attached to."""
         return await self._current_version_row(set_id)
 
-    async def active_version_for_machine(self, machine_id: int) -> SetVersionRow | None:
-        """The current version of the machine's active Set, if it has one.
+    async def active_version(self) -> SetVersionRow | None:
+        """The current version of the active Set, if there is one.
 
         The one query auto-assignment runs per ingested shot: an index seek on
-        `idx_sets_one_active_per_machine` and one more on the version.
+        `idx_sets_one_active` and one more on the version.
         """
         row = await self.db.fetch_one(
             f"""
             {_VERSION_SELECT}
             JOIN sets s ON s.id = v.set_id
-            WHERE s.machine_id = ? AND s.active = 1 AND s.status = 'active'
+            WHERE s.active = 1 AND s.status = 'active'
             ORDER BY v.version_no DESC LIMIT 1
-            """,
-            (machine_id,),
+            """
         )
         return self.to_model(SetVersionRow, row)
 
@@ -578,11 +564,10 @@ class SetsRepository(Repository):
         self,
         shot_id: int,
         *,
-        machine_id: int,
         profile_version_id: int | None,
         device_profile_id: str,
     ) -> int | None:
-        """Attach a freshly stored shot to the machine's active Set, if it fits.
+        """Attach a freshly stored shot to the active Set, if it fits.
 
         Returns the version id it was attached to, or ``None`` for "needs a Set".
 
@@ -610,7 +595,7 @@ class SetsRepository(Repository):
         Never touches a shot that already has a version — the `IS NULL` in the
         UPDATE — so a hand correction survives every later pass.
         """
-        version = await self.active_version_for_machine(machine_id)
+        version = await self.active_version()
         if version is None:
             return None
         if version.profile_version_id is not None:
@@ -621,9 +606,9 @@ class SetsRepository(Repository):
                 mapped = await self.db.fetch_value(
                     """
                     SELECT current_version_id FROM device_profiles
-                    WHERE machine_id = ? AND device_id = ? AND deleted_at IS NULL
+                    WHERE device_id = ? AND deleted_at IS NULL
                     """,
-                    (machine_id, device_profile_id),
+                    (device_profile_id,),
                 )
                 if mapped is None or int(mapped) != version.profile_version_id:
                     return None

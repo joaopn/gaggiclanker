@@ -243,8 +243,8 @@ def export_device_id(export: ShotExport) -> str:
     """The archive's id for an exported shot: the 6-digit zero-padded form.
 
     The same spelling the sync engine stores, so an export of a shot that was
-    also pulled from the machine lands on the same `(machine_id, device_id)` and
-    is recognised as the duplicate it is. An id that is not a decimal number
+    also pulled from the machine lands on the same `device_id` and is recognised
+    as the duplicate it is. An id that is not a decimal number
     cannot be padded — no firmware writes one, but a hand-edited file might — and
     is kept verbatim rather than rejected.
     """

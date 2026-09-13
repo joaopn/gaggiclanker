@@ -13,17 +13,11 @@ it. So the rule is stated once, here, and applied in both places that matter:
 A route does **not** run it. A rule enforced at the edge is a rule that a second
 caller — a background task, a future API, a script — gets to skip.
 
-The four disqualifications, and why each one:
+The three disqualifications, and why each one:
 
 ``no shot``
-    The archive has never seen this id on this machine. There is nothing to
-    protect the shot with, so nothing may delete it.
-
-``wrong machine``
-    Shot ids are a per-device counter, so `000129` exists on every machine that
-    has pulled a hundred and twenty-nine shots. A candidate row is fetched by
-    ``(machine_id, device_id)`` and the pair is re-asserted here, because "this
-    id is in the archive" and "this shot is in the archive" are different claims.
+    The archive has never seen this id. There is nothing to protect the shot
+    with, so nothing may delete it.
 
 ``quarantined``
     The bytes are stored but they did not parse. They may yet parse after a
@@ -62,9 +56,7 @@ def expected_slog_bytes(candidate: CleanupCandidate) -> int | None:
     return header + candidate.sample_count * sample
 
 
-def ineligible_reason(
-    candidate: CleanupCandidate | None, *, machine_id: int, device_id: str
-) -> str | None:
+def ineligible_reason(candidate: CleanupCandidate | None, *, device_id: str) -> str | None:
     """Why this shot may **not** be deleted from the machine, or ``None`` if it may.
 
     A sentence rather than a code, because where it ends up is an audit row and
@@ -74,14 +66,8 @@ def ineligible_reason(
     """
     if candidate is None:
         return (
-            f"Shot {device_id} is not in the archive for this machine, so there is no copy "
-            "of it here to protect. Sync before cleaning up."
-        )
-    if candidate.machine_id != machine_id:
-        return (
-            f"Shot {device_id} in the archive belongs to a different machine. Shot ids are a "
-            "per-device counter and deleting on the strength of a matching number would "
-            "delete somebody else's shot."
+            f"Shot {device_id} is not in the archive, so there is no copy of it here to "
+            "protect. Sync before cleaning up."
         )
     if candidate.quarantined:
         return (

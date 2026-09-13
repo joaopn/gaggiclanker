@@ -44,7 +44,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
-from gaggiclanker.db.repos.machines import MachinesRepository
+from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
@@ -99,7 +99,6 @@ class HardwareFacts(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    machine_id: int
     machine_name: str = ""
     machine_hardware: str = ""
     temperature_offset_c: float | None = None
@@ -211,7 +210,6 @@ async def build_context(
     db: Database,
     *,
     bean_id: int,
-    machine_id: int,
     grinder_id: int | None = None,
     usual_grind: str = "",
     dose_hint_g: float | None = None,
@@ -226,11 +224,12 @@ async def build_context(
     render a fixed document, and a rendered date read off the clock would move
     the file once a day for ever.
 
-    Raises ``LookupError`` for a bean or a machine that does not exist: that is
+    Raises ``LookupError`` for a bean or a grinder that does not exist: that is
     the caller's mistake rather than the provider's, and it wants to be a 404
-    rather than a stored `failed` run.
+    rather than a stored `failed` run. The machine is a singleton and is always
+    there, so it is read rather than looked up.
     """
-    inputs = await _fetch(db, bean_id=bean_id, machine_id=machine_id, grinder_id=grinder_id)
+    inputs = await _fetch(db, bean_id=bean_id, grinder_id=grinder_id)
     today = (as_of or datetime.now(UTC).date().isoformat())[:10]
 
     bean = BeanFacts(
@@ -247,7 +246,6 @@ async def build_context(
         notes=inputs.bean.notes,
     )
     hardware = HardwareFacts(
-        machine_id=machine_id,
         machine_name=inputs.machine_name,
         machine_hardware=inputs.machine_hardware,
         temperature_offset_c=inputs.temperature_offset_c,
@@ -267,7 +265,6 @@ async def build_context(
         origin=bean.origin or None,
         decaf=bean.decaf,
         grinder_id=hardware.grinder_id,
-        machine_id=machine_id,
         limit=similar_limit,
     )
     profiles = await _profile_candidates(db)
@@ -319,13 +316,11 @@ async def build_context(
     )
 
 
-async def _fetch(db: Database, *, bean_id: int, machine_id: int, grinder_id: int | None) -> _Inputs:
+async def _fetch(db: Database, *, bean_id: int, grinder_id: int | None) -> _Inputs:
     bean = await BeansRepository(db).get(bean_id)
     if bean is None:
         raise LookupError(f"no bean {bean_id}")
-    machine = await MachinesRepository(db).get(machine_id)
-    if machine is None:
-        raise LookupError(f"no machine {machine_id}")
+    machine = await MachineRepository(db).get()
     grinder = None
     if grinder_id is not None:
         grinder = await GrindersRepository(db).get(grinder_id)
@@ -333,9 +328,9 @@ async def _fetch(db: Database, *, bean_id: int, machine_id: int, grinder_id: int
             raise LookupError(f"no grinder {grinder_id}")
     return _Inputs(
         bean=bean,
-        machine_hardware=machine.hardware_string or "",
-        machine_name=machine.name or machine.host,
-        temperature_offset_c=machine.temperature_offset_c,
+        machine_hardware=(machine.hardware_string or "") if machine else "",
+        machine_name=(machine.name or machine.host) if machine else "",
+        temperature_offset_c=machine.temperature_offset_c if machine else None,
         grinder=grinder,
     )
 

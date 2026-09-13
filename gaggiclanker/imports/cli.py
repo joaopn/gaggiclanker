@@ -48,12 +48,6 @@ def add_import_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     )
     parser.add_argument("paths", nargs="+", type=Path, help="files or directories to import")
     parser.add_argument(
-        "--machine-id",
-        type=int,
-        default=None,
-        help="machine these shots belong to; defaults to the configured one",
-    )
-    parser.add_argument(
         "--replace",
         action="store_true",
         help="overwrite shots already in the archive instead of skipping them",
@@ -90,7 +84,6 @@ def collect_files(paths: Iterable[Path]) -> tuple[list[Path], list[ImportResult]
 async def run_import(
     paths: Sequence[Path],
     *,
-    machine_id: int | None = None,
     replace: bool = False,
     env: EnvSettings | None = None,
 ) -> ImportSummary:
@@ -115,26 +108,25 @@ async def run_import(
         service = ImportService(
             db, SettingsService(SettingsRepository(db), dotenv=load_dotenv_values())
         )
-        summary = await service.import_files(payloads, machine_id=machine_id, replace=replace)
+        summary = await service.import_files(payloads, replace=replace)
     finally:
         await db.close()
 
     # The unreadable paths are results too, and they belong in the same list and
     # the same counts as everything else.
-    return ImportSummary.of([*problems, *summary.items], summary.machine_id)
+    return ImportSummary.of([*problems, *summary.items])
 
 
 def import_command(args: argparse.Namespace) -> int:
     """Run an import and print one line per file. Returns the exit status."""
-    summary = asyncio.run(run_import(args.paths, machine_id=args.machine_id, replace=args.replace))
+    summary = asyncio.run(run_import(args.paths, replace=args.replace))
     for item in summary.items:
         subject = item.device_id or item.label or item.kind
         detail = f" — {item.message}" if item.message else ""
         print(f"{item.status:<8} {subject:<16} {item.filename}{detail}")
     print(
         f"\n{len(summary.items)} file(s): {summary.created} created, "
-        f"{summary.updated} updated, {summary.skipped} skipped, {summary.failed} failed "
-        f"(machine {summary.machine_id})"
+        f"{summary.updated} updated, {summary.skipped} skipped, {summary.failed} failed"
     )
     # Non-zero when anything failed, so a seeding script in CI notices.
     return 1 if summary.failed else 0

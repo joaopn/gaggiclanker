@@ -41,7 +41,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.judgements import NOTES_MAX, JudgementsRepository, ShotJudgementRow
-from gaggiclanker.db.repos.machines import MachinesRepository
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow, NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -78,9 +77,9 @@ BALANCE_TO_DEVICE: dict[str, str] = {
 }
 
 
-def writeback_task_name(machine_id: int) -> str:
-    """The registry name a bulk push holds, one per machine."""
-    return f"notes-writeback:{machine_id}"
+def writeback_task_name() -> str:
+    """The registry name a bulk push holds. One machine, so one name."""
+    return "notes-writeback"
 
 
 class NotesWritebackPolicy(BaseModel):
@@ -187,7 +186,6 @@ class NotesWritebackService:
         self.judgements = JudgementsRepository(db)
         self.notes = NotesRepository(db)
         self.shots = ShotsRepository(db)
-        self.machines = MachinesRepository(db)
 
     async def policy(self) -> NotesWritebackPolicy:
         raw = str(await self.settings.get("notesWritebackFields") or "")
@@ -198,9 +196,9 @@ class NotesWritebackService:
             fields=[name for name in chosen if name in NOTES_WRITEBACK_FIELDS],
         )
 
-    async def pending(self, machine_id: int | None = None, *, limit: int = 200) -> list[int]:
+    async def pending(self, *, limit: int = 200) -> list[int]:
         """Shot ids whose verdict the machine does not have yet."""
-        return await self.judgements.pending_writeback(machine_id, limit=limit)
+        return await self.judgements.pending_writeback(limit=limit)
 
     async def writeback(self, shot_id: int, *, trigger: str = "manual") -> WritebackResult:
         """Send one shot's judgement to the machine, if every rule allows it.
@@ -298,7 +296,7 @@ class NotesWritebackService:
         return WritebackResult(shot_id=shot_id, device_id=shot.device_id, written=True)
 
     async def push_pending(
-        self, machine_id: int | None = None, *, trigger: str = "manual", limit: int = 200
+        self, *, trigger: str = "manual", limit: int = 200
     ) -> list[WritebackResult]:
         """Every pending judgement, oldest first, stopping on the first device error.
 
@@ -308,7 +306,7 @@ class NotesWritebackService:
         frames will not improve it.
         """
         results: list[WritebackResult] = []
-        for shot_id in await self.pending(machine_id, limit=limit):
+        for shot_id in await self.pending(limit=limit):
             result = await self.writeback(shot_id, trigger=trigger)
             results.append(result)
             if result.device_error:
@@ -332,12 +330,12 @@ class NotesWritebackService:
         if not result.written and result.reason:
             log.debug("notes_writeback_skipped", shot_id=shot_id, reason=result.reason)
 
-    def spawn_bulk(self, tasks: TaskRegistry, machine_id: int) -> bool:
+    def spawn_bulk(self, tasks: TaskRegistry) -> bool:
         """Queue a bulk push under this machine's name. False if one is running."""
-        name = writeback_task_name(machine_id)
+        name = writeback_task_name()
         if tasks.get(name) is not None:
             return False
-        tasks.spawn(name, self.push_pending(machine_id, trigger="bulk"))
+        tasks.spawn(name, self.push_pending(trigger="bulk"))
         return True
 
     def _publish(self, data: dict[str, Any]) -> None:

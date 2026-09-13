@@ -142,7 +142,6 @@ async def _insights(db: Database, row: Any) -> list[Any]:
         process=getattr(bean, "process", None),
         origin=getattr(bean, "origin", None),
         grinder_id=row.grinder_id,
-        machine_id=row.machine_id,
     )
     return await InsightsRepository(db).select(attributes)
 

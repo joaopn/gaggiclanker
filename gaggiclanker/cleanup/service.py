@@ -47,7 +47,6 @@ from gaggiclanker.db.repos.cleanup import (
     CleanupRunUpdate,
 )
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
-from gaggiclanker.db.repos.machines import MachineRow, MachinesRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -84,24 +83,22 @@ CLEANUP_EVENT = "cleanup.progress"
 MIN_DELETE_INTERVAL_S = 0.5
 
 
-def auto_task_name(machine_id: int) -> str:
+def auto_task_name() -> str:
     """The name the *decision* to run automatically holds, distinct from the run.
 
     Separate so that "is automatic cleanup even on" can be answered without
     claiming the name a manual run needs — see :meth:`CleanupService.maybe_spawn_auto`.
     """
-    return f"cleanup-auto:{machine_id}"
+    return "cleanup-auto"
 
 
-def cleanup_task_name(machine_id: int) -> str:
-    """The registry name one machine's cleanup holds.
+def cleanup_task_name() -> str:
+    """The registry name a cleanup holds.
 
-    Per machine rather than global, so a second box on the network is not
-    blocked by this one's run — and one per machine, so two tabs pressing the
-    button get one run rather than two passes fighting over the device's two
-    HTTP slots.
+    One machine, so one name: two tabs pressing the button get one run rather
+    than two passes fighting over the device's two HTTP slots.
     """
-    return f"cleanup:{machine_id}"
+    return "cleanup"
 
 
 class CleanupPolicy(BaseModel):
@@ -152,10 +149,9 @@ class CleanupPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    machine_id: int | None = None
     policy: CleanupPolicy
     #: What the archive believes is still on the machine — every shot it holds
-    #: for this machine that the index has not flagged deleted.
+    #: that the index has not flagged deleted.
     on_device_count: int = 0
     #: Free bytes from the last `res:ota-settings`, and which volume they are
     #: from. ``None`` when the machine has never broadcast one, which is the
@@ -196,7 +192,6 @@ class CleanupService:
         # half a second per deleted shot proving it forty times.
         self.pace_seconds = pace_seconds
         self.cleanup = CleanupRepository(db)
-        self.machines = MachinesRepository(db)
         self.shots = ShotsRepository(db)
         self.notes = NotesRepository(db)
         self.writes = DeviceWritesRepository(db)
@@ -220,33 +215,20 @@ class CleanupService:
 
     # ── the plan ─────────────────────────────────────────────────────
 
-    async def plan(self, machine_id: int | None = None) -> CleanupPlan:
+    async def plan(self) -> CleanupPlan:
         """What a run would delete right now. A dry run, and the UI's preview.
 
-        ``machine_id`` defaults to the machine this box is configured for. It is
-        a parameter because the archive can hold more than one machine's shots
-        and a cleanup is always *of a machine* — there is no such thing as
-        cleaning up "the archive".
+        There is one machine and one archive of its shots, so there is nothing
+        to choose between: a cleanup is of the machine, and the only question
+        this answers is which of the shots it still holds may go.
         """
         policy = await self.policy()
-        machine = await self._machine(machine_id)
-        if machine is None:
-            return CleanupPlan(
-                policy=policy,
-                blocked=(
-                    "No machine has been synced yet, so there is nothing here that knows "
-                    "what is on the display."
-                ),
-            )
-
         free_bytes, free_source = self._free_space()
-        candidates = await self.cleanup.candidates(machine.id)
+        candidates = await self.cleanup.candidates()
         eligible: list[CleanupCandidate] = []
         skipped: list[SkippedShot] = []
         for candidate in candidates:
-            reason = ineligible_reason(
-                candidate, machine_id=machine.id, device_id=candidate.device_id
-            )
+            reason = ineligible_reason(candidate, device_id=candidate.device_id)
             if reason is None:
                 eligible.append(candidate)
             else:
@@ -256,7 +238,6 @@ class CleanupService:
 
         chosen, blocked = self._choose(policy, eligible, len(candidates), free_bytes)
         return CleanupPlan(
-            machine_id=machine.id,
             policy=policy,
             on_device_count=len(candidates),
             free_bytes=free_bytes,
@@ -338,8 +319,8 @@ class CleanupService:
 
     # ── the run ──────────────────────────────────────────────────────
 
-    def spawn(self, tasks: TaskRegistry, machine_id: int, *, trigger: str = "manual") -> bool:
-        """Queue a run under this machine's registry name. False if one is running.
+    def spawn(self, tasks: TaskRegistry, *, trigger: str = "manual") -> bool:
+        """Queue a run under the cleanup registry name. False if one is running.
 
         The name is claimed synchronously inside
         :meth:`~gaggiclanker.infra.tasks.TaskRegistry.spawn`, so two tabs
@@ -347,13 +328,13 @@ class CleanupService:
         interleave — the loser is told a run is already going rather than
         getting a second one.
         """
-        name = cleanup_task_name(machine_id)
+        name = cleanup_task_name()
         if tasks.get(name) is not None:
             return False
-        tasks.spawn(name, self.run(machine_id, trigger=trigger))
+        tasks.spawn(name, self.run(trigger=trigger))
         return True
 
-    async def run(self, machine_id: int | None = None, *, trigger: str = "manual") -> CleanupRunRow:
+    async def run(self, *, trigger: str = "manual") -> CleanupRunRow:
         """Delete what the plan says, oldest first, stopping on the first error.
 
         Every delete goes through the gated client, so every one of them is
@@ -363,11 +344,8 @@ class CleanupService:
         shot again, and a run that deleted forty shots should not depend on a
         later pass to say so.
         """
-        plan = await self.plan(machine_id)
-        if plan.machine_id is None:
-            raise LookupError(plan.blocked or "no machine to clean up")
+        plan = await self.plan()
         run_id = await self.cleanup.start_run(
-            plan.machine_id,
             mode=plan.policy.mode,
             target=plan.policy.target,
             trigger=trigger,
@@ -378,7 +356,6 @@ class CleanupService:
             {
                 "status": "started",
                 "run_id": run_id,
-                "machine_id": plan.machine_id,
                 "planned": len(plan.planned),
                 "trigger": trigger,
             }
@@ -404,7 +381,6 @@ class CleanupService:
             {
                 "status": finished.status,
                 "run_id": run_id,
-                "machine_id": plan.machine_id,
                 "deleted": finished.deleted,
                 "planned": finished.planned,
                 "error": finished.error,
@@ -413,7 +389,6 @@ class CleanupService:
         log.info(
             "cleanup_run_finished",
             run_id=run_id,
-            machine_id=plan.machine_id,
             planned=finished.planned,
             deleted=finished.deleted,
             errors=finished.errors,
@@ -540,7 +515,7 @@ class CleanupService:
 
     # ── the automatic trigger ────────────────────────────────────────
 
-    def maybe_spawn_auto(self, tasks: TaskRegistry, machine_id: int) -> None:
+    def maybe_spawn_auto(self, tasks: TaskRegistry) -> None:
         """The sync engine's poke: schedule a run if — and only if — both switches are on.
 
         Synchronous and cheap on purpose. It is called from the shot pass after
@@ -549,39 +524,29 @@ class CleanupService:
         ``create_task`` and never a database round trip on a path that has just
         finished one.
 
-        The task it spawns is **not** named `cleanup:<machine>`. It reads the
-        two switches first and only then claims that name, because the poke
+        The task it spawns is **not** named `cleanup`. It reads the two
+        switches first and only then claims that name, because the poke
         fires after every successful index diff whether or not automatic cleanup
         is on: claiming the run's name to discover that it is off would make a
         person pressing "Run cleanup" in the half-second after a sync pass get a
         409 about a run that was never going to happen.
         """
-        name = auto_task_name(machine_id)
+        name = auto_task_name()
         if tasks.get(name) is not None:
             return
-        tasks.spawn(name, self._auto_run(tasks, machine_id))
+        tasks.spawn(name, self._auto_run(tasks))
 
-    async def _auto_run(self, tasks: TaskRegistry, machine_id: int) -> None:
+    async def _auto_run(self, tasks: TaskRegistry) -> None:
         """Check both switches, then take the run's name. Behind :meth:`maybe_spawn_auto`."""
         policy = await self.policy()
         if not policy.auto or not policy.writes_enabled or policy.mode == "off":
             return
         # Through `spawn` rather than by calling `run` here, so the automatic
-        # pass and a manual one are the same single-run-per-machine rule. If a
-        # manual run won the race, this one simply does not happen; the next
-        # index diff pokes again.
-        self.spawn(tasks, machine_id, trigger="auto")
+        # pass and a manual one are the same one-run-at-a-time rule. If a manual
+        # run won the race, this one simply does not happen; the next index diff
+        # pokes again.
+        self.spawn(tasks, trigger="auto")
 
     def _publish(self, data: dict[str, Any]) -> None:
         if self.bus is not None:
             self.bus.publish(SseEvent(event=CLEANUP_EVENT, data=data))
-
-    async def _machine(self, machine_id: int | None) -> MachineRow | None:
-        if machine_id is not None:
-            return await self.machines.get(machine_id)
-        if self.client is not None:
-            machine = await self.machines.get_by_host(self.client.host)
-            if machine is not None:
-                return machine
-        rows = await self.machines.list_all()
-        return rows[0] if len(rows) == 1 else None

@@ -47,7 +47,7 @@ import structlog
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import dumps
 from gaggiclanker.db.repos.judgements import JudgementsRepository
-from gaggiclanker.db.repos.machines import MachineRow, MachinesRepository, identity_to_upsert
+from gaggiclanker.db.repos.machines import MachineRepository, MachineRow, identity_to_upsert
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
@@ -168,7 +168,7 @@ class SyncEngine:
         self.bus = bus
         self.concurrency = max(1, concurrency)
 
-        self.machines = MachinesRepository(db)
+        self.machines = MachineRepository(db)
         self.profiles = ProfilesRepository(db)
         self.shots = ShotsRepository(db)
         self.notes = NotesRepository(db)
@@ -204,15 +204,15 @@ class SyncEngine:
         #: socket; two passes would fight over both, and SQLite's single
         #: connection cannot hold two transactions anyway.
         self._lock = asyncio.Lock()
-        #: Called with the machine id after a shot pass that read a **full**
-        #: index and finished cleanly, and always **outside** the lock above.
+        #: Called after a shot pass that read a **full** index and finished
+        #: cleanly, and always **outside** the lock above.
         #: The automatic cleanup hangs off it: deleting shots takes the
         #: machine's socket for as long as it runs, and doing that while holding
         #: the sync lock would block the next shot's ingest behind a retention
         #: policy. The engine neither knows nor decides what happens next —
         #: whether a cleanup is wanted at all is two settings read inside the
         #: task the app's callback spawns.
-        self.on_index_synced: Callable[[int], None] | None = None
+        self.on_index_synced: Callable[[], None] | None = None
 
     # ── lifecycle ────────────────────────────────────────────────────
 
@@ -348,15 +348,17 @@ class SyncEngine:
     # ── identity ─────────────────────────────────────────────────────
 
     async def _ensure_machine(self) -> MachineRow:
-        """The `machines` row for the configured host, created if this is the first pass.
+        """The one `machines` row, with its host set to the one we are talking to.
 
-        Created before anything else needs it because `shots.machine_id` is NOT
-        NULL: a nullable owner would make the `(machine_id, device_id)` unique
-        index useless (SQLite treats NULLs as distinct) and let the same shot in
-        twice.
+        There is always a row — the schema holds exactly one — so this is a
+        write of the configured host onto it rather than a lookup that might
+        miss. Pointing the container at a new address therefore moves the
+        machine rather than forking the archive: every shot, profile and Set
+        stays attached, which is the whole reason identity stopped being the
+        host.
         """
         if self._machine is None:
-            self._machine = await self.machines.upsert(
+            self._machine = await self.machines.update_identity(
                 identity_to_upsert(self.client.host, status=self.client.last_status)
             )
         return self._machine
@@ -370,7 +372,7 @@ class SyncEngine:
         client does not expose one.
         """
         async with self._lock:
-            machine = await self._ensure_machine()
+            await self._ensure_machine()
             run_id = await self.runs.start_run("identity", trigger)
             update = SyncRunUpdate()
             settings: dict[str, Any] | None = None
@@ -383,7 +385,7 @@ class SyncEngine:
                 update.error = str(exc)
                 log.info("sync_identity_settings_unavailable", error=str(exc))
 
-            await self.machines.upsert(
+            self._machine = await self.machines.update_identity(
                 identity_to_upsert(
                     self.client.host,
                     identity=self.client.identity,
@@ -391,7 +393,6 @@ class SyncEngine:
                     settings=settings,
                 )
             )
-            self._machine = await self.machines.get(machine.id)
             await self.runs.finish_run(run_id, update)
             self._publish(SYNC_PROGRESS_EVENT, {"kind": "identity", "status": "finished"})
             return await self.runs.get_run(run_id)
@@ -408,17 +409,12 @@ class SyncEngine:
         """
         async with self._lock:
             run = await self._sync_shots(kind=kind, trigger=trigger)
-        if (
-            self.on_index_synced is not None
-            and run.status == "ok"
-            and self._last_index_was_full
-            and self._machine is not None
-        ):
-            self.on_index_synced(self._machine.id)
+        if self.on_index_synced is not None and run.status == "ok" and self._last_index_was_full:
+            self.on_index_synced()
         return run
 
     async def _sync_shots(self, *, kind: str, trigger: str) -> SyncRunRow:
-        machine = await self._ensure_machine()
+        await self._ensure_machine()
         run_id = await self.runs.start_run(kind, trigger)
         update = SyncRunUpdate()
         self._publish(
@@ -434,12 +430,12 @@ class SyncEngine:
         try:
             entries = await self._read_index()
             listed = entries or {}
-            known = await self.shots.known_states(machine.id)
+            known = await self.shots.known_states()
             update.shots_seen = len(listed)
 
             self._last_index_was_full = entries is not None
             missing = self._missing_entries(listed, known)
-            await self._fetch_and_store(machine, missing, run_id=run_id, update=update)
+            await self._fetch_and_store(missing, run_id=run_id, update=update)
             await self._reconcile(
                 listed, known, run_id=run_id, update=update, full_index=entries is not None
             )
@@ -469,7 +465,7 @@ class SyncEngine:
             },
         )
         if finished.status == "ok" and entries is not None:
-            await self._sync_notes(machine, entries, trigger=trigger)
+            await self._sync_notes(entries, trigger=trigger)
         await self.runs.trim_events()
         return finished
 
@@ -522,7 +518,6 @@ class SyncEngine:
 
     async def _fetch_and_store(
         self,
-        machine: MachineRow,
         missing: Sequence[tuple[str, IndexEntry | None]],
         *,
         run_id: int,
@@ -567,7 +562,7 @@ class SyncEngine:
                 )
                 return
             try:
-                await self._store(machine, fetched, run_id=run_id, update=update)
+                await self._store(fetched, run_id=run_id, update=update)
             except Exception as exc:  # one bad shot must not end the backfill
                 update.errors += 1
                 log.warning("sync_store_failed", device_id=fetched.device_id, exc_info=True)
@@ -632,9 +627,7 @@ class SyncEngine:
             return _Fetched(device_id=device_id, entry=entry, missing=True)
         return _Fetched(device_id=device_id, entry=entry, fetch=fetch)
 
-    async def _store(
-        self, machine: MachineRow, fetched: _Fetched, *, run_id: int, update: SyncRunUpdate
-    ) -> None:
+    async def _store(self, fetched: _Fetched, *, run_id: int, update: SyncRunUpdate) -> None:
         """Turn one fetched shot into rows."""
         if fetched.error is not None:
             update.errors += 1
@@ -655,7 +648,6 @@ class SyncEngine:
         entry = fetched.entry
         if fetch.slog is None:
             await self._store_quarantined(
-                machine,
                 fetched,
                 reason=fetch.parse_error or "the .slog did not parse",
                 run_id=run_id,
@@ -667,7 +659,6 @@ class SyncEngine:
             derived = derive_shot(
                 fetch.slog,
                 fetch.raw,
-                machine_id=machine.id,
                 device_id=fetched.device_id,
                 source="device",
                 has_pressure=self._has_pressure(),
@@ -679,14 +670,14 @@ class SyncEngine:
             # them. Quarantine rather than drop: the header we could not model
             # is exactly the evidence the next fix needs.
             await self._store_quarantined(
-                machine, fetched, reason=f"validation failed: {exc}", run_id=run_id, update=update
+                fetched, reason=f"validation failed: {exc}", run_id=run_id, update=update
             )
             return
         shot, samples = derived.shot, derived.samples
         if derived.diagnostics_error is not None:
             update.errors += 1
 
-        shot.profile_version_id = await self._version_for(machine.id, shot.profile_id_on_device)
+        shot.profile_version_id = await self._version_for(shot.profile_id_on_device)
         shot_id = await self.shots.insert(shot, samples)
         # The user's half of the shot: which Set was this, and what did they
         # think of it. Both are best-effort and neither can fail an ingest —
@@ -694,7 +685,6 @@ class SyncEngine:
         # leaves the shot in the `needs_set` inbox rather than losing it.
         set_version_id = await self.sets.auto_assign(
             shot_id,
-            machine_id=machine.id,
             profile_version_id=shot.profile_version_id,
             device_profile_id=shot.profile_id_on_device,
         )
@@ -726,7 +716,6 @@ class SyncEngine:
 
     async def _store_quarantined(
         self,
-        machine: MachineRow,
         fetched: _Fetched,
         *,
         reason: str,
@@ -744,7 +733,6 @@ class SyncEngine:
         entry = fetched.entry
         shot = ShotInsert(
             device_id=fetched.device_id,
-            machine_id=machine.id,
             raw_slog=fetch.raw,
             quarantined=True,
             quarantine_reason=reason,
@@ -798,10 +786,10 @@ class SyncEngine:
             return self._capabilities[0]
         return None
 
-    async def _version_for(self, machine_id: int, profile_id: str) -> int | None:
+    async def _version_for(self, profile_id: str) -> int | None:
         if not profile_id:
             return None
-        version = await self.profiles.find_version_for_device_profile(machine_id, profile_id)
+        version = await self.profiles.find_version_for_device_profile(profile_id)
         return None if version is None else version.id
 
     async def _reconcile(
@@ -889,7 +877,7 @@ class SyncEngine:
     # ── notes ────────────────────────────────────────────────────────
 
     async def _sync_notes(
-        self, machine: MachineRow, entries: dict[str, IndexEntry], *, trigger: str
+        self, entries: dict[str, IndexEntry], *, trigger: str
     ) -> SyncRunRow | None:
         """Pull `/h/<id>.json` for every `HAS_NOTES` entry that we do not hold current.
 
@@ -904,8 +892,8 @@ class SyncEngine:
         if not wanted:
             return None
 
-        held = await self.notes.stale_shot_ids(machine.id)
-        shots = await self.shots.known_states(machine.id)
+        held = await self.notes.stale_shot_ids()
+        shots = await self.shots.known_states()
         run_id = await self.runs.start_run("notes", trigger)
         update = SyncRunUpdate()
         try:
@@ -957,7 +945,7 @@ class SyncEngine:
             return await self._sync_profiles(trigger=trigger)
 
     async def _sync_profiles(self, *, trigger: str) -> SyncRunRow:
-        machine = await self._ensure_machine()
+        await self._ensure_machine()
         run_id = await self.runs.start_run("profiles", trigger)
         update = SyncRunUpdate()
         self._publish(
@@ -979,9 +967,8 @@ class SyncEngine:
             version, created = await self.profiles.ensure_version(
                 profile, device_json=dumps(profile.to_device())
             )
-            existing = await self.profiles.get_device_profile(machine.id, profile.id)
+            existing = await self.profiles.get_device_profile(profile.id)
             await self.profiles.upsert_device_profile(
-                machine_id=machine.id,
                 device_id=profile.id,
                 version_id=version.id,
                 favorite=profile.favorite,
@@ -992,7 +979,7 @@ class SyncEngine:
                 selected=(profile.id == selected_id) if selected_id else profile.selected,
                 position=position,
             )
-            await self.shots.link_unlinked_by_device_profile(machine.id, profile.id, version.id)
+            await self.shots.link_unlinked_by_device_profile(profile.id, version.id)
             seen.append(profile.id)
             if created or existing is None or existing.current_version_id != version.id:
                 update.profiles_changed += 1
@@ -1008,7 +995,7 @@ class SyncEngine:
                     {"device_id": profile.id, "version_id": version.id, "label": profile.label},
                 )
 
-        removed = await self.profiles.mark_missing_deleted(machine.id, seen)
+        removed = await self.profiles.mark_missing_deleted(seen)
         if removed:
             update.profiles_changed += removed
             self._publish(PROFILE_UPDATED_EVENT, {"deleted": removed})

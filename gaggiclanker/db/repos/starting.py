@@ -42,7 +42,6 @@ class StartingPointStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bean_id: int
-    machine_id: int
     grinder_id: int | None = None
     usual_grind: str = Field(default="", max_length=100)
     dose_hint_g: float | None = None
@@ -61,7 +60,6 @@ class StartingPointRunRow(BaseModel):
     id: int
     bean_id: int
     bean_name: str | None = None
-    machine_id: int
     grinder_id: int | None = None
     grinder_name: str | None = None
     usual_grind: str = ""
@@ -115,15 +113,14 @@ class StartingPointRunsRepository(Repository):
         cursor = await self.db.execute(
             """
             INSERT INTO starting_point_runs
-                (bean_id, machine_id, grinder_id, usual_grind, dose_hint_g, provider, model,
+                (bean_id, grinder_id, usual_grind, dose_hint_g, provider, model,
                  prompt_name, prompt_version, input_json, status, created_at)
             VALUES
-                (:bean_id, :machine_id, :grinder_id, :usual_grind, :dose_hint_g, :provider,
+                (:bean_id, :grinder_id, :usual_grind, :dose_hint_g, :provider,
                  :model, :prompt_name, :prompt_version, :input_json, 'running', :created_at)
             """,
             {
                 "bean_id": spec.bean_id,
-                "machine_id": spec.machine_id,
                 "grinder_id": spec.grinder_id,
                 "usual_grind": spec.usual_grind,
                 "dose_hint_g": spec.dose_hint_g,

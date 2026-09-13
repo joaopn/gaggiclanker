@@ -471,7 +471,7 @@ class ProfileDraftService:
             )
             return _require_row(failed, draft_id), None
 
-        await self._mirror(client, device_id, served)
+        await self._mirror(device_id, served)
         row = _require_row(
             await self.drafts.set_status(
                 draft_id,
@@ -599,7 +599,7 @@ class ProfileDraftService:
             raise Conflict("That draft has no document to push")
         return _profile_from_version(await self._require_version(draft.draft_version_id))
 
-    async def _mirror(self, client: GaggimateClient, device_id: str, served: Profile) -> None:
+    async def _mirror(self, device_id: str, served: Profile) -> None:
         """Put the pushed profile into the archive's own mirror straight away.
 
         Without this the new profile is invisible until the profiles loop next
@@ -610,14 +610,10 @@ class ProfileDraftService:
         draft already created rather than inserting a second one — the document
         is the same document, and that is the whole point of hashing it.
         """
-        machine = await self._machine_id(client)
-        if machine is None:
-            return
         version, _ = await self.profiles.ensure_version(
             served, source="draft", device_json=json.dumps(served.to_device())
         )
         await self.profiles.upsert_device_profile(
-            machine_id=machine,
             device_id=device_id,
             version_id=version.id,
             # The firmware auto-favourites every new profile; the mirror says
@@ -625,10 +621,6 @@ class ProfileDraftService:
             favorite=served.favorite,
             selected=False,
         )
-
-    async def _machine_id(self, client: GaggimateClient) -> int | None:
-        row = await self.db.fetch_one("SELECT id FROM machines WHERE host = ?", (client.host,))
-        return int(row["id"]) if row is not None else None
 
     async def _render(
         self,

@@ -1,10 +1,15 @@
-"""The `machines` table: which machine this archive belongs to.
+"""The `machines` table: the one machine this archive belongs to.
 
-Identity is the configured host. The firmware reports no serial number — the
-whole of `res:ota-settings` is versions, a hardware string and free space — and
-a reflashed display keeps its address while changing every version string it
-reports. Keying on the host means one row per machine the container has ever
-been pointed at, which is the fact shots actually need a foreign key to.
+One row, `id = 1`, enforced by a CHECK. It describes whatever host is configured
+*now*, and the host is a setting rather than an identity: the firmware reports
+no serial number — the whole of `res:ota-settings` is versions, a hardware
+string and free space — so keying on the address meant that a display board that
+changed IP became a second machine, taking its shots, profiles and Sets with it.
+Nothing merged them back.
+
+So connecting to a new address updates this row. Nothing else in the archive
+carries a machine id; the analyzer, the starting point and the Device page all
+ask for "the machine" and get it.
 """
 
 from __future__ import annotations
@@ -17,7 +22,12 @@ from gaggiclanker.db.repos.base import JsonObject, JsonText, dumps, utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.models import LiveStatus, OtaSettings
 
-__all__ = ["MachineRow", "MachineUpsert", "MachinesRepository", "identity_to_upsert"]
+__all__ = ["MACHINE_ID", "MachineRepository", "MachineRow", "MachineUpsert", "identity_to_upsert"]
+
+
+#: The singleton's primary key. `machines` carries `CHECK (id = 1)`, so this is
+#: the whole of "which machine" and it never has to be passed anywhere.
+MACHINE_ID = 1
 
 
 class MachineUpsert(BaseModel):
@@ -53,7 +63,7 @@ class MachineRow(BaseModel):
     """One row of `machines`, as read back.
 
     The two JSON columns come out decoded (see :data:`~gaggiclanker.db.repos.base.JsonObject`):
-    this model is what `GET /api/machines` answers with, and a JSON string
+    this model is what `GET /api/machine` answers with, and a JSON string
     nested inside a JSON body is a parse every consumer would have to repeat.
     """
 
@@ -120,32 +130,33 @@ def _insert_placeholder(column: str) -> str:
     return f":{column}" if default is None else f"COALESCE(:{column}, {default})"
 
 
-class MachinesRepository(Repository):
-    """Reads and writes `machines`."""
+class MachineRepository(Repository):
+    """Reads and writes the one row of `machines`."""
 
-    async def upsert(self, machine: MachineUpsert) -> MachineRow:
-        """Insert the machine or refresh what we have learned about it.
+    async def get(self) -> MachineRow | None:
+        """The machine. ``None`` only on a database older than 0016 ran on."""
+        row = await self.db.fetch_one("SELECT * FROM machines WHERE id = ?", (MACHINE_ID,))
+        return self.to_model(MachineRow, row)
 
-        ``COALESCE(excluded.x, machines.x)`` on every column is the "None keeps
-        the stored value" rule from :class:`MachineUpsert`, expressed where it
-        cannot be forgotten.
+    async def update_identity(self, machine: MachineUpsert) -> MachineRow:
+        """Store what a connect learned, the host included.
 
-        **Importing shots from a machine that is not attached**: the host
-        is the identity and nothing validates that it resolves, so use a
-        synthetic one — ``import:<label>``, e.g. ``import:kitchen-2025`` — and
-        the imported shots get a `machine_id` that can never collide with a live
-        device's. `shots.machine_id` is NOT NULL precisely so that every shot has
-        an owner; a nullable one would also defeat the
-        ``UNIQUE(machine_id, device_id)`` index, because SQLite treats NULLs as
-        distinct and the same shot could be imported twice.
+        The host is on this path deliberately: pointing the container at a new
+        address updates the one row rather than inserting a second machine, so
+        an archive cannot split when a display board moves.
+
+        ``COALESCE(excluded.x, machines.x)`` on every other column is the "None
+        keeps the stored value" rule from :class:`MachineUpsert`, expressed where
+        it cannot be forgotten — a reconnect that happened to catch no state
+        frame must not blank the board's capabilities.
+
+        The INSERT half only fires on a database whose singleton row somehow went
+        missing; 0016 guarantees one exists on every install, fresh or upgraded.
         """
-        values: dict[str, Any] = {"host": machine.host, "now": utc_now()}
+        values: dict[str, Any] = {"id": MACHINE_ID, "host": machine.host, "now": utc_now()}
         for column in _UPDATABLE:
             values[column] = getattr(machine, column)
 
-        # COALESCE on every column is the "None keeps the stored value" rule.
-        # `excluded.x` is already coalesced to the default on insert for the
-        # NOT NULL columns, so the stored value is what survives either way.
         assignments = ", ".join(
             f"{column} = COALESCE(:{column}, machines.{column})" for column in _UPDATABLE
         )
@@ -153,31 +164,20 @@ class MachinesRepository(Repository):
         placeholders = ", ".join(_insert_placeholder(column) for column in _UPDATABLE)
         await self.db.execute(
             f"""
-            INSERT INTO machines (host, {columns}, first_seen_at, last_seen_at, created_at)
-            VALUES (:host, {placeholders}, :now, :now, :now)
-            ON CONFLICT(host) DO UPDATE SET {assignments}, last_seen_at = :now
+            INSERT INTO machines (id, host, {columns}, first_seen_at, last_seen_at, created_at)
+            VALUES (:id, :host, {placeholders}, :now, :now, :now)
+            ON CONFLICT(id) DO UPDATE SET
+                host = :host, {assignments}, last_seen_at = :now
             """,  # noqa: S608 - column names are the module constant above, never input
             values,
         )
-        row = await self.get_by_host(machine.host)
+        row = await self.get()
         if row is None:  # pragma: no cover - the upsert above guarantees it
-            raise RuntimeError(f"machine {machine.host!r} vanished between write and read")
+            raise RuntimeError("the machine row vanished between write and read")
         return row
 
-    async def get_by_host(self, host: str) -> MachineRow | None:
-        row = await self.db.fetch_one("SELECT * FROM machines WHERE host = ?", (host,))
-        return self.to_model(MachineRow, row)
-
-    async def get(self, machine_id: int) -> MachineRow | None:
-        row = await self.db.fetch_one("SELECT * FROM machines WHERE id = ?", (machine_id,))
-        return self.to_model(MachineRow, row)
-
-    async def list_all(self) -> list[MachineRow]:
-        rows = await self.db.fetch_all("SELECT * FROM machines ORDER BY id")
-        return self.to_models(MachineRow, rows)
-
     async def update_editable(
-        self, machine_id: int, *, name: str | None = None, notes: str | None = None
+        self, *, name: str | None = None, notes: str | None = None
     ) -> MachineRow | None:
         """Change the two fields a person owns on this row.
 
@@ -190,7 +190,7 @@ class MachinesRepository(Repository):
         ``None`` means "leave it alone", matching :class:`MachineUpsert`.
         """
         assignments = []
-        values: dict[str, Any] = {"id": machine_id}
+        values: dict[str, Any] = {"id": MACHINE_ID}
         if name is not None:
             assignments.append("name = :name")
             values["name"] = name
@@ -204,12 +204,12 @@ class MachinesRepository(Repository):
             )
             if cursor.rowcount == 0:
                 return None
-        return await self.get(machine_id)
+        return await self.get()
 
-    async def touch(self, machine_id: int) -> None:
-        """Record that we have just heard from this machine."""
+    async def touch(self) -> None:
+        """Record that we have just heard from the machine."""
         await self.db.execute(
-            "UPDATE machines SET last_seen_at = ? WHERE id = ?", (utc_now(), machine_id)
+            "UPDATE machines SET last_seen_at = ? WHERE id = ?", (utc_now(), MACHINE_ID)
         )
 
 
