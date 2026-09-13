@@ -374,8 +374,14 @@ held in the tab.
 
 ### A starting point for a new coffee
 
-Open a coffee nobody has brewed and the first step of **New Set** answers the
-question you actually have. It shows what this archive has already brewed on
+**New Set** is one form: the bean, a name, the grinder, the profile version, the
+recipe and an optional intent. Picking a profile fills the target yield and the
+temperature from it when the profile states them — the temperature it brews at,
+and its largest volumetric stop — and never replaces a number you typed.
+
+Open a coffee nobody has brewed and **Suggest a starting point instead**, folded
+under that form, answers the question you actually have. It reads the bean and
+grinder already picked and shows what this archive has already brewed on
 *this grinder* that resembles it — same roast level, same process, same
 origin — with how each one went: shots, mean rating, mean execution score, ratio
 and time. That half is one SQL query, costs nothing, and is worth reading on its

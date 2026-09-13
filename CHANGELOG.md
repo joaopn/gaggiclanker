@@ -10,6 +10,51 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Starting a Set is one form
+
+**New Set is a single dialog** with every manual option on one screen: the bean
+(with its facts line), a name defaulting to the bag's, the grinder, the profile
+version, grind, dose, target yield, temperature and an optional intent, and one
+**Start the Set** button that waits for a bean. The five-step wizard (Suggest,
+Bean, Hardware, Profile, Recipe) is gone. The Beans page shortcut still opens it
+with the coffee picked, and a refusal from the server still keeps what you
+typed.
+
+**The AI starting point is folded under the form** as **Suggest a starting
+point instead**. It uses the bean and grinder already picked; asking, the three
+options and taking one behave as before, including landing on the staged draft
+when the option authored a profile.
+
+**Picking a profile fills the recipe.** Target yield and temperature come from
+the profile version when it states them: the temperature is the profile's own
+(0 means not set), and the yield is its largest volumetric stop — `pumped`
+targets are water, not coffee, and utility profiles stop on nothing, so they
+offer no yield. A field is filled only when it is empty or still holds what the
+previous profile filled; anything typed stays, and a hint says which numbers
+came from which profile. `GET /api/profile-versions` rows carry the two numbers
+as `temperature_c` and `target_yield_g`, and the style detector's allongé check
+reads the yield through the same helper.
+
+### A bean has no altitude
+
+Almost no bag prints the growing altitude, so the field was empty on most beans,
+and the only thing it fed was one rule nudging dense high-grown coffee a degree
+or two hotter and a step finer — the move the roast level and the taste of the
+cup already lead to.
+
+- **Removed**: the Altitude field on the Beans form and the metres on the bean
+  card, `altitude_m` on the bean API and the chat's `list_beans`, the altitude
+  line in the analysis and starting-point prompts, and the `altitude:high`
+  signal.
+- **One rule leaves the seeded knowledge tier**: `temperature_by_roast`/
+  `high_altitude`. An archive that already holds it keeps the row — seeding
+  never deletes a row somebody may have edited — but nothing emits the signal it
+  matches on, so it is never selected. The seeded reference prose is unchanged.
+
+Migration `0017` drops the column. `v_beans` names it, and SQLite re-parses every
+view when a table is altered, so the view is dropped and re-created without the
+column; the chat's SQL views answer everything else as before.
+
 ### One machine
 
 The archive was built to hold several, and the generality cost correctness
