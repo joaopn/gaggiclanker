@@ -14,6 +14,13 @@ import { type RefObject, useCallback, useEffect, useState } from "react";
  * measurement — and a fixed-height window is twenty lines. What it costs is
  * that every row must genuinely be `rowHeight` tall, which is why the row
  * component sets it rather than letting content decide.
+ *
+ * With one exception, and only one: a row can be open, with a panel below it
+ * whose height the caller measures and passes in as `expanded`. One extra
+ * block at a known index is still arithmetic — every row above it is where it
+ * was, every row below it is that many pixels further down — so it stays
+ * arithmetic rather than becoming a measured list. Two open rows would not be;
+ * the table allows one.
  */
 
 /**
@@ -33,6 +40,9 @@ export type VirtualWindow = {
   paddingBottom: number;
 };
 
+/** One open row: its index in the list, and the height of the panel under it. */
+export type ExpandedRow = { index: number; height: number };
+
 export function useVirtualRows(
   count: number,
   options: {
@@ -40,9 +50,11 @@ export function useVirtualRows(
     containerRef: RefObject<HTMLElement | null>;
     /** Rows rendered beyond each edge, so a fast scroll does not show blanks. */
     overscan?: number;
+    /** The open row, if any. Its panel is in the window arithmetic. */
+    expanded?: ExpandedRow | null;
   },
 ): VirtualWindow {
-  const { rowHeight, containerRef, overscan = 6 } = options;
+  const { rowHeight, containerRef, overscan = 6, expanded = null } = options;
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(FALLBACK_VIEWPORT_PX);
 
@@ -69,14 +81,61 @@ export function useVirtualRows(
     };
   }, [containerRef, measure]);
 
-  const visibleCount = Math.ceil(viewport / rowHeight) + overscan * 2;
-  const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
-  const end = Math.min(count, start + visibleCount);
+  return virtualWindow({ count, rowHeight, scrollTop, viewport, overscan, expanded });
+}
+
+/**
+ * The window itself, as a pure function of the numbers — exported for its own
+ * test, because jsdom has no layout and the arithmetic is the whole behaviour.
+ *
+ * The open row's panel counts as part of that row: a scroll position inside
+ * the panel is "on" the open row, so the row stays mounted while its panel is
+ * on screen, and the panel's height lands in `paddingTop` once the row has
+ * scrolled out above the window, or in `paddingBottom` while it is still below
+ * it. Without that, the spacers would be short by one panel as soon as the open
+ * row left the window: the scrollbar would jump, and the rows below it would be
+ * rendered a panel's height away from where the scroll position says they are.
+ */
+export function virtualWindow({
+  count,
+  rowHeight,
+  scrollTop,
+  viewport,
+  overscan,
+  expanded = null,
+}: {
+  count: number;
+  rowHeight: number;
+  scrollTop: number;
+  viewport: number;
+  overscan: number;
+  expanded?: ExpandedRow | null;
+}): VirtualWindow {
+  const open =
+    expanded !== null && expanded.index >= 0 && expanded.index < count && expanded.height > 0
+      ? expanded
+      : null;
+  const extra = open?.height ?? 0;
+  const openIndex = open?.index ?? -1;
+
+  // Which row covers pixel `y` of the list, the open row's panel included.
+  const indexAt = (y: number): number => {
+    const openBottom = (openIndex + 1) * rowHeight;
+    if (open === null || y < openBottom) return Math.floor(y / rowHeight);
+    if (y < openBottom + extra) return openIndex;
+    return Math.floor((y - extra) / rowHeight);
+  };
+
+  const first = indexAt(Math.max(0, scrollTop));
+  const last = indexAt(Math.max(0, scrollTop) + viewport);
+  const start = Math.min(count, Math.max(0, first - overscan));
+  const end = Math.min(count, Math.max(start, last + 1 + overscan));
   return {
     start,
     end,
-    paddingTop: start * rowHeight,
-    paddingBottom: Math.max(0, (count - end) * rowHeight),
+    paddingTop: start * rowHeight + (open !== null && openIndex < start ? extra : 0),
+    paddingBottom:
+      Math.max(0, (count - end) * rowHeight) + (open !== null && openIndex >= end ? extra : 0),
   };
 }
 
