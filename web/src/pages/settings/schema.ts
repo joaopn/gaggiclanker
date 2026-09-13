@@ -146,7 +146,7 @@ export function toPatch(settings: SettingsMap, values: SettingsFormValues): Sett
   return patch;
 }
 
-/** A human label for a registry key: `devicePollIntervalSeconds` -> `Device poll interval seconds`. */
+/** A human label for a registry key: `deviceCleanupKeepNewest` -> `Device cleanup keep newest`. */
 export function humanizeKey(key: string): string {
   const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);

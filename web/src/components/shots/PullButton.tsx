@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSyncStatus } from "@/hooks/useArchive";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { attempt } from "@/lib/mutations";
-import { latestShotRun, pullSummary } from "@/lib/sync";
+import { isPulling, latestShotRun, pullSummary } from "@/lib/sync";
 
 /**
  * The button that fills the archive.
@@ -25,12 +25,22 @@ import { latestShotRun, pullSummary } from "@/lib/sync";
  * and the run that follows is watched through the ledger, which the
  * `sync.progress` events keep fresh. A pull started in another tab therefore
  * shows the spinner here too, and only the tab that asked gets the toast.
+ *
+ * The id to wait past is captured when the button is *pressed*, not when the
+ * 202 comes back. The first `sync.progress` event lands well inside that
+ * window and refetches the ledger, so by `onSuccess` the newest run is already
+ * the one this click started — and waiting for a run newer than itself is a
+ * toast that never arrives.
  */
 export function PullButton() {
   const device = useDeviceStatus();
   const sync = useSyncStatus();
   const run = latestShotRun(sync.data);
-  const running = Boolean(sync.data?.running);
+  const running = isPulling(sync.data);
+  // Read inside `onMutate`, which runs synchronously on the click. A piece of
+  // state would be a render behind by then.
+  const runAtClick = useRef<number | undefined>(undefined);
+  runAtClick.current = run?.id;
 
   // The newest run id this tab has already accounted for. `null` means "not
   // waiting for anything", which is the state every tab starts in — including
@@ -40,12 +50,16 @@ export function PullButton() {
 
   const pull = useMutation({
     mutationFn: () => runSync("all"),
-    onSuccess: () => {
+    onMutate: () => {
       waiting.current = true;
-      setWaitingAfter(run?.id ?? 0);
-      void sync.refetch();
+      setWaitingAfter(runAtClick.current ?? 0);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onSuccess: () => void sync.refetch(),
+    onError: (error: Error) => {
+      waiting.current = false;
+      setWaitingAfter(null);
+      toast.error(error.message);
+    },
   });
 
   useEffect(() => {

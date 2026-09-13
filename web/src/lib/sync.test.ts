@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { SyncRunRow, SyncStatusData } from "@/api/types";
-import { lastFinishedShotRun, latestShotRun, pullSummary, relativeTime } from "@/lib/sync";
+import {
+  isPulling,
+  lastFinishedShotRun,
+  latestShotRun,
+  pullSummary,
+  relativeTime,
+} from "@/lib/sync";
 
 function run(overrides: Partial<SyncRunRow> = {}): SyncRunRow {
   return {
@@ -63,6 +69,30 @@ describe("latestShotRun", () => {
   it("says nothing about an archive that has never been asked to pull", () => {
     expect(latestShotRun(undefined)).toBeUndefined();
     expect(lastFinishedShotRun(status({}))).toBeUndefined();
+  });
+});
+
+describe("isPulling", () => {
+  it("is true while a pass that moves data is in flight", () => {
+    expect(isPulling(status({ backfill: run({ finished_at: null }) }))).toBe(true);
+    expect(isPulling(status({ profiles: run({ kind: "profiles", finished_at: null }) }))).toBe(
+      true,
+    );
+  });
+
+  it("is false for an identity read", () => {
+    // One frame and one request, on every reconnect — so whenever the
+    // machine's Wi-Fi blinks. The ledger's own `running` is true for any kind,
+    // which made the button flash "Pulling…" while pulling nothing.
+    expect(isPulling(status({ identity: run({ kind: "identity", finished_at: null }) }))).toBe(
+      false,
+    );
+  });
+
+  it("is false when everything has finished, and for an archive with no runs", () => {
+    expect(isPulling(status({ backfill: run() }))).toBe(false);
+    expect(isPulling(status({}))).toBe(false);
+    expect(isPulling(undefined)).toBe(false);
   });
 });
 

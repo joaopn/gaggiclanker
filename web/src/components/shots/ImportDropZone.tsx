@@ -29,6 +29,16 @@ export function ImportDropZone() {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const summary = importFiles.data;
+  // `dragenter`/`dragleave` fire for every child the pointer crosses, so a
+  // boolean flickers the highlight off and on as the file passes over the
+  // icon, the text and the button. Counting entries against leaves is the
+  // standard answer: the strip is "dragged over" while the depth is positive.
+  const depth = useRef(0);
+
+  function setDepth(next: number) {
+    depth.current = Math.max(0, next);
+    setDragging(depth.current > 0);
+  }
 
   function send(files: File[]) {
     if (files.length === 0) return;
@@ -37,7 +47,7 @@ export function ImportDropZone() {
 
   function onDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
-    setDragging(false);
+    setDepth(0);
     send(Array.from(event.dataTransfer.files));
   }
 
@@ -51,11 +61,13 @@ export function ImportDropZone() {
   return (
     <section
       onDrop={onDrop}
+      onDragEnter={() => setDepth(depth.current + 1)}
       onDragOver={(event) => {
+        // Without this the browser refuses the drop; it says nothing about the
+        // highlight, which the enter/leave pair owns.
         event.preventDefault();
-        setDragging(true);
       }}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={() => setDepth(depth.current - 1)}
       // A <section> with a label rather than a <div>: a drop target is not a
       // button and must not answer Enter like one. The keyboard and phone path
       // to the same thing is the button inside it.

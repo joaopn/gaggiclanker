@@ -59,18 +59,18 @@ function settingsFixture(): SettingsMap {
       default: true,
       override: null,
       source: "default",
-      description: "Hold the WebSocket and mirror shots.",
+      description: "Hold the WebSocket so a pull can reach the machine.",
     },
-    devicePollIntervalSeconds: {
-      key: "devicePollIntervalSeconds",
+    deviceCleanupKeepNewest: {
+      key: "deviceCleanupKeepNewest",
       type: "int",
       secret: false,
       readonly: false,
-      value: 60,
-      default: 60,
+      value: 50,
+      default: 50,
       override: null,
       source: "default",
-      description: "How often to re-diff the shot index.",
+      description: "How many shots to leave on the machine.",
     },
     llmProvider: {
       key: "llmProvider",
@@ -123,7 +123,7 @@ describe("SettingsPage", () => {
 
     const host = await screen.findByLabelText("Gaggimate host");
     expect(host).toHaveValue("10.0.0.5");
-    expect(screen.getByLabelText("Device poll interval seconds")).toHaveValue("60");
+    expect(screen.getByLabelText("Device cleanup keep newest")).toHaveValue("50");
     // A bool gets a select, not a text box.
     expect(screen.getByLabelText("Device sync enabled")).toHaveAttribute("role", "combobox");
   });
@@ -192,9 +192,9 @@ describe("SettingsPage", () => {
     const user = setupUser();
     renderWithQueryClient(<SettingsPage />);
 
-    const poll = await screen.findByLabelText("Device poll interval seconds");
-    await user.clear(poll);
-    await user.type(poll, "sixty");
+    const keep = await screen.findByLabelText("Device cleanup keep newest");
+    await user.clear(keep);
+    await user.type(keep, "fifty");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText("expected an integer")).toBeInTheDocument();

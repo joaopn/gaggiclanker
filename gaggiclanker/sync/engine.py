@@ -542,8 +542,10 @@ class SyncEngine:
             # A machine that went away does not come back within this pass, and
             # every remaining shot would cost a full request timeout — two at a
             # time, under the lock, with the shots loop and the profiles loop
-            # both waiting behind it. Three in a row is the machine; give up and
-            # let the next `Connected` start a fresh pass.
+            # both waiting behind it. Three in a row is the machine; give up,
+            # record the failure, and leave the rest for the next pull. Nothing
+            # retries on its own, which is why the run's error has to be
+            # legible: it is what the button's toast repeats.
             consecutive = consecutive + 1 if fetched.retryable else 0
             if consecutive >= MAX_CONSECUTIVE_DEVICE_ERRORS:
                 update.errors += 1
@@ -1032,10 +1034,11 @@ class SyncEngine:
     ) -> SyncRunRow:
         """Close a run the machine cut short.
 
-        A device that is off, mid-OTA or busy is not a fault to shout about: the
-        loop comes back on its own timer and on the next `Connected`. It is
-        recorded, because "the last six runs all failed" is the thing an
-        operator needs to be able to see.
+        A device that is off, mid-OTA or busy is not a fault to shout about,
+        and it is not this engine's to retry: the next pull is somebody
+        pressing the button again. It is recorded, because the failure is what
+        that person is shown, and because "the last six runs all failed" is the
+        thing an operator needs to be able to see.
         """
         update.errors += 1
         update.error = str(exc)

@@ -138,11 +138,14 @@ async def test_a_machine_that_vanishes_mid_backfill_fails_the_run(
             assert len(samples) == row.sample_count
         assert 0 < partial.total < BUSY_SHOTS
 
-        # The machine comes back; the next pass picks up where this one stopped.
+        # The machine comes back and somebody pulls again; that pass picks up
+        # where this one stopped. Nothing resumes on its own — the point of the
+        # half-written check above is that the archive is safe to leave in this
+        # state for as long as it takes the person to notice.
         revived = build_archive_device(BUSY_SHOTS, header_only=False)
         await revived.start(port=port, host=host)
         try:
-            resumed = await archive.engine.sync_shots(trigger="connected")
+            resumed = await archive.engine.sync_shots(trigger="manual")
             assert resumed.status == "ok"
             assert (await archive.engine.shots.counts()).total == BUSY_SHOTS - 1
         finally:

@@ -1103,6 +1103,73 @@ describe("ShotsPage pull button", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("the machine stopped answering"));
   });
 
+  it("still toasts when the ledger moved before the 202 came back", async () => {
+    // The regression: the run id to wait past used to be read when the request
+    // resolved. The first `sync.progress` event lands well inside that window
+    // and refetches the ledger, so by then the newest run was already the one
+    // this click started — and the page sat waiting for a run newer than
+    // itself, for ever.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+
+    let accept: (value: { queued: string[] }) => void = () => {};
+    runSync.mockImplementation(
+      () =>
+        new Promise<{ queued: string[] }>((resolve) => {
+          accept = resolve;
+        }),
+    );
+
+    const { queryClient } = renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("pull-button"));
+
+    // The engine's "started" event, and the refetch it causes, before the 202.
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        running: true,
+        last_runs: { backfill: shotRun({ id: 7, status: "running", finished_at: null }) },
+      }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+    accept({ queued: ["shots"] });
+
+    getSyncStatus.mockResolvedValue(
+      statusData({ last_runs: { backfill: shotRun({ id: 7, shots_inserted: 2 }) } }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 new shots, 1 updated"));
+  });
+
+  it("does not call an identity read a pull", async () => {
+    // The engine reads identity on every reconnect — one frame and one
+    // request, whenever the machine's Wi-Fi blinks. `running` on the ledger is
+    // true for any kind, so the button used to flash "Pulling…" and go dead
+    // for half a second at a time while nothing was being pulled.
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        running: true,
+        last_runs: {
+          identity: shotRun({ id: 9, kind: "identity", status: "running", finished_at: null }),
+          backfill: shotRun({ id: 7 }),
+        },
+      }),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.queryByText("Pulling…")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pull-button")).toBeEnabled();
+  });
+
   it("is disabled with no machine configured", async () => {
     getShots.mockResolvedValue(listData([shot()]));
     getDeviceStatus.mockResolvedValue({

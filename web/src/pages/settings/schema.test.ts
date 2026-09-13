@@ -119,7 +119,7 @@ describe("buildSettingsSchema", () => {
 
 describe("labels and sections", () => {
   it("turns a camelCase registry key into a sentence", () => {
-    expect(humanizeKey("devicePollIntervalSeconds")).toBe("Device poll interval seconds");
+    expect(humanizeKey("deviceCleanupKeepNewest")).toBe("Device cleanup keep newest");
     expect(humanizeKey("gaggimateHost")).toBe("Gaggimate host");
   });
 

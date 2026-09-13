@@ -28,6 +28,22 @@ export function latestShotRun(status: SyncStatusData | undefined): SyncRunRow | 
   return runs.sort((left, right) => right.id - left.id)[0];
 }
 
+/**
+ * Whether a pass that pulls anything is in flight.
+ *
+ * Not `status.running`, which is true for any kind — including the identity
+ * read the engine does on every reconnect. That is one frame and one request,
+ * it happens whenever the machine's Wi-Fi blinks, and it made the button flash
+ * "Pulling…" for half a second at a time while doing nothing of the sort.
+ */
+export function isPulling(status: SyncStatusData | undefined): boolean {
+  if (!status) return false;
+  const last = status.last_runs ?? {};
+  return Object.entries(last).some(
+    ([kind, run]) => kind !== "identity" && run.finished_at === null,
+  );
+}
+
 /** The newest shot pass that has actually finished. */
 export function lastFinishedShotRun(status: SyncStatusData | undefined): SyncRunRow | undefined {
   const run = latestShotRun(status);

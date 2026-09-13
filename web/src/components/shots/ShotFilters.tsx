@@ -76,7 +76,7 @@ export function ShotFilters({
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 space-y-3" data-testid="shot-filters">
+      <PopoverContent className="w-80 space-y-3" data-testid="shot-filters" aria-label="Filters">
         <div className="grid grid-cols-2 gap-3">
           <Field id={ids.from} label="From">
             <input
