@@ -17,9 +17,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSettings,
   getDeviceStatus,
 }));
-// The shell subscribes to /api/device/live. There is no server behind jsdom,
-// so leave the stream inert rather than letting every test start a reconnect
-// loop against a fetch that will never succeed.
+// The app subscribes to /api/sync/events. There is no server behind jsdom, so
+// leave the stream inert rather than letting every test start a reconnect loop
+// against a fetch that will never succeed.
 vi.mock("@/lib/sse", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sse")>()),
   subscribeToEventSource: () => () => {},

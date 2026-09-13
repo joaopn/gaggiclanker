@@ -31,17 +31,18 @@ import { queryKeys } from "@/lib/queryKeys";
 /**
  * Whether the machine is there, and what it is.
  *
- * Polled slowly on purpose. The facts here change rarely — configured,
- * connected, firmware versions — and the fast ones live on `/api/device/live`
- * instead. The `device.connection` event invalidates this key
- * (`lib/invalidate.ts`), so a socket coming up or going down refreshes it
- * immediately and the interval is only a backstop for a missed event.
+ * The only thing that answers that question now. There used to be a 2 Hz
+ * telemetry stream beside it whose connection events refreshed this key the
+ * instant a socket came up or went down; without it the poll is the whole
+ * mechanism, so it runs every fifteen seconds rather than every thirty. That
+ * is the delay between plugging the machine in and the pull button going live,
+ * and it costs one small request a minute against the box's own database.
  */
 export function useDeviceStatus(): UseQueryResult<DeviceStatusData, Error> {
   return useQuery({
     queryKey: queryKeys.device.status(),
     queryFn: getDeviceStatus,
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,
     staleTime: 10_000,
     retry: 0,
   });
