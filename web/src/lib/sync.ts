@@ -1,0 +1,84 @@
+import type { SyncRunRow, SyncStatusData } from "@/api/types";
+
+/**
+ * Reading the sync ledger the way a person asks about it.
+ *
+ * The ledger is keyed by pass kind and the front page only cares about one
+ * question — what happened the last time somebody pulled — so the mapping from
+ * "what the server records" to "what the button says" lives here rather than
+ * inside the button, where it would be untestable without a DOM.
+ */
+
+/**
+ * The kinds a shot pass has been recorded under.
+ *
+ * `backfill` is what every pull writes today. `live` is in the list because
+ * archives filled before pulls became a request still hold runs under it, and
+ * "last pull" on such an archive should say when, not "never".
+ */
+const SHOT_RUN_KINDS = ["backfill", "live", "shots"];
+
+/** The newest shot pass of any kind, running or finished. */
+export function latestShotRun(status: SyncStatusData | undefined): SyncRunRow | undefined {
+  if (!status) return undefined;
+  const last = status.last_runs ?? {};
+  const runs = SHOT_RUN_KINDS.map((kind) => last[kind]).filter(
+    (run): run is SyncRunRow => run !== undefined,
+  );
+  return runs.sort((left, right) => right.id - left.id)[0];
+}
+
+/** The newest shot pass that has actually finished. */
+export function lastFinishedShotRun(status: SyncStatusData | undefined): SyncRunRow | undefined {
+  const run = latestShotRun(status);
+  return run?.finished_at ? run : undefined;
+}
+
+/**
+ * "3 new shots, 1 updated" — what a finished pull is worth saying out loud.
+ *
+ * Quarantined shots are counted as landed rather than left out: the bytes are
+ * in the archive and the row is in the list, which is what the person who
+ * pressed the button wanted to know. Why it would not parse is the shot page's
+ * business.
+ */
+export function pullSummary(run: SyncRunRow): string {
+  if (run.status !== "ok") {
+    return run.error ?? "The pull failed. The Device page has the details.";
+  }
+  const parts: string[] = [];
+  const landed = run.shots_inserted + run.shots_quarantined;
+  if (landed > 0) parts.push(`${landed} new shot${landed === 1 ? "" : "s"}`);
+  if (run.shots_updated > 0) parts.push(`${run.shots_updated} updated`);
+  if (run.shots_quarantined > 0) {
+    parts.push(`${run.shots_quarantined} could not be parsed`);
+  }
+  return parts.length > 0 ? parts.join(", ") : "Nothing new";
+}
+
+/**
+ * "2 minutes ago", in whatever the browser's language calls it.
+ *
+ * `Intl.RelativeTimeFormat` rather than a table of English strings: the rest of
+ * this UI formats dates and numbers through the platform's own locale, and a
+ * hand-rolled "2 minutes ago" would be the one English phrase left in a page
+ * that otherwise speaks the reader's language.
+ */
+export function relativeTime(value: string | null | undefined, now = Date.now()): string {
+  if (!value) return "";
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return "";
+  const seconds = Math.round((then - now) / 1000);
+  const format = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 60 * 60 * 24 * 365],
+    ["month", 60 * 60 * 24 * 30],
+    ["day", 60 * 60 * 24],
+    ["hour", 60 * 60],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
+  }
+  return format.format(Math.round(seconds), "second");
+}

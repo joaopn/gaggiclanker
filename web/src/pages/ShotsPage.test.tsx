@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProfileVersionListData,
@@ -27,6 +28,9 @@ const {
   getShot,
   putJudgement,
   putShotSetVersion,
+  getDeviceStatus,
+  runSync,
+  importFiles,
 } = vi.hoisted(() => ({
   getShots: vi.fn(),
   getSyncStatus: vi.fn(),
@@ -36,6 +40,9 @@ const {
   getShot: vi.fn(),
   putJudgement: vi.fn(),
   putShotSetVersion: vi.fn(),
+  getDeviceStatus: vi.fn(),
+  runSync: vi.fn(),
+  importFiles: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -47,6 +54,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getShot,
   putJudgement,
   putShotSetVersion,
+  getDeviceStatus,
+  runSync,
+  importFiles,
 }));
 
 /** Shaped exactly like `ShotListRow` in gaggiclanker/db/repos/shots.py. */
@@ -189,7 +199,43 @@ beforeEach(() => {
   getShot.mockResolvedValue({ ...shot129, judgement: judgement() });
   putJudgement.mockImplementation((_id: number, body: unknown) => Promise.resolve(body));
   putShotSetVersion.mockResolvedValue(shot());
+  getDeviceStatus.mockResolvedValue({
+    configured: true,
+    connected: true,
+    host: "gaggimate.local",
+    identity: null,
+    last_status: null,
+  });
+  runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
+  importFiles.mockResolvedValue({
+    created: 2,
+    updated: 0,
+    skipped: 1,
+    failed: 0,
+    items: [],
+  });
 });
+
+/** One finished shot pass, as the ledger records it. */
+function shotRun(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 7,
+    kind: "backfill",
+    status: "ok",
+    trigger: "manual",
+    started_at: "2026-03-04T08:00:00.000Z",
+    finished_at: "2026-03-04T08:00:20.000Z",
+    shots_seen: 12,
+    shots_inserted: 3,
+    shots_updated: 1,
+    shots_quarantined: 0,
+    profiles_changed: 0,
+    notes_synced: 0,
+    errors: 0,
+    error: null,
+    ...overrides,
+  };
+}
 
 describe("ShotsPage", () => {
   it("renders a row per shot with what the default columns need", async () => {
@@ -313,14 +359,25 @@ describe("ShotsPage", () => {
     expect(screen.getByText(/1 quarantined/)).toBeInTheDocument();
   });
 
-  it("points an empty archive at the setting that fills it", async () => {
+  it("points an empty archive at the two ways of filling it", async () => {
     getShots.mockResolvedValue(listData([]));
     getSyncStatus.mockResolvedValue(statusData({ configured: false, connected: false }));
 
     renderWithQueryClient(<ShotsPage />);
 
     expect(await screen.findByText("No shots archived yet")).toBeInTheDocument();
-    expect(screen.getByText(/gaggimateHost/)).toBeInTheDocument();
+    expect(screen.getByText(/Set the machine's address in Settings/)).toBeInTheDocument();
+    expect(screen.getByTestId("shots-dropzone")).toBeInTheDocument();
+  });
+
+  it("says the archive has never been pulled into", async () => {
+    // Nothing fills the archive on its own, so "never pulled" next to a
+    // configured machine is the sentence that answers "where are my shots".
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+
+    expect(await screen.findByText(/Never pulled/)).toBeInTheDocument();
   });
 
   it("fetches a sparkline per row, thinned, once the Curve column is on", async () => {
@@ -787,5 +844,162 @@ describe("ShotsPage row editing", () => {
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalled());
     expect(putShotSetVersion).not.toHaveBeenCalled();
+  });
+});
+
+describe("ShotsPage pull button", () => {
+  it("pulls, and says what landed when the run it started finishes", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+
+    const { queryClient } = renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    await user.click(screen.getByTestId("pull-button"));
+    await waitFor(() => expect(runSync).toHaveBeenCalledWith("all"));
+
+    // The route answers 202; the run shows up in the ledger afterwards, which
+    // is what the `sync.progress` event tells the page to re-read.
+    getSyncStatus.mockResolvedValue(
+      statusData({ last_runs: { backfill: shotRun({ id: 7, shots_inserted: 3 }) } }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("3 new shots, 1 updated"));
+  });
+
+  it("says nothing new when a pull found nothing", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+
+    const { queryClient } = renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("pull-button"));
+    await waitFor(() => expect(runSync).toHaveBeenCalled());
+
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: { backfill: shotRun({ id: 7, shots_inserted: 0, shots_updated: 0 }) },
+      }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Nothing new"));
+  });
+
+  it("reports a failed pull with what the machine said", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+
+    const { queryClient } = renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("pull-button"));
+    await waitFor(() => expect(runSync).toHaveBeenCalled());
+
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: {
+          backfill: shotRun({ id: 7, status: "error", error: "the machine stopped answering" }),
+        },
+      }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("the machine stopped answering"));
+  });
+
+  it("is disabled with no machine configured", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    getDeviceStatus.mockResolvedValue({
+      configured: false,
+      connected: false,
+      host: null,
+      identity: null,
+      last_status: null,
+    });
+
+    renderWithQueryClient(<ShotsPage />);
+
+    await waitFor(() => expect(screen.getByTestId("pull-button")).toBeDisabled());
+  });
+
+  it("is disabled while the machine is unreachable", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    getDeviceStatus.mockResolvedValue({
+      configured: true,
+      connected: false,
+      host: "gaggimate.local",
+      identity: null,
+      last_status: null,
+    });
+
+    renderWithQueryClient(<ShotsPage />);
+
+    await waitFor(() => expect(screen.getByTestId("pull-button")).toBeDisabled());
+  });
+
+  it("shows a pull that is already running, whoever started it", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(
+      statusData({ running: true, last_runs: { backfill: shotRun({ finished_at: null }) } }),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+
+    expect(await screen.findByText("Pulling…")).toBeInTheDocument();
+    expect(screen.getByTestId("pull-button")).toBeDisabled();
+  });
+
+  it("says when the archive was last pulled into", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun() } }));
+
+    renderWithQueryClient(<ShotsPage />);
+
+    expect(await screen.findByText(/Last pull/)).toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage drop zone", () => {
+  it("imports the files that are dropped on it and reports the batch", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const file = new File(['{"id":"000101"}'], "shot.json", { type: "application/json" });
+    const zone = screen.getByTestId("shots-dropzone");
+    fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+
+    await waitFor(() => expect(importFiles).toHaveBeenCalled());
+    expect(importFiles.mock.calls[0][0]).toEqual([file]);
+
+    const result = await screen.findByTestId("import-result");
+    expect(result).toHaveTextContent("2 imported");
+    expect(result).toHaveTextContent("1 skipped");
+    expect(within(result).getByRole("link", { name: /file list/ })).toHaveAttribute(
+      "href",
+      "/import",
+    );
+  });
+
+  it("offers a file picker for keyboards and phones", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const input = screen.getByTestId("shots-import-input");
+    expect(input).toHaveAttribute("accept", expect.stringContaining(".slog"));
+    expect(screen.getByRole("button", { name: "Choose files" })).toBeInTheDocument();
   });
 });

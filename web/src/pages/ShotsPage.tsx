@@ -6,6 +6,8 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ColumnChooser } from "@/components/shots/ColumnChooser";
 import { CompareDrawer, MAX_COMPARE } from "@/components/shots/CompareDrawer";
+import { ImportDropZone } from "@/components/shots/ImportDropZone";
+import { PullButton } from "@/components/shots/PullButton";
 import { ShotFilters } from "@/components/shots/ShotFilters";
 import { ShotsTable } from "@/components/shots/ShotsTable";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ import {
   toParams,
   toSearchParams,
 } from "@/lib/shotFilters";
+import { lastFinishedShotRun, relativeTime } from "@/lib/sync";
 
 /**
  * The archive, and the front page of the whole application.
@@ -108,10 +111,16 @@ export function ShotsPage() {
   }
 
   const counts = sync.data?.counts;
+  // When the archive last gained anything, because nothing fills it on its
+  // own: "never pulled" next to a configured machine is the single most useful
+  // sentence this page can say to somebody wondering where their shots are.
+  const lastPull = lastFinishedShotRun(sync.data);
+  const pulled = lastPull ? `Last pull ${relativeTime(lastPull.finished_at)}` : "Never pulled";
   const subtitle = counts
     ? `${counts.total} archived · ${counts.samples.toLocaleString()} samples` +
-      (counts.quarantined ? ` · ${counts.quarantined} quarantined` : "")
-    : "Every shot the machine has pulled.";
+      (counts.quarantined ? ` · ${counts.quarantined} quarantined` : "") +
+      ` · ${pulled}`
+    : pulled;
   // A shot with no Set is invisible to every trend and to the analyser's view
   // of what has been tried, so the count is a call to action in the header
   // rather than a number buried in the filter bar.
@@ -124,6 +133,7 @@ export function ShotsPage() {
         subtitle={subtitle}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <PullButton />
             <ShotFilters
               value={filters}
               onChange={setFilters}
@@ -151,6 +161,8 @@ export function ShotsPage() {
           </div>
         }
       />
+
+      <ImportDropZone />
 
       {shots.isPending ? (
         <div className="space-y-2" data-testid="shots-loading">
@@ -203,8 +215,8 @@ export function ShotsPage() {
             !isDefaultFilters(filters)
               ? "Nothing in the archive matches these filters. Clear them to see everything."
               : sync.data?.configured
-                ? "The sync engine is running. A shot appears here within seconds of the machine finishing it."
-                : "No machine is configured. Set `gaggimateHost` in Settings, or import shots exported from the machine's web UI."
+                ? "Pull from the machine, or drop exported files here."
+                : "Set the machine's address in Settings, or drop exported files here."
           }
         />
       )}

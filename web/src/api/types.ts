@@ -29,6 +29,7 @@ export type ProfileVersionSummary = components["schemas"]["ProfileVersionSummary
 export type ProfileVersionRow = components["schemas"]["ProfileVersionRow"];
 export type DeviceProfileSummary = components["schemas"]["DeviceProfileSummary"];
 export type SyncStatusData = components["schemas"]["SyncStatusData"];
+export type SyncRunRow = components["schemas"]["SyncRunRow"];
 export type ImportSummary = components["schemas"]["ImportSummary"];
 export type ImportResult = components["schemas"]["ImportResult"];
 export type ApiErrorBody = components["schemas"]["ApiError"];
