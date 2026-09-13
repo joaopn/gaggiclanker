@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowLeft, Download } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { getShotExport, shotRawUrl } from "@/api/client";
 import type { DeviceShotNotes, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
@@ -27,6 +27,7 @@ import { useShot, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { availableSeries, DEFAULT_SERIES, SHOT_SERIES } from "@/lib/shotChart";
 import {
+  ASSIGN_ANCHOR,
   exitReasonLabel,
   formatGrams,
   formatRatio,
@@ -61,6 +62,17 @@ export function ShotDetailPage() {
     enabled: shot.isSuccess && !shot.data.shot.quarantined,
   });
   const [visible, setVisible] = useState<string[]>(DEFAULT_SERIES);
+  const { hash } = useLocation();
+
+  // The shots list's "needs a Set" menu offers only a few Sets and sends the
+  // rest here with `#set`. The panel is far down a long page, and landing at
+  // the top of it would leave the reader to find the thing the link promised.
+  // It waits for the shot, because until then the panel does not exist.
+  const arrived = shot.isSuccess;
+  useEffect(() => {
+    if (!arrived || hash !== `#${ASSIGN_ANCHOR}`) return;
+    document.getElementById(ASSIGN_ANCHOR)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [arrived, hash]);
 
   useQueryErrorToast(shot.error, "Could not load this shot");
 
@@ -189,11 +201,13 @@ export function ShotDetailPage() {
           reads both — advice given before you have said how it tasted is worth
           markedly less, and the order says so. */}
       <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
-      <AssignToSet
-        shotId={row.id}
-        setVersion={shot.data.set_version}
-        judgement={shot.data.judgement}
-      />
+      <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
+        <AssignToSet
+          shotId={row.id}
+          setVersion={shot.data.set_version}
+          judgement={shot.data.judgement}
+        />
+      </section>
       {!row.quarantined ? (
         <AnalysisPanel
           shotId={row.id}

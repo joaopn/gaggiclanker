@@ -329,3 +329,36 @@ describe("ShotDetailPage analysis panel", () => {
     expect(screen.queryByTestId("run-analysis")).not.toBeInTheDocument();
   });
 });
+
+describe("ShotDetailPage Set panel", () => {
+  it("scrolls to the Assign panel when the link asks for it", async () => {
+    // The shots list's needs-a-Set menu offers only three Sets and sends the
+    // rest here with `#set`; the panel is far down the page.
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/shots/:shotId" element={<ShotDetailPage />} />
+      </Routes>,
+      { initialEntries: [`/shots/${shot129.shot.id}#set`] },
+    );
+
+    expect(await screen.findByTestId("assign-to-set")).toBeInTheDocument();
+    await waitFor(() => expect(scrolled).toContain("set"));
+    expect(document.getElementById("set")).toContainElement(screen.getByTestId("assign-to-set"));
+  });
+
+  it("stays at the top without the fragment", async () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+
+    renderShot();
+
+    expect(await screen.findByTestId("assign-to-set")).toBeInTheDocument();
+    expect(scroll).not.toHaveBeenCalled();
+  });
+});
