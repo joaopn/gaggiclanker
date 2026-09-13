@@ -81,9 +81,15 @@ export function DeviceStatusPill() {
             )}
           />
           {label}
+          {/* The device page is not in the sidebar — this pill is the way to
+              it — so the link says so out loud as well as in the tooltip. */}
+          <span className="sr-only">Open the device page</span>
         </Link>
       </TooltipTrigger>
-      <TooltipContent>{detail}</TooltipContent>
+      <TooltipContent>
+        <p>{detail}</p>
+        <p className="opacity-80">Open the device page</p>
+      </TooltipContent>
     </Tooltip>
   );
 }

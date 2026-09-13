@@ -71,6 +71,15 @@ describe("DeviceStatusPill", () => {
     expect(pill()).toHaveAttribute("data-state", "good");
   });
 
+  it("says where it goes, since the sidebar no longer does", async () => {
+    renderPill();
+    await waitFor(() => expect(pill()).toHaveAttribute("data-state", "good"));
+    // The device page has no nav entry; this pill is the way in, so the link
+    // has to name its destination for anyone who cannot see a tooltip.
+    expect(pill()).toHaveAttribute("href", "/device");
+    expect(pill()).toHaveTextContent("Open the device page");
+  });
+
   it("goes red when the machine is configured but not answering", async () => {
     getDeviceStatus.mockResolvedValue({
       configured: true,
