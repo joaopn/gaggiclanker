@@ -61,7 +61,6 @@ from gaggiclanker.sync.engine import downsample
 
 __all__ = [
     "CURVE_POINTS",
-    "HIGH_ALTITUDE_M",
     "TRAJECTORY_SHOTS",
     "AnalysisContext",
     "build_context",
@@ -85,9 +84,6 @@ TRAJECTORY_SHOTS = 5
 #: they are not on the sour side here even though they sit in that group.
 _SOUR_TAGS = frozenset({"sour", "sharp", "salty", "quick_finish"})
 _BITTER_TAGS = frozenset({"bitter", "harsh", "astringent", "drying", "hollow"})
-
-#: Above this, a bean is dense enough that the altitude rule means something.
-HIGH_ALTITUDE_M = 1800
 
 
 class ShotFacts(BaseModel):
@@ -138,7 +134,6 @@ class SetFacts(BaseModel):
     roaster: str = ""
     origin: str = ""
     variety: str = ""
-    altitude_m: int | None = None
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
@@ -382,7 +377,7 @@ async def build_context(
         )
     )
 
-    signals = signal_tokens(facts, judgement, verdict, set_facts)
+    signals = signal_tokens(facts, judgement, verdict)
     selection = await select_rules(
         RulesRepository(db),
         SetContext(
@@ -488,7 +483,6 @@ def signal_tokens(
     shot: ShotFacts,
     judgement: JudgementFacts | None,
     style: StyleVerdict,
-    facts: SetFacts | None = None,
 ) -> list[str]:
     """The tokens rule selection matches `applies.signal` against.
 
@@ -545,10 +539,6 @@ def signal_tokens(
         # analysis concludes the shot did not run.
         tokens.add("yield:tiny")
 
-    if facts is not None:
-        if facts.altitude_m is not None and facts.altitude_m >= HIGH_ALTITUDE_M:
-            tokens.add("altitude:high")
-
     if judgement is not None:
         tokens.update(f"taste:{tag}" for tag in judgement.taste_tags)
         if judgement.balance:
@@ -603,7 +593,6 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             roaster=(bean.roaster or "") if bean else "",
             origin=(bean.origin or "") if bean else "",
             variety=(bean.variety or "") if bean else "",
-            altitude_m=bean.altitude_m if bean else None,
             process=bean.process if bean else None,
             roast_level=bean.roast_level if bean else None,
             decaf=bool(bean.decaf) if bean else False,
@@ -934,7 +923,6 @@ def _render_set(facts: SetFacts) -> str:
             _line("roaster", facts.roaster),
             _line("origin", facts.origin),
             _line("variety", facts.variety),
-            _line("altitude", facts.altitude_m, " m"),
             _line("process", facts.process or "not stated"),
             _line("roast level", facts.roast_level or "not stated"),
             _line("decaf", "yes" if facts.decaf else None),

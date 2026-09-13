@@ -38,7 +38,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.analyzer.context import HIGH_ALTITUDE_M
 from gaggiclanker.analyzer.style import detect_style
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
@@ -86,7 +85,6 @@ class BeanFacts(BaseModel):
     roaster: str = ""
     origin: str = ""
     variety: str = ""
-    altitude_m: int | None = None
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
@@ -238,7 +236,6 @@ async def build_context(
         roaster=inputs.bean.roaster or "",
         origin=inputs.bean.origin or "",
         variety=inputs.bean.variety or "",
-        altitude_m=inputs.bean.altitude_m,
         process=inputs.bean.process,
         roast_level=inputs.bean.roast_level,
         decaf=inputs.bean.decaf,
@@ -270,7 +267,7 @@ async def build_context(
     profiles = await _profile_candidates(db)
     style, reason = await _planned_style(db, similar)
 
-    signals = _signal_tokens(bean, style)
+    signals = _signal_tokens(style)
     selection = await select_rules(
         RulesRepository(db),
         SetContext(
@@ -335,23 +332,20 @@ async def _fetch(db: Database, *, bean_id: int, grinder_id: int | None) -> _Inpu
     )
 
 
-def _signal_tokens(bean: BeanFacts, style: str) -> list[str]:
+def _signal_tokens(style: str) -> list[str]:
     """The tokens rule selection matches `applies.signal` against.
 
-    A much shorter list than an analysis's, because most of that grammar is
-    about a shot that has not happened: there is no channeling band, no first
-    drip, no taste. What is left is what is true of the *coffee* — whether it is
-    dense enough for the altitude rule — plus the planned style, which
-    `select_rules` adds itself and which is repeated here so the stored signal
-    list reads as the whole basis of the selection.
+    A much shorter list than an analysis's — one token — because the whole of
+    that grammar is about a shot or a cup that has not happened: there is no
+    channeling band, no first drip, no taste. Nothing about the coffee itself is
+    a signal either; roast level, process and decaf are matched as Set
+    attributes. What is left is the planned style, which `select_rules` adds
+    itself and which is repeated here so the stored signal list reads as the
+    whole basis of the selection.
 
-    Sorted, for the reason the analyzer's is: this list is snapshotted, and a
-    set's iteration order would make two identical runs differ on the row.
+    A list rather than a bare string so the snapshot has the analyzer's shape.
     """
-    tokens = {f"style:{style}"}
-    if bean.altitude_m is not None and bean.altitude_m >= HIGH_ALTITUDE_M:
-        tokens.add("altitude:high")
-    return sorted(tokens)
+    return [f"style:{style}"]
 
 
 async def _planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, str]:
@@ -470,7 +464,6 @@ def _render_bean(bean: BeanFacts, as_of: str) -> str:
             _line("roaster", bean.roaster),
             _line("origin", bean.origin or "not stated"),
             _line("variety", bean.variety),
-            _line("altitude", bean.altitude_m, " m"),
             _line("process", bean.process or "not stated"),
             _line("roast level", bean.roast_level or "not stated"),
             _line("decaf", "yes" if bean.decaf else None),

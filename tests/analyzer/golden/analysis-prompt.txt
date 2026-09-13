@@ -183,7 +183,6 @@ increments:
   [yield] Adjust yield in 5 g steps — about half a ratio point on a normal dose.
 
 temperature_by_roast:
-  [high_altitude] Beans grown above about 1 800 m are denser: add 1-2 °C and grind a step finer than the roast level alone would say.
   [light] Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat.
   [processing_offset] More fermentation means more soluble material: heavily fermented lots (natural, honey, anaerobic) extract a degree or two cooler than a washed bean of the same roast, with a longer pre-infusion and a coarser grind.
   [taste_adjustment] Within the roast's window, sour moves the temperature up 1-2 °C and bitter or astringent moves it down 1-2 °C — after grind and yield have been ruled out, not before.
@@ -245,7 +244,6 @@ bean: Ethiopia Guji
 roaster: Hasbean
 origin: Ethiopia
 variety: Heirloom
-altitude: 2000 m
 process: natural
 roast level: light
 roaster's tasting notes: peach, jasmine, lemon

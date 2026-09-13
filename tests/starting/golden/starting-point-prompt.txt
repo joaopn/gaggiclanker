@@ -3,7 +3,6 @@ bean: Kenya Nyeri
 roaster: Square Mile
 origin: Kenya
 variety: SL28
-altitude: 1900 m
 process: washed
 roast level: light
 today: 2026-03-10
@@ -314,7 +313,6 @@ increments:
   [yield] Adjust yield in 5 g steps — about half a ratio point on a normal dose.
 
 temperature_by_roast:
-  [high_altitude] Beans grown above about 1 800 m are denser: add 1-2 °C and grind a step finer than the roast level alone would say.
   [light] Light roasts extract at 94-96 °C: the cell structure is dense and needs the heat.
 
 pressure_matrix:

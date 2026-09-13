@@ -126,13 +126,14 @@ async def test_the_selected_rules_cover_the_categories_the_wizard_needs(
     assert not any(category in categories for category in ("rest_times", "freshness_windows"))
 
 
-async def test_the_signals_are_the_coffee_not_a_shot(fixture: Fixture) -> None:
-    """No channeling band, no taste — there is no shot yet."""
+async def test_the_only_signal_is_the_planned_style(fixture: Fixture) -> None:
+    """No channeling band, no taste — there is no shot yet — and nothing about
+    the coffee: roast level, process and decaf are matched as Set attributes,
+    and neither a roast date nor a growing altitude is recorded any more."""
     context = await _build(fixture)
-    assert "altitude:high" in context.signals  # type: ignore[attr-defined]
-    assert any(signal.startswith("style:") for signal in context.signals)  # type: ignore[attr-defined]
-    assert not any(signal.startswith("taste:") for signal in context.signals)  # type: ignore[attr-defined]
-    assert not any(signal.startswith("freshness:") for signal in context.signals)  # type: ignore[attr-defined]
+    signals = context.signals  # type: ignore[attr-defined]
+    assert len(signals) == 1
+    assert signals[0].startswith("style:")
 
 
 async def test_the_profile_library_is_offered_most_used_first(fixture: Fixture) -> None:

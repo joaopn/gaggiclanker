@@ -396,7 +396,6 @@ async def build_fixture(db: Database) -> Fixture:
             roaster="Hasbean",
             origin="Ethiopia",
             variety="Heirloom",
-            altitude_m=2000,
             process="natural",
             roast_level="light",
             tasting_notes_bag="peach, jasmine, lemon",

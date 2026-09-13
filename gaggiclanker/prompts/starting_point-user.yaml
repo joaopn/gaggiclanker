@@ -20,7 +20,7 @@ description: |
   thing in the prompt to talk oneself into following.
 variables:
   - name: bean_facts
-    description: The coffee — roast level, process, origin, variety, altitude, decaf.
+    description: The coffee — roast level, process, origin, variety, decaf.
   - name: hardware_facts
     description: The grinder (its step unit and their usual setting) and the machine.
   - name: similar_sets

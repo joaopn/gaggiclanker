@@ -205,3 +205,38 @@ async def test_procedure_rules_always_apply(db: Database) -> None:
     selection = await select_rules(repo, SetContext(), "unknown", set())
     categories = {rule.category for rule in selection.rules}
     assert {"dial_in_order", "increments", "safety_bounds"} <= categories
+
+
+async def test_a_retired_rule_stays_in_an_older_archive_and_is_never_selected(
+    db: Database, tmp_path: Path
+) -> None:
+    """The high-altitude rule left the seed with the bean's altitude field.
+
+    Seeding never deletes a row somebody may have edited, so an archive seeded
+    by an older image keeps it. What makes that harmless is that nothing emits
+    the signal it matches on any more: no shipped rule asks for it, and a bean
+    has no altitude to derive it from.
+    """
+    assert not any(
+        token.startswith("altitude:")
+        for rule in load_seed_rules()
+        for token in rule.applies.get("signal", [])
+    )
+
+    repo = RulesRepository(db)
+    older = tmp_path / "rules.yaml"
+    older.write_text(
+        "rules:\n"
+        "  - category: temperature_by_roast\n"
+        "    key: high_altitude\n"
+        '    applies: {signal: ["altitude:high"]}\n'
+        "    value: {text: denser beans want it hotter, offset_min_c: 1, offset_max_c: 2}\n"
+        "    unit: c\n"
+        "    source: gaggimate-barista\n"
+    )
+    await seed_rules(repo, older)
+    await seed_rules(repo)
+
+    assert await repo.get_by_key("temperature_by_roast", "high_altitude") is not None
+    selection = await select_rules(repo, LIGHT_NATURAL, "classic", {"taste:sour", "balance:sour"})
+    assert "high_altitude" not in selection.keys

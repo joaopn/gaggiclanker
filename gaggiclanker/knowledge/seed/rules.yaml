@@ -263,21 +263,6 @@ rules:
     source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
 
   - category: temperature_by_roast
-    key: high_altitude
-    applies: { signal: ["altitude:high"] }
-    value:
-      text: >-
-        Beans grown above about 1 800 m are denser: add 1-2 °C and grind a step
-        finer than the roast level alone would say.
-      offset_min_c: 1
-      offset_max_c: 2
-      altitude_m_above: 1800
-    unit: c
-    confidence: expert
-    source: gaggimate-barista
-    source_ref: "gaggimate-mcp.md §7 — Temperature by roast"
-
-  - category: temperature_by_roast
     key: taste_adjustment
     applies: { signal: ["taste:sour", "taste:bitter", "taste:astringent",
                     "balance:sour", "balance:bitter"] }

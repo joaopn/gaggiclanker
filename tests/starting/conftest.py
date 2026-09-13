@@ -472,7 +472,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             roaster="Square Mile",
             origin="Kenya",
             variety="SL28",
-            altitude_m=1900,
             process="washed",
             roast_level="light",
             tasting_notes_bag="blackcurrant, tomato, cane sugar",
