@@ -137,6 +137,15 @@ describe.each([
     expect(fills.some((fill) => alphaOf(fill) > 0)).toBe(true);
   });
 
+  it("shades the bands translucent on the fallback palette too", () => {
+    // No stylesheet at all, as in every other test of a page with this chart.
+    style.remove();
+    const boxes = renderShot129().filter((annotation) => annotation.type === "box");
+    const fills = boxes.map((box) => box.backgroundColor ?? "");
+    expect(fills.some((fill) => alphaOf(fill) > 0)).toBe(true);
+    for (const fill of fills) expect(alphaOf(fill), `band fill ${fill}`).toBeLessThanOrEqual(0.2);
+  });
+
   it("keeps the phase names and the exit line above the curves", () => {
     const annotations = renderShot129();
     for (const box of annotations.filter((annotation) => annotation.type === "box")) {

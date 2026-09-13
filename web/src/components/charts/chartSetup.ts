@@ -55,13 +55,13 @@ const FALLBACK = {
     series: ["#8a4b1f", "#3a6786", "#a33526", "#4a7239", "#7a5ea8"],
     grid: "#00000014",
     text: "#5c5147",
-    band: "#0000000a",
+    band: "#33291f14",
   },
   dark: {
     series: ["#d59a63", "#8fb4d0", "#e08a7c", "#92c081", "#b7a3dd"],
     grid: "#ffffff1f",
     text: "#a79c91",
-    band: "#ffffff0f",
+    band: "#ece5db12",
   },
 };
 
@@ -84,7 +84,9 @@ export function chartPalette(isDark = false): ChartPalette {
     series: fallback.series.map((value, index) => cssVar(`--chart-${index + 1}`, value)),
     grid: cssVar("--border", fallback.grid),
     text: cssVar("--muted-foreground", fallback.text),
-    band: cssVar("--muted", fallback.band),
+    // Its own token rather than --muted: --muted is an opaque surface colour,
+    // and the band is painted over the plot area, so it has to be see-through.
+    band: cssVar("--chart-band", fallback.band),
   };
 }
 

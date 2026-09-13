@@ -96,6 +96,11 @@
   --chart-3: #a33526;
   --chart-4: #4a7239;
   --chart-5: #7a5ea8;
+  /* Phase shading behind the shot curves. Translucent on purpose, and not
+     --muted: that is an opaque surface colour, and a band in it hides every
+     line it covers. The foreground at a few percent reads as a faint wash on
+     the card, roughly the step from --card to --muted, without erasing it. */
+  --chart-band: #33291f14;
 
   --sidebar: #efe7db;
   --sidebar-foreground: #33291f;
@@ -142,6 +147,7 @@
   --chart-3: #e08a7c;
   --chart-4: #92c081;
   --chart-5: #b7a3dd;
+  --chart-band: #ece5db12;
 
   --sidebar: #1b1713;
   --sidebar-foreground: #ece5db;

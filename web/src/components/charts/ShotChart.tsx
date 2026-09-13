@@ -57,6 +57,10 @@ export function ShotChart({
         type: "box" as const,
         xMin: band.start,
         xMax: band.end,
+        // Behind the curves. chartjs-plugin-annotation draws every annotation
+        // after the datasets unless told otherwise, which put the band on top
+        // of the lines it is meant to frame.
+        drawTime: "beforeDatasetsDraw" as const,
         // Alternating rather than one colour per phase: the boundary is the
         // information, and five named colours behind five series is noise.
         backgroundColor: index % 2 === 0 ? "transparent" : palette.band,
@@ -67,6 +71,11 @@ export function ShotChart({
           position: { x: "center" as const, y: "start" as const },
           color: palette.text,
           font: { size: 10 },
+          // The name stays above the curves: a label inherits its box's draw
+          // time, and a pressure line crossing the top of the chart would
+          // otherwise strike through it. Text over a line reads; a line over
+          // text does not.
+          drawTime: "afterDatasetsDraw" as const,
         },
       };
     });
@@ -75,6 +84,10 @@ export function ShotChart({
         type: "line" as const,
         xMin: durationMs / 1000,
         xMax: durationMs / 1000,
+        // Stated rather than left to the plugin's default: the end of the shot
+        // is a mark to read against the curves, a 1px dash hides nothing, and
+        // it should not move if the bands' draw time ever changes again.
+        drawTime: "afterDatasetsDraw" as const,
         borderColor: palette.text,
         borderWidth: 1,
         borderDash: [2, 2],
