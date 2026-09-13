@@ -12,7 +12,6 @@ import { ChatPage } from "@/pages/ChatPage";
 import { DevicePage } from "@/pages/DevicePage";
 import { DraftsPage } from "@/pages/DraftsPage";
 import { HardwarePage } from "@/pages/HardwarePage";
-import { ImportPage } from "@/pages/ImportPage";
 import { KnowledgePage } from "@/pages/KnowledgePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
@@ -97,7 +96,10 @@ export function App() {
           <Route path="/profiles" element={<ProfilesPage />} />
           <Route path="/drafts" element={<DraftsPage />} />
           <Route path="/chat" element={<ChatPage />} />
-          <Route path="/import" element={<ImportPage />} />
+          {/* The import page is gone — the drop zone on the shots page is the
+              whole feature now. The route stays as a redirect so an old
+              bookmark, and a hard refresh on one, land somewhere useful. */}
+          <Route path="/import" element={<Navigate to="/shots" replace />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />

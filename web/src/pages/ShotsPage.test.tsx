@@ -1284,9 +1284,61 @@ describe("ShotsPage drop zone", () => {
     const result = await screen.findByTestId("import-result");
     expect(result).toHaveTextContent("2 imported");
     expect(result).toHaveTextContent("1 skipped");
-    expect(within(result).getByRole("link", { name: /file list/ })).toHaveAttribute(
+  });
+
+  it("unfolds the per-file results without leaving the page", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    importFiles.mockResolvedValue({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 1,
+      items: [
+        {
+          filename: "shot-129.json",
+          kind: "shot",
+          status: "created",
+          message: "213 samples",
+          shot_id: 4,
+          device_id: "000129",
+          profile_version_id: null,
+          label: null,
+          quarantined: false,
+        },
+        {
+          filename: "broken.json",
+          kind: "unknown",
+          status: "failed",
+          message: "not JSON",
+          shot_id: null,
+          device_id: null,
+          profile_version_id: null,
+          label: null,
+          quarantined: false,
+        },
+      ],
+    });
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const file = new File(['{"id":"000101"}'], "shot.json", { type: "application/json" });
+    fireEvent.drop(screen.getByTestId("shots-dropzone"), { dataTransfer: { files: [file] } });
+
+    const result = await screen.findByTestId("import-result");
+    // Collapsed by default: one dropped file plus a table is noise.
+    expect(within(result).queryByText("not JSON")).not.toBeInTheDocument();
+
+    await user.click(within(result).getByTestId("import-result-toggle"));
+
+    // Which file did not land, and why — the question the old import page was
+    // the only answer to.
+    expect(within(result).getByText("not JSON")).toBeInTheDocument();
+    expect(within(result).getByText("213 samples")).toBeInTheDocument();
+    expect(within(result).getByRole("link", { name: "shot 000129" })).toHaveAttribute(
       "href",
-      "/import",
+      "/shots/4",
     );
   });
 

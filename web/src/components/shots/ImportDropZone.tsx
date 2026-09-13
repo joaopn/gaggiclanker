@@ -1,6 +1,6 @@
 import { FileJson } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { ImportResults } from "@/components/shots/ImportResults";
 import { Button } from "@/components/ui/button";
 import { useImportFiles } from "@/hooks/useImport";
 import { cn } from "@/lib/utils";
@@ -15,10 +15,11 @@ import { cn } from "@/lib/utils";
  * question with two answers and burying one of them on another page made it
  * look like the archive only did machines.
  *
- * A strip rather than the Import page's big target: this is a thing you drop a
- * file on while looking at your list. The per-file detail — which of the
- * fourteen files in that folder did not land, and why — is what the Import page
- * is for, and the result line links there.
+ * A strip rather than a page-sized target: this is a thing you drop a file on
+ * while looking at your list. The per-file detail — which of the fourteen files
+ * in that folder did not land, and why — unfolds underneath it, because sending
+ * somebody to another page to read the outcome of what they just did here is
+ * how the outcome goes unread.
  */
 
 /** Shot exports, profile exports, and zips of either. `.slog` is the raw file. */
@@ -101,15 +102,7 @@ export function ImportDropZone() {
         data-testid="shots-import-input"
         aria-label="Export files to import"
       />
-      {summary ? (
-        <span className="ml-auto text-muted-foreground text-xs" data-testid="import-result">
-          {summary.created + summary.updated} imported · {summary.skipped} skipped ·{" "}
-          {summary.failed} failed ·{" "}
-          <Link to="/import" className="underline underline-offset-2">
-            see the file list
-          </Link>
-        </span>
-      ) : null}
+      {summary ? <ImportResults summary={summary} /> : null}
     </section>
   );
 }

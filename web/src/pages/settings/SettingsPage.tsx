@@ -188,10 +188,11 @@ export function SettingsPage() {
       >
         <p className="text-muted-foreground text-sm">
           The machine keeps about 300 KB of history and drops the oldest shots when it runs short.
-          An export saved before that happened is the only way those shots come back.
+          An export saved before that happened is the only way those shots come back. Drop the files
+          on the strip at the top of the shots page; it reports what each one did.
         </p>
         <Button asChild variant="outline">
-          <Link to="/import">Open the import page</Link>
+          <Link to="/shots">Open the shots page</Link>
         </Button>
       </SectionCard>
 

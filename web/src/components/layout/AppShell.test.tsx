@@ -158,6 +158,13 @@ describe("AppShell", () => {
     expect(await screen.findByRole("heading", { name: "Shots" })).toBeInTheDocument();
   });
 
+  it("redirects the retired import route to the shots page", async () => {
+    // An old bookmark, or a hard refresh on one: the drop zone that replaced
+    // that page is on the shots page, so that is where it lands.
+    renderApp("/import");
+    expect(await screen.findByRole("heading", { name: "Shots" })).toBeInTheDocument();
+  });
+
   it("shows a 404 page inside the shell for an unknown route", async () => {
     renderApp("/nope");
     expect(await screen.findByText("No such page")).toBeInTheDocument();
