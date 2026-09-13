@@ -4349,6 +4349,10 @@ export interface components {
              * @default device
              */
             source: string;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+            /** Temperature C */
+            temperature_c?: number | null;
             /** Type */
             type: string;
             /**

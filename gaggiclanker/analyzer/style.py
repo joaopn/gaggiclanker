@@ -40,6 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from gaggiclanker.domain.profile_recipe import max_volumetric_target_g
 from gaggiclanker.domain.vocab import ShotStyle
 
 __all__ = ["StyleVerdict", "detect_style"]
@@ -171,7 +172,7 @@ def _from_profile(profile: dict[str, Any], dose_g: float | None) -> StyleVerdict
         )
 
     ceiling = _max_brew_pressure(brew)
-    volumetric = _max_volumetric(phases)
+    volumetric = max_volumetric_target_g(phases)
     if (
         ceiling is not None
         and ceiling <= ALLONGE_MAX_BAR
@@ -336,16 +337,6 @@ def _decline(phases: list[dict[str, Any]]) -> tuple[float, float] | None:
     if drop >= LEVER_DECLINE_BAR and seconds >= LEVER_DECLINE_SECONDS:
         return drop, seconds
     return None
-
-
-def _max_volumetric(phases: list[dict[str, Any]]) -> float | None:
-    values = [
-        float(target.get("value", 0) or 0)
-        for phase in phases
-        for target in phase.get("targets") or []
-        if isinstance(target, dict) and str(target.get("type", "")) == "volumetric"
-    ]
-    return max(values) if values else None
 
 
 # ── tier 2: what the author called the phases ─────────────────────────

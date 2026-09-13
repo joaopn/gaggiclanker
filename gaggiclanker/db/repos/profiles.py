@@ -15,8 +15,9 @@ import json
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import JsonObject, utc_now
-from gaggiclanker.db.repository import Repository
+from gaggiclanker.db.repository import Repository, row_to_dict
 from gaggiclanker.domain.models import Profile, canonical_profile_json, profile_content_hash
+from gaggiclanker.domain.profile_recipe import profile_recipe
 
 __all__ = [
     "DeviceProfileRow",
@@ -78,6 +79,13 @@ class ProfileVersionSummary(BaseModel):
     mirrored: bool = False
     #: How many shots resolve to this exact version.
     shot_count: int = 0
+    #: The brew temperature and the weight in the cup the document states, or
+    #: ``None`` where it does not (see :mod:`gaggiclanker.domain.profile_recipe`).
+    #: Carried on the row because the New Set form fills its recipe from the
+    #: version a person picks, and fetching every document to read two numbers
+    #: out of it is the payload this summary exists to avoid.
+    temperature_c: float | None = None
+    target_yield_g: float | None = None
 
 
 class ProfileVersionPage(BaseModel):
@@ -233,6 +241,7 @@ class ProfilesRepository(Repository):
         rows = await self.db.fetch_all(
             f"""
             SELECT v.id, v.content_hash, v.label, v.type, v.utility, v.source, v.created_at,
+                   v.json AS document,
                    EXISTS (SELECT 1 FROM device_profiles d
                             WHERE d.current_version_id = v.id
                               AND d.deleted_at IS NULL) AS mirrored,
@@ -245,7 +254,7 @@ class ProfilesRepository(Repository):
             [*params, limit, offset],
         )
         return ProfileVersionPage(
-            items=self.to_models(ProfileVersionSummary, rows),
+            items=[_summary(row_to_dict(row)) for row in rows],
             total=int(total_row["n"]) if total_row is not None else 0,
         )
 
@@ -404,3 +413,19 @@ class ProfilesRepository(Repository):
     async def get_device_profile_summary(self, device_id: str) -> DeviceProfileSummary | None:
         summaries = await self.list_device_profiles(include_deleted=True)
         return next((s for s in summaries if s.device_id == device_id), None)
+
+
+def _summary(row: dict[str, object]) -> ProfileVersionSummary:
+    """A list row, with the recipe numbers read out of its document.
+
+    Derived on read rather than stored: the rule is a few lines of Python over a
+    document the row already holds, and a stored copy would need a migration
+    every time the rule learned something. The document itself stays off the
+    row (see :class:`ProfileVersionSummary`).
+    """
+    raw = row.pop("document", None)
+    document = json.loads(raw) if isinstance(raw, str) else None
+    recipe = profile_recipe(document if isinstance(document, dict) else None)
+    return ProfileVersionSummary.model_validate(
+        {**row, "temperature_c": recipe.temperature_c, "target_yield_g": recipe.target_yield_g}
+    )
