@@ -1,9 +1,9 @@
-"""A small archive with four dialled-in Sets in it, and a bag nobody has opened.
+"""A small archive with four dialled-in Sets in it, and a coffee nobody has brewed.
 
 Everything here is deterministic: hand-written diagnostics rather than numbers
-derived from a `.slog`, fixed timestamps, and an explicit `as_of` date wherever
-days-off-roast is involved. The golden prompt is rendered from this fixture, so
-anything that read the clock would move the file once a day for ever.
+derived from a `.slog`, fixed timestamps, and an explicit `as_of` date rather
+than today. The golden prompt is rendered from this fixture, so anything that
+read the clock would move the file once a day for ever.
 
 The Sets are chosen to make the scoring readable rather than to be realistic:
 
@@ -13,7 +13,7 @@ The Sets are chosen to make the scoring readable rather than to be realistic:
     Sumatra       light        washed   Kenya   Mazzer  4 shots, mean 5 stars
     Colombia      light        washed   Kenya   Niche   no shots at all
 
-The new bag is a light washed Kenyan, so Kenya AA matches on all three
+The new coffee is a light washed Kenyan, so Kenya AA matches on all three
 attributes; Guji matches the roast only; Brazil matches the process only, and
 its roast is two steps away, which is *not* adjacent. Sumatra matches on all
 three and has the best outcome in the archive — and is on the other grinder, so
@@ -56,8 +56,8 @@ from tests.llm.conftest import FakeProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
-#: The day every run in this suite is asked on. Fixed, so "days off roast"
-#: renders the same number in the golden file next year.
+#: The day every run in this suite is asked on. Fixed, so the date the context
+#: states as "today" renders the same in the golden file next year.
 AS_OF = "2026-03-10"
 
 #: A complete, valid starting point. The default the fake provider answers
@@ -65,10 +65,9 @@ AS_OF = "2026-03-10"
 #: test about the output overrides one field of it.
 GOOD_OUTPUT: dict[str, Any] = {
     "summary": (
-        "A light washed Kenyan four days off roast. Expect blackcurrant and a sharp "
-        "acidity; it will want a fine grind and a long ratio."
+        "A light washed Kenyan. Expect blackcurrant and a sharp acidity; it will want "
+        "a fine grind and a long ratio."
     ),
-    "rest_note": "Four days off roast. Light roasts want ten to fourteen; it will move.",
     "questions_for_user": ["What do you normally grind espresso at on the Niche?"],
     "options": [
         {
@@ -409,9 +408,7 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
     device_id = 100
 
     for entry in _ARCHIVE:
-        bean = await beans.create(
-            BeanWrite(roast_date="2026-01-05", **entry["bean"]),
-        )
+        bean = await beans.create(BeanWrite(**entry["bean"]))
         stored = await sets.create(
             SetWrite(
                 name=f"{entry['bean']['name']} on the {entry['grinder']}",
@@ -470,9 +467,8 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 ),
             )
 
-    # The bag the wizard is about: light, washed, Kenyan, four days off roast
-    # on `AS_OF`. Every attribute matches the Kenya AA Set, which is what makes
-    # it the top anchor.
+    # The coffee the wizard is about: light, washed, Kenyan. Every attribute
+    # matches the Kenya AA Set, which is what makes it the top anchor.
     new_bean = await beans.create(
         BeanWrite(
             name="Kenya Nyeri",
@@ -482,7 +478,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             altitude_m=1900,
             process="washed",
             roast_level="light",
-            roast_date="2026-03-06",
             tasting_notes_bag="blackcurrant, tomato, cane sugar",
         )
     )

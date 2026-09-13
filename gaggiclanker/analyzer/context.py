@@ -11,11 +11,11 @@ Five sections, in the order the prompt carries them:
    their band labels, the execution score with its components, and a 40-point
    downsampled curve so the model can see the *shape* without forty kilobytes
    of samples;
-2. **the Set** — bean with days off roast, grinder with its own step unit,
-   machine with its hardware and offsets, the profile JSON, and the
-   grind/dose/yield/temperature targets. Or an explicit "no Set" block, which is
-   a statement rather than an omission: a model given no Set section would
-   assume one was forgotten;
+2. **the Set** — the bean with its roast level and process, the grinder with
+   its own step unit, the machine with its hardware and offsets, the profile
+   JSON, and the grind/dose/yield/temperature targets. Or an explicit "no Set"
+   block, which is a statement rather than an omission: a model given no Set
+   section would assume one was forgotten;
 3. **the trajectory** — the previous N shots in the same Set, each with its
    diagnostics summary, the user's verdict, and the suggestions that followed it
    and what became of them. crema's interleaving trick, Set-scoped, and it is
@@ -23,17 +23,15 @@ Five sections, in the order the prompt carries them:
 4. **your judgement** — flagged as ground truth for taste;
 5. **the rules** — the selected knowledge tier, verbatim.
 
-Determinism is the property everything here is arranged around. Nothing reads
-the clock except `days_off_roast`, which reads the shot's own timestamp rather
-than now; nothing iterates a set; every list is sorted. Two builds of the same
-shot produce byte-identical text, which is what the golden test asserts and what
-makes "the same shot selects the same rules" checkable at all.
+Determinism is the property everything here is arranged around. Nothing here
+reads the clock at all; nothing iterates a set; every list is sorted. Two builds
+of the same shot produce byte-identical text, which is what the golden test
+asserts and what makes "the same shot selects the same rules" checkable at all.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -67,8 +65,6 @@ __all__ = [
     "TRAJECTORY_SHOTS",
     "AnalysisContext",
     "build_context",
-    "days_off_roast",
-    "freshness_window",
     "retrieval_context",
     "set_attributes",
     "signal_tokens",
@@ -84,41 +80,14 @@ CURVE_POINTS = 40
 #: stops growing faster than it gets more useful.
 TRAJECTORY_SHOTS = 5
 
-#: Days off roast beyond which "days" stops meaning anything useful.
-_MAX_SENSIBLE_DAYS = 3650
-
 #: The two sides of crema's taste vocabulary, for the one rule that needs both
 #: at once. `thin` and `weak_watery` are strength rather than extraction, so
 #: they are not on the sour side here even though they sit in that group.
 _SOUR_TAGS = frozenset({"sour", "sharp", "salty", "quick_finish"})
 _BITTER_TAGS = frozenset({"bitter", "harsh", "astringent", "drying", "hollow"})
 
-#: Where a bean is in its life, as a token, so the four freshness rules stop all
-#: firing at once.
-#:
-#: The windows **tile**: the seed's own ranges leave gaps (nothing names days
-#: four to six) and a bag that fell in one would get no freshness guidance at
-#: all, which is worse than the nearest neighbour's. So each window runs up to
-#: the start of the next, and the rules' own text keeps the source's numbers.
-_FRESHNESS_WINDOWS: tuple[tuple[int, int, str], ...] = (
-    (0, 6, "degassing"),
-    (7, 13, "sweet_spot"),
-    (14, 29, "peak"),
-    (30, 10_000, "stale"),
-)
-
 #: Above this, a bean is dense enough that the altitude rule means something.
 HIGH_ALTITUDE_M = 1800
-
-
-def freshness_window(days: int | None) -> str:
-    """The named window this bag is in, or "" for the gaps between them."""
-    if days is None:
-        return ""
-    for low, high, name in _FRESHNESS_WINDOWS:
-        if low <= days <= high:
-            return name
-    return ""
 
 
 class ShotFacts(BaseModel):
@@ -174,7 +143,6 @@ class SetFacts(BaseModel):
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
-    days_off_roast: int | None = None
     bag_tasting_notes: str = ""
     grinder_name: str = ""
     grinder_model: str = ""
@@ -580,9 +548,6 @@ def signal_tokens(
         tokens.add("yield:tiny")
 
     if facts is not None:
-        window = freshness_window(facts.days_off_roast)
-        if window:
-            tokens.add(f"freshness:{window}")
         if facts.altitude_m is not None and facts.altitude_m >= HIGH_ALTITUDE_M:
             tokens.add("altitude:high")
 
@@ -645,7 +610,6 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             process=bean.process if bean else None,
             roast_level=bean.roast_level if bean else None,
             decaf=bool(bean.decaf) if bean else False,
-            days_off_roast=days_off_roast(bean.roast_date if bean else None, shot.started_at),
             bag_tasting_notes=(bean.tasting_notes_bag or "") if bean else "",
             grinder_name=grinder.name if grinder else "",
             grinder_model=(grinder.model or "") if grinder else "",
@@ -664,24 +628,6 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
         ),
         "",
     )
-
-
-def days_off_roast(roast_date: str | None, started_at: str | None) -> int | None:
-    """Days between the roast date and the shot. Never "now".
-
-    Reading the clock would make an analysis of a shot from March say "180 days
-    off roast" when it is re-run in September, which is both wrong and
-    non-deterministic — and the golden test would fail once a day for ever.
-    """
-    if not roast_date or not started_at:
-        return None
-    try:
-        roasted = date.fromisoformat(roast_date[:10])
-        pulled = date.fromisoformat(started_at[:10])
-    except ValueError:
-        return None
-    days = (pulled - roasted).days
-    return days if 0 <= days <= _MAX_SENSIBLE_DAYS else None
 
 
 def _phase_metrics(phases: list[Any]) -> list[dict[str, Any]]:
@@ -995,7 +941,6 @@ def _render_set(facts: SetFacts) -> str:
             _line("process", facts.process or "not stated"),
             _line("roast level", facts.roast_level or "not stated"),
             _line("decaf", "yes" if facts.decaf else None),
-            _line("days off roast", facts.days_off_roast),
             _line("roaster's tasting notes", facts.bag_tasting_notes),
         ]
     )

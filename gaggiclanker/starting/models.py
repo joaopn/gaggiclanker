@@ -176,20 +176,12 @@ class StartingPointOption(BaseModel):
 
 
 class StartingPointResult(BaseModel):
-    """The whole answer: what the bean needs, and three ways to start.
-
-    ``rest_note`` is separate from the options because it applies to all three
-    and is the one piece of advice that says *don't brew yet*: a light natural
-    two days off roast wants another week, and no grind setting fixes that
-    (gaggimate-mcp's freshness rule).
-    """
+    """The whole answer: what the bean needs, and three ways to start."""
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Two or three sentences on what this bag is and what to expect from it.
+    #: Two or three sentences on what this coffee is and what to expect from it.
     summary: str = Field(min_length=1, max_length=2000)
-    #: Where the bag is in its rest window, and whether to wait.
-    rest_note: str = Field(default="", max_length=1000)
     #: What would make the next suggestion better — almost always "tell me your
     #: usual grind setting". Rendered as a list under the cards.
     questions_for_user: list[str] = Field(default_factory=list, max_length=5)

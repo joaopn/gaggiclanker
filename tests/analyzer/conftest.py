@@ -400,7 +400,6 @@ async def build_fixture(db: Database) -> Fixture:
             altitude_m=2000,
             process="natural",
             roast_level="light",
-            roast_date="2026-02-27",
             tasting_notes_bag="peach, jasmine, lemon",
         )
     )

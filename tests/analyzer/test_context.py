@@ -94,12 +94,22 @@ async def test_the_set_context_names_the_grinder_s_own_unit(fixture: Fixture) ->
     assert "1:2.00" in rendered
 
 
-async def test_days_off_roast_comes_from_the_shot_not_from_now(fixture: Fixture) -> None:
-    """Reading the clock would make this test fail once a day, for ever."""
+async def test_the_bean_block_says_nothing_about_a_bag(fixture: Fixture) -> None:
+    """A bean is a type of coffee, so nothing about it ages.
+
+    The prompt used to carry days off roast, which came from a date written on
+    the type — wrong for every bag of that coffee but the first. Nothing reads
+    the clock here now, which is also what makes the golden file stable.
+    """
     context = await build_context(fixture.db, fixture.shots[-1])
     assert context.set is not None
-    # Roasted 2026-02-27, pulled 2026-03-03.
-    assert context.set.days_off_roast == 4
+    rendered = context.render()["set_context"]
+    assert "days off roast" not in rendered
+    assert "roast date" not in rendered
+    assert not any(token.startswith("freshness:") for token in context.signals)
+    # What does describe the coffee is still there.
+    assert "roast level: light" in rendered
+    assert "process: natural" in rendered
 
 
 async def test_a_shot_with_no_set_says_so(fixture: Fixture) -> None:

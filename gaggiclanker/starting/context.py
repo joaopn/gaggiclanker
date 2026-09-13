@@ -8,8 +8,8 @@ the prompt's variables; nothing else may reach into the database mid-call.
 
 What is in it, and why each piece earns its tokens:
 
-* **the bean**, including days off roast — the one fact that can make the right
-  answer "don't brew this yet";
+* **the bean** — the coffee, its roaster, origin, process and roast level, which
+  is what every rule in the tier is keyed on;
 * **the hardware**, because advice is given in the grinder's own step unit and
   the machine's temperature offset shifts every number in the answer;
 * **the user's usual grind**, when they gave one. This is what turns a relative
@@ -38,7 +38,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.analyzer.context import HIGH_ALTITUDE_M, days_off_roast, freshness_window
+from gaggiclanker.analyzer.context import HIGH_ALTITUDE_M
 from gaggiclanker.analyzer.style import detect_style
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
@@ -89,14 +89,7 @@ class BeanFacts(BaseModel):
     altitude_m: int | None = None
     process: str | None = None
     roast_level: str | None = None
-    roast_date: str | None = None
     decaf: bool = False
-    #: Days between the roast date and the day the run was asked for. Unlike an
-    #: analysis — which reads the *shot's* timestamp and is therefore stable
-    #: for ever — a starting point is asked today and about today, so this
-    #: genuinely moves. It is snapshotted on the run row for that reason.
-    days_off_roast: int | None = None
-    freshness: str = ""
     bag_tasting_notes: str = ""
     notes: str = ""
 
@@ -148,8 +141,9 @@ class StartingPointContext(BaseModel):
 
     bean: BeanFacts
     hardware: HardwareFacts
-    #: The date the run was asked on, so `days_off_roast` can be re-derived and
-    #: checked. ISO, day precision: nothing here is finer-grained than a day.
+    #: The date the run was asked on, stated to the model so "wait a few days"
+    #: is advice with a reference point. ISO, day precision: nothing here is
+    #: finer-grained than a day.
     as_of: str = ""
     #: The style rule selection was made for, and why. See the module docstring.
     planned_style: str = DEFAULT_STYLE
@@ -228,10 +222,9 @@ async def build_context(
     """Assemble the whole context. Pure in the database it is handed.
 
     ``as_of`` is the day the suggestion is *for*, defaulting to today. It is a
-    parameter rather than a `date.today()` inside because the golden test has
-    to render a fixed document — days off roast would otherwise move the file
-    once a day for ever, which is the same trap
-    :func:`gaggiclanker.analyzer.context.days_off_roast` was written to avoid.
+    parameter rather than a `date.today()` inside because the golden test has to
+    render a fixed document, and a rendered date read off the clock would move
+    the file once a day for ever.
 
     Raises ``LookupError`` for a bean or a machine that does not exist: that is
     the caller's mistake rather than the provider's, and it wants to be a 404
@@ -240,7 +233,6 @@ async def build_context(
     inputs = await _fetch(db, bean_id=bean_id, machine_id=machine_id, grinder_id=grinder_id)
     today = (as_of or datetime.now(UTC).date().isoformat())[:10]
 
-    days = days_off_roast(inputs.bean.roast_date, today)
     bean = BeanFacts(
         bean_id=inputs.bean.id,
         name=inputs.bean.name,
@@ -250,10 +242,7 @@ async def build_context(
         altitude_m=inputs.bean.altitude_m,
         process=inputs.bean.process,
         roast_level=inputs.bean.roast_level,
-        roast_date=inputs.bean.roast_date,
         decaf=inputs.bean.decaf,
-        days_off_roast=days,
-        freshness=freshness_window(days),
         bag_tasting_notes=inputs.bean.tasting_notes_bag,
         notes=inputs.bean.notes,
     )
@@ -356,18 +345,15 @@ def _signal_tokens(bean: BeanFacts, style: str) -> list[str]:
 
     A much shorter list than an analysis's, because most of that grammar is
     about a shot that has not happened: there is no channeling band, no first
-    drip, no taste. What is left is what is true of the *bag* — where it is in
-    its life, and whether it is dense enough for the altitude rule — plus the
-    planned style, which `select_rules` adds itself and which is repeated here
-    so the stored signal list reads as the whole basis of the selection.
+    drip, no taste. What is left is what is true of the *coffee* — whether it is
+    dense enough for the altitude rule — plus the planned style, which
+    `select_rules` adds itself and which is repeated here so the stored signal
+    list reads as the whole basis of the selection.
 
     Sorted, for the reason the analyzer's is: this list is snapshotted, and a
     set's iteration order would make two identical runs differ on the row.
     """
     tokens = {f"style:{style}"}
-    window = freshness_window(bean.days_off_roast)
-    if window:
-        tokens.add(f"freshness:{window}")
     if bean.altitude_m is not None and bean.altitude_m >= HIGH_ALTITUDE_M:
         tokens.add("altitude:high")
     return sorted(tokens)
@@ -493,15 +479,7 @@ def _render_bean(bean: BeanFacts, as_of: str) -> str:
             _line("process", bean.process or "not stated"),
             _line("roast level", bean.roast_level or "not stated"),
             _line("decaf", "yes" if bean.decaf else None),
-            _line("roast date", bean.roast_date or "not stated"),
             _line("today", as_of),
-            _line(
-                "days off roast",
-                "not known (no roast date on the bag)"
-                if bean.days_off_roast is None
-                else f"{bean.days_off_roast}"
-                + (f" ({bean.freshness.replace('_', ' ')})" if bean.freshness else ""),
-            ),
             _line("roaster's tasting notes", bean.bag_tasting_notes),
             _line("notes", bean.notes),
         ]

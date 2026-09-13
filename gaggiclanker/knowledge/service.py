@@ -111,7 +111,7 @@ _UNREMARKABLE_BANDS = frozenset(
 
 #: Signal tokens whose shape is not a diagnostic band and which are handled
 #: elsewhere in :meth:`~KnowledgeService.queries_for`, or not at all.
-_NON_BAND_PREFIXES = ("style", "taste", "balance", "primary", "freshness", "altitude", "scale")
+_NON_BAND_PREFIXES = ("style", "taste", "balance", "primary", "altitude", "scale")
 
 
 @dataclass(frozen=True, slots=True)

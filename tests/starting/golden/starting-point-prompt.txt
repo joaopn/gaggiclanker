@@ -6,9 +6,7 @@ variety: SL28
 altitude: 1900 m
 process: washed
 roast level: light
-roast date: 2026-03-06
 today: 2026-03-10
-days off roast: 4 (degassing)
 roaster's tasting notes: blackcurrant, tomato, cane sugar
 
 === hardware_facts ===
@@ -331,10 +329,6 @@ ratio_by_style:
 
 time_by_style:
   [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
-
-freshness_windows:
-  [crema_cues] Thick, pale, bubbly crema that collapses fast means the bean is too fresh; thin tan crema means it is past its peak.
-  [degassing] One to three days off roast the bean is still shedding CO2: use a long bloom and a slow pre-infusion, and expect the shot to gush once the gas breaks through.
 
 rest_times:
   [light] Light roasts need 10-14 days of rest before they dial in reliably.

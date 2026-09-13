@@ -8,7 +8,7 @@ description: |
   what is snapshotted onto the run row — so what an old suggestion says it was
   told is exactly what it was told.
 
-  The order follows the question. The bag first, because that is the subject.
+  The order follows the question. The coffee first, because that is the subject.
   The hardware next, because it decides what units the answer can even be given
   in — and the user's usual grind setting lives there, which is the single fact
   that turns a relative answer into a dialable one. The similar Sets after that,
@@ -20,11 +20,11 @@ description: |
   thing in the prompt to talk oneself into following.
 variables:
   - name: bean_facts
-    description: The bag — roast level, process, origin, decaf, and how long off roast.
+    description: The coffee — roast level, process, origin, variety, altitude, decaf.
   - name: hardware_facts
     description: The grinder (its step unit and their usual setting) and the machine.
   - name: similar_sets
-    description: Past Set versions on this hardware that resemble the bag, with how they went.
+    description: Past Set versions on this hardware that resemble the coffee, with how they went.
   - name: profile_library
     description: Profiles already in the archive, with their shape and how used they are.
   - name: planned_style
@@ -34,7 +34,7 @@ variables:
   - name: knowledge_excerpts
     description: Passages retrieved from the knowledge base, with their citations.
 user: |
-  THE BAG THEY HAVE JUST OPENED
+  THE COFFEE THEY HAVE JUST OPENED
 
   {{bean_facts}}
 

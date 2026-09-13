@@ -201,10 +201,6 @@ ratio_by_style:
 time_by_style:
   [bloom] A bloom profile totals 30-45 s, with first drip between 15 and 25 s.
 
-freshness_windows:
-  [crema_cues] Thick, pale, bubbly crema that collapses fast means the bean is too fresh; thin tan crema means it is past its peak.
-  [degassing] One to three days off roast the bean is still shedding CO2: use a long bloom and a slow pre-infusion, and expect the shot to gush once the gas breaks through.
-
 rest_times:
   [light] Light roasts need 10-14 days of rest before they dial in reliably.
   [natural_bonus] Naturals and honeys want 2-3 days more rest than a washed bean of the same roast.
@@ -256,7 +252,6 @@ variety: Heirloom
 altitude: 2000 m
 process: natural
 roast level: light
-days off roast: 4
 roaster's tasting notes: peach, jasmine, lemon
 
 KIT

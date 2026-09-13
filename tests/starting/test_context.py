@@ -59,12 +59,20 @@ async def test_two_builds_are_identical(fixture: Fixture) -> None:
     assert first.render() == second.render()  # type: ignore[attr-defined]
 
 
-async def test_days_off_roast_comes_from_as_of_not_from_now(fixture: Fixture) -> None:
-    """Four days on the fixture's date, whatever day the suite runs on."""
+async def test_the_date_is_as_of_not_now(fixture: Fixture) -> None:
+    """The fixture's date, whatever day the suite runs on."""
     context = await _build(fixture)
-    assert context.bean.days_off_roast == 4  # type: ignore[attr-defined]
-    assert context.bean.freshness == "degassing"  # type: ignore[attr-defined]
     assert context.as_of == AS_OF  # type: ignore[attr-defined]
+    assert AS_OF in context.render()["bean_facts"]  # type: ignore[attr-defined]
+
+
+async def test_the_bean_block_says_nothing_about_a_bag(fixture: Fixture) -> None:
+    """A bean is a type of coffee; ageing belongs to a bag and is not tracked."""
+    context = await _build(fixture)
+    rendered = context.render()["bean_facts"]  # type: ignore[attr-defined]
+    assert "roast date" not in rendered
+    assert "days off roast" not in rendered
+    assert "roast level: light" in rendered
 
 
 async def test_the_usual_grind_reaches_the_prompt_and_its_absence_is_loud(
@@ -118,12 +126,13 @@ async def test_the_selected_rules_cover_the_categories_the_wizard_needs(
     } <= categories
 
 
-async def test_the_signals_are_the_bag_not_a_shot(fixture: Fixture) -> None:
+async def test_the_signals_are_the_coffee_not_a_shot(fixture: Fixture) -> None:
     """No channeling band, no taste — there is no shot yet."""
     context = await _build(fixture)
-    assert "freshness:degassing" in context.signals  # type: ignore[attr-defined]
     assert "altitude:high" in context.signals  # type: ignore[attr-defined]
+    assert any(signal.startswith("style:") for signal in context.signals)  # type: ignore[attr-defined]
     assert not any(signal.startswith("taste:") for signal in context.signals)  # type: ignore[attr-defined]
+    assert not any(signal.startswith("freshness:") for signal in context.signals)  # type: ignore[attr-defined]
 
 
 async def test_the_profile_library_is_offered_most_used_first(fixture: Fixture) -> None:
