@@ -32,6 +32,10 @@ export function ShortcutsDialog({
             </div>
           ))}
           <div className="contents">
+            <dt className="font-mono text-muted-foreground text-xs">[</dt>
+            <dd>Fold the sidebar to an icon rail, or unfold it</dd>
+          </div>
+          <div className="contents">
             <dt className="font-mono text-muted-foreground text-xs">?</dt>
             <dd>This dialog</dd>
           </div>

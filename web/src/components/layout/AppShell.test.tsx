@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
@@ -38,6 +38,7 @@ function renderApp(path = "/shots") {
 describe("AppShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     getHealth.mockResolvedValue({ status: "ok", version: "0.1.0", database: "ok" });
     getSettings.mockResolvedValue({});
     getDeviceStatus.mockResolvedValue({ configured: false, connected: false });
@@ -177,5 +178,80 @@ describe("AppShell", () => {
     expect(await screen.findByText("No such page")).toBeInTheDocument();
     // Still inside the shell, so the user can navigate out of it.
     expect(screen.getAllByRole("navigation", { name: "Main" }).length).toBeGreaterThan(0);
+  });
+
+  // ── the rail ──────────────────────────────────────────────────────
+
+  describe("the collapsible rail", () => {
+    it("folds to an icon rail on the button and remembers it", async () => {
+      const user = setupUser();
+      renderApp();
+
+      const sidebar = screen.getByTestId("sidebar");
+      expect(sidebar).toHaveAttribute("data-collapsed", "false");
+      const collapse = screen.getByRole("button", { name: "Collapse sidebar" });
+      expect(collapse).toHaveAttribute("aria-expanded", "true");
+      expect(collapse).toHaveAttribute("aria-controls", "sidebar-nav");
+
+      await user.click(collapse);
+
+      expect(sidebar).toHaveAttribute("data-collapsed", "true");
+      expect(window.localStorage.getItem("sidebar.collapsed.v1")).toBe("true");
+      const expand = screen.getByRole("button", { name: "Expand sidebar" });
+      expect(expand).toHaveAttribute("aria-expanded", "false");
+
+      await user.click(expand);
+
+      expect(sidebar).toHaveAttribute("data-collapsed", "false");
+      expect(window.localStorage.getItem("sidebar.collapsed.v1")).toBe("false");
+    });
+
+    it("starts folded when that is what was stored", () => {
+      window.localStorage.setItem("sidebar.collapsed.v1", "true");
+      renderApp();
+      // Read at mount rather than in an effect, so the first paint is already
+      // the right width instead of expanding and then folding.
+      expect(screen.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "true");
+    });
+
+    it("toggles on the `[` chord", async () => {
+      const user = setupUser();
+      renderApp();
+
+      await user.keyboard("{[}");
+      expect(screen.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "true");
+
+      await user.keyboard("{[}");
+      expect(screen.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "false");
+    });
+
+    it("keeps every destination named and marked while it is folded", async () => {
+      const user = setupUser();
+      renderApp("/beans");
+
+      await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+      const nav = screen.getByTestId("sidebar").querySelector("nav");
+      expect(nav).not.toBeNull();
+      // Hidden visually, present for assistive tech: the label is still in the
+      // accessible name of every link, with its chord.
+      for (const link of NAV_LINKS) {
+        expect(
+          within(nav as HTMLElement).getByRole("link", {
+            name: `${link.label} (${link.shortcutLabel})`,
+          }),
+        ).toBeInTheDocument();
+      }
+      // And the active entry is still the active entry.
+      const current = within(nav as HTMLElement).getAllByRole("link", { current: "page" });
+      expect(current.map((el) => el.getAttribute("aria-label"))).toEqual(["Beans (g b)"]);
+    });
+
+    it("lists the fold chord in the shortcut sheet", async () => {
+      const user = setupUser();
+      renderApp();
+      await user.keyboard("?");
+      expect(await screen.findByText(/Fold the sidebar to an icon rail/)).toBeInTheDocument();
+    });
   });
 });
