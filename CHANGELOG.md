@@ -326,6 +326,15 @@ already knows rather than from a chart.
 - **The Beans page has a shortcut** straight into the wizard for the coffee you
   are looking at, and the chat can ask for one through the `starting_point` tool.
 
+### Fixed
+
+- **Phase bands no longer hide the shot curves.** On the shot chart every
+  second phase was shaded with an opaque colour and painted on top of the
+  lines, so a soak or a long decline blanked out pressure, flow, weight and
+  temperature across its whole span. The bands now sit behind the curves in a
+  faint, see-through wash of their own (`--chart-band`, one per palette); the
+  phase names and the dashed end-of-shot line still draw above them.
+
 ## [0.1.0] — 2026-09-11
 
 The prototype. It archives every shot a GaggiMate has taken, shows the curves
