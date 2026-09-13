@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  clampWidth,
   DEFAULT_SHOT_COLUMNS,
+  fixedSize,
   gridTemplates,
   loadShotColumns,
+  loadShotWidths,
   SHOT_COLUMNS,
   SHOT_COLUMNS_KEY,
+  SHOT_WIDTHS_KEY,
   type ShotColumnId,
   saveShotColumns,
+  saveShotWidths,
   visibleColumns,
 } from "@/lib/shotColumns";
 
@@ -103,14 +108,83 @@ describe("gridTemplates", () => {
   it("gives the narrow breakpoint one track per column that survives it", () => {
     const columns = visibleColumns(["time", "curve", "score"]);
     const { narrow, wide } = gridTemplates(columns);
-    expect(wide.split(" ").length).toBe(3);
+    // Three fixed tracks and the empty one that takes the rest of the row.
+    expect(wide.split(" ")).toEqual(["7.5rem", "6.5rem", "3.25rem", "minmax(0,1fr)"]);
     // Curve is hidden on a phone, and a hidden grid item still takes its track:
     // the narrow template has to be short, not the cells hidden.
-    expect(narrow.split(" ").length).toBe(2);
+    expect(narrow.split(" ")).toEqual(["7.5rem", "3.25rem", "minmax(0,1fr)"]);
+  });
+
+  it("adds no filler track when a flexible column already takes the rest", () => {
+    const { wide } = gridTemplates(visibleColumns(["set", "time"]));
+    expect(wide).toBe("minmax(8rem,1fr) 7.5rem");
   });
 
   it("covers every column the chooser offers", () => {
     const all = SHOT_COLUMNS.map((column) => column.id);
     expect(gridTemplates(visibleColumns(all)).wide.split(" ")).toHaveLength(all.length);
+  });
+
+  it("draws a fixed column at the reader's width, clamped to its bounds", () => {
+    const columns = visibleColumns(["set", "time", "score"]);
+    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("minmax(8rem,1fr) 9.25rem 3.25rem");
+    // A stored width from a looser release is still drawn inside today's bounds.
+    expect(gridTemplates(columns, { time: 1, score: 99 }).wide).toBe(
+      "minmax(8rem,1fr) 4.5rem 6rem",
+    );
+  });
+
+  it("sizes Time for the compact format, not the long one it used to show", () => {
+    const time = SHOT_COLUMNS.find((column) => column.id === "time");
+    expect(time && fixedSize(time)?.rem).toBe(7.5);
+  });
+});
+
+describe("column widths", () => {
+  it("round-trips the widths, and forgets the key once nothing is customised", () => {
+    saveShotWidths({ time: 9, flags: 12 });
+    expect(loadShotWidths()).toEqual({ time: 9, flags: 12 });
+    saveShotWidths({});
+    expect(window.localStorage.getItem(SHOT_WIDTHS_KEY)).toBeNull();
+    expect(loadShotWidths()).toEqual({});
+  });
+
+  it("keeps each good width and drops each bad one on its own", () => {
+    window.localStorage.setItem(
+      SHOT_WIDTHS_KEY,
+      JSON.stringify({
+        time: 8,
+        // A flexible column has no width to store.
+        set: 12,
+        // Not a column any more.
+        vibes: 5,
+        // Not a number.
+        score: "wide",
+        // Outside the bounds: clamped, not discarded.
+        flags: 400,
+      }),
+    );
+    expect(loadShotWidths()).toEqual({ time: 8, flags: 24 });
+  });
+
+  it.each([
+    ["not JSON at all", "{{{"],
+    ["a list", "[8]"],
+    ["null", "null"],
+  ])("reads %s as no widths", (_why, stored) => {
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, stored);
+    expect(loadShotWidths()).toEqual({});
+  });
+
+  it("survives storage that throws on every call", () => {
+    expect(loadShotWidths(hostile)).toEqual({});
+    expect(() => saveShotWidths({ time: 8 }, hostile)).not.toThrow();
+  });
+
+  it("clamps and rounds", () => {
+    const size = { rem: 5, min: 4, max: 6 };
+    expect(clampWidth(size, 3)).toBe(4);
+    expect(clampWidth(size, 7)).toBe(6);
+    expect(clampWidth(size, 5.123456)).toBe(5.12);
   });
 });

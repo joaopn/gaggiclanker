@@ -12,13 +12,21 @@ import { SHOT_COLUMNS, type ShotColumnId } from "@/lib/shotColumns";
  * answer is visible the moment it is clicked. The last visible column cannot be
  * turned off — a table with no columns is not a preference, it is a broken
  * page — so its checkbox is disabled rather than silently ignored.
+ *
+ * "Reset widths" lives here too, because this is where somebody looks for
+ * "put the table back"; a single column is reset by double-clicking its edge.
  */
 export function ColumnChooser({
   visible,
   onChange,
+  widthsChanged,
+  onResetWidths,
 }: {
   visible: ShotColumnId[];
   onChange: (next: ShotColumnId[]) => void;
+  /** Whether any column has been dragged away from its default width. */
+  widthsChanged: boolean;
+  onResetWidths: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const prefix = useId();
@@ -66,6 +74,16 @@ export function ColumnChooser({
             );
           })}
         </fieldset>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-3 w-full"
+          data-testid="reset-widths"
+          disabled={!widthsChanged}
+          onClick={onResetWidths}
+        >
+          Reset widths
+        </Button>
       </PopoverContent>
     </Popover>
   );

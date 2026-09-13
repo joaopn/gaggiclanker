@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -437,6 +437,108 @@ describe("ShotsPage", () => {
 
     await waitFor(() => expect(getShotSamples).toHaveBeenCalledWith(1, 40));
     expect(await screen.findByTestId("shot-sparkline")).toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage column widths", () => {
+  /**
+   * A pointer event, built by hand: jsdom has no `PointerEvent`, so
+   * `fireEvent.pointerDown` produces a bare `Event` with no coordinates and no
+   * pointer id, and a drag handler reading either sees `undefined`.
+   */
+  function pointer(target: Element, type: string, clientX: number): void {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, button: 0 });
+    Object.defineProperty(event, "pointerId", { value: 1 });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+  }
+
+  /** The wide template the table hands the header and every row. */
+  function template(): string {
+    const header = screen.getByTestId("header-time").closest("[style]") as HTMLElement;
+    return header.style.getPropertyValue("--shots-grid-wide");
+  }
+
+  it("shows the time compactly, with the whole timestamp on hover, in a narrower column", async () => {
+    getShots.mockResolvedValue(listData([shot({ started_at: new Date().toISOString() })]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const cell = screen.getByTestId("shot-row").querySelector('[data-column="time"] span');
+    expect(cell).toHaveAttribute("title");
+    expect(cell?.textContent?.length).toBeLessThan((cell?.getAttribute("title") ?? "").length);
+    expect(template().split(" ")[1]).toBe("7.5rem");
+  });
+
+  it("drags a column's edge, applies it to header and rows alike, and keeps it", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    const first = renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const handle = screen.getByRole("separator", { name: "Resize the Time column" });
+    expect(handle).toHaveAttribute("aria-valuenow", "7.5");
+    pointer(handle, "pointerdown", 100);
+    pointer(handle, "pointermove", 140);
+    pointer(handle, "pointerup", 140);
+
+    // 40 px at 16 px to the rem.
+    expect(handle).toHaveAttribute("aria-valuenow", "10");
+    expect(template().split(" ")[1]).toBe("10rem");
+    // No sort happened on the way.
+    expect(getShots).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("header-time")).toHaveAttribute("aria-sort", "descending");
+    first.unmount();
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    expect(template().split(" ")[1]).toBe("10rem");
+  });
+
+  it("steps with the keyboard, stops at the bounds, and resets on double-click", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const handle = screen.getByRole("separator", { name: "Resize the Time column" });
+    handle.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(handle).toHaveAttribute("aria-valuenow", "7.75");
+    await user.keyboard("{Shift>}{ArrowLeft}{/Shift}");
+    expect(handle).toHaveAttribute("aria-valuenow", "6.75");
+    await user.keyboard("{Home}");
+    expect(handle).toHaveAttribute("aria-valuenow", "4.5");
+    await user.keyboard("{ArrowLeft}");
+    expect(handle).toHaveAttribute("aria-valuenow", "4.5");
+    await user.keyboard("{End}{ArrowRight}");
+    expect(handle).toHaveAttribute("aria-valuenow", "16");
+
+    await user.dblClick(handle);
+    expect(handle).toHaveAttribute("aria-valuenow", "7.5");
+    expect(window.localStorage.getItem("shots.widths.v1")).toBeNull();
+    // A double-click on the edge is not two clicks on the heading.
+    expect(getShots).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts every width back from the column chooser", async () => {
+    const user = setupUser();
+    window.localStorage.setItem("shots.widths.v1", JSON.stringify({ time: 12, score: 5 }));
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    expect(template()).toContain("12rem");
+
+    await user.click(screen.getByTestId("columns-button"));
+    await user.click(await screen.findByTestId("reset-widths"));
+
+    expect(template()).not.toContain("12rem");
+    expect(template().split(" ")[1]).toBe("7.5rem");
+    expect(screen.getByTestId("reset-widths")).toBeDisabled();
   });
 });
 

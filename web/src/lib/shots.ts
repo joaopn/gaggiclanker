@@ -28,6 +28,32 @@ export function formatTime(value: string | null | undefined): string {
   return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/**
+ * A shot's time as the list shows it: short enough for a narrow column.
+ *
+ * Day, short month and time for a shot from this year; day, short month and
+ * year — no time — for an older one. The list is a year deep for most people,
+ * so the year is noise on nearly every row and signal on the few where it
+ * appears; and once a shot is from another year the minute it was pulled is
+ * the least useful thing about when. The full timestamp goes in the cell's
+ * `title` (`formatTime`), so nothing is lost, only folded.
+ *
+ * `now` is a parameter so the current-year rule can be tested on a fixed day.
+ */
+export function formatListTime(value: string | null | undefined, now: Date = new Date()): string {
+  if (!value) return "no clock";
+  const date = new Date(value);
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "no clock";
   return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });

@@ -17,8 +17,11 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSets } from "@/hooks/useSets";
 import {
   loadShotColumns,
+  loadShotWidths,
   type ShotColumnId,
+  type ShotWidths,
   saveShotColumns,
+  saveShotWidths,
   visibleColumns,
 } from "@/lib/shotColumns";
 import {
@@ -65,9 +68,31 @@ export function ShotsPage() {
   const [columnIds, setColumnIds] = useState<ShotColumnId[]>(() => loadShotColumns());
   const columns = useMemo(() => visibleColumns(columnIds), [columnIds]);
 
+  // The widths the reader dragged, read the same way and stored under a key of
+  // their own.
+  const [widths, setWidths] = useState<ShotWidths>(() => loadShotWidths());
+
   function chooseColumns(next: ShotColumnId[]) {
     setColumnIds(next);
     saveShotColumns(next);
+  }
+
+  // Saved on every step of a drag rather than on release: it is one short
+  // string into storage, and a release that never arrives (a tab closed
+  // mid-drag) would otherwise lose the width that is already on screen.
+  function resizeColumn(id: ShotColumnId, rem: number | null) {
+    setWidths((current) => {
+      const next = { ...current };
+      if (rem === null) delete next[id];
+      else next[id] = rem;
+      saveShotWidths(next);
+      return next;
+    });
+  }
+
+  function resetWidths() {
+    setWidths({});
+    saveShotWidths({});
   }
 
   /**
@@ -140,7 +165,12 @@ export function ShotsPage() {
               versions={versions.data?.items ?? []}
               sets={sets.data?.items ?? []}
             />
-            <ColumnChooser visible={columnIds} onChange={chooseColumns} />
+            <ColumnChooser
+              visible={columnIds}
+              onChange={chooseColumns}
+              widthsChanged={Object.keys(widths).length > 0}
+              onResetWidths={resetWidths}
+            />
             {needsSet > 0 && filters.set !== "needs" ? (
               <Button
                 variant="outline"
@@ -189,6 +219,8 @@ export function ShotsPage() {
               sort={filters.sort}
               order={filters.order}
               onSort={sortBy}
+              widths={widths}
+              onResize={resizeColumn}
             />
           </div>
           <div className="flex items-center justify-between gap-3">

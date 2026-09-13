@@ -12,8 +12,17 @@ import { Badge } from "@/components/ui/badge";
 import { usePatchJudgement } from "@/hooks/useSets";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import { attempt } from "@/lib/mutations";
-import { gridTemplates, type ShotColumn, type ShotColumnId } from "@/lib/shotColumns";
-import { formatGrams, formatSeconds, formatTime, profileName } from "@/lib/shots";
+import {
+  clampWidth,
+  columnWidth,
+  type FixedSize,
+  fixedSize,
+  gridTemplates,
+  type ShotColumn,
+  type ShotColumnId,
+  type ShotWidths,
+} from "@/lib/shotColumns";
+import { formatGrams, formatListTime, formatSeconds, formatTime, profileName } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,9 +63,15 @@ export function ShotsTable({
   sort,
   order,
   onSort,
+  widths,
+  onResize,
 }: {
   shots: ShotListRow[];
   columns: ShotColumn[];
+  /** The reader's column widths, in rem; a column with none is at its default. */
+  widths: ShotWidths;
+  /** A new width for one column, or `null` to put it back to its default. */
+  onResize: (id: ShotColumnId, rem: number | null) => void;
   selected: number[];
   onToggleSelected: (id: number) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -67,7 +82,9 @@ export function ShotsTable({
 }) {
   const window = useVirtualRows(shots.length, { rowHeight: ROW_HEIGHT, containerRef: scrollRef });
   const visible = shots.slice(window.start, window.end);
-  const templates = gridTemplates(columns);
+  // One template for the header and every row, so a resized column cannot
+  // leave its heading behind.
+  const templates = gridTemplates(columns, widths);
   // The template has to reach the DOM as a value, not as a class: Tailwind
   // cannot generate a class for a string it has never seen, and these are
   // built at runtime from whatever the reader ticked.
@@ -90,7 +107,15 @@ export function ShotsTable({
         <span className="size-3.5 shrink-0" aria-hidden="true" />
         <div className={cn(GRID, "min-w-0 flex-1")}>
           {columns.map((column) => (
-            <HeaderCell key={column.id} column={column} sort={sort} order={order} onSort={onSort} />
+            <HeaderCell
+              key={column.id}
+              column={column}
+              sort={sort}
+              order={order}
+              onSort={onSort}
+              width={widths[column.id]}
+              onResize={onResize}
+            />
           ))}
         </div>
         {/* The row editor's button sits outside the grid, so the header needs
@@ -125,24 +150,40 @@ function HeaderCell({
   sort,
   order,
   onSort,
+  width,
+  onResize,
 }: {
   column: ShotColumn;
   sort: ShotSort;
   order: "asc" | "desc";
   onSort: (key: ShotSort) => void;
+  width: number | undefined;
+  onResize: (id: ShotColumnId, rem: number | null) => void;
 }) {
   const key = SORTABLE[column.id];
   const active = key !== undefined && key === sort;
+  const size = fixedSize(column);
   // Centred, titles and content alike: the columns are narrow and mostly a
   // badge, a star row or a short figure, and a centred heading over a centred
   // value reads as one column where a right-aligned number under a left-aligned
-  // badge read as two.
-  const className = cn(column.narrowHidden && "hidden md:block", "min-w-0 truncate text-center");
+  // badge read as two. `relative` and no `overflow-hidden` here, because the
+  // resize handle straddles the cell's right edge; the label truncates inside.
+  const className = cn(column.narrowHidden && "hidden md:block", "relative min-w-0 text-center");
+  const handle =
+    size === null ? null : (
+      <ResizeHandle
+        column={column}
+        size={size}
+        width={columnWidth(size, width)}
+        onResize={onResize}
+      />
+    );
 
   if (key === undefined) {
     return (
       <span className={className} data-testid={`header-${column.id}`}>
-        {column.label}
+        <span className="block truncate">{column.label}</span>
+        {handle}
       </span>
     );
   }
@@ -166,16 +207,16 @@ function HeaderCell({
         data-testid={`sort-${column.id}`}
         onClick={() => onSort(key)}
         className={cn(
-          "inline-flex items-center justify-center gap-1 uppercase tracking-wide hover:text-foreground",
+          "inline-flex max-w-full items-center justify-center gap-1 uppercase tracking-wide hover:text-foreground",
           active && "text-foreground",
         )}
       >
-        {column.label}
+        <span className="truncate">{column.label}</span>
         {active ? (
           order === "asc" ? (
-            <ArrowUp className="size-3" aria-hidden="true" />
+            <ArrowUp className="size-3 shrink-0" aria-hidden="true" />
           ) : (
-            <ArrowDown className="size-3" aria-hidden="true" />
+            <ArrowDown className="size-3 shrink-0" aria-hidden="true" />
           )
         ) : null}
         <span className="sr-only">
@@ -184,7 +225,116 @@ function HeaderCell({
             : "click to sort by this column"}
         </span>
       </button>
+      {handle}
     </span>
+  );
+}
+
+/** One keyboard step, in rem; with Shift, four of them. */
+const WIDTH_STEP = 0.25;
+
+/** The root font size, which is what a rem is. jsdom reports none; 16 is every browser's default. */
+function remInPixels(): number {
+  const parsed = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 16;
+}
+
+/**
+ * The drag handle on a heading's right edge.
+ *
+ * A sibling of the sort button rather than part of it, so a drag or a
+ * double-click never sorts; the click is stopped as well, because a pointer
+ * released over the handle still produces one. It is a focusable `separator`,
+ * the ARIA pattern for a splitter, so a keyboard gets the same control a mouse
+ * does: the arrows step it, Home and End go to the bounds, and it announces its
+ * width.
+ *
+ * The drag uses pointer capture, so the width keeps following the pointer when
+ * it leaves the few pixels of the handle — which it does at once, since the
+ * handle is narrower than any real drag — and ends wherever the button is let
+ * go, even outside the window.
+ */
+function ResizeHandle({
+  column,
+  size,
+  width,
+  onResize,
+}: {
+  column: ShotColumn;
+  size: FixedSize;
+  width: number;
+  onResize: (id: ShotColumnId, rem: number | null) => void;
+}) {
+  const drag = useRef<{ pointerId: number; x: number; start: number; px: number } | null>(null);
+
+  function set(rem: number) {
+    onResize(column.id, clampWidth(size, rem));
+  }
+
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: an `<hr>` cannot take focus or a value; a focusable separator is the ARIA splitter.
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize the ${column.label} column`}
+      aria-valuenow={width}
+      aria-valuemin={size.min}
+      aria-valuemax={size.max}
+      aria-valuetext={`${width} rem`}
+      tabIndex={0}
+      data-testid={`resize-${column.id}`}
+      title="Drag to resize, double-click to reset"
+      className={cn(
+        "-right-2 absolute top-0 z-[1] flex h-full w-3 cursor-col-resize touch-none select-none justify-center",
+        "after:h-full after:w-px after:bg-border hover:after:bg-foreground/40",
+        "focus-visible:outline-none focus-visible:after:w-0.5 focus-visible:after:bg-ring",
+      )}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        // No text selection and no focus fight while dragging.
+        event.preventDefault();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        drag.current = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          start: width,
+          px: remInPixels(),
+        };
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        if (current === null || current.pointerId !== event.pointerId) return;
+        set(current.start + (event.clientX - current.x) / current.px);
+      }}
+      onPointerUp={(event) => {
+        drag.current = null;
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onResize(column.id, null);
+      }}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? WIDTH_STEP * 4 : WIDTH_STEP;
+        const next =
+          event.key === "ArrowLeft"
+            ? width - step
+            : event.key === "ArrowRight"
+              ? width + step
+              : event.key === "Home"
+                ? size.min
+                : event.key === "End"
+                  ? size.max
+                  : null;
+        if (next === null) return;
+        event.preventDefault();
+        set(next);
+      }}
+    />
   );
 }
 
@@ -275,8 +425,13 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
   switch (id) {
     case "time":
       return (
-        <span className="block truncate whitespace-nowrap text-sm tabular-nums">
-          {formatTime(shot.started_at)}
+        <span
+          className="block truncate whitespace-nowrap text-sm tabular-nums"
+          // The compact form folds the year or the minute away; the whole
+          // timestamp is one hover away rather than one page away.
+          title={shot.started_at ? formatTime(shot.started_at) : undefined}
+        >
+          {formatListTime(shot.started_at)}
         </span>
       );
     case "profile":
@@ -300,7 +455,7 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
       return (
         <div data-testid="set-badge-slot">
           {shot.set_badge ? (
-            <SetBadge badge={shot.set_badge} className={INTERACTIVE} />
+            <SetBadge badge={shot.set_badge} className={cn(INTERACTIVE, "max-w-full")} />
           ) : (
             <NeedsSetMenu shot={shot} className={INTERACTIVE} />
           )}
