@@ -490,7 +490,7 @@ async def test_0016_merges_the_import_placeholder_into_the_real_machine(
     )
     await db.execute("INSERT INTO sync_events (kind, shot_id) VALUES ('shot_ingested', 1)")
 
-    assert await run_migrations(db) == ["0016"]
+    assert (await run_migrations(db))[0] == "0016"
 
     # One machine, and it is the real one, renumbered to the singleton's id.
     rows = await db.fetch_all("SELECT id, host, name FROM machines")
@@ -597,7 +597,7 @@ async def test_0016_keeps_the_most_recently_seen_of_two_real_machines(
     await db.execute("INSERT INTO cleanup_runs (machine_id, mode) VALUES (1, 'keep_newest')")
     await db.execute("INSERT INTO starting_point_runs (bean_id, machine_id) VALUES (1, 1)")
 
-    assert await run_migrations(db) == ["0016"]
+    assert (await run_migrations(db))[0] == "0016"
 
     hosts = await db.fetch_all("SELECT id, host FROM machines")
     assert [(int(r["id"]), r["host"]) for r in hosts] == [(1, "192.168.1.77")]
@@ -637,7 +637,7 @@ async def test_0016_gives_an_archive_with_no_machine_the_placeholder_row(
     await _migrate_below(db, tmp_path, "0016")
     assert await db.fetch_value("SELECT count(*) FROM machines") == 0
 
-    assert await run_migrations(db) == ["0016"]
+    assert (await run_migrations(db))[0] == "0016"
 
     rows = await db.fetch_all("SELECT id, host, name FROM machines")
     assert [(int(r["id"]), r["host"], r["name"]) for r in rows] == [(1, "", "")]
@@ -668,7 +668,7 @@ async def test_0016_leaves_an_import_only_archive_with_an_unconfigured_machine(
         "VALUES ('000001', 1, x'00', 'import', 'x', 'x')"
     )
 
-    assert await run_migrations(db) == ["0016"]
+    assert (await run_migrations(db))[0] == "0016"
 
     rows = await db.fetch_all("SELECT id, host, name FROM machines")
     assert [(int(r["id"]), r["host"], r["name"]) for r in rows] == [(1, "", "Imported shots")]
@@ -714,3 +714,55 @@ async def test_0016_leaves_the_shot_views_readable_through_the_sql_tool(
         await run_query(db.path, "SELECT machine_id FROM v_shots")
     with pytest.raises(SqlRefused, match="no such column"):
         await run_query(db.path, "SELECT machine_id FROM v_sets")
+
+
+async def test_0017_upgrades_a_populated_database(db: Database, tmp_path: Path) -> None:
+    """Dropping `beans.altitude_m` has to survive beans that had one.
+
+    `v_beans` names the column and SQLite re-parses every view when a table is
+    altered, so the drop fails outright while the view stands. The migration
+    drops it, drops the column and re-creates the view underneath; `v_sets` joins
+    `beans` without naming the column and is left in place, which only a
+    database with a Set on the bean shows still answers.
+    """
+    await _migrate_below(db, tmp_path, "0017")
+
+    await db.execute(
+        "INSERT INTO beans (name, roaster, origin, altitude_m, roast_level, created_at) "
+        "VALUES ('Kenya Nyeri', 'Square Mile', 'Kenya', 1900, 'light', 'x')"
+    )
+    await db.execute("INSERT INTO beans (name, altitude_m, created_at) VALUES ('Decaf', NULL, 'x')")
+    await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "VALUES (1, 1, 'baseline', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+        "VALUES ('000001', x'00', 1, 'x', 'x')"
+    )
+
+    # Everything from 0017 up, so the assertions below are made against HEAD.
+    assert (await run_migrations(db))[0] == "0017"
+
+    columns = {str(row["name"]) for row in await db.fetch_all("PRAGMA table_info(beans)")}
+    assert "altitude_m" not in columns
+    # Everything else about the bean survived: this drops one column, not a row.
+    assert await db.fetch_value("SELECT origin FROM beans WHERE id = 1") == "Kenya"
+    assert await db.fetch_value("SELECT count(*) FROM beans") == 2
+    assert await db.fetch_value("SELECT count(*) FROM sets") == 1
+    assert await db.fetch_value("SELECT count(*) FROM shots") == 1
+
+    # The view the drop had to remove is back, and the ones it left still read.
+    assert await db.fetch_value("SELECT count(*) FROM v_beans") == 2
+    assert await db.fetch_value("SELECT bean_name FROM v_sets WHERE set_id = 1") == "Kenya Nyeri"
+    assert await db.fetch_value("SELECT shot_count FROM v_sets WHERE set_id = 1") == 1
+    assert await db.fetch_value("SELECT count(*) FROM v_shots") == 1
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+    # Through the chat's SQL tool too: the view text is what it describes, and
+    # the column is gone from it rather than merely unselected.
+    beans = await run_query(db.path, "SELECT name, origin FROM v_beans ORDER BY bean_id")
+    assert beans.rows == [["Kenya Nyeri", "Kenya"], ["Decaf", None]]
+    with pytest.raises(SqlRefused, match="no such column"):
+        await run_query(db.path, "SELECT altitude_m FROM v_beans")

@@ -42,7 +42,6 @@ class TestBeans:
                 roaster="Square Mile",
                 roast_level="medium-light",
                 process="washed",
-                altitude_m=1750,
             )
         )
         assert bean.id > 0

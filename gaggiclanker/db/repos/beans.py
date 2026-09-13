@@ -44,9 +44,6 @@ class BeanWrite(BaseModel):
     roaster: str | None = Field(default=None, max_length=200)
     origin: str | None = Field(default=None, max_length=200)
     variety: str | None = Field(default=None, max_length=200)
-    #: Metres above sea level. An int because nobody knows it to the metre and
-    #: a float would invite a decimal that means nothing.
-    altitude_m: int | None = Field(default=None, ge=0, le=4000)
     process: Process | None = None
     roast_level: RoastLevel | None = None
     decaf: bool = False
@@ -75,7 +72,6 @@ _WRITABLE = (
     "roaster",
     "origin",
     "variety",
-    "altitude_m",
     "process",
     "roast_level",
     "decaf",
