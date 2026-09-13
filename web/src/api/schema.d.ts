@@ -434,31 +434,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/device/live": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Server-sent stream of the merged live status
-         * @description Every merged `evt:status`, plus connection changes.
-         *
-         *     The status is already merged server-side (one socket, one merge) so each
-         *     event is the whole picture and a tab that joins mid-shot is immediately
-         *     correct. Heartbeat comments come from ``sse_response``; without them a
-         *     reverse proxy closes an idle stream between shots.
-         */
-        get: operations["get_device_live_api_device_live_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/device/notes/pending": {
         parameters: {
             query?: never;
@@ -6898,24 +6873,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
-            };
-        };
-    };
-    get_device_live_api_device_live_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };

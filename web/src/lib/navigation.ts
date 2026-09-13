@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   Bean,
   BookOpen,
   Coffee,
@@ -39,7 +38,6 @@ export const NAV_LINKS: NavLink[] = [
     shortcut: "g s",
     shortcutLabel: "g s",
   },
-  { to: "/live", label: "Live", icon: Activity, shortcut: "g l", shortcutLabel: "g l" },
   { to: "/sets", label: "Sets", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
   { to: "/beans", label: "Beans", icon: Bean, shortcut: "g b", shortcutLabel: "g b" },
   { to: "/hardware", label: "Hardware", icon: Cpu, shortcut: "g h", shortcutLabel: "g h" },

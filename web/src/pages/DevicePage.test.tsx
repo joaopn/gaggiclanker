@@ -2,7 +2,6 @@ import { screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceStatusData, SyncStatusData } from "@/api/types";
-import { publishLiveConnection, publishLiveStatus, resetLiveStatus } from "@/lib/liveStatus";
 import { DevicePage } from "@/pages/DevicePage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -100,7 +99,6 @@ function syncStatus(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetLiveStatus();
   getDeviceStatus.mockResolvedValue(deviceStatus());
   getSyncStatus.mockResolvedValue(syncStatus());
   runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
@@ -147,58 +145,16 @@ describe("DevicePage", () => {
     expect(storage).not.toHaveTextContent("SD card");
   });
 
-  it("reads the telemetry off the live stream, not the status poll", async () => {
+  it("has no telemetry card, because the machine's own UI has one", async () => {
+    // The page used to hold a "Right now" card and a warnings list off a 2 Hz
+    // stream. Both are gone with the stream: what is happening at the machine
+    // is best read at the machine, and this page answers the question that is
+    // not — what this box has pulled off it, and what it has written to it.
     renderWithQueryClient(<DevicePage />);
     await screen.findByRole("heading", { name: "GaggiMate Pro" });
 
-    publishLiveStatus({
-      m: 1,
-      ct: 92.7,
-      tt: 93,
-      pr: 8.9,
-      cp: true,
-      bc: true,
-      sbat: 74,
-      p: "9 Bar",
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("device-telemetry")).toHaveTextContent("92.7 °C");
-    });
-    const telemetry = screen.getByTestId("device-telemetry");
-    expect(telemetry).toHaveTextContent("Brew");
-    expect(telemetry).toHaveTextContent("yes (Pro board)");
-    expect(telemetry).toHaveTextContent("connected · 74 %");
-  });
-
-  it("says when the board has no pressure sensor", async () => {
-    // Every pressure diagnostic is gated on this flag; the device page is
-    // where a reader finds out why half of them are missing.
-    renderWithQueryClient(<DevicePage />);
-    await screen.findByRole("heading", { name: "GaggiMate Pro" });
-
-    publishLiveStatus({ cp: false, ct: 90 });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("device-telemetry")).toHaveTextContent("no (Standard board)");
-    });
-  });
-
-  it("shows the machine's active warnings", async () => {
-    renderWithQueryClient(<DevicePage />);
-    await screen.findByRole("heading", { name: "GaggiMate Pro" });
-
-    publishLiveStatus({
-      warn: [
-        { k: "water_low", l: 1, a: true },
-        { k: "scale_lost", l: 2, a: false },
-      ],
-    });
-
-    const warnings = await screen.findByTestId("device-warnings");
-    expect(warnings).toHaveTextContent("water_low");
-    // Inactive warnings are history; the firmware sends every kind it knows.
-    expect(warnings).not.toHaveTextContent("scale_lost");
+    expect(screen.queryByTestId("device-telemetry")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("device-warnings")).not.toBeInTheDocument();
   });
 
   it("lists the last run of each pass and the archive counts", async () => {
@@ -254,7 +210,6 @@ describe("DevicePage", () => {
     getDeviceStatus.mockResolvedValue(
       deviceStatus({ configured: false, connected: false, host: null, identity: null }),
     );
-    publishLiveConnection({ connected: false, configured: false });
 
     renderWithQueryClient(<DevicePage />);
 

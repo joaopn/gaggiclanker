@@ -28,11 +28,6 @@ export function formatSeconds(ms: number | null | undefined): string {
   return ms == null ? "—" : `${(ms / 1000).toFixed(1)} s`;
 }
 
-export function formatClock(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
 export function formatGrams(value: number | null | undefined): string {
   return value == null ? "—" : `${value.toFixed(1)} g`;
 }
@@ -117,15 +112,6 @@ export function exitReasonLabel(code: number | null | undefined): string {
   if (code == null) return "Unknown";
   return EXIT_REASONS[code] ?? `Code ${code}`;
 }
-
-/** The firmware's mode enum, as the live status reports it. */
-export const DEVICE_MODES: Record<number, string> = {
-  0: "Standby",
-  1: "Brew",
-  2: "Steam",
-  3: "Water",
-  4: "Grind",
-};
 
 // ── band labels ──────────────────────────────────────────────────────
 

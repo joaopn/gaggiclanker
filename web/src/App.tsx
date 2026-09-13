@@ -4,7 +4,6 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useDeviceLiveStream } from "@/hooks/useDeviceLive";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
@@ -15,7 +14,6 @@ import { DraftsPage } from "@/pages/DraftsPage";
 import { HardwarePage } from "@/pages/HardwarePage";
 import { ImportPage } from "@/pages/ImportPage";
 import { KnowledgePage } from "@/pages/KnowledgePage";
-import { LivePage } from "@/pages/LivePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ProfilesPage } from "@/pages/ProfilesPage";
 import { SetsPage } from "@/pages/SetsPage";
@@ -39,20 +37,10 @@ const SetDetailPage = lazy(() =>
 );
 
 /**
- * The device's live stream. It carries two kinds of event: `device.live`
- * at 2 Hz, which a consumer reads directly, and `device.connection`, which is
- * the one mapped to a query invalidation in `lib/invalidate.ts`.
- */
-const DEVICE_STREAM_URL: string | null = "/api/device/live";
-
-/**
- * The sync engine's stream: a shot ingested, a shot quarantined, a
- * profile changed, a run started or finished.
- *
- * A second EventSource rather than one merged stream, because the two have
- * completely different tempos — telemetry at 2 Hz against a handful of events
- * an hour — and a browser that dropped the busy one would take the quiet one
- * with it.
+ * The sync engine's stream: a shot ingested, a shot quarantined, a profile
+ * changed, a pull started or finished. The only stream the app subscribes to —
+ * the device's 2 Hz telemetry used to be a second one, and drawing the shot
+ * that is happening now is the machine's own web UI's job.
  */
 const SYNC_STREAM_URL: string | null = "/api/sync/events";
 
@@ -60,9 +48,9 @@ export function App() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
-  // No streams on the sign-in page. Both would 401, which the SSE helper treats
+  // No stream on the sign-in page. It would 401, which the SSE helper treats
   // as fatal and handles by sending the user to sign in — where they already
-  // are. Nothing breaks, but two pointless requests and a redirect-to-self on
+  // are. Nothing breaks, but a pointless request and a redirect-to-self on
   // every failed login is not what the page should be doing.
   const signedOut = pathname === "/sign-in";
 
@@ -75,10 +63,6 @@ export function App() {
     return () => setAuthNavigator(null);
   }, [navigate]);
 
-  // One subscription to the device stream, not two: the hook both feeds the
-  // live-status store (`device.live`, read straight off the wire) and
-  // invalidates `/api/device/status` on `device.connection`.
-  useDeviceLiveStream(signedOut ? null : DEVICE_STREAM_URL);
   useEventInvalidation(signedOut ? null : SYNC_STREAM_URL);
 
   return (
@@ -98,7 +82,6 @@ export function App() {
               </Suspense>
             }
           />
-          <Route path="/live" element={<LivePage />} />
           <Route path="/device" element={<DevicePage />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route

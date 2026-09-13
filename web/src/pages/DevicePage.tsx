@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Cpu, RefreshCw } from "lucide-react";
+import { Cpu, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { runSync } from "@/api/client";
 import type { DeviceIdentity, DeviceWrite } from "@/api/types";
@@ -12,20 +12,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSyncStatus } from "@/hooks/useArchive";
-import { useLiveStatus } from "@/hooks/useDeviceLive";
 import { useDeviceStatus, useDeviceWrites } from "@/hooks/useDeviceStatus";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { queryKeys } from "@/lib/queryKeys";
-import { DEVICE_MODES, formatNumber, formatTime } from "@/lib/shots";
+import { formatTime } from "@/lib/shots";
 
 /**
- * What the machine is, and whether the archive is keeping up with it.
+ * What the machine is, and what this box has done to it.
  *
- * Two sources, deliberately. `/api/device/status` carries the facts that change
- * rarely — configured, connected, identity, storage — and `/api/device/live`
- * carries the telemetry, read straight off the stream rather than polled. The
- * sync ledger is a third: "connected" and "keeping up" are different questions
- * and a machine can be the first without the second.
+ * Two sources. `/api/device/status` carries what the machine is — configured,
+ * connected, identity — and the sync ledger carries what has been pulled off
+ * it. There is no telemetry here: what the boiler is doing right now is on the
+ * machine's own display and in its own web UI, and a second copy of it on a
+ * page nobody has open during a shot was a subscription per tab for nothing.
  *
  * Two of the cards write to the machine rather than reading from it
  * (`StorageCard` deletes shots, `NotesWritebackCard` overwrites notes), and both
@@ -36,7 +35,6 @@ export function DevicePage() {
   const device = useDeviceStatus();
   const sync = useSyncStatus();
   const writes = useDeviceWrites();
-  const live = useLiveStatus();
   const queryClient = useQueryClient();
 
   useQueryErrorToast(device.error, "Could not read the device status");
@@ -68,15 +66,13 @@ export function DevicePage() {
         <EmptyState
           icon={Cpu}
           title="No machine configured"
-          description="Set `gaggimateHost` in Settings. The archive works without one — imported shots are shots like any other — but nothing will sync."
+          description="Set `gaggimateHost` in Settings. The archive works without one — imported shots are shots like any other — but there is nothing to pull from."
         />
       </div>
     );
   }
 
   const identity = (device.data.identity ?? {}) as DeviceIdentity & Record<string, unknown>;
-  const status = live.status;
-  const warnings = (status?.warn ?? []).filter((warning) => warning.a);
 
   return (
     <div className="space-y-4">
@@ -95,46 +91,6 @@ export function DevicePage() {
           </Button>
         }
       />
-
-      {warnings.length > 0 ? (
-        <SectionCard title="Warnings" description="Active warnings the firmware is reporting.">
-          <ul className="space-y-1" data-testid="device-warnings">
-            {warnings.map((warning) => (
-              <li key={warning.k} className="flex items-center gap-2 text-sm">
-                <AlertTriangle
-                  className={warning.l === 2 ? "size-4 text-status-bad" : "size-4 text-status-warn"}
-                  aria-hidden="true"
-                />
-                {warning.k}
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      ) : null}
-
-      <SectionCard title="Right now" description="From the live stream, not a poll.">
-        <dl
-          className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4"
-          data-testid="device-telemetry"
-        >
-          <Fact label="Mode" value={DEVICE_MODES[status?.m ?? 0] ?? "unknown"} />
-          <Fact label="Boiler" value={formatNumber(status?.ct, 1, "°C")} />
-          <Fact label="Target" value={formatNumber(status?.tt, 1, "°C")} />
-          <Fact label="Pressure" value={formatNumber(status?.pr, 1, "bar")} />
-          <Fact label="Selected profile" value={status?.p ?? "—"} />
-          <Fact
-            label="Pressure sensor"
-            value={status?.cp ? "yes (Pro board)" : "no (Standard board)"}
-          />
-          <Fact
-            label="Scale"
-            value={
-              status?.bc ? `connected${status.sbat ? ` · ${status.sbat} %` : ""}` : "not connected"
-            }
-          />
-          <Fact label="System" value={status?.sys?.s ?? "—"} />
-        </dl>
-      </SectionCard>
 
       <div className="grid gap-4 md:grid-cols-2">
         <SectionCard title="Versions" description="What the display and controller are running.">

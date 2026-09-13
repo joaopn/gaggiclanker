@@ -8,7 +8,6 @@ import type {
   SyncStatusData,
 } from "@/api/types";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
-import { publishLiveStatus, resetLiveStatus } from "@/lib/liveStatus";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { setRow } from "@/test/setsFixtures";
@@ -143,7 +142,6 @@ const samplesData: ShotSamplesData = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetLiveStatus();
   getSyncStatus.mockResolvedValue(statusData());
   getProfileVersions.mockResolvedValue(versions);
   getShotSamples.mockResolvedValue(samplesData);
@@ -386,7 +384,7 @@ describe("ShotsPage paging", () => {
   });
 });
 
-describe("ShotsPage live refresh", () => {
+describe("ShotsPage refresh on events", () => {
   it("shows a new shot at the top when the sync engine says one landed", async () => {
     // The acceptance criterion: a shot pulled on the machine appears here
     // without a reload. `shot.ingested` on /api/sync/events maps onto this
@@ -404,20 +402,6 @@ describe("ShotsPage live refresh", () => {
     }
 
     expect(await screen.findByText("Fresh off the machine")).toBeInTheDocument();
-  });
-
-  it("banners a shot in progress and links to the live view", async () => {
-    getShots.mockResolvedValue(listData([shot()]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await screen.findByText("9 Bar Espresso");
-
-    publishLiveStatus({ process: { a: 1, l: "Infusion", e: 4500 }, pr: 6.2 });
-
-    const banner = await screen.findByTestId("live-banner");
-    expect(banner).toHaveAttribute("href", "/live");
-    expect(banner).toHaveTextContent("Infusion");
-    expect(banner).toHaveTextContent("0:04");
   });
 });
 

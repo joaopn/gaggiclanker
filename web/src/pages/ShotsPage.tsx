@@ -1,6 +1,6 @@
-import { Activity, Coffee, GitCompare, Layers } from "lucide-react";
+import { Coffee, GitCompare, Layers } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { ShotListRow } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -10,7 +10,6 @@ import { ShotsTable } from "@/components/shots/ShotsTable";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions, useShotsInfinite, useSyncStatus } from "@/hooks/useArchive";
-import { useIsBrewing, useLiveStatus } from "@/hooks/useDeviceLive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSets } from "@/hooks/useSets";
 import {
@@ -20,7 +19,6 @@ import {
   toParams,
   toSearchParams,
 } from "@/lib/shotFilters";
-import { formatClock } from "@/lib/shots";
 
 /**
  * The archive, and the front page of the whole application.
@@ -54,11 +52,6 @@ export function ShotsPage() {
   const versions = useProfileVersions({ limit: 200 });
   // The filter bar's Set picker, and the header's "needs a Set" count.
   const sets = useSets();
-  // A boolean, not the frame: reading the whole snapshot here re-rendered the
-  // table twice a second for the length of every shot (`hooks/useDeviceLive`).
-  // The banner itself reads the frame, and it is four spans.
-  const brewing = useIsBrewing();
-
   useQueryErrorToast(shots.error, "Could not load shots");
 
   const rows: ShotListRow[] = useMemo(
@@ -115,8 +108,6 @@ export function ShotsPage() {
           </div>
         }
       />
-
-      {brewing ? <LiveBanner /> : null}
 
       <ShotFilters
         value={filters}
@@ -186,27 +177,5 @@ export function ShotsPage() {
         />
       ) : null}
     </div>
-  );
-}
-
-/** "A shot is running." The one thing more interesting than the archive. */
-function LiveBanner() {
-  const live = useLiveStatus();
-  const process = live.status?.process;
-  return (
-    <Link
-      to="/live"
-      data-testid="live-banner"
-      className="flex items-center gap-3 rounded-lg border border-status-good/40 bg-status-good/10 px-3 py-2 text-sm"
-    >
-      <Activity className="size-4 animate-pulse text-status-good-text" aria-hidden="true" />
-      <span className="font-medium">Shot in progress</span>
-      <span className="text-muted-foreground">
-        {process?.l ?? "brewing"} · {formatClock(process?.e ?? 0)}
-      </span>
-      <span className="ml-auto text-muted-foreground text-xs underline underline-offset-2">
-        Watch it
-      </span>
-    </Link>
   );
 }

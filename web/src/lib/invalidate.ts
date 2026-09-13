@@ -117,9 +117,11 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   // Notes write-back: one judgement reached the machine. The shot row's sync state and
   // the pending-notes count both change, and so does the write audit.
   "notes.writeback": [queryKeys.device.all, queryKeys.shots.all],
-  // The rare one: the socket came up or went down, so re-read
-  // /api/device/status. `device.live` is deliberately absent — it arrives
-  // twice a second and is read straight off the stream.
+  // Nothing on the server publishes these two any more — the stream that
+  // carried them was the device's own telemetry, and that is the machine's web
+  // UI's job. They stay mapped because the key costs nothing and the header
+  // pill would otherwise be the one thing in the app with no path from an
+  // event to a refresh; what keeps it current today is its own 15 s poll.
   "device.connection": [queryKeys.device.all],
   "device.status": [queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],

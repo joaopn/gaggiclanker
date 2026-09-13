@@ -1,10 +1,8 @@
 import { Link } from "react-router-dom";
 import type { DeviceIdentity } from "@/api/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useLiveStatus } from "@/hooks/useDeviceLive";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { useHealth } from "@/hooks/useHealth";
-import { DEVICE_MODES, formatNumber } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,14 +14,16 @@ import { cn } from "@/lib/utils";
  * different: no machine configured is a setup step and not a fault; configured
  * but disconnected is something to go and look at; connected names the board.
  *
- * Deliberately small: it says whether to go to the device page, and links
- * there. The boiler temperature comes off the live stream rather than the
- * status poll, so the one number that moves is the one that is current.
+ * Four states and nothing else. It used to carry the boiler temperature and
+ * the firmware's warnings off a 2 Hz stream, which made the one element on
+ * every page the one element that re-rendered twice a second — for numbers the
+ * machine's own display is already showing to whoever is standing at it. What
+ * is left is the question this box can answer better than the machine can: can
+ * it reach it, which is what decides whether a pull will work.
  */
 export function DeviceStatusPill() {
   const health = useHealth();
   const device = useDeviceStatus();
-  const live = useLiveStatus();
 
   const backendOk = !health.isPending && !health.isError && health.data?.status === "ok";
   const identity = device.data?.identity as DeviceIdentity | null | undefined;
@@ -48,18 +48,13 @@ export function DeviceStatusPill() {
   } else if (device.data.connected) {
     state = "good";
     label = hardware ?? "Machine online";
-    const warnings = (live.status?.warn ?? []).filter((warning) => warning.a);
-    if (warnings.length > 0) state = "bad";
-    detail =
-      `${hardware ?? "GaggiMate"} at ${device.data.host} - display ${
-        identity?.displayVersion ?? "unknown"
-      } - ${DEVICE_MODES[live.status?.m ?? 0] ?? "unknown mode"}` +
-      (live.status?.ct == null ? "" : ` at ${formatNumber(live.status.ct, 1, "°C")}`) +
-      (warnings.length > 0 ? ` - ${warnings.map((w) => w.k).join(", ")}` : "");
+    detail = `${hardware ?? "GaggiMate"} at ${device.data.host} - display ${
+      identity?.displayVersion ?? "unknown"
+    }`;
   } else {
     state = "bad";
     label = "Machine offline";
-    detail = `No connection to ${device.data.host}. The archive still works; nothing is syncing.`;
+    detail = `No connection to ${device.data.host}. The archive still works; a pull cannot.`;
   }
 
   return (
@@ -86,11 +81,6 @@ export function DeviceStatusPill() {
             )}
           />
           {label}
-          {live.status?.ct == null ? null : (
-            <span className="hidden font-normal text-muted-foreground tabular-nums sm:inline">
-              {formatNumber(live.status.ct, 0, "°C")}
-            </span>
-          )}
         </Link>
       </TooltipTrigger>
       <TooltipContent>{detail}</TooltipContent>
