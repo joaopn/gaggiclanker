@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import type { SetCreate } from "@/api/types";
+import type { ProfileVersionSummary, SetCreate } from "@/api/types";
 import { StartingPointStep } from "@/components/sets/StartingPointStep";
 import { Button } from "@/components/ui/button";
 import {
@@ -99,6 +99,53 @@ export function toCreateBody(draft: Draft): SetCreate {
   };
 }
 
+/** The recipe fields a profile can fill, and what each was last filled with, by which profile. */
+type RecipeKey = "targetYieldG" | "targetTemperatureC";
+export type AutoFilled = Record<RecipeKey, { value: string; from: string } | null>;
+
+const NOTHING_FILLED: AutoFilled = { targetYieldG: null, targetTemperatureC: null };
+
+/**
+ * Fill the recipe from a picked profile version, never over a person's value.
+ *
+ * A field takes the profile's number when it is empty or still holds exactly
+ * what the previous profile put there; anything else was typed and is left
+ * alone. `filled` remembers the value each field was given, so switching from
+ * one profile to another replaces the first profile's numbers rather than
+ * treating them as typed. A profile that does not state a number leaves that
+ * field, and the memory of who filled it, untouched. Picking "Any profile"
+ * (`version` undefined) changes nothing: clearing the match is not a statement
+ * about the recipe.
+ *
+ * Pure and exported so the rule is testable without a dialog.
+ */
+export function fillFromProfile(
+  draft: Pick<Draft, RecipeKey>,
+  filled: AutoFilled,
+  version: Pick<ProfileVersionSummary, "label" | "target_yield_g" | "temperature_c"> | undefined,
+): { values: Pick<Draft, RecipeKey>; filled: AutoFilled } {
+  const values = { targetYieldG: draft.targetYieldG, targetTemperatureC: draft.targetTemperatureC };
+  const next = { ...filled };
+  if (!version) return { values, filled: next };
+  const offered: Record<RecipeKey, number | null | undefined> = {
+    targetYieldG: version.target_yield_g,
+    targetTemperatureC: version.temperature_c,
+  };
+  for (const key of ["targetYieldG", "targetTemperatureC"] as const) {
+    const number = offered[key];
+    if (number === null || number === undefined) continue;
+    const current = values[key];
+    if (current === "" || current === filled[key]?.value) {
+      values[key] = String(number);
+      next[key] = { value: values[key], from: version.label };
+    } else {
+      // Typed by hand: it is the person's now, whatever filled it before.
+      next[key] = null;
+    }
+  }
+  return { values, filled: next };
+}
+
 export function NewSetDialog({
   open,
   onOpenChange,
@@ -123,6 +170,7 @@ export function NewSetDialog({
   const versions = useProfileVersions({ limit: 200 });
   const create = useCreateSet();
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [filled, setFilled] = useState<AutoFilled>(NOTHING_FILLED);
   const [suggestOpen, setSuggestOpen] = useState(false);
   // The starting-point run this dialog is following, if any. Held here rather
   // than inside the suggestion section so folding it and opening it again
@@ -156,8 +204,16 @@ export function NewSetDialog({
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
+  function pickProfile(versionId: string) {
+    const version = versions.data?.items.find((item) => String(item.id) === versionId);
+    const result = fillFromProfile(draft, filled, version);
+    setDraft((current) => ({ ...current, ...result.values, profileVersionId: versionId }));
+    setFilled(result.filled);
+  }
+
   function reset() {
     setDraft(EMPTY);
+    setFilled(NOTHING_FILLED);
     setSuggestOpen(false);
     setRunId(undefined);
   }
@@ -169,6 +225,8 @@ export function NewSetDialog({
   // The Set's name defaults to the bag's, which is what a person would type
   // anyway, and stays editable for the case where two Sets share a bean.
   const name = draft.name || chosenBean?.name || "";
+
+  const fromProfile = recipeHint(draft, filled);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -261,7 +319,7 @@ export function NewSetDialog({
                 id={ids.profile}
                 className={FIELD}
                 value={draft.profileVersionId}
-                onChange={(event) => set("profileVersionId", event.target.value)}
+                onChange={(event) => pickProfile(event.target.value)}
               >
                 <option value="">Any profile</option>
                 {(versions.data?.items ?? []).map((version) => (
@@ -315,6 +373,11 @@ export function NewSetDialog({
               />
             </Labelled>
           </div>
+          {fromProfile ? (
+            <p className="text-muted-foreground text-xs" data-testid="recipe-from-profile">
+              {fromProfile} Change it and it stays yours.
+            </p>
+          ) : null}
 
           <Labelled id={ids.intent} label="What are you trying? (optional)">
             <input
@@ -403,6 +466,32 @@ function SuggestStartingPoint({
       ) : null}
     </div>
   );
+}
+
+/**
+ * "Target yield 36 g and temperature 93 °C from 9 Bar Espresso."
+ *
+ * Only the fields still holding a profile's number are named: once a person has
+ * typed over one, saying it came from the profile would be false. Each number
+ * names its own profile, because a yield from one pick can outlive a later pick
+ * that only stated a temperature.
+ */
+function recipeHint(draft: Pick<Draft, RecipeKey>, filled: AutoFilled): string {
+  const parts: { text: string; from: string }[] = [];
+  const yieldG = filled.targetYieldG;
+  if (yieldG && draft.targetYieldG === yieldG.value) {
+    parts.push({ text: `target yield ${yieldG.value} g`, from: yieldG.from });
+  }
+  const temperature = filled.targetTemperatureC;
+  if (temperature && draft.targetTemperatureC === temperature.value) {
+    parts.push({ text: `temperature ${temperature.value} °C`, from: temperature.from });
+  }
+  if (parts.length === 0) return "";
+  const sentence =
+    parts.length === 2 && parts[0].from === parts[1].from
+      ? `${parts[0].text} and ${parts[1].text} from ${parts[0].from}`
+      : parts.map((part) => `${part.text} from ${part.from}`).join("; ");
+  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
 }
 
 function Labelled({
