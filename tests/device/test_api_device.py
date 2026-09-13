@@ -15,7 +15,6 @@ import pytest
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
-from tests.device.conftest import read_events, serving
 
 # ── with no machine configured ───────────────────────────────────────
 
@@ -35,16 +34,19 @@ async def test_the_app_boots_with_no_host_configured(client: httpx.AsyncClient) 
     }
 
 
-async def test_the_live_stream_says_not_configured_rather_than_404(env: EnvSettings) -> None:
-    """A 404 would put the browser's SSE helper into a reconnect loop."""
-    async with serving(env) as (_app, base_url):
-        async with httpx.AsyncClient(base_url=base_url) as http:
-            async with http.stream("GET", "/api/device/live") as response:
-                assert response.status_code == 200
-                assert response.headers["content-type"].startswith("text/event-stream")
-                events = await read_events(response, 1)
-    assert events[0]["event"] == "device.connection"
-    assert events[0]["data"] == {"connected": False, "configured": False}
+async def test_the_live_stream_is_gone(env: EnvSettings) -> None:
+    """The 2 Hz telemetry stream was removed, and its absence is the envelope's.
+
+    A route that vanished has to answer like every other unknown path — the
+    error envelope, not a bare Starlette 404 — because the front end's fetch
+    wrapper reads `error.code` before it reads the status.
+    """
+    async with running_app(env) as (_app, client):
+        response = await client.get("/api/device/live")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["ok"] is False
+    assert body["error"]["code"] == "NOT_FOUND"
 
 
 # ── with the fake machine ────────────────────────────────────────────
@@ -85,46 +87,6 @@ async def test_status_reports_the_machine_it_connected_to(
     assert body["identity"]["hardware"] == "GaggiMate Pro Rev 1.1"
 
 
-async def test_the_live_stream_carries_the_merged_status(
-    device_env: EnvSettings, fake_device: FakeDevice
-) -> None:
-    """One event per merged frame, so a tab that joins mid-shot is correct."""
-    async with serving(device_env) as (app, base_url):
-        assert await app.state.device.wait_connected(5.0)
-        async with httpx.AsyncClient(base_url=base_url) as http:
-            async with http.stream("GET", "/api/device/live") as response:
-                pump = asyncio.create_task(_pump(fake_device))
-                try:
-                    events = await read_events(response, 3)
-                finally:
-                    pump.cancel()
-
-    live = [e for e in events if e["event"] == "device.live"]
-    assert live, events
-    # The state frame the fake sends on connect is merged with the telemetry
-    # we pumped, so a live event carries both halves.
-    assert any(e["data"].get("ct") for e in live)
-
-
-async def test_a_disconnect_is_announced_on_the_stream(
-    device_env: EnvSettings, fake_device: FakeDevice
-) -> None:
-    """The pill has to go grey without polling for it."""
-    async with serving(device_env) as (app, base_url):
-        assert await app.state.device.wait_connected(5.0)
-        async with httpx.AsyncClient(base_url=base_url) as http:
-            async with http.stream("GET", "/api/device/live") as response:
-                dropper = asyncio.create_task(_drop_soon(fake_device))
-                try:
-                    events = await read_events(response, 4, timeout=8.0)
-                finally:
-                    dropper.cancel()
-
-    assert any(
-        e["event"] == "device.connection" and e["data"]["connected"] is False for e in events
-    ), events
-
-
 async def test_sync_disabled_leaves_the_client_unstarted(
     data_dir: Path, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -140,14 +102,3 @@ async def test_sync_disabled_leaves_the_client_unstarted(
         assert app.state.device is None
         assert (await client.get("/api/device/status")).json()["data"]["configured"] is False
     assert fake_device.client_count == 0
-
-
-async def _pump(device: FakeDevice) -> None:
-    for i in range(200):
-        await device.emit_status(ct=90.0 + (i % 5), tt=93.0, pr=8.0)
-        await asyncio.sleep(0.02)
-
-
-async def _drop_soon(device: FakeDevice) -> None:
-    await asyncio.sleep(0.2)
-    await device.drop_connections()

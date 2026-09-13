@@ -1,9 +1,10 @@
-"""`SyncEngine` — the loop that keeps SQLite equal to the machine.
+"""`SyncEngine` — the passes that make SQLite equal to the machine.
 
 Four jobs, one lock:
 
-* **identity** — on every connect, fold `res:ota-settings`, the status state
-  frame's capability flags and `GET /api/settings` into one `machines` row.
+* **identity** — at startup and on every connect, fold `res:ota-settings`, the
+  status state frame's capability flags and `GET /api/settings` into one
+  `machines` row.
 * **shots** — diff `index.bin` against what we hold, fetch what is missing,
   parse it, derive diagnostics and a score, store the lot in one transaction;
   reconcile the entries whose rating, volume or deleted flag changed.
@@ -13,11 +14,14 @@ Four jobs, one lock:
 
 Three rules that are easy to get wrong and expensive to get wrong:
 
-**`evt:history-shot-saved` means "go and look", never "here is a shot."** The
-device event bus is lossy by design (`infra/sse.py`) and the socket is down
-whenever the machine reboots or somebody opens its web UI as a fourth client.
-So the push only *pokes* the same index diff that runs on a timer and on every
-reconnect, and a missed push costs latency rather than a shot.
+**Getting data off the machine is something a person asks for.** Shots,
+profiles and notes move only when `POST /api/sync/run` asks for them: there is
+no timer and no pass triggered by a device event. A mirror that ran on its own
+duplicated what the machine's own web UI already shows and spent the device's
+two HTTP slots on it; an archive is something you pull into, so the pull is a
+button. Identity is the exception and stays automatic — it is one frame plus
+one request, it is what tells the header whether the machine is there at all,
+and the `machines` row has to exist before any pull can store a shot against it.
 
 **The bytes are the product.** A `.slog` that does not parse is stored with
 `quarantined = 1`, its reason and its raw bytes, and produces no sample rows.
@@ -90,13 +94,6 @@ SHOT_UPDATED_EVENT = "shot.updated"
 SHOT_QUARANTINED_EVENT = "shot.quarantined"
 PROFILE_UPDATED_EVENT = "profile.updated"
 
-#: How often to re-diff the index and re-read the profile list with nothing
-#: else prompting us. Fifteen minutes is the chunk spec's figure: long enough to
-#: be invisible on the device's heap, short enough that a shot pulled while the
-#: socket was down is archived before the machine's storage pressure notices it.
-DEFAULT_INDEX_INTERVAL_S = 900.0
-DEFAULT_PROFILE_INTERVAL_S = 900.0
-
 #: How many consecutive transport failures mean "the machine has gone", rather
 #: than "that shot was unreadable". Three: enough that a single dropped request
 #: does not abandon a backfill, few enough that a machine switched off mid-pass
@@ -114,33 +111,28 @@ class _Poke:
     """A "go and look" signal carrying the reason it was raised.
 
     An :class:`asyncio.Event` alone would tell the loop to run but not why, and
-    the why is what separates a `live` run from a `backfill` run in the ledger.
+    the why is what the ledger records as a run's `trigger` — the difference
+    between a pass somebody asked for and one the socket coming back asked for.
     """
 
     event: asyncio.Event = field(default_factory=asyncio.Event)
     reason: str = "startup"
 
     def raise_(self, reason: str) -> None:
-        # Last reason wins: several pushes arriving while a run is in flight
+        # Last reason wins: two clicks arriving while a run is in flight
         # coalesce into one pass, which is the point of poking rather than
         # spawning.
         self.reason = reason
         self.event.set()
 
-    async def wait(self, timeout: float, *, on_timeout: str) -> str:  # noqa: ASYNC109
-        """Block for a poke, or ``timeout`` seconds, and say which happened.
+    async def wait(self) -> str:
+        """Block until somebody asks for a pass, and say who asked.
 
-        The timeout is a parameter rather than the caller's own
-        ``asyncio.timeout`` block (what ASYNC109 asks for) because the *return
-        value* is the point: "was this a poke or the periodic tick" is the
-        answer, and a caller writing its own try/except would have to
-        reconstruct it.
+        No timeout, deliberately: the loop wakes when a request arrives and
+        never otherwise. A timeout here would be a periodic pass wearing a
+        different name.
         """
-        try:
-            async with asyncio.timeout(timeout):
-                await self.event.wait()
-        except TimeoutError:
-            return on_timeout
+        await self.event.wait()
         self.event.clear()
         return self.reason
 
@@ -169,15 +161,11 @@ class SyncEngine:
         db: Database,
         bus: SseEventBus,
         *,
-        index_interval: float = DEFAULT_INDEX_INTERVAL_S,
-        profile_interval: float = DEFAULT_PROFILE_INTERVAL_S,
         concurrency: int = FETCH_CONCURRENCY,
     ) -> None:
         self.client = client
         self.db = db
         self.bus = bus
-        self.index_interval = index_interval
-        self.profile_interval = profile_interval
         self.concurrency = max(1, concurrency)
 
         self.machines = MachinesRepository(db)
@@ -191,14 +179,17 @@ class SyncEngine:
         self._machine: MachineRow | None = None
         self._shot_poke = _Poke()
         self._profile_poke = _Poke()
-        #: Set when somebody asks for a fresh identity read. Identity has no loop
-        #: of its own — it runs on every `Connected`, which is the only moment
-        #: the answer can have changed — so a manual request rides the profiles
-        #: loop rather than growing a third timer that would never fire.
-        self._identity_requested: str | None = None
-        #: Ids pushed by `evt:history-shot-saved` that the index has not caught
-        #: up with yet. The firmware writes the index entry and the event in
-        #: quick succession but not atomically, so a push can beat its own row.
+        #: Identity has a loop of its own because it is the one pass that still
+        #: runs unasked — at startup and on every `Connected`. Riding the
+        #: profiles poke, as it used to, would mean every automatic identity
+        #: read dragged a profile mirror onto the machine behind it.
+        self._identity_poke = _Poke()
+        #: Ids announced by `evt:history-shot-saved` while the socket was up,
+        #: for the next pull to look at even if the index has not caught up.
+        #: The firmware writes the index entry and the event in quick succession
+        #: but not atomically, so an event can beat its own row — and a pull
+        #: asked for in that window would otherwise miss the shot the person
+        #: pressed the button for.
         self._pushed_ids: set[int] = set()
         #: The last capability flags seen on a status frame, and the selected
         #: profile id. `None` means "we have not seen a state frame", which is a
@@ -239,17 +230,16 @@ class SyncEngine:
         normal case.
         """
         tasks.spawn("sync-events", self._events_loop())
+        tasks.spawn("sync-identity", self._identity_loop())
         tasks.spawn("sync-shots", self._shots_loop())
         tasks.spawn("sync-profiles", self._profiles_loop())
-        # Ask for everything once, now. `Connected` is what normally triggers a
-        # pass, and the client is started before the engine — so if the socket
-        # came up in between (which on a loopback fake it always has) that event
-        # is already gone and nothing would happen until the 15 minute timer.
-        # Both pokes are coalescing, so a `Connected` arriving a moment later
-        # costs nothing.
+        # Identity only, and only because the `machines` row has to exist before
+        # a pull can store anything against it and the header pill has nothing
+        # to say without it. The client is started before the engine, so if the
+        # socket came up in between (which on a loopback fake it always has) the
+        # `Connected` event is already gone; the poke coalesces with one
+        # arriving a moment later, so asking here costs nothing.
         self.request_identity_sync("startup")
-        self.request_shot_sync("startup")
-        self.request_profile_sync("startup")
         log.info("sync_engine_started", host=self.client.host)
 
     def request_shot_sync(self, reason: str = "manual") -> None:
@@ -261,27 +251,25 @@ class SyncEngine:
         self._profile_poke.raise_(reason)
 
     def request_identity_sync(self, reason: str = "manual") -> None:
-        """Ask for a fresh read of what the machine is, on the profiles loop."""
-        self._identity_requested = reason
-        self._profile_poke.raise_(reason)
+        """Ask for a fresh read of what the machine is."""
+        self._identity_poke.raise_(reason)
 
     # ── the loops ────────────────────────────────────────────────────
 
     async def _events_loop(self) -> None:
-        """Turn device events into pokes. It does nothing else, ever.
+        """Turn device events into in-memory state and one poke. Nothing else, ever.
 
         This coroutine is the only consumer of the client's event stream, and
         that stream is **lossy under backpressure**: a subscriber that falls
         behind drops its oldest events (`infra/sse.py`). At 2 Hz telemetry a
-        256-deep queue is about two minutes — so anything awaited here that can
-        take minutes silently eats a `ShotSaved`.
+        256-deep queue is about two minutes.
 
         It used to await `sync_identity()`, which takes the engine lock. During
-        a backfill the lock is held for as long as the fetches take, the loop
-        parked behind it, the queue filled with status frames, and the shot the
-        user had just pulled was dropped and not archived until the next
-        fifteen-minute re-diff. So: every handler here is synchronous, sets
-        in-memory state, and raises a poke. The worker loops do the waiting.
+        a long pull the lock is held for as long as the fetches take, the loop
+        parked behind it, and the queue filled with status frames until the
+        capability flags this engine gates pressure diagnostics on were thrown
+        away unread. So: every handler here is synchronous, sets in-memory
+        state, and at most raises a poke. The identity loop does the waiting.
         """
         async for event in self.client.subscribe():
             try:
@@ -293,16 +281,17 @@ class SyncEngine:
         """Synchronous by contract — see :meth:`_events_loop`."""
         match event:
             case Connected():
-                # Everything at once: a reconnect is exactly the moment we may
-                # have missed a shot, a profile save and a firmware update.
+                # Identity only. A reconnect is the moment the firmware version
+                # or the board may have changed under us, and it is what the
+                # header pill reads; shots and profiles wait to be asked for.
                 self.request_identity_sync("connected")
-                self.request_shot_sync("connected")
-                self.request_profile_sync("connected")
             case Disconnected(reason=reason):
                 log.info("sync_device_disconnected", reason=reason)
             case ShotSaved(shot_id=shot_id):
+                # Remembered, not acted on. Nothing is fetched until somebody
+                # asks for a pull; this only means the pull they ask for knows
+                # about a shot the index may not list yet.
                 self._pushed_ids.add(shot_id)
-                self.request_shot_sync("shot_saved")
             case StatusChanged(status=status):
                 self._note_status(status)
             case IdentityChanged():
@@ -317,37 +306,42 @@ class SyncEngine:
         already hold: a write per telemetry frame would be a hundred thousand
         pointless UPDATEs a day.
 
-        It records and pokes; it does not write. The row is written by the
-        identity pass, under the lock, because this runs on the events loop and
-        the database is one shared connection the sync worker is already using.
+        It records; it does not write and it does not ask for a pass. The
+        capability flags are what gate pressure diagnostics on ingest, so they
+        have to be current in memory whether or not anybody ever presses pull;
+        the identity pass folds them into the `machines` row the next time it
+        runs. The selected profile id is kept for the same reason — the profile
+        mirror marks which version the machine has selected — and a `puid` that
+        moved is a mirror that is stale until the next pull, which is a thing
+        the person pulling will get for free.
         """
         capabilities = (status.cp, status.cd, status.gp, status.led)
         if any(flag is not None for flag in capabilities) and capabilities != self._capabilities:
             self._capabilities = capabilities
-            self.request_identity_sync("capabilities_changed")
 
         if status.puid is not None and status.puid != self._selected_profile_id:
-            # The selected profile lives in NVS, not in the profile JSON, so
-            # `puid` moving is the only push that says the mirror is stale.
-            first_sighting = self._selected_profile_id is None
             self._selected_profile_id = status.puid
-            if not first_sighting:
-                self.request_profile_sync("puid_changed")
+
+    async def _identity_loop(self) -> None:
+        while True:
+            trigger = await self._identity_poke.wait()
+            with contextlib.suppress(Exception):
+                await self.sync_identity(trigger=trigger)
 
     async def _shots_loop(self) -> None:
         while True:
-            trigger = await self._shot_poke.wait(self.index_interval, on_timeout="periodic")
-            kind = "live" if trigger == "shot_saved" else "backfill"
+            trigger = await self._shot_poke.wait()
+            # Every shot pass is a `backfill` now: the ledger's `live` kind
+            # meant "this run was started by a push from the machine", and
+            # nothing starts a run but a request. Archives filled before that
+            # still hold `live` rows, which is why nothing reads the kind as an
+            # enumeration of what can happen next.
             with contextlib.suppress(Exception):
-                await self.sync_shots(kind=kind, trigger=trigger)
+                await self.sync_shots(kind="backfill", trigger=trigger)
 
     async def _profiles_loop(self) -> None:
         while True:
-            trigger = await self._profile_poke.wait(self.profile_interval, on_timeout="periodic")
-            requested, self._identity_requested = self._identity_requested, None
-            if requested is not None:
-                with contextlib.suppress(Exception):
-                    await self.sync_identity(trigger=requested)
+            trigger = await self._profile_poke.wait()
             with contextlib.suppress(Exception):
                 await self.sync_profiles(trigger=trigger)
 
@@ -507,9 +501,10 @@ class SyncEngine:
         the index are the ones we may not get another chance at; the newest one
         is already safe for another few hundred shots.
 
-        A pushed id the index has not listed yet is appended: `evt:history-
-        shot-saved` and the index write are not atomic, and a live ingest that
-        waited for the next poll would be a minute late for no reason.
+        An announced id the index has not listed yet is appended: `evt:history-
+        shot-saved` and the index write are not atomic, so somebody pressing
+        pull the moment the machine beeps would otherwise be told there is
+        nothing new and be right only about the index.
         """
         missing: list[tuple[str, IndexEntry | None]] = [
             (device_id, entry)

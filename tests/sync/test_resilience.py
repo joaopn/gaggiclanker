@@ -1,7 +1,8 @@
 """Three ways a sync goes wrong, and what has to survive each.
 
 * the events loop is the only reader of a **lossy** queue, so it must never
-  wait on anything that can take minutes;
+  wait on anything that can take minutes — the capability flags it records are
+  what gate pressure diagnostics on every shot ingested after them;
 * a machine that vanishes mid-backfill has to end the run as a failure and
   leave nothing half-written;
 * the list query has to use its index, because "correct but sorts the whole
@@ -27,8 +28,7 @@ BUSY_SHOTS = 10
 NEW_SHOT_ID = 900
 
 #: More than the per-subscriber queue depth (`infra/sse.py`: 256). A parked
-#: events loop drops its oldest events under this, and the oldest is the
-#: `ShotSaved` that arrived first.
+#: events loop drops its oldest events under this.
 FLOOD_FRAMES = 320
 
 
@@ -44,27 +44,31 @@ async def _stored(archive: Archive, device_id: str) -> bool:
     return await archive.engine.shots.get_by_device_id(1, device_id) is not None
 
 
-async def test_a_shot_saved_during_a_backfill_is_not_dropped(
+async def test_a_shot_saved_during_a_pull_lands_on_the_next_one(
     slow_device: FakeDevice, tmp_path: Path
 ) -> None:
     """The regression behind "never block the events loop".
 
     The device event bus is lossy by design: a subscriber that falls behind
     drops its **oldest** events. The events loop used to await `sync_identity()`
-    on the identity broadcast, which takes the engine lock — so during a
-    backfill it was parked, the queue filled with 2 Hz telemetry, and the
-    `ShotSaved` for the shot the user had just pulled was the first thing thrown
-    away. The shot then waited for the fifteen-minute re-diff.
+    on the identity broadcast, which takes the engine lock — so during a long
+    pull it was parked, the queue filled with 2 Hz telemetry, and everything
+    that had arrived before the flood was thrown away unread. The capability
+    flags are in that stream, and they are what decide whether a shot's
+    pressure diagnostics are computed or suppressed.
 
-    Everything the events loop does is now synchronous: it records and pokes,
-    and the worker loops do the waiting.
+    Everything the events loop does is now synchronous: it records, and at most
+    raises the identity poke. What the flood must not cost is the shot the
+    machine saved in the middle of it — not because anything reacts to the
+    save, but because the pull that follows has to see it.
     """
     registry = TaskRegistry()
     try:
         async with archive_for(slow_device, tmp_path) as archive:
             await archive.engine.start(registry)
+            archive.engine.request_shot_sync("manual")
 
-            # Wait until the backfill is genuinely under way — the lock is held
+            # Wait until the pull is genuinely under way — the lock is held
             # and, before the fix, the events loop was behind it.
             async with asyncio.timeout(10):
                 while (await archive.engine.shots.counts()).total == 0:
@@ -76,15 +80,18 @@ async def test_a_shot_saved_during_a_backfill_is_not_dropped(
             for _ in range(FLOOD_FRAMES):
                 await slow_device.emit_status(ct=93.0, tt=93.0, pr=9.0)
 
-            async with asyncio.timeout(20):
+            # The shot the machine saved mid-pull is not in the archive, and
+            # would not be if this test waited all afternoon.
+            assert not await _stored(archive, pad6(NEW_SHOT_ID))
+
+            archive.engine.request_shot_sync("manual")
+            async with asyncio.timeout(30):
                 while not await _stored(archive, pad6(NEW_SHOT_ID)):
                     await asyncio.sleep(0.05)
 
             # Frames *were* dropped — 320 arriving faster than any consumer
             # can drain a 256-deep queue is the bus working as designed, and a
-            # lost telemetry frame at 2 Hz is invisible. What must survive is
-            # the `ShotSaved`, and it does because the loop is never parked long
-            # enough for it to reach the front of the queue.
+            # lost telemetry frame at 2 Hz is invisible.
             assert archive.client.events.dropped > 0, "the flood did not actually flood"
             stored = await archive.engine.shots.get_by_device_id(1, pad6(NEW_SHOT_ID))
             assert stored is not None

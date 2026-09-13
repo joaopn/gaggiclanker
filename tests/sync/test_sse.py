@@ -10,8 +10,8 @@ publishes. That is not politeness, it is the bus's contract: a subscriber only
 receives what is published after it subscribes, and the response headers reach
 the client *before* the route's generator has taken its subscription. The front
 end lives with the same fact — every event means "go and re-read", and the
-periodic index diff is the backstop behind it — but a test that raced it would
-fail one run in six and look like a broken stream.
+`/api/sync/status` poll behind the button is the backstop — but a test that
+raced it would fail one run in six and look like a broken stream.
 """
 
 from __future__ import annotations
@@ -53,19 +53,28 @@ def sync_env(data_dir: Path, stocked: FakeDevice) -> EnvSettings:
     )
 
 
-#: The four passes the engine runs at boot. A test that waited only for the
-#: shot count would still be racing the profiles mirror, whose events would then
-#: arrive on the stream ahead of the one it is looking for.
-BOOT_RUNS = {"identity", "backfill", "profiles", "notes"}
+#: The passes a full pull runs. A test that waited only for the shot count would
+#: still be racing the profiles mirror, whose events would then arrive on the
+#: stream ahead of the one it is looking for.
+PULL_RUNS = {"identity", "backfill", "profiles", "notes"}
 
 
-async def _settle(app: FastAPI, timeout: float = 20.0) -> None:
-    """Wait for every pass the engine starts at boot to finish."""
+async def _fill(app: FastAPI, timeout: float = 20.0) -> None:
+    """Pull the fixture archive in, and wait for every pass of it to finish.
+
+    The engine does nothing at boot but read the machine's identity, so a test
+    that wants an archive has to ask for one first. Asked for through the
+    engine rather than the route because the route is what two of these tests
+    are about, and seeding through the thing under test would make a failure
+    ambiguous.
+    """
+    app.state.sync.request_shot_sync("manual")
+    app.state.sync.request_profile_sync("manual")
     async with asyncio.timeout(timeout):
         while True:
             counts = await app.state.sync.shots.counts()
             runs = await app.state.sync.runs.last_runs()
-            if counts.total >= SMALL_COUNT - 1 and BOOT_RUNS <= set(runs):
+            if counts.total >= SMALL_COUNT - 1 and PULL_RUNS <= set(runs):
                 if all(run.finished_at for run in runs.values()):
                     return
             await asyncio.sleep(0.02)
@@ -112,7 +121,7 @@ async def test_the_stream_reports_a_run_and_the_shots_in_it(
     """A run starting, a shot landing, the run finishing — the UI's whole feed."""
     try:
         async with serving(sync_env) as (app, base_url):
-            await _settle(app)
+            await _fill(app)
             stocked.add_shot(NEW_SHOT_ID, synthetic_slog_bytes(shot_id=NEW_SHOT_ID))
 
             async with httpx.AsyncClient(base_url=base_url, timeout=10.0) as http:
@@ -136,20 +145,27 @@ async def test_the_stream_reports_a_run_and_the_shots_in_it(
     assert started and started[0]["data"]["trigger"] == "manual"
 
 
-async def test_a_live_shot_reaches_an_open_stream(
+async def test_a_shot_pulled_in_one_tab_reaches_another(
     sync_env: EnvSettings, stocked: FakeDevice
 ) -> None:
-    """A browser tab left open sees the shot the machine has just finished."""
+    """The button is pressed in one tab; every open tab learns what landed.
+
+    This is what the shots list re-reads on, and what the pull button's toast
+    counts from. The brew happens first and is worth nothing on its own —
+    without the `POST /api/sync/run` two lines below, the stream would carry
+    nothing and this test would sit here until its timeout.
+    """
     try:
         async with serving(sync_env) as (app, base_url):
-            await _settle(app)
+            await _fill(app)
+            await stocked.run_brew(
+                NEW_SHOT_ID, slog_bytes=synthetic_slog_bytes(shot_id=NEW_SHOT_ID)
+            )
 
             async with httpx.AsyncClient(base_url=base_url, timeout=10.0) as http:
                 async with http.stream("GET", "/api/sync/events") as response:
                     await _wait_for_subscriber(app)
-                    await stocked.run_brew(
-                        NEW_SHOT_ID, slog_bytes=synthetic_slog_bytes(shot_id=NEW_SHOT_ID)
-                    )
+                    await http.post("/api/sync/run", json={"kind": "all"})
                     events = await read_until(response, SHOT_INGESTED_EVENT)
     finally:
         await stocked.stop()

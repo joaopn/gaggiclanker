@@ -29,11 +29,11 @@ async def test_defaults_are_returned_when_nothing_is_configured(
     settings = await get_settings(client)
     assert set(settings) == set(SETTINGS_REGISTRY)
 
-    poll = settings["devicePollIntervalSeconds"]
-    assert poll["value"] == 60
-    assert poll["default"] == 60
-    assert poll["override"] is None
-    assert poll["source"] == "default"
+    keep = settings["deviceCleanupKeepNewest"]
+    assert keep["value"] == 50
+    assert keep["default"] == 50
+    assert keep["override"] is None
+    assert keep["source"] == "default"
 
 
 async def test_every_registry_key_documents_itself(client: httpx.AsyncClient) -> None:
@@ -86,23 +86,48 @@ async def test_clearing_an_override_falls_back_to_the_environment(
 async def test_override_survives_a_restart(env: EnvSettings) -> None:
     """The override lives in the database file, not in process memory."""
     async with running_app(env) as (_app, client):
-        await client.patch("/api/settings", json={"devicePollIntervalSeconds": 15})
+        await client.patch("/api/settings", json={"deviceCleanupKeepNewest": 15})
 
     async with running_app(env) as (_app, client):
         settings = await get_settings(client)
-        assert settings["devicePollIntervalSeconds"]["value"] == 15
-        assert settings["devicePollIntervalSeconds"]["source"] == "database"
+        assert settings["deviceCleanupKeepNewest"]["value"] == 15
+        assert settings["deviceCleanupKeepNewest"]["source"] == "database"
 
 
 async def test_unparseable_environment_value_falls_back_to_the_default(
     monkeypatch: pytest.MonkeyPatch, env: EnvSettings
 ) -> None:
     """A typo in the compose file must not take the container down."""
-    monkeypatch.setenv("GAGGICLANKER_DEVICE_POLL_INTERVAL_SECONDS", "sixty")
+    monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST", "sixty")
     async with running_app(env) as (_app, client):
         settings = await get_settings(client)
-        assert settings["devicePollIntervalSeconds"]["value"] == 60
-        assert settings["devicePollIntervalSeconds"]["source"] == "default"
+        assert settings["deviceCleanupKeepNewest"]["value"] == 50
+        assert settings["deviceCleanupKeepNewest"]["source"] == "default"
+
+
+async def test_a_row_for_a_key_that_no_longer_exists_is_ignored(env: EnvSettings) -> None:
+    """A setting that is dropped leaves its row behind; the app must not care.
+
+    The database outlives the registry: an archive configured a year ago holds
+    override rows for keys later releases removed. Resolution walks the
+    registry, so the row is simply never looked at — but that is a property
+    worth pinning, because the alternative (a startup that fails on a key it
+    does not recognise) would be a container that will not boot after an
+    upgrade, on the machine of the one person who had configured that key.
+    """
+    async with running_app(env) as (app, client):
+        await app.state.db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)",
+            ("devicePollIntervalSeconds", "60"),
+        )
+        settings = await get_settings(client)
+        assert "devicePollIntervalSeconds" not in settings
+
+    # And again from cold, because "ignored" has to survive the boot that reads
+    # the table rather than only the request that follows the write.
+    async with running_app(env) as (_app, client):
+        settings = await get_settings(client)
+        assert set(settings) == set(SETTINGS_REGISTRY)
 
 
 async def test_empty_environment_value_is_not_an_override(
@@ -127,7 +152,7 @@ async def test_booleans_round_trip(client: httpx.AsyncClient) -> None:
 
 async def test_boolean_is_rejected_for_an_int_setting(client: httpx.AsyncClient) -> None:
     """JSON ``true`` is a Python bool and ``int(True) == 1``; that must not store 1."""
-    response = await client.patch("/api/settings", json={"devicePollIntervalSeconds": True})
+    response = await client.patch("/api/settings", json={"deviceCleanupKeepNewest": True})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_REQUEST"
 
@@ -135,10 +160,10 @@ async def test_boolean_is_rejected_for_an_int_setting(client: httpx.AsyncClient)
 async def test_non_numeric_value_for_an_int_setting_is_rejected(
     client: httpx.AsyncClient,
 ) -> None:
-    response = await client.patch("/api/settings", json={"devicePollIntervalSeconds": "often"})
+    response = await client.patch("/api/settings", json={"deviceCleanupKeepNewest": "often"})
     assert response.status_code == 400
     details = response.json()["error"]["details"]
-    assert any(item["field"] == "devicePollIntervalSeconds" for item in details)
+    assert any(item["field"] == "deviceCleanupKeepNewest" for item in details)
 
 
 async def test_unknown_key_is_rejected_and_nothing_is_written(
@@ -204,9 +229,9 @@ def test_short_secrets_are_masked_rather_than_hinted() -> None:
 async def test_settings_service_is_reachable_from_app_state(app: FastAPI) -> None:
     """Other layers read settings through the service, not through the HTTP API."""
     service = app.state.settings_service
-    assert await service.get("devicePollIntervalSeconds") == 60
-    await service.apply({"devicePollIntervalSeconds": 30})
-    assert await service.get("devicePollIntervalSeconds") == 30
+    assert await service.get("deviceCleanupKeepNewest") == 50
+    await service.apply({"deviceCleanupKeepNewest": 30})
+    assert await service.get("deviceCleanupKeepNewest") == 30
 
 
 async def test_rejected_value_is_never_echoed_back(client: httpx.AsyncClient) -> None:
@@ -217,18 +242,18 @@ async def test_rejected_value_is_never_echoed_back(client: httpx.AsyncClient) ->
     someone pastes an API key into the wrong field.
     """
     leaked = "sk-live-DO-NOT-ECHO-THIS"
-    response = await client.patch("/api/settings", json={"devicePollIntervalSeconds": leaked})
+    response = await client.patch("/api/settings", json={"deviceCleanupKeepNewest": leaked})
     assert response.status_code == 400
     assert leaked not in response.text
     details = response.json()["error"]["details"]
-    assert details == [{"field": "devicePollIntervalSeconds", "message": "expected an integer"}]
+    assert details == [{"field": "deviceCleanupKeepNewest", "message": "expected an integer"}]
 
 
 @pytest.mark.parametrize(
     ("key", "value", "message"),
     [
-        ("devicePollIntervalSeconds", "nope", "expected an integer"),
-        ("devicePollIntervalSeconds", True, "expected an integer"),
+        ("deviceCleanupKeepNewest", "nope", "expected an integer"),
+        ("deviceCleanupKeepNewest", True, "expected an integer"),
         ("deviceSyncEnabled", "maybe", "expected a boolean"),
         ("deviceSyncEnabled", 7, "expected a boolean"),
         ("gaggimateHost", 1234, "expected a string"),

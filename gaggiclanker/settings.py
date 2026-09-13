@@ -593,18 +593,10 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         default=True,
         env_key="GAGGICLANKER_DEVICE_SYNC_ENABLED",
         description=(
-            "Hold the WebSocket and mirror shots, profiles and notes. Turn off to work on an "
-            "archive without touching the machine."
-        ),
-    ),
-    SettingDefinition(
-        key="devicePollIntervalSeconds",
-        type="int",
-        default=60,
-        env_key="GAGGICLANKER_DEVICE_POLL_INTERVAL_SECONDS",
-        description=(
-            "How often to re-diff the shot index as a safety net behind "
-            "evt:history-shot-saved, which is missed while the socket is down."
+            "Hold the WebSocket, so the header shows whether the machine is online and pulls "
+            "and pushes can reach it. Turn off to work on an archive without touching the "
+            "machine. Nothing is mirrored on its own either way: shots, profiles and notes "
+            "move when a pull is asked for."
         ),
     ),
     SettingDefinition(

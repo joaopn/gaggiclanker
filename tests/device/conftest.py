@@ -129,8 +129,8 @@ async def serving(env: EnvSettings) -> AsyncIterator[tuple[FastAPI, str]]:
     hands back a response (``httpx/_transports/asgi.py``: ``assert
     response_complete.is_set()``), so a server-sent event stream — which by
     design never completes — deadlocks it. Every other test in this repository
-    is happier in-process; the two that read `/api/device/live` need a socket,
-    a real uvicorn and its lifespan.
+    is happier in-process; the ones that read an event stream need a socket, a
+    real uvicorn and its lifespan.
     """
     app = create_app(env, web_dist=NO_WEB_DIST, dotenv={})
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")

@@ -8,7 +8,6 @@ of the suite silently relies on.
 from __future__ import annotations
 
 from typing import Any, cast
-from unittest import mock
 
 import httpx
 
@@ -19,7 +18,6 @@ from gaggiclanker.device.fake import (
     build_fake_device,
     header_only_bytes,
     main,
-    simulate_brew,
     synthetic_slog_bytes,
 )
 from gaggiclanker.domain.index import parse_index
@@ -104,15 +102,19 @@ def test_the_cli_parses_its_arguments(capsys) -> None:  # type: ignore[no-untype
         assert exit_code.code == 0
     out = capsys.readouterr().out
     assert "--port" in out
-    assert "--brew-every" in out
+    assert "--host" in out
 
 
-async def test_a_simulated_brew_ends_with_a_saved_shot() -> None:
-    """What the live view is developed against: frames, then a real file.
+async def test_a_brew_ends_with_a_saved_shot() -> None:
+    """The firmware's own save sequence: frames, then the file, then the event.
 
     The order is the firmware's and the test pins it: the last thing to happen
     is `evt:history-shot-saved`, *after* the file exists — a client that
-    fetched on the stats frame would get a header (report §2.6).
+    fetched on the stats frame would get a header (report §2.6). Nothing in
+    this application acts on that event any more, but the fake still has to
+    play it in the right order, because the tests that assert "a pull started
+    the moment the machine beeped still finds the shot" depend on the window
+    between the event and the index being real.
     """
     device = FakeDevice()
     frames: list[dict[str, object]] = []
@@ -122,19 +124,16 @@ async def test_a_simulated_brew_ends_with_a_saved_shot() -> None:
 
     device.broadcast = capture  # type: ignore[method-assign]
 
-    # Real sleeps would make this a 28-second test; the sequence is the subject.
-    with mock.patch("gaggiclanker.device.fake.asyncio.sleep", new=_no_sleep):
-        await simulate_brew(device, 7)
+    await device.run_brew(7)
 
     active = [f for f in frames if f.get("tp") == "evt:status" and "process" in f]
     assert active, "a brew has to push process frames"
     first_process = cast(dict[str, Any], active[0]["process"])
     assert first_process["a"] == 1
-    assert first_process["tt"] == "volumetric"
     last_process = cast(dict[str, Any], active[-1]["process"])
     assert last_process["a"] == 0
 
-    # Elapsed only ever goes forwards, which is what the live clock reads.
+    # Elapsed only ever goes forwards.
     elapsed = [cast(dict[str, Any], f["process"])["e"] for f in active]
     assert elapsed == sorted(elapsed)
 
@@ -146,7 +145,3 @@ async def test_a_simulated_brew_ends_with_a_saved_shot() -> None:
     # reads the first, the device's own list reads the second, and a shot that
     # disagrees with itself looks like a sync bug.
     assert parse_slog(saved.slog_bytes).header.profile_name == saved.entry.profile_name
-
-
-async def _no_sleep(_seconds: float) -> None:
-    return None

@@ -4,7 +4,7 @@ Opt-in: ``scripts/sim.sh test`` (which builds and starts the simulator), or
 ``uv run pytest -m simulator`` against one already running on :8080.
 
 Everything else in this repository tests a layer. This tests the claim the
-README makes: point it at a machine, pull a shot, and the shot is archived with
+README makes: point it at a machine, pull the shot in, and it is archived with
 its curve, judged, grouped, analysed and backed up without anybody touching the
 database. It runs against `src/display/` compiled natively, so what passes here
 is what the machine on the bench does — which is how we found `OtaSettings`
@@ -61,9 +61,8 @@ MODE_BREW = 1
 #: written. A simulated shot runs about thirty seconds; the rest is the save.
 BREW_TIMEOUT_S = 120.0
 
-#: How long the sync engine gets to notice `evt:history-shot-saved`, fetch the
-#: `.slog` and derive the curve. Generous: the point is whether it happens, and
-#: the DoD's own "within 5 s" number is measured on real hardware, not here.
+#: How long a requested pull gets to read the index, fetch the `.slog` and
+#: derive the curve. Generous: the point is whether it happens at all.
 INGEST_TIMEOUT_S = 60.0
 
 
@@ -218,8 +217,11 @@ async def test_the_whole_prototype_against_the_simulator(
         "req:change-mode + req:process:activate; see /tmp/gaggimate-sim.log"
     )
 
-    # 4. The archive picks it up on its own — no polling from the test, no
-    #    reaching into the database. This is the DoD's item 2.
+    # 4. Ask for it. Nothing moves off the machine until somebody does — the
+    #    archive is pulled into, not pushed at — and this is the request the
+    #    "Pull from machine" button makes. The assertion is still that the app
+    #    does the rest: no polling from the test, no reaching into the database.
+    assert data(await client.post("/api/sync/run", json={"kind": "all"}))["queued"]
     listed = await _until(
         lambda: _shot_arrived(client, before),
         timeout=INGEST_TIMEOUT_S,

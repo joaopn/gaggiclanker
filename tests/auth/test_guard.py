@@ -149,9 +149,7 @@ def test_bearer_token_parsing() -> None:
     assert bearer_token(header()) == ""
 
 
-@pytest.mark.parametrize(
-    "stream", ["/api/sync/events", "/api/device/live", "/api/llm/calls/stream"]
-)
+@pytest.mark.parametrize("stream", ["/api/sync/events", "/api/llm/calls/stream"])
 async def test_sse_streams_are_guarded_and_open_with_a_bearer(
     env: EnvSettings, auth_env: None, stream: str
 ) -> None:
@@ -159,8 +157,8 @@ async def test_sse_streams_are_guarded_and_open_with_a_bearer(
 
     The important half is the second one. The front end reads SSE with `fetch`
     rather than `EventSource` precisely so it can send the header
-    (`web/src/lib/sse.ts`), and if the guard rejected the streams there would be
-    no live view at all with auth on.
+    (`web/src/lib/sse.ts`), and if the guard rejected the streams a pull started
+    with auth on would report no progress at all.
     """
     async with serving(env) as (_app, base_url):
         async with httpx.AsyncClient(base_url=base_url, timeout=10.0) as client:

@@ -13,7 +13,8 @@ three ways:
 
 * the offline test suite, through the ``fake_device`` fixture;
 * ``python -m gaggiclanker.device.fake --port 8090``, so the front end can be
-  developed against something that pushes live status without a machine;
+  developed against a machine that is online, holds shots and answers a pull
+  without anybody owning a GaggiMate;
 * as the shape the simulator test asserts against, so the two agree.
 
 Fixture data comes from ``tests/fixtures`` when it is there (real `.slog` bytes
@@ -1025,41 +1026,19 @@ def _slog_from_export(export: dict[str, Any]) -> bytes:
 # ── the CLI ──────────────────────────────────────────────────────────
 
 
-#: How long a simulated brew runs, and the phases it walks through. The shapes
-#: are the ones the front end has to draw: a low-pressure fill, a flat soak with
-#: no flow, a ramp into nine bar, and a decline while the weight climbs.
-_BREW_PHASES: tuple[tuple[str, float, float, float], ...] = (
-    # (label, seconds, target pressure at the end, target flow)
-    ("Fill", 4.0, 3.0, 4.0),
-    ("Soak", 6.0, 3.0, 0.0),
-    ("Ramp", 4.0, 9.0, 2.2),
-    ("Decline 9-4", 14.0, 4.0, 1.8),
-)
+async def _development_loop(device: FakeDevice) -> None:
+    """Idle telemetry, and nothing else.
 
-#: The volumetric target a simulated shot is pulled to, in grams. It is what
-#: `process.pt` carries, with `process.pp` the weight so far — the pair the live
-#: view draws its progress bar from.
-_BREW_TARGET_G = 36.0
-
-
-async def _development_loop(device: FakeDevice, brew_every_s: float = 0.0) -> None:
-    """Idle telemetry, and a simulated brew every ``brew_every_s`` seconds.
-
-    One loop rather than two, because the two would fight: `evt:status` frames
-    are *merged* on the way in (an absent key means unchanged), so an idle frame
-    landing between two brew frames overwrites the brew's pressure with a sine
-    wave and the live view jitters between them.
+    The fake used to be able to pull a shot on a timer, because a live view had
+    to be developed against something. There is no live view any more — the
+    machine's own web UI draws the shot that is happening now — so what a
+    developer needs from this loop is a machine that looks plugged in: a socket
+    that stays up and a boiler temperature that moves. Shots are added by a test
+    calling :meth:`FakeDevice.run_brew`, and archived when a pull asks for them.
     """
     start = time.monotonic()
-    last_brew = time.monotonic()
     while True:
         await asyncio.sleep(0.5)
-        if brew_every_s > 0 and time.monotonic() - last_brew >= brew_every_s:
-            shot_id = (max(device.shots) + 1) if device.shots else 1
-            logging.getLogger(__name__).warning("simulated brew starting, shot %d", shot_id)
-            await simulate_brew(device, shot_id)
-            last_brew = time.monotonic()
-            continue
         elapsed = time.monotonic() - start
         await device.emit_status(
             ct=round(92.0 + 1.5 * ((elapsed % 6) / 6), 3),
@@ -1079,80 +1058,7 @@ async def _development_loop(device: FakeDevice, brew_every_s: float = 0.0) -> No
         )
 
 
-async def simulate_brew(device: FakeDevice, shot_id: int) -> None:
-    """Push a whole shot, frame by frame, then save it.
-
-    The idle telemetry loop is a heartbeat; this is the thing the live view
-    exists for, and without it there is no way to develop that view short of
-    standing at the machine. The frames follow the firmware's own sequence
-    (report §2.6): `process.a = 1` with a rising elapsed, then `a = 0`, then the
-    finished-stats frame, then the file, then `evt:history-shot-saved` — in that
-    order, because a client that fetched on the stats frame would get a header.
-    """
-    elapsed_ms = 0
-    weight = 0.0
-    for label, seconds, peak_pressure, target_flow in _BREW_PHASES:
-        steps = max(1, int(seconds * 2))
-        for step in range(steps):
-            fraction = (step + 1) / steps
-            pressure = round(peak_pressure * (0.4 + 0.6 * fraction), 2)
-            flow = round(target_flow * (0.5 + 0.5 * fraction), 2)
-            weight = round(weight + flow * 0.5 * 0.85, 2)
-            elapsed_ms += 500
-            await device.emit_status(
-                process={
-                    "a": 1,
-                    "s": "brew",
-                    "l": label,
-                    "e": elapsed_ms,
-                    # Volumetric: the shot ends on the scale, and the live view
-                    # reads `pp`/`pt` as "so far / target" with `tt` the unit.
-                    "tt": "volumetric",
-                    "pt": _BREW_TARGET_G,
-                    "pp": weight,
-                },
-                ct=round(92.4 + 0.4 * fraction, 2),
-                tt=93.0,
-                pr=pressure,
-                pt=peak_pressure,
-                fl=flow,
-                tf=target_flow,
-                pf=round(flow * 0.92, 2),
-                cw=weight,
-                pkr=round(pressure / max(0.2, flow) ** 2, 2),
-                bc=True,
-                sbat=88,
-            )
-            await asyncio.sleep(0.5)
-
-    await device.emit_status(
-        process={"a": 0, "s": "brew", "l": "Finished", "e": elapsed_ms},
-        pr=0.0,
-        fl=0.0,
-        cw=weight,
-    )
-    await device.emit_shot_finished_stats(9.1, 1.8)
-    # The header's `profileName` and the index entry's have to agree: the
-    # archive reads the first and the list reads the second, and a shot that
-    # says two different things about its own profile is a bug that looks like
-    # a sync bug.
-    profile_name = "Simulated brew"
-    device.add_shot(
-        shot_id,
-        synthetic_slog_bytes(
-            samples=int(elapsed_ms / 250),
-            shot_id=shot_id,
-            start_epoch=int(time.time()),
-            profile_name=profile_name,
-        ),
-        notes=default_notes(shot_id),
-        timestamp=int(time.time()),
-        profile_name=profile_name,
-    )
-    await device.emit_shot_saved(shot_id)
-
-
-async def run_fake_device(port: int, host: str = "127.0.0.1", brew_every_s: float = 0.0) -> None:
+async def run_fake_device(port: int, host: str = "127.0.0.1") -> None:
     """Serve the fake until cancelled. The body of ``python -m …device.fake``."""
     device = build_fake_device()
     address = await device.start(port=port, host=host)
@@ -1163,7 +1069,7 @@ async def run_fake_device(port: int, host: str = "127.0.0.1", brew_every_s: floa
         len(device.shots),
         len(device.profiles),
     )
-    telemetry = asyncio.create_task(_development_loop(device, brew_every_s))
+    telemetry = asyncio.create_task(_development_loop(device))
     try:
         await asyncio.Event().wait()
     finally:
@@ -1193,20 +1099,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--port", type=int, default=8090, help="port to bind (default 8090)")
     parser.add_argument("--host", default="127.0.0.1", help="address to bind (default loopback)")
-    parser.add_argument(
-        "--brew-every",
-        type=float,
-        default=0.0,
-        metavar="SECONDS",
-        help=(
-            "pull a simulated shot this often (default: never). The live view "
-            "has nothing to draw without it"
-        ),
-    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(run_fake_device(args.port, args.host, args.brew_every))
+        asyncio.run(run_fake_device(args.port, args.host))
     return 0
 
 

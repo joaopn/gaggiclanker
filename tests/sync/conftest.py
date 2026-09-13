@@ -200,8 +200,8 @@ async def archive_for(device: FakeDevice, tmp_path: Path) -> AsyncIterator[Archi
 
     The engine's loops are **not** started: a test calls `sync_shots()` and
     friends directly so its assertions run after the pass rather than racing it.
-    ``tests/sync/test_live.py`` is the one that starts the loops, because "the
-    push reaches the database" is the thing it is testing.
+    ``tests/sync/test_pull.py`` is the one that starts the loops, because what
+    it tests is which of them run without being asked.
     """
     db = await _open_database(tmp_path)
     client = GaggimateClient(
@@ -215,7 +215,7 @@ async def archive_for(device: FakeDevice, tmp_path: Path) -> AsyncIterator[Archi
     assert await client.wait_connected(5.0), "the fake device did not accept a connection"
 
     bus: SseEventBus = EventBus[SseEvent]()
-    engine = SyncEngine(client, db, bus, index_interval=3600.0, profile_interval=3600.0)
+    engine = SyncEngine(client, db, bus)
 
     with bus.subscribe() as queue:
         try:

@@ -28,14 +28,18 @@ from tests.sync.conftest import CORRUPT_ID, NOTES_ID, SMALL_COUNT, build_archive
 STORED = SMALL_COUNT - 1
 
 
-async def _wait_for_backfill(client: httpx.AsyncClient, timeout: float = 30.0) -> None:
-    """Block until every pass the app starts at boot has finished.
+async def _pull_everything(client: httpx.AsyncClient, timeout: float = 30.0) -> None:
+    """Ask for a full pull through the route, and block until it has finished.
 
-    All four, not just the shots: identity, profiles and notes run behind the
+    The app starts no pass of its own but the identity read, so a test that
+    wants an archive asks for one the way the button does. All four passes are
+    waited for, not just the shots: identity, profiles and notes run behind the
     same lock and a test that only waited for the shot count would read the
     profile mirror while it was still being written.
     """
     wanted = {"identity", "backfill", "profiles", "notes"}
+    accepted = await client.post("/api/sync/run", json={"kind": "all"})
+    assert accepted.status_code == 202, accepted.text
     async with asyncio.timeout(timeout):
         while True:
             body = (await client.get("/api/sync/status")).json()["data"]
@@ -49,7 +53,7 @@ async def _wait_for_backfill(client: httpx.AsyncClient, timeout: float = 30.0) -
 async def served(
     tmp_path: Path, data_dir: Path
 ) -> AsyncIterator[tuple[FakeDevice, FastAPI, httpx.AsyncClient]]:
-    """The app, its lifespan, and a fake machine it has already synced."""
+    """The app, its lifespan, and a fake machine it has been asked to pull from."""
     device = build_archive_device(SMALL_COUNT, header_only=False)
     await device.start()
     env = EnvSettings(
@@ -63,7 +67,7 @@ async def served(
         # the same parsed file the bootstrap settings do, and a test that
         # mutated the process environment would leak into its neighbours.
         async with running_app(env, dotenv={"GAGGIMATE_HOST": device.address}) as (app, client):
-            await _wait_for_backfill(client)
+            await _pull_everything(client)
             yield device, app, client
     finally:
         await device.stop()
@@ -76,7 +80,9 @@ async def test_the_lifespan_starts_the_sync_engine(
     assert app.state.sync is not None
     # Every loop is registered, so shutdown cancels them in one call and nothing
     # is mid-write when the database file is released.
-    assert {"sync-events", "sync-shots", "sync-profiles"} <= set(app.state.tasks.names)
+    assert {"sync-events", "sync-identity", "sync-shots", "sync-profiles"} <= set(
+        app.state.tasks.names
+    )
 
 
 async def test_the_shot_list_is_newest_first_with_what_a_table_needs(

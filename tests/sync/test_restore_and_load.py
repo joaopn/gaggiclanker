@@ -6,11 +6,11 @@ this project, and it is worth proving rather than documenting: take a backup of
 a stocked archive, drop it into a fresh `DATA_DIR`, boot, and every shot and
 every sample row is still there.
 
-**Responsiveness** — the chunk's acceptance criterion. Sync is background work
-owned by the app lifespan, and the point of that is that a two-hundred-shot
-backfill against a slow machine does not make the archive browser unusable while
-it runs. With a 50 ms delay on every device fetch, `/health` still answers in
-well under 200 ms.
+**Responsiveness** — a pull is background work owned by the app lifespan rather
+than work done inside the request that asked for it, and the point of that is
+that a two-hundred-shot first pull against a slow machine does not make the
+archive browser unusable while it runs. With a 50 ms delay on every device
+fetch, `/health` still answers in well under 200 ms.
 """
 
 from __future__ import annotations
@@ -57,6 +57,12 @@ def _env(data_dir: Path) -> EnvSettings:
     )
 
 
+async def _pull(client: httpx.AsyncClient) -> None:
+    """Ask for a pull. Nothing comes off the machine unasked."""
+    accepted = await client.post("/api/sync/run", json={"kind": "all"})
+    assert accepted.status_code == 202, accepted.text
+
+
 async def _wait_for(client: httpx.AsyncClient, total: int, timeout: float = 60.0) -> None:
     async with asyncio.timeout(timeout):
         while True:
@@ -80,6 +86,7 @@ async def test_a_backup_restores_into_a_fresh_data_dir(tmp_path: Path) -> None:
             _app,
             client,
         ):
+            await _pull(client)
             await _wait_for(client, STORED)
             before = (await client.get("/api/sync/status")).json()["data"]["counts"]
             backup = (await client.post("/api/backup")).json()["data"]
@@ -126,7 +133,8 @@ async def test_the_api_stays_responsive_during_a_backfill(tmp_path: Path, shots:
             _app,
             client,
         ):
-            # Poll health while the backfill runs. It cannot finish before the
+            await _pull(client)
+            # Poll health while the pull runs. It cannot finish before the
             # fetches do: two hundred files, two at a time, 50 ms each.
             deadline = time.monotonic() + 1.5
             while time.monotonic() < deadline:
@@ -137,10 +145,10 @@ async def test_the_api_stays_responsive_during_a_backfill(tmp_path: Path, shots:
                 await asyncio.sleep(0.01)
 
             status = (await client.get("/api/sync/status")).json()["data"]
-            assert status["counts"]["total"] > 0, "the backfill was under way, not finished"
+            assert status["counts"]["total"] > 0, "the pull was under way, not finished"
             assert status["counts"]["total"] < shots - 1, "…and not yet done"
 
-        # …and the block exits with the backfill still running, which exercises
+        # …and the block exits with the pull still running, which exercises
         # the other half of "background work owned by the lifespan": shutdown
         # cancels the loops and closes the database with a pass in flight.
     finally:
