@@ -1,83 +1,12 @@
 import type { BeanRow, SetRow, SetVersionRow } from "@/api/types";
-import type { Tone } from "@/lib/shots";
 
 /**
- * The vocabulary the Set and bean pages share: freshness, and how a recipe is
- * written down.
+ * The vocabulary the Set and bean pages share: how a recipe is written down.
  *
  * Here rather than in a component for the same reason `lib/shots.ts` exists: a
  * dose that reads "18 g" on the Set card and "18.0g" on the timeline is drift
  * nobody notices until they are comparing two versions side by side.
  */
-
-// ── freshness ────────────────────────────────────────────────────────
-
-/**
- * Whole days since the roast, or null when the bag does not say.
- *
- * Computed against local midnight on both sides rather than as an elapsed
- * duration: a bag roasted yesterday afternoon is "1 day off roast" all of
- * today, not "0" until the afternoon. Coffee is talked about in days, and a
- * counter that flipped over at 15:42 would look broken.
- */
-export function daysOffRoast(
-  roastDate: string | null | undefined,
-  now = new Date(),
-): number | null {
-  if (!roastDate) return null;
-  const roasted = new Date(`${roastDate}T00:00:00`);
-  if (Number.isNaN(roasted.getTime())) return null;
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((today.getTime() - roasted.getTime()) / 86_400_000);
-  return days;
-}
-
-/**
- * What those days mean, in one word plus a sentence.
- *
- * The windows are the ordinary espresso ones (the knowledge tier is seeded with
- * the same numbers): a few days of rest before
- * the CO2 has gone, a broad useful plateau, and a slow decline after a month.
- * They are advice, not a rule — a light roast wants longer and this pill does
- * not know the roast level — so the wording hedges where the knowledge tier
- * will later be specific.
- */
-export function freshness(days: number | null): { label: string; tone: Tone; meaning: string } {
-  if (days === null) return { label: "no roast date", tone: "neutral", meaning: "" };
-  if (days < 0) {
-    return {
-      label: "roasted in the future",
-      tone: "warn",
-      meaning: "The roast date is ahead of today — probably a typo.",
-    };
-  }
-  if (days <= 3) {
-    return {
-      label: `${days}d — resting`,
-      tone: "warn",
-      meaning: "Still degassing. Expect gushing and a thin, sharp cup for a few more days.",
-    };
-  }
-  if (days <= 21) {
-    return {
-      label: `${days}d — ready`,
-      tone: "good",
-      meaning: "In the window where a dial-in holds still from one day to the next.",
-    };
-  }
-  if (days <= 45) {
-    return {
-      label: `${days}d — going quiet`,
-      tone: "warn",
-      meaning: "Past its best: the aromatics fade first, so the cup flattens before it turns.",
-    };
-  }
-  return {
-    label: `${days}d — stale`,
-    tone: "bad",
-    meaning: "Old enough that the beans, not the recipe, are what the cup tastes of.",
-  };
-}
 
 // ── recipes ──────────────────────────────────────────────────────────
 

@@ -12,12 +12,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useArchiveBean, useBeans, useSaveBean, useVocabulary } from "@/hooks/useCatalog";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
-import { daysOffRoast, freshness } from "@/lib/sets";
-import { TONE_TEXT } from "@/lib/shots";
 import { cn } from "@/lib/utils";
 
 /**
- * The bags.
+ * The coffees.
+ *
+ * A row is a *type* — this coffee, this roaster, this process, this roast level
+ * — not an individual bag, so nothing here ages and buying the same coffee
+ * again is the same row.
  *
  * The machine knows nothing about any of this — the whole of its notes card is
  * one free-text `beanType` string — so everything here is typed by a person and
@@ -39,7 +41,6 @@ const EMPTY: BeanWrite = {
   altitude_m: null,
   process: null,
   roast_level: null,
-  roast_date: null,
   decaf: false,
   tasting_notes_bag: "",
   notes: "",
@@ -49,9 +50,9 @@ export function BeansPage() {
   const [showArchived, setShowArchived] = useState(false);
   const beans = useBeans(showArchived);
   const [editing, setEditing] = useState<BeanRow | "new" | null>(null);
-  // Which bag the wizard was opened for, or undefined when it is closed. The
-  // bean id rather than a boolean, because the shortcut's whole point is that
-  // the person does not have to find the bag again in a picker.
+  // Which coffee the wizard was opened for, or undefined when it is closed.
+  // The bean id rather than a boolean, because the shortcut's whole point is
+  // that the person does not have to find it again in a picker.
   const [startingFrom, setStartingFrom] = useState<number | undefined>(undefined);
   const navigate = useNavigate();
   useQueryErrorToast(beans.error, "Could not load the beans");
@@ -62,7 +63,7 @@ export function BeansPage() {
     <div className="space-y-4">
       <PageHeader
         title="Beans"
-        subtitle="Every bag, and how long ago it was roasted."
+        subtitle="Every coffee you have brewed: roaster, origin, process and roast level."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -75,7 +76,7 @@ export function BeansPage() {
             </Button>
             <Button size="sm" onClick={() => setEditing("new")}>
               <Plus className="size-3.5" aria-hidden="true" />
-              Add a bag
+              Add a coffee
             </Button>
           </div>
         }
@@ -85,8 +86,8 @@ export function BeansPage() {
         <BeanForm bean={editing === "new" ? null : editing} onDone={() => setEditing(null)} />
       ) : null}
 
-      {/* Keyed on the bag, so re-opening it for a different bean remounts the
-          wizard rather than showing the previous bag's suggestions. */}
+      {/* Keyed on the bean, so re-opening it for a different coffee remounts
+          the wizard rather than showing the previous one's suggestions. */}
       <NewSetWizard
         key={startingFrom ?? "none"}
         open={startingFrom !== undefined}
@@ -104,10 +105,10 @@ export function BeansPage() {
         <EmptyState
           icon={Bean}
           title="No beans recorded"
-          description="A Set needs a bag. Record the roast date, level and process — those three are what the analyser uses to reason about temperature and pressure."
+          description="A Set needs a coffee. Record the roast level and the process — those two are what the analyser uses to reason about temperature and pressure."
           action={
             <Button size="sm" onClick={() => setEditing("new")}>
-              Add a bag
+              Add a coffee
             </Button>
           }
         />
@@ -137,8 +138,6 @@ function BeanCard({
   onStartSet: () => void;
 }) {
   const archive = useArchiveBean();
-  const age = daysOffRoast(bean.roast_date);
-  const fresh = freshness(age);
   const facts = [
     bean.origin,
     bean.variety,
@@ -154,9 +153,9 @@ function BeanCard({
       description={bean.roaster ?? undefined}
       actions={
         <div className="flex items-center gap-1">
-          {/* Not offered for an archived bag: archiving is how a finished bag
-              leaves the pickers, and a shortcut that put it back in one would
-              be the single path around that. */}
+          {/* Not offered for an archived bean: archiving is how a coffee you
+              have stopped buying leaves the pickers, and a shortcut that put it
+              back in one would be the single path around that. */}
           {bean.archived ? null : (
             <Button
               variant="ghost"
@@ -186,14 +185,6 @@ function BeanCard({
       }
     >
       <div className="space-y-2">
-        <p
-          data-testid="freshness-pill"
-          data-tone={fresh.tone}
-          title={fresh.meaning}
-          className={cn("text-sm", TONE_TEXT[fresh.tone])}
-        >
-          {fresh.label}
-        </p>
         {facts.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {facts.map((fact) => (
@@ -209,7 +200,7 @@ function BeanCard({
         {bean.notes ? <p className="text-sm">{bean.notes}</p> : null}
         <p className="text-muted-foreground text-xs">
           {bean.set_count === 0
-            ? "No Sets use this bag yet."
+            ? "No Sets use this coffee yet."
             : `${bean.set_count} Set${bean.set_count === 1 ? "" : "s"}`}
           {bean.archived ? " · archived" : ""}
         </p>
@@ -231,7 +222,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
           altitude_m: bean.altitude_m,
           process: bean.process,
           roast_level: bean.roast_level,
-          roast_date: bean.roast_date,
           decaf: bean.decaf ?? false,
           tasting_notes_bag: bean.tasting_notes_bag ?? "",
           notes: bean.notes ?? "",
@@ -246,7 +236,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
     altitude: useId(),
     process: useId(),
     roast: useId(),
-    date: useId(),
     decaf: useId(),
     bagNotes: useId(),
     notes: useId(),
@@ -257,7 +246,7 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
   }
 
   return (
-    <SectionCard title={bean ? `Edit ${bean.name}` : "Add a bag"}>
+    <SectionCard title={bean ? `Edit ${bean.name}` : "Add a coffee"}>
       <form
         data-testid="bean-form"
         className="space-y-3"
@@ -284,15 +273,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
               className={FIELD}
               value={draft.roaster ?? ""}
               onChange={(event) => set("roaster", event.target.value || null)}
-            />
-          </Labelled>
-          <Labelled id={ids.date} label="Roast date">
-            <input
-              id={ids.date}
-              type="date"
-              className={FIELD}
-              value={draft.roast_date ?? ""}
-              onChange={(event) => set("roast_date", event.target.value || null)}
             />
           </Labelled>
           <Labelled id={ids.roast} label="Roast level">

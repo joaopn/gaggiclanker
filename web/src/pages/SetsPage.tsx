@@ -11,9 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useActivateSet, useSets } from "@/hooks/useSets";
-import { daysOffRoast, freshness, setSummary } from "@/lib/sets";
-import { TONE_TEXT } from "@/lib/shots";
-import { cn } from "@/lib/utils";
+import { setSummary } from "@/lib/sets";
 
 /**
  * Every Set, the active one first.
@@ -96,7 +94,6 @@ export function SetsPage() {
 
 function SetCard({ row }: { row: SetRow }) {
   const activate = useActivateSet();
-  const fresh = freshness(daysOffRoast(row.bean_roast_date));
 
   return (
     <Card data-testid="set-card" data-set={row.id} className="gap-3">
@@ -126,11 +123,6 @@ function SetCard({ row }: { row: SetRow }) {
           <span className="text-muted-foreground">
             {row.version_count} version{row.version_count === 1 ? "" : "s"}
           </span>
-          {row.bean_roast_date ? (
-            <span className={cn("text-xs", TONE_TEXT[fresh.tone])} title={fresh.meaning}>
-              {fresh.label}
-            </span>
-          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">

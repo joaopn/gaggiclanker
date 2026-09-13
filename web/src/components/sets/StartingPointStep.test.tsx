@@ -110,7 +110,8 @@ describe("StartingPointStep", () => {
       "recommended",
       "adventurous",
     ]);
-    expect(await screen.findByTestId("starting-point-rest")).toHaveTextContent(/ten to fourteen/);
+    // No rest note: there is no roast date to date a rest window from.
+    expect(screen.queryByTestId("starting-point-rest")).not.toBeInTheDocument();
     expect(cards[1]).toHaveTextContent("45 g (1:2.5)");
     expect(cards[1]).toHaveTextContent("94 °C");
     // The citation line names the Set it leaned on by bean, not by row id.

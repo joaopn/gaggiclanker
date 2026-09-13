@@ -127,11 +127,12 @@ describe("NewSetWizard", () => {
     // The shortcut is never a gate: a shortcut you cannot walk past is a wall.
     await skipSuggestion();
 
-    // The bean step cannot be left until a bag is chosen: the Set's whole
+    // The bean step cannot be left until a coffee is chosen: the Set's whole
     // identity starts there.
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     await pickBean();
-    expect(screen.getByTestId("wizard-freshness")).toHaveTextContent("light");
+    // What the coffee is, not how old a bag of it is: a bean is a type.
+    expect(screen.getByTestId("wizard-bean-facts")).toHaveTextContent("light");
 
     await user.click(screen.getByRole("button", { name: "Next" }));
     await screen.findByRole("option", { name: "Niche Zero" });

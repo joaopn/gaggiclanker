@@ -1,4 +1,4 @@
-import { Lightbulb, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import type { SimilarSet, StartingPointOption, StartingPointOutput } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -152,16 +152,6 @@ export function StartingPointStep({
       {output ? (
         <div className="space-y-3" data-testid="starting-point-result">
           {output.summary ? <p className="text-sm">{output.summary}</p> : null}
-          {output.rest_note ? (
-            <p
-              className="flex gap-1.5 rounded-md bg-muted px-2 py-1.5 text-xs"
-              data-testid="starting-point-rest"
-            >
-              <Lightbulb className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-              {output.rest_note}
-            </p>
-          ) : null}
-
           <div className="space-y-2">
             {options.map((option) => (
               <OptionCard

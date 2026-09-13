@@ -43,13 +43,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSimilarSets,
 }));
 
-/** Freshness is "days since", so the clock has to be pinned. */
-const TODAY = new Date("2026-04-08T10:00:00Z");
-
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  vi.setSystemTime(TODAY);
   getBeans.mockResolvedValue({ items: [bean()] });
   getVocabulary.mockResolvedValue(vocabulary);
   createBean.mockResolvedValue(bean({ id: 2, name: "Kenya Kiambu" }));
@@ -63,36 +58,35 @@ beforeEach(() => {
 });
 
 describe("BeansPage", () => {
-  it("shows days off roast and what that means", async () => {
+  it("describes the coffee and nothing about a bag of it", async () => {
+    // A bean is a type: the roaster, the origin, the process and the roast
+    // level stay true of every bag you ever buy of it. Nothing here ages.
     renderWithQueryClient(<BeansPage />);
 
-    const pill = await screen.findByTestId("freshness-pill");
-    // Roasted on the 1st, read on the 8th: a week, which is the plateau.
-    expect(pill).toHaveTextContent("7d — ready");
-    expect(pill).toHaveAttribute("data-tone", "good");
+    await screen.findByTestId("bean-list");
+    expect(
+      screen.getByText("Every coffee you have brewed: roaster, origin, process and roast level."),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("freshness-pill")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Roast date")).not.toBeInTheDocument();
   });
 
-  it("warns while a bag is still degassing", async () => {
-    getBeans.mockResolvedValue({ items: [bean({ roast_date: "2026-04-07" })] });
-    renderWithQueryClient(<BeansPage />);
-
-    const pill = await screen.findByTestId("freshness-pill");
-    expect(pill).toHaveTextContent("1d — resting");
-    expect(pill).toHaveAttribute("data-tone", "warn");
-  });
-
-  it("says nothing rather than guessing when a bag carries no date", async () => {
-    getBeans.mockResolvedValue({ items: [bean({ roast_date: null })] });
-    renderWithQueryClient(<BeansPage />);
-
-    expect(await screen.findByTestId("freshness-pill")).toHaveTextContent("no roast date");
-  });
-
-  it("records a bag with the vocabularies the server serves", async () => {
+  it("has no roast date on the form", async () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Add a bag/ }));
+    await user.click(await screen.findByRole("button", { name: /Add a coffee/ }));
+
+    await screen.findByTestId("bean-form");
+    expect(screen.queryByLabelText("Roast date")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Roast level")).toBeInTheDocument();
+  });
+
+  it("records a coffee with the vocabularies the server serves", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Add a coffee/ }));
     await user.type(await screen.findByLabelText("Name"), "Kenya Kiambu");
     await screen.findByRole("option", { name: "medium light" });
     await user.selectOptions(screen.getByLabelText("Roast level"), "medium-light");
@@ -109,7 +103,7 @@ describe("BeansPage", () => {
     );
   });
 
-  it("archives a finished bag rather than deleting it", async () => {
+  it("archives a coffee you have stopped buying rather than deleting it", async () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
@@ -119,22 +113,23 @@ describe("BeansPage", () => {
     expect(setBeanArchived.mock.calls[0].slice(0, 2)).toEqual([1, true]);
   });
 
-  it("opens the Set wizard on the bag you pressed it from", async () => {
+  it("opens the Set wizard on the coffee you pressed it from", async () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
 
     await user.click(await screen.findByRole("button", { name: "Start a Set from Ethiopia Guji" }));
 
     // Pre-selected, because the whole point of the shortcut is not having to
-    // find the bag you are looking at in a picker.
+    // find the coffee you are looking at in a picker.
     const wizard = await screen.findByTestId("new-set-wizard");
     expect(wizard).toHaveTextContent("1. Suggest");
     await waitFor(() => expect(screen.getByLabelText("Bean")).toHaveValue("1"));
   });
 
-  it("does not offer the shortcut on an archived bag", async () => {
-    // Archiving is how a finished bag leaves the pickers, and a shortcut that
-    // put it back in one would be the single path around that.
+  it("does not offer the shortcut on an archived coffee", async () => {
+    // Archiving is how a coffee you have stopped buying leaves the pickers,
+    // and a shortcut that put it back in one would be the single path around
+    // that.
     getBeans.mockResolvedValue({ items: [bean({ archived: true })] });
     renderWithQueryClient(<BeansPage />);
 

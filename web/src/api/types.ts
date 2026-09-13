@@ -152,7 +152,6 @@ export type StartingPointOption = {
 
 export type StartingPointOutput = {
   summary?: string;
-  rest_note?: string;
   questions_for_user?: string[];
   options?: StartingPointOption[];
 };

@@ -1,46 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  daysOffRoast,
-  freshness,
-  grindPatch,
-  setSummary,
-  versionRatio,
-  versionSummary,
-} from "@/lib/sets";
+import { grindPatch, setSummary, versionRatio, versionSummary } from "@/lib/sets";
 import { setRow, version } from "@/test/setsFixtures";
-
-const APRIL_8 = new Date("2026-04-08T10:00:00");
-
-describe("daysOffRoast", () => {
-  it("counts whole days from local midnight on both sides", () => {
-    // Not an elapsed duration: a bag roasted yesterday afternoon is "1 day off
-    // roast" all of today, not "0" until the afternoon.
-    expect(daysOffRoast("2026-04-01", APRIL_8)).toBe(7);
-    expect(daysOffRoast("2026-04-08", APRIL_8)).toBe(0);
-  });
-
-  it("says nothing rather than guessing when there is no date", () => {
-    expect(daysOffRoast(null, APRIL_8)).toBeNull();
-    expect(daysOffRoast("not a date", APRIL_8)).toBeNull();
-  });
-});
-
-describe("freshness", () => {
-  it("bands the windows a dial-in actually behaves differently in", () => {
-    expect(freshness(2).label).toContain("resting");
-    expect(freshness(7).tone).toBe("good");
-    expect(freshness(30).label).toContain("going quiet");
-    expect(freshness(90).tone).toBe("bad");
-  });
-
-  it("flags a roast date in the future as the typo it is", () => {
-    expect(freshness(-1).label).toContain("future");
-  });
-
-  it("has nothing to say about a bag with no date", () => {
-    expect(freshness(null)).toEqual({ label: "no roast date", tone: "neutral", meaning: "" });
-  });
-});
 
 describe("recipes", () => {
   it("writes a version on one line", () => {

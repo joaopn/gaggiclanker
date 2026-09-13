@@ -13,7 +13,7 @@ import { useProfileVersions } from "@/hooks/useArchive";
 import { useBeans, useGrinders, useMachines } from "@/hooks/useCatalog";
 import { useCreateSet } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
-import { beanLabel, daysOffRoast, freshness } from "@/lib/sets";
+import { beanLabel } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -316,15 +316,15 @@ export function NewSetWizard({
                 </select>
               </Labelled>
               {chosenBean ? (
-                <p className="text-muted-foreground text-xs" data-testid="wizard-freshness">
-                  {freshness(daysOffRoast(chosenBean.roast_date)).label}
-                  {chosenBean.roast_level ? ` · ${chosenBean.roast_level}` : ""}
-                  {chosenBean.process ? ` · ${chosenBean.process}` : ""}
+                <p className="text-muted-foreground text-xs" data-testid="wizard-bean-facts">
+                  {[chosenBean.roast_level, chosenBean.process, chosenBean.origin]
+                    .filter(Boolean)
+                    .join(" · ") || "Nothing recorded about this coffee yet."}
                 </p>
               ) : (
                 <p className="text-muted-foreground text-xs">
-                  No bag here yet? Add one on the Beans page first — the roast level and process are
-                  what the analyser reasons from.
+                  No coffee here yet? Add one on the Beans page first — the roast level and process
+                  are what the analyser reasons from.
                 </p>
               )}
               <Labelled id={ids.name} label="Call it">

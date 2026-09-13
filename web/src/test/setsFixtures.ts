@@ -149,7 +149,6 @@ export function bean(overrides: Partial<BeanRow> = {}): BeanRow {
     altitude_m: 1900,
     process: "natural",
     roast_level: "light",
-    roast_date: "2026-04-01",
     decaf: false,
     tasting_notes_bag: "blueberry, jasmine",
     notes: "",
@@ -180,7 +179,6 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
     name: "Guji on the Niche",
     bean_id: 1,
     bean_name: "Ethiopia Guji",
-    bean_roast_date: "2026-04-01",
     machine_id: 1,
     machine_name: "kitchen",
     grinder_id: 1,
@@ -411,7 +409,6 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
     input: {},
     output: {
       summary: "A light washed Kenyan four days off roast.",
-      rest_note: "Four days off roast; light roasts want ten to fourteen.",
       questions_for_user: ["What do you normally grind espresso at?"],
       options: [
         startingPointOption({ option: "conservative", headline: "Safe: 1:2 at 93 °C" }),
