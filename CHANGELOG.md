@@ -10,6 +10,52 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### One machine
+
+The archive was built to hold several, and the generality cost correctness
+rather than surface. Identity was the configured host, so a display board that
+changed address became a *second* machine: its shots, profiles and Sets split
+from the old ones, the active Set stopped auto-assigning, and nothing merged
+them back. An import done before the machine was configured — the natural order
+for a new install — landed on a synthetic `import:default` machine, and the same
+shot could then exist twice, because the unique key included the machine.
+
+`machines` is now a one-row table describing whatever host is configured. The
+host is a setting, not an identity: pointing the container at a new address
+updates that row and everything stays attached. A shot is unique by the id the
+device gave it, one Set is active overall, and no route, form, chat tool or MCP
+schema takes a machine id. Grinders stay plural — a kitchen really does have
+several, and a grind number only means something on the grinder it was set on.
+
+**Upgrading merges what you have, and it is worth knowing the rules.** Migration
+`0016` keeps the machine with a real host, and the most recently seen of several
+real hosts; the importer's `import:default` placeholder always loses. Everything
+that pointed at the others is re-pointed at the survivor. Shots are then
+de-duplicated by their device id: the copy whose bytes came off the machine
+wins, the newest otherwise, and before the loser goes its samples, its verdict,
+its notes card, its analyses and its Set assignment move across wherever the
+survivor has none. The profile mirror de-duplicates the same way, keeping the
+live mapping over a tombstone. If two Sets were active, the survivor machine's
+stays active and the others are simply no longer *the* one — nothing is
+archived. An archive with no machine at all gets the row with an empty host, so
+a fresh install and an import-only install both have "the machine" before the
+first pull. Take a backup first (`POST /api/backup`); there is no
+down-migration.
+
+**`GET /api/machines` is `GET /api/machine`**, answering the row with its shot
+counts, and `PATCH /api/machine` still takes only the name and the notes. The
+`machine_id` query on `GET /api/shots`, the field on `POST /api/sets`, the form
+field on `POST /api/import`, the starting-point request body and the
+similar-Sets query are all gone. The Hardware page leads with one **Machine**
+card above the grinders, and the New Set wizard has no machine step.
+
+### The sidebar folds
+
+The button at the foot of the rail, or the `[` chord, collapses the sidebar to
+an icon rail and back, and the choice is remembered. Folded, every entry keeps
+its name — a tooltip for a mouse, the accessible name for everything else — and
+the active entry is still marked. The mobile sheet is unchanged.
+
 ### Fewer pages, and beans are coffees
 
 Twelve destinations in the sidebar, three of which were not places you decide to

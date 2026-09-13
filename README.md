@@ -81,9 +81,14 @@ Eight of them, in the order the sidebar lists them:
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
 | **Beans** | `g b` | The coffees: roaster, origin, variety, process, roast level. |
-| **Hardware** | `g h` | Grinders and machines. |
+| **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Knowledge** | `g k` | The dial-in rules, the prose documents, and the insights waiting for a decision. |
 | **Settings** | `g ,` | The machine, the provider, the prompts, backup, and the device-write switch. |
+
+The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
+to an icon rail and back; the choice is remembered in the browser. Folded, every
+entry keeps its name — a tooltip for a mouse, the accessible name for everything
+else — so nothing is lost but the fourteen rems.
 
 Two more pages exist without a sidebar row, because each has a better way in.
 The device page is behind the status pill in the header — you go there when the
@@ -154,7 +159,10 @@ the UI with real shots and real curves.
 Or seed the archive from files, with no machine at all. The web UI on the
 display exports a shot as `shot-<id>.json` and a profile as `profile-<id>.json`;
 those files are the only way back for a shot the machine has already deleted,
-and the importer reads them into the same tables the sync engine writes:
+and the importer reads them into the same tables the sync engine writes.
+Importing first and connecting the machine afterwards is an ordinary order to do
+things in: the archive holds one machine, it exists before the first pull, and a
+shot the sync engine later serves is recognised as the one already stored.
 
 ```bash
 uv run gaggiclanker import tests/fixtures/exports       # or any folder, file or zip

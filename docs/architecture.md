@@ -53,8 +53,15 @@ web UI already shows and spent the device's two HTTP slots doing it; what an
 archive is actually asked for is "I have pulled some coffee, take it". The one
 exception is identity — one `res:ota-settings` frame plus one `GET
 /api/settings` at startup and on every connect — because it is what tells the
-header whether the machine is there at all, and because a pull has nowhere to
-store a shot until the machines row exists.
+header whether the machine is there at all.
+
+**The archive holds one machine.** `machines` is a one-row table — `CHECK (id =
+1)` — describing whatever host is configured now, and nothing else in the schema
+carries a machine id. The host is a setting rather than an identity, so pointing
+the container at a new address updates that row and every shot, profile and Set
+stays attached; a shot is unique by the id the device gave it, and one Set is
+active at a time. Grinders stay plural, because a kitchen really does have
+several and a grind number only means something on the grinder it was set on.
 
 ## The layers
 

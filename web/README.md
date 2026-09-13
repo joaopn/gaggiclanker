@@ -76,7 +76,7 @@ src/
   hooks/              useSse, useEventInvalidation, useHotkeys, useHealth, useSettings, useAuth
   components/
     ui/               shadcn primitives (see the React 18 note below)
-    layout/           AppShell, PageHeader, SectionCard, EmptyState, ShortcutsDialog
+    layout/           AppShell (the foldable rail), PageHeader, SectionCard, EmptyState, ShortcutsDialog
   pages/              one file per route (a few routes are redirects instead)
   test/               renderWithQueryClient, setupUser, the shot-129 fixture
   setupTests.ts       jest-dom, matchMedia/ResizeObserver/pointer-capture mocks
@@ -121,7 +121,7 @@ src/
   lib/
     sets.ts           how a recipe, a Set and a bean are written down
   hooks/
-    useCatalog.ts     the vocabularies, the beans, the grinders, the machines
+    useCatalog.ts     the vocabularies, the beans, the grinders, the machine
     useSets.ts        Sets, versions, trends, the verdict and the assignment
   components/
     charts/
@@ -355,6 +355,15 @@ uv run python scripts/build_web_shot_fixture.py
 3. Add the `<Route>` to `src/App.tsx`, inside the `AppShell` layout route.
 4. Extend `tests/test_static.py::test_every_client_route_deep_links_to_index`
    with the new path, so a hard refresh on it stays covered.
+
+`AppShell` renders that table twice over: the desktop rail and the mobile sheet.
+The rail has two widths and `NAV_LINKS` drives both — collapsed, the label and
+the chord go `sr-only` and the entry gains a radix `Tooltip`, so an entry added
+to the table needs nothing extra to work folded. The state lives in
+`localStorage` under `sidebar.collapsed.v1`, read once at mount behind
+`try/catch`, and the `[` chord toggles it alongside the `g` chords. Tests assert
+the rail through `data-collapsed` on the `<aside>` and the links' accessible
+names; they never open the tooltip, which is radix and not drivable under jsdom.
 
 **A route is not a nav entry.** `NAV_LINKS` is the sidebar, and the sidebar is
 places you *decide to go*; a page reached from the one place you are already
