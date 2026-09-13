@@ -58,7 +58,7 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
       kind: "draft",
       label: `Profile draft #${String(draftId)}`,
       detail: String(output.change_summary ?? "waiting for approval"),
-      href: "/drafts",
+      href: "/profiles#staged",
       icon: FilePen,
     };
   }

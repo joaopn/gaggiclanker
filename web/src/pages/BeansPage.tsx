@@ -95,7 +95,7 @@ export function BeansPage() {
           if (!next) setStartingFrom(undefined);
         }}
         onCreated={(setId) => navigate(`/sets/${setId}`)}
-        onDraftCreated={() => navigate("/drafts")}
+        onDraftCreated={() => navigate("/profiles#staged")}
       />
 
       {beans.isPending ? (

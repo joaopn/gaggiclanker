@@ -60,10 +60,11 @@ export function SetsPage() {
         onOpenChange={setWizardOpen}
         onCreated={(setId) => navigate(`/sets/${setId}`)}
         // An accepted starting point whose option carried a whole profile left
-        // a draft in the queue, and that is the more urgent of the two places
-        // to be: the Set is fine to look at later, the profile is waiting for
-        // somebody to approve it before the machine has it at all.
-        onDraftCreated={() => navigate("/drafts")}
+        // a draft staged on the profiles page, and that is the more urgent of
+        // the two places to be: the Set is fine to look at later, the profile
+        // is waiting for somebody to approve it before the machine has it at
+        // all.
+        onDraftCreated={() => navigate("/profiles#staged")}
       />
 
       {sets.isPending ? (

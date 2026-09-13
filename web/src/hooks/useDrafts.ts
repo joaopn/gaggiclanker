@@ -12,6 +12,7 @@ import {
   discardProfileDraft,
   getProfileDraft,
   getProfileDrafts,
+  getProfileVersion,
   previewProfileDraft,
   pushProfileDraft,
   refineProfileDraft,
@@ -66,6 +67,40 @@ export function useCreateDraft(): UseMutationResult<ProfileDraft, Error, DraftCr
     },
     // The server's refusals are the useful instruction here — "11 phases, and
     // the policy allows 10. Remove phases yourself" is exactly what to show.
+    onError: (error) => toast.error(error.message),
+    onSettled: () => {
+      void invalidateDrafts(queryClient);
+    },
+  });
+}
+
+/**
+ * Stage a stored version exactly as it is, with nothing edited.
+ *
+ * The plain path to the machine, and the common one: a profile that is already
+ * right and only needs to get there should not have to go through a JSON
+ * editor first. Two calls rather than one because the versions *list* carries
+ * summaries — a document per row would be megabytes — so the document is read
+ * here and posted straight back through the same manual draft path the editor
+ * uses, which is what keeps the schema, the safety policy and the audit in the
+ * way.
+ */
+export function useStageVersionAsIs(): UseMutationResult<
+  ProfileDraft,
+  Error,
+  { versionId: number; label: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ versionId, label }) => {
+      const version = await getProfileVersion(versionId);
+      return createProfileDraft({
+        base_version_id: versionId,
+        profile: version.profile as Record<string, unknown>,
+        change_summary: `Staged unchanged from ${label}`,
+      });
+    },
+    onSuccess: () => toast.success("Staged for the machine"),
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);

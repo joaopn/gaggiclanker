@@ -10,7 +10,6 @@ import { DEFAULT_ROUTE } from "@/lib/navigation";
 import { BeansPage } from "@/pages/BeansPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DevicePage } from "@/pages/DevicePage";
-import { DraftsPage } from "@/pages/DraftsPage";
 import { HardwarePage } from "@/pages/HardwarePage";
 import { KnowledgePage } from "@/pages/KnowledgePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -94,7 +93,10 @@ export function App() {
           <Route path="/beans" element={<BeansPage />} />
           <Route path="/hardware" element={<HardwarePage />} />
           <Route path="/profiles" element={<ProfilesPage />} />
-          <Route path="/drafts" element={<DraftsPage />} />
+          {/* The draft queue is a section of the profiles page now. The route
+              stays as a redirect: a bookmark, and a hard refresh on one, land
+              on the queue rather than on a 404. */}
+          <Route path="/drafts" element={<Navigate to="/profiles#staged" replace />} />
           <Route path="/chat" element={<ChatPage />} />
           {/* The import page is gone — the drop zone on the shots page is the
               whole feature now. The route stays as a redirect so an old

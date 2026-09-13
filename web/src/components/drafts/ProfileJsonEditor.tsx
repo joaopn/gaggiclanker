@@ -181,7 +181,7 @@ export function ProfileJsonEditor({
               });
               if (draft) {
                 onOpenChange(false);
-                navigate("/drafts");
+                navigate("/profiles#staged");
               }
             }}
           >

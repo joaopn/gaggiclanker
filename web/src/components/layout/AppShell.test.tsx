@@ -165,6 +165,13 @@ describe("AppShell", () => {
     expect(await screen.findByRole("heading", { name: "Shots" })).toBeInTheDocument();
   });
 
+  it("redirects the retired drafts route to the staged section", async () => {
+    // The queue is a section of the profiles page now, and the anchor is what
+    // makes the redirect land on it rather than at the top.
+    renderApp("/drafts");
+    expect(await screen.findByRole("heading", { name: "Profiles" })).toBeInTheDocument();
+  });
+
   it("shows a 404 page inside the shell for an unknown route", async () => {
     renderApp("/nope");
     expect(await screen.findByText("No such page")).toBeInTheDocument();

@@ -379,7 +379,7 @@ function DraftButton({
           base_version_id: profileVersionId,
           analysis_id: analysis.id,
         });
-        if (draft) navigate("/drafts");
+        if (draft) navigate("/profiles#staged");
       }}
     >
       <FilePen className="size-3.5" aria-hidden="true" />
