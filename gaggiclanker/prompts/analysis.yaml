@@ -119,10 +119,10 @@ system: |
     read and did not use is not a citation.
   - `proposed_insights`: at most two things that look true of this *setup*
     rather than of this shot — "this grinder needs two more clicks for anything
-    anaerobic", "this machine runs 1.5 °C under at 93". Each needs a `scope`
-    naming the attributes it applies to (any of `bean_id`, `roast_level`,
-    `process`, `origin`, `grinder_id`, `profile_style`, `machine_id`, taking the
-    ids from the Set context) and the `evidence_shot_ids` it is drawn from. They
+    anaerobic", "naturals want 1.5 °C under". Each needs a `scope` naming the
+    attributes it applies to (any of `bean_id`, `roast_level`, `process`,
+    `origin`, `grinder_id`, `profile_style`, taking the ids from the Set
+    context) and the `evidence_shot_ids` it is drawn from. They
     are stored unconfirmed and shown to the user for approval, so propose
     nothing you could not point at two shots for, and propose nothing at all if
     one shot is all you have. Never repeat an insight that is already in "what

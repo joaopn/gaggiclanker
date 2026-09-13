@@ -195,7 +195,9 @@ async def test_the_whole_prototype_against_the_simulator(
     # moment later. Asserting on the row the instant the socket is up fails
     # about one run in ten, and it is the test that is wrong, not the app.
     machine = await _until(
-        lambda: _machine_identified(client), timeout=30.0, what="the identity pass to fill the row"
+        lambda: _machine_has_identity(client),
+        timeout=30.0,
+        what="the identity pass to fill the row",
     )
     assert machine["display_version"], machine
 
@@ -315,7 +317,7 @@ async def _device_identified(client: httpx.AsyncClient) -> dict[str, Any] | None
     return status if status.get("connected") else None
 
 
-async def _machine_identified(client: httpx.AsyncClient) -> dict[str, Any] | None:
+async def _machine_has_identity(client: httpx.AsyncClient) -> dict[str, Any] | None:
     """The machine row, once it carries a firmware version."""
     row: dict[str, Any] = data(await client.get("/api/machine"))["machine"]
     return row if row.get("display_version") else None

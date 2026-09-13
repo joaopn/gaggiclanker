@@ -23,7 +23,6 @@ GUJI = {
     "origin": "Ethiopia",
     "grinder_id": 2,
     "profile_style": "bloom",
-    "machine_id": 1,
 }
 
 

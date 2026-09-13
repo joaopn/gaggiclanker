@@ -2,9 +2,8 @@
 
 Same rule as the rest of the suite: a real SQLite file, real migrations, no
 mocked repositories. The importer's whole job is writing rows that the sync
-engine's own constraints accept — `UNIQUE (machine_id, device_id)`, the
-`source` CHECK, the foreign key to `machines` — and none of those exist in a
-mock.
+engine's own constraints accept — `UNIQUE (device_id)`, the `source` CHECK, the
+foreign key to `profile_versions` — and none of those exist in a mock.
 """
 
 from __future__ import annotations
