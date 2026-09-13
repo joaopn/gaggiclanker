@@ -339,11 +339,8 @@ async def test_0014_leaves_a_starting_point_version_readable_through_the_sql_too
     await _migrate_to_0013(db, tmp_path)
     await run_migrations(db)
 
-    await db.execute("INSERT INTO machines (host, created_at) VALUES ('kitchen.local', 'x')")
     await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
-    await db.execute(
-        "INSERT INTO sets (name, bean_id, machine_id, created_at) VALUES ('S', 1, 1, 'x')"
-    )
+    await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
     await db.execute(
         "INSERT INTO set_versions (set_id, version_no, origin, intent, created_at) "
         "VALUES (1, 1, 'starting_point', 'from the wizard', 'x')"
@@ -387,7 +384,8 @@ async def test_0015_upgrades_a_populated_database(db: Database, tmp_path: Path) 
         "updated_at) VALUES ('000001', 1, x'00', 1, 'x', 'x')"
     )
 
-    assert await run_migrations(db) == ["0015"]
+    # Everything from 0015 up, so the assertions below are made against HEAD.
+    assert (await run_migrations(db))[0] == "0015"
 
     columns = {str(row["name"]) for row in await db.fetch_all("PRAGMA table_info(beans)")}
     assert "roast_date" not in columns
@@ -414,13 +412,10 @@ async def test_0015_leaves_the_bean_views_readable_through_the_sql_tool(
     await _migrate_below(db, tmp_path, "0015")
     await run_migrations(db)
 
-    await db.execute("INSERT INTO machines (host, created_at) VALUES ('kitchen.local', 'x')")
     await db.execute(
         "INSERT INTO beans (name, roast_level, created_at) VALUES ('Guji', 'light', 'x')"
     )
-    await db.execute(
-        "INSERT INTO sets (name, bean_id, machine_id, created_at) VALUES ('S', 1, 1, 'x')"
-    )
+    await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
 
     beans = await run_query(db.path, "SELECT name, roast_level FROM v_beans")
     assert beans.rows == [["Guji", "light"]]
@@ -431,3 +426,250 @@ async def test_0015_leaves_the_bean_views_readable_through_the_sql_tool(
     # And the column is gone from the view, rather than merely unselected.
     with pytest.raises(SqlRefused, match="no such column"):
         await run_query(db.path, "SELECT roast_date FROM v_beans")
+
+
+async def test_0016_merges_the_import_placeholder_into_the_real_machine(
+    db: Database, tmp_path: Path
+) -> None:
+    """The shape a new install actually produces, and the one that used to rot.
+
+    Import the archive first and connect the machine later — the natural order —
+    and 0015's schema held two machines for ever: the importer's synthetic
+    `import:default` and the real host. The same shot then existed twice,
+    because the unique key was `(machine_id, device_id)` and the two copies were
+    under different machines.
+
+    Upgrading has to collapse that into one machine and one copy of the shot,
+    and the copy that survives has to carry what the other one was holding: the
+    samples, the verdict, the notes mirror, the analysis and the Set it was
+    assigned to. Losing a typed verdict to a merge would be unforgivable.
+    """
+    await _migrate_below(db, tmp_path, "0016")
+
+    await db.execute(
+        "INSERT INTO machines (id, host, last_seen_at) "
+        "VALUES (1, 'import:default', '2026-01-01T00:00:00.000Z')"
+    )
+    await db.execute(
+        "INSERT INTO machines (id, host, name, last_seen_at) "
+        "VALUES (2, 'kitchen.local', 'the kitchen one', '2026-03-01T00:00:00.000Z')"
+    )
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, active, created_at) "
+        "VALUES ('Guji v1', 1, 2, 1, 'x')"
+    )
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "VALUES (1, 1, 'baseline', 'x')"
+    )
+    # The imported copy carries everything a person or an analysis added; the
+    # copy pulled off the device carries only the bytes.
+    await db.execute(
+        "INSERT INTO shots (id, device_id, machine_id, raw_slog, source, set_version_id, "
+        "synced_at, updated_at) VALUES (1, '000129', 1, x'00', 'import', 1, 'x', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO shots (id, device_id, machine_id, raw_slog, source, synced_at, updated_at) "
+        "VALUES (2, '000129', 2, x'01', 'device', 'x', 'x')"
+    )
+    await db.execute("INSERT INTO shot_samples (shot_id, t_ms, ct) VALUES (1, 0, 93.0)")
+    await db.execute("INSERT INTO shot_samples (shot_id, t_ms, ct) VALUES (1, 100, 93.5)")
+    await db.execute("INSERT INTO shot_judgements (shot_id, rating) VALUES (1, 4)")
+    await db.execute("INSERT INTO device_shot_notes (shot_id, raw_json) VALUES (1, '{}')")
+    await db.execute("INSERT INTO shot_analyses (shot_id, status) VALUES (1, 'ok')")
+    await db.execute(
+        "INSERT INTO suggestions (analysis_id, variable, direction, reason) "
+        "VALUES (1, 'grind', 'finer', 'sour')"
+    )
+    await db.execute(
+        "INSERT INTO knowledge_insights (scope_json, text, analysis_id) "
+        "VALUES ('{}', 'this bag likes it finer', 1)"
+    )
+    await db.execute("INSERT INTO sync_events (kind, shot_id) VALUES ('shot_ingested', 1)")
+
+    assert await run_migrations(db) == ["0016"]
+
+    # One machine, and it is the real one, renumbered to the singleton's id.
+    rows = await db.fetch_all("SELECT id, host, name FROM machines")
+    assert [(int(r["id"]), r["host"], r["name"]) for r in rows] == [
+        (1, "kitchen.local", "the kitchen one")
+    ]
+
+    # One shot, and it is the one whose bytes came off the machine.
+    shots = await db.fetch_all("SELECT id, device_id, source, set_version_id FROM shots")
+    assert [(int(r["id"]), r["device_id"], r["source"], r["set_version_id"]) for r in shots] == [
+        (2, "000129", "device", 1)
+    ]
+
+    # Everything the loser was holding moved across rather than cascading away.
+    samples = await db.fetch_all("SELECT shot_id, t_ms FROM shot_samples ORDER BY t_ms")
+    assert [(int(r["shot_id"]), int(r["t_ms"])) for r in samples] == [(2, 0), (2, 100)]
+    assert await db.fetch_value("SELECT shot_id FROM shot_judgements") == 2
+    assert await db.fetch_value("SELECT rating FROM shot_judgements") == 4
+    assert await db.fetch_value("SELECT shot_id FROM device_shot_notes") == 2
+    assert await db.fetch_value("SELECT shot_id FROM shot_analyses") == 2
+    # The analysis moved, so its suggestion came with it and the insight that
+    # names it is still linked — `analysis_id` is ON DELETE SET NULL, so a
+    # rebuild that let the analysis go would have unlinked it silently.
+    assert await db.fetch_value("SELECT count(*) FROM suggestions") == 1
+    assert await db.fetch_value("SELECT analysis_id FROM knowledge_insights") == 1
+    # The sync feed's shot id carries no foreign key, so nothing else would have
+    # caught it pointing at a row that is gone.
+    assert await db.fetch_value("SELECT shot_id FROM sync_events") == 2
+
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+    temp = await db.fetch_all("SELECT name FROM temp.sqlite_master WHERE type = 'table'")
+    assert [str(row["name"]) for row in temp] == []
+
+    columns = {str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(shots)")}
+    assert "machine_id" not in columns
+
+    # The curated views answer, which is what the chat reads.
+    assert await db.fetch_value("SELECT count(*) FROM v_shots") == 1
+    assert await db.fetch_value("SELECT set_name FROM v_shots") == "Guji v1"
+    assert await db.fetch_value("SELECT shot_count FROM v_sets") == 1
+
+
+async def test_0016_keeps_the_most_recently_seen_of_two_real_machines(
+    db: Database, tmp_path: Path
+) -> None:
+    """A display board that changed address used to become a second machine.
+
+    Its shots, profiles and Sets split off from the old ones and nothing merged
+    them back. The upgrade keeps the machine the container is pointed at *now* —
+    the most recently seen — and re-attaches everything the other one owned.
+    """
+    await _migrate_below(db, tmp_path, "0016")
+
+    await db.execute(
+        "INSERT INTO machines (id, host, last_seen_at) "
+        "VALUES (1, '192.168.1.40', '2026-01-01T00:00:00.000Z')"
+    )
+    await db.execute(
+        "INSERT INTO machines (id, host, last_seen_at) "
+        "VALUES (2, '192.168.1.77', '2026-03-01T00:00:00.000Z')"
+    )
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    # An active Set on each: "active" is about to stop being per-machine, and
+    # the partial unique index that replaces it would refuse two.
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, active, created_at) "
+        "VALUES ('old address', 1, 1, 1, '2026-01-01')"
+    )
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, machine_id, active, created_at) "
+        "VALUES ('new address', 1, 2, 1, '2026-03-01')"
+    )
+    await db.execute(
+        "INSERT INTO profile_versions (content_hash, label, type, json, created_at) "
+        "VALUES ('abc', '9 Bar', 'pro', '{}', 'x')"
+    )
+    # The same slot mirrored from both addresses: one row after the upgrade.
+    await db.execute(
+        "INSERT INTO device_profiles (device_id, machine_id, current_version_id, last_seen_at) "
+        "VALUES ('1', 1, 1, '2026-01-01T00:00:00.000Z')"
+    )
+    await db.execute(
+        "INSERT INTO device_profiles (device_id, machine_id, current_version_id, last_seen_at) "
+        "VALUES ('1', 2, 1, '2026-03-01T00:00:00.000Z')"
+    )
+    # Different shots, so nothing merges: both survive, both on the one machine.
+    await db.execute(
+        "INSERT INTO shots (device_id, machine_id, raw_slog, synced_at, updated_at) "
+        "VALUES ('000001', 1, x'00', 'x', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO shots (device_id, machine_id, raw_slog, synced_at, updated_at) "
+        "VALUES ('000002', 2, x'01', 'x', 'x')"
+    )
+    await db.execute("INSERT INTO cleanup_runs (machine_id, mode) VALUES (1, 'keep_newest')")
+    await db.execute("INSERT INTO starting_point_runs (bean_id, machine_id) VALUES (1, 1)")
+
+    assert await run_migrations(db) == ["0016"]
+
+    hosts = await db.fetch_all("SELECT id, host FROM machines")
+    assert [(int(r["id"]), r["host"]) for r in hosts] == [(1, "192.168.1.77")]
+
+    # Nothing was dropped on the floor: both shots, both runs, one profile row.
+    assert await db.fetch_value("SELECT count(*) FROM shots") == 2
+    assert await db.fetch_value("SELECT count(*) FROM cleanup_runs") == 1
+    assert await db.fetch_value("SELECT count(*) FROM starting_point_runs") == 1
+    profiles = await db.fetch_all("SELECT device_id, last_seen_at FROM device_profiles")
+    assert [(r["device_id"], r["last_seen_at"]) for r in profiles] == [
+        ("1", "2026-03-01T00:00:00.000Z")
+    ]
+
+    # One active Set overall, and it is the one the machine is set up for now.
+    active = await db.fetch_all("SELECT name FROM sets WHERE active = 1")
+    assert [r["name"] for r in active] == ["new address"]
+    # And the schema is what enforces that from here on.
+    with pytest.raises(Exception, match="UNIQUE"):
+        await db.execute("UPDATE sets SET active = 1 WHERE name = 'old address'")
+
+    for table in ("sets", "cleanup_runs", "starting_point_runs", "device_profiles"):
+        columns = {str(r["name"]) for r in await db.fetch_all(f"PRAGMA table_info({table})")}
+        assert "machine_id" not in columns, table
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+
+async def test_0016_gives_an_archive_with_no_machine_the_placeholder_row(
+    db: Database, tmp_path: Path
+) -> None:
+    """A fresh install, and an import-only one, both have "the machine" after this.
+
+    The row is a singleton describing whatever host is configured, so it has to
+    exist before the first pull — otherwise every consumer would have to model
+    the absence of a thing that is meant to be always there. An empty host is
+    the honest statement of "nothing is configured yet".
+    """
+    await _migrate_below(db, tmp_path, "0016")
+    assert await db.fetch_value("SELECT count(*) FROM machines") == 0
+
+    assert await run_migrations(db) == ["0016"]
+
+    rows = await db.fetch_all("SELECT id, host, name FROM machines")
+    assert [(int(r["id"]), r["host"], r["name"]) for r in rows] == [(1, "", "")]
+
+    # And it stays a singleton: a second row is refused by the schema rather
+    # than by whoever remembers.
+    with pytest.raises(Exception, match="CHECK"):
+        await db.execute("INSERT INTO machines (id, host) VALUES (2, 'other.local')")
+
+
+async def test_0016_leaves_the_shot_views_readable_through_the_sql_tool(
+    db: Database, tmp_path: Path
+) -> None:
+    """`query_shots` reads these views, and the swap re-typed five of them by hand.
+
+    A view re-created from stale text is the kind of bug nobody notices until
+    the chat answers a question with a column that is no longer there.
+    """
+    await _migrate_below(db, tmp_path, "0016")
+    await run_migrations(db)
+
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "VALUES (1, 1, 'baseline', 'x')"
+    )
+    await db.execute(
+        "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+        "VALUES ('000001', x'00', 1, 'x', 'x')"
+    )
+    await db.execute("INSERT INTO shot_judgements (shot_id, rating) VALUES (1, 5)")
+
+    shots = await run_query(db.path, "SELECT device_id, set_name, rating FROM v_shots")
+    assert shots.rows == [["000001", "S", 5]]
+    sets = await run_query(db.path, "SELECT name, shot_count FROM v_sets")
+    assert sets.rows == [["S", 1]]
+    versions = await run_query(db.path, "SELECT version_no, shot_count FROM v_set_versions")
+    assert versions.rows == [[1, 1]]
+    judgements = await run_query(db.path, "SELECT shot_id, rating FROM v_judgements")
+    assert judgements.rows == [[1, 5]]
+
+    # And the column is gone from the views, rather than merely unselected.
+    for view in ("v_shots", "v_sets"):
+        with pytest.raises(SqlRefused, match="no such column"):
+            await run_query(db.path, f"SELECT machine_id FROM {view}")
