@@ -373,7 +373,14 @@ async def test_a_server_that_refuses_the_newcomer_is_survived_too(
     await client.start()
     try:
         assert await wait_for(lambda: fake_device.refused_connections >= 2, timeout=5.0)
-        assert not client.connected
+        # Every refusal is a completed handshake followed by a close, so the
+        # client is connected for the instant in between, and with its backoff
+        # at test values it is back in that instant many times a second. A bare
+        # `assert not client.connected` landed in it about one run in fifty
+        # under a parallel suite. So catch it between attempts, and ask in that
+        # same moment: nothing from here to the request's own "is there a
+        # socket" check yields to the event loop, so it cannot reconnect first.
+        assert await wait_for(lambda: not client.connected, timeout=5.0)
         with pytest.raises(DeviceUnavailable):
             await client.list_profiles()
     finally:

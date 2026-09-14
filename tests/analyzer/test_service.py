@@ -140,7 +140,14 @@ async def test_a_cancelled_call_leaves_a_running_row(
     """
     provider.delay = 5.0
     task = asyncio.create_task(analyzer.run_analysis(fixture.shots[-1]))
-    await asyncio.sleep(0.05)
+    # Cancel once the call is in flight, not after a fixed sleep. Before it
+    # reaches the provider the analysis has written its `running` row on a
+    # database thread, and on a machine busy with a parallel suite that took
+    # longer than the fifty milliseconds this used to wait: the cancellation
+    # landed before the row existed and the test found no row at all.
+    async with asyncio.timeout(5):
+        while not provider.calls:
+            await asyncio.sleep(0.01)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

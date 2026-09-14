@@ -27,9 +27,15 @@ SLOW_FETCH_S = 0.3
 BUSY_SHOTS = 10
 NEW_SHOT_ID = 900
 
-#: More than the per-subscriber queue depth (`infra/sse.py`: 256). A parked
-#: events loop drops its oldest events under this.
-FLOOD_FRAMES = 320
+#: Far more than the per-subscriber queue depth (`infra/sse.py`: 256). A parked
+#: events loop drops its oldest events under this. The events loop is no longer
+#: parked, so how much of a flood it drains while the frames arrive depends on
+#: how the event loop interleaves it with the socket reader: at 320 frames a
+#: loaded machine running the suite in parallel sometimes drained enough that
+#: nothing was dropped (5 runs in 240), and the test failed its own
+#: precondition. Two thousand small frames make the drop certain and cost
+#: nothing measurable.
+FLOOD_FRAMES = 2000
 
 
 @pytest.fixture
@@ -89,7 +95,7 @@ async def test_a_shot_saved_during_a_pull_lands_on_the_next_one(
                 while not await _stored(archive, pad6(NEW_SHOT_ID)):
                     await asyncio.sleep(0.05)
 
-            # Frames *were* dropped — 320 arriving faster than any consumer
+            # Frames *were* dropped — a flood arriving faster than any consumer
             # can drain a 256-deep queue is the bus working as designed, and a
             # lost telemetry frame at 2 Hz is invisible.
             assert archive.client.events.dropped > 0, "the flood did not actually flood"

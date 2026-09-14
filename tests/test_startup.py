@@ -140,7 +140,16 @@ def no_stray_threads() -> Iterator[None]:
     """Fail the test if it leaks an aiosqlite worker, whatever else it asserts."""
     before = {thread.ident for thread in aiosqlite_threads()}
     yield
-    leaked = [thread for thread in aiosqlite_threads() if thread.ident not in before]
+    started = [thread for thread in aiosqlite_threads() if thread.ident not in before]
+    # A closed connection's worker can exit *after* `close()` returns: the
+    # worker hands the stop's result back to the event loop and only then leaves
+    # its loop, and nothing joins it. On a busy machine (the suite runs in
+    # parallel) the thread could still be winding down here, which read as a
+    # leak. A worker that was never closed blocks on its queue for ever, so a
+    # bounded join still catches the real thing.
+    for thread in started:
+        thread.join(timeout=5)
+    leaked = [thread for thread in started if thread.is_alive()]
     assert not leaked, [thread.name for thread in leaked]
 
 
