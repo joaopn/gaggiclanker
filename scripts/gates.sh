@@ -227,7 +227,11 @@ fi
 # ── the run ──────────────────────────────────────────────────────────────────
 
 # Microseconds since the epoch, from bash itself: no date(1) round trip per gate.
-now_us() { echo "${EPOCHREALTIME/./}"; }
+# EPOCHREALTIME always carries six decimals, but with the locale's separator: a
+# comma under de_DE or pt_PT. Dropping either leaves the same integer. Setting
+# LC_NUMERIC=C instead would not help, because a caller's LC_ALL overrides it,
+# and overriding LC_ALL would change the language the gates' own tools speak.
+now_us() { echo "${EPOCHREALTIME//[.,]/}"; }
 seconds() { printf '%d.%02d' "$(($1 / 1000000))" "$(($1 % 1000000 / 10000))"; }
 
 statuses=()
