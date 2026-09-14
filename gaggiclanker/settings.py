@@ -1033,25 +1033,12 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         env_key="GAGGICLANKER_MCP_ENABLED",
         description=(
             "Serve the MCP endpoint at /mcp (Streamable HTTP), so any MCP client that can "
-            "send a header gets the same tools the in-app chat has. Behind the same bearer "
-            "token as /api. Off by default as a deliberate choice rather than a limitation: "
-            "it hands an outside agent the whole archive, and a capability like that is one "
-            "you switch on when you want it, the way deviceWritesEnabled is. The stdio entry "
-            "point (`gaggiclanker mcp`) is what Claude Desktop and `claude -p` use and is "
-            "unaffected by this switch."
-        ),
-    ),
-    SettingDefinition(
-        key="mcpDeviceWrites",
-        type="bool",
-        default=False,
-        env_key="GAGGICLANKER_MCP_DEVICE_WRITES",
-        description=(
-            "Let an MCP client call device-write tools, on top of deviceWritesEnabled. "
-            "Two switches rather than one because handing an external agent the ability "
-            "to change a profile on the machine is a decision separate from allowing "
-            "this app's own push button. No device-write tools ship yet; this is the "
-            "gate they will be behind."
+            "send a header gets the same tools the in-app chat has: read and propose, never a "
+            "write to the machine. Behind the same bearer token as /api. Off by default as a "
+            "deliberate choice rather than a limitation: it hands an outside agent the whole "
+            "archive, and a capability like that is one you switch on when you want it. The "
+            "stdio entry point (`gaggiclanker mcp`) is what Claude Desktop and `claude -p` "
+            "use and is unaffected by this switch."
         ),
     ),
 )

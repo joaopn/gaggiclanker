@@ -4,8 +4,8 @@ The tool *definitions* live in :mod:`gaggiclanker.tools`; this module is the
 adapter that turns them into an MCP server, and it is deliberately thin. One
 definition feeding both the in-app chat and Claude Desktop is the whole design:
 an external agent gets exactly the
-capabilities the chat has, minus anything the permission gate refuses, and a
-tool added to the registry appears in both without a second registration.
+capabilities the chat has — read and propose, never a write to the machine — and
+a tool added to the registry appears in both without a second registration.
 
 Two mechanical things are worth knowing before editing.
 
@@ -76,8 +76,8 @@ MCP_INSTRUCTIONS = (
 )
 
 #: Produces the context one call runs with. Async because the HTTP mount reads
-#: the permission gate out of the settings table per request, which is what
-#: makes turning a switch off take effect without a restart.
+#: the services off ``app.state`` per call, and some of them are built after
+#: the endpoint is mounted.
 type ContextFactory = Callable[[], Awaitable[ToolContext]]
 
 
@@ -156,12 +156,13 @@ def build_mcp_server(
 ) -> MCPServer[Any]:
     """An ``MCPServer`` carrying every tool this caller is allowed to see.
 
-    ``permissions`` is resolved by the caller — the app from
-    ``deviceWritesEnabled`` plus ``mcpDeviceWrites``, the stdio entry point from
-    the same two settings in the database it opened — and a tool outside it is
-    not merely refused at call time, it is not advertised. A client that cannot
-    see a tool does not plan around it.
+    ``permissions`` defaults to the chat's own set, and both entry points leave
+    it there: the MCP server is read-only by design (``propose`` writes to this
+    archive, never to the machine), and no setting widens it. A tool outside the
+    set is not merely refused at call time, it is not advertised. A client that
+    cannot see a tool does not plan around it.
     """
+
     server: MCPServer[Any] = MCPServer(
         name=SERVER_NAME,
         title="gaggiclanker",

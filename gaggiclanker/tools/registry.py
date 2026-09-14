@@ -9,12 +9,13 @@ than three lists of tools that drift apart.
 Three rules are encoded here rather than left to the call sites.
 
 **Permission is a property of the tool, not of the caller's intent.** Every tool
-declares ``read``, ``propose`` or ``device_write`` and the dispatcher checks it
-before the function runs. ``read`` touches nothing; ``propose`` writes to
-gaggiclanker only, and everything it creates is something a person still has to
-confirm in the UI; ``device_write`` can change the machine, needs
-``deviceWritesEnabled``, and is **excluded from the chat entirely** — pushing a
-profile is a button somebody presses, not a sentence somebody types.
+declares ``read`` or ``propose`` and the dispatcher checks it before the
+function runs. ``read`` touches nothing; ``propose`` writes to gaggiclanker only,
+and everything it creates is something a person still has to confirm in the UI.
+There is no third class. A tool that could change the machine cannot be
+registered at all, so the in-app chat and every MCP client get the same set:
+the machine is written by this application's own HTTP routes, behind buttons a
+person presses, and never by a sentence somebody types to a model.
 
 **Every dispatch is audited, including the refusals.** A tool that was refused
 for lack of a permission and a tool that was never called look identical from
@@ -59,8 +60,9 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: What a tool is allowed to touch.
-type Permission = Literal["read", "propose", "device_write"]
+#: What a tool is allowed to touch. Deliberately two values: nothing a language
+#: model drives may write to the machine, whichever client it arrives through.
+type Permission = Literal["read", "propose"]
 
 #: Longest one tool may run. Generous next to a SELECT and short next to the
 #: provider call wrapping it, so a wedged tool never becomes a wedged run.
@@ -69,8 +71,10 @@ DEFAULT_TOOL_TIMEOUT_S = 20.0
 #: The order permissions are widened in, so a caller can say "read and propose"
 #: as a set without anyone writing the same tuple twice.
 READ_ONLY: frozenset[str] = frozenset({"read"})
+#: Every class a tool may declare, and what the chat and MCP are both handed.
+#: One constant for both callers rather than a function of the settings: there
+#: is no switch that widens it, so there is nothing to resolve.
 CHAT_PERMISSIONS: frozenset[str] = frozenset({"read", "propose"})
-ALL_PERMISSIONS: frozenset[str] = frozenset({"read", "propose", "device_write"})
 
 
 @dataclass(slots=True)
@@ -183,6 +187,14 @@ class ToolRegistry:
         return name in self._tools
 
     def register(self, spec: ToolSpec) -> None:
+        # Checked at runtime as well as by the type: a `Literal` is a hint, and
+        # a tool declared with a permission outside the two classes is exactly
+        # the tool that would reach the machine from a model's say-so.
+        if spec.permission not in CHAT_PERMISSIONS:
+            raise ValueError(
+                f"tool {spec.name!r} declares permission {spec.permission!r}; tools may only "
+                "read or propose — the machine is written by the app's own routes, never by a tool"
+            )
         if spec.name in self._tools:
             raise RuntimeError(f"tool {spec.name!r} is already registered")
         self._tools[spec.name] = spec
@@ -193,7 +205,7 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
-    def specs(self, permissions: Iterable[str] = ALL_PERMISSIONS) -> list[ToolSpec]:
+    def specs(self, permissions: Iterable[str] = CHAT_PERMISSIONS) -> list[ToolSpec]:
         """Every tool this caller may see, in a stable order.
 
         Sorted by name rather than registration order because the list becomes
@@ -400,24 +412,6 @@ def _render_errors(exc: ValidationError) -> str:
         f"{'.'.join(str(part) for part in error['loc']) or '(root)'}: {error['msg']}"
         for error in exc.errors()
     )[:500]
-
-
-async def permissions_for(settings: SettingsService, *, mcp: bool = False) -> frozenset[str]:
-    """Which permission classes this caller gets, from the settings registry.
-
-    ``device_write`` needs two switches, not one: ``deviceWritesEnabled`` is the
-    machine-wide gate every write in this codebase is behind, and (over MCP)
-    ``mcpDeviceWrites`` is the second, because handing an external agent the
-    ability to change a profile is a decision separate from allowing the UI's
-    own push button.
-
-    The in-app chat never gets it at all — see the module docstring.
-    """
-    if not bool(await settings.get("deviceWritesEnabled")):
-        return CHAT_PERMISSIONS
-    if mcp and bool(await settings.get("mcpDeviceWrites")):
-        return ALL_PERMISSIONS
-    return CHAT_PERMISSIONS
 
 
 #: The process-wide registry. One per process because the tools are module-level

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from gaggiclanker.tools import builtin as _builtin  # noqa: F401 - registers the tools
 from gaggiclanker.tools.registry import (
-    ALL_PERMISSIONS,
     CHAT_PERMISSIONS,
     READ_ONLY,
     Permission,
@@ -18,13 +17,11 @@ from gaggiclanker.tools.registry import (
     ToolOutcome,
     ToolRegistry,
     ToolSpec,
-    permissions_for,
     registry,
     tool,
 )
 
 __all__ = [
-    "ALL_PERMISSIONS",
     "CHAT_PERMISSIONS",
     "READ_ONLY",
     "Permission",
@@ -32,7 +29,6 @@ __all__ = [
     "ToolOutcome",
     "ToolRegistry",
     "ToolSpec",
-    "permissions_for",
     "registry",
     "tool",
 ]

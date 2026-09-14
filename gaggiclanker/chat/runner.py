@@ -408,7 +408,8 @@ class ChatRunner:
             set_id=set_id,
             run_id=state.run_id,
             caller="chat",
-            # The chat never gets `device_write`, whatever the settings say.
+            # The one permission set every model-driven caller gets; MCP is handed
+            # the same one. No tool can write to the machine.
             permissions=CHAT_PERMISSIONS,
         )
         results: list[ChatToolResult] = []

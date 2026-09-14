@@ -64,7 +64,7 @@ from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools import registry as tool_registry
-from gaggiclanker.tools.registry import ToolContext, permissions_for
+from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 
 __all__ = ["app", "check_configuration", "create_app"]
 
@@ -368,17 +368,17 @@ async def _start(app: FastAPI, db: Database) -> None:
 async def _start_mcp_if_enabled(app: FastAPI, db: Database, settings: SettingsService) -> None:
     """Mount the MCP endpoint, unless the switch says not to.
 
-    The permission set is resolved once, here, rather than per request: a tool
-    outside it is not advertised at all, and a `tools/list` that changed between
-    two calls would be a client planning around a tool that vanishes.
-    ``ToolContext`` still carries it, so the dispatcher re-checks on every call.
+    The permission set is the chat's, and it is a constant rather than a
+    setting: an MCP client reads and proposes exactly as the in-app chat does,
+    and nothing it calls can write to the machine. ``ToolContext`` still carries
+    the set, so the dispatcher re-checks it on every call.
     """
     app.state.mcp_manager = None
     app.state.mcp_stack = None
     if not bool(await settings.get("mcpEnabled")):
         log.info("mcp_disabled")
         return
-    permissions = await permissions_for(settings, mcp=True)
+    permissions = CHAT_PERMISSIONS
 
     async def context() -> ToolContext:
         # Read off `app.state` per call rather than captured: this runs before

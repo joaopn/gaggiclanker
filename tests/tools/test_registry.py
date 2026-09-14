@@ -16,7 +16,6 @@ from pydantic import BaseModel
 
 from gaggiclanker.db.repos.chat import ToolCallsRepository
 from gaggiclanker.tools.registry import (
-    ALL_PERMISSIONS,
     CHAT_PERMISSIONS,
     READ_ONLY,
     ToolContext,
@@ -42,7 +41,7 @@ def build_registry() -> ToolRegistry:
 
 
 def test_every_tool_produces_both_provider_schemas() -> None:
-    for spec in registry.specs(ALL_PERMISSIONS):
+    for spec in registry.specs(CHAT_PERMISSIONS):
         openai = spec.openai_schema()
         assert openai["type"] == "function"
         assert openai["function"]["name"] == spec.name
@@ -67,14 +66,35 @@ def test_no_tool_asks_for_a_machine() -> None:
     invent it. This is the assertion that stops one coming back by habit when a
     tool is added.
     """
-    for spec in registry.specs(ALL_PERMISSIONS):
+    for spec in registry.specs(CHAT_PERMISSIONS):
         properties = spec.openai_schema()["function"]["parameters"].get("properties", {})
         assert "machine_id" not in properties, spec.name
 
 
-def test_the_chat_never_sees_a_device_write_tool() -> None:
-    """Not a policy the runner applies — a property of what it is handed."""
-    assert all(spec.permission != "device_write" for spec in registry.specs(CHAT_PERMISSIONS))
+def test_every_registered_tool_reads_or_proposes() -> None:
+    """Not a policy a caller applies — a property of the whole list.
+
+    The set a caller is handed is irrelevant if no tool outside it exists, which
+    is what this pins: every tool, whatever it is, is visible to the chat and to
+    MCP alike, and none of them can write to the machine.
+    """
+    assert CHAT_PERMISSIONS == frozenset({"read", "propose"})
+    assert {spec.name for spec in registry.specs(CHAT_PERMISSIONS)} == set(registry.names())
+    assert {spec.permission for spec in registry.specs(CHAT_PERMISSIONS)} <= {"read", "propose"}
+
+
+@pytest.mark.parametrize("permission", ["device_write", "write", "admin"])
+def test_a_tool_that_would_write_to_the_machine_cannot_be_registered(permission: str) -> None:
+    """The machine is written by the app's own routes, never by a tool a model calls."""
+    local = build_registry()
+
+    with pytest.raises(ValueError, match="may only read or propose"):
+
+        @local.tool("push_to_machine", permission=permission)  # type: ignore[arg-type]
+        async def push(ctx: ToolContext, args: Args) -> Out:  # pragma: no cover - refused
+            return Out(doubled=0)
+
+    assert "push_to_machine" not in local
 
 
 def test_read_only_is_a_strict_subset() -> None:

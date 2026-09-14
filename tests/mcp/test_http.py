@@ -77,17 +77,30 @@ async def test_a_client_can_list_the_tools_and_the_resources(
         assert f"{SERVER_NAME}://sets/{{set_id}}" in templates
 
 
-async def test_device_write_tools_are_not_even_advertised(
-    mcp_app: tuple[FastAPI, Fixture],
+async def test_mcp_advertises_exactly_the_chat_s_tools_even_with_device_writes_on(
+    env: EnvSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A client that cannot see a tool does not plan around it."""
+    """Read-only by design: the master write switch changes nothing an MCP client sees.
+
+    `deviceWritesEnabled` gates this application's own buttons. It used to be
+    one of two switches in front of MCP device-write tools too; there is no such
+    class any more, so a server mounted with it on lists exactly the chat's tools.
+    """
     from contextlib import AsyncExitStack
 
-    app, _ = mcp_app
-    async with AsyncExitStack() as stack:
+    from gaggiclanker.main import create_app
+    from gaggiclanker.tools.registry import CHAT_PERMISSIONS, registry
+    from tests.conftest import NO_WEB_DIST
+
+    monkeypatch.setenv("GAGGICLANKER_MCP_ENABLED", "true")
+    monkeypatch.setenv("GAGGICLANKER_DEVICE_WRITES_ENABLED", "true")
+    app = create_app(env, web_dist=NO_WEB_DIST, dotenv={})
+    async with app.router.lifespan_context(app), AsyncExitStack() as stack:
+        assert await app.state.settings_service.get("deviceWritesEnabled") is True
         session = await session_for(stack, app)
         tools = {tool.name for tool in (await session.list_tools()).tools}
 
+    assert tools == {spec.name for spec in registry.specs(CHAT_PERMISSIONS)}
     assert not any(name.startswith(("push_", "delete_", "save_shot_notes")) for name in tools)
 
 

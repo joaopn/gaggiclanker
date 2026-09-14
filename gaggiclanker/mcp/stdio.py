@@ -30,7 +30,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools import registry as tool_registry
-from gaggiclanker.tools.registry import ToolContext, permissions_for
+from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 
 __all__ = ["add_mcp_parser", "mcp_command", "serve_stdio"]
 
@@ -95,7 +95,9 @@ async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
                 "apply its migrations, then try again."
             )
         settings = SettingsService(SettingsRepository(db), dotenv={})
-        permissions = await permissions_for(settings, mcp=True)
+        # The chat's set, unconditionally: MCP clients read and propose, and the
+        # machine is written only by the application's own routes.
+        permissions = CHAT_PERMISSIONS
 
         async def context() -> ToolContext:
             return ToolContext(
