@@ -85,10 +85,19 @@ async def live(
     monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
     monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
     async with running_app(env) as (app, client):
+        # The lifespan starts the device client's socket in the background and
+        # returns without waiting for it, and `sync_profiles` refuses to send on
+        # a socket that is not up yet. On an idle machine the handshake nearly
+        # always wins that race; with a dozen test workers starting at once it
+        # often does not, the mirror stays empty, and the test fails far from
+        # the cause with "the mirror has no profile labelled ...". So wait for
+        # the socket, and refuse to hand a test an app whose mirror failed.
+        assert await app.state.device.wait_connected(5.0), "the fake machine did not connect"
         _rewire_llm(app, provider)
         # The profile mirror is what a draft is based on, and the machine row is
         # what the push writes the mirror back through. Both come from one sync.
-        await app.state.sync.sync_profiles(trigger="test")
+        run = await app.state.sync.sync_profiles(trigger="test")
+        assert run.status == "ok", f"the profile mirror failed: {run.error}"
         yield app, client
 
 
