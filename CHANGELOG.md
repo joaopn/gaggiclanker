@@ -10,6 +10,35 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The shots table
+
+**A row opens in place.** Clicking a row no longer opens the shot page: it
+unfolds a panel under the row with the shot's curve, the full judgement form and
+the machine's device notes, so a shot can be judged without leaving the list.
+Clicking the row again, or pressing Escape, closes it; opening another row closes
+the first. Clicking the curve or the notes, or **Open shot page**, goes to the
+shot page. A quarantined shot shows its reason instead of a curve.
+
+**An Analyse column, in place of Flags.** Each row says whether it has been
+analysed and offers the action: **Analyse**, **Analysing…** while it runs,
+**Analysed** linking to the analysis on the shot page, or **Retry** with the
+failure's reason on hover. A quarantined shot cannot be analysed, as on the shot
+page. Flags is still in the column chooser. If you had stored exactly the old
+default columns, you get the new default; any other choice of columns is kept.
+
+**Columns can be resized.** Drag the edge of a heading, or focus it and use the
+arrow keys; double-click the edge to reset that column, or use **Reset widths**
+in the column chooser. Widths are remembered in the browser.
+
+**Compact time, centred columns, Set first.** The time shows day, month and time
+for this year's shots and the date with its year for older ones, with the full
+timestamp on hover, in a narrower column. Headings and values are centred, and
+the Set is the first column. Columns no longer drift out of line when a Set name
+is long.
+
+The shots API's list rows gain `analysis_error`: the newest analysis's error when
+it failed, otherwise null.
+
 ### Filing a shot from the list
 
 **"needs a Set" is a button.** In the shots list the dashed badge opens a small

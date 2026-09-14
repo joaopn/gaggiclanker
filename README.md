@@ -76,7 +76,7 @@ Eight of them, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. The pull button and the import drop zone are both here. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, your judgement and the machine's notes; each row can be analysed from the list. The pull button and the import drop zone are both here. |
 | **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |

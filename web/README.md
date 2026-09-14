@@ -90,15 +90,49 @@ src/
     shots.ts          formatting, score bands, exit reasons, band-label meanings
     shotChart.ts      samples -> series and phase bands; the sparkline path
     shotFilters.ts    the filter panel's state, and how it becomes a query string
-    shotColumns.ts    the columns, their grid tracks, and the stored choice
+    shotColumns.ts    the columns, their tracks and widths, the stored choice and widths
     sync.ts           reading the sync ledger: last pull, and what it archived
   hooks/
     useArchive.ts     shots (paged and infinite), one shot, samples, versions
-    useVirtualRows.ts the list window, and "has this row been on screen yet"
+    useVirtualRows.ts the list window with one open row, and "has this row been on screen yet"
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
-    shots/            table, filters, columns, pull button, drop zone, import results, row editor
+    shots/            table, filters, columns, pull button, drop zone, import results, row editor,
+                      ShotRowPanel (an open row), AnalyseCell, DeviceNotesCard
 ```
+
+Four things about the shots table are worth knowing before editing it.
+
+**A row opens in place; it is not a link.** The row's stretched overlay is a
+`<button>` with `aria-expanded`, and the controls in the row (compare box, stars,
+Set badge or menu, Analyse, the row editor) are lifted above it with `z-[1]`, the
+same arrangement the link used — a button wrapping them would be invalid HTML.
+The open panel (`ShotRowPanel`) is the shot page's own `ShotChart`, lazy, so the
+list with nothing open never downloads Chart.js; the shot page's own
+`JudgementForm`; and `DeviceNotesCard`, which the shot page uses too. It reads the
+shot with `useShot` and `useShotSamples`, the page's keys, so the stars in the row
+and the form in the panel invalidate each other through `shots`. Escape closes
+the panel unless a popover inside the row owns the key.
+
+**One open row, and the window knows its height.** `useVirtualRows` takes the
+open row's index and the panel's measured height; the arithmetic is the pure
+`virtualWindow`, tested on numbers because jsdom has no layout. Two open rows
+would need a measured list, which is why opening one closes the other.
+
+**Widths are rem, per column, per browser.** Fixed columns have a drag handle
+(a focusable `separator`: arrows, Home/End, double-click resets) and store under
+`shots.widths.v1`, apart from the column choice under `shots.columns.v1`. Only
+Set, Profile and Notes are flexible tracks; nothing is `auto`, because each row is
+its own grid and an `auto` track sized by one row's content put that row out of
+line. A stored column choice that is exactly the previous default reads as the
+current default; any other stored choice is kept.
+
+**The Analyse column refuses what the shot page refuses**, which is a
+quarantined shot; a shot with no Set gets the page's warning as a title. Its
+running state is the row's `analysis_state`, refreshed by the `analysis.*` events
+in `EVENT_INVALIDATIONS`, and a synchronous guard makes a double click one paid
+call. A failed row carries `analysis_error`, the newest analysis's error, for the
+Retry button's title.
 
 The LLM layer adds a third:
 
