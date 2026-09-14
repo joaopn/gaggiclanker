@@ -8,14 +8,17 @@ subscription per open tab and a re-render twice a second — so this application
 answers the question it is better placed to answer, which is what the archive
 holds.
 
-The web UI builds the real device page on top of these. Profile push adds a third: the
-audit of every write this box has ever asked the machine to make, which is the
-one page that can answer "what has this thing done to my machine". Storage cleanup adds
-the storage-cleanup trio (plan, run, history) and the notes push, and
-both follow the same shape as the analyzer's routes: the **plan** is computed in
-the request because it is a database read, and the **run** is 202 plus a
-background task, because it is a sequence of WebSocket frames paced at two a
-second and `docker stop` allows ten seconds in total.
+The web UI's Device page reads the status; its Sync page reads everything else
+here. Profile push adds the audit of every write this box has ever asked the
+machine to make, which is what answers "what has this thing done to my machine".
+Storage cleanup adds the storage-cleanup trio (plan, run, history), and notes add
+the pending list and the send. Both writes start only from a person's
+confirmation on the Sync page — the run and the send carry the shot ids that
+were shown, and a list that moved since is a 409 — and both follow the same
+shape as the analyzer's routes: the **plan** is computed in the request because
+it is a database read, and the **run** is 202 plus a background task, because it
+is a sequence of WebSocket frames paced at two a second and `docker stop` allows
+ten seconds in total.
 """
 
 from __future__ import annotations

@@ -72,7 +72,7 @@ taken while the app is running.
 
 ### The pages
 
-Eight of them, in the order the sidebar lists them:
+Nine of them, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
@@ -82,6 +82,7 @@ Eight of them, in the order the sidebar lists them:
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
 | **Beans** | `g b` | The coffees: roaster, origin, variety, process, roast level. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
+| **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Knowledge** | `g k` | The dial-in rules, the prose documents, and the insights waiting for a decision. |
 | **Settings** | `g ,` | The machine, the provider, the prompts, backup, and the device-write switch. |
 
@@ -91,10 +92,31 @@ entry keeps its name — a tooltip for a mouse, the accessible name for everythi
 else — so nothing is lost but the fourteen rems.
 
 Two more pages exist without a sidebar row, because each has a better way in.
-The device page is behind the status pill in the header — you go there when the
-pill says something is wrong — and the old import page is now the drop zone on
-the Shots page. `/device`, `/import` and `/drafts` all still resolve, the last
-two by redirecting.
+The device page — what the machine is, its versions and its connection — is
+behind the status pill in the header, and the old import page is now the drop
+zone on the Shots page. `/device`, `/import` and `/drafts` all still resolve, the
+last two by redirecting; the device page's old storage, notes, sync and writes
+anchors redirect to the Sync page.
+
+### What gaggiclanker writes to the machine, and who starts it
+
+Nothing, until **Device writes enabled** is on under Settings → Machine. With it
+on: **profiles may be pushed by the app** (see below); **everything else written
+to or deleted from the machine happens only from the Sync page, by a person.**
+
+* **Send notes to the machine** lists the judgements the machine's notes cards
+  do not have yet. Tick the ones to send and confirm; nothing is ticked for you.
+  Saving a judgement never sends it. A card edited on the machine more recently
+  than your verdict is left alone, and a verdict that came from the machine and
+  was never edited is never sent back. `notesWritebackFields` picks the fields.
+* **Clean up the machine's storage** shows the plan your cleanup policy
+  (`deviceCleanupMode`) proposes: which shots would be deleted and why, and which
+  are kept and why. Confirming deletes exactly those shots, oldest first — if the
+  plan changed since you looked, nothing is deleted and you are asked to look
+  again. There is no undo on the machine; the archive keeps every shot.
+
+Nothing runs either on its own: a pull never deletes anything, and there is no
+timer. Every attempt, refused ones included, is listed under **Recent writes**.
 
 ### Putting a profile on the machine
 
@@ -415,12 +437,13 @@ ask through the `starting_point` tool.
 
 Everything the chat can do is also exposed over the Model Context Protocol, so
 Claude Desktop, `claude -p`, or anything else that speaks MCP gets exactly the
-capabilities the in-app chat has. Two transports:
+capabilities the in-app chat has — and, like the chat, it is **read-only by
+design**: tools read the archive or propose something a person confirms, and
+none writes to the machine, whatever the settings say. Two transports:
 
 **Streamable HTTP at `/mcp`**, behind the same bearer token as `/api`. **Off by
 default** (`mcpEnabled` in Settings) and on purpose: it hands an outside agent
-the whole archive, so it is a switch you throw when you want it, the way
-`deviceWritesEnabled` is. With it on, authenticate with a token from
+the whole archive, so it is a switch you throw when you want it. With it on, authenticate with a token from
 `POST /api/auth/login`:
 
 ```bash
@@ -459,9 +482,8 @@ first: the stdio entry point deliberately runs no migrations, because a second
 process migrating a database the application is also using is a race. Add
 `GAGGICLANKER_MCP_SET_ID` to the `env` block to scope it to one Set.
 
-Device-write tools are excluded from MCP unless **both** `deviceWritesEnabled`
-and `mcpDeviceWrites` are on. None ship yet; that is the gate they will be
-behind.
+There are no device-write tools and no switch that adds any: the machine is
+written only by gaggiclanker's own HTTP API, behind buttons a person presses.
 
 ## Troubleshooting
 

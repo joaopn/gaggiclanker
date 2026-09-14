@@ -6,9 +6,21 @@ Verified against the GaggiMate firmware source.
 has switched writes on.** Five are profile operations — save, delete, select,
 favourite, unfavourite — each a `req:profiles:*` frame. Two are history
 operations added later: `req:history:delete` (deleting a shot the
-archive already holds) and `req:history:notes:save` (the judgement
-mirrored onto the machine's notes card). Not a setting, not a mode change, not
+archive already holds) and `req:history:notes:save` (a judgement
+sent to the machine's notes card). Not a setting, not a mode change, not
 an index rebuild.
+
+**Who may start a write is a rule of its own: profiles may be pushed by the app;
+everything else written to or deleted from the machine happens only from the
+Sync page, by a person.** A profile push goes through the four layers below and
+is the one class of write that may ever be automated (replacing an old version
+on the machine with its approved successor, say); nothing automates one today.
+A shot delete runs only when a person confirms a cleanup plan on the Sync page,
+and the request carries the planned shot ids so a plan that moved in between is
+refused rather than run. A notes save runs only when a person selects
+judgements there and sends them; saving a judgement never contacts the machine.
+No timer, no hook after a pull, and no tool a language model can call starts
+either.
 
 That is a property of the code, not a convention. `GaggimateClient`'s public
 surface is two closed lists — ten reads in `READ_ONLY_METHODS`, seven writes in
@@ -23,25 +35,27 @@ simulator end-to-end test, which genuinely needs the machine to brew, opens a
 throwaway socket of its own rather than widening that surface.
 
 The gate is `deviceWritesEnabled`, **off by default**, re-read on every single
-write rather than cached at boot. The two history writes have a second switch
-each (`deviceCleanupMode`/`deviceCleanupAuto` and `notesWritebackEnabled`), also
-off, and the master switch is checked first: neither feature can write with it
-off. The gate's per-kind branch is where the narrower rules live — a delete is
-refused unless the archive already holds that shot intact — the person turning it off is usually the
-person who has just seen something they did not like. A client built without a
+write rather than cached at boot — the person turning it off is usually the
+person who has just seen something they did not like. It is the only switch:
+the two history writes have no second one, because the consent for each is a
+person confirming it on the Sync page, and a request made there with writes off
+is refused before anything is queued (and audited). `deviceCleanupMode` is not a
+switch either; it shapes the plan the page proposes, and `off` proposes nothing.
+The gate's per-kind branch is where the narrower rules live — a delete is
+refused unless the archive already holds that shot intact. A client built without a
 gate (in a test, in a script) gets `DenyAllWrites` and can write nothing at all,
 so read-only is what you get by forgetting. Every attempt, authorised or
-refused, leaves a row in `device_writes`, which the Device page lists.
+refused, leaves a row in `device_writes`, which the Sync page lists.
 
-**The chat and MCP add callers, not writes**. Every tool declares
-a permission class, and the two callers that can be driven by a language model
-are handed `read` and `propose` only: `propose` writes to gaggiclanker — a Set
-version, a profile draft, an unconfirmed insight — and to nothing else. No
-device-write tool exists, so there is nothing for the chat to be refused; over
-MCP the class is gated twice, by `deviceWritesEnabled` and by `mcpDeviceWrites`,
-and a tool outside the caller's classes is not advertised at all rather than
-merely refused. Pushing a draft to the machine stays what it was: a button a
-person presses, on a page showing the diff they are approving.
+**The chat and MCP add callers, not writes, and the MCP server is read-only by
+design.** Every tool declares a permission class, and there are exactly two:
+`read`, and `propose`, which writes to gaggiclanker — a Set version, a profile
+draft, an unconfirmed insight — and to nothing else. The registry refuses to
+register a tool declaring anything else, so the in-app chat and every MCP client
+are handed the same set and no setting widens it. The connection to the machine
+is this application's own HTTP API and nothing more. Pushing a draft to the
+machine stays what it was: a button a person presses, on a page showing the diff
+they are approving.
 
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.
@@ -50,7 +64,9 @@ the bar is where it is.
 
 **Shot data can be lost, and that is the risk device storage cleanup manages.**
 `req:history:delete` removes the `.slog`, the notes file and the index entry,
-and there is no undo on the display. What makes it acceptable is that the
+and there is no undo on the display — which is why it happens only after a
+person has seen the list of shots and confirmed it, and why the confirmation
+says so. What makes it acceptable is that the
 firmware performs exactly the same deletion itself whenever free space drops
 below 500 KB, archived or not — the machine loses these shots either way, and
 the only question is whether this box has them first. So the gate refuses the
@@ -62,9 +78,10 @@ by the plan step *and* by the gate, and a refusal is audited with its reason.
 
 **A notes save overwrites somebody's typing if it is careless.**
 `req:history:notes:save` stores the document verbatim and rewrites the index's
-rating and volume as a side effect, so the write-back sends the machine's own document
-with our fields laid over it (unknown keys survive), and only when our judgement
-is newer than the card's `timestamp`. A judgement that came *from* the machine
+rating and volume as a side effect, so a send from the Sync page writes the
+machine's own document with our fields laid over it (unknown keys survive), and
+only when our judgement is newer than the card's `timestamp` — a selected shot
+whose card is newer is skipped. A judgement that came *from* the machine
 and was never edited is never sent back.
 
 **Profiles can wedge a machine.** They are JSON files the display re-reads at

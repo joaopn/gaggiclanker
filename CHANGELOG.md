@@ -10,6 +10,57 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Every write to the machine is explicit
+
+**Profiles may be pushed by the app; everything else written to or deleted from
+the machine happens only from the new Sync page, by a person.** Three things that
+used to happen on their own no longer can.
+
+**A Sync page.** A new **Sync** entry in the sidebar (`g y`) holds every exchange
+with the machine that you start: **Pull from the machine**, **Send notes to the
+machine**, **Clean up the machine's storage** and **Recent writes**. Each write
+action says what is in the way when it cannot start — no machine configured,
+device writes off, or the machine not connected. The Device page keeps what the
+machine is, its versions and its connection, and links to the Sync page; its old
+storage, notes, sync and writes anchors redirect there.
+
+**Saving a judgement never contacts the machine.** Notes go to the machine's
+notes cards only when you tick judgements on the Sync page and confirm; nothing is
+ticked for you. The rules about what may be sent are unchanged: a card edited on
+the machine more recently is left alone, and a verdict that came from the machine
+and was never edited is never sent back. The **Sync notes to machine** button on
+a shot is gone.
+
+**A cleanup never runs by itself, and runs exactly what you confirmed.** The Sync
+page shows the plan with the reason each shot is in it and, folded, the shots
+kept and why. Confirming names the count and says it cannot be undone on the
+machine (the archive keeps every shot). If the plan changed between the preview
+and the confirmation — a pull landed, a setting moved — nothing is deleted and you
+are asked to look again.
+
+**MCP is read-only by design.** MCP clients get exactly the in-app chat's tools:
+read, and propose something a person confirms. No tool can write to the machine,
+and no setting adds one.
+
+Removed settings: `mcpDeviceWrites`, `deviceCleanupAuto` and
+`notesWritebackEnabled` (and their `GAGGICLANKER_MCP_DEVICE_WRITES`,
+`GAGGICLANKER_DEVICE_CLEANUP_AUTO` and `GAGGICLANKER_NOTES_WRITEBACK_ENABLED`
+variables). **Device writes enabled** is the one switch in front of every write;
+`deviceCleanupMode` and its two numbers now shape the plan the Sync page proposes,
+and `notesWritebackFields` picks what a send writes. Stored values for the removed
+settings are deleted at upgrade (migration `0018`), and a boot with one of the
+variables still set logs `setting_removed_env_ignored` naming it.
+
+API: `POST /api/device/cleanup/run` requires `{"shot_ids": [...]}`, the planned
+shot ids you confirmed, and answers 409 when the plan has changed; each planned
+shot carries a `reason`, and the plan's policy loses `auto`.
+`POST /api/device/notes/push` takes `{"shot_ids": [...]}` (or `null` for every
+pending judgement) and answers 409 when a selected one is no longer pending.
+`GET /api/device/notes/pending` returns `items` — each with the shot's device id,
+time, profile and verdict — in place of `shot_ids`, and loses `enabled`. Both
+write routes answer 403 when device writes are off, and record the refusal.
+`POST /api/shots/{id}/notes-writeback` is removed.
+
 ### The shots table
 
 **A row opens in place.** Clicking a row no longer opens the shot page: it
