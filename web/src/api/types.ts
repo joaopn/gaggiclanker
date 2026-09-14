@@ -489,10 +489,9 @@ export type CleanupRun = components["schemas"]["CleanupRunRow"];
 export type CleanupRunsData = components["schemas"]["CleanupRunsData"];
 export type CleanupRunAccepted = components["schemas"]["CleanupRunAccepted"];
 
-/** Notes write-back: what the machine's notes cards are missing, and one write. */
+/** Notes write-back: what the machine's notes cards are missing, and the send. */
 export type PendingNotesData = components["schemas"]["PendingNotesData"];
 export type NotesPushAccepted = components["schemas"]["NotesPushAccepted"];
-export type WritebackResult = components["schemas"]["WritebackResult"];
 
 /** Every state a draft can be in, as the `status` CHECK spells them. */
 export type DraftStatus = "draft" | "approved" | "pushed" | "failed" | "discarded" | "superseded";

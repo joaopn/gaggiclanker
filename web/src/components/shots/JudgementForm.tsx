@@ -2,7 +2,6 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { JudgementWrite, ShotJudgement, TasteGroup } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { NotesWritebackButton } from "@/components/shots/NotesWritebackButton";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
 import { useDeleteJudgement, useSaveJudgement } from "@/hooks/useSets";
@@ -136,21 +135,15 @@ export function JudgementForm({
           : "How the coffee tasted. Kept apart from the execution score on purpose: a perfectly executed shot of stale beans scores well and tastes of cardboard."
       }
       actions={
-        <>
-          {judgement?.seeded_from_device_note ? (
-            <span
-              data-testid="seeded-badge"
-              className="rounded-full border border-border px-2 py-0.5 text-muted-foreground text-xs"
-              title="Copied from the machine's own notes card. Saving makes it yours, and sync will never overwrite it."
-            >
-              from the machine
-            </span>
-          ) : null}
-          {/* The notes write-back, and it lives beside the form rather than beside the
-              device-notes mirror: what it sends is *this* verdict, and the
-              mirror card is a read of what the machine has. */}
-          <NotesWritebackButton shotId={shotId} judgement={judgement} />
-        </>
+        judgement?.seeded_from_device_note ? (
+          <span
+            data-testid="seeded-badge"
+            className="rounded-full border border-border px-2 py-0.5 text-muted-foreground text-xs"
+            title="Copied from the machine's own notes card. Saving makes it yours, and sync will never overwrite it."
+          >
+            from the machine
+          </span>
+        ) : null
       }
     >
       <form

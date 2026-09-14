@@ -22,7 +22,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
 
 function pending(overrides: Partial<PendingNotesData> = {}): PendingNotesData {
   return {
-    enabled: true,
     writes_enabled: true,
     fields: ["rating", "balance", "doseIn", "doseOut", "grindSetting"],
     shot_ids: [3, 4, 5],
@@ -51,21 +50,15 @@ describe("NotesWritebackCard", () => {
   });
 
   it("names the switch that is in the way rather than just disabling the button", async () => {
-    // Two switches gate this, and "nothing happens when I press it" is the
-    // failure it is most likely to produce.
-    getPendingNotes.mockResolvedValue(pending({ enabled: false, writes_enabled: true }));
-    renderWithQueryClient(<NotesWritebackCard />);
-
-    expect(await screen.findByText(/Notes writeback enabled/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Push pending notes/ })).toBeDisabled();
-    expect(screen.getByText("write-back off")).toBeInTheDocument();
-  });
-
-  it("points at the master switch first when that is the one that is off", async () => {
-    getPendingNotes.mockResolvedValue(pending({ enabled: true, writes_enabled: false }));
+    // "Nothing happens when I press it" is the failure it is most likely to
+    // produce, and there is exactly one switch to name.
+    getPendingNotes.mockResolvedValue(pending({ writes_enabled: false }));
     renderWithQueryClient(<NotesWritebackCard />);
 
     expect(await screen.findByText(/Device writes are off/)).toBeInTheDocument();
+    expect(screen.queryByText(/Notes writeback enabled/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Push pending notes/ })).toBeDisabled();
+    expect(screen.getByText("write-back off")).toBeInTheDocument();
   });
 
   it("says so plainly when there is nothing to send", async () => {

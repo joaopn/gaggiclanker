@@ -449,7 +449,7 @@ export interface paths {
         };
         /**
          * Judgements the machine's own notes cards do not have yet
-         * @description The backlog, plus both switches — a page has to say *why* the list is idle.
+         * @description The backlog, plus the write switch — a page has to say *why* Send is idle.
          */
         get: operations["get_pending_notes_api_device_notes_pending_get"];
         put?: never;
@@ -1671,36 +1671,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/shots/{shot_id}/notes-writeback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send this shot's judgement to the machine's own notes card
-         * @description One frame, in the request. Answers 200 with *why* when it wrote nothing.
-         *
-         *     Unlike the analysis routes there is nothing long-running here — a notes save
-         *     is a single `req:history:notes:save` — so the outcome comes back to the
-         *     caller that asked for it rather than to a stream.
-         *
-         *     A refusal is a 200 with ``written: false`` and a sentence, not an error
-         *     status. Every reason this declines is a fact about the configuration or the
-         *     data ("write-back is off", "this verdict came from the machine"), and a 4xx
-         *     would put them in an error toast that says the request was wrong when it was
-         *     not.
-         */
-        post: operations["post_notes_writeback_api_shots__shot_id__notes_writeback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/shots/{shot_id}/raw": {
         parameters: {
             query?: never;
@@ -2718,14 +2688,6 @@ export interface components {
         /** ApiResponse[Vocabulary] */
         ApiResponse_Vocabulary_: {
             data?: components["schemas"]["Vocabulary"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[WritebackResult] */
-        ApiResponse_WritebackResult_: {
-            data?: components["schemas"]["WritebackResult"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4135,8 +4097,6 @@ export interface components {
          * @description How many verdicts this box holds that the machine does not.
          */
         PendingNotesData: {
-            /** Enabled */
-            enabled: boolean;
             /** Fields */
             fields: string[];
             /** Shot Ids */
@@ -5996,31 +5956,6 @@ export interface components {
             suggestion_variables: components["schemas"]["Term"][];
             /** Taste Groups */
             taste_groups: components["schemas"]["TasteGroup"][];
-        };
-        /**
-         * WritebackResult
-         * @description What one write-back did, or why it did nothing.
-         */
-        WritebackResult: {
-            /**
-             * Device Error
-             * @default false
-             */
-            device_error: boolean;
-            /**
-             * Device Id
-             * @default
-             */
-            device_id: string;
-            /** Reason */
-            reason?: string | null;
-            /** Shot Id */
-            shot_id: number;
-            /**
-             * Written
-             * @default false
-             */
-            written: boolean;
         };
     };
     responses: never;
@@ -8826,37 +8761,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_DeviceShotNotesRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_notes_writeback_api_shots__shot_id__notes_writeback_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                shot_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_WritebackResult_"];
                 };
             };
             /** @description Validation Error */

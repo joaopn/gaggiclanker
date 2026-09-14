@@ -38,14 +38,6 @@ DISABLED_MESSAGE = (
     "Nothing was sent."
 )
 
-#: What a notes write-back says when its own switch is off. `deviceWritesEnabled`
-#: is the master switch and this is the per-feature one: somebody may well want
-#: to push profiles without publishing their tasting notes to the kitchen.
-NOTES_DISABLED_MESSAGE = (
-    "Writing judgements back to the machine is switched off. Turn on 'Notes writeback "
-    "enabled' under Settings → Machine. Nothing was sent."
-)
-
 
 async def refuse_unless_writes_enabled(
     settings: SettingsService,
@@ -119,9 +111,10 @@ class SettingsWriteGate:
                 )
         elif write.kind == "shot_delete":
             await self._authorize_shot_delete(write)
-        elif write.kind == "notes_save":
-            if not await self.settings.get("notesWritebackEnabled"):
-                raise DeviceWriteRefused(NOTES_DISABLED_MESSAGE)
+        # `notes_save` has no branch of its own. Its rules (newer than the card,
+        # never an unedited verdict seeded from the machine) need the judgement
+        # and the mirror, and live in the notes service; the consent is the
+        # person pressing Send on the Sync page, behind this same master switch.
 
     async def _authorize_shot_delete(self, write: PendingWrite) -> None:
         """Refuse unless the archive already holds this shot, intact and readable.

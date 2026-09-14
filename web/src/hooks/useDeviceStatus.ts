@@ -13,7 +13,6 @@ import {
   getPendingNotes,
   pushPendingNotes,
   runCleanup,
-  writeBackNotes,
 } from "@/api/client";
 import type {
   CleanupPlan,
@@ -23,9 +22,7 @@ import type {
   DeviceWritesData,
   NotesPushAccepted,
   PendingNotesData,
-  WritebackResult,
 } from "@/api/types";
-import { invalidateDeviceWrites, invalidateShots } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -125,28 +122,6 @@ export function usePushPendingNotes(): UseMutationResult<NotesPushAccepted, Erro
     mutationFn: () => pushPendingNotes(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.device.all });
-    },
-  });
-}
-
-/**
- * Send one shot's judgement to the machine.
- *
- * Unlike the two above this resolves with the *outcome*: it is a single frame,
- * and a refusal ("this verdict came from the machine") comes back as a result
- * with a reason rather than as an error. The caller renders the sentence.
- *
- * Both the shot and the device audit are invalidated: the write changes the
- * judgement's sync state on one page and adds an audit row on the other.
- */
-export function useWriteBackNotes(shotId: string): UseMutationResult<WritebackResult, Error, void> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => writeBackNotes(shotId),
-    onSuccess: async (result) => {
-      if (!result.written) return;
-      await invalidateShots(queryClient, shotId);
-      await invalidateDeviceWrites(queryClient);
     },
   });
 }

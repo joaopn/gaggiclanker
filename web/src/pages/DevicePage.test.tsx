@@ -110,7 +110,6 @@ beforeEach(() => {
       mode: "off",
       keep_newest: 50,
       min_free_kb: 2048,
-      auto: false,
       writes_enabled: false,
     },
     on_device_count: 12,
@@ -122,7 +121,6 @@ beforeEach(() => {
   });
   getCleanupRuns.mockResolvedValue({ items: [] });
   getPendingNotes.mockResolvedValue({
-    enabled: false,
     writes_enabled: false,
     fields: ["rating"],
     shot_ids: [],

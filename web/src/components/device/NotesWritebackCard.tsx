@@ -9,10 +9,10 @@ import { usePendingNotes, usePushPendingNotes } from "@/hooks/useDeviceStatus";
 /**
  * Judgements the machine's own notes card does not have yet.
  *
- * Two switches gate this and the card says which one is in the way, because
+ * One switch gates this and the card says when it is in the way, because
  * "nothing happens when I press the button" is the failure this feature is most
  * likely to produce: `deviceWritesEnabled` is the master switch in front of
- * every write, and `notesWritebackEnabled` is this feature's own.
+ * every write. Saving a judgement never sends it; this button does.
  *
  * A verdict that came *from* the machine and was never edited is not pending —
  * it is the machine's own words, and sending them back would win every future
@@ -23,7 +23,7 @@ export function NotesWritebackCard() {
   const pending = usePendingNotes();
   const push = usePushPendingNotes();
   const count = pending.data?.shot_ids.length ?? 0;
-  const enabled = Boolean(pending.data?.enabled && pending.data?.writes_enabled);
+  const enabled = Boolean(pending.data?.writes_enabled);
 
   return (
     <SectionCard
@@ -63,9 +63,7 @@ export function NotesWritebackCard() {
           </p>
           {!enabled ? (
             <p className="text-muted-foreground text-sm">
-              {pending.data?.writes_enabled
-                ? "Turn on “Notes writeback enabled” under Settings → Machine."
-                : "Device writes are off. Turn them on under Settings → Machine, then switch on “Notes writeback enabled”."}
+              Device writes are off. Turn on “Device writes enabled” under Settings → Machine.
             </p>
           ) : (
             <p className="text-muted-foreground text-xs">

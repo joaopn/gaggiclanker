@@ -7,14 +7,14 @@ import { RatingStars } from "@/components/shots/RatingStars";
  * The device's own notes, mirrored.
  *
  * Read-only wherever it is shown: this is what the machine holds, and the way
- * to change it is to edit the judgement and press "Sync notes to machine",
- * which is behind two switches that are both off by default. Shared by the
+ * to change it is to edit the judgement and send it from the Sync page, behind
+ * the device-write switch that is off by default. Shared by the
  * shot page and the shots list's open row, so the two cannot show a different
  * card for the same shot.
  */
 export function DeviceNotesCard({
   notes,
-  description = "What the machine's own notes card holds for this shot. Editable only through the judgement, and only with notes write-back switched on.",
+  description = "What the machine's own notes card holds for this shot. Change it by editing your judgement and sending it from the Sync page.",
   className,
 }: {
   notes: DeviceShotNotes;

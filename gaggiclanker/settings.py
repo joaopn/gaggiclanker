@@ -605,12 +605,13 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         default=False,
         env_key="GAGGICLANKER_DEVICE_WRITES_ENABLED",
         description=(
-            "Allow this box to write profiles to the machine: save a new one, delete one it "
-            "created, select it, star it. Off by default and it is the only thing standing "
-            "between a bug and a display that will not brew — a profile with zero phases "
-            "crashes brew start, and recovering one means a reflash plus a filesystem erase. "
-            "Nothing else is ever written: not device settings (POST /api/settings clears "
-            "every boolean key it omits), not shot history."
+            "Allow this box to write to the machine at all. Profiles: save a new one, delete "
+            "one it created, select it, star it. From the Sync page only, when a person "
+            "confirms it: send judgements to shots' notes cards, and delete shots the archive "
+            "already holds intact. Off by default, and it is the only thing standing between "
+            "a bug and a display that will not brew — a profile with zero phases crashes brew "
+            "start, and recovering one means a reflash plus a filesystem erase. Device "
+            "settings are never written (POST /api/settings clears every boolean key it omits)."
         ),
     ),
     SettingDefinition(
@@ -662,25 +663,14 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         ),
     ),
     SettingDefinition(
-        key="notesWritebackEnabled",
-        type="bool",
-        default=False,
-        env_key="GAGGICLANKER_NOTES_WRITEBACK_ENABLED",
-        description=(
-            "Mirror a saved judgement back to the machine's own notes card, so the "
-            "touchscreen shows it. Off by default and gated by deviceWritesEnabled as "
-            "well. The device copy is only overwritten when the judgement here is newer "
-            "than the note on the machine."
-        ),
-    ),
-    SettingDefinition(
         key="notesWritebackFields",
         type="string",
         default="rating,balance,doseIn,doseOut,grindSetting",
         env_key="GAGGICLANKER_NOTES_WRITEBACK_FIELDS",
         validate=_known_writeback_fields,
         description=(
-            "Which judgement fields are mirrored to the machine, comma-separated. "
+            "Which judgement fields a notes send from the Sync page writes to the machine's "
+            "notes card, comma-separated. Saving a judgement never sends anything. "
             "Allowed: rating, balance, doseIn, doseOut, grindSetting, notes. Anything left "
             "out keeps whatever the machine already has in that field."
         ),

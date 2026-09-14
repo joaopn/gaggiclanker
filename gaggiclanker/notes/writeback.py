@@ -62,7 +62,7 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: Published on the sync bus after a write-back, so the shot page and the Device
+#: Published on the sync bus after a write-back, so the shot page and the Sync
 #: page re-read rather than poll.
 NOTES_WRITEBACK_EVENT = "notes.writeback"
 
@@ -83,18 +83,17 @@ def writeback_task_name() -> str:
 
 
 class NotesWritebackPolicy(BaseModel):
-    """The two switches and the field list, resolved fresh on every use."""
+    """The master write switch and the field list, resolved fresh on every use.
+
+    There is no switch of this feature's own. A send is something a person
+    starts on the Sync page with the judgements in front of them, and that is
+    the consent; `deviceWritesEnabled` is the gate every write is behind.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
     writes_enabled: bool = False
     fields: list[str] = Field(default_factory=list)
-
-    @property
-    def active(self) -> bool:
-        """Both switches on. Either alone writes nothing, deliberately."""
-        return self.enabled and self.writes_enabled
 
 
 class WritebackResult(BaseModel):
@@ -191,7 +190,6 @@ class NotesWritebackService:
         raw = str(await self.settings.get("notesWritebackFields") or "")
         chosen = [part.strip() for part in raw.split(",") if part.strip()]
         return NotesWritebackPolicy(
-            enabled=bool(await self.settings.get("notesWritebackEnabled")),
             writes_enabled=bool(await self.settings.get("deviceWritesEnabled")),
             fields=[name for name in chosen if name in NOTES_WRITEBACK_FIELDS],
         )
@@ -204,21 +202,20 @@ class NotesWritebackService:
         """Send one shot's judgement to the machine, if every rule allows it.
 
         Never raises for a rule that says no: a refusal is a result with a
-        reason on it, because this is called from a background task behind a
-        judgement save as well as from a button, and an exception in the first
-        case is a log line nobody reads.
+        reason on it, because this runs inside the background task a send from
+        the Sync page queues, and an exception there is a log line nobody reads.
 
         A device error *does* propagate the same way — as a result, not an
         exception — because the caller that matters (the bulk push) needs to
         know whether to carry on.
         """
         policy = await self.policy()
-        if not policy.active:
+        if not policy.writes_enabled:
             return WritebackResult(
                 shot_id=shot_id,
                 reason=(
-                    "Notes write-back is off. It needs both 'Device writes enabled' and "
-                    "'Notes writeback enabled' under Settings → Machine."
+                    "Writing to the machine is switched off. Turn on 'Device writes enabled' "
+                    "under Settings → Machine."
                 ),
             )
         if self.client is None:
@@ -312,23 +309,6 @@ class NotesWritebackService:
             if result.device_error:
                 break
         return results
-
-    def spawn_one(self, tasks: TaskRegistry, shot_id: int) -> None:
-        """Queue a single write-back behind a judgement save. Fire and forget.
-
-        Named per shot, so saving the same judgement twice in a second does not
-        queue two frames — and so a save of a *different* shot is not blocked by
-        this one.
-        """
-        name = f"notes-writeback:shot:{shot_id}"
-        if tasks.get(name) is not None:
-            return
-        tasks.spawn(name, self._quiet(shot_id))
-
-    async def _quiet(self, shot_id: int) -> None:
-        result = await self.writeback(shot_id, trigger="judgement")
-        if not result.written and result.reason:
-            log.debug("notes_writeback_skipped", shot_id=shot_id, reason=result.reason)
 
     def spawn_bulk(self, tasks: TaskRegistry) -> bool:
         """Queue a bulk push under this machine's name. False if one is running."""

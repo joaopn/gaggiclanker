@@ -12,6 +12,7 @@ typed here, and the write-back must not weaken it.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
@@ -19,6 +20,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
@@ -118,25 +120,16 @@ async def _shot_id(app: FastAPI, device_id: int) -> int:
     return row.id
 
 
-@pytest.fixture
-async def writeback_on(
-    writes_on: tuple[FastAPI, httpx.AsyncClient],
-) -> tuple[FastAPI, httpx.AsyncClient]:
-    app, client = writes_on
-    await app.state.settings_service.apply({"notesWritebackEnabled": True})
-    return app, client
-
-
 def _service(app: FastAPI) -> NotesWritebackService:
     service: NotesWritebackService = app.state.notes_writeback
     return service
 
 
 async def test_a_write_back_reaches_the_machine_and_updates_its_index(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     """The firmware mirrors `rating` into the index and `doseOut` into `volume`."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id)
 
@@ -153,9 +146,9 @@ async def test_a_write_back_reaches_the_machine_and_updates_its_index(
 
 
 async def test_the_mirror_and_the_judgement_are_updated_after_a_write(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient],
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id)
     before = await JudgementsRepository(app.state.db).get(shot_id)
@@ -173,24 +166,25 @@ async def test_the_mirror_and_the_judgement_are_updated_after_a_write(
     assert shot_id not in await _service(app).pending()
 
 
-async def test_nothing_is_written_while_either_switch_is_off(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+async def test_nothing_is_written_while_device_writes_are_off(
+    live: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
-    """`deviceWritesEnabled` alone is not enough: this feature has its own switch."""
-    app, _ = writes_on
+    """The master switch is the one gate; there is no second switch to turn on."""
+    app, _ = live
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id)
     result = await _service(app).writeback(shot_id)
     assert result.written is False
-    assert result.reason is not None and "off" in result.reason
+    assert result.reason is not None and "switched off" in result.reason
     assert fake_device.shots[FIRST_ID].notes is None
+    assert "req:history:notes:save" not in fake_device.ws_requests
 
 
 async def test_a_verdict_seeded_from_the_machine_is_never_echoed_back(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient],
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     """It is the machine's own words; echoing them would win every future comparison."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, NOTES_ID)
     judgement = await JudgementsRepository(app.state.db).get(shot_id)
     assert judgement is not None
@@ -203,10 +197,10 @@ async def test_a_verdict_seeded_from_the_machine_is_never_echoed_back(
 
 
 async def test_editing_a_seeded_verdict_makes_it_writable(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient],
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     """The flag is cleared by any edit, which is what makes the rule about *editing*."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, NOTES_ID)
     await _judge(app, shot_id, rating=2)
     assert shot_id in await _service(app).pending()
@@ -214,10 +208,10 @@ async def test_editing_a_seeded_verdict_makes_it_writable(
 
 
 async def test_a_newer_note_on_the_machine_is_left_alone(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     """The conflict rule, in the direction that would otherwise lose somebody's typing."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id)
     # A note written on the machine a minute from now: newer than our verdict.
@@ -234,10 +228,10 @@ async def test_a_newer_note_on_the_machine_is_left_alone(
 
 
 async def test_an_older_note_on_the_machine_is_overwritten(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     """The other direction: our verdict is newer, so it wins."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await NotesRepository(app.state.db).upsert(
         shot_id,
@@ -252,10 +246,10 @@ async def test_an_older_note_on_the_machine_is_overwritten(
 
 
 async def test_a_shot_the_machine_has_deleted_is_skipped(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient],
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     """`req:history:notes:save` would recreate a card for a shot whose `.slog` is gone."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id)
     await ShotsRepository(app.state.db).mark_deleted_on_device(shot_id)
@@ -269,10 +263,10 @@ async def test_a_shot_the_machine_has_deleted_is_skipped(
 
 
 async def test_a_later_sync_does_not_clobber_a_newer_local_judgement(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient],
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     """The seeding rule, re-asserted: an insert that does nothing on conflict."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id, rating=2, notes="mine")
 
@@ -288,10 +282,10 @@ async def test_a_later_sync_does_not_clobber_a_newer_local_judgement(
 
 
 async def test_a_full_sync_pass_after_a_write_back_leaves_the_verdict_alone(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient],
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     """Our own write comes back on the next notes pull; it must not reseed anything."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id, rating=3, notes="mine")
     assert (await _service(app).writeback(shot_id)).written is True
@@ -308,37 +302,48 @@ async def test_a_full_sync_pass_after_a_write_back_leaves_the_verdict_alone(
 # ── the routes ───────────────────────────────────────────────────────
 
 
-async def test_saving_a_judgement_queues_a_write_back(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+async def test_saving_a_judgement_never_contacts_the_machine(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
-    """The PUT answers with the verdict; the frame goes out behind it."""
-    app, client = writeback_on
+    """Even with device writes on: sending a verdict is an action on the Sync page.
+
+    The PUT used to queue a write-back behind every save. Nothing may leave for
+    the machine now — no task, no frame, no audit row — and the verdict simply
+    waits in the pending list until a person sends it.
+    """
+    app, client = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
+    fake_device.ws_requests.clear()
+
     response = await client.put(
         f"/api/shots/{shot_id}/judgement", json={"rating": 5, "dose_out_g": 40.0}
     )
     assert response.status_code == 200
-    await _drain(app)
-    assert fake_device.shots[FIRST_ID].notes is not None
-    assert fake_device.shots[FIRST_ID].entry.rating == 5
+    await asyncio.sleep(0.05)
+
+    assert not [name for name in app.state.tasks._tasks if name.startswith("notes-writeback")]
+    assert "req:history:notes:save" not in fake_device.ws_requests
+    assert fake_device.shots[FIRST_ID].notes is None
+    assert await DeviceWritesRepository(app.state.db).list_writes() == []
+    assert shot_id in await _service(app).pending()
 
 
-async def test_the_per_shot_route_reports_why_it_wrote_nothing(
-    writes_on: tuple[FastAPI, httpx.AsyncClient],
+async def test_there_is_no_per_shot_write_back_route(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
-    """A refusal is a 200 with a sentence, not a 4xx: the request was not wrong."""
+    """A write from outside the Sync page's send would be a second way in."""
     app, client = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id)
-    body = data(await client.post(f"/api/shots/{shot_id}/notes-writeback"))
-    assert body["written"] is False
-    assert "off" in body["reason"]
+    response = await client.post(f"/api/shots/{shot_id}/notes-writeback")
+    assert response.status_code in (404, 405)
+    assert "req:history:notes:save" not in fake_device.ws_requests
 
 
 async def test_the_bulk_push_walks_the_backlog(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
-    app, client = writeback_on
+    app, client = writes_on
     first = await _shot_id(app, FIRST_ID)
     second = await _shot_id(app, FIRST_ID + 1)
     await _judge(app, first)
@@ -358,10 +363,10 @@ async def test_the_bulk_push_walks_the_backlog(
 
 
 async def test_the_document_on_the_wire_is_the_one_the_firmware_can_read(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     """The end-to-end version of the composition tests: what the machine stored."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id, grind_setting="2.4", notes="one" * 5)
     await _service(app).writeback(shot_id)
@@ -379,7 +384,7 @@ async def _drain(app: FastAPI) -> None:
 
 
 async def test_the_mirror_records_what_the_index_will_actually_hold(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     """`synced_*` are the re-pull trigger, so they must follow the firmware's rules.
 
@@ -390,7 +395,7 @@ async def test_the_mirror_records_what_the_index_will_actually_hold(
     make the very next index diff see a difference that is not there and pull the
     card straight back.
     """
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     entry = fake_device.shots[FIRST_ID].entry
     volume_before = entry.volume_g
@@ -422,10 +427,10 @@ async def test_the_mirror_records_what_the_index_will_actually_hold(
 
 
 async def test_a_dose_that_is_sent_moves_the_mirror_and_the_index_together(
-    writeback_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     """The other half of the same rule, and the same "no needless re-pull" proof."""
-    app, _ = writeback_on
+    app, _ = writes_on
     shot_id = await _shot_id(app, FIRST_ID)
     await _judge(app, shot_id, rating=5, dose_out_g=41.5)
     assert (await _service(app).writeback(shot_id)).written is True

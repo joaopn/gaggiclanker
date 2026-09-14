@@ -260,7 +260,6 @@ class PendingNotesData(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool
     writes_enabled: bool
     fields: list[str]
     shot_ids: list[int]
@@ -280,12 +279,11 @@ class NotesPushAccepted(BaseModel):
     summary="Judgements the machine's own notes cards do not have yet",
 )
 async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
-    """The backlog, plus both switches — a page has to say *why* the list is idle."""
+    """The backlog, plus the write switch — a page has to say *why* Send is idle."""
     service = _require_writeback(notes)
     policy = await service.policy()
     return envelope_response(
         PendingNotesData(
-            enabled=policy.enabled,
             writes_enabled=policy.writes_enabled,
             fields=policy.fields,
             shot_ids=await service.pending(),

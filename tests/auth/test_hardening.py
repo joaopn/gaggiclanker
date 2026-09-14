@@ -369,14 +369,13 @@ def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> Non
     from gaggiclanker.settings import SETTINGS_REGISTRY
 
     assert SETTINGS_REGISTRY["deviceWritesEnabled"].default is False
-    # The two features that write outside `req:profiles:*` sit behind this
-    # switch too. A cleanup has no switch of its own and nothing that runs it
-    # automatically: it runs only from a plan a person confirmed, and the policy
-    # proposes nothing until somebody picks one. Notes write-back has a second
-    # switch, off as well.
+    # The two features that write outside `req:profiles:*` have no switch of
+    # their own and nothing that runs them automatically: a person starts each
+    # from the Sync page, behind this one switch. The cleanup policy proposes
+    # nothing until somebody picks one.
     assert SETTINGS_REGISTRY["deviceCleanupMode"].default == "off"
-    assert "deviceCleanupAuto" not in SETTINGS_REGISTRY
-    assert SETTINGS_REGISTRY["notesWritebackEnabled"].default is False
+    for removed in ("deviceCleanupAuto", "notesWritebackEnabled", "mcpDeviceWrites"):
+        assert removed not in SETTINGS_REGISTRY
 
 
 def test_the_unauthenticated_surface_is_three_routes(app: FastAPI) -> None:

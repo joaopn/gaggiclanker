@@ -60,7 +60,7 @@ SIM_HOST_ENV = "GAGGIMATE_HOST"
 async def live(
     env: EnvSettings, monkeypatch: pytest.MonkeyPatch
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
-    """The real app against the real firmware, with both write switches on.
+    """The real app against the real firmware, with device writes on.
 
     Turned on through the settings service rather than by poking the gate, so
     the test goes through the same precedence chain the Settings page does —
@@ -74,9 +74,7 @@ async def live(
     monkeypatch.setenv(SIM_HOST_ENV, SIM_HOST)
     monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "15")
     async with running_app(env) as (app, client):
-        await app.state.settings_service.apply(
-            {"deviceWritesEnabled": True, "notesWritebackEnabled": True}
-        )
+        await app.state.settings_service.apply({"deviceWritesEnabled": True})
         yield app, client
 
 

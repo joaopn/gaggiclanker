@@ -147,12 +147,12 @@ async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machin
     assert "no machine" in error(response)["message"].lower()
 
 
-async def test_pending_notes_reports_both_switches(
+async def test_pending_notes_reports_the_write_switch(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     _, client = live
     body = data(await client.get("/api/device/notes/pending"))
-    assert body["enabled"] is False
+    assert "enabled" not in body
     assert body["writes_enabled"] is False
     assert "rating" in body["fields"]
     assert body["shot_ids"] == []

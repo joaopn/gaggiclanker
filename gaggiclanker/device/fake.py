@@ -278,6 +278,11 @@ class FakeDevice:
     #: Every request path the fake has served, in order. The cheapest way for a
     #: test to assert that a padded id went out on the wire.
     requests: list[str] = field(default_factory=list)
+    #: Every WebSocket request type the fake has received, in order, answered
+    #: or not. What a test reads to prove that no `req:history:notes:save` or
+    #: `req:history:delete` frame was ever sent, rather than inferring it from
+    #: state the frame would have changed.
+    ws_requests: list[str] = field(default_factory=list)
 
     _runner: web.AppRunner | None = None
     _clients: list[web.WebSocketResponse] = field(default_factory=list)
@@ -618,6 +623,7 @@ class FakeDevice:
             return
         tp = message.get("tp", "")
         rid = message.get("rid")
+        self.ws_requests.append(str(tp))
         if tp in self.hang_requests:
             return
 

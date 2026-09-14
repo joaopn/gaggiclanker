@@ -95,7 +95,6 @@ import type {
   SuggestionListData,
   SyncStatusData,
   Vocabulary,
-  WritebackResult,
 } from "@/api/types";
 import { redirectToSignIn } from "@/lib/auth-navigation";
 
@@ -571,17 +570,6 @@ export async function getPendingNotes(): Promise<PendingNotesData> {
 /** Queue the whole backlog. 202, like the cleanup run. */
 export async function pushPendingNotes(): Promise<NotesPushAccepted> {
   return fetchApi<NotesPushAccepted>("/device/notes/push", { method: "POST" });
-}
-
-/**
- * Send one shot's judgement to the machine's notes card.
- *
- * Resolves with the *outcome*, not with "queued": this is a single WebSocket
- * frame. A result with `written: false` carries the sentence saying why, which
- * is a success as far as the request is concerned.
- */
-export async function writeBackNotes(shotId: string | number): Promise<WritebackResult> {
-  return fetchApi<WritebackResult>(`/shots/${shotId}/notes-writeback`, { method: "POST" });
 }
 
 export async function getSyncStatus(): Promise<SyncStatusData> {
