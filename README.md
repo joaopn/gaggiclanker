@@ -129,9 +129,16 @@ mount, including how to find and back up the file inside it.
 ```bash
 uv sync                                                        # install into .venv/
 uv run uvicorn gaggiclanker.main:app --reload --no-access-log  # dev server on :8000
-uv run pytest                                                  # the suite, offline
-uv run ruff check . && uv run ruff format --check . && uv run mypy
+uv run pytest                                                  # the suite, offline, on every core
+uv run pytest -n 0 tests/sync/test_pull.py                     # one file, without the worker start-up
+scripts/gates.sh                                               # the checks your change owes
 ```
+
+`scripts/gates.sh` reads what your branch changed since `origin/dev`, committed
+or not, and runs the checks that change owes: ruff, mypy, the suite and an API
+schema check for the back end, the front end's own checks and build for `web/`,
+and it tells you when the firmware simulator suite is owed as well. `--dry-run`
+prints the plan without running it; `scripts/README.md` has the rest.
 
 The API documents itself at `/api/docs`. Every response uses the envelope
 `{ok, data | error, meta}` — including an unhandled crash; `meta.request_id`
