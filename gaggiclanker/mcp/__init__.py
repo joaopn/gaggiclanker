@@ -1,4 +1,4 @@
-"""MCP exposure of the tool surface: Streamable HTTP, and stdio.
+"""MCP exposure of the tool surface, over stdio.
 
 The package name shadows the SDK's ``mcp`` only for a relative import, and this
 codebase uses none; ``from mcp.server.mcpserver import MCPServer`` inside

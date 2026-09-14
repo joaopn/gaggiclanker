@@ -75,7 +75,7 @@ several and a grind number only means something on the grinder it was set on.
 | `notes/` | Judgements a person sends from the Sync page to the machine's own notes card, and only when ours is newer than its. |
 | `tools/` | The tool registry — one definition per tool, three consumers — and the SQL sandbox behind `query_shots`. |
 | `chat/` | The tool loop, the Set-scoped context a conversation starts from, and the streamed, resumable run. |
-| `mcp/` | The same tools over Streamable HTTP and stdio, for agents outside this app. Read and propose only; never a write to the machine. |
+| `mcp/` | The same tools over stdio, for agents outside this app. Read and propose only; never a write to the machine. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |

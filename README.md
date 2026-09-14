@@ -456,31 +456,12 @@ Everything the chat can do is also exposed over the Model Context Protocol, so
 Claude Desktop, `claude -p`, or anything else that speaks MCP gets exactly the
 capabilities the in-app chat has — and, like the chat, it is **read-only by
 design**: tools read the archive or propose something a person confirms, and
-none writes to the machine, whatever the settings say. Two transports:
+none writes to the machine, whatever the settings say. It is spoken over stdio,
+and there is no network endpoint.
 
-**Streamable HTTP at `/mcp`**, behind the same bearer token as `/api`. **Off by
-default** (`mcpEnabled` in Settings) and on purpose: it hands an outside agent
-the whole archive, so it is a switch you throw when you want it. With it on, authenticate with a token from
-`POST /api/auth/login`:
-
-```bash
-TOKEN=$(curl -sX POST http://gaggiclanker.local:8000/api/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"username": "barista", "password": "..."}' | jq -r .data.token)
-# Any MCP client that can send a header:
-#   endpoint: http://gaggiclanker.local:8000/mcp
-#   header:   Authorization: Bearer $TOKEN
-```
-
-The token is a session token and lasts `authTokenTtlSeconds` (thirty days by
-default), so it is long-lived enough to paste into a client's configuration;
-signing out of the browser does not revoke it, but changing the password revokes
-every session including this one. With auth off — the default on a home LAN —
-no header is needed.
-
-**stdio**, for a client that launches the server itself. This is what Claude
-Desktop wants, what the `claude_code` chat provider generates for itself, and it
-needs no running server and no switch:
+A client launches the server itself. This is what Claude Desktop wants, what the
+`claude_code` chat provider generates for itself, and it needs no running server
+and no switch:
 
 ```json
 {

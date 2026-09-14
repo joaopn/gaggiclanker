@@ -20,7 +20,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.routing import Route
 
 from gaggiclanker import __version__
 from gaggiclanker.analyzer.service import AnalyzerService
@@ -62,8 +61,6 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
-from gaggiclanker.mcp.http import MCP_PATH, McpMount, start_mcp, stop_mcp
-from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 from gaggiclanker.settings import EnvSettings, load_dotenv_values, retired_auth_env_keys
 from gaggiclanker.settings_service import SettingsService
@@ -71,7 +68,6 @@ from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools import registry as tool_registry
-from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 
 __all__ = ["app", "check_configuration", "create_app"]
 
@@ -201,12 +197,6 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
     app.state.cleanup = None
     app.state.notes_writeback = None
 
-    # Before the task registry: the MCP session manager owns a task group whose
-    # children hold open response streams, and cancelling the app's own tasks
-    # out from under it would leave those streams half-written.
-    with suppress(Exception):
-        await stop_mcp(app)
-
     tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
     if tasks is not None:
         with suppress(Exception):
@@ -266,8 +256,9 @@ async def _start(app: FastAPI, db: Database) -> None:
     settings_service = SettingsService(SettingsRepository(db), dotenv=app.state.dotenv)
     app.state.settings_service = settings_service
     # One line per retired variable still set, naming it and never its value:
-    # each of these used to switch on a write to the machine that nothing does
-    # automatically any more, and whoever set it should hear that it is inert.
+    # each of these used to switch on something that no longer exists — a write
+    # to the machine nothing does automatically any more, or a network endpoint
+    # for MCP — and whoever set it should hear that it is inert.
     for env_key in settings_service.removed_env_keys():
         log.warning("setting_removed_env_ignored", env_key=env_key)
     app.state.events = EventBus[SseEvent]()
@@ -384,13 +375,6 @@ async def _start(app: FastAPI, db: Database) -> None:
         rate_limits=app.state.rate_limits,
     )
 
-    # Before the device client, deliberately. Starting a task group is tens of
-    # milliseconds, and the sync engine's first profiles sweep is timed from
-    # the moment its loops start: anything slow wedged between the two shifts
-    # that sweep relative to whatever a caller does next. MCP depends on none
-    # of it, so it goes where it costs nothing.
-    await _start_mcp_if_enabled(app, db, settings_service)
-
     app.state.connection = build_device_connection(app, settings_service, db)
     await app.state.connection.start()
 
@@ -421,46 +405,6 @@ async def _start(app: FastAPI, db: Database) -> None:
         settings_service,
         connection=app.state.connection,
         proposals=app.state.draft_proposals,
-    )
-
-
-async def _start_mcp_if_enabled(app: FastAPI, db: Database, settings: SettingsService) -> None:
-    """Mount the MCP endpoint, unless the switch says not to.
-
-    The permission set is the chat's, and it is a constant rather than a
-    setting: an MCP client reads and proposes exactly as the in-app chat does,
-    and nothing it calls can write to the machine. ``ToolContext`` still carries
-    the set, so the dispatcher re-checks it on every call.
-    """
-    app.state.mcp_manager = None
-    app.state.mcp_stack = None
-    if not bool(await settings.get("mcpEnabled")):
-        log.info("mcp_disabled")
-        return
-    permissions = CHAT_PERMISSIONS
-
-    async def context() -> ToolContext:
-        # Read off `app.state` per call rather than captured: this runs before
-        # the draft service exists, and a factory that closed over the values
-        # would hand every MCP client a `None` for the life of the process.
-        return ToolContext(
-            db=db,
-            settings=settings,
-            knowledge=getattr(app.state, "knowledge", None),
-            analyzer=getattr(app.state, "analyzer", None),
-            drafts=getattr(app.state, "draft_proposals", None),
-            starting=getattr(app.state, "starting", None),
-            tasks=getattr(app.state, "tasks", None),
-            rate_limits=getattr(app.state, "rate_limits", None),
-            caller="mcp-http",
-            permissions=permissions,
-        )
-
-    await start_mcp(
-        app,
-        server=build_mcp_server(
-            context, registry=tool_registry, permissions=permissions, db_for_resources=db
-        ),
     )
 
 
@@ -596,15 +540,6 @@ def create_app(
 
     app.include_router(health_router)
     app.include_router(api_router)
-
-    # Before the SPA fallback, which is a catch-all: a route appended after it
-    # is unreachable. A `Route` rather than a `mount`, because a mount at
-    # `/mcp` answers `/mcp` itself with a 307 to `/mcp/` — and the endpoint URL
-    # is what every client has in its configuration file, verbatim. The shim
-    # resolves the session manager off `app.state` at request time, so a request
-    # that arrives before the lifespan has built one gets a 503 rather than a
-    # stack trace. See gaggiclanker/mcp/http.py.
-    app.router.routes.append(Route(MCP_PATH, endpoint=McpMount(app)))
 
     # Last: the SPA fallback is a catch-all and would shadow the routers above.
     app.state.spa_mounted = mount_spa(app, web_dist or env.web_dist)

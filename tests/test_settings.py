@@ -145,6 +145,7 @@ async def test_a_retired_write_switch_in_the_environment_is_named_at_boot_and_do
         "mcpDeviceWrites",
         "deviceCleanupAuto",
         "notesWritebackEnabled",
+        "mcpEnabled",
     }
     for env_key in REMOVED_SETTINGS.values():
         monkeypatch.setenv(env_key, "true-and-secret-looking")

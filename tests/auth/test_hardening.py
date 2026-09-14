@@ -378,7 +378,7 @@ def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> Non
     # from the Sync page, behind this one switch. The cleanup policy proposes
     # nothing until somebody picks one.
     assert SETTINGS_REGISTRY["deviceCleanupMode"].default == "off"
-    for removed in ("deviceCleanupAuto", "notesWritebackEnabled", "mcpDeviceWrites"):
+    for removed in ("deviceCleanupAuto", "notesWritebackEnabled", "mcpDeviceWrites", "mcpEnabled"):
         assert removed not in SETTINGS_REGISTRY
 
 
@@ -393,3 +393,23 @@ def test_the_unauthenticated_surface_is_three_routes(app: FastAPI) -> None:
     }
     assert reachable == set(PUBLIC_API_PATHS)
     assert USERNAME  # keep the import honest: the fixtures module is the source
+
+
+async def test_there_is_no_mcp_endpoint(secured: tuple[FastAPI, httpx.AsyncClient]) -> None:
+    """MCP is the chat's stdio tool, not a network service: `/mcp` is any unknown path.
+
+    With auth on, so a leftover guard rule would show as a 401 where an unknown
+    path gets something else, and a leftover shim as a 503 naming a switch.
+    """
+    from gaggiclanker.auth.guard import requires_auth
+
+    app, secured_client = secured
+    assert not [route for route in app.routes if getattr(route, "path", "").startswith("/mcp")]
+    assert "/mcp" not in app.openapi()["paths"]
+    assert requires_auth("GET", "/mcp") == requires_auth("GET", "/no-such-page")
+    for method in ("GET", "POST", "DELETE"):
+        served = await secured_client.request(method, "/mcp")
+        unknown = await secured_client.request(method, "/no-such-page")
+        assert served.status_code == unknown.status_code, method
+        assert served.status_code != 503, method
+        assert "mcp" not in served.text.lower(), method

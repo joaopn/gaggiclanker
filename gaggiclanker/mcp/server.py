@@ -75,9 +75,8 @@ MCP_INSTRUCTIONS = (
     "writes to the espresso machine."
 )
 
-#: Produces the context one call runs with. Async because the HTTP mount reads
-#: the services off ``app.state`` per call, and some of them are built after
-#: the endpoint is mounted.
+#: Produces the context one call runs with. Async so building one may read the
+#: archive; the stdio entry point's is a plain constructor today.
 type ContextFactory = Callable[[], Awaitable[ToolContext]]
 
 

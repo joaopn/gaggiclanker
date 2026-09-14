@@ -30,11 +30,10 @@ the SPA (GET/HEAD off       the bundle is public files; everything it can
 ``/api/docs`` and ``/api/openapi.json`` are under ``/api`` and therefore need a
 token too — deliberately: the schema lists every route and every field name.
 
-``/mcp`` is named here as well. It is not under ``/api``, and the SPA
-rule below lets an unauthenticated GET through — which would have made the
-Streamable HTTP transport's own GET (the server-to-client event stream) a public
-read of the whole archive. A prefix, not an exact match, because the transport
-also answers ``DELETE /mcp`` and may grow sub-paths.
+Nothing outside ``/api`` serves data. The chat's MCP server has no network
+endpoint (it speaks stdio to the child process the ``claude_code`` provider
+spawns), so there is no second prefix to guard; a route that serves data from
+outside ``/api`` would need one added here.
 """
 
 from __future__ import annotations
@@ -57,9 +56,6 @@ PUBLIC_API_PATHS: frozenset[str] = frozenset({"/api/auth/status", "/api/auth/log
 
 #: Outside ``/api`` entirely, and public for every method.
 _PUBLIC_PATHS: frozenset[str] = frozenset({"/health"})
-
-#: Outside ``/api`` and guarded for every method. See the module docstring.
-GUARDED_PREFIXES: tuple[str, ...] = ("/mcp",)
 
 _BEARER = "bearer "
 
@@ -86,8 +82,6 @@ def requires_auth(method: str, path: str) -> bool:
     if path in PUBLIC_API_PATHS:
         return False
     if path == "/api" or path.startswith("/api/"):
-        return True
-    if any(path == prefix or path.startswith(f"{prefix}/") for prefix in GUARDED_PREFIXES):
         return True
     # The SPA and its assets. A GET is a file; anything else at a non-API path
     # is either the SPA fallback's 404 or an attempt at something, and both can

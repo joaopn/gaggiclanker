@@ -789,3 +789,24 @@ async def test_0018_deletes_the_retired_machine_write_switches_and_nothing_else(
         ("deviceWritesEnabled", "true"),
         ("notesWritebackFields", "rating,notes"),
     ]
+
+
+async def test_0019_deletes_the_retired_mcp_endpoint_switch_and_nothing_else(
+    db: Database, tmp_path: Path
+) -> None:
+    """A stored consent to serve the archive over a network endpoint goes with the endpoint."""
+    await _migrate_below(db, tmp_path, "0019")
+    for key, value in (
+        ("mcpEnabled", "true"),
+        ("chatMaxToolRounds", "5"),
+        ("deviceWritesEnabled", "true"),
+    ):
+        await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, value))
+
+    await run_migrations(db)
+
+    rows = await db.fetch_all("SELECT key, value FROM settings ORDER BY key")
+    assert [(row["key"], row["value"]) for row in rows] == [
+        ("chatMaxToolRounds", "5"),
+        ("deviceWritesEnabled", "true"),
+    ]

@@ -531,8 +531,8 @@ SETTING_PAIRS: tuple[SettingPair, ...] = (
 #: Registry keys that were removed, with the environment variable each one read.
 #: Kept so a boot can say, once, that a variable in somebody's compose file no
 #: longer does anything — silently ignoring a switch that used to allow writes
-#: to a machine would leave its owner believing it still does. Their stored
-#: rows are deleted by a migration; nothing here resolves them.
+#: to a machine, or open an endpoint, would leave its owner believing it still
+#: does. Their stored rows are deleted by a migration; nothing here resolves them.
 REMOVED_SETTINGS: dict[str, str] = {
     # MCP device-write tools: MCP and the chat now read and propose, nothing more.
     "mcpDeviceWrites": "GAGGICLANKER_MCP_DEVICE_WRITES",
@@ -540,6 +540,9 @@ REMOVED_SETTINGS: dict[str, str] = {
     "deviceCleanupAuto": "GAGGICLANKER_DEVICE_CLEANUP_AUTO",
     # Automatic notes write-back: notes go only when a person sends them.
     "notesWritebackEnabled": "GAGGICLANKER_NOTES_WRITEBACK_ENABLED",
+    # The MCP endpoint at /mcp: the chat's MCP server speaks stdio only, to the
+    # child process the claude_code provider spawns, and has nothing to switch.
+    "mcpEnabled": "GAGGICLANKER_MCP_ENABLED",
 }
 
 
@@ -1074,21 +1077,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "Roughly how many tokens of conversation history are sent with each turn. "
             "Oldest messages are dropped first; the newest user message is always kept, "
             "because a turn without the question is not a turn."
-        ),
-    ),
-    SettingDefinition(
-        key="mcpEnabled",
-        type="bool",
-        default=False,
-        env_key="GAGGICLANKER_MCP_ENABLED",
-        description=(
-            "Serve the MCP endpoint at /mcp (Streamable HTTP), so any MCP client that can "
-            "send a header gets the same tools the in-app chat has: read and propose, never a "
-            "write to the machine. Behind the same bearer token as /api. Off by default as a "
-            "deliberate choice rather than a limitation: it hands an outside agent the whole "
-            "archive, and a capability like that is one you switch on when you want it. The "
-            "stdio entry point (`gaggiclanker mcp`) is what Claude Desktop and `claude -p` "
-            "use and is unaffected by this switch."
         ),
     ),
 )

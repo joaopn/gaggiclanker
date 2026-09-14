@@ -10,6 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### MCP has no network endpoint
+
+The Streamable HTTP endpoint at `/mcp` is gone, and so is its switch. MCP is the
+chat's own database tool: the `claude_code` provider spawns `gaggiclanker mcp`
+and talks to it over stdio, and nothing listens on the network for it. `/mcp` now
+answers like any other unknown path.
+
+Removed setting: `mcpEnabled` (and its `GAGGICLANKER_MCP_ENABLED` variable). A
+stored value is deleted at upgrade (migration `0019`), and a boot with the
+variable still set logs `setting_removed_env_ignored` naming it.
+
 ### Clone and start
 
 **Starting is `git clone`, then `docker compose up -d --build`**, then entering
