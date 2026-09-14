@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -384,12 +386,41 @@ async def test_the_real_spawner_feeds_stdin_and_collects_both_streams() -> None:
     assert result.timed_out is False
 
 
-async def test_a_wedged_child_is_killed_rather_than_left_running() -> None:
+async def test_a_wedged_child_is_killed_rather_than_left_running(tmp_path: Path) -> None:
     from gaggiclanker.llm.providers.claude_code import _spawn
 
     # Ignores SIGTERM on purpose: SIGTERM alone would leave it running, holding
     # an event-loop transport open for the life of the process.
-    script = "trap '' TERM; sleep 30"
-    result = await _spawn(["/bin/sh", "-c", script], {"PATH": os.environ["PATH"]}, ".", None, 0.3)
+    #
+    # `exec` so the shell *becomes* the sleeping process (an ignored signal
+    # stays ignored across exec). Without it `sleep` is a grandchild: the
+    # SIGKILL lands on the shell, the orphaned `sleep` keeps the stdout pipe
+    # open, and `Process.wait()` - which waits for the pipes as well as the
+    # exit - sat there until the sleep ran out. That made this test take the
+    # full thirty seconds while proving nothing about the process left behind.
+    pid_file = tmp_path / "child.pid"
+    script = f"trap '' TERM; echo $$ > {shlex.quote(str(pid_file))}; exec sleep 30"
+    # The timeout is the shell's head start: a SIGTERM that arrived before the
+    # trap was set would kill it outright and prove nothing, which a loaded
+    # machine running the suite in parallel can make happen at a few hundred
+    # milliseconds. The grace is injected because its real three seconds would
+    # only be waited out.
+    timeout_s, grace_s = 1.0, 0.2
+    started = time.monotonic()
+    result = await _spawn(
+        ["/bin/sh", "-c", script],
+        {"PATH": os.environ["PATH"]},
+        ".",
+        None,
+        timeout_s,
+        kill_grace_s=grace_s,
+    )
+    elapsed = time.monotonic() - started
 
     assert result.timed_out is True
+    # The grace ran out, so SIGTERM really was ignored and SIGKILL is what
+    # ended it - and it ended long before the sleep would have.
+    assert timeout_s + grace_s <= elapsed < 10
+    # Nothing left running: the pid is gone, reaped rather than a zombie.
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)

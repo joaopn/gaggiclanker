@@ -353,12 +353,18 @@ async def _spawn(
     cwd: str,
     stdin: str | None,
     timeout_s: float,
+    *,
+    kill_grace_s: float = SIGKILL_GRACE_S,
 ) -> SpawnResult:
     """Run the binary, feed it stdin, and make sure it is dead when we leave.
 
     SIGTERM then SIGKILL, rather than SIGTERM alone: a CLI wedged in a TLS
     handshake ignores the first one, and a child that outlives the call holds
     an event-loop transport open for the life of the process.
+
+    ``kill_grace_s`` exists for the test that proves the SIGKILL actually
+    lands: it has to wait out the grace, and three seconds of it on every run
+    buys nothing. Nothing in the application passes it.
     """
     process = await asyncio.create_subprocess_exec(
         *argv,
@@ -373,13 +379,13 @@ async def _spawn(
         async with asyncio.timeout(timeout_s):
             stdout, stderr = await process.communicate(payload)
     except TimeoutError:
-        await _terminate(process)
+        await _terminate(process, grace_s=kill_grace_s)
         return SpawnResult(returncode=-signal.SIGKILL, stdout="", stderr="", timed_out=True)
     except asyncio.CancelledError:
         # The caller gave up (the browser closed the SSE stream, the app is
         # shutting down). Kill the child before letting the cancellation
         # through, or it keeps running and keeps billing.
-        await _terminate(process)
+        await _terminate(process, grace_s=kill_grace_s)
         raise
     return SpawnResult(
         returncode=process.returncode or 0,
@@ -388,13 +394,15 @@ async def _spawn(
     )
 
 
-async def _terminate(process: asyncio.subprocess.Process) -> None:
+async def _terminate(
+    process: asyncio.subprocess.Process, *, grace_s: float = SIGKILL_GRACE_S
+) -> None:
     if process.returncode is not None:
         return
     with _suppress_process_gone():
         process.terminate()
     try:
-        async with asyncio.timeout(SIGKILL_GRACE_S):
+        async with asyncio.timeout(grace_s):
             await process.wait()
         return
     except TimeoutError:
