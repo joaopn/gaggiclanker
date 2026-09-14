@@ -814,8 +814,8 @@ describe("ShotsPage open rows", () => {
       original.call(this, options);
     });
 
-    const notes = within(panel).getByLabelText("Notes");
-    notes.focus();
+    // A button in the form: not a field, so Escape there is the panel's.
+    within(panel).getByRole("button", { name: "2 stars" }).focus();
     await user.keyboard("{Escape}");
     spy.mockRestore();
 
@@ -824,6 +824,44 @@ describe("ShotsPage open rows", () => {
     const last = focused[focused.length - 1];
     expect(last.element).toBe(toggle());
     expect(last.visible).toBe(true);
+  });
+
+  it("leaves Escape to a field in the panel, so a half-typed verdict survives it", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const panel = await screen.findByTestId("shot-panel");
+
+    const notes = within(panel).getByLabelText("Notes");
+    await user.clear(notes);
+    await user.type(notes, "sweet, long finish");
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
+    expect(within(screen.getByTestId("shot-panel")).getByLabelText("Notes")).toHaveValue(
+      "sweet, long finish",
+    );
+
+    // The same for Escape that cancels an IME composition, wherever focus is.
+    const dose = within(panel).getByLabelText("Dose in (g)");
+    dose.focus();
+    fireEvent.keyDown(toggle(), { key: "Escape", isComposing: true });
+    expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
+
+    // A checkbox has nothing to lose: Escape on the compare box closes.
+    screen.getByRole("checkbox", { name: "Compare shot 000101" }).focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+
+    // And on the row toggle itself.
+    await user.click(toggle());
+    await screen.findByTestId("shot-panel");
+    toggle().focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
   });
 
   it("leaves Escape to a popover open inside the row", async () => {

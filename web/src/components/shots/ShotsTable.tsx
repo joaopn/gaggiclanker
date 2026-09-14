@@ -464,6 +464,19 @@ export function revealDistance({
   return Math.min(overflow, Math.max(0, rowTop - listTop));
 }
 
+/**
+ * A field that keeps what is typed into it: text inputs of every kind, text
+ * areas, selects and anything contenteditable. A checkbox or a radio has
+ * nothing to lose, so Escape on one still closes the panel.
+ */
+function isEditable(target: Element): boolean {
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  if (target instanceof HTMLInputElement) {
+    return target.type !== "checkbox" && target.type !== "radio";
+  }
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
 /** Things inside a row that own Escape themselves: an open popover, and its trigger. */
 const OWNS_ESCAPE = '[role="dialog"], [aria-haspopup][aria-expanded="true"]';
 
@@ -494,13 +507,19 @@ function ShotRow({
 
   // Escape anywhere in the row or its panel closes the panel and puts focus
   // back on the row, which is where a keyboard user opened it from — unless
-  // the key belongs to a popover inside the row (the needs-a-Set menu, the row
-  // editor), which closes itself and must not take the panel with it. The row
-  // is on screen whenever its panel has focus, so the focus lands on something
-  // visible.
+  // the key belongs to something else. A popover inside the row (the
+  // needs-a-Set menu, the row editor) closes itself and must not take the panel
+  // with it. A text field owns Escape too: it is the key that dismisses an
+  // autocomplete list, and an IME composition cancelled with it still delivers
+  // the keydown — closing the panel then would unmount the judgement form and
+  // throw away the verdict being typed. The row toggle is a Shift+Tab away.
+  // The row is on screen whenever its panel has focus, so the focus lands on
+  // something visible.
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "Escape" || !open) return;
-    if ((event.target as Element).closest(OWNS_ESCAPE)) return;
+    if (event.nativeEvent.isComposing) return;
+    const target = event.target as Element;
+    if (target.closest(OWNS_ESCAPE) || isEditable(target)) return;
     event.preventDefault();
     onClose();
     toggleRef.current?.focus({ preventScroll: true });
