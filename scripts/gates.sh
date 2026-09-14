@@ -53,6 +53,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "gates.sh: $REPO_ROOT is not inside a git work tree; nothing to diff against" >&2
+    exit 2
+fi
+
 SCHEMA="web/src/api/schema.d.ts"
 
 extra="${GATES_EXTRA:-}"
