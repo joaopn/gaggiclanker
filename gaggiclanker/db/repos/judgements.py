@@ -27,7 +27,12 @@ from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.domain.vocab import TASTE_TAGS, Balance, Decision
 
-__all__ = ["JudgementWrite", "JudgementsRepository", "ShotJudgementRow"]
+__all__ = [
+    "JudgementWrite",
+    "JudgementsRepository",
+    "PendingWritebackRow",
+    "ShotJudgementRow",
+]
 
 log = structlog.get_logger(__name__)
 
@@ -88,6 +93,26 @@ class JudgementWrite(BaseModel):
         # user picked them in is the order they read back best.
         seen: dict[str, None] = dict.fromkeys(value)
         return list(seen)
+
+
+class PendingWritebackRow(BaseModel):
+    """One judgement the machine's notes card does not have yet, with what identifies it.
+
+    The shot's device id, time and profile ride along because the Sync page
+    lists these for a person to pick from, and a bare shot id is not something
+    anybody recognises a cup by.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: int
+    device_id: str
+    started_at: str | None = None
+    profile_name: str = ""
+    rating: int | None = None
+    balance: Balance | None = None
+    notes: str = ""
+    updated_at: str
 
 
 class ShotJudgementRow(BaseModel):
@@ -276,7 +301,11 @@ class JudgementsRepository(Repository):
         )
 
     async def pending_writeback(self, *, limit: int = 200) -> list[int]:
-        """Shot ids whose verdict this box has that the machine does not.
+        """Shot ids whose verdict this box has that the machine does not."""
+        return [row.shot_id for row in await self.pending_writeback_rows(limit=limit)]
+
+    async def pending_writeback_rows(self, *, limit: int = 200) -> list[PendingWritebackRow]:
+        """The judgements whose verdict this box has that the machine does not.
 
         Three conditions, and each is one half of a rule the write-back states:
 
@@ -293,7 +322,9 @@ class JudgementsRepository(Repository):
         Oldest first, so a bulk push walks the backlog in the order it built up.
         """
         sql = """
-            SELECT j.shot_id
+            SELECT j.shot_id, s.device_id, s.started_at,
+                   s.profile_name_on_device AS profile_name,
+                   j.rating, j.balance, j.notes, j.updated_at
             FROM shot_judgements j
             JOIN shots s ON s.id = j.shot_id
             WHERE j.seeded_from_device_note = 0
@@ -304,7 +335,7 @@ class JudgementsRepository(Repository):
         sql += " ORDER BY j.updated_at ASC, j.shot_id ASC LIMIT ?"
         params.append(limit)
         rows = await self.db.fetch_all(sql, params)
-        return [int(row["shot_id"]) for row in rows]
+        return self.to_models(PendingWritebackRow, rows)
 
     async def delete(self, shot_id: int) -> bool:
         cursor = await self.db.execute("DELETE FROM shot_judgements WHERE shot_id = ?", (shot_id,))

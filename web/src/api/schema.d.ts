@@ -470,8 +470,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Send every pending judgement to the machine's notes cards
+         * Send the selected pending judgements to the machine's notes cards
          * @description 202: one frame per shot, in a background task, stopping on the first device error.
+         *
+         *     The only way a judgement reaches the machine: a person selects shots on the
+         *     Sync page and confirms. Every selected id must still be pending (409
+         *     otherwise, nothing queued); writes off is a 403, audited. Saving a judgement
+         *     never sends one.
          */
         post: operations["post_notes_push_api_device_notes_push_post"];
         delete?: never;
@@ -4064,11 +4069,19 @@ export interface components {
         };
         /**
          * NotesPushAccepted
-         * @description What was queued for the bulk push.
+         * @description What was queued for the send.
          */
         NotesPushAccepted: {
             /** Pending */
             pending: number;
+        };
+        /**
+         * NotesPushRequest
+         * @description What a person chose to send. ``shot_ids`` omitted or null means every pending one.
+         */
+        NotesPushRequest: {
+            /** Shot Ids */
+            shot_ids?: number[] | null;
         };
         /** @enum {string} */
         OptionKey: "conservative" | "recommended" | "adventurous";
@@ -4094,15 +4107,46 @@ export interface components {
         };
         /**
          * PendingNotesData
-         * @description How many verdicts this box holds that the machine does not.
+         * @description The verdicts this box holds that the machine does not, and what a send would write.
          */
         PendingNotesData: {
             /** Fields */
             fields: string[];
-            /** Shot Ids */
-            shot_ids: number[];
+            /** Items */
+            items: components["schemas"]["PendingWritebackRow"][];
             /** Writes Enabled */
             writes_enabled: boolean;
+        };
+        /**
+         * PendingWritebackRow
+         * @description One judgement the machine's notes card does not have yet, with what identifies it.
+         *
+         *     The shot's device id, time and profile ride along because the Sync page
+         *     lists these for a person to pick from, and a bare shot id is not something
+         *     anybody recognises a cup by.
+         */
+        PendingWritebackRow: {
+            balance?: components["schemas"]["Balance"] | null;
+            /** Device Id */
+            device_id: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Profile Name
+             * @default
+             */
+            profile_name: string;
+            /** Rating */
+            rating?: number | null;
+            /** Shot Id */
+            shot_id: number;
+            /** Started At */
+            started_at?: string | null;
+            /** Updated At */
+            updated_at: string;
         };
         /**
          * PlannedShot
@@ -6790,7 +6834,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NotesPushRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {
@@ -6799,6 +6847,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_NotesPushAccepted_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

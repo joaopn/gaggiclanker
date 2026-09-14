@@ -28,7 +28,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import SHOT_FLAG_HAS_NOTES, ShotNotes
 from gaggiclanker.notes.writeback import NotesWritebackService, compose_device_notes
-from tests.cleanup.conftest import FIRST_ID, NOTES_ID, data, drain_tasks
+from tests.cleanup.conftest import FIRST_ID, NOTES_ID, data, drain_tasks, error
 
 ALL_FIELDS = ["rating", "balance", "doseIn", "doseOut", "grindSetting", "notes"]
 
@@ -340,7 +340,7 @@ async def test_there_is_no_per_shot_write_back_route(
     assert "req:history:notes:save" not in fake_device.ws_requests
 
 
-async def test_the_bulk_push_walks_the_backlog(
+async def test_sending_everything_pending_walks_the_backlog(
     writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     app, client = writes_on
@@ -350,16 +350,117 @@ async def test_the_bulk_push_walks_the_backlog(
     await _judge(app, second)
 
     pending = data(await client.get("/api/device/notes/pending"))
-    assert set(pending["shot_ids"]) == {first, second}
+    assert {item["shot_id"] for item in pending["items"]} == {first, second}
+    listed = next(item for item in pending["items"] if item["shot_id"] == first)
+    assert listed["device_id"] == pad6(FIRST_ID)
+    assert listed["rating"] == 4
 
-    response = await client.post("/api/device/notes/push")
+    response = await client.post("/api/device/notes/push", json={"shot_ids": None})
     assert response.status_code == 202
     assert data(response)["pending"] == 2
     await _drain(app)
 
     assert fake_device.shots[FIRST_ID].notes is not None
     assert fake_device.shots[FIRST_ID + 1].notes is not None
-    assert data(await client.get("/api/device/notes/pending"))["shot_ids"] == []
+    assert data(await client.get("/api/device/notes/pending"))["items"] == []
+
+
+async def test_sending_a_selection_writes_exactly_those_shots(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+) -> None:
+    """Three verdicts waiting, two selected: the third is not touched on the machine."""
+    app, client = writes_on
+    ids = [await _shot_id(app, FIRST_ID + offset) for offset in range(3)]
+    for shot_id in ids:
+        await _judge(app, shot_id)
+    fake_device.ws_requests.clear()
+
+    response = await client.post("/api/device/notes/push", json={"shot_ids": [ids[2], ids[0]]})
+    assert response.status_code == 202
+    assert data(response)["pending"] == 2
+    await _drain(app)
+
+    assert fake_device.ws_requests.count("req:history:notes:save") == 2
+    assert fake_device.shots[FIRST_ID].notes is not None
+    assert fake_device.shots[FIRST_ID + 2].notes is not None
+    assert fake_device.shots[FIRST_ID + 1].notes is None
+    rows = await DeviceWritesRepository(app.state.db).list_writes()
+    assert sorted(row.device_id or "" for row in rows if row.kind == "notes_save") == [
+        pad6(FIRST_ID),
+        pad6(FIRST_ID + 2),
+    ]
+    assert await _service(app).pending() == [ids[1]]
+
+
+async def test_a_selection_that_is_no_longer_pending_is_refused_and_sends_nothing(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+) -> None:
+    """What is sent is what the person saw selected, or nothing."""
+    app, client = writes_on
+    judged = await _shot_id(app, FIRST_ID)
+    unjudged = await _shot_id(app, FIRST_ID + 1)
+    await _judge(app, judged)
+    fake_device.ws_requests.clear()
+
+    response = await client.post("/api/device/notes/push", json={"shot_ids": [judged, unjudged]})
+
+    assert response.status_code == 409
+    body = error(response)
+    assert body["details"] == {"field": "shot_ids", "not_pending": 1}
+    assert app.state.tasks.get("notes-writeback") is None
+    assert "req:history:notes:save" not in fake_device.ws_requests
+
+
+async def test_an_empty_selection_is_a_bad_request(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    _, client = writes_on
+    response = await client.post("/api/device/notes/push", json={"shot_ids": []})
+    assert response.status_code == 400
+    assert error(response)["details"] == {"field": "shot_ids"}
+
+
+async def test_a_send_with_device_writes_off_is_refused_and_audited(
+    live: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+) -> None:
+    app, client = live
+    shot_id = await _shot_id(app, FIRST_ID)
+    await _judge(app, shot_id)
+
+    response = await client.post("/api/device/notes/push", json={"shot_ids": [shot_id]})
+
+    assert response.status_code == 403
+    assert "Device writes enabled" in error(response)["message"]
+    assert app.state.tasks.get("notes-writeback") is None
+    assert "req:history:notes:save" not in fake_device.ws_requests
+    rows = await DeviceWritesRepository(app.state.db).list_writes()
+    assert [(row.kind, row.result, row.device_id) for row in rows] == [
+        ("notes_save", "refused", None)
+    ]
+
+
+async def test_a_selected_shot_with_a_newer_card_on_the_machine_is_still_left_alone(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
+) -> None:
+    """Selecting a shot is consent to send it, not to overwrite somebody's typing."""
+    app, client = writes_on
+    newer = await _shot_id(app, FIRST_ID)
+    older = await _shot_id(app, FIRST_ID + 1)
+    await _judge(app, newer)
+    await _judge(app, older)
+    await NotesRepository(app.state.db).upsert(
+        newer,
+        ShotNotes.model_validate(
+            {"id": pad6(FIRST_ID), "rating": 5, "timestamp": int(time.time()) + 60}
+        ),
+    )
+
+    response = await client.post("/api/device/notes/push", json={"shot_ids": [newer, older]})
+    assert response.status_code == 202
+    await _drain(app)
+
+    assert fake_device.shots[FIRST_ID].notes is None
+    assert fake_device.shots[FIRST_ID + 1].notes is not None
 
 
 async def test_the_document_on_the_wire_is_the_one_the_firmware_can_read(

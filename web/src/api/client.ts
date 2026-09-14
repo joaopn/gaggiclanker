@@ -567,9 +567,19 @@ export async function getPendingNotes(): Promise<PendingNotesData> {
   return fetchApi<PendingNotesData>("/device/notes/pending");
 }
 
-/** Queue the whole backlog. 202, like the cleanup run. */
-export async function pushPendingNotes(): Promise<NotesPushAccepted> {
-  return fetchApi<NotesPushAccepted>("/device/notes/push", { method: "POST" });
+/**
+ * Send the judgements a person selected to the machine's notes cards. 202, like
+ * the cleanup run.
+ *
+ * `shotIds` null means every pending judgement. Every selected id must still be
+ * pending when the request lands, or the server refuses it with a 409 and sends
+ * nothing.
+ */
+export async function pushPendingNotes(shotIds: number[] | null): Promise<NotesPushAccepted> {
+  return fetchApi<NotesPushAccepted>("/device/notes/push", {
+    method: "POST",
+    body: JSON.stringify({ shot_ids: shotIds }),
+  });
 }
 
 export async function getSyncStatus(): Promise<SyncStatusData> {

@@ -40,12 +40,20 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.judgements import NOTES_MAX, JudgementsRepository, ShotJudgementRow
+from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
+from gaggiclanker.db.repos.judgements import (
+    NOTES_MAX,
+    JudgementsRepository,
+    PendingWritebackRow,
+    ShotJudgementRow,
+)
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow, NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.client import GaggimateClient
-from gaggiclanker.device.errors import DeviceError
+from gaggiclanker.device.errors import DeviceError, DeviceUnavailable
 from gaggiclanker.domain.models import ShotNotes
+from gaggiclanker.drafts.gate import refuse_unless_writes_enabled
+from gaggiclanker.infra.errors import BadRequest, Conflict, ServiceUnavailable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.settings import NOTES_WRITEBACK_FIELDS
@@ -185,6 +193,7 @@ class NotesWritebackService:
         self.judgements = JudgementsRepository(db)
         self.notes = NotesRepository(db)
         self.shots = ShotsRepository(db)
+        self.writes = DeviceWritesRepository(db)
 
     async def policy(self) -> NotesWritebackPolicy:
         raw = str(await self.settings.get("notesWritebackFields") or "")
@@ -197,6 +206,54 @@ class NotesWritebackService:
     async def pending(self, *, limit: int = 200) -> list[int]:
         """Shot ids whose verdict the machine does not have yet."""
         return await self.judgements.pending_writeback(limit=limit)
+
+    async def pending_rows(self, *, limit: int = 200) -> list[PendingWritebackRow]:
+        """The same backlog, with what a person picks a shot by."""
+        return await self.judgements.pending_writeback_rows(limit=limit)
+
+    async def approve_push(self, shot_ids: list[int] | None) -> list[int]:
+        """The shots a send from the Sync page may write, in the order it writes them.
+
+        ``None`` is "every pending judgement", which is what the page's "select
+        all" amounts to; a list is exactly those shots. Every selected id has to
+        be pending *now*: one that is not (sent from another tab, edited on the
+        machine and re-pulled, deleted from the machine) makes the whole request
+        a 409 and nothing is queued, so what is sent is what the person saw
+        selected. The per-shot rules still run again inside :meth:`writeback`.
+
+        Checks in order: a machine, the master switch (a refusal is audited), a
+        connection, the selection.
+        """
+        if self.client is None:
+            raise ServiceUnavailable(
+                "No machine is configured, so there is nowhere to write notes to."
+            )
+        await refuse_unless_writes_enabled(
+            self.settings, self.writes, kind="notes_save", host=self.client.host
+        )
+        if not self.client.connected:
+            raise DeviceUnavailable(
+                "The machine is not connected, so nothing can be sent to it now."
+            )
+        pending = await self.pending()
+        if shot_ids is None:
+            return pending
+        if not shot_ids:
+            raise BadRequest(
+                "Select at least one judgement to send.", details={"field": "shot_ids"}
+            )
+        wanted = set(shot_ids)
+        stale = wanted - set(pending)
+        if stale:
+            raise Conflict(
+                "Some of the selected judgements are no longer waiting to be sent — sent "
+                "already, changed on the machine, or the shot is gone from it. Nothing was "
+                "sent. Review the list and send again.",
+                details={"field": "shot_ids", "not_pending": len(stale)},
+            )
+        # The backlog's own order, oldest verdict first, whatever order the
+        # page happened to send the ids in.
+        return [shot_id for shot_id in pending if shot_id in wanted]
 
     async def writeback(self, shot_id: int, *, trigger: str = "manual") -> WritebackResult:
         """Send one shot's judgement to the machine, if every rule allows it.
@@ -292,10 +349,8 @@ class NotesWritebackService:
         log.info("notes_written_back", shot_id=shot_id, device_id=shot.device_id, trigger=trigger)
         return WritebackResult(shot_id=shot_id, device_id=shot.device_id, written=True)
 
-    async def push_pending(
-        self, *, trigger: str = "manual", limit: int = 200
-    ) -> list[WritebackResult]:
-        """Every pending judgement, oldest first, stopping on the first device error.
+    async def push(self, shot_ids: list[int], *, trigger: str = "manual") -> list[WritebackResult]:
+        """The approved judgements, in order, stopping on the first device error.
 
         A rule-based refusal (nothing to send, the shot is gone) is a skip and
         the walk carries on; a device error is a stop, for the same reason the
@@ -303,19 +358,19 @@ class NotesWritebackService:
         frames will not improve it.
         """
         results: list[WritebackResult] = []
-        for shot_id in await self.pending(limit=limit):
+        for shot_id in shot_ids:
             result = await self.writeback(shot_id, trigger=trigger)
             results.append(result)
             if result.device_error:
                 break
         return results
 
-    def spawn_bulk(self, tasks: TaskRegistry) -> bool:
-        """Queue a bulk push under this machine's name. False if one is running."""
+    def spawn_push(self, tasks: TaskRegistry, shot_ids: list[int]) -> bool:
+        """Queue a send of approved judgements under one name. False if one is running."""
         name = writeback_task_name()
         if tasks.get(name) is not None:
             return False
-        tasks.spawn(name, self.push_pending(trigger="bulk"))
+        tasks.spawn(name, self.push(shot_ids, trigger="sync-page"))
         return True
 
     def _publish(self, data: dict[str, Any]) -> None:

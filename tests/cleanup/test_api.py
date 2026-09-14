@@ -140,7 +140,9 @@ async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machin
     assert plan["on_device_count"] == 0
 
     pending = data(await client.get("/api/device/notes/pending"))
-    assert pending["shot_ids"] == []
+    assert pending["items"] == []
+    response = await client.post("/api/device/notes/push")
+    assert response.status_code == 503
 
     response = await client.post("/api/device/cleanup/run", json={"shot_ids": []})
     assert response.status_code == 503
@@ -155,4 +157,4 @@ async def test_pending_notes_reports_the_write_switch(
     assert "enabled" not in body
     assert body["writes_enabled"] is False
     assert "rating" in body["fields"]
-    assert body["shot_ids"] == []
+    assert body["items"] == []

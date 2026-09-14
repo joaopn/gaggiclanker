@@ -35,10 +35,11 @@ from gaggiclanker.api.deps import (
 from gaggiclanker.cleanup.service import CleanupPlan, CleanupService, cleanup_task_name
 from gaggiclanker.db.repos.cleanup import CleanupRepository, CleanupRunRow
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow
+from gaggiclanker.db.repos.judgements import PendingWritebackRow
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
-from gaggiclanker.notes.writeback import NotesWritebackService
+from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 
 __all__ = ["router"]
 
@@ -256,17 +257,25 @@ def _require_writeback(service: NotesWritebackService | None) -> NotesWritebackS
 
 
 class PendingNotesData(BaseModel):
-    """How many verdicts this box holds that the machine does not."""
+    """The verdicts this box holds that the machine does not, and what a send would write."""
 
     model_config = ConfigDict(extra="forbid")
 
     writes_enabled: bool
     fields: list[str]
-    shot_ids: list[int]
+    items: list[PendingWritebackRow]
+
+
+class NotesPushRequest(BaseModel):
+    """What a person chose to send. ``shot_ids`` omitted or null means every pending one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_ids: list[int] | None = None
 
 
 class NotesPushAccepted(BaseModel):
-    """What was queued for the bulk push."""
+    """What was queued for the send."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -286,7 +295,7 @@ async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
         PendingNotesData(
             writes_enabled=policy.writes_enabled,
             fields=policy.fields,
-            shot_ids=await service.pending(),
+            items=await service.pending_rows(),
         ).model_dump(mode="json")
     )
 
@@ -295,17 +304,28 @@ async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
     "/notes/push",
     response_model=ApiResponse[NotesPushAccepted],
     status_code=202,
-    summary="Send every pending judgement to the machine's notes cards",
+    summary="Send the selected pending judgements to the machine's notes cards",
 )
-async def post_notes_push(request: Request, notes: NotesWritebackServiceDep) -> JSONResponse:
-    """202: one frame per shot, in a background task, stopping on the first device error."""
+async def post_notes_push(
+    request: Request,
+    notes: NotesWritebackServiceDep,
+    body: NotesPushRequest | None = None,
+) -> JSONResponse:
+    """202: one frame per shot, in a background task, stopping on the first device error.
+
+    The only way a judgement reaches the machine: a person selects shots on the
+    Sync page and confirms. Every selected id must still be pending (409
+    otherwise, nothing queued); writes off is a 403, audited. Saving a judgement
+    never sends one.
+    """
     service = _require_writeback(notes)
-    if service.client is None:
-        raise ServiceUnavailable("No machine is configured, so there is nowhere to write notes to.")
-    pending = await service.pending()
-    if not service.spawn_bulk(request.app.state.tasks):
-        raise Conflict("A notes push is already running.")
+    tasks = request.app.state.tasks
+    if tasks.get(writeback_task_name()) is not None:
+        raise Conflict("A notes send is already running.")
+    selected = await service.approve_push(body.shot_ids if body is not None else None)
+    if not service.spawn_push(tasks, selected):
+        raise Conflict("A notes send is already running.")
     return envelope_response(
-        NotesPushAccepted(pending=len(pending)).model_dump(mode="json"),
+        NotesPushAccepted(pending=len(selected)).model_dump(mode="json"),
         status_code=202,
     )

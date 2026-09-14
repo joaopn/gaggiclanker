@@ -1,4 +1,4 @@
-"""Notes write-back against the real firmware: a judgement onto the machine's notes card.
+"""Sending notes against the real firmware: a judgement onto the machine's notes card.
 
 Opt-in, like the rest of this directory: ``scripts/sim.sh test``, or
 ``uv run pytest -m simulator`` against a simulator already on :8080.
@@ -30,6 +30,7 @@ Nothing here deletes anything from the machine.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -40,7 +41,7 @@ from fastapi import FastAPI
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.ids import pad6
-from gaggiclanker.notes.writeback import NotesWritebackService
+from gaggiclanker.notes.writeback import writeback_task_name
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
 from tests.simulator.test_e2e import (
@@ -107,9 +108,15 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
         ),
     )
 
-    service: NotesWritebackService = app.state.notes_writeback
-    result = await service.writeback(shot)
-    assert result.written, result.reason
+    # The explicit send, as the Sync page makes it: the selected shot, confirmed.
+    # Saving the judgement above sent nothing; this request is what does.
+    pending: Any = data(await client.get("/api/device/notes/pending"))
+    assert shot in {item["shot_id"] for item in pending["items"]}
+    accepted = await client.post("/api/device/notes/push", json={"shot_ids": [shot]})
+    assert accepted.status_code == 202, accepted.text
+    task = app.state.tasks.get(writeback_task_name())
+    if task is not None:
+        await asyncio.wait_for(asyncio.shield(task), 30.0)
 
     # Read it back **off the machine**, over HTTP, which is the route the device
     # UI itself uses and the one that proves the file is on the filesystem under
@@ -137,7 +144,7 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
 
     # Nothing was deleted, and the API agrees the verdict is no longer pending.
     body: Any = data(await client.get("/api/device/notes/pending"))
-    assert shot not in body["shot_ids"]
+    assert shot not in {item["shot_id"] for item in body["items"]}
 
 
 async def _archived(app: FastAPI, device_shot_id: int) -> int | None:

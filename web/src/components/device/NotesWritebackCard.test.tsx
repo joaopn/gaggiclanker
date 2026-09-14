@@ -24,7 +24,16 @@ function pending(overrides: Partial<PendingNotesData> = {}): PendingNotesData {
   return {
     writes_enabled: true,
     fields: ["rating", "balance", "doseIn", "doseOut", "grindSetting"],
-    shot_ids: [3, 4, 5],
+    items: [3, 4, 5].map((shotId) => ({
+      shot_id: shotId,
+      device_id: `00010${shotId}`,
+      started_at: "2026-02-01T08:00:00.000Z",
+      profile_name: "9 Bar",
+      rating: 4,
+      balance: null,
+      notes: "",
+      updated_at: "2026-02-02T08:00:00.000Z",
+    })),
     ...overrides,
   };
 }
@@ -62,7 +71,7 @@ describe("NotesWritebackCard", () => {
   });
 
   it("says so plainly when there is nothing to send", async () => {
-    getPendingNotes.mockResolvedValue(pending({ shot_ids: [] }));
+    getPendingNotes.mockResolvedValue(pending({ items: [] }));
     renderWithQueryClient(<NotesWritebackCard />);
 
     expect(await screen.findByTestId("notes-writeback")).toHaveTextContent(

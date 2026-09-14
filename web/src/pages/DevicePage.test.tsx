@@ -123,7 +123,7 @@ beforeEach(() => {
   getPendingNotes.mockResolvedValue({
     writes_enabled: false,
     fields: ["rating"],
-    shot_ids: [],
+    items: [],
   });
 });
 

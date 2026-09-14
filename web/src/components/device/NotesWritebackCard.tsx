@@ -22,7 +22,7 @@ import { usePendingNotes, usePushPendingNotes } from "@/hooks/useDeviceStatus";
 export function NotesWritebackCard() {
   const pending = usePendingNotes();
   const push = usePushPendingNotes();
-  const count = pending.data?.shot_ids.length ?? 0;
+  const count = pending.data?.items.length ?? 0;
   const enabled = Boolean(pending.data?.writes_enabled);
 
   return (
@@ -38,7 +38,7 @@ export function NotesWritebackCard() {
             variant="outline"
             size="sm"
             onClick={() =>
-              push.mutate(undefined, {
+              push.mutate(null, {
                 onSuccess: (accepted) =>
                   toast.success(`Pushing ${accepted.pending} judgements to the machine`),
                 onError: (error: Error) => toast.error(error.message),
