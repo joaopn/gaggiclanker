@@ -116,14 +116,10 @@ export function usePendingNotes(): UseQueryResult<PendingNotesData, Error> {
   });
 }
 
-export function usePushPendingNotes(): UseMutationResult<
-  NotesPushAccepted,
-  Error,
-  number[] | null
-> {
+export function usePushPendingNotes(): UseMutationResult<NotesPushAccepted, Error, number[]> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (shotIds: number[] | null) => pushPendingNotes(shotIds),
+    mutationFn: (shotIds: number[]) => pushPendingNotes(shotIds),
     // Settled rather than success: a 409 means the list moved under the
     // selection, and the fresh list is what the person needs to see next.
     onSettled: async () => {

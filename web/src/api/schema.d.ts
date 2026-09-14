@@ -473,10 +473,10 @@ export interface paths {
          * Send the selected pending judgements to the machine's notes cards
          * @description 202: one frame per shot, in a background task, stopping on the first device error.
          *
-         *     The only way a judgement reaches the machine: a person selects shots on the
-         *     Sync page and confirms. Every selected id must still be pending (409
-         *     otherwise, nothing queued); writes off is a 403, audited. Saving a judgement
-         *     never sends one.
+         *     The only way a judgement reaches the machine: a person ticks shots on the
+         *     Sync page and confirms. The ids are required and non-empty (400 otherwise);
+         *     every one must still be pending (409 otherwise, nothing queued); writes off
+         *     is a 403, audited. Saving a judgement never sends one.
          */
         post: operations["post_notes_push_api_device_notes_push_post"];
         delete?: never;
@@ -4077,11 +4077,15 @@ export interface components {
         };
         /**
          * NotesPushRequest
-         * @description What a person chose to send. ``shot_ids`` omitted or null means every pending one.
+         * @description What a person chose to send: the ticked shots, by id.
+         *
+         *     Required and non-empty. There is deliberately no "every pending one" form:
+         *     the Sync page never sends it, and a send nobody saw a list for is exactly
+         *     the kind of write this route exists to rule out.
          */
         NotesPushRequest: {
             /** Shot Ids */
-            shot_ids?: number[] | null;
+            shot_ids: number[];
         };
         /** @enum {string} */
         OptionKey: "conservative" | "recommended" | "adventurous";
@@ -6834,9 +6838,9 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["NotesPushRequest"] | null;
+                "application/json": components["schemas"]["NotesPushRequest"];
             };
         };
         responses: {

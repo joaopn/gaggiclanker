@@ -571,11 +571,11 @@ export async function getPendingNotes(): Promise<PendingNotesData> {
  * Send the judgements a person selected to the machine's notes cards. 202, like
  * the cleanup run.
  *
- * `shotIds` null means every pending judgement. Every selected id must still be
- * pending when the request lands, or the server refuses it with a 409 and sends
- * nothing.
+ * `shotIds` are the ticked shots, at least one; there is no "everything
+ * pending" form. Every one must still be pending when the request lands, or the
+ * server refuses it with a 409 and sends nothing.
  */
-export async function pushPendingNotes(shotIds: number[] | null): Promise<NotesPushAccepted> {
+export async function pushPendingNotes(shotIds: number[]): Promise<NotesPushAccepted> {
   return fetchApi<NotesPushAccepted>("/device/notes/push", {
     method: "POST",
     body: JSON.stringify({ shot_ids: shotIds }),

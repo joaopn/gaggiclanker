@@ -27,7 +27,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.api.deps import (
     CleanupServiceDep,
@@ -144,9 +144,10 @@ class CleanupRunRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Every planned shot id from the preview that was confirmed. Required, and
-    #: compared with a fresh plan: a run deletes what was approved or nothing.
-    shot_ids: list[int]
+    #: Every planned shot id from the preview that was confirmed. Required and
+    #: non-empty — confirming nothing is not a run — and compared with a fresh
+    #: plan: a run deletes what was approved or nothing.
+    shot_ids: list[int] = Field(min_length=1)
 
 
 class CleanupRunAccepted(BaseModel):
@@ -270,11 +271,16 @@ class PendingNotesData(BaseModel):
 
 
 class NotesPushRequest(BaseModel):
-    """What a person chose to send. ``shot_ids`` omitted or null means every pending one."""
+    """What a person chose to send: the ticked shots, by id.
+
+    Required and non-empty. There is deliberately no "every pending one" form:
+    the Sync page never sends it, and a send nobody saw a list for is exactly
+    the kind of write this route exists to rule out.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    shot_ids: list[int] | None = None
+    shot_ids: list[int] = Field(min_length=1)
 
 
 class NotesPushAccepted(BaseModel):
@@ -310,22 +316,22 @@ async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
     summary="Send the selected pending judgements to the machine's notes cards",
 )
 async def post_notes_push(
+    body: NotesPushRequest,
     request: Request,
     notes: NotesWritebackServiceDep,
-    body: NotesPushRequest | None = None,
 ) -> JSONResponse:
     """202: one frame per shot, in a background task, stopping on the first device error.
 
-    The only way a judgement reaches the machine: a person selects shots on the
-    Sync page and confirms. Every selected id must still be pending (409
-    otherwise, nothing queued); writes off is a 403, audited. Saving a judgement
-    never sends one.
+    The only way a judgement reaches the machine: a person ticks shots on the
+    Sync page and confirms. The ids are required and non-empty (400 otherwise);
+    every one must still be pending (409 otherwise, nothing queued); writes off
+    is a 403, audited. Saving a judgement never sends one.
     """
     service = _require_writeback(notes)
     tasks = request.app.state.tasks
     if tasks.get(writeback_task_name()) is not None:
         raise Conflict("A notes send is already running.")
-    selected = await service.approve_push(body.shot_ids if body is not None else None)
+    selected = await service.approve_push(body.shot_ids)
     if not service.spawn_push(tasks, selected):
         raise Conflict("A notes send is already running.")
     return envelope_response(

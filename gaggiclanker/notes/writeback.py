@@ -211,12 +211,12 @@ class NotesWritebackService:
         """The same backlog, with what a person picks a shot by."""
         return await self.judgements.pending_writeback_rows(limit=limit)
 
-    async def approve_push(self, shot_ids: list[int] | None) -> list[int]:
+    async def approve_push(self, shot_ids: list[int]) -> list[int]:
         """The shots a send from the Sync page may write, in the order it writes them.
 
-        ``None`` is "every pending judgement", which is what the page's "select
-        all" amounts to; a list is exactly those shots. Every selected id has to
-        be pending *now*: one that is not (sent from another tab, edited on the
+        Exactly the ticked shots, and at least one: there is no "everything
+        pending" form, because nobody is shown a list for it. Every selected id
+        has to be pending *now*: one that is not (sent from another tab, edited on the
         machine and re-pulled, deleted from the machine) makes the whole request
         a 409 and nothing is queued, so what is sent is what the person saw
         selected. The per-shot rules still run again inside :meth:`writeback`.
@@ -235,13 +235,11 @@ class NotesWritebackService:
             raise DeviceUnavailable(
                 "The machine is not connected, so nothing can be sent to it now."
             )
-        pending = await self.pending()
-        if shot_ids is None:
-            return pending
         if not shot_ids:
             raise BadRequest(
                 "Select at least one judgement to send.", details={"field": "shot_ids"}
             )
+        pending = await self.pending()
         wanted = set(shot_ids)
         stale = wanted - set(pending)
         if stale:

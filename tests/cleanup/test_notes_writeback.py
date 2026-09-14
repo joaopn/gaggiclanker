@@ -340,7 +340,7 @@ async def test_there_is_no_per_shot_write_back_route(
     assert "req:history:notes:save" not in fake_device.ws_requests
 
 
-async def test_sending_everything_pending_walks_the_backlog(
+async def test_sending_every_ticked_judgement_walks_the_backlog(
     writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     app, client = writes_on
@@ -355,7 +355,7 @@ async def test_sending_everything_pending_walks_the_backlog(
     assert listed["device_id"] == pad6(FIRST_ID)
     assert listed["rating"] == 4
 
-    response = await client.post("/api/device/notes/push", json={"shot_ids": None})
+    response = await client.post("/api/device/notes/push", json={"shot_ids": [second, first]})
     assert response.status_code == 202
     assert data(response)["pending"] == 2
     await _drain(app)
@@ -411,13 +411,39 @@ async def test_a_selection_that_is_no_longer_pending_is_refused_and_sends_nothin
     assert "req:history:notes:save" not in fake_device.ws_requests
 
 
-async def test_an_empty_selection_is_a_bad_request(
+@pytest.mark.parametrize(
+    "body",
+    [None, {}, {"shot_ids": None}, {"shot_ids": []}],
+    ids=["no body", "no ids", "null ids", "empty ids"],
+)
+async def test_a_send_needs_an_explicit_non_empty_selection(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+    fake_device: FakeDevice,
+    body: dict[str, object] | None,
+) -> None:
+    """There is no "everything pending" form: nobody was shown a list for it."""
+    app, client = writes_on
+    await _judge(app, await _shot_id(app, FIRST_ID))
+
+    if body is None:
+        response = await client.post("/api/device/notes/push")
+    else:
+        response = await client.post("/api/device/notes/push", json=body)
+
+    assert response.status_code == 400
+    assert error(response)["code"] == "INVALID_REQUEST"
+    assert app.state.tasks.get("notes-writeback") is None
+    assert "req:history:notes:save" not in fake_device.ws_requests
+
+
+async def test_the_service_refuses_an_empty_selection_too(
     writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
-    _, client = writes_on
-    response = await client.post("/api/device/notes/push", json={"shot_ids": []})
-    assert response.status_code == 400
-    assert error(response)["details"] == {"field": "shot_ids"}
+    from gaggiclanker.infra.errors import BadRequest
+
+    app, _ = writes_on
+    with pytest.raises(BadRequest, match="at least one judgement"):
+        await _service(app).approve_push([])
 
 
 async def test_a_send_with_device_writes_off_is_refused_and_audited(

@@ -52,10 +52,11 @@ settings are deleted at upgrade (migration `0018`), and a boot with one of the
 variables still set logs `setting_removed_env_ignored` naming it.
 
 API: `POST /api/device/cleanup/run` requires `{"shot_ids": [...]}`, the planned
-shot ids you confirmed, and answers 409 when the plan has changed; each planned
-shot carries a `reason`, and the plan's policy loses `auto`.
-`POST /api/device/notes/push` takes `{"shot_ids": [...]}` (or `null` for every
-pending judgement) and answers 409 when a selected one is no longer pending.
+shot ids you confirmed — at least one, an empty list is a 400 — and answers 409
+when the plan has changed; each planned shot carries a `reason`, and the plan's
+policy loses `auto`. `POST /api/device/notes/push` requires `{"shot_ids": [...]}`,
+the judgements you ticked — at least one; there is no form that sends everything
+pending — and answers 409 when a selected one is no longer pending.
 `GET /api/device/notes/pending` returns `items` — each with the shot's device id,
 time, profile and verdict — in place of `shot_ids`, and loses `enabled`. Both
 write routes answer 403 when device writes are off, and record the refusal.

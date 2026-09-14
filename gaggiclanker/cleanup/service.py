@@ -62,7 +62,7 @@ from gaggiclanker.device.writes import payload_hash
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.drafts.gate import refuse_unless_writes_enabled
-from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
+from gaggiclanker.infra.errors import BadRequest, Conflict, ServiceUnavailable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.settings_service import SettingsService
@@ -344,6 +344,10 @@ class CleanupService:
             raise DeviceUnavailable(
                 "The machine is not connected, so nothing can be deleted from it now."
             )
+        if not shot_ids:
+            # Confirming an empty plan is not a run: it would leave an `ok 0/0`
+            # row in the ledger for a deletion nobody asked for.
+            raise BadRequest("Confirm at least one shot to delete.", details={"field": "shot_ids"})
         plan = await self.plan()
         if sorted(item.shot_id for item in plan.planned) != sorted(shot_ids):
             raise Conflict(

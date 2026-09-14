@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.cleanup.service import cleanup_task_name
@@ -108,6 +109,34 @@ async def test_the_run_route_needs_the_approved_ids(
     assert data(await client.get("/api/device/cleanup/runs"))["items"] == []
 
 
+async def test_confirming_an_empty_plan_is_a_bad_request_and_writes_no_run(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Explicit means something to delete: an empty approval is not an `ok 0/0` run."""
+    app, client = writes_on
+    plan = data(await client.get("/api/device/cleanup/plan"))
+    assert plan["planned"] == [], "the default policy is off, so the plan is empty"
+
+    response = await client.post("/api/device/cleanup/run", json={"shot_ids": []})
+
+    assert response.status_code == 400
+    details = error(response)["details"]
+    assert [(item["field"], item["type"]) for item in details] == [("body.shot_ids", "too_short")]
+    assert app.state.tasks.get(cleanup_task_name()) is None
+    assert data(await client.get("/api/device/cleanup/runs"))["items"] == []
+
+
+async def test_the_service_refuses_an_empty_approval_too(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """The route's schema is not the only caller: the service holds the rule itself."""
+    from gaggiclanker.infra.errors import BadRequest
+
+    app, _ = writes_on
+    with pytest.raises(BadRequest, match="at least one shot"):
+        await service(app).approve([])
+
+
 async def test_the_run_route_with_writes_off_is_a_403_naming_the_switch(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
@@ -141,10 +170,10 @@ async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machin
 
     pending = data(await client.get("/api/device/notes/pending"))
     assert pending["items"] == []
-    response = await client.post("/api/device/notes/push")
+    response = await client.post("/api/device/notes/push", json={"shot_ids": [1]})
     assert response.status_code == 503
 
-    response = await client.post("/api/device/cleanup/run", json={"shot_ids": []})
+    response = await client.post("/api/device/cleanup/run", json={"shot_ids": [1]})
     assert response.status_code == 503
     assert "no machine" in error(response)["message"].lower()
 
