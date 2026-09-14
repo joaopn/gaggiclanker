@@ -241,7 +241,10 @@ case "${1:-test}" in
     test)
         serve
         trap stop EXIT
-        (cd "$REPO_ROOT" && GAGGIMATE_SIM_HOST="127.0.0.1:$SIM_PORT" uv run pytest -m simulator)
+        # `-n 0`: the suite runs in parallel by default, but there is one
+        # simulator, it allows three WebSocket clients and it brews one shot at
+        # a time. These tests take turns.
+        (cd "$REPO_ROOT" && GAGGIMATE_SIM_HOST="127.0.0.1:$SIM_PORT" uv run pytest -m simulator -n 0)
         ;;
     *) die "usage: sim.sh [build|run|serve|test|stop|clean]" ;;
 esac

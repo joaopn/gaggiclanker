@@ -49,6 +49,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-pyyaml>=6.0.12.20260906",
+    # The suite runs in parallel by default (see addopts below): serially it
+    # takes longer than the five minutes a gate can afford.
+    "pytest-xdist>=3.8",
 ]
 
 [build-system]
@@ -111,7 +114,16 @@ asyncio_default_fixture_loop_scope = "function"
 # alone only labels them. An explicit `-m simulator` on the command line
 # replaces this one (pytest takes the last -m), which is exactly the override
 # `scripts/sim.sh test` relies on.
-addopts = "-q --strict-markers -m \"not simulator\""
+#
+# `-n auto --dist load`: one worker per core, tests handed out individually.
+# Serially the suite takes four to six minutes; in parallel well under one.
+# Every test already gets its own DATA_DIR, SQLite file and fake machine on
+# port 0, so workers share nothing but the CPU. `load` rather than `loadfile`
+# because the slow tests cluster in a few files (sync, device) and per-file
+# scheduling leaves most workers idle while one grinds through them. Starting
+# the workers costs several seconds, so for a quick run over one file pass
+# `-n 0`. `scripts/sim.sh test` passes it too: there is one simulator.
+addopts = "-q --strict-markers -m \"not simulator\" -n auto --dist load"
 markers = [
     # Opt-in: integration tests that need the GaggiMate firmware simulator
     # (`pio run -e display-sim -t run`) listening on localhost:8080.
