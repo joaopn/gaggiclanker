@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import type {
   SyncStatusData,
 } from "@/api/types";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
+import { queryKeys } from "@/lib/queryKeys";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
@@ -862,6 +864,69 @@ describe("ShotsPage open rows", () => {
     toggle().focus();
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+  });
+
+  it("undoes the closed panel's height before revealing the next one further down", async () => {
+    // jsdom lays nothing out, so the geometry is stubbed: the list shows 0 to
+    // 500, a row starts at 100 and its panel ends at 800. Opening a panel
+    // therefore reveals by 100 (as far as it can without hiding the row), and
+    // swapping to a lower row undoes the 300 px panel that closed above it.
+    // Only the order of the two scroll writes is under test.
+    const user = setupUser();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          gcTime: Number.POSITIVE_INFINITY,
+          staleTime: Number.POSITIVE_INFINITY,
+        },
+      },
+    });
+    // The lower shot's detail and curve are already cached, so its panel is
+    // complete on its first measure — the case where the reveal ran first.
+    queryClient.setQueryData(queryKeys.shots.detail("2"), { ...shot129, judgement: judgement() });
+    queryClient.setQueryData(queryKeys.samples.curve("2", undefined), samplesData);
+    getShots.mockResolvedValue(two());
+    const rect = (top: number, bottom: number) =>
+      ({ top, bottom, height: bottom - top, left: 0, right: 0, width: 0, x: 0, y: top }) as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function stub(
+      this: Element,
+    ) {
+      const testId = (this as HTMLElement).dataset?.testid;
+      if (testId === "shots-scroll") return rect(0, 500);
+      if (testId === "shot-panel") return rect(500, 800);
+      if (testId === "shot-row") return rect(100, 152);
+      return rect(0, 0);
+    });
+
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/" element={<ShotsPage />} />
+      </Routes>,
+      { queryClient },
+    );
+    await listed();
+    let top = 1000;
+    const writes: number[] = [];
+    Object.defineProperty(screen.getByTestId("shots-scroll"), "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        writes.push(value);
+        top = value;
+      },
+    });
+
+    await user.click(toggle("000101"));
+    await within(await screen.findByTestId("shot-panel")).findByTestId("judgement-form");
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0));
+    const before = top;
+    writes.length = 0;
+
+    await user.click(toggle("000102"));
+    await waitFor(() => expect(screen.getByTestId("shot-panel")).toHaveAttribute("data-shot", "2"));
+
+    await waitFor(() => expect(writes).toEqual([before - 300, before - 200]));
   });
 
   it("leaves Escape to a popover open inside the row", async () => {

@@ -112,8 +112,11 @@ export function ShotsTable({
   // panel closing above the clicked row pulls it up by the panel's height, and
   // the row somebody just clicked would jump out from under the pointer.
   const compensate = useRef(0);
-  // Whether the open panel has been brought into view yet, per open row.
-  const revealed = useRef<{ id: number; done: boolean } | null>(null);
+  // Whether the open panel's content has arrived, as its last measure said.
+  const [panelReady, setPanelReady] = useState(false);
+  // Whether the open panel has been brought into view for good: once its
+  // content has arrived and been revealed, later growth is somebody using it.
+  const revealed = useRef(false);
 
   const toggle = useCallback(
     (id: number) => {
@@ -123,7 +126,8 @@ export function ShotsTable({
       }
       setOpenId((current) => (current === id ? null : id));
       setPanelHeight(0);
-      revealed.current = null;
+      setPanelReady(false);
+      revealed.current = false;
     },
     [shots, openId, openIndex, panelHeight],
   );
@@ -131,26 +135,33 @@ export function ShotsTable({
   const close = useCallback(() => {
     setOpenId(null);
     setPanelHeight(0);
-    revealed.current = null;
+    setPanelReady(false);
+    revealed.current = false;
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the swap of open rows is the trigger
+  // The panel only reports; the scrolling happens here. A child's layout
+  // effect runs before its parent's, so a reveal run from the panel's own
+  // measure came before this compensation on a swap to a lower row whose
+  // detail was already cached — it measured against the old panel still
+  // counted above, landed up to that panel's height short, and was marked done.
+  const measure = useCallback((height: number, ready: boolean) => {
+    setPanelHeight((current) => (Math.abs(current - height) < 0.5 ? current : height));
+    setPanelReady(ready);
+  }, []);
+
+  // One effect, so the order is written down rather than implied: undo the
+  // closed panel's height first, then bring the open panel into view.
   useLayoutEffect(() => {
     const container = scrollRef.current;
-    if (compensate.current === 0 || container === null) return;
-    container.scrollTop = Math.max(0, container.scrollTop - compensate.current);
-    compensate.current = 0;
-  }, [openId, scrollRef]);
-
-  const measure = useCallback(
-    (height: number, ready: boolean) => {
-      setPanelHeight((current) => (Math.abs(current - height) < 0.5 ? current : height));
-      if (openId === null || revealed.current?.done) return;
-      reveal(scrollRef.current, openId, `${panelPrefix}-${openId}`, headerRef.current);
-      revealed.current = { id: openId, done: ready };
-    },
-    [openId, panelPrefix, scrollRef],
-  );
+    if (container === null) return;
+    if (compensate.current !== 0) {
+      container.scrollTop = Math.max(0, container.scrollTop - compensate.current);
+      compensate.current = 0;
+    }
+    if (openId === null || panelHeight === 0 || revealed.current) return;
+    reveal(container, openId, `${panelPrefix}-${openId}`, headerRef.current);
+    revealed.current = panelReady;
+  }, [openId, panelHeight, panelReady, panelPrefix, scrollRef]);
 
   const visible = shots.slice(window.start, window.end);
   // One template for the header and every row, so a resized column cannot
@@ -421,14 +432,14 @@ function ResizeHandle({
  * The measuring half; the arithmetic is `revealDistance`.
  */
 function reveal(
-  container: HTMLElement | null,
+  container: HTMLElement,
   openId: number,
   panelId: string,
   header: HTMLElement | null,
 ): void {
   const panel = document.getElementById(panelId);
   const row = panel?.previousElementSibling;
-  if (container === null || !panel || !row || Number(panel.dataset.shot) !== openId) return;
+  if (!panel || !row || Number(panel.dataset.shot) !== openId) return;
   const box = container.getBoundingClientRect();
   const by = revealDistance({
     listTop: box.top + (header?.offsetHeight ?? 0),
