@@ -224,7 +224,7 @@ fi
 
 # Microseconds since the epoch, from bash itself: no date(1) round trip per gate.
 now_us() { echo "${EPOCHREALTIME/./}"; }
-seconds() { printf '%d.%01d' "$(($1 / 1000000))" "$(($1 % 1000000 / 100000))"; }
+seconds() { printf '%d.%02d' "$(($1 / 1000000))" "$(($1 % 1000000 / 10000))"; }
 
 statuses=()
 durations=()
