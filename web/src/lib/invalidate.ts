@@ -79,6 +79,18 @@ export function invalidateDeviceWrites(queryClient: QueryClient): Promise<void> 
   return queryClient.invalidateQueries({ queryKey: queryKeys.device.all }).then(() => undefined);
 }
 
+/**
+ * Everything that reports the machine connection: the device status the header
+ * pill reads, and the sync status whose `configured`/`connected` the Sync page
+ * reads. A settings change rebuilds that connection on the server.
+ */
+export function invalidateDeviceConnection(queryClient: QueryClient): Promise<void> {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.device.status() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.sync.all }),
+  ]).then(() => undefined);
+}
+
 export function invalidateBeans(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.beans.all }).then(() => undefined);
 }

@@ -51,7 +51,7 @@ async def test_every_write_refuses_while_the_switch_is_off(
     shape of bug this costs nothing to rule out.
     """
     app, _ = live
-    client = app.state.device
+    client = app.state.connection.client
     before = len(fake_device.profiles)
 
     with pytest.raises(DeviceWriteRefused):
@@ -74,11 +74,11 @@ async def test_a_refusal_is_recorded_with_the_kind_that_was_attempted(
     """An audit that says only "something was refused" answers nothing."""
     app, _ = live
     with pytest.raises(DeviceWriteRefused):
-        await app.state.device.select_profile("9bar")
+        await app.state.connection.client.select_profile("9bar")
     rows = await DeviceWritesRepository(app.state.db).list_writes()
     assert rows[0].kind == "profile_select"
     assert rows[0].result == "refused"
-    assert rows[0].host == app.state.device.host
+    assert rows[0].host == app.state.connection.client.host
     assert "switched off" in rows[0].error
 
 
@@ -91,7 +91,7 @@ async def test_a_save_creates_a_new_profile_and_returns_the_id_the_machine_chose
     app, _ = writes_on
     before = {profile["id"] for profile in fake_device.profiles}
 
-    stored = await app.state.device.save_profile(await a_new_profile(app))
+    stored = await app.state.connection.client.save_profile(await a_new_profile(app))
 
     assert stored.id is not None
     assert stored.id not in before, "the save overwrote an existing profile"
@@ -109,11 +109,11 @@ async def test_a_new_profile_is_auto_favourited_by_the_firmware(
     real.
     """
     app, _ = writes_on
-    stored = await app.state.device.save_profile(await a_new_profile(app))
+    stored = await app.state.connection.client.save_profile(await a_new_profile(app))
     assert stored.id in fake_device.favorite_profile_ids
     assert stored.favorite is True
 
-    await app.state.device.unfavorite_profile(stored.id or "")
+    await app.state.connection.client.unfavorite_profile(stored.id or "")
     assert stored.id not in fake_device.favorite_profile_ids
 
 
@@ -132,7 +132,7 @@ async def test_a_save_refuses_a_profile_that_already_has_an_id(
     before = len(fake_device.profiles)
 
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.device.save_profile(with_id)
+        await app.state.connection.client.save_profile(with_id)
 
     assert "creates new profiles only" in str(caught.value)
     assert len(fake_device.profiles) == before
@@ -151,8 +151,8 @@ async def test_what_comes_back_from_a_save_round_trips_to_the_same_canonical_for
     """
     app, _ = writes_on
     sent = await a_new_profile(app)
-    stored = await app.state.device.save_profile(sent)
-    loaded = await app.state.device.load_profile(stored.id or "")
+    stored = await app.state.connection.client.save_profile(sent)
+    loaded = await app.state.connection.client.load_profile(stored.id or "")
 
     assert canonical_profile_json(loaded) == canonical_profile_json(sent)
     # And the added fields really are there, or the test above is vacuous.
@@ -169,9 +169,9 @@ async def test_a_delete_needs_the_suffix_and_the_audit(
 ) -> None:
     """A profile we created, and that still says so, is the only deletable thing."""
     app, _ = writes_on
-    stored = await app.state.device.save_profile(await a_new_profile(app))
+    stored = await app.state.connection.client.save_profile(await a_new_profile(app))
 
-    await app.state.device.delete_profile(stored.id or "")
+    await app.state.connection.client.delete_profile(stored.id or "")
 
     assert all(profile["id"] != stored.id for profile in fake_device.profiles)
     assert ("profile_delete", "ok", stored.id) in await audit(app)
@@ -192,7 +192,7 @@ async def test_a_delete_refuses_a_profile_this_box_did_not_create(
     )
 
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.device.delete_profile("imposter")
+        await app.state.connection.client.delete_profile("imposter")
 
     assert "not created by this box" in str(caught.value)
     assert any(profile["id"] == "imposter" for profile in fake_device.profiles)
@@ -209,13 +209,13 @@ async def test_a_delete_refuses_a_label_without_the_suffix(
     display wins.
     """
     app, _ = writes_on
-    stored = await app.state.device.save_profile(await a_new_profile(app))
+    stored = await app.state.connection.client.save_profile(await a_new_profile(app))
     for profile in fake_device.profiles:
         if profile["id"] == stored.id:
             profile["label"] = "Renamed by hand"
 
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.device.delete_profile(stored.id or "")
+        await app.state.connection.client.delete_profile(stored.id or "")
 
     assert "does not carry the" in str(caught.value)
     assert any(profile["id"] == stored.id for profile in fake_device.profiles)
@@ -231,7 +231,7 @@ async def test_a_delete_of_something_that_is_not_there_says_which_rule_stopped_i
     """
     app, _ = writes_on
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.device.delete_profile("nosuchid")
+        await app.state.connection.client.delete_profile("nosuchid")
     assert "not created by this box" in str(caught.value)
     assert "switched off" not in str(caught.value)
 
@@ -250,7 +250,7 @@ async def test_a_delete_the_gate_refuses_never_reads_the_machine_either(
     fake_device.hang_requests.add("req:profiles:load")
 
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.device.delete_profile("9bar")
+        await app.state.connection.client.delete_profile("9bar")
 
     assert "switched off" in str(caught.value)
     assert ("profile_delete", "refused", "9bar") in await audit(app)
@@ -267,7 +267,7 @@ async def test_a_save_that_would_overwrite_is_audited_as_a_refusal(
     existing = await base_profile(app)
 
     with pytest.raises(DeviceWriteRefused):
-        await app.state.device.save_profile(existing.model_copy(update={"id": "9bar"}))
+        await app.state.connection.client.save_profile(existing.model_copy(update={"id": "9bar"}))
 
     assert ("profile_save", "refused", "9bar") in await audit(app)
 
@@ -279,8 +279,8 @@ async def test_select_and_favorite_reach_the_machine_when_writes_are_on(
     writes_on: tuple[FastAPI, object], fake_device: FakeDevice
 ) -> None:
     app, _ = writes_on
-    await app.state.device.select_profile("9bar")
-    await app.state.device.favorite_profile("9bar")
+    await app.state.connection.client.select_profile("9bar")
+    await app.state.connection.client.favorite_profile("9bar")
 
     assert fake_device.selected_profile_id == "9bar"
     assert "9bar" in fake_device.favorite_profile_ids
@@ -300,7 +300,7 @@ async def test_a_write_the_machine_refuses_is_audited_as_failed(
     fake_device.ota_in_progress = True
 
     with pytest.raises(DeviceError):
-        await app.state.device.save_profile(await a_new_profile(app))
+        await app.state.connection.client.save_profile(await a_new_profile(app))
 
     kinds = await audit(app)
     assert ("profile_save", "failed", None) in kinds
@@ -352,7 +352,7 @@ async def test_the_two_history_writes_are_gated_by_the_same_switch(
     property the whole gate exists for.
     """
     app, _ = live
-    client = app.state.device
+    client = app.state.connection.client
     with pytest.raises(DeviceWriteRefused, match="switched off"):
         await client.delete_shot(129)
     with pytest.raises(DeviceWriteRefused, match="switched off"):

@@ -92,11 +92,13 @@ async def live(
         # often does not, the mirror stays empty, and the test fails far from
         # the cause with "the mirror has no profile labelled ...". So wait for
         # the socket, and refuse to hand a test an app whose mirror failed.
-        assert await app.state.device.wait_connected(5.0), "the fake machine did not connect"
+        assert await app.state.connection.client.wait_connected(5.0), (
+            "the fake machine did not connect"
+        )
         _rewire_llm(app, provider)
         # The profile mirror is what a draft is based on, and the machine row is
         # what the push writes the mirror back through. Both come from one sync.
-        run = await app.state.sync.sync_profiles(trigger="test")
+        run = await app.state.connection.engine.sync_profiles(trigger="test")
         assert run.status == "ok", f"the profile mirror failed: {run.error}"
         yield app, client
 
@@ -120,7 +122,7 @@ def _rewire_llm(app: FastAPI, provider: FakeProvider) -> None:
         app.state.llm,
         PromptService(app.state.drafts.prompts.repo),
         app.state.settings_service,
-        client=app.state.device,
+        connection=app.state.connection,
     )
 
 

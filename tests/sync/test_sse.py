@@ -68,12 +68,12 @@ async def _fill(app: FastAPI, timeout: float = 20.0) -> None:
     are about, and seeding through the thing under test would make a failure
     ambiguous.
     """
-    app.state.sync.request_shot_sync("manual")
-    app.state.sync.request_profile_sync("manual")
+    app.state.connection.engine.request_shot_sync("manual")
+    app.state.connection.engine.request_profile_sync("manual")
     async with asyncio.timeout(timeout):
         while True:
-            counts = await app.state.sync.shots.counts()
-            runs = await app.state.sync.runs.last_runs()
+            counts = await app.state.connection.engine.shots.counts()
+            runs = await app.state.connection.engine.runs.last_runs()
             if counts.total >= SMALL_COUNT - 1 and PULL_RUNS <= set(runs):
                 if all(run.finished_at for run in runs.values()):
                     return

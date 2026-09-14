@@ -290,7 +290,7 @@ async def test_a_full_sync_pass_after_a_write_back_leaves_the_verdict_alone(
     await _judge(app, shot_id, rating=3, notes="mine")
     assert (await _service(app).writeback(shot_id)).written is True
 
-    await app.state.sync.sync_shots(trigger="test")
+    await app.state.connection.engine.sync_shots(trigger="test")
 
     row = await JudgementsRepository(app.state.db).get(shot_id)
     assert row is not None
@@ -549,7 +549,7 @@ async def test_the_mirror_records_what_the_index_will_actually_hold(
     # The assertion that matters: a full pass afterwards does not re-read the
     # card we have just written.
     fake_device.requests.clear()
-    await app.state.sync.sync_shots(trigger="test")
+    await app.state.connection.engine.sync_shots(trigger="test")
     assert f"/api/history/{pad6(FIRST_ID)}.json" not in fake_device.requests
 
 
@@ -568,5 +568,5 @@ async def test_a_dose_that_is_sent_moves_the_mirror_and_the_index_together(
     assert fake_device.shots[FIRST_ID].entry.volume_g == pytest.approx(41.5)
 
     fake_device.requests.clear()
-    await app.state.sync.sync_shots(trigger="test")
+    await app.state.connection.engine.sync_shots(trigger="test")
     assert f"/api/history/{pad6(FIRST_ID)}.json" not in fake_device.requests

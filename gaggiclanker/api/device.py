@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.api.deps import (
     CleanupServiceDep,
+    DeviceClientDep,
     DeviceWritesRepoDep,
     NotesWritebackServiceDep,
     SettingsServiceDep,
@@ -39,7 +40,7 @@ from gaggiclanker.cleanup.service import CleanupPlan, CleanupService, cleanup_ta
 from gaggiclanker.db.repos.cleanup import CleanupRepository, CleanupRunRow
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow
 from gaggiclanker.db.repos.judgements import PendingWritebackRow
-from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.connection import machine_operation
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
 from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
@@ -64,19 +65,13 @@ class DeviceStatusData(BaseModel):
     last_status: dict[str, Any] | None = None
 
 
-def get_device(request: Request) -> GaggimateClient | None:
-    """The app's device client, or ``None`` when no host is configured."""
-    client: GaggimateClient | None = getattr(request.app.state, "device", None)
-    return client
-
-
 @router.get(
     "/status",
     response_model=ApiResponse[DeviceStatusData],
     summary="Connection state, identity and the last known live status",
 )
-async def get_device_status(request: Request) -> JSONResponse:
-    client = get_device(request)
+async def get_device_status(client: DeviceClientDep) -> JSONResponse:
+    """The client as it is now: a settings change rebuilds it, and this follows."""
     if client is None:
         return envelope_response(
             DeviceStatusData(configured=False, connected=False).model_dump(mode="json")
@@ -214,14 +209,19 @@ async def post_cleanup_run(
     """
     service = _require_cleanup(cleanup)
     tasks = request.app.state.tasks
-    # Checked before the plan as well as by the claim below: a run in progress
-    # is moving shots out of the plan, and "the plan changed" would be the wrong
-    # sentence for "wait for the one already going".
-    if tasks.get(cleanup_task_name()) is not None:
-        raise _cleanup_running()
-    plan = await service.approve(body.shot_ids)
-    if not service.spawn(tasks, plan, trigger="manual"):
-        raise _cleanup_running()
+    # Registered with the machine connection from the approval to the claim, so
+    # a settings change cannot rebuild the client between the plan a person
+    # confirmed and the run that deletes it; once the task holds its name, the
+    # connection sees the run by that name instead.
+    async with machine_operation(service.connection, "a cleanup run"):
+        # Checked before the plan as well as by the claim below: a run in
+        # progress is moving shots out of the plan, and "the plan changed" would
+        # be the wrong sentence for "wait for the one already going".
+        if tasks.get(cleanup_task_name()) is not None:
+            raise _cleanup_running()
+        plan = await service.approve(body.shot_ids)
+        if not service.spawn(tasks, plan, trigger="manual"):
+            raise _cleanup_running()
     return envelope_response(
         CleanupRunAccepted(planned=len(plan.planned), task=cleanup_task_name()).model_dump(
             mode="json"
@@ -329,11 +329,13 @@ async def post_notes_push(
     """
     service = _require_writeback(notes)
     tasks = request.app.state.tasks
-    if tasks.get(writeback_task_name()) is not None:
-        raise Conflict("A notes send is already running.")
-    selected = await service.approve_push(body.shot_ids)
-    if not service.spawn_push(tasks, selected):
-        raise Conflict("A notes send is already running.")
+    # As for a cleanup run: held from the approval to the claim of the task name.
+    async with machine_operation(service.connection, "a notes send"):
+        if tasks.get(writeback_task_name()) is not None:
+            raise Conflict("A notes send is already running.")
+        selected = await service.approve_push(body.shot_ids)
+        if not service.spawn_push(tasks, selected):
+            raise Conflict("A notes send is already running.")
     return envelope_response(
         NotesPushAccepted(pending=len(selected)).model_dump(mode="json"),
         status_code=202,

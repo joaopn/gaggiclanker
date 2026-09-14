@@ -631,7 +631,9 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "Hostname or IP of the GaggiMate display board, without a scheme; an explicit "
             "host:port is accepted for a simulator or the fake device. Empty disables device "
             "sync. mDNS (gaggimate.local) is unreliable from inside a container and is off "
-            "entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation."
+            "entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation. A "
+            "change applies immediately: the connection is rebuilt without a restart, and "
+            "refused while a push, a cleanup, a notes send or a pull is using the machine."
         ),
     ),
     SettingDefinition(
@@ -642,7 +644,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description=(
             "WebSocket scheme for the device connection: ws or wss. The firmware never "
             "terminates TLS (WebSocketHandler.cpp serves plain HTTP on port 80), so wss is only "
-            "useful behind a reverse proxy that adds it."
+            "useful behind a reverse proxy that adds it. A change applies immediately."
         ),
     ),
     SettingDefinition(
@@ -653,7 +655,8 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description=(
             "How long to wait for one device request — a WebSocket res:* frame or an HTTP "
             "body — before giving up. The machine's own web UI uses 30 s; shorter is better "
-            "here because a stuck request holds one of only two HTTP slots."
+            "here because a stuck request holds one of only two HTTP slots. A change applies "
+            "immediately."
         ),
     ),
     SettingDefinition(
@@ -665,7 +668,8 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "Hold the WebSocket, so the header shows whether the machine is online and pulls "
             "and pushes can reach it. Turn off to work on an archive without touching the "
             "machine. Nothing is mirrored on its own either way: shots, profiles and notes "
-            "move when a pull is asked for."
+            "move when a pull is asked for. A change applies immediately: off closes the "
+            "connection, on opens it, with no restart."
         ),
     ),
     SettingDefinition(

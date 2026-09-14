@@ -198,10 +198,10 @@ async def test_a_failure_late_in_startup_still_closes_the_database(
     """Half the services built, and the database still has to be released."""
     from gaggiclanker import main as main_module
 
-    async def explode(*_args: Any, **_kwargs: Any) -> None:
+    def explode(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("the device client would not start")
 
-    monkeypatch.setattr(main_module, "start_device_client", explode)
+    monkeypatch.setattr(main_module, "build_device_connection", explode)
 
     with pytest.raises(RuntimeError, match="device client"):
         async with running_app(env):

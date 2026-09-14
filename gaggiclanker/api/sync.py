@@ -22,6 +22,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from gaggiclanker.api.deps import (
     DeviceClientDep,
+    DeviceConnectionDep,
     EventBusDep,
     ShotsRepoDep,
     SyncEngineDep,
@@ -92,7 +93,9 @@ def _require_engine(engine: SyncEngine | None) -> SyncEngine:
     status_code=202,
     summary="Ask the sync engine to run now",
 )
-async def post_sync_run(engine: SyncEngineDep, body: SyncRunRequest | None = None) -> JSONResponse:
+async def post_sync_run(
+    connection: DeviceConnectionDep, body: SyncRunRequest | None = None
+) -> JSONResponse:
     """Nudge the background loops. Returns 202 without waiting for the machine.
 
     202 rather than 200 because nothing has happened yet: the loops are woken,
@@ -101,6 +104,12 @@ async def post_sync_run(engine: SyncEngineDep, body: SyncRunRequest | None = Non
     backfill takes and would let two callers start two passes over a device with
     two HTTP slots.
     """
+    # Through the connection, not straight off the dependency: a machine-settings
+    # change in progress holds the connection's lock from its busy check to the
+    # rebuild, and a pull poked into that window would start on the old
+    # machine and be cut off. Waiting here sends it to whatever the change
+    # leaves. Nothing below awaits, so no change can start before the pokes land.
+    engine = await connection.current_engine() if connection is not None else None
     sync = _require_engine(engine)
     kind = (body or SyncRunRequest()).kind
     queued: list[str] = []

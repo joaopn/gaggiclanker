@@ -83,7 +83,9 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     app, client = live
-    assert await app.state.device.wait_connected(20.0), "the simulator did not accept a connection"
+    assert await app.state.connection.client.wait_connected(20.0), (
+        "the simulator did not accept a connection"
+    )
 
     device_shot_id = await trigger_a_brew()
     assert device_shot_id is not None, "the simulator did not save a shot"
@@ -122,7 +124,7 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
     # UI itself uses and the one that proves the file is on the filesystem under
     # the padded name rather than somewhere only the socket can see.
     padded = pad6(device_shot_id)
-    stored = await app.state.device.fetch_notes_json(device_shot_id)
+    stored = await app.state.connection.client.fetch_notes_json(device_shot_id)
     assert stored is not None, f"the firmware stored no /h/{padded}.json"
     document = stored.to_device()
     assert document["id"] == padded
@@ -153,7 +155,7 @@ async def _archived(app: FastAPI, device_shot_id: int) -> int | None:
 
 
 async def _index_entry(app: FastAPI, padded: str) -> Any:
-    index = await app.state.device.fetch_index()
+    index = await app.state.connection.client.fetch_index()
     if index is None:
         return None
     for entry in index.entries:

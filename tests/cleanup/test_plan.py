@@ -133,7 +133,9 @@ async def test_free_space_refuses_to_act_on_a_machine_that_reported_no_figures(
 ) -> None:
     """No identity frame means no free-space number, and a guess would delete shots."""
     app, _ = live
-    blind = CleanupService(app.state.db, app.state.settings_service, client=None, pace_seconds=0.0)
+    blind = CleanupService(
+        app.state.db, app.state.settings_service, connection=None, pace_seconds=0.0
+    )
     await app.state.settings_service.apply(
         {"deviceCleanupMode": "free_space", "deviceCleanupMinFreeKb": 4096}
     )
@@ -148,7 +150,7 @@ async def test_the_sd_card_wins_when_the_machine_has_one(
 ) -> None:
     """The firmware moves `/h/` onto SD when a card is mounted, and only then reports `sd*`."""
     app, _ = live
-    app.state.device.identity = app.state.device.identity.model_copy(
+    app.state.connection.client.identity = app.state.connection.client.identity.model_copy(
         update={"sd_free": 12_345, "sd_total": 8 * 1024 * 1024}
     )
     plan = await service(app).plan()

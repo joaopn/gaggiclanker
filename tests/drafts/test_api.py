@@ -588,7 +588,7 @@ async def analysis_id(live: tuple[FastAPI, httpx.AsyncClient]) -> int:
     # An analysis has a foreign key to a shot, so the archive needs one. The
     # `live` fixture only mirrors profiles — a draft does not need shots — so
     # this is the one place that pays for a shot sync.
-    await app.state.sync.sync_shots(trigger="test")
+    await app.state.connection.engine.sync_shots(trigger="test")
     shots = await ShotsRepository(app.state.db).list_shots(limit=1)
     assert shots.items, "the fake device served no shots"
     shot_id = shots.items[0].id
@@ -686,7 +686,7 @@ async def edit_on_the_machine(app: FastAPI, fake_device: FakeDevice, temperature
     for profile in fake_device.profiles:
         if profile.get("label") == BASE_LABEL:
             profile["temperature"] = temperature
-    await app.state.sync.sync_profiles(trigger="test")
+    await app.state.connection.engine.sync_profiles(trigger="test")
 
 
 async def test_a_fresh_draft_is_not_stale(
@@ -775,7 +775,7 @@ async def test_a_base_deleted_from_the_machine_counts_as_stale(
     await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
 
     fake_device.profiles[:] = [p for p in fake_device.profiles if p.get("label") != BASE_LABEL]
-    await app.state.sync.sync_profiles(trigger="test")
+    await app.state.connection.engine.sync_profiles(trigger="test")
 
     response = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
     assert response.status_code == 409

@@ -12,7 +12,7 @@ never-awaited future, which is the default failure mode of ``create_task``.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Iterable
 from typing import Any
 
 import structlog
@@ -56,7 +56,12 @@ class TaskRegistry:
 
     def _on_done(self, task: asyncio.Task[Any]) -> None:
         name = task.get_name()
-        self._tasks.pop(name, None)
+        # Only if the name still points at this task. A name can be claimed
+        # again the moment its task is done — the sync engine's loops are, when
+        # the machine connection is rebuilt — and a late callback from the old
+        # task must not release the new one's claim.
+        if self._tasks.get(name) is task:
+            del self._tasks[name]
         if task.cancelled():
             log.debug("background_task_cancelled", task=name)
             return
@@ -65,6 +70,33 @@ class TaskRegistry:
             log.error("background_task_failed", task=name, exc_info=error)
         else:
             log.debug("background_task_finished", task=name)
+
+    async def cancel(self, names: Iterable[str], timeout: float = 10.0) -> None:  # noqa: ASYNC109
+        """Cancel exactly the named tasks and wait for them, bounded by ``timeout``.
+
+        For an owner that stops its own loops while the rest of the app keeps
+        running — the sync engine when the machine connection is rebuilt. A
+        name with no running task is skipped. Each name whose task stopped is
+        released before this returns, so the owner can claim it again straight
+        away.
+        """
+        tasks = [task for name in names if (task := self._tasks.get(name)) is not None]
+        if not tasks:
+            return
+        for task in tasks:
+            task.cancel()
+        _done, pending = await asyncio.wait(tasks, timeout=timeout)
+        if pending:
+            log.warning(
+                "background_tasks_did_not_stop",
+                tasks=[t.get_name() for t in pending],
+                timeout=timeout,
+            )
+        for task in tasks:
+            # Done ones only: a task that ignored its cancellation keeps its
+            # name, so nothing can start a second copy beside it.
+            if task.done() and self._tasks.get(task.get_name()) is task:
+                del self._tasks[task.get_name()]
 
     async def cancel_all(self, timeout: float = 10.0) -> None:  # noqa: ASYNC109
         """Cancel every task and wait for them, bounded by ``timeout``.

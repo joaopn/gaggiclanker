@@ -70,12 +70,12 @@ async def test_status_reports_the_machine_it_connected_to(
     device_env: EnvSettings, fake_device: FakeDevice
 ) -> None:
     async with running_app(device_env) as (app, client):
-        assert app.state.device is not None
-        assert await app.state.device.wait_connected(5.0)
+        assert app.state.connection.client is not None
+        assert await app.state.connection.client.wait_connected(5.0)
         # The identity frame is answered asynchronously; wait for it rather
         # than racing the connect.
         for _ in range(100):
-            if app.state.device.identity is not None:
+            if app.state.connection.client.identity is not None:
                 break
             await asyncio.sleep(0.02)
 
@@ -99,6 +99,6 @@ async def test_sync_disabled_leaves_the_client_unstarted(
         _env_file=None,  # type: ignore[call-arg]
     )
     async with running_app(env) as (app, client):
-        assert app.state.device is None
+        assert app.state.connection.client is None
         assert (await client.get("/api/device/status")).json()["data"]["configured"] is False
     assert fake_device.client_count == 0

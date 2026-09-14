@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -105,6 +106,47 @@ async def test_task_registry_cancels_everything() -> None:
 
     await registry.cancel_all()
     assert len(registry) == 0
+
+
+async def test_task_registry_cancels_only_the_named_tasks_and_frees_their_names() -> None:
+    """What the sync engine's `stop()` relies on: its loops go, everything else stays."""
+    registry = TaskRegistry()
+
+    async def forever() -> None:
+        await asyncio.Event().wait()
+
+    registry.spawn("sync-shots", forever())
+    registry.spawn("sync-profiles", forever())
+    other = registry.spawn("analysis-7", forever())
+    await asyncio.sleep(0)
+
+    await registry.cancel(["sync-shots", "sync-profiles", "never-spawned"])
+
+    assert registry.names == ["analysis-7"]
+    assert not other.done()
+    # The names are free at once, for the next engine's loops.
+    again = registry.spawn("sync-shots", forever())
+    await asyncio.sleep(0)
+    assert registry.get("sync-shots") is again
+    await registry.cancel_all()
+
+
+async def test_a_late_done_callback_does_not_release_a_reclaimed_name() -> None:
+    registry = TaskRegistry()
+
+    async def forever() -> None:
+        await asyncio.Event().wait()
+
+    old = registry.spawn("sync-events", forever())
+    old.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await old
+    new = registry.spawn("sync-events", forever())
+    # The old task's done-callback arriving after the name was claimed again,
+    # which the event loop's scheduling does not promise never happens.
+    registry._on_done(old)
+    assert registry.get("sync-events") is new
+    await registry.cancel_all()
 
 
 async def test_duplicate_task_name_is_refused() -> None:

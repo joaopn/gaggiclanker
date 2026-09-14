@@ -50,6 +50,7 @@ from gaggiclanker.db.repos.judgements import (
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow, NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.device.errors import DeviceError, DeviceUnavailable
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.drafts.gate import refuse_unless_writes_enabled
@@ -183,17 +184,28 @@ class NotesWritebackService:
         db: Database,
         settings: SettingsService,
         *,
-        client: GaggimateClient | None,
+        connection: DeviceConnection[Any] | None,
         bus: SseEventBus | None = None,
     ) -> None:
         self.db = db
         self.settings = settings
-        self.client = client
+        self.connection = connection
         self.bus = bus
         self.judgements = JudgementsRepository(db)
         self.notes = NotesRepository(db)
         self.shots = ShotsRepository(db)
         self.writes = DeviceWritesRepository(db)
+
+    @property
+    def client(self) -> GaggimateClient | None:
+        """The connection's client as it is now, or ``None`` with no machine.
+
+        Read at the moment of use, because a settings change rebuilds the
+        connection without a restart; a send in progress cannot see it change,
+        because the connection refuses to be rebuilt while the send's task is
+        registered.
+        """
+        return self.connection.client if self.connection is not None else None
 
     async def policy(self) -> NotesWritebackPolicy:
         raw = str(await self.settings.get("notesWritebackFields") or "")

@@ -52,6 +52,7 @@ from gaggiclanker.db.repos.profile_drafts import (
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.connection import DeviceConnection, machine_operation
 from gaggiclanker.domain.models import (
     Profile,
     canonical_profile_json,
@@ -108,13 +109,15 @@ class ProfileDraftService:
         prompts: PromptService,
         settings: SettingsService,
         *,
-        client: GaggimateClient | None = None,
+        connection: DeviceConnection[Any] | None = None,
     ) -> None:
         self.db = db
         self.llm = llm
         self.prompts = prompts
         self.settings = settings
-        self.client = client
+        #: The app's machine connection. Its client is read when a push or a
+        #: rollback happens, never kept: a settings change rebuilds it live.
+        self.connection = connection
         self.drafts = ProfileDraftsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.analyses = AnalysesRepository(db)
@@ -430,9 +433,23 @@ class ProfileDraftService:
                     "base_device_profile_id": draft.base_device_profile_id,
                 },
             )
-        client = self._require_client()
-        profile = await self._draft_profile(draft)
+        # Registered with the connection for the whole save, read-back and
+        # mirror: a settings change that would rebuild the connection is
+        # refused until the push has finished, rather than cutting it between
+        # the save and the verification.
+        async with machine_operation(self.connection, "a profile push") as maybe_client:
+            client = _require_client(maybe_client)
+            profile = await self._draft_profile(draft)
+            return await self._push_to(client, draft_id, profile, set_id)
 
+    async def _push_to(
+        self,
+        client: GaggimateClient,
+        draft_id: int,
+        profile: Profile,
+        set_id: int | None,
+    ) -> tuple[ProfileDraftRow, SetVersionRow | None]:
+        """The push itself, on the client the connection handed out for it."""
         stored = await client.save_profile(profile)
         device_id = stored.id or ""
         try:
@@ -518,8 +535,8 @@ class ProfileDraftService:
         device_id = draft.pushed_device_profile_id
         if not device_id:
             raise Conflict("That draft has nothing on the machine to roll back")
-        client = self._require_client()
-        await client.delete_profile(device_id)
+        async with machine_operation(self.connection, "a profile rollback") as maybe_client:
+            await _require_client(maybe_client).delete_profile(device_id)
         await self.profiles.mark_one_deleted(device_id)
         await self.sets.clear_pushed_device_profile(device_id)
         if draft.status == "pushed":
@@ -566,14 +583,6 @@ class ProfileDraftService:
         )
 
     # ── internals ────────────────────────────────────────────────────
-
-    def _require_client(self) -> GaggimateClient:
-        if self.client is None:
-            raise ServiceUnavailable(
-                "No machine is configured, so there is nowhere to push this. Set gaggimateHost "
-                "in Settings."
-            )
-        return self.client
 
     async def _require(self, draft_id: int) -> ProfileDraftRow:
         draft = await self.drafts.get(draft_id)
@@ -752,3 +761,12 @@ def _require_row(row: ProfileDraftRow | None, draft_id: int) -> ProfileDraftRow:
     if row is None:  # pragma: no cover - the update above guarantees it
         raise NotFound(f"No profile draft {draft_id}")
     return row
+
+
+def _require_client(client: GaggimateClient | None) -> GaggimateClient:
+    if client is None:
+        raise ServiceUnavailable(
+            "No machine is configured, so there is nowhere to push this. Set gaggimateHost "
+            "in Settings."
+        )
+    return client

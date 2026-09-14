@@ -169,6 +169,15 @@ class SettingsService:
         bad value changes nothing. ``None`` clears the override, which is how
         the UI's "reset to default" works.
         """
+        return await self.write(await self.validate(updates))
+
+    async def validate(self, updates: dict[str, Any]) -> dict[str, str | None]:
+        """Check a PATCH body without writing it: key -> serialized value, or ``None`` to clear.
+
+        Raises the same 400 :meth:`apply` does. Separate so a caller can decide
+        whether a change may be made at all — the machine connection refuses
+        one while something is using the machine — before anything is stored.
+        """
         if not updates:
             raise BadRequest("No settings to update")
 
@@ -205,7 +214,10 @@ class SettingsService:
 
         if failures:
             raise BadRequest("Invalid settings update", details=failures)
+        return validated
 
+    async def write(self, validated: dict[str, str | None]) -> dict[str, ResolvedSetting]:
+        """Store what :meth:`validate` returned, then return the new state."""
         for key, serialized in validated.items():
             if serialized is None:
                 await self.repo.delete(key)
@@ -214,6 +226,25 @@ class SettingsService:
 
         log.info("settings_updated", keys=sorted(validated))
         return await self.resolve_all()
+
+    async def effective_after(
+        self, validated: dict[str, str | None], keys: tuple[str, ...]
+    ) -> dict[str, Any]:
+        """What ``keys`` will resolve to once ``validated`` is stored. Writes nothing.
+
+        A key set in the body is its parsed value; a key cleared with ``None``
+        is what resolves with no stored row — the environment's value or the
+        default; a key the body leaves alone is what it resolves to now.
+        """
+        values: dict[str, Any] = {}
+        for key in keys:
+            definition = self.definition(key)
+            if key not in validated:
+                values[key] = await self.get(key)
+                continue
+            serialized = validated[key]
+            values[key] = self._resolve(definition, serialized).value
+        return values
 
     async def _pair_failures(self, validated: dict[str, str | None]) -> list[dict[str, str]]:
         """Check the bounds that only make sense in pairs.

@@ -78,7 +78,7 @@ several and a grind number only means something on the grinder it was set on.
 | `mcp/` | The same tools over Streamable HTTP and stdio, for agents outside this app. Read and propose only; never a write to the machine. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
-| `device/` | `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
+| `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
 | `db/` | Repositories — the only code that writes SQL — plus migrations and backups. |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
 | `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
@@ -133,6 +133,24 @@ sentinel and inspects the requests. The GaggiMate has no authentication today,
 and its client does not read the environment either. Any future outbound
 connection follows the same rule: its credential is a secret setting, and its
 HTTP client comes from `infra/outbound.py`.
+
+**The machine connection is one object, and a settings change rebuilds it.**
+`DeviceConnection` owns the device client and the sync engine; routes and the
+cleanup, notes and profile-draft services ask it for the current client at the
+moment they act rather than keeping one. Changing the host, the protocol, the
+timeout or the sync switch through `PATCH /api/settings` compares the effective
+values before and after and, if they moved, stops the engine's loops and the
+client and builds new ones — with no restart, and with the same write gate over
+the same settings. The change and the rebuild happen under one lock that every
+machine-bound operation also registers through, so a change that would move the
+connection while a profile push or rollback, a cleanup run, a notes send or a
+pull is using the machine is a 409 naming it, and nothing is stored. A pull asked
+for while a change is being stored waits for the change and goes to whatever
+connection it leaves. An identity read is not held to that: it is cut, and the
+new connection reads identity again on connect. A pass cut short — by a rebuild
+or by shutdown — is recorded as an error saying it was stopped, never as `ok`,
+and a rebuild that fails part-way leaves no connection at all, so the next save
+tries again.
 
 **Migrations are forward-only and immutable once shipped.** Each file is applied
 inside a transaction that also carries its `schema_migrations` row and its

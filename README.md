@@ -220,6 +220,13 @@ bridge network, and the firmware disables mDNS entirely when HomeKit is on.
 Anything you change in the Settings page is stored in the database and wins over
 the environment, so a value edited in the UI does not revert on restart.
 
+**The machine settings apply immediately.** Saving a new host, protocol, timeout
+or the sync switch under Settings → Machine closes the connection and opens the
+new one, with no restart; the header pill follows within a few seconds. While a
+profile push, a cleanup run, a notes send or a pull is using the machine, such a
+change is refused with the reason and nothing is saved — wait for it to finish
+and save again.
+
 **Credentials never come from the environment.** The sign-in user and password,
 and every LLM provider's API key or token, are entered in the Settings page and
 live in the database only — and nothing else can supply one: the provider

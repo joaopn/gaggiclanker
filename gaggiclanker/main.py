@@ -28,7 +28,7 @@ from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
 from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
-from gaggiclanker.cleanup.service import CleanupService
+from gaggiclanker.cleanup.service import CleanupService, cleanup_task_name
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.analyses import AnalysesRepository
@@ -41,6 +41,12 @@ from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.connection import (
+    DEVICE_SETTING_KEYS,
+    DeviceConfig,
+    DeviceConnection,
+    device_config,
+)
 from gaggiclanker.drafts.gate import SettingsWriteGate
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.envelope import register_exception_handlers
@@ -57,7 +63,7 @@ from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.mcp.http import MCP_PATH, McpMount, start_mcp, stop_mcp
 from gaggiclanker.mcp.server import build_mcp_server
-from gaggiclanker.notes.writeback import NotesWritebackService
+from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 from gaggiclanker.settings import EnvSettings, load_dotenv_values, retired_auth_env_keys
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import StartingPointService
@@ -177,17 +183,17 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
     the database, and a teardown that raised ``AttributeError`` on the way would
     leave the very thread this exists to reap.
 
-    The order is the acquisition order reversed. The device client first: its
-    supervisor owns a socket and an aiohttp session, and both have to be closed
-    before the loop stops accepting callbacks. Then the registry, so nothing is
+    The order is the acquisition order reversed. The machine connection first:
+    it stops the sync engine's loops and then the client, whose supervisor owns
+    a socket and an aiohttp session that have to be closed before the loop
+    stops accepting callbacks. Then the registry, so nothing is
     mid-write. Then the LLM service, whose provider owns an HTTP client whose
     connections must be released on the loop that made them. The database last.
     """
-    device: GaggimateClient | None = getattr(app.state, "device", None)
-    if device is not None:
+    connection: DeviceConnection[SyncEngine] | None = getattr(app.state, "connection", None)
+    if connection is not None:
         with suppress(Exception):
-            await device.stop()
-    app.state.sync = None
+            await connection.stop()
     app.state.drafts = None
     app.state.starting = None
     app.state.cleanup = None
@@ -341,22 +347,23 @@ async def _start(app: FastAPI, db: Database) -> None:
     # of it, so it goes where it costs nothing.
     await _start_mcp_if_enabled(app, db, settings_service)
 
-    app.state.device = await start_device_client(settings_service, db)
-    app.state.sync = await start_sync_engine(app)
+    app.state.connection = build_device_connection(app, settings_service, db)
+    await app.state.connection.start()
 
     # Cleanup and notes write-back. Both are app-scoped for the reason the draft service
-    # is: they hold the one client that can change a machine, and a per-request
-    # copy would have to build its own — which would mean a second gate, or a
-    # client with none. Neither is wired to anything that runs on its own: they
-    # act only when a person confirms an action on the Sync page.
+    # is: they reach the one client that can change a machine, through the one
+    # connection that owns it, and a per-request copy would have to build its
+    # own — which would mean a second gate, or a client with none. Neither is
+    # wired to anything that runs on its own: they act only when a person
+    # confirms an action on the Sync page.
     app.state.cleanup = CleanupService(
-        db, settings_service, client=app.state.device, bus=app.state.events
+        db, settings_service, connection=app.state.connection, bus=app.state.events
     )
     app.state.notes_writeback = NotesWritebackService(
-        db, settings_service, client=app.state.device, bus=app.state.events
+        db, settings_service, connection=app.state.connection, bus=app.state.events
     )
 
-    # App-scoped because it holds the one client that can change a machine. A
+    # App-scoped because it reaches the one client that can change a machine. A
     # per-request service would have to build its own — and a client built
     # without the gate cannot write at all, which is the right default and the
     # wrong thing to discover from a push that silently refused.
@@ -365,7 +372,7 @@ async def _start(app: FastAPI, db: Database) -> None:
         app.state.llm,
         PromptService(PromptsRepository(db)),
         settings_service,
-        client=app.state.device,
+        connection=app.state.connection,
     )
 
     # After the draft service, because it hands one to `accept`: an option that
@@ -439,58 +446,61 @@ async def _start_mcp_if_enabled(app: FastAPI, db: Database, settings: SettingsSe
     )
 
 
-async def start_device_client(settings: SettingsService, db: Database) -> GaggimateClient | None:
-    """Build and start the device client, or return ``None`` if there is no machine.
+def build_device_connection(
+    app: FastAPI, settings: SettingsService, db: Database
+) -> DeviceConnection[SyncEngine]:
+    """The one owner of the device client and the sync engine, not yet started.
 
     An unset ``gaggimateHost`` is a supported configuration, not an error: the
     app is an archive browser first and everything already imported works with
     the machine unplugged. ``deviceSyncEnabled`` is the same switch for someone
     who has a machine but is working on the archive and does not want to take
-    one of the device's three WebSocket slots.
+    one of the device's three WebSocket slots. Either way the connection holds
+    no client and no engine, and a later settings change builds them live.
 
-    Starting never blocks on the machine answering — ``start()`` spawns the
-    supervisor and returns — so a box that boots before the espresso machine
-    still serves in under a second.
+    Starting never blocks on the machine answering — the client's ``start()``
+    spawns the supervisor and returns, and the engine's loops begin by waiting —
+    so a box that boots before the espresso machine still serves in under a
+    second.
     """
-    host = str(await settings.get("gaggimateHost") or "").strip()
-    if not host:
-        log.info("device_not_configured")
-        return None
-    if not await settings.get("deviceSyncEnabled"):
-        log.info("device_sync_disabled", host=host)
-        return None
 
-    client = GaggimateClient(
-        host,
-        protocol=str(await settings.get("gaggimateProtocol") or "ws"),
-        timeout=float(await settings.get("gaggimateTimeoutSeconds")),
-        # The one place the gate is attached. Without it every write method
-        # refuses, which is what a client built anywhere else in this codebase
-        # gets — see `gaggiclanker/device/writes.py`. The database goes in with
-        # it because the `shot_delete` branch has to look the shot up in
-        # the archive before it will allow the machine to lose it.
-        write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db), db=db),
+    async def read_config() -> DeviceConfig:
+        return device_config({key: await settings.get(key) for key in DEVICE_SETTING_KEYS})
+
+    def build_client(config: DeviceConfig) -> GaggimateClient:
+        return GaggimateClient(
+            config.host,
+            protocol=config.protocol,
+            timeout=config.timeout,
+            # The one place the gate is attached. Without it every write method
+            # refuses, which is what a client built anywhere else in this
+            # codebase gets — see `gaggiclanker/device/writes.py`. The database
+            # goes in with it because the `shot_delete` branch has to look the
+            # shot up in the archive before it will allow the machine to lose
+            # it. A rebuilt client gets a gate of its own over the same
+            # settings and audit table, so nothing about what may be written
+            # changes with the address.
+            write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db), db=db),
+        )
+
+    def build_engine(client: GaggimateClient) -> SyncEngine:
+        # Every loop it owns is registered with the app's TaskRegistry, so
+        # shutdown cancels them in one call and a rebuild stops exactly them.
+        return SyncEngine(client, db, app.state.events)
+
+    return DeviceConnection(
+        read_config=read_config,
+        build_client=build_client,
+        build_engine=build_engine,
+        tasks=app.state.tasks,
+        # The two machine writes that outlive their request. Profile pushes and
+        # rollbacks register themselves for as long as they run, and the sync
+        # engine reports its own pulls.
+        busy_tasks={
+            cleanup_task_name(): "a cleanup run",
+            writeback_task_name(): "a notes send",
+        },
     )
-    await client.start()
-    log.info("device_client_started", host=host)
-    return client
-
-
-async def start_sync_engine(app: FastAPI) -> SyncEngine | None:
-    """Build the sync engine and start its loops, or return ``None`` with no machine.
-
-    Every loop it owns is registered with the app's :class:`TaskRegistry`, so
-    shutdown cancels them in one call and nothing is mid-write when the database
-    file is released. None of them blocks startup: the first thing each does is
-    wait — for a device event, or for its own timer — and the machine may well be
-    switched off.
-    """
-    client: GaggimateClient | None = app.state.device
-    if client is None:
-        return None
-    engine = SyncEngine(client, app.state.db, app.state.events)
-    await engine.start(app.state.tasks)
-    return engine
 
 
 def create_app(

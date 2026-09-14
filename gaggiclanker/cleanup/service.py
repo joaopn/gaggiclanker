@@ -57,6 +57,7 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWr
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.device.errors import DeviceError, DeviceUnavailable
 from gaggiclanker.device.writes import payload_hash
 from gaggiclanker.domain.ids import pad6
@@ -175,20 +176,20 @@ class CleanupPlan(BaseModel):
 
 
 class CleanupService:
-    """Owns the plan, the run and the ledger. Holds the one gated client."""
+    """Owns the plan, the run and the ledger. Reaches the machine through the app's connection."""
 
     def __init__(
         self,
         db: Database,
         settings: SettingsService,
         *,
-        client: GaggimateClient | None,
+        connection: DeviceConnection[Any] | None,
         bus: SseEventBus | None = None,
         pace_seconds: float = MIN_DELETE_INTERVAL_S,
     ) -> None:
         self.db = db
         self.settings = settings
-        self.client = client
+        self.connection = connection
         self.bus = bus
         # A parameter so the suite can prove the pacing exists without spending
         # half a second per deleted shot proving it forty times.
@@ -197,6 +198,17 @@ class CleanupService:
         self.shots = ShotsRepository(db)
         self.notes = NotesRepository(db)
         self.writes = DeviceWritesRepository(db)
+
+    @property
+    def client(self) -> GaggimateClient | None:
+        """The connection's client as it is now, or ``None`` with no machine.
+
+        Read at the moment of use rather than captured at construction, because
+        a settings change rebuilds the connection without a restart. A run
+        cannot see it change half-way: the connection refuses to be rebuilt
+        while the run's task is registered.
+        """
+        return self.connection.client if self.connection is not None else None
 
     # ── policy ───────────────────────────────────────────────────────
 

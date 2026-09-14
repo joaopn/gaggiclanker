@@ -70,6 +70,7 @@ from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.sync.derive import derive_shot, index_fields
 
 __all__ = [
+    "LOOP_TASK_NAMES",
     "PROFILE_UPDATED_EVENT",
     "SHOT_INGESTED_EVENT",
     "SHOT_QUARANTINED_EVENT",
@@ -99,6 +100,18 @@ PROFILE_UPDATED_EVENT = "profile.updated"
 #: does not abandon a backfill, few enough that a machine switched off mid-pass
 #: costs three timeouts instead of one per remaining shot.
 MAX_CONSECUTIVE_DEVICE_ERRORS = 3
+
+#: The registry names of the engine's loops. Fixed, because there is one engine
+#: at a time: a rebuilt connection stops the old engine's loops, which releases
+#: these names, before the new engine claims them.
+LOOP_TASK_NAMES: tuple[str, ...] = ("sync-events", "sync-identity", "sync-shots", "sync-profiles")
+
+#: What a pass cut short by a cancellation records. A cancellation counts no
+#: device error, and a run closed in a ``finally`` with nothing counted would be
+#: filed ``ok`` — a healthy pull of an archive that did not fill.
+STOPPED_MESSAGE = (
+    "stopped before it finished: the machine connection was rebuilt or the app shut down"
+)
 
 #: Two in-flight HTTP fetches, never more. The client
 #: enforces the same bound with its own semaphore; this one keeps the *pipeline*
@@ -200,6 +213,13 @@ class SyncEngine:
         #: socket; two passes would fight over both, and SQLite's single
         #: connection cannot hold two transactions anyway.
         self._lock = asyncio.Lock()
+        #: The registry the loops were spawned into, once started.
+        self._tasks: TaskRegistry | None = None
+        #: Shot and profile passes asked for and not yet finished, counted from
+        #: the moment one is requested of the engine rather than from when it
+        #: gets the lock — a pull waiting behind an identity read is still a
+        #: pull somebody is waiting for. What :meth:`busy` reports.
+        self._pulls_in_flight = 0
 
     # ── lifecycle ────────────────────────────────────────────────────
 
@@ -216,10 +236,12 @@ class SyncEngine:
         works with the machine unplugged, and a box that boots first is the
         normal case.
         """
-        tasks.spawn("sync-events", self._events_loop())
-        tasks.spawn("sync-identity", self._identity_loop())
-        tasks.spawn("sync-shots", self._shots_loop())
-        tasks.spawn("sync-profiles", self._profiles_loop())
+        self._tasks = tasks
+        events, identity, shots, profiles = LOOP_TASK_NAMES
+        tasks.spawn(events, self._events_loop())
+        tasks.spawn(identity, self._identity_loop())
+        tasks.spawn(shots, self._shots_loop())
+        tasks.spawn(profiles, self._profiles_loop())
         # Identity only, and only because the `machines` row has to exist before
         # a pull can store anything against it and the header pill has nothing
         # to say without it. The client is started before the engine, so if the
@@ -228,6 +250,40 @@ class SyncEngine:
         # arriving a moment later, so asking here costs nothing.
         self.request_identity_sync("startup")
         log.info("sync_engine_started", host=self.client.host)
+
+    async def stop(self) -> None:
+        """Stop exactly this engine's loops and wait for them. Idempotent.
+
+        For a connection that is being rebuilt while the app keeps running; at
+        shutdown `TaskRegistry.cancel_all` does the same for every task at once.
+        The caller has already refused to rebuild while a pull is under way (see
+        :meth:`busy`), so the only pass this can cut short is an identity read.
+        That leaves its ledger row `running`, and nothing else would ever close
+        it, so it is closed here the way a boot closes one — the engine is the
+        only writer of those rows, and it has just stopped.
+        """
+        tasks, self._tasks = self._tasks, None
+        if tasks is None:
+            return
+        await tasks.cancel(LOOP_TASK_NAMES)
+        closed = await self.runs.reconcile_running()
+        log.info("sync_engine_stopped", host=self.client.host, runs_closed=closed)
+
+    def busy(self) -> str | None:
+        """What this engine is doing that a connection change would cut, or ``None``.
+
+        A pull — a shot or profile pass running, waiting for the lock, or asked
+        for and not yet picked up. Not an identity read: it writes nothing a
+        person is waiting for, and the next connection reads identity again the
+        moment it connects.
+        """
+        if (
+            self._pulls_in_flight
+            or self._shot_poke.event.is_set()
+            or self._profile_poke.event.is_set()
+        ):
+            return "a pull"
+        return None
 
     def request_shot_sync(self, reason: str = "manual") -> None:
         """Ask for an index diff on the next turn of the loop."""
@@ -365,6 +421,11 @@ class SyncEngine:
             settings: dict[str, Any] | None = None
             try:
                 settings = await self.client.get_settings()
+            except asyncio.CancelledError:
+                update.errors += 1
+                update.error = STOPPED_MESSAGE
+                await self.runs.finish_run(run_id, update)
+                raise
             except DeviceError as exc:
                 # Not fatal: the versions and capabilities we already have are
                 # worth storing without the PID string.
@@ -392,8 +453,14 @@ class SyncEngine:
         Nothing hangs off the end of a pass: shots leave the machine only when a
         person confirms a cleanup on the Sync page, so a pull only ever reads.
         """
-        async with self._lock:
-            return await self._sync_shots(kind=kind, trigger=trigger)
+        # Counted before the lock is taken, and synchronously with the loop
+        # waking: see `busy`.
+        self._pulls_in_flight += 1
+        try:
+            async with self._lock:
+                return await self._sync_shots(kind=kind, trigger=trigger)
+        finally:
+            self._pulls_in_flight -= 1
 
     async def _sync_shots(self, *, kind: str, trigger: str) -> SyncRunRow:
         await self._ensure_machine()
@@ -419,6 +486,11 @@ class SyncEngine:
             await self._reconcile(
                 listed, known, run_id=run_id, update=update, full_index=entries is not None
             )
+        except asyncio.CancelledError:
+            update.errors += 1
+            update.error = STOPPED_MESSAGE
+            log.info("sync_run_stopped", kind=kind, run_id=run_id)
+            raise
         except DeviceError as exc:
             update.errors += 1
             update.error = str(exc)
@@ -913,6 +985,10 @@ class SyncEngine:
                 self._publish(
                     SHOT_UPDATED_EVENT, {"shot_id": state.id, "device_id": device_id, "notes": True}
                 )
+        except asyncio.CancelledError:
+            update.errors += 1
+            update.error = STOPPED_MESSAGE
+            raise
         finally:
             await self.runs.finish_run(run_id, update)
         return await self.runs.get_run(run_id)
@@ -921,13 +997,26 @@ class SyncEngine:
 
     async def sync_profiles(self, *, trigger: str = "manual") -> SyncRunRow:
         """Mirror `/p/` as content-hashed versions plus a device-id map."""
-        async with self._lock:
-            return await self._sync_profiles(trigger=trigger)
+        self._pulls_in_flight += 1
+        try:
+            async with self._lock:
+                return await self._sync_profiles(trigger=trigger)
+        finally:
+            self._pulls_in_flight -= 1
 
     async def _sync_profiles(self, *, trigger: str) -> SyncRunRow:
         await self._ensure_machine()
         run_id = await self.runs.start_run("profiles", trigger)
         update = SyncRunUpdate()
+        try:
+            return await self._mirror_profiles(run_id, update)
+        except asyncio.CancelledError:
+            update.errors += 1
+            update.error = STOPPED_MESSAGE
+            await self.runs.finish_run(run_id, update)
+            raise
+
+    async def _mirror_profiles(self, run_id: int, update: SyncRunUpdate) -> SyncRunRow:
         self._publish(
             SYNC_PROGRESS_EVENT, {"kind": "profiles", "status": "started", "run_id": run_id}
         )

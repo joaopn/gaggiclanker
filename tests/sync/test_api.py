@@ -77,7 +77,7 @@ async def test_the_lifespan_starts_the_sync_engine(
     served: tuple[FakeDevice, FastAPI, httpx.AsyncClient],
 ) -> None:
     _device, app, _client = served
-    assert app.state.sync is not None
+    assert app.state.connection.engine is not None
     # Every loop is registered, so shutdown cancels them in one call and nothing
     # is mid-write when the database file is released.
     assert {"sync-events", "sync-identity", "sync-shots", "sync-profiles"} <= set(

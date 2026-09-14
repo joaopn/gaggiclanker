@@ -492,7 +492,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Connection state, identity and the last known live status */
+        /**
+         * Connection state, identity and the last known live status
+         * @description The client as it is now: a settings change rebuilds it, and this follows.
+         */
         get: operations["get_device_status_api_device_status_get"];
         put?: never;
         post?: never;
@@ -1517,6 +1520,13 @@ export interface paths {
         /**
          * Update runtime settings
          * @description Apply the patch, and end every session if it changed who may sign in.
+         *
+         *     A patch touching the machine's connection settings applies them live: the
+         *     connection is rebuilt from the new effective values, with no restart. If
+         *     that would move the connection while something is using the machine — a
+         *     profile push, a cleanup run, a notes send, a pull — the whole patch is a
+         *     409 naming it and nothing is stored. Validation comes first, so a bad value
+         *     is still a 400 whatever is running.
          *
          *     `AuthService.verify` already refuses a token whose subject is not the
          *     configured user, so renaming the user locks the old tokens out on its own.

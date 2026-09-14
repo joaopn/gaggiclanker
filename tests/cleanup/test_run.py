@@ -110,7 +110,7 @@ async def test_a_run_stops_at_the_first_thing_the_machine_refuses(
     plan = await service(app).plan()
     assert len(plan.planned) > 3
 
-    original = app.state.device.delete_shot
+    original = app.state.connection.client.delete_shot
     calls = 0
 
     async def delete(shot_id: Any) -> None:
@@ -122,7 +122,7 @@ async def test_a_run_stops_at_the_first_thing_the_machine_refuses(
             fake_device.ota_in_progress = True
         await original(shot_id)
 
-    monkeypatch.setattr(app.state.device, "delete_shot", delete)
+    monkeypatch.setattr(app.state.connection.client, "delete_shot", delete)
     run = await service(app).run(await service(app).plan())
 
     assert run.status == "error"
@@ -159,7 +159,10 @@ async def test_deletes_are_paced_to_two_a_second(
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
     paced = CleanupService(
-        app.state.db, app.state.settings_service, client=app.state.device, bus=app.state.events
+        app.state.db,
+        app.state.settings_service,
+        connection=app.state.connection,
+        bus=app.state.events,
     )
     assert paced.pace_seconds == MIN_DELETE_INTERVAL_S
 
@@ -237,7 +240,7 @@ async def test_a_clean_index_sync_never_starts_a_cleanup(
     wanted = [item.device_id for item in (await service(app).plan()).planned]
     assert wanted, "the policy must want something deleted for this to mean anything"
 
-    run = await app.state.sync.sync_shots(trigger="test")
+    run = await app.state.connection.engine.sync_shots(trigger="test")
     assert run.status == "ok"
     await asyncio.sleep(0)
 
@@ -274,7 +277,7 @@ async def test_retired_switches_in_the_environment_and_the_database_resurrect_no
     assert (await service(app).plan()).planned
     fake_device.ws_requests.clear()
 
-    assert (await app.state.sync.sync_shots(trigger="test")).status == "ok"
+    assert (await app.state.connection.engine.sync_shots(trigger="test")).status == "ok"
     shot_id = await _shot_id(app, FIRST_ID)
     response = await client.put(f"/api/shots/{shot_id}/judgement", json={"rating": 5})
     assert response.status_code == 200
@@ -392,7 +395,7 @@ async def test_a_note_edited_since_the_last_pull_is_mirrored_before_the_delete(
     assert (entry.rating, entry.volume_g) == (rating_before, volume_before)
 
     # A pass that would *not* re-pull it: proof the index says nothing changed.
-    await app.state.sync.sync_shots(trigger="test")
+    await app.state.connection.engine.sync_shots(trigger="test")
     unchanged = await NotesRepository(app.state.db).get(shot_id)
     assert unchanged is not None and unchanged.notes != EDITED
 

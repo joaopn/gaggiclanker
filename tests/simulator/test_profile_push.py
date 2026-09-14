@@ -100,13 +100,15 @@ async def live(
             app.state.llm,
             PromptService(app.state.drafts.prompts.repo),
             app.state.settings_service,
-            client=app.state.device,
+            connection=app.state.connection,
         )
-        assert await app.state.device.wait_connected(20.0), "the simulator did not connect"
+        assert await app.state.connection.client.wait_connected(20.0), (
+            "the simulator did not connect"
+        )
         # Here, and only here. The shipped default is off and the offline suite
         # is what proves it stays off.
         await app.state.settings_service.apply({"deviceWritesEnabled": True})
-        await app.state.sync.sync_profiles(trigger="test")
+        await app.state.connection.engine.sync_profiles(trigger="test")
         yield app, client
 
 
@@ -155,7 +157,7 @@ async def test_every_fixture_profile_survives_a_round_trip_through_the_firmware(
     make the next run's profile list a different list.
     """
     app, _client = live
-    client = app.state.device
+    client = app.state.connection.client
     created: list[str] = []
     try:
         for name, document in every_profile_fixture():
@@ -243,12 +245,14 @@ async def test_a_generated_draft_is_pushed_verified_brewed_and_deleted(
         assert pushed["status"] == "pushed", pushed.get("error")
         # The machine's own list agrees, which is a stronger statement than the
         # load the push already did: `req:profiles:list` re-reads every file.
-        listed = {profile.id: profile for profile in await app.state.device.list_profiles()}
+        listed = {
+            profile.id: profile for profile in await app.state.connection.client.list_profiles()
+        }
         assert device_id in listed
         assert listed[device_id].label.endswith("[AI]")
 
         # Selecting is a separate, deliberate action — a push never does it.
-        await app.state.device.select_profile(device_id)
+        await app.state.connection.client.select_profile(device_id)
         assert await brew_with(device_id), (
             f"the simulator would not brew the pushed profile within {BREW_TIMEOUT_S:.0f}s; "
             "see /tmp/gaggimate-sim.log"
@@ -258,7 +262,9 @@ async def test_a_generated_draft_is_pushed_verified_brewed_and_deleted(
             rolled = data(await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={}))
             assert rolled["pushed_device_profile_id"] is None
 
-    assert device_id not in {profile.id for profile in await app.state.device.list_profiles()}
+    assert device_id not in {
+        profile.id for profile in await app.state.connection.client.list_profiles()
+    }
     kinds = [
         (row.kind, row.result) for row in await DeviceWritesRepository(app.state.db).list_writes()
     ]

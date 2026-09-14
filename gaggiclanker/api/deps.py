@@ -34,6 +34,7 @@ from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.sse import SseEventBus
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -54,6 +55,7 @@ __all__ = [
     "CleanupServiceDep",
     "DatabaseDep",
     "DeviceClientDep",
+    "DeviceConnectionDep",
     "DeviceWritesRepoDep",
     "DraftServiceDep",
     "EnvSettingsDep",
@@ -154,21 +156,28 @@ def get_chat_runner(request: Request) -> ChatRunner:
     return runner
 
 
+def get_device_connection(request: Request) -> DeviceConnection[SyncEngine] | None:
+    """The one owner of the machine connection, or ``None`` before the lifespan built it."""
+    connection: DeviceConnection[SyncEngine] | None = getattr(request.app.state, "connection", None)
+    return connection
+
+
 def get_device_client(request: Request) -> GaggimateClient | None:
-    """The device client, or ``None`` when no machine is configured.
+    """The device client as it is now, or ``None`` when no machine is configured.
 
     ``None`` is a supported configuration, not a failure: the app is an archive
     browser first and everything already imported works with the machine
-    unplugged.
+    unplugged. Read from the connection on every request, because a settings
+    change rebuilds the client without a restart.
     """
-    client: GaggimateClient | None = getattr(request.app.state, "device", None)
-    return client
+    connection = get_device_connection(request)
+    return connection.client if connection is not None else None
 
 
 def get_sync_engine(request: Request) -> SyncEngine | None:
-    """The sync engine, or ``None`` when there is no machine to sync with."""
-    engine: SyncEngine | None = getattr(request.app.state, "sync", None)
-    return engine
+    """The sync engine as it is now, or ``None`` when there is no machine to sync with."""
+    connection = get_device_connection(request)
+    return connection.engine if connection is not None else None
 
 
 # The repositories are built per request rather than held on app.state: they are
@@ -248,9 +257,8 @@ def get_device_writes_repo(request: Request) -> DeviceWritesRepository:
 def get_cleanup_service(request: Request) -> CleanupService | None:
     """The device-cleanup service, or ``None`` when no machine is configured.
 
-    App-scoped for the reason the draft service is: it holds the one client that
-    can change a machine, and that client was built once with the write gate
-    wired into it.
+    App-scoped for the reason the draft service is: it reaches the machine
+    through the app's one connection, whose client carries the write gate.
     """
     service: CleanupService | None = getattr(request.app.state, "cleanup", None)
     return service
@@ -275,10 +283,10 @@ def get_starting_point_service(request: Request) -> StartingPointService:
 
 
 def get_draft_service(request: Request) -> ProfileDraftService:
-    """The profile-draft service. App-scoped, because it holds the device client.
+    """The profile-draft service. App-scoped, because it reaches the device client.
 
     That client is the one object in the app that can change a machine, and it
-    is built once in the lifespan with the write gate wired into it. A
+    is built by the app's connection with the write gate wired into it. A
     per-request service would have to build its own — which would mean building
     a second gate, or worse, a client with none.
     """
@@ -293,6 +301,9 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 EventBusDep = Annotated[SseEventBus, Depends(get_event_bus)]
 LlmServiceDep = Annotated[LlmService, Depends(get_llm_service)]
 PromptServiceDep = Annotated[PromptService, Depends(get_prompt_service)]
+DeviceConnectionDep = Annotated[
+    "DeviceConnection[SyncEngine] | None", Depends(get_device_connection)
+]
 DeviceClientDep = Annotated["GaggimateClient | None", Depends(get_device_client)]
 SyncEngineDep = Annotated["SyncEngine | None", Depends(get_sync_engine)]
 ShotsRepoDep = Annotated[ShotsRepository, Depends(get_shots_repo)]

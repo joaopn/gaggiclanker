@@ -95,9 +95,9 @@ async def live(
     monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
     monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
     async with running_app(env) as (app, client):
-        assert await app.state.device.wait_connected(5.0)
-        await app.state.sync.sync_identity(trigger="test")
-        await app.state.sync.sync_shots(trigger="test")
+        assert await app.state.connection.client.wait_connected(5.0)
+        await app.state.connection.engine.sync_identity(trigger="test")
+        await app.state.connection.engine.sync_shots(trigger="test")
         # The pace is the one thing a test cannot afford at its real value:
         # half a second per shot is the whole point of it existing, and forty
         # of those would be twenty seconds of suite. One test asserts on the

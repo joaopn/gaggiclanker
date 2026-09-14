@@ -97,7 +97,7 @@ async def test_the_gate_refuses_a_shot_that_is_not_in_the_archive(
     """A frame never leaves, and the refusal is audited with its reason."""
     app, _ = writes_on
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.device.delete_shot(999_999)
+        await app.state.connection.client.delete_shot(999_999)
     assert "not in the archive" in str(caught.value)
 
     rows = await DeviceWritesRepository(app.state.db).list_writes()
@@ -112,7 +112,7 @@ async def test_the_gate_refuses_a_quarantined_shot(
 ) -> None:
     app, _ = writes_on
     with pytest.raises(DeviceWriteRefused, match="quarantined"):
-        await app.state.device.delete_shot(CORRUPT_ID)
+        await app.state.connection.client.delete_shot(CORRUPT_ID)
 
 
 async def test_the_gate_refuses_every_delete_while_writes_are_off(
@@ -121,14 +121,14 @@ async def test_the_gate_refuses_every_delete_while_writes_are_off(
     """The master switch is checked before the per-kind rule, as for a profile."""
     app, _ = live
     with pytest.raises(DeviceWriteRefused, match="switched off"):
-        await app.state.device.delete_shot(FIRST_ID)
+        await app.state.connection.client.delete_shot(FIRST_ID)
 
 
 async def test_the_gate_allows_a_shot_the_archive_holds_intact(
     writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     app, _ = writes_on
-    await app.state.device.delete_shot(FIRST_ID)
+    await app.state.connection.client.delete_shot(FIRST_ID)
 
     rows = await DeviceWritesRepository(app.state.db).list_writes()
     write = next(row for row in rows if row.kind == "shot_delete")

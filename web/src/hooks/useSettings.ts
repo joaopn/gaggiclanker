@@ -8,8 +8,19 @@ import {
 import { toast } from "sonner";
 import { createBackup, getSettings, patchSettings } from "@/api/client";
 import type { BackupData, SettingsMap, SettingsPatch } from "@/api/types";
-import { invalidateSettings } from "@/lib/invalidate";
+import { invalidateDeviceConnection, invalidateSettings } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
+
+/** The settings the server builds the machine connection from; saving one rebuilds it. */
+export const MACHINE_CONNECTION_KEYS = [
+  "gaggimateHost",
+  "gaggimateProtocol",
+  "gaggimateTimeoutSeconds",
+  "deviceSyncEnabled",
+] as const;
+
+/** How long after a connection change the status is read a second time. */
+const RECONNECT_RECHECK_MS = 3_000;
 
 export function useSettings(): UseQueryResult<SettingsMap, Error> {
   return useQuery({ queryKey: queryKeys.settings.current(), queryFn: getSettings });
@@ -58,8 +69,17 @@ export function useUpdateSettings(): UseMutationResult<
       queryClient.setQueryData(queryKeys.settings.current(), data);
       toast.success("Settings saved");
     },
-    onSettled: () => {
+    onSettled: (_data, _error, patch) => {
       void invalidateSettings(queryClient);
+      // The machine's connection settings apply live: the server rebuilds the
+      // client on save, so the header pill and the Sync page must re-read the
+      // connection now rather than on their next poll. Once straight away (the
+      // new host is configured, not yet connected) and once more a moment
+      // later, when a reachable machine has usually answered.
+      if (patch && MACHINE_CONNECTION_KEYS.some((key) => key in patch)) {
+        void invalidateDeviceConnection(queryClient);
+        setTimeout(() => void invalidateDeviceConnection(queryClient), RECONNECT_RECHECK_MS);
+      }
     },
   });
 }

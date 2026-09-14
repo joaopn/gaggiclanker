@@ -10,6 +10,20 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Machine settings apply live
+
+Changing the machine's host, protocol, timeout or **Device sync enabled** under
+Settings → Machine now takes effect on save: the connection to the old machine is
+closed and the new one opened, with no restart, and the header pill and the Sync
+page follow straight away. A save that leaves the effective values as they were
+does nothing to the connection. While a profile push or rollback, a cleanup run,
+a notes send or a pull is using the machine, a change that would move the
+connection is refused with `409` naming what is running, and nothing in that save
+is stored; other settings save as usual. A pull asked for while such a save is in
+progress waits for it. A pull cut short — by a connection change or by stopping
+the app — is now recorded as an error saying it was stopped; it used to be filed
+as `ok` with nothing archived.
+
 ### Credentials leave the environment
 
 **Breaking: move sign-in and provider keys into Settings before you upgrade.**
