@@ -27,25 +27,29 @@ low. This is the thing that remembers them.
 
 ```bash
 git clone <this repo> && cd gaggiclanker
-cp .env.example .env                 # set GAGGIMATE_HOST to your machine's IP
 docker compose up -d --build         # builds the image and starts on :8000
 curl localhost:8000/health           # {"ok":true,"data":{"status":"ok",...}}
 open http://localhost:8000           # the UI
 ```
 
+Nothing to copy or edit first. Everything is configured from the UI and kept in
+the database; the tracked `.env` has every line commented out and exists only for
+an operator who wants an environment baseline.
+
 `compose.yml` uses **host networking** by default, so the app is on port 8000 of
 the box you started it on and mDNS names resolve. Docker Desktop does not
-support that; swap in the `ports:` block the file documents next to it and put
-an IP in `GAGGIMATE_HOST`.
+support that; swap in the `ports:` block the file documents next to it and use
+an IP for the machine's host.
 
 ### First run
 
-1. **Point it at the machine.** `GAGGIMATE_HOST` is the display board's IP or
-   hostname, with no scheme (`192.168.1.50`, or `192.168.1.50:80`). Prefer a
+1. **Open the UI** at `http://<this box>:8000`.
+2. **Set the machine's address in Settings → Machine.** `gaggimateHost` is the
+   display board's IP or hostname, with no scheme (`192.168.1.50`, or
+   `192.168.1.50:80`). It connects on save, with no restart: the pill in the
+   header goes green within a few seconds of the WebSocket connecting. Prefer a
    fixed IP or a DHCP reservation — see Troubleshooting for why the name your
    browser resolves may not resolve here.
-2. **Open the UI** at `http://<this box>:8000`. The pill in the header goes
-   green within a few seconds of the WebSocket connecting.
 3. **Press "Pull from machine"** on the Shots page. The first pull walks the
    machine's whole history, which for a few hundred shots takes a minute or
    two; when it finishes it says what it archived. Shots under 7.5 seconds
@@ -212,10 +216,16 @@ The reference checkout under `external/` is never modified.
 
 ## Configuration
 
-`.env.example` documents every variable with the reasoning behind it. The one
-that matters is `GAGGIMATE_HOST` — the IP or hostname of the display board.
-Prefer a fixed IP: mDNS (`gaggimate.local`) does not resolve from inside a Docker
-bridge network, and the firmware disables mDNS entirely when HomeKit is on.
+The Settings page is where everything is configured; the one setting that
+matters is the machine's host — the IP or hostname of the display board. Prefer a
+fixed IP: mDNS (`gaggimate.local`) does not resolve from inside a Docker bridge
+network, and the firmware disables mDNS entirely when HomeKit is on.
+
+`.env` is optional. It is tracked by git with every line commented out, and
+documents each variable the app reads from the environment with the reasoning
+behind it; uncomment a line to set an operator baseline. Because it is tracked, a
+local edit will conflict with a future `git pull` that changes the file, and
+anything you put in it is one `git add -A` away from a commit.
 
 Anything you change in the Settings page is stored in the database and wins over
 the environment, so a value edited in the UI does not revert on restart.
@@ -495,8 +505,9 @@ written only by gaggiclanker's own HTTP API, behind buttons a person presses.
 ## Troubleshooting
 
 **The device pill never goes green.**
-Check `GAGGIMATE_HOST` first: `curl http://<host>/api/status` should answer a
-small JSON document. Then check you are not out of WebSocket slots — see below.
+Check the host under Settings → Machine first: `curl http://<host>/api/status`
+should answer a small JSON document. Then check you are not out of WebSocket
+slots — see below.
 `GET /api/device/status` reports what the client thinks, and the container log
 carries a `device_connection_failed` line with the actual error on every
 attempt.

@@ -1,9 +1,10 @@
-"""The release contract: the version, `.env.example`, and boot reconciliation.
+"""The release contract: the version, the tracked `.env`, and boot reconciliation.
 
 Documentation rots silently. A setting added to the registry with no line in
-`.env.example` is invisible to everyone who configures this from a file, and a
-line in `.env.example` naming a variable nothing reads is worse — it looks like
-it works. Both are one test.
+`.env` is invisible to everyone who configures this from a file, and a line in
+`.env` naming a variable nothing reads is worse — it looks like it works. Both
+are one test. And because `.env` is tracked, every line in it is commented out:
+an untouched checkout must change nothing.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from gaggiclanker.settings import SETTINGS_REGISTRY, EnvSettings
 from tests.conftest import running_app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ENV_EXAMPLE = REPO_ROOT / ".env.example"
+ENV_FILE = REPO_ROOT / ".env"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 COMPOSE = REPO_ROOT / "compose.yml"
 
@@ -32,7 +33,7 @@ COMPOSE = REPO_ROOT / "compose.yml"
 #: documented variable is documented whether or not the example sets it.
 _ASSIGNMENT = re.compile(r"^#?\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
 
-#: Variables `.env.example` documents that are not registry keys. Each one is
+#: Variables `.env` documents that are not registry keys. Each one is
 #: read by something — the bootstrap layer, Compose itself, or the image — and
 #: naming them here is what keeps the parity test honest rather than loose.
 _NON_REGISTRY_KEYS: frozenset[str] = frozenset(
@@ -53,38 +54,78 @@ _NON_REGISTRY_KEYS: frozenset[str] = frozenset(
 )
 
 
-def env_example_keys() -> set[str]:
-    return set(_ASSIGNMENT.findall(ENV_EXAMPLE.read_text(encoding="utf-8")))
+def env_file_keys() -> set[str]:
+    return set(_ASSIGNMENT.findall(ENV_FILE.read_text(encoding="utf-8")))
 
 
 def registry_env_keys() -> set[str]:
     return {d.env_key for d in SETTINGS_REGISTRY.values() if d.env_key}
 
 
-def test_every_registry_setting_is_documented_in_env_example() -> None:
-    missing = sorted(registry_env_keys() - env_example_keys())
-    assert not missing, f"settings with no line in .env.example: {missing}"
+def test_every_registry_setting_is_documented_in_env_file() -> None:
+    missing = sorted(registry_env_keys() - env_file_keys())
+    assert not missing, f"settings with no line in .env: {missing}"
 
 
-def test_env_example_documents_nothing_that_is_not_read() -> None:
-    unknown = sorted(env_example_keys() - registry_env_keys() - _NON_REGISTRY_KEYS)
-    assert not unknown, f".env.example names variables nothing reads: {unknown}"
+def test_env_file_documents_nothing_that_is_not_read() -> None:
+    unknown = sorted(env_file_keys() - registry_env_keys() - _NON_REGISTRY_KEYS)
+    assert not unknown, f".env names variables nothing reads: {unknown}"
+
+
+def test_every_line_of_the_env_file_is_a_comment() -> None:
+    """Tracked by git, so an untouched checkout must set nothing at all."""
+    active = [
+        (number, line)
+        for number, line in enumerate(ENV_FILE.read_text(encoding="utf-8").splitlines(), 1)
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert not active, f".env has lines that are not comments: {active}"
+
+
+def test_the_env_file_points_nowhere_real() -> None:
+    """No example value that would aim somebody's box at a machine that is not theirs."""
+    values = re.findall(
+        r"^#?\s*[A-Z][A-Z0-9_]*=(.*)$", ENV_FILE.read_text(encoding="utf-8"), re.MULTILINE
+    )
+    addresses = [
+        address for value in values for address in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", value)
+    ]
+    # Loopback is the fake device's and the simulator's, and HOST's own example.
+    assert all(address.startswith("127.") for address in addresses), addresses
+
+
+def test_the_env_file_is_not_ignored_but_other_env_files_are() -> None:
+    import subprocess
+
+    def ignored(path: str) -> bool:
+        result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["git", "check-ignore", "-q", path],  # noqa: S607 - git from PATH is the point
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        return result.returncode == 0
+
+    if not (REPO_ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    assert not ignored(".env")
+    assert ignored("web/.env")
+    assert ignored(".envrc")
 
 
 def test_the_bootstrap_settings_are_all_documented() -> None:
     """`EnvSettings`' own aliases, which the registry test above cannot see."""
-    documented = env_example_keys()
+    documented = env_file_keys()
     for name, field in EnvSettings.model_fields.items():
         alias = field.validation_alias
         primary = alias.choices[0] if hasattr(alias, "choices") else name.upper()  # type: ignore[union-attr]
-        assert str(primary) in documented, f"{name} is not in .env.example"
+        assert str(primary) in documented, f"{name} is not in .env"
 
 
-def test_no_credential_variable_is_named_in_env_example_or_compose() -> None:
+def test_no_credential_variable_is_named_in_the_env_file_or_compose() -> None:
     """Credentials are entered in Settings; the files an operator copies must not invite them."""
     from gaggiclanker.settings import RETIRED_AUTH_ENV_KEYS
 
-    for path in (ENV_EXAMPLE, COMPOSE):
+    for path in (ENV_FILE, COMPOSE):
         text = path.read_text(encoding="utf-8")
         named = [name for name in RETIRED_AUTH_ENV_KEYS if name in text]
         assert not named, f"{path.name} names retired credential variables: {named}"

@@ -10,6 +10,23 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Clone and start
+
+**Starting is `git clone`, then `docker compose up -d --build`**, then entering
+the machine's address under Settings → Machine. There is no file to copy first.
+`.env.example` is gone; in its place `.env` is tracked by git as a file of
+optional overrides with every line commented out, so an untouched checkout
+changes nothing and the image's and the app's defaults apply. It no longer
+carries an example host that points anywhere, and it names no credential.
+
+**Upgrade note: move a local `.env` aside before you pull.** A `.env` you created
+from the old example is untracked, and git will refuse to overwrite it with the
+tracked one. Move it aside (`mv .env .env.local-backup`), pull, then carry over
+only the values you still want — uncomment the matching lines in the new `.env`,
+or better, enter them in the Settings page, which wins over the file anyway. Any
+credential in the old file must go into Settings instead: see *Credentials leave
+the environment* below.
+
 ### Machine settings apply live
 
 Changing the machine's host, protocol, timeout or **Device sync enabled** under
