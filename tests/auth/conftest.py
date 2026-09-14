@@ -1,20 +1,19 @@
 """Fixtures for the auth suite: an app with auth on, and a client holding a token.
 
-Auth is switched on through the *environment*, not through a PATCH, because
-that is the path the README documents and the one an operator actually uses.
-The registry resolves ``AUTH_USER`` and ``AUTH_PASSWORD_HASH`` from
-``os.environ`` (``SettingsService._raw_env``), so ``monkeypatch.setenv`` is
-enough and works for the in-process client and the real-socket one alike.
+Auth is switched on through the *database*, because that is the only place it
+can be configured: the environment carries no sign-in settings at all, and a
+boot that finds one of the old variables set refuses to start. The fixtures
+store the user and the hash through the settings service, the same way
+``POST /api/auth/password`` and the Settings page do.
 
 The password hash is computed once for the whole session. argon2 is deliberately
 slow — that is the point of it — and hashing per test would add a visible second
-to the suite for no coverage at all; the one test that cares about hashing
-(``test_bootstrap``) does its own.
+to the suite for no coverage at all.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
@@ -33,17 +32,32 @@ def password_hash() -> str:
     return hash_password(PASSWORD)
 
 
+async def enable_auth(app: FastAPI, password_hash: str, user: str = USERNAME) -> None:
+    """Store a user and a password hash, the way the Settings page ends up doing it.
+
+    The hash first and the user second, the order the page asks for: the user is
+    what turns the lock.
+    """
+    settings = app.state.settings_service
+    await settings.store("authPasswordHash", password_hash)
+    await settings.store("authUser", user)
+
+
 @pytest.fixture
-def auth_env(monkeypatch: pytest.MonkeyPatch, password_hash: str) -> Iterator[None]:
-    """Turn auth on for this test, the way the environment does in production."""
-    monkeypatch.setenv("AUTH_USER", USERNAME)
-    monkeypatch.setenv("AUTH_PASSWORD_HASH", password_hash)
-    yield
+async def auth_configured(env: EnvSettings, password_hash: str) -> None:
+    """A data directory whose database already has auth on, for a test that boots its own app.
+
+    One throwaway boot stores the credentials; the test's own app — built from
+    ``env`` or from ``make_env``, which share the data directory — then starts
+    with auth on from its first request.
+    """
+    async with running_app(env) as (app, _client):
+        await enable_auth(app, password_hash)
 
 
 @pytest.fixture
 async def secured(
-    env: EnvSettings, auth_env: None
+    env: EnvSettings, auth_configured: None
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     """An app with auth enabled, and an *unauthenticated* client for it."""
     async with running_app(env) as pair:

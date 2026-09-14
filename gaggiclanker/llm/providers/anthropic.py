@@ -37,6 +37,7 @@ from anthropic import (
     AsyncAnthropic,
 )
 
+from gaggiclanker.infra.outbound import outbound_http_client
 from gaggiclanker.llm.chat_types import (
     ChatEvent,
     ChatMessage,
@@ -50,7 +51,7 @@ from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import strict_json_schema
 from gaggiclanker.llm.types import CredentialCheck, ProviderId, ResponseMode, Usage
 
-__all__ = ["AnthropicProvider"]
+__all__ = ["ANTHROPIC_API_BASE_URL", "AnthropicProvider", "StoredCredentialsAnthropic"]
 
 log = structlog.get_logger(__name__)
 
@@ -75,6 +76,53 @@ _TEXT_MODE_INSTRUCTION = (
 )
 
 
+#: The Messages API's own address, used whenever nothing else is stored.
+ANTHROPIC_API_BASE_URL = "https://api.anthropic.com"
+
+
+class StoredCredentialsAnthropic(AsyncAnthropic):
+    """``AsyncAnthropic`` with exactly the credential it was given, none from the environment.
+
+    The SDK constructor has four environment fallbacks that matter here, and
+    this closes each one:
+
+    * ``ANTHROPIC_API_KEY`` / ``ANTHROPIC_AUTH_TOKEN``, and the profile and
+      workload-identity discovery behind them: skipped because a key is always
+      passed (an empty string when none is stored, which ``missing_credential``
+      refuses before any request), and discovery never runs for a subclass;
+    * ``ANTHROPIC_BASE_URL``: a base URL is always passed;
+    * ``ANTHROPIC_CUSTOM_HEADERS``: merged into the client's headers inside the
+      constructor, where it can replace ``x-api-key`` on every request — so the
+      headers are reset to the ones passed in, once the constructor is done;
+    * ``ANTHROPIC_WEBHOOK_SIGNING_KEY``: dropped; nothing here verifies webhooks.
+
+    ``tests/llm/test_outbound_isolation.py`` sets every one of them to a
+    sentinel and inspects the request, so an SDK upgrade that moves any of this
+    fails there rather than in production.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        max_retries: int,
+        http_client: httpx2.AsyncClient,
+        default_headers: dict[str, str] | None = None,
+    ) -> None:
+        explicit = dict(default_headers or {})
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=max_retries,
+            http_client=http_client,
+            default_headers=explicit,
+        )
+        self._custom_headers = explicit
+        self.auth_token = None
+        self.webhook_key = None
+
+
 class AnthropicProvider:
     """The Messages API, with the system block hoisted and cached."""
 
@@ -92,24 +140,24 @@ class AnthropicProvider:
         http_client: httpx2.AsyncClient | None = None,
     ) -> None:
         self.api_key = api_key
-        self.base_url = base_url
+        # Explicit, always: a None base URL is the SDK's cue to read
+        # ANTHROPIC_BASE_URL, which would send the stored key wherever the
+        # environment says.
+        self.base_url = base_url or ANTHROPIC_API_BASE_URL
         self.max_tokens = max_tokens
-        self.client = AsyncAnthropic(
-            api_key=api_key or None,
-            base_url=base_url or None,
+        self.client = StoredCredentialsAnthropic(
+            api_key=api_key,
+            base_url=self.base_url,
             # As with the OpenAI client: retries, deadlines and the rate-limit
             # budget belong to the service, and an SDK retrying underneath them
             # spends the account's 429 allowance without the budget seeing it.
             max_retries=0,
-            http_client=http_client,
+            http_client=http_client if http_client is not None else outbound_http_client(),
         )
 
     def missing_credential(self) -> str | None:
         if not self.api_key:
-            return (
-                "No Anthropic API key is configured. Set anthropicApiKey in Settings, or "
-                "ANTHROPIC_API_KEY in the environment."
-            )
+            return "No Anthropic API key is configured. Set anthropicApiKey under Settings → LLM."
         return None
 
     async def complete(self, call: ProviderCall) -> ProviderReply:

@@ -19,7 +19,7 @@ from starlette.datastructures import Headers
 
 from gaggiclanker.auth.guard import PUBLIC_API_PATHS, bearer_token, requires_auth
 from gaggiclanker.settings import EnvSettings
-from tests.auth.conftest import PASSWORD, USERNAME
+from tests.auth.conftest import PASSWORD, USERNAME, enable_auth
 from tests.device.conftest import serving
 
 #: A path parameter's placeholder. Any value will do: the guard runs before the
@@ -110,12 +110,11 @@ async def test_nothing_is_guarded_when_auth_is_off(client: httpx.AsyncClient) ->
 
 
 async def test_turning_auth_on_takes_effect_without_a_restart(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, password_hash: str
+    app: FastAPI, client: httpx.AsyncClient, password_hash: str
 ) -> None:
     """The person flipping this switch usually cannot restart the container."""
     assert (await client.get("/api/shots")).status_code == 200
-    monkeypatch.setenv("AUTH_USER", USERNAME)
-    monkeypatch.setenv("AUTH_PASSWORD_HASH", password_hash)
+    await enable_auth(app, password_hash)
     assert (await client.get("/api/shots")).status_code == 401
 
 
@@ -151,7 +150,7 @@ def test_bearer_token_parsing() -> None:
 
 @pytest.mark.parametrize("stream", ["/api/sync/events", "/api/llm/calls/stream"])
 async def test_sse_streams_are_guarded_and_open_with_a_bearer(
-    env: EnvSettings, auth_env: None, stream: str
+    env: EnvSettings, auth_configured: None, stream: str
 ) -> None:
     """A real socket: `httpx.ASGITransport` deadlocks on a stream that never ends.
 

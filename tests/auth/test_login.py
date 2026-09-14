@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 
 import httpx
 import jwt
-import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.auth.passwords import hash_password, verify_password
@@ -188,10 +186,11 @@ async def test_basic_auth_is_not_accepted(secured_client: httpx.AsyncClient) -> 
 async def test_renaming_the_user_invalidates_tokens_issued_to_the_old_name(
     secured: tuple[FastAPI, httpx.AsyncClient],
     bearer: dict[str, str],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _app, client = secured
-    monkeypatch.setenv("AUTH_USER", "someone-else")
+    app, client = secured
+    # Stored behind the settings API's back, so the session revocation a PATCH
+    # does cannot be what refuses the token: the subject check has to.
+    await app.state.settings_service.store("authUser", "someone-else")
     assert (await client.get("/api/shots", headers=bearer)).status_code == 401
 
 
@@ -218,118 +217,20 @@ async def test_the_signing_secret_is_generated_once_and_kept(
     assert await twin.secret() == stored
 
 
-async def test_an_env_secret_must_be_long_enough(
-    secured: tuple[FastAPI, httpx.AsyncClient],
-) -> None:
-    """At construction, which is at boot — not on the first sign-in, hours later."""
-    app, _client = secured
-    with pytest.raises(RuntimeError, match="at least 32"):
-        AuthService(app.state.db, app.state.settings_service, env_secret="tooshort")
-
-
-async def test_a_short_env_secret_stops_the_app_from_starting(
-    make_env: Callable[..., EnvSettings], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("AUTH_JWT_SECRET", "still-too-short")
-    with pytest.raises(RuntimeError, match="AUTH_JWT_SECRET"):
-        async with running_app(make_env()):
-            pass
-
-
-async def test_auth_password_is_hashed_at_boot_and_never_stored_plain(
-    make_env: object, monkeypatch: pytest.MonkeyPatch, data_dir: object
-) -> None:
-    """`AUTH_PASSWORD=...` is the one-variable path; the plain value never lands."""
-    monkeypatch.setenv("AUTH_USER", USERNAME)
-    env = EnvSettings(
-        DATA_DIR=str(data_dir),
-        LOG_LEVEL="warning",
-        AUTH_PASSWORD="from-the-environment",
-        _env_file=None,  # type: ignore[call-arg]
-    )
-    async with running_app(env) as (app, client):
-        stored = await app.state.settings_service.get("authPasswordHash")
-        assert stored.startswith("$argon2id$")
-        assert verify_password(stored, "from-the-environment")
-
-        settings = (await client.get("/api/settings")).json()
-        # It is guarded now, so that read needs a token.
-        assert settings["ok"] is False
-
-        issued = await sign_in(client, password="from-the-environment")
-        assert issued.status_code == 200
-        listed = (
-            await client.get(
-                "/api/settings",
-                headers={"Authorization": f"Bearer {issued.json()['data']['token']}"},
-            )
-        ).json()["data"]
-        # A secret renders as a hint, and `AUTH_PASSWORD` is not a registry key
-        # at all, so the plain password appears nowhere in the payload.
-        assert listed["authPasswordHash"]["secret"] is True
-        assert "value" not in listed["authPasswordHash"]
-        assert "from-the-environment" not in str(listed)
-
-
-async def test_the_env_password_seeds_the_first_run_and_never_overwrites(
-    make_env: Callable[..., EnvSettings], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`AUTH_PASSWORD` is a seed, not a sync.
-
-    A password changed in the UI has to survive the next restart. A boot that
-    re-hashed whatever the compose file said would revert it at three in the
-    morning with nothing in the log to explain why.
-    """
-    monkeypatch.setenv("AUTH_USER", USERNAME)
-    monkeypatch.setenv("AUTH_PASSWORD", "the-seed-password")
-    env = make_env()
-    async with running_app(env) as (app, client):
-        seeded = await app.state.settings_service.get("authPasswordHash")
-        assert verify_password(seeded, "the-seed-password")
-
-        # The operator changes it.
-        issued = await sign_in(client, password="the-seed-password")
-        token = issued.json()["data"]["token"]
-        changed = await client.post(
-            "/api/auth/password",
-            json={"current_password": "the-seed-password", "new_password": "a-different-one"},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert changed.status_code == 200
-        after_change = await app.state.settings_service.get("authPasswordHash")
-
-    # Restart, with AUTH_PASSWORD still in the environment.
-    async with running_app(env) as (app, client):
-        assert await app.state.settings_service.get("authPasswordHash") == after_change
-        assert (await sign_in(client, password="the-seed-password")).status_code == 401
-        assert (await sign_in(client, password="a-different-one")).status_code == 200
-
-
-async def test_an_unusable_stored_hash_is_not_seeded_over_either(
-    make_env: Callable[..., EnvSettings], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Overwriting it would hide the mistake rather than fix it."""
-    monkeypatch.setenv("AUTH_USER", USERNAME)
-    monkeypatch.setenv("AUTH_PASSWORD", "the-seed-password")
-    env = make_env()
-    async with running_app(env) as (app, _client):
-        await app.state.settings_service.repo.set("authPasswordHash", "hunter2")
-    async with running_app(env) as (app, _client):
-        assert await app.state.settings_service.get("authPasswordHash") == "hunter2"
-
-
 async def test_an_unusable_password_hash_fails_closed(
-    env: EnvSettings, monkeypatch: pytest.MonkeyPatch
+    env: EnvSettings,
 ) -> None:
-    """Somebody types the password into a field that wants its hash.
+    """Somebody puts the password into the row that wants its hash.
 
     This used to blank the hash, which read as "auth not configured" and opened
     every route to everybody — a configuration mistake taking the lock off the
     door. Auth stays ON, nobody signs in, and the log says what to do.
     """
-    monkeypatch.setenv("AUTH_USER", USERNAME)
-    monkeypatch.setenv("AUTH_PASSWORD_HASH", "hunter2")
     async with running_app(env) as (app, client):
+        # Straight into the table: the settings service's own validation would
+        # refuse it, which is exactly why the only way to get here is by hand.
+        await app.state.settings_service.repo.set("authPasswordHash", "hunter2")
+        await app.state.settings_service.store("authUser", USERNAME)
         config = await app.state.auth.config()
         assert config.enabled is True
         assert config.usable is False
@@ -356,7 +257,7 @@ async def test_an_unusable_password_hash_fails_closed(
 
 
 async def test_expired_sessions_are_swept_at_boot(
-    env: EnvSettings, auth_env: None, password_hash: str
+    env: EnvSettings, auth_configured: None, password_hash: str
 ) -> None:
     async with running_app(env) as (app, _client):
         sessions = AuthSessionsRepository(app.state.db)

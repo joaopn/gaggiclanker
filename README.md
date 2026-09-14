@@ -58,7 +58,7 @@ an IP in `GAGGIMATE_HOST`.
 5. **Set up the model.** The analyzer needs one provider. The cheapest to get
    working is `claude_code`, which spends a Claude subscription you may already
    have: run `claude setup-token` on any machine with the CLI installed and
-   paste the token into the Settings page (or set `CLAUDE_CODE_OAUTH_TOKEN`).
+   paste the token into **Settings → LLM**.
    An interactive `claude login` is **not** enough — every call runs with a
    scratch `HOME`, which is what keeps this repository out of the prompt and
    hides `~/.claude` along with it. Any OpenAI-compatible gateway works too;
@@ -220,44 +220,42 @@ bridge network, and the firmware disables mDNS entirely when HomeKit is on.
 Anything you change in the Settings page is stored in the database and wins over
 the environment, so a value edited in the UI does not revert on restart.
 
+**Credentials never come from the environment.** The sign-in user and password,
+and every LLM provider's API key or token, are entered in the Settings page and
+live in the database only — and nothing else can supply one: the provider
+clients ignore the SDKs' own key, header, organisation and base-URL variables,
+profile files and `.netrc`, and a proxy is used only if it names no user or
+password. The variables that used to carry a credential, or that the SDKs would
+read one from, are refused: a boot that finds one set (in any letter case, in the
+environment or in `.env`), or a proxy variable with a user or password in it,
+logs `auth_env_refused` with the variable names (never a value) and exits, rather
+than start with authentication silently switched off. Empty values count as
+unset.
+
 ### Authentication
 
-Off unless you set two variables, because the common case is a box on a home
-network where the espresso machine itself has no auth, no TLS and no CORS —
+Off until you turn it on, because the common case is a box on a home network
+where the espresso machine itself has no auth, no TLS and no CORS —
 gaggiclanker is already the strictest thing on that wire. Turn it on if this box
 is port-forwarded, on a shared network, or behind a reverse proxy the internet
 can reach.
 
-```bash
-AUTH_USER=barista AUTH_PASSWORD='something long' docker compose up -d
-```
-
-`AUTH_PASSWORD` **seeds** the first password: the first boot that finds none
-stored hashes it with argon2id, keeps the hash, and never writes the plain value
-anywhere. After that the line is inert, because a boot that re-applied it would
-silently undo a password changed in the UI. Set `AUTH_PASSWORD_HASH` instead if
-you would rather the plain password never appeared in a file or a
-`docker inspect`:
-
-```bash
-docker compose run --rm --entrypoint python gaggiclanker -c \
-  "from argon2 import PasswordHasher; print(PasswordHasher().hash(input()))"
-```
-
-After that, change it under **Settings → Authentication**, which posts the plain
-password to `POST /api/auth/password` and lets the server hash it. The settings
-API refuses to store a hash directly (`authPasswordHash` is read-only there):
-a masked box labelled "password hash" invites typing the *password* into it, and
-a stored value argon2 cannot verify is a credential that authenticates nobody.
+It is configured in one place: **Settings → Authentication**. Set the password
+first, then the username — the username is what turns the lock. The password
+box posts the plain password to `POST /api/auth/password`, which hashes it with
+argon2id on the server and stores only the hash. Nothing in the environment can
+set, seed or override either of them. The settings API refuses to store a hash
+directly (`authPasswordHash` is read-only there): a masked box labelled
+"password hash" invites typing the *password* into it, and a stored value argon2
+cannot verify is a credential that authenticates nobody.
 
 A change of password — or of username — revokes every open session, including
 the one that made the change. The tokens are the credential once they are
 issued; leaving a thirty-day token working after a password change would be
 theatre.
 
-The username switch is re-read on every request, so turning auth on from the
-Settings page takes effect immediately with no restart. Set the password first
-and the username second: the username is what turns the lock.
+The switch is re-read on every request, so turning auth on from the Settings
+page takes effect immediately with no restart.
 
 If the stored hash is somehow not a hash, auth stays **on** and refuses every
 sign-in, with the fix named in the log. A configuration mistake must never be
@@ -319,12 +317,14 @@ Per-shot analysis goes through one provider, chosen with `GAGGICLANKER_LLM_PROVI
 subscription, so there is no API key to buy), `anthropic`, `openrouter`,
 `openai`, `ollama`, `lmstudio`, or `openai_compatible` for any other gateway.
 
-Each provider has its own credential and none is ever lent to another:
-`GAGGICLANKER_LLM_API_KEY` for the OpenAI-compatible one, `ANTHROPIC_API_KEY`,
-`CLAUDE_CODE_OAUTH_TOKEN`. For `claude_code` that token comes from
+Each provider has its own credential, entered under **Settings → LLM** and kept
+in the database only, and none is ever lent to another: `llmApiKey` for the
+OpenAI-compatible presets, `anthropicApiKey`, `claudeCodeOauthToken`. None of
+them is read from the environment. For `claude_code` the token comes from
 `claude setup-token` — an interactive `claude login` is not enough, because every
-call runs the CLI with a scratch `HOME` so nothing on the box leaks into the
-prompt, and that hides `~/.claude` too.
+call runs the CLI with a scratch `HOME` and an environment that carries only the
+stored token, so nothing on the box leaks into the prompt, and that hides
+`~/.claude` too.
 
 `GAGGICLANKER_MODEL` is the default model; `..._MODEL_ANALYSIS`, `..._MODEL_DRAFT`
 and `..._MODEL_CHAT` override it per kind of call, and an empty value lets the
@@ -546,14 +546,32 @@ clears it.
 **I am locked out after mistyping the password.**
 Five failures from one address lock that address for sixty seconds, and each
 further attempt extends it. Wait a minute. If you have genuinely lost the
-password, set `AUTH_USER=` empty and restart to turn auth off, then set a new
-one under Settings → Authentication and put the username back.
+password, delete the stored hash, which turns auth off on the very next request
+(no restart):
+
+```bash
+docker compose exec gaggiclanker python -c \
+  "import sqlite3;sqlite3.connect('/app/data/gaggiclanker.db').execute(\
+   \"DELETE FROM settings WHERE key='authPasswordHash'\").connection.commit()"
+```
+
+then set a new password under Settings → Authentication. The username is still
+set, so auth is back on the moment the new password is stored.
 
 **Sign-in says "the stored password hash is not an argon2 hash".**
-Something wrote a password, not a hash, into `AUTH_PASSWORD_HASH`. Auth is on
-and refusing everybody, which is the correct thing for a broken credential to
-do. Clear that variable and set `AUTH_PASSWORD` to the password you want, then
-restart.
+Something wrote a password, not a hash, into the `authPasswordHash` row by hand.
+Auth is on and refusing everybody, which is the correct thing for a broken
+credential to do. Delete the row as for a lost password above, then set the
+password you want under Settings → Authentication.
+
+**The container exits at boot with `auth_env_refused`.**
+A credential variable is still set — one of the old sign-in variables, or an LLM
+provider's API key or token — in `.env`, in `compose.yml` or in the shell that
+started it. The log line names which. Remove them, start the app, and enter
+sign-in under Settings → Authentication and the key under Settings → LLM. An
+install that had
+sign-in configured only through the environment starts with auth off until you
+set it again, so do that first if the box is reachable from outside.
 
 ## Documentation
 

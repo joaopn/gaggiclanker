@@ -262,14 +262,22 @@ async def test_unset_secret_reports_no_hint(client: httpx.AsyncClient) -> None:
     assert entry["hint"] is None
 
 
-async def test_secret_from_the_environment_is_hinted(
-    monkeypatch: pytest.MonkeyPatch, env: EnvSettings
-) -> None:
-    monkeypatch.setenv("GAGGICLANKER_LLM_API_KEY", "or-v1-deadbeef")
-    async with running_app(env) as (_app, client):
-        entry = (await get_settings(client))["llmApiKey"]
-        assert entry["hint"] == "or-v"
-        assert entry["source"] == "environment"
+def test_no_secret_setting_reads_the_environment() -> None:
+    """A credential is entered in Settings and lives in the database, never in a variable.
+
+    The whole registry, so a secret added later is covered the day it lands.
+    """
+    secrets = [definition for definition in SETTINGS_REGISTRY.values() if definition.secret]
+    assert secrets, "the registry has no secrets, so this test is checking nothing"
+    assert [d.key for d in secrets if d.env_key is not None] == []
+
+
+def test_every_retired_credential_variable_is_refused_at_boot() -> None:
+    """The names secret keys used to read are exactly the ones a boot refuses."""
+    from gaggiclanker.settings import RETIRED_AUTH_ENV_KEYS
+
+    for name in ("GAGGICLANKER_LLM_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"):
+        assert name in RETIRED_AUTH_ENV_KEYS
 
 
 def test_short_secrets_are_masked_rather_than_hinted() -> None:

@@ -210,13 +210,12 @@ async def test_an_unauthenticated_request_is_refused(
     from gaggiclanker.main import create_app
     from tests.conftest import NO_WEB_DIST
 
-    # `authUser` and `authPasswordHash` are registry keys, so the environment is
-    # where a test turns auth on — the same route the deployment uses.
-    monkeypatch.setenv("AUTH_USER", "barista")
-    monkeypatch.setenv("AUTH_PASSWORD_HASH", PasswordHasher().hash("secret"))
     monkeypatch.setenv("GAGGICLANKER_MCP_ENABLED", "true")
     app = create_app(env, web_dist=NO_WEB_DIST, dotenv={})
     async with app.router.lifespan_context(app):
+        # Sign-in lives in the database only, so that is where a test turns it on.
+        await app.state.settings_service.store("authPasswordHash", PasswordHasher().hash("secret"))
+        await app.state.settings_service.store("authUser", "barista")
         async with client_for(app) as http:
             # POST and DELETE answer immediately; the GET is the long-lived
             # event stream and is covered by the predicate test above.

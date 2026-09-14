@@ -26,7 +26,7 @@ from gaggiclanker import __version__
 from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
-from gaggiclanker.auth.service import AuthService, validate_env_secret
+from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
@@ -58,7 +58,7 @@ from gaggiclanker.llm.service import LlmService
 from gaggiclanker.mcp.http import MCP_PATH, McpMount, start_mcp, stop_mcp
 from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.notes.writeback import NotesWritebackService
-from gaggiclanker.settings import EnvSettings, load_dotenv_values
+from gaggiclanker.settings import EnvSettings, load_dotenv_values, retired_auth_env_keys
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
@@ -111,7 +111,11 @@ def ensure_data_dir(data_dir: Path) -> None:
         ) from exc
 
 
-def check_configuration(env: EnvSettings) -> None:
+def check_configuration(
+    env: EnvSettings,
+    dotenv: Mapping[str, str | None] | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> None:
     """Every check that needs nothing but the environment. Runs first, always.
 
     "First" is the whole point. Anything that raises **after** ``db.connect()``
@@ -129,8 +133,39 @@ def check_configuration(env: EnvSettings) -> None:
     So a check that can be made without opening anything is made here, and the
     teardown in :func:`lifespan` covers the ones that cannot.
     ``tests/test_startup.py`` holds both halves in place.
+
+    The one check today: no credential variable may be set — not the sign-in
+    settings, not an LLM provider's key or token, not a variable the SDKs would
+    read a credential from, and no proxy variable carrying a user or password. Credentials are
+    configured in the database alone, and an install that used to configure
+    sign-in through the environment has its user and hash only there — starting
+    with those variables silently ignored would switch authentication off and
+    open every route. Refusing is the closed failure; the log names the
+    variables (never a value) and says where credentials live now. ``environ`` and ``dotenv`` are
+    parameters so a test can hand in its own; they default to the process
+    environment and to nothing.
     """
-    validate_env_secret(env.auth_jwt_secret)
+    retired = retired_auth_env_keys(
+        os.environ if environ is None else environ, {} if dotenv is None else dotenv
+    )
+    if retired:
+        log.error(
+            "auth_env_refused",
+            env_keys=retired,
+            fix=(
+                "enter sign-in under Settings → Authentication and provider keys under "
+                "Settings → LLM, remove these variables, and name any proxy without a "
+                "user or password"
+            ),
+        )
+        raise RuntimeError(
+            "Credentials for external services live only in the database, and these variables "
+            f"carry one: {', '.join(retired)}. Remove them from the environment, compose.yml and "
+            ".env (a proxy may stay if it names no user or password), then enter sign-in under "
+            "Settings → Authentication and provider keys under Settings → LLM. Refusing to start "
+            "rather than start with authentication silently switched off or a credential taken "
+            "from somewhere other than the database."
+        )
 
 
 async def _shutdown(app: FastAPI, db: Database) -> None:
@@ -184,7 +219,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Before anything is opened: see check_configuration for why the order is
     # not a matter of taste.
-    check_configuration(env)
+    check_configuration(env, app.state.dotenv)
     ensure_data_dir(env.data_dir)
 
     db = Database(env.database_path)
@@ -234,9 +269,8 @@ async def _start(app: FastAPI, db: Database) -> None:
     # Built before anything can serve a request, and before reconciliation:
     # the guard reads `app.state.auth` on every request, and boot work runs in
     # the lifespan precisely so it happens with no request in flight.
-    auth = AuthService(db, settings_service, env_secret=env.auth_jwt_secret)
+    auth = AuthService(db, settings_service)
     app.state.auth = auth
-    await auth.bootstrap(env.auth_password)
     forgotten = await auth.cleanup()
 
     # Prompts are seeded before anything can call one: the rules in

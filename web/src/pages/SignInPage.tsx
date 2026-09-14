@@ -92,8 +92,9 @@ export function SignInPage() {
         </form>
 
         <p className="mt-6 text-muted-foreground text-xs">
-          Set <code>AUTH_USER</code> and <code>AUTH_PASSWORD</code> in <code>.env</code> to change
-          these, or turn authentication off by clearing them.
+          The username and password are set under Settings → Authentication. Lost the password?
+          Deleting the stored password hash turns sign-in off; the README's troubleshooting section
+          has the one-line command.
         </p>
       </div>
     </div>

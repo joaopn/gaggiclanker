@@ -304,3 +304,14 @@ async def test_a_keyless_openrouter_call_never_leaves_the_box(
     assert isinstance(result, Err)
     assert result.code == "auth"
     assert recorder.requests == []
+
+
+def test_an_ambient_key_is_never_what_the_client_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The SDK reads OPENAI_API_KEY when it is given no key; this provider always gives one."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-ambient")
+    monkeypatch.setenv("GAGGICLANKER_LLM_API_KEY", "sk-ambient-too")
+
+    provider = OpenAiCompatibleProvider(preset="openrouter", api_key="")
+
+    assert provider.missing_credential() is not None
+    assert provider.client.api_key not in ("sk-ambient", "sk-ambient-too")

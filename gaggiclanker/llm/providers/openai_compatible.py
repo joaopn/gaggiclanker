@@ -31,6 +31,7 @@ from openai import (
     OpenAIError,
 )
 
+from gaggiclanker.infra.outbound import outbound_http_client
 from gaggiclanker.llm.chat_types import (
     ChatEvent,
     ChatMessage,
@@ -44,7 +45,13 @@ from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import schema_name, strict_json_schema
 from gaggiclanker.llm.types import CredentialCheck, ProviderId, ResponseMode, Usage
 
-__all__ = ["PRESETS", "OpenAiCompatibleProvider", "Preset", "normalize_base_url"]
+__all__ = [
+    "PRESETS",
+    "OpenAiCompatibleProvider",
+    "Preset",
+    "StoredCredentialsOpenAI",
+    "normalize_base_url",
+]
 
 log = structlog.get_logger(__name__)
 
@@ -100,6 +107,11 @@ PRESETS: dict[str, Preset] = {
     ),
 }
 
+#: Where a preset with no base URL of its own points when none is stored. The
+#: `.invalid` top-level domain never resolves (RFC 2606), so even a call that
+#: somehow skipped `missing_credential` reaches nobody.
+_UNCONFIGURED_BASE_URL = "https://llm-base-url-not-configured.invalid/v1"
+
 # The SDK refuses to construct without a key. A keyless endpoint (Ollama, LM
 # Studio) gets this placeholder, which those servers ignore.
 _PLACEHOLDER_KEY = "not-required"
@@ -132,6 +144,48 @@ def normalize_base_url(raw: str) -> str:
     return url
 
 
+class StoredCredentialsOpenAI(AsyncOpenAI):
+    """``AsyncOpenAI`` with exactly the credential it was given, none from the environment.
+
+    The SDK constructor reads, when an argument is missing: ``OPENAI_API_KEY``,
+    ``OPENAI_ADMIN_KEY``, ``OPENAI_ORG_ID`` and ``OPENAI_PROJECT_ID`` (sent as
+    ``OpenAI-Organization`` / ``OpenAI-Project`` headers), ``OPENAI_BASE_URL``,
+    ``OPENAI_WEBHOOK_SECRET``, and ``OPENAI_CUSTOM_HEADERS`` — the last merged
+    into the client's headers, where its ``Authorization`` replaces the stored
+    key's on every request. The provider always passes a key and a base URL;
+    everything else is reset here once the constructor is done, so the
+    environment cannot add a header, an organisation or a second key.
+
+    ``tests/llm/test_outbound_isolation.py`` sets every one of them to a
+    sentinel and inspects the request, so an SDK upgrade that moves any of this
+    fails there rather than in production.
+    """
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        max_retries: int,
+        http_client: httpx2.AsyncClient,
+        default_headers: dict[str, str] | None = None,
+    ) -> None:
+        explicit = dict(default_headers or {})
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=max_retries,
+            http_client=http_client,
+            default_headers=explicit,
+        )
+        self._custom_headers = explicit
+        self._ambient_authorizations = frozenset()
+        self.organization = None
+        self.project = None
+        self.admin_api_key = None
+        self.webhook_secret = None
+
+
 class OpenAiCompatibleProvider:
     """One provider for the whole ``/v1/chat/completions`` family."""
 
@@ -158,23 +212,29 @@ class OpenAiCompatibleProvider:
             # to be able to say so too.
             log.debug("llm_provider_missing_key", provider=self.id)
 
-        self.client = AsyncOpenAI(
+        self.client = StoredCredentialsOpenAI(
+            # Never None, either of them. A None key is the SDK's cue to read
+            # OPENAI_API_KEY, and a None base URL its cue to read
+            # OPENAI_BASE_URL — which would send the stored key wherever the
+            # environment says. A preset with no URL of its own and none stored
+            # gets an address that cannot resolve, and `missing_credential`
+            # refuses to call it at all.
             api_key=api_key or _PLACEHOLDER_KEY,
-            base_url=self.base_url or None,
+            base_url=self.base_url or _UNCONFIGURED_BASE_URL,
             default_headers=dict(self.preset.headers or {}),
             # Retries, deadlines and the rate-limit budget all live one layer
             # up. An SDK retrying underneath them would spend the account's
             # 429 budget invisibly and blow the per-attempt deadline.
             max_retries=0,
-            http_client=http_client,
+            http_client=http_client if http_client is not None else outbound_http_client(),
         )
 
     def missing_credential(self) -> str | None:
+        """What stops a call before it leaves the box: no key, or nowhere to send it."""
+        if not self.base_url:
+            return f"No base URL is configured for {self.id}. Set llmBaseUrl under Settings → LLM."
         if self.preset.requires_api_key and not self.api_key:
-            return (
-                f"No API key is configured for {self.id}. Set llmApiKey in Settings, or "
-                "GAGGICLANKER_LLM_API_KEY in the environment."
-            )
+            return f"No API key is configured for {self.id}. Set llmApiKey under Settings → LLM."
         return None
 
     # -- the call ---------------------------------------------------------

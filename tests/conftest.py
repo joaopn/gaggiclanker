@@ -50,22 +50,36 @@ LEAKY_ENV_KEYS = (
     "GAGGIMATE_HOST",
     "GAGGIMATE_PROTOCOL",
     "GAGGIMATE_TIMEOUT_S",
-    # The LLM registry entries whose env keys are not namespaced, because they
-    # are the names the tools themselves already use. Without these a developer
-    # with a real ANTHROPIC_API_KEY exported would have it resolve into every
-    # settings test, and a claude_code test would find a live subscription.
+    # Credentials that used to be read from the environment under the names the
+    # tools themselves use, and the CLI's binary and effort. The credential
+    # names now refuse boot outright, so a developer with a real
+    # ANTHROPIC_API_KEY exported would otherwise see every test fail to start.
     "ANTHROPIC_API_KEY",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_CODE_BIN",
     "CLAUDE_CODE_EFFORT",
-    # Auth. A developer with these exported would have every test in the
-    # suite running behind a token, and the failure would read as "every route
-    # is broken" rather than as "your shell has AUTH_USER in it".
+    # The retired sign-in variables. A developer with these exported would have
+    # every app in the suite refuse to boot, and the failure would read as
+    # "everything is broken" rather than as "your shell has AUTH_USER in it".
     "AUTH_USER",
     "AUTH_PASSWORD",
     "AUTH_PASSWORD_HASH",
     "AUTH_TOKEN_TTL_S",
     "AUTH_JWT_SECRET",
+    # Credential variables the SDKs underneath would honour, and proxies (which
+    # refuse boot when they carry a password). Offline tests need neither.
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "OPENAI_API_KEY",
+    "OPENAI_ADMIN_KEY",
+    "OPENAI_CUSTOM_HEADERS",
+    "OPENROUTER_API_KEY",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
 )
 
 

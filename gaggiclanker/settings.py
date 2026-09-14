@@ -25,7 +25,7 @@ from "the wrong key is loaded" without putting the key in a browser tab.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -35,11 +35,14 @@ from dotenv import dotenv_values
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from gaggiclanker.infra.outbound import PROXY_ENV_KEYS, url_carries_userinfo
+
 __all__ = [
     "CLEANUP_MODES",
     "DEFAULT_ENV_FILE",
     "NOTES_WRITEBACK_FIELDS",
     "REMOVED_SETTINGS",
+    "RETIRED_AUTH_ENV_KEYS",
     "SETTINGS_REGISTRY",
     "SETTING_PAIRS",
     "EnvSettings",
@@ -50,6 +53,7 @@ __all__ = [
     "SettingValueError",
     "is_argon2_hash",
     "load_dotenv_values",
+    "retired_auth_env_keys",
     "secret_hint",
 ]
 
@@ -154,27 +158,6 @@ class EnvSettings(BaseSettings):
             "sets this explicitly."
         ),
     )
-    auth_password: str = Field(
-        default="",
-        validation_alias=AliasChoices("AUTH_PASSWORD", "GAGGICLANKER_AUTH_PASSWORD"),
-        description=(
-            "The sign-in password in plain text, hashed once at boot into the settings table "
-            "and never stored as given. Bootstrap-only and deliberately NOT a registry key, so "
-            "it can never come back out of GET /api/settings - not even as a hint. Use "
-            "AUTH_PASSWORD_HASH instead if you would rather the plain password never reached "
-            "the environment at all."
-        ),
-    )
-    auth_jwt_secret: str = Field(
-        default="",
-        validation_alias=AliasChoices("AUTH_JWT_SECRET", "GAGGICLANKER_AUTH_JWT_SECRET"),
-        description=(
-            "HS256 signing key for session tokens. Empty (the normal case) generates one into "
-            "the runtime_secrets table on first boot and keeps it, so sessions survive a "
-            "restart and a restored backup. Set it only to share sessions between processes; "
-            "at least 32 characters, or the app refuses to sign anything with it."
-        ),
-    )
     cors_origins: str = Field(
         default="",
         validation_alias=AliasChoices("CORS_ORIGINS", "GAGGICLANKER_CORS_ORIGINS"),
@@ -211,8 +194,8 @@ class SettingDefinition:
     #: message — a fixed string, never quoting the value — or ``None``.
     validate: Callable[[Any], str | None] | None = None
     #: Not settable through ``PATCH /api/settings``. The value still resolves
-    #: from the environment and the database like any other, and the service
-    #: can still write it through :meth:`SettingsService.store`; what this
+    #: like any other, and the service can still write it through
+    #: :meth:`SettingsService.store`; what this
     #: forbids is a browser form putting an arbitrary string in it. Used where
     #: a dedicated endpoint owns the write (``authPasswordHash``), because a
     #: masked text box invites somebody to type the password itself into it.
@@ -397,8 +380,8 @@ def _must_be_an_argon2_hash(value: Any) -> str | None:
         return None
     return (
         "expected an argon2id hash (a '$argon2id$...' string), not a password. "
-        "Set the password with POST /api/auth/password, or put the plain "
-        "password in AUTH_PASSWORD and restart."
+        "Set the password under Settings → Authentication, which posts it to "
+        "POST /api/auth/password."
     )
 
 
@@ -558,6 +541,76 @@ REMOVED_SETTINGS: dict[str, str] = {
     # Automatic notes write-back: notes go only when a person sends them.
     "notesWritebackEnabled": "GAGGICLANKER_NOTES_WRITEBACK_ENABLED",
 }
+
+
+#: Environment variables that carry a credential for an external service, or
+#: used to, and must not be set: the sign-in settings, the LLM providers' keys and
+#: token, and the credential variables the SDKs underneath would otherwise honour
+#: on their own (a key, a bearer token, or extra headers that can replace the
+#: stored key's). Every credential lives in the database alone (Settings →
+#: Authentication, Settings → LLM), and a secret registry key never has an
+#: ``env_key``. These are not ignored with a warning the way
+#: :data:`REMOVED_SETTINGS` are: an install that configured its sign-in here has
+#: its user and hash nowhere else, so ignoring the variables would switch
+#: authentication off and open the app — and a key left in a compose file is a
+#: key still sitting in a file nobody meant to keep it in. Startup refuses
+#: instead, naming the variables, until they are removed.
+#:
+#: An explicit list rather than a ``*_TOKEN`` pattern: containers legitimately
+#: carry unrelated tokens. The outbound clients never read any of these anyway
+#: (``gaggiclanker/infra/outbound.py``); the refusal is the upgrade guard.
+RETIRED_AUTH_ENV_KEYS: tuple[str, ...] = (
+    "AUTH_USER",
+    "AUTH_PASSWORD",
+    "AUTH_PASSWORD_HASH",
+    "AUTH_TOKEN_TTL_S",
+    "AUTH_JWT_SECRET",
+    "GAGGICLANKER_AUTH_PASSWORD",
+    "GAGGICLANKER_AUTH_JWT_SECRET",
+    "GAGGICLANKER_LLM_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "OPENAI_API_KEY",
+    "OPENAI_ADMIN_KEY",
+    "OPENAI_CUSTOM_HEADERS",
+    "OPENROUTER_API_KEY",
+)
+
+
+def retired_auth_env_keys(
+    environ: Mapping[str, str], dotenv: Mapping[str, str | None]
+) -> list[str]:
+    """The refused variables set non-empty in the process env or ``.env``, by name.
+
+    Names only, as they are spelled where they were found (the process
+    environment first, then ``.env``); a value never leaves this function.
+    Compared without regard to case, because the libraries that read them are
+    not all case-sensitive and pydantic-settings was not: a lower-case
+    ``auth_jwt_secret`` is refused, not silently dropped.
+
+    Two kinds of variable are refused:
+
+    * any name in :data:`RETIRED_AUTH_ENV_KEYS`;
+    * a proxy variable (:data:`~gaggiclanker.infra.outbound.PROXY_ENV_KEYS`, any
+      case) whose value carries userinfo — a proxy may be named, but a password
+      for one is a credential. A proxy without userinfo is allowed.
+
+    Empty counts as unset — the rule every environment read here follows — so an
+    old compose file that still passes ``${AUTH_USER:-}`` through starts normally.
+    """
+    retired = {name.upper() for name in RETIRED_AUTH_ENV_KEYS}
+    proxies = {name.upper() for name in PROXY_ENV_KEYS}
+    found: list[str] = []
+    for source in (environ, dotenv):
+        for name, raw in source.items():
+            if raw is None or raw.strip() == "" or name in found:
+                continue
+            upper = name.upper()
+            if upper in retired or (upper in proxies and url_carries_userinfo(raw)):
+                found.append(name)
+    return found
 
 
 def _registry(*definitions: SettingDefinition) -> dict[str, SettingDefinition]:
@@ -795,11 +848,11 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="string",
         default="",
         secret=True,
-        env_key="GAGGICLANKER_LLM_API_KEY",
         description=(
             "API key for the configured openai-compatible provider. It belongs to that "
             "provider alone and is never sent to another one. Returned by the API as a "
-            "four-character hint only."
+            "four-character hint only. Stored in the database only; no environment variable "
+            "reaches it."
         ),
     ),
     SettingDefinition(
@@ -807,11 +860,11 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="string",
         default="",
         secret=True,
-        env_key="ANTHROPIC_API_KEY",
         description=(
             "API key for the anthropic provider. Deliberately separate from llmApiKey so "
             "switching provider does not send one service's key to another. Never passed to "
-            "the claude_code CLI, which uses the subscription token instead."
+            "the claude_code CLI, which uses the subscription token instead. Stored in the "
+            "database only; no environment variable reaches it."
         ),
     ),
     SettingDefinition(
@@ -819,11 +872,11 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="string",
         default="",
         secret=True,
-        env_key="CLAUDE_CODE_OAUTH_TOKEN",
         description=(
             "Subscription token for the claude_code provider. Mint it with "
-            "`claude setup-token` and paste it here, or set CLAUDE_CODE_OAUTH_TOKEN in the "
-            "environment. An interactive `claude login` is NOT enough: that writes "
+            "`claude setup-token` and paste it here; it is stored in the database only, and no "
+            "environment variable reaches it. An interactive `claude login` is NOT enough: that "
+            "writes "
             "~/.claude, and every call runs with a scratch HOME so no ambient CLAUDE.md or "
             "session state reaches the model - which hides those credentials too. A box that "
             "is logged in but has no token here answers `Not logged in - please run /login`."
@@ -931,12 +984,12 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="authUser",
         type="string",
         default="",
-        env_key="AUTH_USER",
         description=(
             "Sign-in username. Auth is enabled exactly when this and a password hash are both "
             "set, and the switch is re-read on every request - so turning it on from this page "
             "takes effect without a restart. Empty means the whole app is open, which is the "
-            "right default for a machine only your LAN can reach."
+            "right default for a machine only your LAN can reach. Stored in the database only; "
+            "no environment variable reaches it."
         ),
     ),
     SettingDefinition(
@@ -944,23 +997,21 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="string",
         default="",
         secret=True,
-        env_key="AUTH_PASSWORD_HASH",
         readonly=True,
         validate=_must_be_an_argon2_hash,
         description=(
             "argon2id hash of the sign-in password (a `$argon2id$...` PHC string). Read-only "
             "through the settings API: change the password with POST /api/auth/password, which "
-            "hashes it on the server and revokes every open session, or seed the first one with "
-            "AUTH_PASSWORD in the environment. A stored value that is not an argon2 hash cannot "
-            "authenticate anybody, so auth stays ON and refuses every sign-in rather than "
-            "quietly letting the whole API open."
+            "hashes it on the server and revokes every open session (Settings → Authentication "
+            "does exactly that). Stored in the database only; no environment variable reaches "
+            "it. A stored value that is not an argon2 hash cannot authenticate anybody, so auth "
+            "stays ON and refuses every sign-in rather than quietly letting the whole API open."
         ),
     ),
     SettingDefinition(
         key="authTokenTtlSeconds",
         type="int",
         default=2592000,
-        env_key="AUTH_TOKEN_TTL_S",
         description=(
             "How long a session token stays valid, in seconds. Thirty days by default: this is "
             "a home appliance whose tab stays open for weeks, and signing out is a button that "

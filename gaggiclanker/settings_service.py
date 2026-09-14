@@ -30,8 +30,8 @@ __all__ = ["READ_ONLY_MESSAGE", "SettingsService"]
 #: read-only today, so the message can name its endpoint; if a second ever
 #: appears, this becomes a per-definition string.
 READ_ONLY_MESSAGE = (
-    "read-only through this endpoint. Change the sign-in password with "
-    "POST /api/auth/password, or seed the first one with AUTH_PASSWORD in the environment."
+    "read-only through this endpoint. Set the sign-in password under "
+    "Settings → Authentication, which posts it to POST /api/auth/password."
 )
 
 log = structlog.get_logger(__name__)
@@ -263,12 +263,11 @@ class SettingsService:
         """Write one setting, read-only flag and all.
 
         The service's own way in, for the code that legitimately owns a key a
-        browser form must not touch: the ``AUTH_PASSWORD`` bootstrap and
-        ``POST /api/auth/password`` both write ``authPasswordHash`` through
-        here. The value still goes through the definition's validation — being
-        allowed to write a key is not the same as being allowed to write
-        rubbish into it — but the read-only rule, which is about *where* a
-        write may come from, does not apply.
+        browser form must not touch: ``POST /api/auth/password`` writes
+        ``authPasswordHash`` through here. The value still goes through the
+        definition's validation — being allowed to write a key is not the same
+        as being allowed to write rubbish into it — but the read-only rule,
+        which is about *where* a write may come from, does not apply.
         """
         definition = self.definition(key)
         await self.repo.set(key, definition.serialize(definition.coerce(value)))

@@ -160,14 +160,31 @@ def test_telemetry_and_autoupdate_are_switched_off() -> None:
     assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
 
 
-def test_the_configured_token_beats_the_ambient_one(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "ambient")
+def test_an_ambient_token_never_reaches_the_child(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The child's token is the setting's, or there is none — never this process's own."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "ambient-token")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-ambient")
 
-    assert (
-        build_child_env(scratch_home="/x", oauth_token="explicit")["CLAUDE_CODE_OAUTH_TOKEN"]
-        == "explicit"
-    )
-    assert build_child_env(scratch_home="/x")["CLAUDE_CODE_OAUTH_TOKEN"] == "ambient"
+    configured = build_child_env(scratch_home="/x", oauth_token="explicit")
+    assert configured["CLAUDE_CODE_OAUTH_TOKEN"] == "explicit"
+
+    unconfigured = build_child_env(scratch_home="/x")
+    assert "CLAUDE_CODE_OAUTH_TOKEN" not in unconfigured
+    assert "ambient-token" not in unconfigured.values()
+    assert "sk-ant-ambient" not in unconfigured.values()
+
+
+async def test_an_ambient_token_does_not_count_as_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "ambient-token")
+    spawn = RecordedSpawn(ok(json.dumps({"loggedIn": True})))
+    provider = ClaudeCodeProvider(spawn=spawn)
+
+    check = await provider.validate_credentials()
+
+    assert check.ok is False
+    assert spawn.argv == []
 
 
 # -- stdin and the scratch directory --------------------------------------

@@ -10,6 +10,45 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Credentials leave the environment
+
+**Breaking: move sign-in and provider keys into Settings before you upgrade.**
+The sign-in user and password and every LLM provider's API key or token are now
+configured only in the Settings page and kept only in the database. A boot that
+finds one of the variables that used to carry them, or that the provider SDKs
+would read a credential from, set non-empty — `AUTH_USER`, `AUTH_PASSWORD`,
+`AUTH_PASSWORD_HASH`, `AUTH_TOKEN_TTL_S`, `AUTH_JWT_SECRET`,
+`GAGGICLANKER_AUTH_PASSWORD`, `GAGGICLANKER_AUTH_JWT_SECRET`,
+`GAGGICLANKER_LLM_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_API_KEY`,
+`OPENAI_ADMIN_KEY`, `OPENAI_CUSTOM_HEADERS` or `OPENROUTER_API_KEY`, in any
+letter case, in the process environment or in `.env` — refuses to start: it logs
+`auth_env_refused` with the variable names (never a value) and exits non-zero.
+So does an `HTTP_PROXY`, `HTTPS_PROXY` or `ALL_PROXY` (either case) carrying a
+user or password; a proxy without one is still used.
+Ignoring them instead would have switched authentication off on an install that
+had configured it only there. Empty values count as unset, so a compose file that
+still passes `${AUTH_USER:-}` through starts normally.
+
+To upgrade an install that set any of these: while the old version is still
+running, set the password and then the username under **Settings →
+Authentication**, and paste each key or token under **Settings → LLM**; then
+remove the variables and upgrade. The session signing key is always generated
+into the database now (backups carry it), so sessions survive restarts as before;
+the one case that changes is two processes sharing sessions through a common
+`AUTH_JWT_SECRET`, which is no longer possible.
+
+A lost password is recovered by deleting the stored `authPasswordHash` row, which
+turns sign-in off on the next request with no restart, and then setting a new
+password under Settings → Authentication; the README has the one-liner. The
+`claude_code` provider's CLI now gets its token only from the setting, never from
+the app's own environment, and no proxy with credentials in it. The OpenAI and
+Anthropic clients are handed the stored key and an explicit base URL, ignore the
+SDKs' environment headers, organisation and project variables, profile files and
+`.netrc`, and do not follow redirects. An `openai_compatible` provider with no
+base URL stored now reports "set llmBaseUrl" instead of calling OpenAI's
+default address.
+
 ### Every write to the machine is explicit
 
 **Profiles may be pushed by the app; everything else written to or deleted from

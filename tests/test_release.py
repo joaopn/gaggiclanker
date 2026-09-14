@@ -45,8 +45,6 @@ _NON_REGISTRY_KEYS: frozenset[str] = frozenset(
         "PORT",
         "WEB_DIST",
         "CORS_ORIGINS",
-        "AUTH_PASSWORD",
-        "AUTH_JWT_SECRET",
         # Read by compose.yml, not by the app.
         "HOST_PORT",
         "APP_UID",
@@ -80,6 +78,16 @@ def test_the_bootstrap_settings_are_all_documented() -> None:
         alias = field.validation_alias
         primary = alias.choices[0] if hasattr(alias, "choices") else name.upper()  # type: ignore[union-attr]
         assert str(primary) in documented, f"{name} is not in .env.example"
+
+
+def test_no_credential_variable_is_named_in_env_example_or_compose() -> None:
+    """Credentials are entered in Settings; the files an operator copies must not invite them."""
+    from gaggiclanker.settings import RETIRED_AUTH_ENV_KEYS
+
+    for path in (ENV_EXAMPLE, COMPOSE):
+        text = path.read_text(encoding="utf-8")
+        named = [name for name in RETIRED_AUTH_ENV_KEYS if name in text]
+        assert not named, f"{path.name} names retired credential variables: {named}"
 
 
 def test_the_version_is_the_release_and_agrees_everywhere() -> None:

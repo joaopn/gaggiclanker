@@ -16,13 +16,15 @@ are not HTTP but process hygiene, and every one of them is deliberate:
   is removed afterwards. The cost is
   worth stating: an interactive ``claude login`` writes ``~/.claude``, which the
   scratch HOME hides, so the credential has to arrive as
-  ``CLAUDE_CODE_OAUTH_TOKEN`` (the ``claudeCodeOauthToken`` setting). A box that
-  is logged in but has no token configured gets "Not logged in - please run
-  /login" back from an otherwise perfect call.
-* **The environment is an allow-list, and ``ANTHROPIC_API_KEY`` is not on it.**
-  An API key in the ambient environment silently shadows the subscription
-  token, so the box quietly starts billing per token for work the subscription
-  already covers. Not passing it is the only way to be sure.
+  ``CLAUDE_CODE_OAUTH_TOKEN`` in the child's environment, and the only source of
+  it is the ``claudeCodeOauthToken`` setting. A box that is logged in but has no
+  token configured gets "Not logged in - please run /login" back from an
+  otherwise perfect call.
+* **The environment is an allow-list, and no credential is on it.** An API key
+  in the ambient environment silently shadows the subscription token, so the
+  box quietly starts billing per token for work the subscription already
+  covers; a token in the ambient environment is one this app never stored.
+  Neither is passed: the child's token is the setting's, or there is none.
 * **``is_error`` in the envelope is the failure signal, not the exit code.**
   The CLI exits 0 on an authentication failure; trusting the exit status makes
   a 401 look like a successful call that returned prose.
@@ -47,6 +49,7 @@ from typing import Any
 
 import structlog
 
+from gaggiclanker.infra.outbound import PROXY_ENV_KEYS, url_carries_userinfo
 from gaggiclanker.llm.chat_types import (
     ChatEvent,
     ChatMessage,
@@ -232,16 +235,24 @@ def build_child_env(*, scratch_home: str, oauth_token: str = "") -> dict[str, st
     Starting from an empty dict rather than a copy of ``os.environ`` is the
     point: a filter has to enumerate everything dangerous, an allow-list only
     has to enumerate what is needed, and ``ANTHROPIC_API_KEY`` cannot be
-    forgotten from a list it was never on.
+    forgotten from a list it was never on. The token is ``oauth_token`` — the
+    setting — and nothing else: an ambient ``CLAUDE_CODE_OAUTH_TOKEN`` in this
+    process's environment is never read. A proxy variable is passed only when it
+    names no user or password: a proxy is a route, a password for it a
+    credential, and credentials come from the database.
     """
     env: dict[str, str] = {}
     for name in ENV_PASSTHROUGH:
         value = os.environ.get(name)
-        if value:
-            env[name] = value
+        if not value:
+            continue
+        if name.upper() in PROXY_ENV_KEYS and url_carries_userinfo(value):
+            log.warning("claude_code_proxy_with_credentials_not_passed", env_key=name)
+            continue
+        env[name] = value
     env["HOME"] = scratch_home
     env.update(ENV_FORCED)
-    token = oauth_token or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    token = oauth_token.strip()
     if token:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = token
     return env
@@ -640,12 +651,12 @@ class ClaudeCodeProvider:
         runs with a scratch HOME. Checking first turns a two-second subprocess
         and a confusing message into an immediate one that says what to do.
         """
-        if not (self.oauth_token or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")):
+        if not self.oauth_token.strip():
             return (
                 "No Claude Code OAuth token is configured. Mint one with `claude setup-token` "
-                "and set claudeCodeOauthToken in Settings, or CLAUDE_CODE_OAUTH_TOKEN in the "
-                "environment. An interactive `claude login` is not enough: every call runs "
-                "with a scratch HOME, which hides ~/.claude."
+                "and set claudeCodeOauthToken under Settings → LLM. An interactive "
+                "`claude login` is not enough: every call runs with a scratch HOME, which "
+                "hides ~/.claude."
             )
         return None
 

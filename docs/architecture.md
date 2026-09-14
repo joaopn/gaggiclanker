@@ -111,6 +111,29 @@ the UI control. Precedence is database > environment > default, so a value
 changed in the UI is not silently reverted by a variable in the compose file.
 Secrets are write-only through the API: a `GET` returns a four-character hint.
 
+**Credentials never come from the environment.** A secret registry key has no
+environment variable, and the sign-in settings have none either: they are
+entered in the Settings page and live in the database. A boot that finds one of
+the variables that used to carry a credential set refuses to start, naming it,
+rather than start with authentication silently off or a key still sitting in a
+compose file.
+
+**Every credential for an external service lives only in the database** — and
+that includes what libraries and child processes would pick up on their own.
+Outbound HTTP clients are built by `infra/outbound.py` with `trust_env` off (no
+`.netrc`, no proxy taken behind the app's back), honour an environment proxy only
+when it names no user or password, and do not follow redirects. The SDK clients
+on top (`llm/providers/`) are always handed the stored key and an explicit base
+URL, and discard the SDKs' environment headers, organisation and project
+variables and profile discovery; the Claude Code CLI child gets an allow-listed
+environment whose only credential is the stored token. The boot refusal covers
+the SDKs' credential variables and any proxy variable carrying credentials, as
+an upgrade guard; `tests/llm/test_outbound_isolation.py` sets every candidate to a
+sentinel and inspects the requests. The GaggiMate has no authentication today,
+and its client does not read the environment either. Any future outbound
+connection follows the same rule: its credential is a secret setting, and its
+HTTP client comes from `infra/outbound.py`.
+
 **Migrations are forward-only and immutable once shipped.** Each file is applied
 inside a transaction that also carries its `schema_migrations` row and its
 sha256, so a failure half-way leaves nothing behind. Editing a shipped migration
@@ -129,7 +152,9 @@ cannot be taken down by the eleventh. A run cut off by a restart is marked
 `interrupted` at the next boot, along with any sync run left `running`, so
 nothing is left as a spinner nobody can clear.
 
-**Auth is off unless configured, and the guard covers everything.** One
+**Auth is off unless configured, and the guard covers everything.** Sign-in
+is configured in the database only — Settings → Authentication — and never
+through the environment. One
 pure-ASGI middleware in front of every `/api/*` route — SSE streams and the
 OpenAPI document included — with `/health`, the two public auth routes and the
 web bundle outside it. A test enumerates the application's own OpenAPI document
@@ -146,9 +171,10 @@ no tool a model calls starts one. See [`safety-layers.md`](safety-layers.md).
 
 ## What runs where
 
-* **In the lifespan, before any request**: migrations, prompt and rule seeding,
-  the auth password bootstrap, boot reconciliation, then the services, then the
-  background tasks. Shutdown is the reverse, and it cancels the task registry
+* **In the lifespan, before any request**: the configuration check (which
+  refuses to start while a retired credential variable is set), migrations, prompt
+  and rule seeding, boot reconciliation, then the services, then the background
+  tasks. Shutdown is the reverse, and it cancels the task registry
   before closing the database so nothing is mid-write when the file is released.
 * **In a background task**: the device supervisor, the sync loops — which do
   nothing until something pokes them — and every analysis.

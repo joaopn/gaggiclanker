@@ -235,18 +235,17 @@ async def test_a_startup_failure_is_logged_with_its_cause(
 # ---------------------------------------------------------------------------
 
 
-def test_a_short_jwt_secret_is_refused_by_the_config_check() -> None:
-    env = EnvSettings(AUTH_JWT_SECRET="too-short", _env_file=None)  # type: ignore[call-arg]
-    with pytest.raises(RuntimeError, match="AUTH_JWT_SECRET"):
-        check_configuration(env)
+def test_a_retired_sign_in_variable_is_refused_by_the_config_check() -> None:
+    env = EnvSettings(_env_file=None)  # type: ignore[call-arg]
+    with pytest.raises(RuntimeError, match="AUTH_USER"):
+        check_configuration(env, dotenv={}, environ={"AUTH_USER": "barista"})
 
 
-def test_an_unset_or_long_jwt_secret_passes() -> None:
-    check_configuration(EnvSettings(_env_file=None))  # type: ignore[call-arg]
-    check_configuration(EnvSettings(AUTH_JWT_SECRET="x" * 48, _env_file=None))  # type: ignore[call-arg]
+def test_no_sign_in_variable_passes_the_config_check() -> None:
+    check_configuration(EnvSettings(_env_file=None), dotenv={}, environ={})  # type: ignore[call-arg]
 
 
-async def test_a_short_jwt_secret_fails_before_the_database_is_opened(
+async def test_a_retired_sign_in_variable_fails_before_the_database_is_opened(
     make_env: Callable[..., EnvSettings],
     monkeypatch: pytest.MonkeyPatch,
     no_stray_threads: None,
@@ -262,8 +261,8 @@ async def test_a_short_jwt_secret_fails_before_the_database_is_opened(
         raise AssertionError("the database was opened before the config was checked")
 
     monkeypatch.setattr(Database, "connect", must_not_run)
-    monkeypatch.setenv("AUTH_JWT_SECRET", "too-short")
+    monkeypatch.setenv("AUTH_PASSWORD", "a-password-from-an-old-compose-file")
 
-    with pytest.raises(RuntimeError, match="AUTH_JWT_SECRET"):
+    with pytest.raises(RuntimeError, match="AUTH_PASSWORD"):
         async with running_app(make_env()):
             pass

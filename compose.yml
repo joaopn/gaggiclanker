@@ -83,17 +83,10 @@ services:
       # Hostname or IP of the display board. Required for anything to sync.
       GAGGIMATE_HOST: ${GAGGIMATE_HOST:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Passed through only when set on the host or in .env, so an unset key
-      # does not shadow one stored in the settings table.
-      GAGGICLANKER_LLM_API_KEY: ${GAGGICLANKER_LLM_API_KEY:-}
-      # Auth is off unless a username and a password reach the container. They
-      # are listed here as well as coming in through env_file so that
-      #   AUTH_USER=me AUTH_PASSWORD=... docker compose up -d
-      # works: a variable set only in the invoking shell reaches the container
-      # only if this file names it.
-      AUTH_USER: ${AUTH_USER:-}
-      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
-      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
+      # No credential is ever passed through here. Sign-in and every LLM
+      # provider's key or token are entered in the Settings page and live in
+      # the database; the app refuses to start while a variable that used to
+      # carry one is set.
 
     env_file:
       - path: .env

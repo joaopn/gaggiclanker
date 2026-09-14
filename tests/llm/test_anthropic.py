@@ -172,3 +172,23 @@ async def test_a_keyless_anthropic_call_never_leaves_the_box(
     assert isinstance(result, Err)
     assert result.code == "auth"
     assert recorder.requests == []
+
+
+async def test_an_ambient_key_is_never_what_the_client_sends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SDK reads the environment when it is given no key; this provider always gives one."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-ambient")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "ambient-bearer")
+
+    unconfigured = AnthropicProvider(api_key="")
+    assert unconfigured.missing_credential() is not None
+    assert unconfigured.client.api_key == ""
+    assert unconfigured.client.auth_token is None
+
+    recorder = Recorder(httpx2.Response(200, json=message('{"verdict": "fine", "score": 7}')))
+    configured = AnthropicProvider(api_key="sk-ant-stored", http_client=recorder.client())
+    await configured.complete(call())
+    sent = recorder.requests[0].headers
+    assert sent["x-api-key"] == "sk-ant-stored"
+    assert "authorization" not in sent

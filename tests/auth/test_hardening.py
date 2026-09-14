@@ -80,7 +80,9 @@ async def test_cors_headers_appear_when_an_origin_is_configured(
         assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
-async def test_a_guard_401_carries_cors_headers_too(make_env: object, auth_env: None) -> None:
+async def test_a_guard_401_carries_cors_headers_too(
+    make_env: object, auth_configured: None
+) -> None:
     """Otherwise the dev SPA sees a network error instead of "sign in again".
 
     A browser will not hand a cross-origin response to JavaScript without an
@@ -101,7 +103,9 @@ async def test_a_guard_401_carries_cors_headers_too(make_env: object, auth_env: 
         assert response.headers["x-content-type-options"] == "nosniff"
 
 
-async def test_a_preflight_is_answered_without_a_token(make_env: object, auth_env: None) -> None:
+async def test_a_preflight_is_answered_without_a_token(
+    make_env: object, auth_configured: None
+) -> None:
     """A preflight carries no credentials by definition; refusing it just stops
     the real (guarded) request from ever being sent."""
     from tests.conftest import running_app

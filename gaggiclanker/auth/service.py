@@ -3,11 +3,11 @@
 Design, and why each piece is the way it is:
 
 **Off unless configured.** Auth is enabled exactly when ``authUser`` and
-``authPasswordHash`` both resolve to something non-empty. Both are ordinary
-registry settings, so either the environment or the Settings page can turn auth
-on, and the switch is re-read on **every** request: flipping it must not need a
-container restart, because the person flipping it is often locked out of the
-container.
+``authPasswordHash`` both resolve to something non-empty. Both live in the
+database and nowhere else — the Settings page turns auth on, and no environment
+variable can — and the switch is re-read on **every** request: flipping it must
+not need a container restart, because the person flipping it is often locked out
+of the container.
 
 **Bearer JWT, but revocable.** The token is HS256 with a ``jti``, and a row in
 ``auth_sessions`` is written for that ``jti`` at login. The guard looks the row
@@ -18,14 +18,13 @@ need a second lookup anyway. The pair is cvclanker's auth design and it is the r
 **The signing secret lives in the database.** Generated once into
 ``runtime_secrets`` and cached in memory. A secret derived per boot would sign
 every tab out on every restart; a secret in the environment would mean one more
-thing to set, and one more thing to lose. ``AUTH_JWT_SECRET`` overrides it for
-an operator who wants to share sessions between two processes.
+thing to set, and one more thing to lose. A backup carries it, so a restored
+archive keeps its sessions.
 
-**The password is never stored.** ``AUTH_PASSWORD_HASH`` takes an argon2id PHC
-string. ``AUTH_PASSWORD`` takes the plain password, which
-:meth:`AuthService.bootstrap` hashes once at boot into the settings table — the
-plain value is deliberately *not* a registry key, so it never reaches
-``GET /api/settings``, not even as a four-character hint.
+**The password is never stored.** ``POST /api/auth/password`` takes the plain
+password, hashes it with argon2id on the server, and stores only the hash; the
+plain value is not a registry key, so it never reaches ``GET /api/settings``,
+not even as a four-character hint.
 
 **The throttle is in memory, per client IP.** Five failures buy a sixty-second
 lock. In memory because this is one process on an appliance, and because a
@@ -61,13 +60,11 @@ __all__ = [
     "JWT_SECRET_KEY",
     "LOCKOUT_SECONDS",
     "MAX_LOGIN_FAILURES",
-    "MIN_ENV_SECRET_LENGTH",
     "AuthConfig",
     "AuthService",
     "AuthStatus",
     "IssuedToken",
     "LoginThrottle",
-    "validate_env_secret",
 ]
 
 log = structlog.get_logger(__name__)
@@ -86,30 +83,6 @@ _SECRET_BYTES = 48
 
 MAX_LOGIN_FAILURES = 5
 LOCKOUT_SECONDS = 60
-
-#: Shorter than this and ``AUTH_JWT_SECRET`` is somebody's idea of a password,
-#: not a signing key. 32 characters is the width of the HMAC's own block.
-MIN_ENV_SECRET_LENGTH = 32
-
-
-def validate_env_secret(secret: str) -> None:
-    """Raise if ``AUTH_JWT_SECRET`` is set and too short. Empty is fine.
-
-    A free function, and called from two places on purpose:
-    :meth:`AuthService.__init__` (so no instance can exist that cannot sign) and
-    :func:`gaggiclanker.main.check_configuration`, which runs it **before the
-    database is opened**. A check that only fires after `connect()` leaves a
-    live aiosqlite worker thread behind when it raises, and that thread is not a
-    daemon — the interpreter then waits for it for ever and the container never
-    restarts. Pure-configuration checks belong before anything is opened.
-    """
-    value = secret.strip()
-    if value and len(value) < MIN_ENV_SECRET_LENGTH:
-        raise RuntimeError(
-            f"AUTH_JWT_SECRET is {len(value)} characters; it must be at "
-            f"least {MIN_ENV_SECRET_LENGTH}. Leave it unset to have one generated "
-            "and kept in the database, which is what almost every install wants."
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,20 +198,12 @@ class AuthService:
         settings: SettingsService,
         *,
         throttle: LoginThrottle | None = None,
-        env_secret: str = "",
     ) -> None:
         self.db = db
         self.settings = settings
         self.sessions = AuthSessionsRepository(db)
         self.secrets = RuntimeSecretsRepository(db)
         self.throttle = throttle or LoginThrottle()
-        self._env_secret = env_secret.strip()
-        # Belt and braces: the lifespan checks this before it opens anything
-        # (see `validate_env_secret`), and this stops any *other* caller from
-        # building a service that cannot sign. Deferring it to `secret()` turned
-        # a typo in the compose file into a 500 on the first sign-in, hours
-        # later.
-        validate_env_secret(self._env_secret)
         self._secret: str | None = None
 
     # -- configuration ----------------------------------------------------
@@ -263,10 +228,7 @@ class AuthService:
             log.error(
                 "auth_password_hash_unusable",
                 expected="an argon2id hash, not a password",
-                fix=(
-                    "POST /api/auth/password with the new password, or set AUTH_PASSWORD "
-                    "in the environment and restart"
-                ),
+                fix="set a new password under Settings → Authentication (POST /api/auth/password)",
             )
         ttl = int(await self.settings.get("authTokenTtlSeconds") or 0)
         return AuthConfig(user=user, password_hash=password_hash, ttl_seconds=ttl, usable=usable)
@@ -275,57 +237,17 @@ class AuthService:
         return (await self.config()).enabled
 
     async def secret(self) -> str:
-        """The HS256 signing key: the environment's, or one generated once.
+        """The HS256 signing key, generated once into ``runtime_secrets``.
 
         Cached on the instance after the first read. The instance lives for the
         life of the process, and the row it caches is only written once.
         """
         if self._secret is not None:
             return self._secret
-        if self._env_secret:
-            # Its length was checked at construction, so a misconfigured box
-            # never gets this far.
-            self._secret = self._env_secret
-            return self._secret
         self._secret = await self.secrets.get_or_create(
             JWT_SECRET_KEY, secrets.token_urlsafe(_SECRET_BYTES)
         )
         return self._secret
-
-    async def bootstrap(self, plain_password: str) -> bool:
-        """Seed the first password from ``AUTH_PASSWORD``. Returns whether it wrote.
-
-        **Seeding, not syncing.** It writes only when nothing is configured at
-        all, and never touches a password that is already set. The environment
-        variable is how you get in on a fresh install; after that the password
-        belongs to ``POST /api/auth/password``, and a change made there has to
-        survive the next restart. A boot that re-hashed whatever
-        ``AUTH_PASSWORD`` said would silently undo it — the operator would
-        change the password, and it would revert at three in the morning when
-        the container restarted, with nothing in the log to explain why.
-
-        So an install that has a password and still carries ``AUTH_PASSWORD`` in
-        its compose file is not a conflict: the file is the seed that was used
-        once, and it is inert now. ``.env.example`` says so.
-
-        The plain value is never stored and is not a registry key, so it cannot
-        come back out of ``GET /api/settings``.
-        """
-        password = plain_password.strip()
-        if not password:
-            return False
-        stored = str(await self.settings.get("authPasswordHash") or "").strip()
-        if stored:
-            if not is_argon2_hash(stored):
-                # Not seeding over it either. A stored value that is not a hash
-                # is a mistake somebody made deliberately, and overwriting it
-                # from the environment would hide the mistake rather than fix
-                # it; config() has already said what to do about it.
-                log.warning("auth_password_env_ignored", reason="a password is already configured")
-            return False
-        await self.settings.store("authPasswordHash", hash_password(password))
-        log.info("auth_password_seeded_from_env", env_key="AUTH_PASSWORD")
-        return True
 
     async def set_password(self, new_password: str) -> None:
         """Hash and store a new password, then end every open session.
@@ -369,8 +291,7 @@ class AuthService:
             # person hitting it is the person who has to make it.
             raise Unauthorized(
                 "Sign-in is unavailable: the stored password hash is not an argon2 hash. "
-                "Set a password with POST /api/auth/password, or put one in AUTH_PASSWORD "
-                "and restart."
+                "Delete the stored hash and set a new password under Settings → Authentication."
             )
 
         wait = self.throttle.retry_after(client)
