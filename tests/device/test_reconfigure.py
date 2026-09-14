@@ -362,3 +362,105 @@ async def test_a_build_that_fails_leaves_no_half_connection_and_is_retried(
     assert current(app).host == fake_b.address
     assert await current(app).wait_connected(5.0)
     assert sync_loops(app) == sorted(LOOP_TASK_NAMES)
+
+
+# ── every pass records being cut short ───────────────────────────────
+
+#: Each pass, the client method it is held in, how it is asked for, and the
+#: ledger kind its row carries.
+PASSES: dict[str, tuple[str, str, str]] = {
+    "identity": ("get_settings", "request_identity_sync", "identity"),
+    "shots": ("fetch_index", "request_shot_sync", "backfill"),
+    "notes": ("fetch_notes_json", "request_shot_sync", "notes"),
+    "profiles": ("list_profiles", "request_profile_sync", "profiles"),
+}
+
+
+@pytest.fixture
+async def archive_machine() -> AsyncIterator[FakeDevice]:
+    """A machine with shots, profiles and one notes card, so every pass has work to do."""
+    from tests.sync.conftest import SMALL_COUNT, build_archive_device
+
+    device = build_archive_device(SMALL_COUNT, header_only=False)
+    await device.start()
+    try:
+        yield device
+    finally:
+        await device.stop()
+
+
+@pytest.mark.parametrize(
+    ("which", "cut"),
+    [
+        ("identity", "rebuild"),
+        ("identity", "shutdown"),
+        ("shots", "shutdown"),
+        ("notes", "shutdown"),
+        ("profiles", "shutdown"),
+    ],
+)
+async def test_every_pass_cut_short_is_recorded_as_stopped(
+    which: str,
+    cut: str,
+    data_dir: Path,
+    archive_machine: FakeDevice,
+    fake_b: FakeDevice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cancellation counts no device error; each pass must still say it was stopped.
+
+    A pull cannot be cut by a rebuild — the settings change is refused while one
+    runs — so shots, notes and profiles are cut by stopping the app. An identity
+    read is not a pull, so a settings change cuts it, and so does stopping.
+    The message is checked, not only the status: without a pass's own handler
+    its row is left `running` and closed by the engine's backstop with a
+    different sentence.
+    """
+    from gaggiclanker.db.connection import Database
+    from gaggiclanker.sync.engine import STOPPED_MESSAGE
+
+    method, request, kind = PASSES[which]
+    monkeypatch.setenv("GAGGIMATE_HOST", archive_machine.address)
+    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
+    env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="warning", _env_file=None)  # type: ignore[call-arg]
+
+    async with running_app(env) as (app, client):
+        machine = current(app)
+        assert await machine.wait_connected(5.0)
+        engine = app.state.connection.engine
+        # Let the startup identity read finish first, so the held one is ours.
+        await wait_for(lambda: not engine._lock.locked())
+        reached = asyncio.Event()
+
+        async def held(*_args: object, **_kwargs: object) -> object:
+            reached.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        monkeypatch.setattr(machine, method, held)
+        getattr(engine, request)("test")
+        await asyncio.wait_for(reached.wait(), 10.0)
+
+        if cut == "rebuild":
+            response = await patch(client, {"gaggimateHost": fake_b.address})
+            assert response.status_code == 200, response.text
+            row = await app.state.db.fetch_one(
+                "SELECT status, error FROM sync_runs WHERE kind = ? ORDER BY id DESC", (kind,)
+            )
+        else:
+            row = None
+
+    if row is None:
+        # Stopped with the app; read the ledger back from the file.
+        db = Database(env.database_path)
+        await db.connect()
+        try:
+            row = await db.fetch_one(
+                "SELECT status, error FROM sync_runs WHERE kind = ? ORDER BY id DESC", (kind,)
+            )
+        finally:
+            await db.close()
+
+    assert row is not None
+    assert row["status"] == "error", dict(row)
+    assert row["error"] == STOPPED_MESSAGE

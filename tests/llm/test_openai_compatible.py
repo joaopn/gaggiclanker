@@ -16,6 +16,7 @@ from typing import Any
 import httpx2
 import pytest
 
+from gaggiclanker.infra.outbound import outbound_http_client
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.modes import ModeMemory
@@ -193,6 +194,31 @@ async def test_text_mode_sends_no_response_format_at_all() -> None:
 
 
 # -- failures and usage ---------------------------------------------------
+
+
+async def test_a_redirect_is_not_followed_and_says_to_store_the_final_url() -> None:
+    recorder = Recorder(
+        httpx2.Response(
+            307, headers={"Location": "https://elsewhere.test/v1/chat/completions"}, text=""
+        )
+    )
+    provider = OpenAiCompatibleProvider(
+        preset="openai_compatible",
+        base_url="http://gateway.test/v1",
+        api_key="sk-secret-key",
+        http_client=outbound_http_client(transport=httpx2.MockTransport(recorder)),
+    )
+
+    with pytest.raises(LlmApiError) as caught:
+        await provider.complete(call())
+
+    assert len(recorder.requests) == 1
+    assert caught.value.status == 307
+    message = caught.value.message
+    assert "redirects are not followed" in message
+    assert "llmBaseUrl" in message
+    assert "sk-secret-key" not in message
+    assert "elsewhere.test" not in message
 
 
 async def test_a_status_error_carries_the_status_and_the_body() -> None:

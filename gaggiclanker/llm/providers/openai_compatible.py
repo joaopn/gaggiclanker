@@ -406,6 +406,15 @@ class OpenAiCompatibleProvider:
 
 def _status_message(exc: APIStatusError) -> str:
     """The provider's own words, not the SDK's wrapper, where there are any."""
+    if 300 <= exc.status_code < 400:
+        # The outbound client does not follow redirects (a redirect to another
+        # host would take the key's header with it), so a gateway that answers
+        # with one fails here. Say why and what fixes it; the Location header is
+        # deliberately not repeated.
+        return (
+            f"the endpoint answered with a redirect (HTTP {exc.status_code}), and redirects "
+            "are not followed. Store the final URL in llmBaseUrl under Settings → LLM."
+        )
     body = exc.body
     if isinstance(body, dict):
         error = body.get("error")
