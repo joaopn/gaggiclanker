@@ -9,7 +9,7 @@ has forgotten how it works.
 
 ```
   GaggiMate display board                  browser
-        │  ws + http (read only)              │  http + SSE
+        │  ws + http (gated writes)           │  http + SSE
         ▼                                     ▼
   ┌──────────────┐    events    ┌──────────────────────────────┐
   │ device/      │─────────────▶│ infra/  request ids, errors, │
@@ -78,7 +78,7 @@ several and a grind number only means something on the grinder it was set on.
 | `mcp/` | The same tools over Streamable HTTP and stdio, for agents outside this app. Read and propose only; never a write to the machine. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
-| `device/` | `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and nothing else. |
+| `device/` | `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
 | `db/` | Repositories — the only code that writes SQL — plus migrations and backups. |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
 | `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
