@@ -83,7 +83,8 @@ export function RatingStars({
         <button
           key={step}
           type="button"
-          // The row carries a link across it; a star must not follow it.
+          // The shots list lays a toggle across the row; a star must not also
+          // press it, nor follow a link where one wraps the stars.
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();

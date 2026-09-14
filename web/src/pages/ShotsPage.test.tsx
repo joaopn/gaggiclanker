@@ -1429,7 +1429,7 @@ describe("ShotsPage needs-a-Set menu", () => {
     // The one-line summary comes from the list row; nothing is fetched per Set.
     expect(options[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso");
     expect(within(menu).queryByText("House blend")).not.toBeInTheDocument();
-    // Opening the menu did not follow the row's link.
+    // Opening the menu did not open the row.
     expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
   });
 
@@ -1627,7 +1627,7 @@ describe("ShotsPage needs-a-Set menu", () => {
     expect(badgeButton()).toHaveFocus();
   });
 
-  it("still links an assigned badge to its Set, above the row's own link", async () => {
+  it("still links an assigned badge to its Set, above the row's own toggle", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(
       listData([
@@ -1684,8 +1684,8 @@ describe("ShotsPage row editing", () => {
   });
 
   it("does not navigate when a star is clicked", async () => {
-    // The row is a link with the stars above it. A star that followed the link
-    // would take you to the shot page every time you rated one.
+    // The row is a toggle with the stars above it. A star that pressed it
+    // would open the row every time you rated one.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
 

@@ -98,7 +98,6 @@ export function AnalyseCell({ shot, className }: { shot: ShotListRow; className?
       <span
         data-testid="analyse-cell"
         data-state="running"
-        role="status"
         className={cn("inline-flex items-center gap-1 text-muted-foreground text-xs", className)}
       >
         <Loader2 className="size-3 animate-spin" aria-hidden="true" />
