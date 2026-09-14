@@ -262,7 +262,7 @@ async def _start(app: FastAPI, db: Database) -> None:
     interrupted_syncs = await SyncRepository(db).reconcile_running()
     # The cleanup ledger gets the same treatment and for the same reason: a
     # `running` cleanup row nothing closes would show a deletion in progress for
-    # ever on the Device page.
+    # ever on the Sync page.
     interrupted_cleanups = await CleanupRepository(db).reconcile_running()
     # The chat's runs, for the reason an analysis's are: a `running` chat run
     # nobody owns is a spinner and a cancel button that cancels nothing.

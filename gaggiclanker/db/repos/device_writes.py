@@ -52,7 +52,7 @@ class DeviceWriteWrite(BaseModel):
 
 
 class DeviceWriteRow(BaseModel):
-    """One audit row, as the Device page renders it."""
+    """One audit row, as the Sync page renders it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -109,7 +109,7 @@ class DeviceWritesRepository(Repository):
         return row is not None
 
     async def list_writes(self, *, limit: int = 100) -> list[DeviceWriteRow]:
-        """Newest first. The Device page's audit list, and nothing else reads it."""
+        """Newest first. The Sync page's audit list, and nothing else reads it."""
         rows = await self.db.fetch_all(
             "SELECT * FROM device_writes ORDER BY created_at DESC, id DESC LIMIT ?",
             (limit,),

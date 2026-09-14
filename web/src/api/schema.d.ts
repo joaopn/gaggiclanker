@@ -3129,7 +3129,7 @@ export interface components {
         };
         /**
          * CleanupRunRow
-         * @description One cleanup pass, as the Device page renders it.
+         * @description One cleanup pass, as the Sync page renders it.
          */
         CleanupRunRow: {
             /**
@@ -3315,7 +3315,7 @@ export interface components {
         };
         /**
          * DeviceWriteRow
-         * @description One audit row, as the Device page renders it.
+         * @description One audit row, as the Sync page renders it.
          */
         DeviceWriteRow: {
             /** Created At */

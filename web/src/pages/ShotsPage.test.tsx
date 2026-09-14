@@ -2150,7 +2150,7 @@ describe("ShotsPage pull button", () => {
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "11 new shots, 3 failed. The Device page has the details.",
+        "11 new shots, 3 failed. The Sync page has the details.",
       ),
     );
   });

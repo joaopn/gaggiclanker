@@ -6,7 +6,7 @@ enough of the header to recompute how long the file should be, plus the two
 flags that disqualify it — and never carries the blob itself: a plan over a
 thousand shots would otherwise pull a few megabytes of `.slog` through Python to
 answer a question about lengths. A :class:`CleanupRunRow` is one pass over the
-machine, which is what the Device page lists.
+machine, which is what the Sync page lists.
 
 The rule that reads a candidate is deliberately **not** here; it is in
 :mod:`gaggiclanker.cleanup.eligibility`, because the write gate and the plan step
@@ -60,7 +60,7 @@ class CleanupCandidate(BaseModel):
 
 
 class CleanupRunRow(BaseModel):
-    """One cleanup pass, as the Device page renders it."""
+    """One cleanup pass, as the Sync page renders it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -190,7 +190,7 @@ class CleanupRepository(Repository):
         return self.to_model(CleanupRunRow, row)
 
     async def list_runs(self, *, limit: int = 20) -> list[CleanupRunRow]:
-        """Newest first. The Device page's history, and nothing else reads it."""
+        """Newest first. The Sync page's history, and nothing else reads it."""
         rows = await self.db.fetch_all(
             "SELECT * FROM cleanup_runs ORDER BY started_at DESC, id DESC LIMIT ?",
             (limit,),
@@ -201,7 +201,7 @@ class CleanupRepository(Repository):
         """Close runs a restart cut off. Called from the lifespan, like the others.
 
         A row is only `running` while a process holds it, and no process
-        survives a boot; leaving one behind would make the Device page show a
+        survives a boot; leaving one behind would make the Sync page show a
         cleanup in progress for ever and the name guard refuse the next one.
         """
         cursor = await self.db.execute(

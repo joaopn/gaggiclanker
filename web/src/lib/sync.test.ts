@@ -126,7 +126,7 @@ describe("pullSummary", () => {
     // failures are counted rather than raised. "The pull failed" would be
     // telling somebody nothing happened when most of it did.
     expect(pullSummary(run({ status: "error", error: null, shots_inserted: 3, errors: 2 }))).toBe(
-      "3 new shots, 2 failed. The Device page has the details.",
+      "3 new shots, 2 failed. The Sync page has the details.",
     );
   });
 

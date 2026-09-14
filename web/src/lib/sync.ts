@@ -66,8 +66,8 @@ export function pullSummary(run: SyncRunRow): string {
   // hit three it could not fetch ends `error`, sometimes with no message at
   // all — the per-shot failures are counted, not raised — and "The pull
   // failed" would be telling somebody nothing happened when most of it did.
-  const detail = run.error ?? "The Device page has the details.";
-  if (counts === null) return run.error ?? "The pull failed. The Device page has the details.";
+  const detail = run.error ?? "The Sync page has the details.";
+  if (counts === null) return run.error ?? "The pull failed. The Sync page has the details.";
   const failed = run.errors > 0 ? `${run.errors} failed` : "some failed";
   return `${counts}, ${failed}. ${detail}`;
 }

@@ -125,7 +125,7 @@ class SettingsWriteGate:
         plan step runs too so that the preview a person approves is the same set
         this will allow. The refusal carries the reason into the audit row,
         because "why is this shot still on my machine" is the question the
-        Device page is asked.
+        Sync page is asked.
         """
         device_id = write.device_id or ""
         if self.cleanup is None:
