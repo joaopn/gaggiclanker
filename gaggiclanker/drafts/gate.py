@@ -26,7 +26,7 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWr
 from gaggiclanker.device.writes import DeviceWriteRefused, PendingWrite
 from gaggiclanker.settings_service import SettingsService
 
-__all__ = ["SettingsWriteGate"]
+__all__ = ["SettingsWriteGate", "refuse_unless_writes_enabled"]
 
 log = structlog.get_logger(__name__)
 
@@ -34,7 +34,7 @@ log = structlog.get_logger(__name__)
 #: and the useful part is where the switch is, not that there is one.
 DISABLED_MESSAGE = (
     "Writing to the machine is switched off. Turn on 'Device writes enabled' under "
-    "Settings → Machine to let gaggiclanker save profiles to the display. "
+    "Settings → Machine to let gaggiclanker write to the display. "
     "Nothing was sent."
 )
 
@@ -45,6 +45,32 @@ NOTES_DISABLED_MESSAGE = (
     "Writing judgements back to the machine is switched off. Turn on 'Notes writeback "
     "enabled' under Settings → Machine. Nothing was sent."
 )
+
+
+async def refuse_unless_writes_enabled(
+    settings: SettingsService,
+    writes: DeviceWritesRepository,
+    *,
+    kind: Literal["shot_delete", "notes_save"],
+    host: str,
+) -> None:
+    """Refuse a person's request to start a batch of writes while the switch is off.
+
+    The Sync page's two batch actions check here before anything is queued, so
+    pressing "Send" or "Delete" with writes off is a 403 naming the switch rather
+    than a background task whose every frame the gate then refuses one by one.
+    The refusal is still an attempt, and every attempt leaves a row in
+    `device_writes` — one row, with no shot id, because nothing was tried against
+    any shot in particular. The gate itself still checks the switch on every
+    frame that follows when it is on.
+    """
+    if bool(await settings.get("deviceWritesEnabled")):
+        return
+    await writes.record(
+        DeviceWriteWrite(kind=kind, host=host, result="refused", error=DISABLED_MESSAGE)
+    )
+    log.info("device_write", kind=kind, host=host, device_id=None, result="refused")
+    raise DeviceWriteRefused(DISABLED_MESSAGE)
 
 
 class SettingsWriteGate:

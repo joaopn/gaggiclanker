@@ -393,8 +393,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Delete what the policy says, oldest first
-         * @description 202, and the work happens in a background task.
+         * Delete the approved plan's shots from the machine, oldest first
+         * @description 202, and the work happens in a background task — but only for the plan shown.
+         *
+         *     The body names the shots the preview showed and the person confirmed. A
+         *     fresh plan that differs is a 409 and nothing is queued, so what runs is
+         *     exactly what was approved; with writes off it is a 403, audited, naming the
+         *     switch. This route is the only way a cleanup starts: nothing runs one
+         *     automatically.
          *
          *     Not in the request, for the same reason an analysis is not: a run is one
          *     WebSocket frame per shot paced at two a second, so a hundred shots is most
@@ -3116,11 +3122,6 @@ export interface components {
          */
         CleanupPolicy: {
             /**
-             * Auto
-             * @default false
-             */
-            auto: boolean;
-            /**
              * Keep Newest
              * @default 50
              */
@@ -3150,6 +3151,14 @@ export interface components {
             planned: number;
             /** Task */
             task: string;
+        };
+        /**
+         * CleanupRunRequest
+         * @description The plan a person confirmed, by the shot ids the preview showed them.
+         */
+        CleanupRunRequest: {
+            /** Shot Ids */
+            shot_ids: number[];
         };
         /**
          * CleanupRunRow
@@ -4152,6 +4161,11 @@ export interface components {
              * @default 0
              */
             raw_bytes: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
             /** Shot Id */
             shot_id: number;
             /** Started At */
@@ -6757,7 +6771,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanupRunRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {
@@ -6766,6 +6784,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_CleanupRunAccepted_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

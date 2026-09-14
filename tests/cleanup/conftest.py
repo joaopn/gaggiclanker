@@ -103,12 +103,6 @@ async def live(
         # of those would be twenty seconds of suite. One test asserts on the
         # default; everything else runs flat out.
         app.state.cleanup.pace_seconds = 0.0
-        # That sync pass fired the engine's post-index poke, which spawns the
-        # automatic-cleanup task — it reads two settings, finds them off and
-        # returns, but it holds the `cleanup:<machine>` name until it does.
-        # Draining it here is what stops every test that spawns a run of its own
-        # from racing a task the fixture created.
-        await drain_tasks(app, "cleanup:")
         yield app, client
 
 

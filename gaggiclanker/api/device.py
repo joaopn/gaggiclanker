@@ -135,6 +135,16 @@ def _require_cleanup(service: CleanupService | None) -> CleanupService:
     return service
 
 
+class CleanupRunRequest(BaseModel):
+    """The plan a person confirmed, by the shot ids the preview showed them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Every planned shot id from the preview that was confirmed. Required, and
+    #: compared with a fresh plan: a run deletes what was approved or nothing.
+    shot_ids: list[int]
+
+
 class CleanupRunAccepted(BaseModel):
     """What was queued. Nothing has been deleted when this is sent."""
 
@@ -173,10 +183,18 @@ async def get_cleanup_plan(cleanup: CleanupServiceDep) -> JSONResponse:
     "/cleanup/run",
     response_model=ApiResponse[CleanupRunAccepted],
     status_code=202,
-    summary="Delete what the policy says, oldest first",
+    summary="Delete the approved plan's shots from the machine, oldest first",
 )
-async def post_cleanup_run(request: Request, cleanup: CleanupServiceDep) -> JSONResponse:
-    """202, and the work happens in a background task.
+async def post_cleanup_run(
+    body: CleanupRunRequest, request: Request, cleanup: CleanupServiceDep
+) -> JSONResponse:
+    """202, and the work happens in a background task — but only for the plan shown.
+
+    The body names the shots the preview showed and the person confirmed. A
+    fresh plan that differs is a 409 and nothing is queued, so what runs is
+    exactly what was approved; with writes off it is a 403, audited, naming the
+    switch. This route is the only way a cleanup starts: nothing runs one
+    automatically.
 
     Not in the request, for the same reason an analysis is not: a run is one
     WebSocket frame per shot paced at two a second, so a hundred shots is most
@@ -190,24 +208,27 @@ async def post_cleanup_run(request: Request, cleanup: CleanupServiceDep) -> JSON
     archive does not already hold intact.
     """
     service = _require_cleanup(cleanup)
-    if service.client is None:
-        # The archive still answers the reads — browsing works with the machine
-        # unplugged — but there is genuinely nothing to delete from.
-        raise ServiceUnavailable(
-            "No machine is configured, so there is nothing to clean up. "
-            "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
-        )
-    plan = await service.plan()
-    if not service.spawn(request.app.state.tasks, trigger="manual"):
-        raise Conflict(
-            "A cleanup is already running. Wait for it to finish; its result appears "
-            "under Storage on the Device page."
-        )
+    tasks = request.app.state.tasks
+    # Checked before the plan as well as by the claim below: a run in progress
+    # is moving shots out of the plan, and "the plan changed" would be the wrong
+    # sentence for "wait for the one already going".
+    if tasks.get(cleanup_task_name()) is not None:
+        raise _cleanup_running()
+    plan = await service.approve(body.shot_ids)
+    if not service.spawn(tasks, plan, trigger="manual"):
+        raise _cleanup_running()
     return envelope_response(
         CleanupRunAccepted(planned=len(plan.planned), task=cleanup_task_name()).model_dump(
             mode="json"
         ),
         status_code=202,
+    )
+
+
+def _cleanup_running() -> Conflict:
+    return Conflict(
+        "A cleanup is already running. Wait for it to finish; its result appears "
+        "under Clean up storage on the Sync page."
     )
 
 

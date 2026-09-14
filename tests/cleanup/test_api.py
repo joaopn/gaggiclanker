@@ -36,7 +36,9 @@ async def test_the_run_route_answers_202_and_deletes_in_the_background(
     await app.state.settings_service.apply(
         {"deviceCleanupMode": "keep_newest", "deviceCleanupKeepNewest": SMALL_COUNT - 3}
     )
-    response = await client.post("/api/device/cleanup/run")
+    plan = data(await client.get("/api/device/cleanup/plan"))
+    shot_ids = [item["shot_id"] for item in plan["planned"]]
+    response = await client.post("/api/device/cleanup/run", json={"shot_ids": shot_ids})
     assert response.status_code == 202
     accepted = data(response)
     assert accepted["planned"] == 2
@@ -58,15 +60,70 @@ async def test_a_second_run_while_one_is_going_is_a_conflict(
     await app.state.settings_service.apply(
         {"deviceCleanupMode": "keep_newest", "deviceCleanupKeepNewest": 5}
     )
-    assert service(app).spawn(app.state.tasks) is True
+    plan = await service(app).plan()
+    assert service(app).spawn(app.state.tasks, plan) is True
     try:
-        response = await client.post("/api/device/cleanup/run")
+        response = await client.post(
+            "/api/device/cleanup/run",
+            json={"shot_ids": [item.shot_id for item in plan.planned]},
+        )
         assert response.status_code == 409
         assert "already running" in error(response)["message"]
     finally:
         task = app.state.tasks.get(cleanup_task_name())
         assert task is not None
         await asyncio.shield(task)
+
+
+async def test_the_run_route_refuses_a_plan_that_changed_and_queues_nothing(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    app, client = writes_on
+    await app.state.settings_service.apply(
+        {"deviceCleanupMode": "keep_newest", "deviceCleanupKeepNewest": SMALL_COUNT - 3}
+    )
+    shown = [
+        item["shot_id"] for item in data(await client.get("/api/device/cleanup/plan"))["planned"]
+    ]
+    # A pull, a settings change: the plan grows between the preview and the confirm.
+    await app.state.settings_service.apply({"deviceCleanupKeepNewest": SMALL_COUNT - 5})
+
+    response = await client.post("/api/device/cleanup/run", json={"shot_ids": shown})
+
+    assert response.status_code == 409
+    body = error(response)
+    assert "changed since it was previewed" in body["message"]
+    assert body["details"] == {"field": "shot_ids", "planned": 4}
+    assert app.state.tasks.get(cleanup_task_name()) is None
+    assert data(await client.get("/api/device/cleanup/runs"))["items"] == []
+
+
+async def test_the_run_route_needs_the_approved_ids(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """No body is not "run whatever the policy says now"; it is a malformed request."""
+    _, client = writes_on
+    response = await client.post("/api/device/cleanup/run")
+    assert response.status_code == 400
+    assert data(await client.get("/api/device/cleanup/runs"))["items"] == []
+
+
+async def test_the_run_route_with_writes_off_is_a_403_naming_the_switch(
+    live: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    app, client = live
+    await app.state.settings_service.apply(
+        {"deviceCleanupMode": "keep_newest", "deviceCleanupKeepNewest": 5}
+    )
+    shown = [
+        item["shot_id"] for item in data(await client.get("/api/device/cleanup/plan"))["planned"]
+    ]
+
+    response = await client.post("/api/device/cleanup/run", json={"shot_ids": shown})
+
+    assert response.status_code == 403
+    assert "Device writes enabled" in error(response)["message"]
+    assert app.state.tasks.get(cleanup_task_name()) is None
 
 
 async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machine(
@@ -85,7 +142,7 @@ async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machin
     pending = data(await client.get("/api/device/notes/pending"))
     assert pending["shot_ids"] == []
 
-    response = await client.post("/api/device/cleanup/run")
+    response = await client.post("/api/device/cleanup/run", json={"shot_ids": []})
     assert response.status_code == 503
     assert "no machine" in error(response)["message"].lower()
 

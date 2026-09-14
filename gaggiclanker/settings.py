@@ -620,8 +620,9 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         env_key="GAGGICLANKER_DEVICE_CLEANUP_MODE",
         validate=_one_of(CLEANUP_MODES, "the cleanup mode"),
         description=(
-            "How much shot history to leave on the machine: off (delete nothing), "
-            "keep_newest (keep deviceCleanupKeepNewest shots there), or free_space (delete "
+            "The cleanup the Sync page proposes, which runs only when a person confirms it "
+            "there: off (propose nothing), "
+            "keep_newest (keep deviceCleanupKeepNewest shots on it), or free_space (delete "
             "oldest-first until deviceCleanupMinFreeKb of flash is free). A shot is only ever "
             "deleted when this box already holds its raw bytes intact and unquarantined. The "
             "firmware deletes its own oldest shots below 500 KB free whatever this says; all "
@@ -658,18 +659,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "With deviceCleanupMode=free_space, the free flash to keep available, in KB. "
             "Shots are deleted oldest first until spiffsFree (or sdFree, with a card) is "
             "above this. The firmware's own threshold is 500 KB."
-        ),
-    ),
-    SettingDefinition(
-        key="deviceCleanupAuto",
-        type="bool",
-        default=False,
-        env_key="GAGGICLANKER_DEVICE_CLEANUP_AUTO",
-        description=(
-            "Run the cleanup policy after every successful index read, rather than only "
-            "when somebody presses the button. Needs deviceWritesEnabled as well: this "
-            "switch decides when a cleanup runs, that one decides whether it may write at "
-            "all."
         ),
     ),
     SettingDefinition(

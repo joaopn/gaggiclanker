@@ -30,7 +30,6 @@ function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
       mode: "keep_newest",
       keep_newest: 20,
       min_free_kb: 2048,
-      auto: false,
       writes_enabled: true,
     },
     on_device_count: 23,
@@ -43,6 +42,7 @@ function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
         started_at: "2026-02-01T08:00:00.000Z",
         raw_bytes: 4096,
         profile_name: "9 Bar",
+        reason: "Older than the newest 20 shots the policy keeps on the machine.",
       },
       {
         shot_id: 12,
@@ -50,6 +50,7 @@ function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
         started_at: "2026-02-01T09:00:00.000Z",
         raw_bytes: 4096,
         profile_name: "9 Bar",
+        reason: "Older than the newest 20 shots the policy keeps on the machine.",
       },
     ],
     skipped: [
@@ -129,7 +130,7 @@ describe("StorageCard", () => {
     expect(runCleanup).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Delete them" }));
-    await waitFor(() => expect(runCleanup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(runCleanup).toHaveBeenCalledWith([11, 12]));
     expect(toast.success).toHaveBeenCalledWith("Cleaning up 2 shots on the machine");
   });
 

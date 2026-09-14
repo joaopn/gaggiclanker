@@ -98,11 +98,13 @@ export function useCleanupRuns(limit = 20): UseQueryResult<CleanupRunsData, Erro
  * the card re-reads; `cleanup.progress` on the sync stream does the same when
  * the run ends, which is what makes a run started in another tab show up here.
  */
-export function useRunCleanup(): UseMutationResult<CleanupRunAccepted, Error, void> {
+export function useRunCleanup(): UseMutationResult<CleanupRunAccepted, Error, number[]> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => runCleanup(),
-    onSuccess: async () => {
+    mutationFn: (shotIds: number[]) => runCleanup(shotIds),
+    // Settled rather than success: a 409 means the plan moved under the
+    // preview, and the fresh plan is exactly what the person needs to see next.
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.device.all });
     },
   });

@@ -21,6 +21,13 @@ cooperatively scheduled web server that is also drawing a UI. And a device error
 mid-run means the machine is unhappy *now*; carrying on would turn one bad frame
 into four hundred.
 
+**Never automatic.** A run deletes exactly the shots a person was shown and
+confirmed on the Sync page: the request carries the planned shot ids, and
+:meth:`CleanupService.approve` refuses when a fresh plan no longer matches them
+(a pull added a shot, a policy changed, a shot stopped being eligible). Nothing
+in this application starts a cleanup on its own — no timer, no hook after a
+sync pass.
+
 **The plan is advisory, the gate is authoritative.** :meth:`CleanupService.plan`
 calls exactly the same :func:`~gaggiclanker.cleanup.eligibility.ineligible_reason`
 the write gate does, so a preview and a run agree — but if they ever disagreed,
@@ -50,10 +57,12 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWr
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.client import GaggimateClient
-from gaggiclanker.device.errors import DeviceError
+from gaggiclanker.device.errors import DeviceError, DeviceUnavailable
 from gaggiclanker.device.writes import payload_hash
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry
+from gaggiclanker.drafts.gate import refuse_unless_writes_enabled
+from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.settings_service import SettingsService
@@ -65,7 +74,6 @@ __all__ = [
     "CleanupService",
     "PlannedShot",
     "SkippedShot",
-    "auto_task_name",
     "cleanup_task_name",
 ]
 
@@ -81,15 +89,6 @@ CLEANUP_EVENT = "cleanup.progress"
 #: is three filesystem operations plus an index rewrite; a tight loop over four
 #: hundred shots is how a machine stops answering its own UI.
 MIN_DELETE_INTERVAL_S = 0.5
-
-
-def auto_task_name() -> str:
-    """The name the *decision* to run automatically holds, distinct from the run.
-
-    Separate so that "is automatic cleanup even on" can be answered without
-    claiming the name a manual run needs — see :meth:`CleanupService.maybe_spawn_auto`.
-    """
-    return "cleanup-auto"
 
 
 def cleanup_task_name() -> str:
@@ -109,7 +108,6 @@ class CleanupPolicy(BaseModel):
     mode: str = "off"
     keep_newest: int = 50
     min_free_kb: int = 2048
-    auto: bool = False
     writes_enabled: bool = False
 
     @property
@@ -132,6 +130,10 @@ class PlannedShot(BaseModel):
     started_at: str | None = None
     raw_bytes: int = 0
     profile_name: str = ""
+    #: Why the policy picks this shot, as the sentence the confirmation shows.
+    #: Every planned shot has already passed the eligibility rule; this is the
+    #: other half of "why this one": which part of the policy wants it gone.
+    reason: str = ""
 
 
 class SkippedShot(BaseModel):
@@ -199,7 +201,7 @@ class CleanupService:
     # ── policy ───────────────────────────────────────────────────────
 
     async def policy(self) -> CleanupPolicy:
-        """The four cleanup settings plus the master write switch, read fresh.
+        """The three cleanup settings plus the master write switch, read fresh.
 
         Read on every plan and every run rather than cached, for the same reason
         the write gate re-reads `deviceWritesEnabled`: the person turning it off
@@ -209,7 +211,6 @@ class CleanupService:
             mode=str(await self.settings.get("deviceCleanupMode") or "off"),
             keep_newest=int(await self.settings.get("deviceCleanupKeepNewest")),
             min_free_kb=int(await self.settings.get("deviceCleanupMinFreeKb")),
-            auto=bool(await self.settings.get("deviceCleanupAuto")),
             writes_enabled=bool(await self.settings.get("deviceWritesEnabled")),
         )
 
@@ -237,6 +238,7 @@ class CleanupService:
                 )
 
         chosen, blocked = self._choose(policy, eligible, len(candidates), free_bytes)
+        reason = _planned_reason(policy)
         return CleanupPlan(
             policy=policy,
             on_device_count=len(candidates),
@@ -249,6 +251,7 @@ class CleanupService:
                     started_at=item.started_at,
                     raw_bytes=item.raw_bytes,
                     profile_name=item.profile_name_on_device,
+                    reason=reason,
                 )
                 for item in chosen
             ],
@@ -319,8 +322,40 @@ class CleanupService:
 
     # ── the run ──────────────────────────────────────────────────────
 
-    def spawn(self, tasks: TaskRegistry, *, trigger: str = "manual") -> bool:
-        """Queue a run under the cleanup registry name. False if one is running.
+    async def approve(self, shot_ids: list[int]) -> CleanupPlan:
+        """The plan a person confirmed, or a refusal if it is no longer the plan.
+
+        The Sync page shows a preview and sends back the ids it showed. A fresh
+        plan is computed here and compared as a set: if a pull added a shot, the
+        policy changed, or a shot stopped being eligible in between, the run is
+        refused rather than quietly deleting something nobody was shown. What
+        runs is then exactly this plan — :meth:`run` does not recompute it.
+
+        The master switch is checked first, and a refusal is audited, so a
+        request made with writes off never gets as far as a plan. Order of
+        checks: a machine, the switch, a connection, the plan.
+        """
+        if self.client is None:
+            raise _no_machine()
+        await refuse_unless_writes_enabled(
+            self.settings, self.writes, kind="shot_delete", host=self.client.host
+        )
+        if not self.client.connected:
+            raise DeviceUnavailable(
+                "The machine is not connected, so nothing can be deleted from it now."
+            )
+        plan = await self.plan()
+        if sorted(item.shot_id for item in plan.planned) != sorted(shot_ids):
+            raise Conflict(
+                "The cleanup plan has changed since it was previewed — a pull, a settings "
+                "change or the archive moved a shot in or out of it. Nothing was deleted. "
+                "Review the new plan and confirm again.",
+                details={"field": "shot_ids", "planned": len(plan.planned)},
+            )
+        return plan
+
+    def spawn(self, tasks: TaskRegistry, plan: CleanupPlan, *, trigger: str = "manual") -> bool:
+        """Queue a run of an approved plan under the cleanup name. False if one is running.
 
         The name is claimed synchronously inside
         :meth:`~gaggiclanker.infra.tasks.TaskRegistry.spawn`, so two tabs
@@ -331,20 +366,23 @@ class CleanupService:
         name = cleanup_task_name()
         if tasks.get(name) is not None:
             return False
-        tasks.spawn(name, self.run(trigger=trigger))
+        tasks.spawn(name, self.run(plan, trigger=trigger))
         return True
 
-    async def run(self, *, trigger: str = "manual") -> CleanupRunRow:
-        """Delete what the plan says, oldest first, stopping on the first error.
+    async def run(self, plan: CleanupPlan, *, trigger: str = "manual") -> CleanupRunRow:
+        """Delete what the approved plan says, oldest first, stopping on the first error.
 
-        Every delete goes through the gated client, so every one of them is
-        authorised against the archive and audited in `device_writes` whatever
-        happens to it. `deleted_on_device` is set here rather than waiting for
-        the next index diff: the row is how the archive stops offering the same
-        shot again, and a run that deleted forty shots should not depend on a
-        later pass to say so.
+        The plan is a parameter rather than recomputed here: it is the one a
+        person confirmed, and a run that re-planned at the moment the task
+        started could delete a shot that arrived in the half second between.
+        Every delete still goes through the gated client, so every one of them
+        is re-authorised against the archive and audited in `device_writes`
+        whatever happens to it — a shot that stopped being eligible since the
+        preview is refused there, and the run stops. `deleted_on_device` is set
+        here rather than waiting for the next index diff: the row is how the
+        archive stops offering the same shot again, and a run that deleted forty
+        shots should not depend on a later pass to say so.
         """
-        plan = await self.plan()
         run_id = await self.cleanup.start_run(
             mode=plan.policy.mode,
             target=plan.policy.target,
@@ -513,40 +551,34 @@ class CleanupService:
                 )
             )
 
-    # ── the automatic trigger ────────────────────────────────────────
-
-    def maybe_spawn_auto(self, tasks: TaskRegistry) -> None:
-        """The sync engine's poke: schedule a run if — and only if — both switches are on.
-
-        Synchronous and cheap on purpose. It is called from the shot pass after
-        the engine's lock has been released, and the settings read happens
-        inside the task rather than here, so a poke costs the sync loop one
-        ``create_task`` and never a database round trip on a path that has just
-        finished one.
-
-        The task it spawns is **not** named `cleanup`. It reads the two
-        switches first and only then claims that name, because the poke
-        fires after every successful index diff whether or not automatic cleanup
-        is on: claiming the run's name to discover that it is off would make a
-        person pressing "Run cleanup" in the half-second after a sync pass get a
-        409 about a run that was never going to happen.
-        """
-        name = auto_task_name()
-        if tasks.get(name) is not None:
-            return
-        tasks.spawn(name, self._auto_run(tasks))
-
-    async def _auto_run(self, tasks: TaskRegistry) -> None:
-        """Check both switches, then take the run's name. Behind :meth:`maybe_spawn_auto`."""
-        policy = await self.policy()
-        if not policy.auto or not policy.writes_enabled or policy.mode == "off":
-            return
-        # Through `spawn` rather than by calling `run` here, so the automatic
-        # pass and a manual one are the same one-run-at-a-time rule. If a manual
-        # run won the race, this one simply does not happen; the next index diff
-        # pokes again.
-        self.spawn(tasks, trigger="auto")
-
     def _publish(self, data: dict[str, Any]) -> None:
         if self.bus is not None:
             self.bus.publish(SseEvent(event=CLEANUP_EVENT, data=data))
+
+
+def _no_machine() -> ServiceUnavailable:
+    return ServiceUnavailable(
+        "No machine is configured, so there is nothing to clean up. "
+        "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
+    )
+
+
+def _planned_reason(policy: CleanupPolicy) -> str:
+    """The sentence each planned shot carries, from the part of the policy that chose it.
+
+    One sentence per policy rather than per shot: the policy picks from the
+    oldest end, so every shot in a plan is there for the same reason, and the
+    eligibility half ("archived here intact") is true of all of them by
+    construction.
+    """
+    if policy.mode == "keep_newest":
+        return (
+            f"Older than the newest {policy.keep_newest} shots the policy keeps on the machine; "
+            "archived here intact."
+        )
+    if policy.mode == "free_space":
+        return (
+            f"Among the oldest shots while free space is under {policy.min_free_kb} KB; "
+            "archived here intact."
+        )
+    return ""

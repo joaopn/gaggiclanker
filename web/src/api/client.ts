@@ -544,13 +544,19 @@ export async function getCleanupPlan(): Promise<CleanupPlan> {
 }
 
 /**
- * Start a cleanup. Resolves as soon as it is **queued**, not when it is done.
+ * Start a cleanup of the plan a person confirmed. Resolves as soon as it is
+ * **queued**, not when it is done.
  *
- * 202 and a background task, like running an analysis: a hundred shots at two
- * deletes a second is most of a minute. The page follows the ledger.
+ * `shotIds` are the planned shots the preview showed. The server compares them
+ * with a fresh plan and refuses with a 409 if they differ, so what runs is what
+ * was approved. 202 and a background task, like running an analysis: a hundred
+ * shots at two deletes a second is most of a minute. The page follows the ledger.
  */
-export async function runCleanup(): Promise<CleanupRunAccepted> {
-  return fetchApi<CleanupRunAccepted>("/device/cleanup/run", { method: "POST" });
+export async function runCleanup(shotIds: number[]): Promise<CleanupRunAccepted> {
+  return fetchApi<CleanupRunAccepted>("/device/cleanup/run", {
+    method: "POST",
+    body: JSON.stringify({ shot_ids: shotIds }),
+  });
 }
 
 export async function getCleanupRuns(limit = 20): Promise<CleanupRunsData> {

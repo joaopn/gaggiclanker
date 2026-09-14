@@ -14,7 +14,7 @@ nothing is mid-write when the file is released.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -308,19 +308,14 @@ async def _start(app: FastAPI, db: Database) -> None:
     # Cleanup and notes write-back. Both are app-scoped for the reason the draft service
     # is: they hold the one client that can change a machine, and a per-request
     # copy would have to build its own — which would mean a second gate, or a
-    # client with none.
+    # client with none. Neither is wired to anything that runs on its own: they
+    # act only when a person confirms an action on the Sync page.
     app.state.cleanup = CleanupService(
         db, settings_service, client=app.state.device, bus=app.state.events
     )
     app.state.notes_writeback = NotesWritebackService(
         db, settings_service, client=app.state.device, bus=app.state.events
     )
-    if app.state.sync is not None:
-        # The engine's poke. It fires after a full, successful index diff and
-        # after the engine's own lock has been released — a cleanup takes the
-        # device's WebSocket for as long as it runs, and holding the sync lock
-        # while it did would block the next shot's ingest behind it.
-        app.state.sync.on_index_synced = _cleanup_poke(app)
 
     # App-scoped because it holds the one client that can change a machine. A
     # per-request service would have to build its own — and a client built
@@ -457,26 +452,6 @@ async def start_sync_engine(app: FastAPI) -> SyncEngine | None:
     engine = SyncEngine(client, app.state.db, app.state.events)
     await engine.start(app.state.tasks)
     return engine
-
-
-def _cleanup_poke(app: FastAPI) -> Callable[[], None]:
-    """The callback the sync engine calls after a clean index diff.
-
-    A closure over the app rather than a method on the engine, because what
-    happens next belongs to the cleanup service and the task registry, neither
-    of which the engine has any business holding. It checks nothing itself: both
-    switches are read inside the task (`CleanupService._auto_run`), so the sync
-    loop pays one ``create_task`` and never a database read.
-    """
-
-    def poke() -> None:
-        service: CleanupService | None = getattr(app.state, "cleanup", None)
-        tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
-        if service is None or tasks is None:  # pragma: no cover - torn-down app
-            return
-        service.maybe_spawn_auto(tasks)
-
-    return poke
 
 
 def create_app(

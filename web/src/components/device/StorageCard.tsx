@@ -135,14 +135,17 @@ export function StorageCard({
             <Button
               onClick={() => {
                 setConfirming(false);
-                run.mutate(undefined, {
-                  // 202: the deletes happen in a background task at two a
-                  // second, so "queued" is the honest word for what just
-                  // happened. The ledger below fills in as it goes.
-                  onSuccess: (accepted) =>
-                    toast.success(`Cleaning up ${accepted.planned} shots on the machine`),
-                  onError: (error: Error) => toast.error(error.message),
-                });
+                run.mutate(
+                  planned.map((shot) => shot.shot_id),
+                  {
+                    // 202: the deletes happen in a background task at two a
+                    // second, so "queued" is the honest word for what just
+                    // happened. The ledger below fills in as it goes.
+                    onSuccess: (accepted) =>
+                      toast.success(`Cleaning up ${accepted.planned} shots on the machine`),
+                    onError: (error: Error) => toast.error(error.message),
+                  },
+                );
               }}
             >
               Delete them

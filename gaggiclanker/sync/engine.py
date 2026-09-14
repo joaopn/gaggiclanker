@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -196,23 +196,10 @@ class SyncEngine:
         #: different fact from "this board has no pressure sensor".
         self._capabilities: tuple[bool | None, ...] | None = None
         self._selected_profile_id: str | None = None
-        #: Whether the last shot pass actually got an `index.bin` off the
-        #: machine. ``False`` after a 404 or a failed fetch, which is a
-        #: different fact from "the index listed nothing" — see `_read_index`.
-        self._last_index_was_full = False
         #: One device pass at a time. The machine has two HTTP slots and one
         #: socket; two passes would fight over both, and SQLite's single
         #: connection cannot hold two transactions anyway.
         self._lock = asyncio.Lock()
-        #: Called after a shot pass that read a **full** index and finished
-        #: cleanly, and always **outside** the lock above.
-        #: The automatic cleanup hangs off it: deleting shots takes the
-        #: machine's socket for as long as it runs, and doing that while holding
-        #: the sync lock would block the next shot's ingest behind a retention
-        #: policy. The engine neither knows nor decides what happens next —
-        #: whether a cleanup is wanted at all is two settings read inside the
-        #: task the app's callback spawns.
-        self.on_index_synced: Callable[[], None] | None = None
 
     # ── lifecycle ────────────────────────────────────────────────────
 
@@ -402,16 +389,11 @@ class SyncEngine:
     async def sync_shots(self, *, kind: str = "backfill", trigger: str = "manual") -> SyncRunRow:
         """One index diff: fetch what is missing, reconcile what changed, pull notes.
 
-        The post-pass hook fires **after** the lock is released and only for a
-        run that both succeeded and read a real index: a pass that could not
-        reach the machine has learned nothing about what is on it, and acting on
-        that would be a retention policy driven by a network fault.
+        Nothing hangs off the end of a pass: shots leave the machine only when a
+        person confirms a cleanup on the Sync page, so a pull only ever reads.
         """
         async with self._lock:
-            run = await self._sync_shots(kind=kind, trigger=trigger)
-        if self.on_index_synced is not None and run.status == "ok" and self._last_index_was_full:
-            self.on_index_synced()
-        return run
+            return await self._sync_shots(kind=kind, trigger=trigger)
 
     async def _sync_shots(self, *, kind: str, trigger: str) -> SyncRunRow:
         await self._ensure_machine()
@@ -423,7 +405,6 @@ class SyncEngine:
         )
 
         entries: dict[str, IndexEntry] | None = None
-        self._last_index_was_full = False
         # try/finally around the whole pass, not just the fetches: a run left
         # at status "running" is a run nothing ever closes, and
         # `GET /api/sync/status` would report a sync in progress for ever.
@@ -433,7 +414,6 @@ class SyncEngine:
             known = await self.shots.known_states()
             update.shots_seen = len(listed)
 
-            self._last_index_was_full = entries is not None
             missing = self._missing_entries(listed, known)
             await self._fetch_and_store(missing, run_id=run_id, update=update)
             await self._reconcile(

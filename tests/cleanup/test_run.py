@@ -13,7 +13,6 @@ from fastapi import FastAPI
 from gaggiclanker.cleanup.service import (
     MIN_DELETE_INTERVAL_S,
     CleanupService,
-    auto_task_name,
     cleanup_task_name,
 )
 from gaggiclanker.db.repos.cleanup import CleanupRepository
@@ -21,13 +20,14 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.device.fake import FakeDevice
+from gaggiclanker.device.writes import DeviceWriteRefused
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import SHOT_FLAG_DELETED
+from gaggiclanker.infra.errors import Conflict
 from tests.cleanup.conftest import (
     FIRST_ID,
     NOTES_ID,
     SMALL_COUNT,
-    drain_tasks,
     service,
 )
 
@@ -58,7 +58,7 @@ async def test_a_run_deletes_the_oldest_shots_and_leaves_the_index_row_flagged(
     assert len(wanted) == 3
     assert wanted[0] == pad6(FIRST_ID)
 
-    run = await service(app).run()
+    run = await service(app).run(await service(app).plan())
     assert run.status == "ok"
     assert run.planned == 3
     assert run.deleted == 3
@@ -79,7 +79,7 @@ async def test_a_run_marks_the_archive_locally_rather_than_waiting_for_the_next_
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
     plan = await service(app).plan()
-    await service(app).run()
+    await service(app).run(await service(app).plan())
 
     states = await ShotsRepository(app.state.db).known_states()
     for item in plan.planned:
@@ -91,7 +91,7 @@ async def test_every_delete_leaves_an_audit_row(
 ) -> None:
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
-    await service(app).run()
+    await service(app).run(await service(app).plan())
 
     rows = await DeviceWritesRepository(app.state.db).list_writes()
     deletes = [row for row in rows if row.kind == "shot_delete"]
@@ -123,7 +123,7 @@ async def test_a_run_stops_at_the_first_thing_the_machine_refuses(
         await original(shot_id)
 
     monkeypatch.setattr(app.state.device, "delete_shot", delete)
-    run = await service(app).run()
+    run = await service(app).run(await service(app).plan())
 
     assert run.status == "error"
     assert run.deleted == 2
@@ -138,7 +138,7 @@ async def test_a_run_with_writes_off_deletes_nothing_and_says_why(
     """The plan lists shots happily; the gate is what refuses, and it is audited."""
     app, _ = live
     await _keep(app, 5)
-    run = await service(app).run()
+    run = await service(app).run(await service(app).plan())
     assert run.deleted == 0
     assert run.status == "error"
     assert run.error is not None
@@ -164,7 +164,7 @@ async def test_deletes_are_paced_to_two_a_second(
     assert paced.pace_seconds == MIN_DELETE_INTERVAL_S
 
     started = time.monotonic()
-    run = await paced.run()
+    run = await paced.run(await paced.plan())
     assert run.deleted == 2
     assert time.monotonic() - started >= MIN_DELETE_INTERVAL_S
 
@@ -177,8 +177,8 @@ async def test_only_one_run_at_a_time(
     await _keep(app, 5)
     tasks = app.state.tasks
 
-    assert service(app).spawn(tasks) is True
-    assert service(app).spawn(tasks) is False
+    assert service(app).spawn(tasks, await service(app).plan()) is True
+    assert service(app).spawn(tasks, await service(app).plan()) is False
 
     await _await_task(app, cleanup_task_name())
     runs = await CleanupRepository(app.state.db).list_runs()
@@ -190,7 +190,7 @@ async def test_the_run_appears_in_the_ledger_with_both_figures(
 ) -> None:
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 2)
-    await service(app).run(trigger="test")
+    await service(app).run(await service(app).plan(), trigger="test")
 
     runs = await CleanupRepository(app.state.db).list_runs()
     assert len(runs) == 1
@@ -220,97 +220,100 @@ async def test_a_run_cut_off_by_a_restart_is_closed_at_the_next_boot(
     assert row.error == "interrupted by a restart"
 
 
-# ── the automatic trigger ────────────────────────────────────────────
+# ── nothing starts a cleanup but a person ────────────────────────────
 
 
-async def test_auto_cleanup_fires_only_with_both_switches_on(
+async def test_a_clean_index_sync_never_starts_a_cleanup(
     writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
-    """`deviceCleanupAuto` says *when*; `deviceWritesEnabled` says *whether*."""
+    """Even with writes on and a policy that wants shots gone, a pull only reads.
+
+    The engine used to poke an automatic cleanup after every clean index diff.
+    There is no such hook now; this pins it from the outside — no task, no run
+    row, no delete in the audit, and every planned shot still on the machine.
+    """
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
-    repo = CleanupRepository(app.state.db)
+    wanted = [item.device_id for item in (await service(app).plan()).planned]
+    assert wanted, "the policy must want something deleted for this to mean anything"
 
-    # Auto off: the poke costs a task that reads two settings and returns.
-    await _poke(app)
-    assert await repo.list_runs() == []
+    run = await app.state.sync.sync_shots(trigger="test")
+    assert run.status == "ok"
+    await asyncio.sleep(0)
 
-    await app.state.settings_service.apply({"deviceCleanupAuto": True})
-    await _poke(app)
-    runs = await repo.list_runs()
-    assert len(runs) == 1
-    assert runs[0].trigger == "auto"
-    assert runs[0].deleted == 2
+    assert not [name for name in app.state.tasks._tasks if name.startswith("cleanup")]
+    assert await CleanupRepository(app.state.db).list_runs() == []
+    rows = await DeviceWritesRepository(app.state.db).list_writes()
+    assert not [row for row in rows if row.kind == "shot_delete"]
+    assert [item.device_id for item in (await service(app).plan()).planned] == wanted
 
 
-async def test_auto_cleanup_does_nothing_with_writes_off(
+async def test_approval_returns_the_plan_that_was_shown(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    app, _ = writes_on
+    await _keep(app, SMALL_COUNT - 3)
+    shown = await service(app).plan()
+
+    approved = await service(app).approve([item.shot_id for item in reversed(shown.planned)])
+
+    assert [item.shot_id for item in approved.planned] == [item.shot_id for item in shown.planned]
+
+
+async def test_approval_is_refused_when_the_plan_changed_since_the_preview(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """What runs is what was approved: a policy moved, so nothing is queued."""
+    app, _ = writes_on
+    await _keep(app, SMALL_COUNT - 3)
+    shown = [item.shot_id for item in (await service(app).plan()).planned]
+    await _keep(app, SMALL_COUNT - 5)
+
+    with pytest.raises(Conflict, match="changed since it was previewed"):
+        await service(app).approve(shown)
+    # A subset of the current plan is not the current plan either.
+    current = [item.shot_id for item in (await service(app).plan()).planned]
+    with pytest.raises(Conflict):
+        await service(app).approve(current[:-1])
+    assert await CleanupRepository(app.state.db).list_runs() == []
+
+
+async def test_approval_with_writes_off_is_refused_and_audited(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
     app, _ = live
     await _keep(app, 5)
-    await app.state.settings_service.apply({"deviceCleanupAuto": True})
-    await _poke(app)
+    shown = [item.shot_id for item in (await service(app).plan()).planned]
+
+    with pytest.raises(DeviceWriteRefused, match="switched off"):
+        await service(app).approve(shown)
+
+    rows = await DeviceWritesRepository(app.state.db).list_writes()
+    assert [(row.kind, row.result, row.device_id) for row in rows] == [
+        ("shot_delete", "refused", None)
+    ]
     assert await CleanupRepository(app.state.db).list_runs() == []
 
 
-async def test_the_poke_does_not_hold_the_run_s_name_while_it_decides(
+async def test_a_run_deletes_only_the_approved_plan_even_if_the_policy_moves(
     writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
-    """Otherwise "Run cleanup" gets a 409 about a run that was never going to happen.
-
-    The poke fires after *every* successful index diff, whether automatic
-    cleanup is on or not. Claiming `cleanup:<machine>` to discover the switch is
-    off would refuse a person pressing the button in the half second after a
-    sync pass.
-    """
+    """The run takes the approved plan rather than re-planning when its task starts."""
     app, _ = writes_on
     await _keep(app, SMALL_COUNT - 3)
+    approved = await service(app).approve(
+        [item.shot_id for item in (await service(app).plan()).planned]
+    )
+    await _keep(app, 5)
 
-    service(app).maybe_spawn_auto(app.state.tasks)
-    # The decision is running; the run's name is still free, so a manual run
-    # starts rather than being told one is already going.
-    assert app.state.tasks.get(auto_task_name()) is not None
-    assert service(app).spawn(app.state.tasks) is True
+    run = await service(app).run(approved)
 
-    await drain_tasks(app, "cleanup")
-    runs = await CleanupRepository(app.state.db).list_runs()
-    assert [row.trigger for row in runs] == ["manual"]
-
-
-async def test_the_sync_engine_pokes_after_a_clean_index_pass(
-    writes_on: tuple[FastAPI, httpx.AsyncClient],
-) -> None:
-    """The hook the lifespan wires, and it fires outside the engine's lock."""
-    app, _ = writes_on
-    seen: list[bool] = []
-    app.state.sync.on_index_synced = lambda: seen.append(True)
-    run = await app.state.sync.sync_shots(trigger="test")
-    assert run.status == "ok"
-    assert seen == [True]
-
-
-async def test_the_engine_does_not_poke_when_it_could_not_read_the_index(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    """A pass that learned nothing about the machine must not drive a retention policy."""
-    app, _ = writes_on
-    seen: list[bool] = []
-    app.state.sync.on_index_synced = lambda: seen.append(True)
-    fake_device.index_missing = True
-    await app.state.sync.sync_shots(trigger="test")
-    assert seen == []
-
-
-async def _poke(app: FastAPI) -> None:
-    """Fire the engine's hook and wait for whatever it decides to do.
-
-    Two tasks, and which of them exists is the point: the poke always spawns the
-    *decision*, and only a decision that says yes goes on to claim the run's own
-    name.
-    """
-    service(app).maybe_spawn_auto(app.state.tasks)
-    await _await_task(app, auto_task_name())
-    await drain_tasks(app, cleanup_task_name())
+    assert run.planned == len(approved.planned) == 2
+    assert run.deleted == 2
+    rows = await DeviceWritesRepository(app.state.db).list_writes()
+    assert sorted(row.device_id or "" for row in rows if row.kind == "shot_delete") == sorted(
+        item.device_id for item in approved.planned
+    )
 
 
 async def _await_task(app: FastAPI, name: str) -> None:
@@ -356,7 +359,7 @@ async def test_a_note_edited_since_the_last_pull_is_mirrored_before_the_delete(
     plan = await service(app).plan()
     assert pad6(NOTES_ID) in {item.device_id for item in plan.planned}
 
-    run = await service(app).run()
+    run = await service(app).run(await service(app).plan())
     assert run.status == "ok"
 
     saved = await NotesRepository(app.state.db).get(shot_id)
@@ -384,7 +387,7 @@ async def test_a_shot_whose_notes_cannot_be_read_is_skipped_rather_than_deleted(
     planned = [item.device_id for item in plan.planned]
     assert pad6(NOTES_ID) in planned
 
-    run = await service(app).run()
+    run = await service(app).run(await service(app).plan())
     assert run.deleted == len(planned) - 1
     assert run.errors == 1
     assert run.error is not None and "notes card could not be read" in run.error
@@ -411,6 +414,6 @@ async def test_a_shot_the_index_says_has_no_notes_costs_no_extra_request(
     assert pad6(NOTES_ID) not in {item.device_id for item in plan.planned}
 
     fake_device.requests.clear()
-    await service(app).run()
+    await service(app).run(await service(app).plan())
 
     assert not [path for path in fake_device.requests if path.endswith(".json")]

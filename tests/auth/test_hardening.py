@@ -369,11 +369,13 @@ def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> Non
     from gaggiclanker.settings import SETTINGS_REGISTRY
 
     assert SETTINGS_REGISTRY["deviceWritesEnabled"].default is False
-    # The two features that write outside `req:profiles:*` each have a second
-    # switch of their own, and both of those are off too. Neither replaces the
-    # master switch: a cleanup with writes off is a run that deletes nothing.
+    # The two features that write outside `req:profiles:*` sit behind this
+    # switch too. A cleanup has no switch of its own and nothing that runs it
+    # automatically: it runs only from a plan a person confirmed, and the policy
+    # proposes nothing until somebody picks one. Notes write-back has a second
+    # switch, off as well.
     assert SETTINGS_REGISTRY["deviceCleanupMode"].default == "off"
-    assert SETTINGS_REGISTRY["deviceCleanupAuto"].default is False
+    assert "deviceCleanupAuto" not in SETTINGS_REGISTRY
     assert SETTINGS_REGISTRY["notesWritebackEnabled"].default is False
 
 
