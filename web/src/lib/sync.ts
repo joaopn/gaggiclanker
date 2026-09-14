@@ -117,3 +117,33 @@ export function relativeTime(value: string | null | undefined, now = Date.now())
   }
   return format.format(Math.round(seconds), "second");
 }
+
+/** What the Sync page knows about the machine when it decides whether a write can start. */
+export type WriteReadiness = {
+  configured: boolean;
+  connected: boolean;
+  writesEnabled: boolean;
+};
+
+/**
+ * Why a write action on the Sync page cannot start right now, or `null` when it can.
+ *
+ * The same three checks, in the same order, the server applies before it
+ * queues a send or a cleanup: a machine, the write switch, a connection. The
+ * page shows the sentence beside the disabled button rather than only
+ * disabling it, because "nothing happens when I press it" is the failure these
+ * actions are most likely to produce. The server still decides; this only
+ * saves a request that would be refused.
+ */
+export function writeBlocker({
+  configured,
+  connected,
+  writesEnabled,
+}: WriteReadiness): string | null {
+  if (!configured) return "No machine is configured. Set its address in Settings.";
+  if (!writesEnabled) {
+    return "Device writes are off. Turn on “Device writes enabled” under Settings → Machine.";
+  }
+  if (!connected) return "The machine is not connected. Nothing can be written to it until it is.";
+  return null;
+}

@@ -164,6 +164,7 @@ async def test_every_client_route_deep_links_to_index(env: EnvSettings, web_dist
     routes = (
         "/shots",
         "/device",
+        "/sync",
         "/sets",
         "/beans",
         "/hardware",

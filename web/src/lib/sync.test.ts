@@ -6,6 +6,7 @@ import {
   latestShotRun,
   pullSummary,
   relativeTime,
+  writeBlocker,
 } from "@/lib/sync";
 
 function run(overrides: Partial<SyncRunRow> = {}): SyncRunRow {
@@ -162,5 +163,26 @@ describe("relativeTime", () => {
   it("has nothing to say about a run that never finished", () => {
     expect(relativeTime(null, now)).toBe("");
     expect(relativeTime("not a date", now)).toBe("");
+  });
+});
+
+describe("writeBlocker", () => {
+  const ready = { configured: true, connected: true, writesEnabled: true };
+
+  it("lets a write start only when all three hold", () => {
+    expect(writeBlocker(ready)).toBeNull();
+  });
+
+  it("names the missing machine before anything else", () => {
+    expect(writeBlocker({ configured: false, connected: false, writesEnabled: false })).toMatch(
+      /No machine is configured/,
+    );
+  });
+
+  it("names the switch before the connection, as the server does", () => {
+    expect(writeBlocker({ ...ready, connected: false, writesEnabled: false })).toMatch(
+      /Device writes enabled/,
+    );
+    expect(writeBlocker({ ...ready, connected: false })).toMatch(/not connected/);
   });
 });

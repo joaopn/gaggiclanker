@@ -162,7 +162,7 @@ export const SETTINGS_SECTIONS = [
     id: "device",
     title: "Machine",
     description:
-      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default. Cleanup deletes shots from the machine — only ones already archived here, intact and readable — and notes write-back overwrites the machine's own notes card for a shot.",
+      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default. Profiles are pushed from the Profiles page; sending notes and cleaning up storage happen only on the Sync page, when you confirm them. The cleanup policy here shapes what that page proposes, and the notes fields are what a send writes.",
   },
   {
     id: "llm",

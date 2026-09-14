@@ -134,6 +134,32 @@ in `EVENT_INVALIDATIONS`, and a synchronous guard makes a double click one paid
 call. A failed row carries `analysis_error`, the newest analysis's error, for the
 Retry button's title.
 
+The Sync page is where a person starts every exchange with the machine:
+
+```
+src/
+  pages/
+    SyncPage.tsx          the four sections and their anchors (#pull, #notes, #storage, #writes)
+  components/sync/
+    PullSection.tsx       the shots page's PullButton, with the ledger under it
+    NotesSection.tsx      pending judgements, a selection, an inline confirm, the send
+    CleanupSection.tsx    storage figures, the plan with its reasons, an inline confirm, the runs
+    DeviceWritesSection.tsx  the audit of every write, refusals included
+    ConfirmStrip.tsx      the inline "are you sure" both write actions use
+  lib/
+    sync.ts               writeBlocker: why a write action cannot start, in the server's order
+```
+
+Three things about it are worth knowing before editing. **Nothing on it runs
+by itself**, and nothing elsewhere may write to the machine except a profile
+push from the Profiles page: saving a judgement never sends it, and a pull
+never deletes. **Both write actions send back what was shown** — the ticked
+shot ids, the planned shot ids — and the server answers 409 when its own list
+has moved since, so the hooks invalidate on settle rather than on success and
+the fresh list is on screen with the toast. **Nothing is pre-selected** in the
+notes list: select-all is one click, and a list that arrived ticked would be
+the automatic send it replaced.
+
 The LLM layer adds a third:
 
 ```
@@ -403,7 +429,8 @@ names; they never open the tooltip, which is radix and not drivable under jsdom.
 places you *decide to go*; a page reached from the one place you are already
 standing does not earn a row. `/device` has a route, a page and tests and no
 entry — the status pill in the header is the way in, and the pill says so in
-screen-reader text. `/import` and `/drafts` are `<Navigate>` redirects to the
+screen-reader text. Its old card anchors (`#storage`, `#notes`, `#sync`,
+`#writes`) redirect to the sections of `/sync` that took them over. `/import` and `/drafts` are `<Navigate>` redirects to the
 drop zone on the shots page and to `/profiles#staged`: the pages behind them
 became a strip and a section, and the routes stay so old bookmarks and a hard
 refresh still land somewhere. All three are still in the deep-link test, which

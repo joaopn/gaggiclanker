@@ -152,7 +152,7 @@ export const queryKeys = {
     writes: () => ["device", "writes"] as const,
     /**
      * Storage cleanup. Under the `device` prefix so one `sync.progress` or
-     * `cleanup.progress` refreshes the whole card: the plan, the run history
+     * `cleanup.progress` refreshes the whole section: the plan, the run history
      * and the free-space figures on it are three reads of the same subject.
      */
     cleanupPlan: () => ["device", "cleanup", "plan"] as const,

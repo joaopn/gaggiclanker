@@ -3,82 +3,76 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { CleanupPlan, CleanupRun } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCleanupPlan, useCleanupRuns, useRunCleanup } from "@/hooks/useDeviceStatus";
 import { formatTime } from "@/lib/shots";
+import { writeBlocker } from "@/lib/sync";
 
 /**
- * Storage: what the machine has left, and what this box would delete off it.
+ * Clean up the machine's storage: what it has left, and what this box would delete off it.
  *
- * The card exists because the machine is a buffer. Its firmware deletes the
+ * The section exists because the machine is a buffer. Its firmware deletes the
  * oldest shot whenever free space drops below 500 KB, archived or not, so shots
- * leave the display either way — the cleanup only changes *when*, by adding the one
+ * leave the display either way — a cleanup only changes *when*, by adding the one
  * condition the firmware cannot check: that this box already holds the bytes.
  *
- * Three things are deliberately on screen together. The **free space** is why a
- * policy would act at all. The **plan** is what it would do, fetched from the
- * server rather than computed here, because the eligibility rule that decides it
- * is the same function the write gate applies — a copy in TypeScript would be a
- * second opinion, and the dangerous kind. And the **skipped list** is why a shot
- * a person can see is never cleaned up, which is otherwise unanswerable.
+ * Nothing here runs by itself. The **plan** is always on screen, with the
+ * sentence saying why each shot is in it and, folded, every shot the rule keeps
+ * and why; it is fetched from the server rather than computed here, because the
+ * eligibility rule that decides it is the same function the write gate applies —
+ * a copy in TypeScript would be a second opinion, and the dangerous kind. The
+ * confirmation sends the planned ids back, and the server refuses when its own
+ * plan has moved since, so the shots deleted are the shots that were shown.
  */
-export function StorageCard({
+export function CleanupSection({
   identity,
-  writesEnabled,
+  configured,
+  connected,
 }: {
   identity: Record<string, unknown>;
-  writesEnabled: boolean;
+  configured: boolean;
+  connected: boolean;
 }) {
   const plan = useCleanupPlan();
   const runs = useCleanupRuns();
   const run = useRunCleanup();
-  const [showPreview, setShowPreview] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   const planned = plan.data?.planned ?? [];
   const mode = plan.data?.policy.mode ?? "off";
-  const canRun = writesEnabled && planned.length > 0 && !run.isPending;
+  const blocker = writeBlocker({
+    configured,
+    connected,
+    writesEnabled: plan.data?.policy.writes_enabled ?? false,
+  });
+  const canRun = blocker === null && planned.length > 0 && !run.isPending;
+  const count = `${planned.length} shot${planned.length === 1 ? "" : "s"}`;
+
+  function confirm() {
+    setConfirming(false);
+    run.mutate(
+      planned.map((shot) => shot.shot_id),
+      {
+        // 202: the deletes happen in a background task at two a second, so
+        // "queued" is the honest word for what just happened. The ledger below
+        // fills in as it goes. A 409 is the plan having moved: the hook has
+        // already re-read it, and the toast says to look again.
+        onSuccess: (accepted) =>
+          toast.success(`Cleaning up ${accepted.planned} shots on the machine`),
+        onError: (error: Error) => toast.error(error.message),
+      },
+    );
+  }
 
   return (
     <SectionCard
-      title="Storage"
-      description="The machine deletes old shots when free space drops below 500 KB. It is a buffer, not an archive — so gaggiclanker can delete them first, and only ones it already holds intact."
+      title="Clean up the machine's storage"
+      description="The machine deletes its oldest shots when free space drops below 500 KB. It is a buffer, not an archive — so gaggiclanker can delete them first, only ones it already holds intact, and only when you confirm it here."
       actions={
-        <>
-          <Badge variant={mode === "off" ? "outline" : "secondary"}>{policyLabel(plan.data)}</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowPreview((open) => !open)}
-            disabled={plan.isPending}
-          >
-            {showPreview ? "Hide preview" : "Preview cleanup"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfirming(true)}
-            disabled={!canRun}
-            title={
-              writesEnabled
-                ? undefined
-                : "Device writes are off. Turn them on under Settings → Machine."
-            }
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-            Run cleanup
-          </Button>
-        </>
+        <Badge variant={mode === "off" ? "outline" : "secondary"}>{policyLabel(plan.data)}</Badge>
       }
     >
       <div className="space-y-4">
@@ -106,53 +100,39 @@ export function StorageCard({
           </p>
         ) : null}
 
-        {!writesEnabled && mode !== "off" ? (
-          <p className="text-muted-foreground text-sm" data-testid="cleanup-writes-off">
-            Device writes are off, so nothing will be deleted. Turn on “Device writes enabled” under
-            Settings → Machine.
+        <CleanupPreview plan={plan.data} pending={plan.isPending} />
+
+        {blocker && mode !== "off" ? (
+          <p className="text-muted-foreground text-sm" data-testid="cleanup-blocked">
+            {blocker}
           </p>
         ) : null}
 
-        {showPreview ? <CleanupPreview plan={plan.data} pending={plan.isPending} /> : null}
+        {confirming ? (
+          <ConfirmStrip
+            testId="cleanup-confirm"
+            title={`Delete ${count} from the machine?`}
+            confirmLabel={`Delete ${count}`}
+            onConfirm={confirm}
+            onCancel={() => setConfirming(false)}
+          >
+            This cannot be undone on the machine: each shot's `.slog`, its notes card and its index
+            entry go, oldest first. The archive here keeps every one of them.
+          </ConfirmStrip>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirming(true)}
+            disabled={!canRun}
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            Delete {count}…
+          </Button>
+        )}
 
         <CleanupRuns runs={runs.data?.items ?? []} pending={runs.isPending} />
       </div>
-
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {planned.length} shots from the machine?</DialogTitle>
-            <DialogDescription>
-              Oldest first, and only shots this archive already holds with their raw bytes intact.
-              There is no undo on the display: the `.slog`, its notes file and its index entry all
-              go. The copies here are unaffected.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirming(false);
-                run.mutate(
-                  planned.map((shot) => shot.shot_id),
-                  {
-                    // 202: the deletes happen in a background task at two a
-                    // second, so "queued" is the honest word for what just
-                    // happened. The ledger below fills in as it goes.
-                    onSuccess: (accepted) =>
-                      toast.success(`Cleaning up ${accepted.planned} shots on the machine`),
-                    onError: (error: Error) => toast.error(error.message),
-                  },
-                );
-              }}
-            >
-              Delete them
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </SectionCard>
   );
 }
@@ -169,7 +149,7 @@ function policyLabel(plan: CleanupPlan | undefined): string {
   }
 }
 
-/** The dry run: what would go, and what would not, with the reason. */
+/** The dry run: what would go and why, and — folded — what would not, with the reason. */
 function CleanupPreview({ plan, pending }: { plan: CleanupPlan | undefined; pending: boolean }) {
   if (pending) return <Skeleton className="h-16 w-full" />;
   if (!plan) return null;
@@ -183,23 +163,35 @@ function CleanupPreview({ plan, pending }: { plan: CleanupPlan | undefined; pend
         <h4 className="font-medium text-sm">Would be deleted ({planned.length})</h4>
         {planned.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="cleanup-plan-empty">
-            Nothing. Either the policy is off or the machine is already under its target.
+            {plan.policy.mode === "off"
+              ? "Nothing: no cleanup policy is set. Pick one under Settings → Machine."
+              : "Nothing: the machine is already within the policy."}
           </p>
         ) : (
-          <ul className="mt-1 space-y-1 text-sm" data-testid="cleanup-planned">
+          <ul className="mt-1 space-y-2 text-sm" data-testid="cleanup-planned">
             {planned.map((shot) => (
-              <li key={shot.shot_id} className="flex justify-between gap-4">
-                <span className="font-mono text-xs">{shot.device_id}</span>
-                <span className="text-muted-foreground">{formatTime(shot.started_at)}</span>
-                <span className="tabular-nums">{kb(shot.raw_bytes)}</span>
+              <li key={shot.shot_id}>
+                <div className="flex justify-between gap-4">
+                  <span className="font-mono text-xs">{shot.device_id}</span>
+                  <span className="text-muted-foreground">{formatTime(shot.started_at)}</span>
+                  <span className="tabular-nums">{kb(shot.raw_bytes)}</span>
+                </div>
+                {shot.reason ? (
+                  <p className="text-muted-foreground text-xs">{shot.reason}</p>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
       </div>
       {skipped.length > 0 ? (
-        <div>
-          <h4 className="font-medium text-sm">Kept on the machine ({skipped.length})</h4>
+        // Folded by default: on a machine with a quarantined shot or two the
+        // list is short, but on one that has never been pulled it is every
+        // shot on it, and the plan above is what the confirmation is about.
+        <details>
+          <summary className="cursor-pointer font-medium text-sm">
+            Kept on the machine ({skipped.length})
+          </summary>
           <ul className="mt-1 space-y-1 text-sm" data-testid="cleanup-skipped">
             {skipped.map((shot) => (
               <li key={shot.shot_id} className="text-muted-foreground">
@@ -208,7 +200,7 @@ function CleanupPreview({ plan, pending }: { plan: CleanupPlan | undefined; pend
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       ) : null}
     </div>
   );

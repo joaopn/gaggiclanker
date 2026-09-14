@@ -17,6 +17,7 @@ import { ProfilesPage } from "@/pages/ProfilesPage";
 import { SetsPage } from "@/pages/SetsPage";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { SignInPage } from "@/pages/SignInPage";
+import { SyncPage } from "@/pages/SyncPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 /**
@@ -81,6 +82,7 @@ export function App() {
             }
           />
           <Route path="/device" element={<DevicePage />} />
+          <Route path="/sync" element={<SyncPage />} />
           <Route path="/sets" element={<SetsPage />} />
           <Route
             path="/sets/:setId"

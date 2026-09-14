@@ -1,8 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CleanupPlan, CleanupRunsData } from "@/api/types";
-import { StorageCard } from "@/components/device/StorageCard";
+import { CleanupSection } from "@/components/sync/CleanupSection";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -23,6 +23,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
 }));
 
 const IDENTITY = { spiffsTotal: 4_194_304, spiffsUsed: 3_145_728, spiffsFree: 1_048_576 };
+const WHY = "Older than the newest 20 shots the policy keeps on the machine; archived here intact.";
 
 function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
   return {
@@ -42,7 +43,7 @@ function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
         started_at: "2026-02-01T08:00:00.000Z",
         raw_bytes: 4096,
         profile_name: "9 Bar",
-        reason: "Older than the newest 20 shots the policy keeps on the machine.",
+        reason: WHY,
       },
       {
         shot_id: 12,
@@ -50,7 +51,7 @@ function plan(overrides: Partial<CleanupPlan> = {}): CleanupPlan {
         started_at: "2026-02-01T09:00:00.000Z",
         raw_bytes: 4096,
         profile_name: "9 Bar",
-        reason: "Older than the newest 20 shots the policy keeps on the machine.",
+        reason: WHY,
       },
     ],
     skipped: [
@@ -87,6 +88,10 @@ function runs(): CleanupRunsData {
   };
 }
 
+function renderReady() {
+  return renderWithQueryClient(<CleanupSection identity={IDENTITY} configured connected />);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   getCleanupPlan.mockResolvedValue(plan());
@@ -94,12 +99,12 @@ beforeEach(() => {
   runCleanup.mockResolvedValue({ planned: 2, task: "cleanup" });
 });
 
-describe("StorageCard", () => {
+describe("CleanupSection", () => {
   it("says how much room is left, how many shots are on the machine and what would go", async () => {
-    renderWithQueryClient(<StorageCard identity={IDENTITY} writesEnabled />);
+    renderReady();
 
     // The policy badge is the first thing the plan query renders, so awaiting
-    // it is what separates "the card is on screen" from "the server answered".
+    // it is what separates "the section is on screen" from "the server answered".
     expect(await screen.findByText("keep newest 20")).toBeInTheDocument();
     expect(screen.getByTestId("device-storage")).toHaveTextContent("Internal (SPIFFS)");
     const summary = screen.getByTestId("cleanup-summary");
@@ -107,45 +112,82 @@ describe("StorageCard", () => {
     expect(summary).toHaveTextContent("1.0 MB");
   });
 
-  it("names the shots it would keep, and why", async () => {
-    // The half of the preview people actually need: "why is that shot still on
-    // my machine" is unanswerable without it.
-    const user = setupUser();
-    renderWithQueryClient(<StorageCard identity={IDENTITY} writesEnabled />);
+  it("shows the plan without being asked: which shots, why each, and what is kept", async () => {
+    renderReady();
     await screen.findByText("keep newest 20");
 
-    await user.click(screen.getByRole("button", { name: "Preview cleanup" }));
-
-    expect(screen.getByTestId("cleanup-planned")).toHaveTextContent("000101");
+    const planned = screen.getByTestId("cleanup-planned");
+    expect(planned).toHaveTextContent("000101");
+    expect(planned).toHaveTextContent(WHY);
     expect(screen.getByTestId("cleanup-skipped")).toHaveTextContent("quarantined");
   });
 
-  it("asks before it deletes anything, and says what it queued", async () => {
+  it("asks before it deletes anything, says it cannot be undone, and sends the ids it showed", async () => {
     const user = setupUser();
-    renderWithQueryClient(<StorageCard identity={IDENTITY} writesEnabled />);
+    renderReady();
     await screen.findByText("keep newest 20");
 
-    await user.click(screen.getByRole("button", { name: /Run cleanup/ }));
-    expect(await screen.findByText("Delete 2 shots from the machine?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Delete 2 shots…/ }));
+    const confirm = screen.getByTestId("cleanup-confirm");
+    expect(confirm).toHaveTextContent("Delete 2 shots from the machine?");
+    expect(confirm).toHaveTextContent("cannot be undone on the machine");
+    expect(confirm).toHaveTextContent("The archive here keeps every one of them");
     expect(runCleanup).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Delete them" }));
+    await user.click(within(confirm).getByRole("button", { name: "Delete 2 shots" }));
     await waitFor(() => expect(runCleanup).toHaveBeenCalledWith([11, 12]));
     expect(toast.success).toHaveBeenCalledWith("Cleaning up 2 shots on the machine");
   });
 
-  it("cannot run while device writes are off, and says where the switch is", async () => {
-    renderWithQueryClient(<StorageCard identity={IDENTITY} writesEnabled={false} />);
-    await screen.findByTestId("cleanup-writes-off");
+  it("cancelling the confirmation deletes nothing", async () => {
+    const user = setupUser();
+    renderReady();
+    await screen.findByText("keep newest 20");
 
-    expect(screen.getByRole("button", { name: /Run cleanup/ })).toBeDisabled();
-    expect(screen.getByTestId("cleanup-writes-off")).toHaveTextContent("Settings → Machine");
+    await user.click(screen.getByRole("button", { name: /Delete 2 shots…/ }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByTestId("cleanup-confirm")).not.toBeInTheDocument();
+    expect(runCleanup).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the plan and says so when the server refuses one that moved", async () => {
+    runCleanup.mockRejectedValue(new Error("The cleanup plan has changed since it was previewed"));
+    const user = setupUser();
+    renderReady();
+    await screen.findByText("keep newest 20");
+
+    await user.click(screen.getByRole("button", { name: /Delete 2 shots…/ }));
+    await user.click(screen.getByRole("button", { name: "Delete 2 shots" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "The cleanup plan has changed since it was previewed",
+      ),
+    );
+    await waitFor(() => expect(getCleanupPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it("cannot run while device writes are off, and says where the switch is", async () => {
+    getCleanupPlan.mockResolvedValue(plan({ policy: { ...plan().policy, writes_enabled: false } }));
+    renderReady();
+    await screen.findByTestId("cleanup-blocked");
+
+    expect(screen.getByRole("button", { name: /Delete 2 shots…/ })).toBeDisabled();
+    expect(screen.getByTestId("cleanup-blocked")).toHaveTextContent("Settings → Machine");
+  });
+
+  it("cannot run while the machine is not connected", async () => {
+    renderWithQueryClient(<CleanupSection identity={IDENTITY} configured connected={false} />);
+
+    expect(await screen.findByTestId("cleanup-blocked")).toHaveTextContent("not connected");
+    expect(screen.getByRole("button", { name: /Delete 2 shots…/ })).toBeDisabled();
   });
 
   it("shows both figures for a run that stopped early", async () => {
     // "planned 40, deleted 7, and here is the error" is a complete account of a
     // run that hit a machine mid-OTA; "7" is not.
-    renderWithQueryClient(<StorageCard identity={IDENTITY} writesEnabled />);
+    renderReady();
 
     const table = await screen.findByTestId("cleanup-runs");
     expect(table).toHaveTextContent("7 / 40");
@@ -161,9 +203,9 @@ describe("StorageCard", () => {
         blocked: "The machine has not reported its free space.",
       }),
     );
-    renderWithQueryClient(<StorageCard identity={IDENTITY} writesEnabled />);
+    renderReady();
 
     expect(await screen.findByText(/has not reported its free space/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Run cleanup/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Delete 0 shots…/ })).toBeDisabled();
   });
 });

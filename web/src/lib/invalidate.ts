@@ -109,12 +109,12 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   // flag, so the same queries are stale.
   "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],
   "sync.progress": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.device.all],
-  // Storage cleanup: a cleanup starting or finishing moves the Storage card's plan,
+  // Storage cleanup: a cleanup starting or finishing moves the Sync page's plan,
   // its run history and its free-space figures, and it marks shots as gone from
   // the machine — so the shots list moves too. A run started in another tab
   // shows up here because of this line.
   "cleanup.progress": [queryKeys.device.all, queryKeys.shots.all, queryKeys.sync.all],
-  // Notes write-back: one judgement reached the machine. The shot row's sync state and
+  // Notes send: one judgement reached the machine. The shot row's sync state and
   // the pending-notes count both change, and so does the write audit.
   "notes.writeback": [queryKeys.device.all, queryKeys.shots.all],
   "settings.changed": [queryKeys.settings.all],

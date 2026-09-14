@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowLeftRight,
   Bean,
   BookOpen,
   Coffee,
@@ -28,8 +29,8 @@ export type NavLink = {
  * plus one `<Route>` in App.tsx.
  *
  * Not every route is here, and that is the point of a sidebar. The device page
- * is reached from the header's status pill, which is where somebody is already
- * looking when they want it; importing files is the drop zone on the shots
+ * — what the machine is — is reached from the header's status pill, which is
+ * where somebody is already looking when they want it; importing files is the drop zone on the shots
  * page; staging a profile is a section of the profiles page. A destination
  * earns a row here by being somewhere you decide to go, not by existing.
  */
@@ -58,6 +59,11 @@ export const NAV_LINKS: NavLink[] = [
   { to: "/sets", label: "Sets", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
   { to: "/beans", label: "Beans", icon: Bean, shortcut: "g b", shortcutLabel: "g b" },
   { to: "/hardware", label: "Hardware", icon: Cpu, shortcut: "g h", shortcutLabel: "g h" },
+  // Its own entry because it is somewhere you decide to go: every exchange with
+  // the machine that a person starts — a pull, sending notes, deleting shots,
+  // and the record of every write — and the only place anything but a profile
+  // is written to or deleted from it. `g y`, for sYnc: `g s` is Shots.
+  { to: "/sync", label: "Sync", icon: ArrowLeftRight, shortcut: "g y", shortcutLabel: "g y" },
   { to: "/knowledge", label: "Knowledge", icon: BookOpen, shortcut: "g k", shortcutLabel: "g k" },
   {
     to: "/settings",

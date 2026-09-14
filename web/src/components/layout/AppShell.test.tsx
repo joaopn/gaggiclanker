@@ -52,7 +52,7 @@ describe("AppShell", () => {
     }
   });
 
-  it("lists the eight destinations in order, and nothing else", () => {
+  it("lists the nine destinations in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
     // The label span, not the anchor: the anchor's text carries the chord too.
@@ -66,6 +66,7 @@ describe("AppShell", () => {
       "Sets",
       "Beans",
       "Hardware",
+      "Sync",
       "Knowledge",
       "Settings",
     ]);
