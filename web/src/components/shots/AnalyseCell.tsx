@@ -65,14 +65,19 @@ export function AnalyseCell({ shot, className }: { shot: ShotListRow; className?
     if (result === undefined || result.status === from) setSentFrom(null);
   }
 
-  const base = cn("h-7 gap-1 px-2 text-xs", className);
+  const base = "h-7 gap-1 px-2 text-xs";
 
   if (shot.quarantined) {
     const reason = "Quarantined: its bytes never parsed, so there are no diagnostics to analyse";
     return (
       // The title is on a wrapper as well as on the button: a disabled button
       // receives no pointer events, and some browsers show no title for one.
-      <span title={reason} data-testid="analyse-cell" data-state="unavailable">
+      <span
+        title={reason}
+        data-testid="analyse-cell"
+        data-state="unavailable"
+        className={className}
+      >
         <Button
           variant="outline"
           size="xs"
@@ -126,7 +131,7 @@ export function AnalyseCell({ shot, className }: { shot: ShotListRow; className?
       ? `The last analysis failed: ${shot.analysis_error}`
       : "The last analysis failed";
     return (
-      <span data-testid="analyse-cell" data-state="failed">
+      <span data-testid="analyse-cell" data-state="failed" className={className}>
         <Button
           variant="outline"
           size="xs"
@@ -147,7 +152,7 @@ export function AnalyseCell({ shot, className }: { shot: ShotListRow; className?
     ? undefined
     : "Not in a Set: there is no bean, grinder or recipe to reason from, and the analysis will say so";
   return (
-    <span data-testid="analyse-cell" data-state="none">
+    <span data-testid="analyse-cell" data-state="none" className={className}>
       <Button
         variant="outline"
         size="xs"

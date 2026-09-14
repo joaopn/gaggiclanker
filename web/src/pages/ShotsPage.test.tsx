@@ -251,32 +251,31 @@ describe("ShotsPage", () => {
     expect(screen.getByText("36.4 g")).toBeInTheDocument();
     expect(screen.getByTestId("score-badge")).toHaveTextContent("8.3");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "4");
-    // The row is a link, because the shot page is where everything else is —
-    // one stretched link across the row rather than an `<a>` wrapped around
-    // the cells, because two of those cells hold buttons.
-    expect(screen.getByRole("link", { name: "Open shot 000101" })).toHaveAttribute(
-      "href",
-      "/shots/1",
-    );
+    // The row opens in place rather than navigating: one stretched button
+    // across the row rather than a button wrapped around the cells, because
+    // several of those cells hold buttons of their own.
+    const toggle = screen.getByRole("button", { name: "Shot 000101" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: /shot 000101/i })).not.toBeInTheDocument();
   });
 
-  it("keeps the row's controls out of its link", async () => {
-    // Interactive content inside an `<a>` is invalid HTML, and five stars plus
-    // an editor button inside one is six extra tab stops per row that all
-    // announce as part of the link.
+  it("keeps the row's controls out of its toggle", async () => {
+    // A button inside a button is invalid HTML, and five stars plus an editor
+    // button inside one would announce as part of the row's own control.
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    const link = screen.getByRole("link", { name: "Open shot 000101" });
+    const toggle = screen.getByRole("button", { name: "Shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
       screen.getByRole("button", { name: /^needs a Set/ }),
+      screen.getByRole("button", { name: "Analyse shot 000101" }),
       ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
     ]) {
-      expect(link.contains(control)).toBe(false);
+      expect(toggle.contains(control)).toBe(false);
     }
   });
 
@@ -705,6 +704,301 @@ describe("ShotsPage Analyse column", () => {
     const button = within(cell()).getByRole("button", { name: "Analyse shot 000101" });
     expect(button).toBeEnabled();
     expect(button).toHaveAttribute("title", expect.stringMatching(/^Not in a Set/));
+  });
+});
+
+describe("ShotsPage open rows", () => {
+  /** The list with somewhere to navigate to, so a navigation is visible. */
+  function renderList() {
+    return renderWithQueryClient(
+      <Routes>
+        <Route path="/" element={<ShotsPage />} />
+        <Route path="/shots/:shotId" element={<p>the shot page</p>} />
+      </Routes>,
+    );
+  }
+
+  function toggle(deviceId = "000101"): HTMLElement {
+    return screen.getByRole("button", { name: `Shot ${deviceId}` });
+  }
+
+  const two = () =>
+    listData([
+      shot({ id: 1, device_id: "000101" }),
+      shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
+    ]);
+
+  it("opens the curve, the judgement form and the machine's notes under the row", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+    // Nothing open, nothing fetched: no full curve, no detail.
+    expect(getShotSamples).not.toHaveBeenCalled();
+    expect(getShot).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+
+    await user.click(toggle());
+
+    const panel = await screen.findByTestId("shot-panel");
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(toggle()).toHaveAttribute("aria-controls", panel.id);
+    // The real chart, lazy, with its text summary; the full curve, not a sparkline.
+    expect(await within(panel).findByTestId("chart-series")).toHaveTextContent(/points/);
+    expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
+    expect(within(panel).getByTestId("judgement-form")).toBeInTheDocument();
+    expect(within(panel).getByTestId("device-notes")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: /Open shot page/ })).toHaveAttribute(
+      "href",
+      "/shots/1",
+    );
+    // Still the list: opening a row is not a navigation.
+    expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
+  });
+
+  it("closes when the row is clicked again", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+
+    await user.click(toggle());
+    await screen.findByTestId("shot-panel");
+    await user.click(toggle());
+
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps one row open at a time", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(two());
+
+    renderList();
+    await listed();
+
+    await user.click(toggle("000101"));
+    await screen.findByTestId("shot-panel");
+    await user.click(toggle("000102"));
+
+    await waitFor(() => expect(screen.getByTestId("shot-panel")).toHaveAttribute("data-shot", "2"));
+    expect(screen.getAllByTestId("shot-panel")).toHaveLength(1);
+    expect(toggle("000101")).toHaveAttribute("aria-expanded", "false");
+    expect(toggle("000102")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes on Escape and gives focus back to the row, once the row is visible", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const panel = await screen.findByTestId("shot-panel");
+
+    // Browsers refuse focus on a `visibility: hidden` element and jsdom does
+    // not, so the rule is checked at the call rather than by where focus ends.
+    const focused: Array<{ element: HTMLElement; visible: boolean }> = [];
+    const original = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function focus(
+      this: HTMLElement,
+      options?: FocusOptions,
+    ) {
+      let visible = this.isConnected;
+      for (let node: HTMLElement | null = this; node; node = node.parentElement) {
+        if (getComputedStyle(node).visibility === "hidden" || node.hidden) visible = false;
+      }
+      focused.push({ element: this, visible });
+      original.call(this, options);
+    });
+
+    const notes = within(panel).getByLabelText("Notes");
+    notes.focus();
+    await user.keyboard("{Escape}");
+    spy.mockRestore();
+
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+    expect(toggle()).toHaveFocus();
+    const last = focused[focused.length - 1];
+    expect(last.element).toBe(toggle());
+    expect(last.visible).toBe(true);
+  });
+
+  it("leaves Escape to a popover open inside the row", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+    await screen.findByTestId("shot-panel");
+
+    await user.click(screen.getByRole("button", { name: /^needs a Set/ }));
+    await screen.findByTestId("needs-set-menu");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument());
+    expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["the curve", "panel-curve"],
+    ["the machine's notes", "panel-notes"],
+  ])("goes to the shot page when %s is clicked", async (_what, testId) => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+
+    const target = await screen.findByTestId(testId);
+    // Found once the curve's lazy chunk and the detail have both arrived.
+    if (testId === "panel-curve") await within(target).findByTestId("chart-series");
+    expect(target).toHaveAttribute("href", "/shots/1");
+    await user.click(target);
+
+    expect(await screen.findByText("the shot page")).toBeInTheDocument();
+  });
+
+  it("saves a verdict from the panel without navigating, and the row's stars follow", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: 4 })]));
+    getShot.mockResolvedValue({ ...shot129, judgement: judgement({ rating: 4 }) });
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const panel = await screen.findByTestId("shot-panel");
+    const form = await within(panel).findByTestId("judgement-form");
+
+    // What the server holds once the PUT lands; the list is re-read after it.
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: 2 })]));
+    await user.click(within(form).getByRole("button", { name: "2 stars" }));
+    await user.click(within(form).getByRole("button", { name: "Save judgement" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0]).toEqual([1, expect.objectContaining({ rating: 2 })]);
+    await waitFor(() =>
+      expect(within(screen.getByTestId("shot-row")).getByTestId("rating-stars")).toHaveAttribute(
+        "data-rating",
+        "2",
+      ),
+    );
+    expect(screen.queryByText("the shot page")).not.toBeInTheDocument();
+    expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
+  });
+
+  it("re-seeds the panel's form when a star in the row changes the verdict", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: 4 })]));
+    getShot.mockResolvedValue({ ...shot129, judgement: judgement({ rating: 4 }) });
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+    const form = await screen.findByTestId("judgement-form");
+    expect(within(form).getByRole("button", { name: "4 stars" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // The detail the star's write invalidates, as the server now answers it.
+    getShot.mockResolvedValue({
+      ...shot129,
+      judgement: judgement({ rating: 2, updated_at: "2026-04-04T08:00:00.000Z" }),
+    });
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 2 of 5/ }));
+
+    await waitFor(() =>
+      expect(within(form).getByRole("button", { name: "3 stars" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      ),
+    );
+    expect(within(form).getByRole("button", { name: "2 stars" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("does not toggle the row from any of the row's own controls", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
+    runAnalysis.mockResolvedValue(analysis({ shot_id: 1, status: "running" }));
+
+    renderList();
+    await listed();
+
+    // jsdom does not hit-test, so the clicks below reach their targets whatever
+    // is painted over them; in a browser it is the lift above the stretched
+    // toggle that does. Each control, or a wrapper of it, carries it.
+    const row = screen.getByTestId("shot-row");
+    for (const control of [
+      screen.getByRole("checkbox", { name: "Compare shot 000101" }),
+      ...within(row).getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
+      within(row).getByTestId("analyse-cell"),
+      screen.getByRole("button", { name: /^needs a Set/ }),
+      screen.getByRole("button", { name: "Edit shot 000101" }),
+    ]) {
+      expect(control.closest(".z-\\[1\\]")).not.toBeNull();
+    }
+
+    await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
+    await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
+    await user.click(screen.getByRole("button", { name: "Analyse shot 000101" }));
+    await user.click(screen.getByRole("button", { name: /^needs a Set/ }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(runAnalysis).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens with Enter and Space, like the button it is", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderList();
+    await listed();
+
+    toggle().focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTestId("shot-panel")).toBeInTheDocument();
+    await user.keyboard(" ");
+    await waitFor(() => expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument());
+  });
+
+  it("shows a quarantined shot's reason instead of a curve", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ quarantined: true, quarantine_reason: "bad magic bytes" })]),
+    );
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+
+    expect(await screen.findByTestId("panel-quarantined")).toHaveTextContent("bad magic bytes");
+    expect(screen.queryByTestId("panel-curve")).not.toBeInTheDocument();
+    expect(getShotSamples).not.toHaveBeenCalled();
+  });
+
+  it("says so when the shot cannot be loaded", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getShot.mockRejectedValue(new Error("gone"));
+
+    renderList();
+    await listed();
+    await user.click(toggle());
+
+    expect(await screen.findByTestId("panel-error")).toHaveTextContent("gone");
+    expect(screen.getByRole("link", { name: /Open shot page/ })).toBeInTheDocument();
   });
 });
 
@@ -1349,8 +1643,8 @@ describe("ShotsPage needs-a-Set menu", () => {
 
     const setLink = screen.getByRole("link", { name: /Guji on the Niche/ });
     expect(setLink).toHaveAttribute("href", "/sets/3");
-    // Lifted like the other row controls: under the stretched row link, a
-    // click on the badge would open the shot instead.
+    // Lifted like the other row controls: under the stretched row toggle, a
+    // click on the badge would open the row instead.
     expect(setLink).toHaveClass("z-[1]");
     expect(screen.queryByTestId("needs-set-menu")).not.toBeInTheDocument();
 

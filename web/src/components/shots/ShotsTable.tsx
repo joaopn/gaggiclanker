@@ -1,6 +1,13 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Sparkles } from "lucide-react";
-import { type RefObject, useRef } from "react";
-import { Link } from "react-router-dom";
+import {
+  type KeyboardEvent,
+  type RefObject,
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ShotListRow, ShotSort } from "@/api/types";
 import { SetBadge } from "@/components/sets/SetBadge";
 import { AnalyseCell } from "@/components/shots/AnalyseCell";
@@ -8,6 +15,7 @@ import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
+import { ShotRowPanel } from "@/components/shots/ShotRowPanel";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
 import { Badge } from "@/components/ui/badge";
 import { usePatchJudgement } from "@/hooks/useSets";
@@ -31,9 +39,14 @@ import { cn } from "@/lib/utils";
  *
  * A grid rather than a `<table>`: virtualising a table means spacer `<tr>`s
  * whose height browsers treat as advisory, and a row here has to be exactly
- * `ROW_HEIGHT` for the window arithmetic to hold. The row is a link with a
- * checkbox beside it rather than a link wrapping everything, because a
- * checkbox inside an anchor is a click that means two things.
+ * `ROW_HEIGHT` for the window arithmetic to hold.
+ *
+ * **A row opens in place** rather than navigating: clicking it shows the curve,
+ * the judgement form and the machine's notes directly below it
+ * (`ShotRowPanel`), and clicking it again closes them. One row is open at a
+ * time — opening another closes the first — because the window arithmetic
+ * accounts for exactly one panel, and because two open forms is two places to
+ * lose half-typed input. The shot page is a link inside the panel.
  *
  * The grid template is computed from the visible columns rather than written
  * out, so that adding a column is one entry in `lib/shotColumns.ts` and not
@@ -81,7 +94,64 @@ export function ShotsTable({
   order: "asc" | "desc";
   onSort: (key: ShotSort) => void;
 }) {
-  const window = useVirtualRows(shots.length, { rowHeight: ROW_HEIGHT, containerRef: scrollRef });
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [panelHeight, setPanelHeight] = useState(0);
+  const panelPrefix = useId();
+  const headerRef = useRef<HTMLDivElement>(null);
+  // The open shot's place in the list, looked up rather than stored: a refetch
+  // can put a new shot above it, and a filter can take it out of the list
+  // altogether, in which case nothing is open as far as the window is concerned.
+  const openIndex = openId === null ? -1 : shots.findIndex((shot) => shot.id === openId);
+  const window = useVirtualRows(shots.length, {
+    rowHeight: ROW_HEIGHT,
+    containerRef: scrollRef,
+    expanded: openIndex >= 0 ? { index: openIndex, height: panelHeight } : null,
+  });
+
+  // Scroll to undo when one open row is swapped for another further down: the
+  // panel closing above the clicked row pulls it up by the panel's height, and
+  // the row somebody just clicked would jump out from under the pointer.
+  const compensate = useRef(0);
+  // Whether the open panel has been brought into view yet, per open row.
+  const revealed = useRef<{ id: number; done: boolean } | null>(null);
+
+  const toggle = useCallback(
+    (id: number) => {
+      const index = shots.findIndex((shot) => shot.id === id);
+      if (openId !== null && openId !== id && openIndex >= 0 && openIndex < index) {
+        compensate.current = panelHeight;
+      }
+      setOpenId((current) => (current === id ? null : id));
+      setPanelHeight(0);
+      revealed.current = null;
+    },
+    [shots, openId, openIndex, panelHeight],
+  );
+
+  const close = useCallback(() => {
+    setOpenId(null);
+    setPanelHeight(0);
+    revealed.current = null;
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the swap of open rows is the trigger
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (compensate.current === 0 || container === null) return;
+    container.scrollTop = Math.max(0, container.scrollTop - compensate.current);
+    compensate.current = 0;
+  }, [openId, scrollRef]);
+
+  const measure = useCallback(
+    (height: number, ready: boolean) => {
+      setPanelHeight((current) => (Math.abs(current - height) < 0.5 ? current : height));
+      if (openId === null || revealed.current?.done) return;
+      reveal(scrollRef.current, openId, `${panelPrefix}-${openId}`, headerRef.current);
+      revealed.current = { id: openId, done: ready };
+    },
+    [openId, panelPrefix, scrollRef],
+  );
+
   const visible = shots.slice(window.start, window.end);
   // One template for the header and every row, so a resized column cannot
   // leave its heading behind.
@@ -100,6 +170,7 @@ export function ShotsTable({
           the compare checkbox. Laying the header out as a bare grid put every
           heading a checkbox to the left of its column. */}
       <div
+        ref={headerRef}
         className={cn(
           "sticky top-0 z-10 flex items-center gap-2 border-border border-b bg-background",
           "py-1 pr-3 pl-2 text-muted-foreground text-xs uppercase tracking-wide",
@@ -134,6 +205,11 @@ export function ShotsTable({
             selected={selected.includes(shot.id)}
             onToggleSelected={onToggleSelected}
             selectionFull={selected.length >= maxCompare}
+            open={shot.id === openId}
+            panelId={`${panelPrefix}-${shot.id}`}
+            onToggle={toggle}
+            onClose={close}
+            onMeasure={measure}
           />
         ))}
         <div style={{ height: window.paddingBottom }} aria-hidden="true" />
@@ -339,84 +415,170 @@ function ResizeHandle({
   );
 }
 
+/**
+ * Scroll the list just enough to show a freshly opened panel.
+ *
+ * The measuring half; the arithmetic is `revealDistance`.
+ */
+function reveal(
+  container: HTMLElement | null,
+  openId: number,
+  panelId: string,
+  header: HTMLElement | null,
+): void {
+  const panel = document.getElementById(panelId);
+  const row = panel?.previousElementSibling;
+  if (container === null || !panel || !row || Number(panel.dataset.shot) !== openId) return;
+  const box = container.getBoundingClientRect();
+  const by = revealDistance({
+    listTop: box.top + (header?.offsetHeight ?? 0),
+    listBottom: box.bottom,
+    rowTop: row.getBoundingClientRect().top,
+    panelBottom: panel.getBoundingClientRect().bottom,
+  });
+  if (by > 0) container.scrollTop += by;
+}
+
+/**
+ * How far down to scroll so an open panel is on screen, in pixels.
+ *
+ * Only ever down, and never so far that the row itself goes under the sticky
+ * header (`listTop` is the header's bottom edge): the row is what was clicked
+ * and what closes the panel again, so it matters more than the bottom of a
+ * panel taller than the list. Zero when the panel already fits, which is most
+ * opens. Exported for its test; jsdom has no rectangles to measure.
+ */
+export function revealDistance({
+  listTop,
+  listBottom,
+  rowTop,
+  panelBottom,
+}: {
+  listTop: number;
+  listBottom: number;
+  rowTop: number;
+  panelBottom: number;
+}): number {
+  const overflow = panelBottom - listBottom;
+  if (overflow <= 0) return 0;
+  return Math.min(overflow, Math.max(0, rowTop - listTop));
+}
+
+/** Things inside a row that own Escape themselves: an open popover, and its trigger. */
+const OWNS_ESCAPE = '[role="dialog"], [aria-haspopup][aria-expanded="true"]';
+
 function ShotRow({
   shot,
   columns,
   selected,
   onToggleSelected,
   selectionFull,
+  open,
+  panelId,
+  onToggle,
+  onClose,
+  onMeasure,
 }: {
   shot: ShotListRow;
   columns: ShotColumn[];
   selected: boolean;
   onToggleSelected: (id: number) => void;
   selectionFull: boolean;
+  open: boolean;
+  panelId: string;
+  onToggle: (id: number) => void;
+  onClose: () => void;
+  onMeasure: (height: number, ready: boolean) => void;
 }) {
-  const rowRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
+  // Escape anywhere in the row or its panel closes the panel and puts focus
+  // back on the row, which is where a keyboard user opened it from — unless
+  // the key belongs to a popover inside the row (the needs-a-Set menu, the row
+  // editor), which closes itself and must not take the panel with it. The row
+  // is on screen whenever its panel has focus, so the focus lands on something
+  // visible.
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Escape" || !open) return;
+    if ((event.target as Element).closest(OWNS_ESCAPE)) return;
+    event.preventDefault();
+    onClose();
+    toggleRef.current?.focus({ preventScroll: true });
+  }
+
   return (
-    <div
-      ref={rowRef}
-      data-testid="shot-row"
-      data-shot={shot.id}
-      style={{ height: ROW_HEIGHT }}
-      className={cn(
-        "relative flex items-center gap-2 border-border border-b pr-3 pl-2",
-        "last:border-0 hover:bg-muted/40",
-      )}
-    >
-      {/* The whole row is a link, but the link does not *wrap* the row: the
-          rating cell holds five buttons and the row ends in another, and
-          interactive content inside an `<a>` is invalid HTML and five extra tab
-          stops per row inside a single link. So the link is one stretched
-          overlay and the controls sit above it. */}
-      <Link
-        to={`/shots/${shot.id}`}
-        aria-label={`Open shot ${shot.device_id}`}
-        className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-      />
-      <input
-        type="checkbox"
-        className={cn(INTERACTIVE, "size-3.5 shrink-0 accent-primary")}
-        checked={selected}
-        // Three is the limit the compare drawer draws; a fourth line makes an
-        // overlay unreadable rather than more informative.
-        disabled={!selected && selectionFull}
-        onChange={() => onToggleSelected(shot.id)}
-        aria-label={`Compare shot ${shot.device_id}`}
-      />
-      <div className={cn(GRID, "min-w-0 flex-1 py-1")}>
-        {/* Cells are divs, not spans: the Set cell can hold an anchored
-            panel, which is block content. */}
-        {columns.map((column) => (
-          <div
-            key={column.id}
-            data-column={column.id}
-            className={cn(
-              "min-w-0",
-              // Only the cells that can be clicked come above the stretched
-              // link. The rest stay under it, which is what keeps the whole
-              // row a link rather than only its gaps.
-              column.id === "rating" && INTERACTIVE,
-              // Every cell's content is inline-level (a badge, the stars, a
-              // figure), so centring the text centres the content; the text
-              // columns stay `block truncate` inside it.
-              "text-center",
-              column.narrowHidden && "hidden md:block",
-            )}
-          >
-            <Cell shot={shot} id={column.id} />
-          </div>
-        ))}
+    // biome-ignore lint/a11y/noStaticElementInteractions: Escape from anywhere inside the row and its panel, which are not one control.
+    <div data-testid="shot-entry" onKeyDown={onKeyDown}>
+      <div
+        data-testid="shot-row"
+        data-shot={shot.id}
+        data-open={open ? "" : undefined}
+        style={{ height: ROW_HEIGHT }}
+        className={cn(
+          "relative flex items-center gap-2 border-border border-b pr-3 pl-2 hover:bg-muted/40",
+          open && "bg-muted/40",
+        )}
+      >
+        {/* The whole row toggles its panel, but the button does not *wrap* the
+            row: the rating cell holds five buttons and the row ends in
+            another, and a button inside a button is invalid HTML. So the toggle
+            is one stretched overlay and the controls sit above it — the same
+            arrangement the row used when it was a link to the shot page. */}
+        <button
+          ref={toggleRef}
+          type="button"
+          data-testid="row-toggle"
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          aria-label={`Shot ${shot.device_id}`}
+          onClick={() => onToggle(shot.id)}
+          className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        />
+        <input
+          type="checkbox"
+          className={cn(INTERACTIVE, "size-3.5 shrink-0 accent-primary")}
+          checked={selected}
+          // Three is the limit the compare drawer draws; a fourth line makes an
+          // overlay unreadable rather than more informative.
+          disabled={!selected && selectionFull}
+          onChange={() => onToggleSelected(shot.id)}
+          aria-label={`Compare shot ${shot.device_id}`}
+        />
+        <div className={cn(GRID, "min-w-0 flex-1 py-1")}>
+          {/* Cells are divs, not spans: the Set cell can hold an anchored
+              panel, which is block content. */}
+          {columns.map((column) => (
+            <div
+              key={column.id}
+              data-column={column.id}
+              className={cn(
+                "min-w-0",
+                // Only the cells that can be clicked come above the stretched
+                // toggle. The rest stay under it, which is what keeps the whole
+                // row a toggle rather than only its gaps.
+                column.id === "rating" && INTERACTIVE,
+                // Every cell's content is inline-level (a badge, the stars, a
+                // figure), so centring the text centres the content; the text
+                // columns stay `block truncate` inside it.
+                "text-center",
+                column.narrowHidden && "hidden md:block",
+              )}
+            >
+              <Cell shot={shot} id={column.id} />
+            </div>
+          ))}
+        </div>
+        <ShotRowEditor shot={shot} className={INTERACTIVE} />
       </div>
-      <ShotRowEditor shot={shot} className={INTERACTIVE} />
+      {open ? <ShotRowPanel shot={shot} id={panelId} onMeasure={onMeasure} /> : null}
     </div>
   );
 }
 
 /**
- * Above the stretched link, so a click here is a click on this and not the row.
+ * Above the stretched toggle, so a click here is a click on this and not the row.
  *
- * `z-[1]`, not `z-10`: all it has to beat is the link's own `z-auto`, and the
+ * `z-[1]`, not `z-10`: all it has to beat is the toggle's own `z-auto`, and the
  * sticky header is `z-10` in the same stacking context — at `z-10` these
  * painted *over* the header as the list scrolled under it.
  */
@@ -448,8 +610,8 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
     case "rating":
       return <RatingCell shot={shot} />;
     case "set":
-      // The badge itself is lifted above the row's stretched link, not the
-      // cell: the empty rest of the cell stays part of the row link, and no
+      // The badge itself is lifted above the row's stretched toggle, not the
+      // cell: the empty rest of the cell still toggles the row, and no
       // ancestor of the menu gets a z-index — one would trap the menu's own
       // `z-50` inside this row, under the next row's controls and the sticky
       // header.

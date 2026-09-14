@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowLeft, Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { getShotExport, shotRawUrl } from "@/api/client";
-import type { DeviceShotNotes, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
+import type { ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { ShotChart } from "@/components/charts/ShotChart";
 import { DiscussButton } from "@/components/chat/DiscussButton";
@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { AssignToSet } from "@/components/shots/AssignToSet";
+import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
 import {
   ChannelingCard,
   ComplianceCard,
@@ -234,7 +235,7 @@ export function ShotDetailPage() {
 
       {!row.quarantined ? <PhaseTable phases={phases} /> : null}
 
-      {notes ? <NotesPanel notes={notes} /> : null}
+      {notes ? <DeviceNotesCard notes={notes} /> : null}
 
       <RawHeaderDetails row={row} />
     </div>
@@ -428,41 +429,6 @@ function ExecutionScoreCard({
           No penalties: nothing in the telemetry counted against this shot.
         </p>
       ) : null}
-    </SectionCard>
-  );
-}
-
-/**
- * The device's own notes, mirrored.
- *
- * Read-only *here*: this is what the machine holds, and the way to change it is
- * to edit the judgement above and press "Sync notes to machine",
- * which is behind two switches that are both off by default.
- */
-function NotesPanel({ notes }: { notes: DeviceShotNotes }) {
-  const entries: Array<[string, string]> = [
-    ["Bean", notes.bean_type ?? ""],
-    ["Dose in", notes.dose_in_g == null ? "" : `${notes.dose_in_g} g`],
-    ["Dose out", notes.dose_out_g == null ? "" : `${notes.dose_out_g} g`],
-    ["Ratio", notes.ratio == null ? "" : `1:${notes.ratio}`],
-    ["Grind", notes.grind_setting ?? ""],
-    ["Balance", notes.balance_taste ?? ""],
-  ];
-  return (
-    <SectionCard
-      title="Device notes"
-      description="What the machine's own notes card holds for this shot. Editable only through the judgement above, and only with notes write-back switched on."
-      actions={<RatingStars rating={notes.rating ?? null} />}
-    >
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3" data-testid="device-notes">
-        {entries.map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-muted-foreground text-xs">{label}</dt>
-            <dd className="text-sm">{value || "—"}</dd>
-          </div>
-        ))}
-      </dl>
-      {notes.notes ? <p className="mt-3 whitespace-pre-wrap text-sm">{notes.notes}</p> : null}
     </SectionCard>
   );
 }

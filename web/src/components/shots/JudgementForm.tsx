@@ -92,9 +92,16 @@ const FIELD = cn(
 export function JudgementForm({
   shotId,
   judgement,
+  compact = false,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
+  /**
+   * Without the paragraph under the title. The shots list's open row has the
+   * form beside a chart in half a panel, and the explanation is the shot
+   * page's to give once.
+   */
+  compact?: boolean;
 }) {
   const vocab = useVocabulary();
   const save = useSaveJudgement();
@@ -123,7 +130,11 @@ export function JudgementForm({
   return (
     <SectionCard
       title="Your judgement"
-      description="How the coffee tasted. Kept apart from the execution score on purpose: a perfectly executed shot of stale beans scores well and tastes of cardboard."
+      description={
+        compact
+          ? undefined
+          : "How the coffee tasted. Kept apart from the execution score on purpose: a perfectly executed shot of stale beans scores well and tastes of cardboard."
+      }
       actions={
         <>
           {judgement?.seeded_from_device_note ? (
