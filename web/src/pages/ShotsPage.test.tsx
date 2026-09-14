@@ -289,7 +289,12 @@ describe("ShotsPage", () => {
 
     const headings = screen.getAllByTestId(/^header-/);
     expect(headings[0]).toHaveAttribute("data-testid", "header-set");
-    for (const heading of headings) expect(heading).toHaveClass("text-center");
+    for (const heading of headings) {
+      expect(heading).toHaveClass("text-center");
+      // A heading is a span, so what it holds is phrasing content too — the
+      // resize handle included.
+      expect(heading.querySelector("div")).toBeNull();
+    }
     // The sort buttons centre their label and arrow as one group; nothing is
     // pushed to the right for being a number any more.
     expect(screen.getByTestId("sort-score")).toHaveClass("justify-center");

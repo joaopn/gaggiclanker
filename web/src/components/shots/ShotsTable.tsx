@@ -360,8 +360,8 @@ function ResizeHandle({
   }
 
   return (
-    // biome-ignore lint/a11y/useSemanticElements: an `<hr>` cannot take focus or a value; a focusable separator is the ARIA splitter.
-    <div
+    // biome-ignore lint/a11y/useSemanticElements: an `<hr>` cannot take focus or a value; a focusable separator is the ARIA splitter. A span, positioned, because the heading it sits in is phrasing content.
+    <span
       role="separator"
       aria-orientation="vertical"
       aria-label={`Resize the ${column.label} column`}
