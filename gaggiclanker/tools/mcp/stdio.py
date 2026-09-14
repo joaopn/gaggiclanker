@@ -1,8 +1,8 @@
-"""``gaggiclanker mcp`` — the same server, over stdio, for a client that spawns us.
+"""``gaggiclanker mcp`` — the chat's tool server, over stdio.
 
-Two callers: Claude Desktop (and anything else that launches an MCP server as a
-child process) and our own ``claude_code`` chat provider, which points the CLI
-at this entry point through a generated ``--mcp-config``.
+Its caller is the ``claude_code`` chat provider, which points the Claude Code CLI
+at this entry point through a generated ``--mcp-config``; the CLI spawns it as a
+child process for the length of one chat turn.
 
 It opens the archive directly from ``DATA_DIR`` and wires nothing else: no
 machine connection, and nothing that could reach one. Proposing a profile draft
@@ -29,9 +29,9 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.knowledge.service import KnowledgeService
-from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools import registry as tool_registry
+from gaggiclanker.tools.mcp.server import build_mcp_server
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 
 __all__ = ["add_mcp_parser", "mcp_command", "serve_stdio", "stdio_tool_context"]
@@ -43,11 +43,12 @@ def add_mcp_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParse
     """``gaggiclanker mcp`` — serve the tool surface on stdin/stdout."""
     parser = subparsers.add_parser(
         "mcp",
-        help="serve gaggiclanker's tools over MCP on stdio (for Claude Desktop, claude -p)",
+        help="the chat's database tools over MCP on stdio (spawned by the claude_code provider)",
         description=(
-            "Speaks the Model Context Protocol on stdin/stdout. The archive is read from "
-            "DATA_DIR, the same directory the server uses; start the server once first so "
-            "the schema exists. Nothing is printed on stdout except protocol messages."
+            "Speaks the Model Context Protocol on stdin/stdout. The claude_code chat provider "
+            "starts this for its tool loop. The archive is read from DATA_DIR, the same "
+            "directory the server uses; start the server once first so the schema exists. "
+            "Nothing is printed on stdout except protocol messages."
         ),
     )
     parser.add_argument(
@@ -60,7 +61,7 @@ def add_mcp_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParse
         type=int,
         default=None,
         help=(
-            "Scope tools that take a Set to this one, so a client can ask 'how is it "
+            "Scope tools that take a Set to this one, so the chat can ask 'how is it "
             "going' without naming it. Defaults to $GAGGICLANKER_MCP_SET_ID."
         ),
     )
@@ -82,7 +83,7 @@ def stdio_tool_context(
 ) -> ToolContext:
     """What one tool call over stdio is handed: the archive, and no machine.
 
-    The chat's set, unconditionally: MCP clients read and propose, and the
+    The chat's permission set, unconditionally: tools read and propose, and the
     machine is written only by the application's own routes.
     """
     return ToolContext(

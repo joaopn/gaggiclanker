@@ -55,12 +55,12 @@ from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.drafts.proposals import DraftProposals
-from gaggiclanker.mcp.stdio import stdio_tool_context
 from gaggiclanker.notes.writeback import writeback_task_name
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import starting_point_task_name
 from gaggiclanker.sync.engine import SyncEngine
+from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
 from tests.analyzer.conftest import Fixture, build_fixture
 from tests.conftest import running_app
@@ -426,7 +426,7 @@ def test_the_chat_and_the_stdio_server_do_not_import_the_device_layer() -> None:
     """A separate interpreter, so this test's own imports cannot mask the answer."""
     probe = (
         "import sys\n"
-        "import gaggiclanker.tools, gaggiclanker.mcp.stdio, gaggiclanker.chat.runner\n"
+        "import gaggiclanker.tools, gaggiclanker.tools.mcp.stdio, gaggiclanker.chat.runner\n"
         "import gaggiclanker.drafts.proposals, gaggiclanker.starting.service\n"
         "print(sorted(m for m in sys.modules if m.startswith(('gaggiclanker.device',"
         " 'gaggiclanker.sync', 'gaggiclanker.drafts.service', 'gaggiclanker.drafts.gate'))))\n"

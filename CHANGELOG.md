@@ -15,7 +15,16 @@ first (`POST /api/backup`), because there is no down-migration.
 The Streamable HTTP endpoint at `/mcp` is gone, and so is its switch. MCP is the
 chat's own database tool: the `claude_code` provider spawns `gaggiclanker mcp`
 and talks to it over stdio, and nothing listens on the network for it. `/mcp` now
-answers like any other unknown path.
+answers like any other unknown path. The README no longer documents wiring the
+command into Claude Desktop or other outside agents; the command itself is
+unchanged for the provider that uses it.
+
+The chat's tools are handed nothing that can reach the machine: creating a draft
+goes through an object built without the machine connection, which the
+starting-point wizard uses too, and a test walks what a tool is given to prove
+no device client or connection is reachable. `draft_profile` now works when the
+chat runs on the `claude_code` provider, where it used to answer that it needed
+the running application.
 
 Removed setting: `mcpEnabled` (and its `GAGGICLANKER_MCP_ENABLED` variable). A
 stored value is deleted at upgrade (migration `0019`), and a boot with the

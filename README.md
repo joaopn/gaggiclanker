@@ -450,38 +450,22 @@ staged on the **Profiles** page. Nothing is pushed; you approve it. The Beans
 page has the same shortcut for the coffee you are looking at, and the chat can
 ask through the `starting_point` tool.
 
-### MCP: the same tools, for other agents
+### The chat's database tool (MCP)
 
-Everything the chat can do is also exposed over the Model Context Protocol, so
-Claude Desktop, `claude -p`, or anything else that speaks MCP gets exactly the
-capabilities the in-app chat has — and, like the chat, it is **read-only by
-design**: tools read the archive or propose something a person confirms, and
-none writes to the machine, whatever the settings say. It is spoken over stdio,
-and there is no network endpoint.
+The `claude_code` provider runs the chat's tool loop inside the Claude Code CLI,
+and the CLI calls tools only through an MCP server. So for each chat turn it
+starts `gaggiclanker mcp` as a child process over stdio, pointed at the same
+`DATA_DIR`, and the model gets exactly the tools the chat has with any other
+provider. That server is internal to the chat: it opens the database and nothing
+else — no network endpoint, no machine connection, no setting — and like every
+tool it only reads the archive or proposes something a person confirms. The API
+providers call the same tools directly and never start it.
 
-A client launches the server itself. This is what Claude Desktop wants, what the
-`claude_code` chat provider generates for itself, and it needs no running server
-and no switch:
-
-```json
-{
-  "mcpServers": {
-    "gaggiclanker": {
-      "command": "/path/to/gaggiclanker/.venv/bin/python",
-      "args": ["-m", "gaggiclanker", "mcp"],
-      "env": { "DATA_DIR": "/path/to/gaggiclanker/data" }
-    }
-  }
-}
-```
-
-Point `DATA_DIR` at the same directory the server uses and start the server once
-first: the stdio entry point deliberately runs no migrations, because a second
-process migrating a database the application is also using is a race. Add
-`GAGGICLANKER_MCP_SET_ID` to the `env` block to scope it to one Set.
-
-There are no device-write tools and no switch that adds any: the machine is
-written only by gaggiclanker's own HTTP API, behind buttons a person presses.
+The command stays available so the provider can spawn it, and it deliberately
+runs no migrations, because a second process migrating a database the
+application is also using is a race: start the server once first. There are no
+device-write tools and no switch that adds any: the machine is written only by
+gaggiclanker's own HTTP API, behind buttons a person presses.
 
 ## Troubleshooting
 

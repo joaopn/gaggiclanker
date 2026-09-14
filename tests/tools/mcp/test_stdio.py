@@ -1,4 +1,4 @@
-"""``gaggiclanker mcp`` over stdio, as Claude Desktop and ``claude -p`` use it.
+"""``gaggiclanker mcp`` over stdio, as the ``claude_code`` chat provider's ``claude -p`` uses it.
 
 A real subprocess speaking the real protocol. That is the point: the stdio entry
 point is a *different* process with a different set of services wired (a
@@ -9,6 +9,7 @@ shows up when something else is driving it.
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
@@ -20,7 +21,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
-from gaggiclanker.mcp.server import SERVER_NAME
+from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
+from gaggiclanker.tools.mcp.server import SERVER_NAME
 from tests.analyzer.conftest import Fixture, build_fixture
 
 #: The subprocess has to import gaggiclanker, and a test run is not necessarily
@@ -138,11 +140,45 @@ async def test_a_profile_draft_can_be_proposed_over_stdio(
     assert result.structured_content["status"] == "draft"
 
 
+async def test_the_claude_code_provider_s_generated_config_starts_this_server(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The document the provider hands the CLI, run exactly as written.
+
+    `python -m gaggiclanker mcp` is what reaches the server wherever the package
+    lives, and the server's name is half of the provider's `--allowedTools` glob,
+    so the two names must agree or the CLI is allowed nothing.
+    """
+    data_dir, fixture = archive_dir
+    assert MCP_SERVER_NAME == SERVER_NAME
+    config = json.loads(
+        build_mcp_config(data_dir=str(data_dir), executable=sys.executable, set_id=fixture.set_id)
+    )
+    server = config["mcpServers"][MCP_SERVER_NAME]
+    params = StdioServerParameters(
+        command=server["command"],
+        args=server["args"],
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(REPO_ROOT), **server["env"]},
+        cwd=str(REPO_ROOT),
+    )
+    async with AsyncExitStack() as stack:
+        read, write = await stack.enter_async_context(stdio_client(params))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        initialized = await session.initialize()
+
+        result = await session.call_tool("get_set", {})
+
+    assert initialized.server_info.name == SERVER_NAME
+    assert result.is_error is False
+    assert result.structured_content is not None
+    assert result.structured_content["set"]["id"] == fixture.set_id
+
+
 async def test_an_archive_that_has_never_been_migrated_is_refused_with_the_fix(
     tmp_path: Path,
 ) -> None:
     """Not migrated here: a second process migrating a live database is a race."""
-    from gaggiclanker.mcp.stdio import serve_stdio
+    from gaggiclanker.tools.mcp.stdio import serve_stdio
 
     empty = tmp_path / "empty"
     empty.mkdir()

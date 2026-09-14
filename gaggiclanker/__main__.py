@@ -5,8 +5,9 @@ does — is a thin uvicorn launcher reading the same environment the app does, s
 ``docker run -e PORT=9000`` works without a separate uvicorn command line.
 ``import`` loads exported shots and profiles straight into the database file,
 without a server in the way (see :mod:`gaggiclanker.imports.cli`). ``mcp``
-speaks the Model Context Protocol on stdin/stdout, for Claude Desktop and for
-``claude -p --mcp-config`` (see :mod:`gaggiclanker.mcp.stdio`).
+speaks the Model Context Protocol on stdin/stdout: the chat's database tools, for
+the ``claude -p --mcp-config`` child the ``claude_code`` provider starts (see
+:mod:`gaggiclanker.tools.mcp.stdio`).
 
 The bare form matters: it is the container's entry point, and adding a
 subcommand must not change what ``CMD ["gaggiclanker"]`` does.
@@ -23,8 +24,8 @@ import uvicorn
 from gaggiclanker import __version__
 from gaggiclanker.imports.cli import add_import_parser, import_command
 from gaggiclanker.infra.logging import configure_logging
-from gaggiclanker.mcp.stdio import add_mcp_parser, mcp_command
 from gaggiclanker.settings import EnvSettings
+from gaggiclanker.tools.mcp.stdio import add_mcp_parser, mcp_command
 
 __all__ = ["build_parser", "main", "serve"]
 

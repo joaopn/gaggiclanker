@@ -13,7 +13,9 @@ declares ``read`` or ``propose`` and the dispatcher checks it before the
 function runs. ``read`` touches nothing; ``propose`` writes to gaggiclanker only,
 and everything it creates is something a person still has to confirm in the UI.
 There is no third class. A tool that could change the machine cannot be
-registered at all, so the in-app chat and every MCP client get the same set:
+registered at all, so the chat gets the same set whichever provider runs it —
+the API providers through this dispatcher, ``claude_code`` through the MCP server
+built from it:
 the machine is written by this application's own HTTP routes, behind buttons a
 person presses, and never by a sentence somebody types to a model.
 
@@ -138,7 +140,7 @@ class ToolContext:
     set_id: int | None = None
     user: str = ""
     #: Bookkeeping for the audit row: which run, and whether this came from the
-    #: in-app chat or an MCP client.
+    #: chat's own dispatch or through its stdio MCP server.
     run_id: int | None = None
     caller: str = "chat"
     #: What this caller may invoke. Narrowed by the dispatcher, never widened.

@@ -47,15 +47,19 @@ gate (in a test, in a script) gets `DenyAllWrites` and can write nothing at all,
 so read-only is what you get by forgetting. Every attempt, authorised or
 refused, leaves a row in `device_writes`, which the Sync page lists.
 
-**The chat and MCP add callers, not writes, and the MCP server is read-only by
-design.** Every tool declares a permission class, and there are exactly two:
-`read`, and `propose`, which writes to gaggiclanker — a Set version, a profile
-draft, an unconfirmed insight — and to nothing else. The registry refuses to
-register a tool declaring anything else, so the in-app chat and every MCP client
-are handed the same set and no setting widens it. The connection to the machine
-is this application's own HTTP API and nothing more. Pushing a draft to the
-machine stays what it was: a button a person presses, on a page showing the diff
-they are approving.
+**The chat adds a caller, not writes, and its tools cannot reach the machine.**
+Every tool declares a permission class, and there are exactly two: `read`, and
+`propose`, which writes to gaggiclanker — a Set version, a profile draft, an
+unconfirmed insight — and to nothing else. The registry refuses to register a
+tool declaring anything else, so the chat is handed the same set whichever
+provider runs it — including `claude_code`, whose tool loop reaches the registry
+through the stdio MCP server it spawns — and no setting widens it. Nor does a
+tool hold anything that could write: the context it is handed carries the
+object that creates drafts, never the service that pushes them, and no path from
+it leads to the device client or the connection that owns it (a test walks the
+graph). The connection to the machine is this application's own HTTP API and
+nothing more. Pushing a draft to the machine stays what it was: a button a
+person presses, on a page showing the diff they are approving.
 
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.

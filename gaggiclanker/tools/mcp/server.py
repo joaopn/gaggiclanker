@@ -1,11 +1,11 @@
-"""The same tools, over MCP, for any agent that speaks it.
+"""The chat's tools, as an MCP server.
 
 The tool *definitions* live in :mod:`gaggiclanker.tools`; this module is the
-adapter that turns them into an MCP server, and it is deliberately thin. One
-definition feeding both the in-app chat and Claude Desktop is the whole design:
-an external agent gets exactly the
-capabilities the chat has — read and propose, never a write to the machine — and
-a tool added to the registry appears in both without a second registration.
+adapter that turns them into an MCP server, and it is deliberately thin. The
+chat's API providers call the registry directly; the ``claude_code`` provider
+reaches the same tools through this server, so one definition feeds both and a
+tool added to the registry appears in both without a second registration —
+read and propose, never a write to the machine.
 
 Two mechanical things are worth knowing before editing.
 
@@ -19,8 +19,8 @@ over MCP.
 
 **Every call still goes through the dispatcher.** The wrapper does not call the
 tool function; it calls :meth:`ToolRegistry.dispatch`, so the permission check,
-the per-tool timeout and the audit row happen for an MCP client exactly as they
-do for the chat. A wrapper that called the function directly would be a second,
+the per-tool timeout and the audit row happen over MCP exactly as they do for
+the chat's own dispatch. A wrapper that called the function directly would be a second,
 unaudited path to the same code, which is how the two drift.
 """
 
@@ -62,9 +62,9 @@ log = structlog.get_logger(__name__)
 #: the two must agree, and a test asserts they do.
 SERVER_NAME = "gaggiclanker"
 
-#: Shown to the client on connect. Short: an instructions block is prepended to
-#: somebody else's system prompt, and the place for the rules of engagement is
-#: our own chat prompt, not a paragraph injected into a stranger's agent.
+#: Shown to the client on connect. Short: the CLI prepends it to the system
+#: prompt it already has, and the place for the rules of engagement is our own
+#: chat prompt, not a second copy of them here.
 MCP_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. It holds every shot "
     "the machine has pulled with full telemetry, the user's verdict on each cup, the Sets "
