@@ -39,6 +39,7 @@ __all__ = [
     "CLEANUP_MODES",
     "DEFAULT_ENV_FILE",
     "NOTES_WRITEBACK_FIELDS",
+    "REMOVED_SETTINGS",
     "SETTINGS_REGISTRY",
     "SETTING_PAIRS",
     "EnvSettings",
@@ -542,6 +543,21 @@ SETTING_PAIRS: tuple[SettingPair, ...] = (
         message="the shortest phase must not be longer than the longest",
     ),
 )
+
+
+#: Registry keys that were removed, with the environment variable each one read.
+#: Kept so a boot can say, once, that a variable in somebody's compose file no
+#: longer does anything — silently ignoring a switch that used to allow writes
+#: to a machine would leave its owner believing it still does. Their stored
+#: rows are deleted by a migration; nothing here resolves them.
+REMOVED_SETTINGS: dict[str, str] = {
+    # MCP device-write tools: MCP and the chat now read and propose, nothing more.
+    "mcpDeviceWrites": "GAGGICLANKER_MCP_DEVICE_WRITES",
+    # Automatic cleanup: a cleanup runs only from a confirmed plan on the Sync page.
+    "deviceCleanupAuto": "GAGGICLANKER_DEVICE_CLEANUP_AUTO",
+    # Automatic notes write-back: notes go only when a person sends them.
+    "notesWritebackEnabled": "GAGGICLANKER_NOTES_WRITEBACK_ENABLED",
+}
 
 
 def _registry(*definitions: SettingDefinition) -> dict[str, SettingDefinition]:

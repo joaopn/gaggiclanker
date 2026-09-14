@@ -222,6 +222,11 @@ async def _start(app: FastAPI, db: Database) -> None:
     app.state.db = db
     settings_service = SettingsService(SettingsRepository(db), dotenv=app.state.dotenv)
     app.state.settings_service = settings_service
+    # One line per retired variable still set, naming it and never its value:
+    # each of these used to switch on a write to the machine that nothing does
+    # automatically any more, and whoever set it should hear that it is inert.
+    for env_key in settings_service.removed_env_keys():
+        log.warning("setting_removed_env_ignored", env_key=env_key)
     app.state.events = EventBus[SseEvent]()
     app.state.tasks = TaskRegistry()
     app.state.rate_limits = RateLimiter()

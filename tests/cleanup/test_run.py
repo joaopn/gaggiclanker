@@ -248,6 +248,47 @@ async def test_a_clean_index_sync_never_starts_a_cleanup(
     assert [item.device_id for item in (await service(app).plan()).planned] == wanted
 
 
+@pytest.fixture
+def retired_switches_in_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The retired automatic-write switches, set the way an old compose file sets them."""
+    monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_AUTO", "true")
+    monkeypatch.setenv("GAGGICLANKER_NOTES_WRITEBACK_ENABLED", "true")
+    monkeypatch.setenv("GAGGICLANKER_MCP_DEVICE_WRITES", "true")
+
+
+async def test_retired_switches_in_the_environment_and_the_database_resurrect_nothing(
+    retired_switches_in_env: None,
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+    fake_device: FakeDevice,
+) -> None:
+    """An upgraded install with every old switch still on writes nothing by itself.
+
+    The variables are set before boot and the rows are written afterwards, as a
+    backup restored by hand would leave them. A clean pull and a judgement save
+    — the two moments the old switches acted on — must send no frame at all.
+    """
+    app, client = writes_on
+    for key in ("deviceCleanupAuto", "notesWritebackEnabled", "mcpDeviceWrites"):
+        await app.state.db.execute("INSERT INTO settings (key, value) VALUES (?, 'true')", (key,))
+    await _keep(app, SMALL_COUNT - 3)
+    assert (await service(app).plan()).planned
+    fake_device.ws_requests.clear()
+
+    assert (await app.state.sync.sync_shots(trigger="test")).status == "ok"
+    shot_id = await _shot_id(app, FIRST_ID)
+    response = await client.put(f"/api/shots/{shot_id}/judgement", json={"rating": 5})
+    assert response.status_code == 200
+    await asyncio.sleep(0.05)
+
+    assert "req:history:delete" not in fake_device.ws_requests
+    assert "req:history:notes:save" not in fake_device.ws_requests
+    assert not [
+        name for name in app.state.tasks._tasks if name.startswith(("cleanup", "notes-writeback"))
+    ]
+    assert await DeviceWritesRepository(app.state.db).list_writes() == []
+    assert await CleanupRepository(app.state.db).list_runs() == []
+
+
 async def test_approval_returns_the_plan_that_was_shown(
     writes_on: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:

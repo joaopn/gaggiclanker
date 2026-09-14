@@ -16,6 +16,7 @@ import structlog
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.infra.errors import BadRequest
 from gaggiclanker.settings import (
+    REMOVED_SETTINGS,
     SETTING_PAIRS,
     SETTINGS_REGISTRY,
     ResolvedSetting,
@@ -130,6 +131,19 @@ class SettingsService:
             description=definition.description,
             readonly=definition.readonly,
         )
+
+    def removed_env_keys(self) -> list[str]:
+        """Environment variables still set for settings that no longer exist.
+
+        Only the names: a value is never logged, and for these the name is the
+        whole message — "this variable does nothing now". Empty values count as
+        unset, the same rule `_from_env` applies.
+        """
+        return [
+            env_key
+            for env_key in REMOVED_SETTINGS.values()
+            if (raw := self._raw_env(env_key)) is not None and raw.strip() != ""
+        ]
 
     async def resolve_all(self) -> dict[str, ResolvedSetting]:
         """Every registry key, resolved. Registry order is preserved."""

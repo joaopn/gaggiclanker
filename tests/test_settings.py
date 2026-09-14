@@ -11,7 +11,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.settings import SETTINGS_REGISTRY, EnvSettings, secret_hint
+from gaggiclanker.settings import REMOVED_SETTINGS, SETTINGS_REGISTRY, EnvSettings, secret_hint
 from tests.conftest import running_app
 
 
@@ -128,6 +128,61 @@ async def test_a_row_for_a_key_that_no_longer_exists_is_ignored(env: EnvSettings
     async with running_app(env) as (_app, client):
         settings = await get_settings(client)
         assert set(settings) == set(SETTINGS_REGISTRY)
+
+
+async def test_a_retired_write_switch_in_the_environment_is_named_at_boot_and_does_nothing(
+    env: EnvSettings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Boot succeeds, one warning per variable names it, and the value is never logged.
+
+    Each of these used to switch on a write to the machine that no longer
+    happens on its own; an owner with one in a compose file should hear that
+    it is inert rather than find out by its silence.
+    """
+    from gaggiclanker.infra.logging import configure_logging
+
+    assert set(REMOVED_SETTINGS) == {
+        "mcpDeviceWrites",
+        "deviceCleanupAuto",
+        "notesWritebackEnabled",
+    }
+    for env_key in REMOVED_SETTINGS.values():
+        monkeypatch.setenv(env_key, "true-and-secret-looking")
+    configure_logging("info", json_output=True)
+    try:
+        async with running_app(env) as (_app, client):
+            settings = await get_settings(client)
+            logged = capsys.readouterr().out
+            response = await client.patch("/api/settings", json={"deviceCleanupAuto": True})
+    finally:
+        configure_logging("warning", json_output=True)
+
+    assert set(settings) == set(SETTINGS_REGISTRY)
+    assert not set(REMOVED_SETTINGS) & set(settings)
+    warnings = [line for line in logged.splitlines() if "setting_removed_env_ignored" in line]
+    assert len(warnings) == len(REMOVED_SETTINGS)
+    for env_key in REMOVED_SETTINGS.values():
+        assert any(env_key in line for line in warnings), env_key
+    assert "true-and-secret-looking" not in logged
+    # And it cannot be set back through the API either.
+    assert response.status_code == 400
+
+
+async def test_no_warning_when_no_retired_variable_is_set(
+    env: EnvSettings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gaggiclanker.infra.logging import configure_logging
+
+    for env_key in REMOVED_SETTINGS.values():
+        monkeypatch.delenv(env_key, raising=False)
+    monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_AUTO", "  ")
+    configure_logging("info", json_output=True)
+    try:
+        async with running_app(env):
+            logged = capsys.readouterr().out
+    finally:
+        configure_logging("warning", json_output=True)
+    assert "setting_removed_env_ignored" not in logged
 
 
 async def test_empty_environment_value_is_not_an_override(

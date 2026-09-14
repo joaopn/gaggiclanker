@@ -766,3 +766,26 @@ async def test_0017_upgrades_a_populated_database(db: Database, tmp_path: Path) 
     assert beans.rows == [["Kenya Nyeri", "Kenya"], ["Decaf", None]]
     with pytest.raises(SqlRefused, match="no such column"):
         await run_query(db.path, "SELECT altitude_m FROM v_beans")
+
+
+async def test_0018_deletes_the_retired_machine_write_switches_and_nothing_else(
+    db: Database, tmp_path: Path
+) -> None:
+    """A stored consent to an automatic machine write must not outlive its switch."""
+    await _migrate_below(db, tmp_path, "0018")
+    for key, value in (
+        ("mcpDeviceWrites", "true"),
+        ("deviceCleanupAuto", "true"),
+        ("notesWritebackEnabled", "true"),
+        ("deviceWritesEnabled", "true"),
+        ("notesWritebackFields", "rating,notes"),
+    ):
+        await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, value))
+
+    await run_migrations(db)
+
+    rows = await db.fetch_all("SELECT key, value FROM settings ORDER BY key")
+    assert [(row["key"], row["value"]) for row in rows] == [
+        ("deviceWritesEnabled", "true"),
+        ("notesWritebackFields", "rating,notes"),
+    ]
