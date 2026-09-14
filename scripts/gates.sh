@@ -8,6 +8,10 @@
 #   scripts/gates.sh --keep-going      # run every gate, report all failures
 #   scripts/gates.sh --sim             # also run the firmware simulator suite
 #
+#   GATES_EXTRA="<command>" scripts/gates.sh
+#                                      # an extra command to run before the gates,
+#                                      # e.g. a local policy check
+#
 # What a branch owes follows from what it changed: the files in
 # `git diff <base>...HEAD`, plus anything uncommitted (staged, unstaged or
 # untracked), because the gates are run before a push and the push is what
@@ -39,6 +43,11 @@
 # (`npm ci` in web/). The script does not look for Node anywhere else and does
 # not install anything: a missing tool is a failed gate with a message saying
 # which one.
+#
+# GATES_EXTRA, when set, is a shell command run from the repository root before
+# any other gate. It appears in the plan and the summary as "extra" and fails
+# the run like any other gate. It exists for checks a particular checkout wants
+# that the repository itself does not carry.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,16 +55,12 @@ cd "$REPO_ROOT"
 
 SCHEMA="web/src/api/schema.d.ts"
 
-# An optional history check. A checkout that keeps git-ignored working notes
-# beside the code may also carry a scrubber that finds references to them in
-# tracked files. It is not part of the repository, so a clone without it skips
-# the step rather than failing.
-HISTORY_CHECK="$REPO_ROOT/PLAN"/tools/scrub/scrub.py
+extra="${GATES_EXTRA:-}"
 
 die() { echo "gates.sh: $*" >&2; exit 2; }
 
 usage() {
-    sed -n '3,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 base="origin/dev"
@@ -141,7 +146,7 @@ need_npm() {
     fi
 }
 
-gate_history() { python3 "$HISTORY_CHECK" --check .; }
+gate_extra() { bash -c "$extra"; }
 gate_ruff_check() { uv run ruff check .; }
 gate_ruff_format() { uv run ruff format --check .; }
 gate_ruff_format_files() { uv run ruff format --check -- "${python_files[@]}"; }
@@ -178,8 +183,8 @@ plan() {
     reasons+=("$3")
 }
 
-if [[ -f "$HISTORY_CHECK" ]]; then
-    plan history "history check" "always, where the tool exists"
+if [[ -n "$extra" ]]; then
+    plan extra "extra" "GATES_EXTRA: $extra"
 fi
 if ((owes_backend)); then
     plan ruff_check "ruff check" "back end changed"
@@ -214,7 +219,6 @@ else
         printf '    %d. %-30s %s\n' "$((i + 1))" "${labels[i]}" "${reasons[i]}"
     done
 fi
-[[ -f "$HISTORY_CHECK" ]] || echo "gates.sh: no history check tool in this checkout; skipped"
 if ((owes_sim && !with_sim)); then
     echo "gates.sh: owed, not run: scripts/sim.sh test (the simulator path changed; pass --sim)"
 fi

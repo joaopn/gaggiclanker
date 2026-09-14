@@ -25,9 +25,11 @@ scripts/gates.sh --sim                    # include the simulator suite (~3 min)
 Each gate prints its duration and the run ends with a summary table; the exit
 status is non-zero if any gate failed. The web gates and `gen:api` need `npm`
 on `PATH` (Node 22) and `npm ci` already run in `web/`; the script finds neither
-on its own and says which is missing. A checkout that carries a history check
-tool for git-ignored working notes gets that run first; a clone without one
-skips it.
+on its own and says which is missing.
+
+`GATES_EXTRA`, when set, is an extra command to run before the gates, e.g. a
+local policy check: `GATES_EXTRA="./my-check.sh" scripts/gates.sh`. It shows in
+the plan and the summary as `extra` and fails the run like any other gate.
 
 The Python suite runs in parallel (`pytest-xdist`, one worker per core), which
 is what brings it from minutes to well under one on a many-core machine.
