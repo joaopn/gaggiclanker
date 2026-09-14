@@ -4,11 +4,12 @@ Two callers: Claude Desktop (and anything else that launches an MCP server as a
 child process) and our own ``claude_code`` chat provider, which points the CLI
 at this entry point through a generated ``--mcp-config``.
 
-It opens the archive directly from ``DATA_DIR`` and wires nothing else. That is
-the important limitation and the tools say so themselves: ``run_analysis`` and
-``draft_profile`` need the running application's analyzer and draft service, and
-over stdio they return an error naming that rather than half-working. Everything
-that is a question about the archive works exactly as it does in the app.
+It opens the archive directly from ``DATA_DIR`` and wires nothing else: no
+machine connection, and nothing that could reach one. Proposing a profile draft
+needs only the database and the safety bounds, so ``draft_profile`` works here
+exactly as it does in the app. ``run_analysis`` and ``starting_point`` queue a
+provider call on the running application's task registry, and over stdio they
+return an error naming that rather than half-working.
 
 **No migrations are run here.** A second process migrating a database the
 application is also using is a race with a schema at the end of it; instead the
@@ -26,13 +27,14 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.settings_repo import SettingsRepository
+from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.mcp.server import build_mcp_server
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools import registry as tool_registry
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 
-__all__ = ["add_mcp_parser", "mcp_command", "serve_stdio"]
+__all__ = ["add_mcp_parser", "mcp_command", "serve_stdio", "stdio_tool_context"]
 
 log = structlog.get_logger(__name__)
 
@@ -75,6 +77,25 @@ def _set_id(given: int | None) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
+def stdio_tool_context(
+    db: Database, settings: SettingsService, *, set_id: int | None = None
+) -> ToolContext:
+    """What one tool call over stdio is handed: the archive, and no machine.
+
+    The chat's set, unconditionally: MCP clients read and propose, and the
+    machine is written only by the application's own routes.
+    """
+    return ToolContext(
+        db=db,
+        settings=settings,
+        knowledge=KnowledgeService(db),
+        drafts=DraftProposals(db, settings),
+        set_id=set_id,
+        caller="mcp-stdio",
+        permissions=CHAT_PERMISSIONS,
+    )
+
+
 async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
     """Open the archive and run the protocol on stdio until the client hangs up."""
     path = data_dir / "gaggiclanker.db"
@@ -95,22 +116,12 @@ async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
                 "apply its migrations, then try again."
             )
         settings = SettingsService(SettingsRepository(db), dotenv={})
-        # The chat's set, unconditionally: MCP clients read and propose, and the
-        # machine is written only by the application's own routes.
-        permissions = CHAT_PERMISSIONS
 
         async def context() -> ToolContext:
-            return ToolContext(
-                db=db,
-                settings=settings,
-                knowledge=KnowledgeService(db),
-                set_id=set_id,
-                caller="mcp-stdio",
-                permissions=permissions,
-            )
+            return stdio_tool_context(db, settings, set_id=set_id)
 
         server = build_mcp_server(
-            context, registry=tool_registry, permissions=permissions, db_for_resources=db
+            context, registry=tool_registry, permissions=CHAT_PERMISSIONS, db_for_resources=db
         )
         await server.run_stdio_async()
     finally:

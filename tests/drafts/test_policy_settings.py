@@ -21,6 +21,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.domain.profile_policy import POLICY_SETTING_KEYS
+from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.settings import SETTINGS_REGISTRY
 from tests.drafts.conftest import data, error
 
@@ -120,15 +121,21 @@ async def test_tightening_a_bound_is_still_allowed(client: httpx.AsyncClient) ->
 async def test_a_refused_bound_never_reaches_the_policy(
     live: tuple[FastAPI, httpx.AsyncClient],
 ) -> None:
-    """The end the validation is for: the service's bounds are unchanged.
+    """The end the validation is for: the layer's own bounds are unchanged.
 
-    Asserted through the service rather than through the settings API, because
-    "the PATCH was refused" and "the layer still holds" are different claims and
-    it is the second one that matters.
+    Asserted through the object that builds drafts rather than through the
+    settings API, because "the PATCH was refused" and "the layer still holds"
+    are different claims and it is the second one that matters. Through
+    `DraftProposals` rather than through the route-facing service because that
+    is where a bound is read now — it is the half a chat tool proposes with, and
+    a widened bound that reached only it would be the dangerous one.
     """
     app, client = live
-    before = await app.state.drafts.bounds()
+    proposals: DraftProposals = app.state.draft_proposals
+    before = await proposals.bounds()
 
     assert (await patch(client, {"profilePolicyTemperatureMaxC": 200})).status_code == 400
 
+    assert (await proposals.bounds()) == before
+    # The service the routes use reads the same object, so it moved either.
     assert (await app.state.drafts.bounds()) == before

@@ -116,6 +116,28 @@ async def test_a_tool_that_needs_the_running_application_says_so(
     assert "running gaggiclanker application" in str(result.content)
 
 
+async def test_a_profile_draft_can_be_proposed_over_stdio(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """Proposing a draft needs the archive and the safety bounds, not the running app."""
+    data_dir, fixture = archive_dir
+    async with AsyncExitStack() as stack:
+        session = await session_for(stack, data_dir)
+
+        result = await session.call_tool(
+            "draft_profile",
+            {
+                "base_version_id": fixture.profile_version_id,
+                "patch": {"temperature": 92},
+                "reason": "A degree cooler.",
+            },
+        )
+
+    assert result.is_error is False, result.content
+    assert result.structured_content is not None
+    assert result.structured_content["status"] == "draft"
+
+
 async def test_an_archive_that_has_never_been_migrated_is_refused_with_the_fix(
     tmp_path: Path,
 ) -> None:

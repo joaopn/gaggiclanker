@@ -69,7 +69,7 @@ several and a grind number only means something on the grinder it was set on.
 |---|---|
 | `api/` | One router per resource. Routes parse input and call services; they never build a response by hand. |
 | `analyzer/`, `llm/`, `knowledge/` | One structured LLM call per shot, the context it is given, and the three tiers it is told: the rules, a few retrieved passages of prose, and the insights you have confirmed. |
-| `drafts/` | Profile drafts: the write gate, generation from advice, the four safety layers, the push and its rollback. Holds the gate every write to a machine passes. |
+| `drafts/` | Profile drafts: the write gate, generation from advice, the four safety layers, the push and its rollback. Holds the gate every write to a machine passes. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and only the route-facing service holds the machine connection. |
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `cleanup/` | Device storage: which shots are eligible to delete off the machine, the plan the Sync page shows, and the run of a plan a person confirmed. |
 | `notes/` | Judgements a person sends from the Sync page to the machine's own notes card, and only when ours is newer than its. |

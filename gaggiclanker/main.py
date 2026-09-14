@@ -48,6 +48,7 @@ from gaggiclanker.device.connection import (
     device_config,
 )
 from gaggiclanker.drafts.gate import SettingsWriteGate
+from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.envelope import register_exception_handlers
 from gaggiclanker.infra.logging import configure_logging, get_logger
@@ -345,6 +346,44 @@ async def _start(app: FastAPI, db: Database) -> None:
         bus=app.state.events,
     )
 
+    # The chat and what its tools may use, built before the machine connection
+    # exists and without it. A tool reads and proposes, so it is handed the
+    # proposal half of drafts (create one; never push, never roll back) and a
+    # starting-point service built over that same half, and nothing on this
+    # side of the app holds the connection, its client or a service that does.
+    # A settings change that rebuilds the connection is nothing to them.
+    app.state.draft_proposals = DraftProposals(db, settings_service)
+
+    # Over the proposal half, because it hands one to `accept`: an option that
+    # carries a whole profile becomes a draft through the same four layers a
+    # hand-typed one goes through, and a starting point built without that would
+    # be the one path around the write gate.
+    app.state.starting = StartingPointService(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        drafts=app.state.draft_proposals,
+        bus=app.state.events,
+    )
+
+    # App-scoped for the reason the analyzer is: it holds the cancel event of
+    # every run in flight, and a per-request copy would make the cancel button a
+    # no-op. It reaches into the analyzer, the draft proposals and the
+    # starting-point service for the three tools that queue or create work.
+    app.state.chat = ChatRunner(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        tools=tool_registry,
+        bus=app.state.events,
+        analyzer=app.state.analyzer,
+        drafts=app.state.draft_proposals,
+        starting=app.state.starting,
+        knowledge=app.state.knowledge,
+        tasks=app.state.tasks,
+        rate_limits=app.state.rate_limits,
+    )
+
     # Before the device client, deliberately. Starting a task group is tens of
     # milliseconds, and the sync engine's first profiles sweep is timed from
     # the moment its loops start: anything slow wedged between the two shifts
@@ -372,43 +411,16 @@ async def _start(app: FastAPI, db: Database) -> None:
     # App-scoped because it reaches the one client that can change a machine. A
     # per-request service would have to build its own — and a client built
     # without the gate cannot write at all, which is the right default and the
-    # wrong thing to discover from a push that silently refused.
+    # wrong thing to discover from a push that silently refused. It builds and
+    # stores drafts through the same proposal object the chat holds, so there
+    # is still one place a draft document is made.
     app.state.drafts = ProfileDraftService(
         db,
         app.state.llm,
         PromptService(PromptsRepository(db)),
         settings_service,
         connection=app.state.connection,
-    )
-
-    # After the draft service, because it hands one to `accept`: an option that
-    # carries a whole profile becomes a draft through the same four layers a
-    # hand-typed one goes through, and a starting point built without that would
-    # be the one path around the write gate.
-    app.state.starting = StartingPointService(
-        db,
-        app.state.llm,
-        PromptService(PromptsRepository(db)),
-        drafts=app.state.drafts,
-        bus=app.state.events,
-    )
-
-    # App-scoped for the reason the analyzer is: it holds the cancel event of
-    # every run in flight, and a per-request copy would make the cancel button a
-    # no-op. Built last, because it reaches into the analyzer, the draft service
-    # and the starting-point service for the three tools that queue work.
-    app.state.chat = ChatRunner(
-        db,
-        app.state.llm,
-        PromptService(PromptsRepository(db)),
-        tools=tool_registry,
-        bus=app.state.events,
-        analyzer=app.state.analyzer,
-        drafts=app.state.drafts,
-        starting=app.state.starting,
-        knowledge=app.state.knowledge,
-        tasks=app.state.tasks,
-        rate_limits=app.state.rate_limits,
+        proposals=app.state.draft_proposals,
     )
 
 
@@ -436,7 +448,7 @@ async def _start_mcp_if_enabled(app: FastAPI, db: Database, settings: SettingsSe
             settings=settings,
             knowledge=getattr(app.state, "knowledge", None),
             analyzer=getattr(app.state, "analyzer", None),
-            drafts=getattr(app.state, "drafts", None),
+            drafts=getattr(app.state, "draft_proposals", None),
             starting=getattr(app.state, "starting", None),
             tasks=getattr(app.state, "tasks", None),
             rate_limits=getattr(app.state, "rate_limits", None),

@@ -31,7 +31,7 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -61,6 +61,10 @@ from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import Usage
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolRegistry
+
+if TYPE_CHECKING:
+    from gaggiclanker.drafts.proposals import DraftProposals
+    from gaggiclanker.starting.service import StartingPointService
 
 __all__ = ["CHAT_EVENT", "CHAT_PROMPT", "ChatRunner", "run_task_name"]
 
@@ -130,8 +134,8 @@ class ChatRunner:
         tools: ToolRegistry,
         bus: SseEventBus | None = None,
         analyzer: Any = None,
-        drafts: Any = None,
-        starting: Any = None,
+        drafts: DraftProposals | None = None,
+        starting: StartingPointService | None = None,
         knowledge: Any = None,
         tasks: TaskRegistry | None = None,
         rate_limits: Any = None,
@@ -142,6 +146,9 @@ class ChatRunner:
         self.tools = tools
         self.bus = bus
         self.analyzer = analyzer
+        #: The proposal half of drafts, and a starting-point service built over
+        #: it. Neither holds the machine connection: this runner hands them to
+        #: tools a model drives, and pushing stays with the routes.
         self.drafts = drafts
         self.starting = starting
         self.knowledge = knowledge
@@ -393,10 +400,9 @@ class ChatRunner:
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _dispatch(
-        self, state: _RunState, calls: list[ChatToolCall], set_id: int | None
-    ) -> list[ChatToolResult]:
-        ctx = ToolContext(
+    def tool_context(self, *, set_id: int | None, run_id: int | None) -> ToolContext:
+        """What one run's tools are handed. Nothing in it reaches the machine."""
+        return ToolContext(
             db=self.db,
             settings=self.llm.settings,
             knowledge=self.knowledge,
@@ -406,12 +412,17 @@ class ChatRunner:
             tasks=self.tasks,
             rate_limits=self.rate_limits,
             set_id=set_id,
-            run_id=state.run_id,
+            run_id=run_id,
             caller="chat",
             # The one permission set every model-driven caller gets; MCP is handed
             # the same one. No tool can write to the machine.
             permissions=CHAT_PERMISSIONS,
         )
+
+    async def _dispatch(
+        self, state: _RunState, calls: list[ChatToolCall], set_id: int | None
+    ) -> list[ChatToolResult]:
+        ctx = self.tool_context(set_id=set_id, run_id=state.run_id)
         results: list[ChatToolResult] = []
         for call in calls:
             if state.cancel.is_set():

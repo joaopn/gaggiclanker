@@ -22,7 +22,7 @@ the same three reasons and with the same consequences:
 **`accept` is where the money is.** It creates the Set and its first version
 with `origin='starting_point'` — the only origin that can appear on a version 1
 — and, when the chosen option carried a whole profile document, a draft through
-`DraftsService.create_manual`, which is what puts it through the schema, the
+`DraftProposals.create_manual`, which is what puts it through the schema, the
 safety policy and the clamp. A document the policy refuses is a 422 naming
 every violation, and the Set is **not** created: half-accepting an option would
 leave a Set pointing at a profile that does not exist.
@@ -58,9 +58,10 @@ from gaggiclanker.db.repos.starting import (
     StartingPointRunsRepository,
     StartingPointStart,
 )
+from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
-from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.infra.tasks import TaskSpawner
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import LlmMessage, LlmRequest, Ok
@@ -144,15 +145,17 @@ class StartingPointService:
         llm: LlmService,
         prompts: PromptService,
         *,
-        drafts: Any = None,
+        drafts: DraftProposals | None = None,
         bus: SseEventBus | None = None,
     ) -> None:
         self.db = db
         self.llm = llm
         self.prompts = prompts
-        #: :class:`~gaggiclanker.drafts.service.ProfileDraftService`. Untyped to
-        #: keep this module out of the draft service's import graph, which
-        #: reaches the device client.
+        #: Where an accepted option's profile becomes a draft. The proposal
+        #: half of the draft feature rather than the service that pushes: an
+        #: accept creates a draft and never touches the machine, and this
+        #: service is handed to the chat's tools, which must hold nothing that
+        #: reaches the machine connection.
         self.drafts = drafts
         self.bus = bus
         self.retry_delay_s = RETRY_DELAY_S
@@ -173,7 +176,7 @@ class StartingPointService:
         grinder_id: int | None = None,
         usual_grind: str = "",
         dose_hint_g: float | None = None,
-        tasks: TaskRegistry,
+        tasks: TaskSpawner,
         model: str | None = None,
     ) -> tuple[StartingPointRunRow, bool]:
         """Queue a run. Returns the row and whether this call started it.

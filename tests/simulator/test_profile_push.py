@@ -101,6 +101,7 @@ async def live(
             PromptService(app.state.drafts.prompts.repo),
             app.state.settings_service,
             connection=app.state.connection,
+            proposals=app.state.draft_proposals,
         )
         assert await app.state.connection.client.wait_connected(20.0), (
             "the simulator did not connect"

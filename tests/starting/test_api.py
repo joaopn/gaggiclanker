@@ -60,7 +60,7 @@ def _rewire(app: FastAPI, provider: FakeProvider) -> None:
         app.state.db,
         app.state.llm,
         PromptService(PromptsRepository(app.state.db)),
-        drafts=app.state.drafts,
+        drafts=app.state.draft_proposals,
         bus=app.state.events,
     )
     service.retry_delay_s = 0.0

@@ -513,10 +513,10 @@ def llm(db: Database, provider: FakeProvider, budget: RateLimitBudget) -> LlmSer
 
 @pytest.fixture
 def starting(fixture: Fixture, llm: LlmService) -> StartingPointService:
-    from gaggiclanker.drafts.service import ProfileDraftService
+    from gaggiclanker.drafts.proposals import DraftProposals
 
     prompts = PromptService(PromptsRepository(fixture.db))
-    drafts = ProfileDraftService(fixture.db, llm, prompts, llm.settings)
+    drafts = DraftProposals(fixture.db, llm.settings)
     service = StartingPointService(fixture.db, llm, prompts, drafts=drafts)
     # The retry backoff is a real wait in production and dead time here.
     service.retry_delay_s = 0.0

@@ -6,10 +6,12 @@ The shape of the whole feature is five methods and one invariant.
 
 **The invariant: every document that leaves this module has been through
 :func:`~gaggiclanker.domain.profile_policy.enforce`.** There is exactly one
-place a profile is built (:meth:`ProfileDraftService._prepare`) and it clamps,
-re-checks and applies the label suffix before anything is stored. A caller
-cannot construct a draft that skipped a layer, because there is no other
-constructor.
+place a profile is built (:meth:`.proposals.DraftProposals.prepare`) and it
+clamps, re-checks and applies the label suffix before anything is stored. A
+caller cannot construct a draft that skipped a layer, because there is no other
+constructor. That half lives in its own class, built without the machine
+connection, so the chat's tools can propose a draft without holding anything
+that could push one.
 
 Three decisions worth knowing before reading the code:
 
@@ -35,7 +37,6 @@ can account for.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -44,11 +45,7 @@ from pydantic import ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
-from gaggiclanker.db.repos.profile_drafts import (
-    ProfileDraftRow,
-    ProfileDraftsRepository,
-    ProfileDraftWrite,
-)
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
 from gaggiclanker.device.client import GaggimateClient
@@ -60,17 +57,18 @@ from gaggiclanker.domain.models import (
 )
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
-    PolicyChange,
-    ProfileRejected,
-    StopConditionChange,
-    Violation,
-    bounds_from,
     check,
     clamp,
     diff_stop_conditions,
 )
 from gaggiclanker.drafts.models import DraftedProfile, DraftPreview, ProfileDraftDetail
-from gaggiclanker.infra.errors import Conflict, NotFound, ServiceUnavailable, Unprocessable
+from gaggiclanker.drafts.proposals import (
+    DraftProposals,
+    PreparedDraft,
+    profile_from_version,
+    schema_errors,
+)
+from gaggiclanker.infra.errors import Conflict, NotFound, ServiceUnavailable
 from gaggiclanker.llm.prompts import PromptService, RenderedPrompt
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import LlmRequest, Ok
@@ -90,15 +88,6 @@ DRAFT_PROMPT = "draft"
 DRAFT_EVENT = "draft.updated"
 
 
-@dataclass(frozen=True, slots=True)
-class _Prepared:
-    """A document that has been through every offline layer. The only way in."""
-
-    profile: Profile
-    clamp_changes: list[PolicyChange]
-    stop_condition_changes: list[StopConditionChange]
-
-
 class ProfileDraftService:
     """The one entry point. Held on ``app.state.drafts``."""
 
@@ -110,6 +99,7 @@ class ProfileDraftService:
         settings: SettingsService,
         *,
         connection: DeviceConnection[Any] | None = None,
+        proposals: DraftProposals | None = None,
     ) -> None:
         self.db = db
         self.llm = llm
@@ -118,6 +108,9 @@ class ProfileDraftService:
         #: The app's machine connection. Its client is read when a push or a
         #: rollback happens, never kept: a settings change rebuilds it live.
         self.connection = connection
+        #: Where every draft document is built and stored. The same object the
+        #: chat's tools are handed, which is why it holds no connection.
+        self.proposals = proposals or DraftProposals(db, settings)
         self.drafts = ProfileDraftsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.analyses = AnalysesRepository(db)
@@ -128,34 +121,8 @@ class ProfileDraftService:
     # ── the policy ───────────────────────────────────────────────────
 
     async def bounds(self) -> PolicyBounds:
-        """The safety bounds as currently configured.
-
-        Read per call rather than cached: the bounds are in the settings
-        registry precisely so somebody can widen one and try again without a
-        restart, and a service holding a copy from boot would make that a lie.
-        """
-        resolved = await self.settings.resolve_all()
-        return bounds_from({key: setting.value for key, setting in resolved.items()})
-
-    async def _prepare(self, base: Profile, candidate: Profile) -> _Prepared:
-        """Clamp, re-check, suffix the label, diff the stop conditions.
-
-        The single constructor for every draft document, whichever route asked
-        for it. Raises :class:`Unprocessable` carrying every violation at once —
-        a person fixing a hand-edited profile wants the whole list, not the
-        first problem six times.
-        """
-        bounds = await self.bounds()
-        clamped, changes = clamp(candidate, bounds)
-        violations = check(clamped, bounds)
-        if violations:
-            raise _rejected(violations)
-        document = clamped.for_new_device_profile(label=with_app_suffix(clamped.label))
-        return _Prepared(
-            profile=document,
-            clamp_changes=changes,
-            stop_condition_changes=diff_stop_conditions(base, document),
-        )
+        """The safety bounds as currently configured, read per call."""
+        return await self.proposals.bounds()
 
     async def preview(self, base_version_id: int, document: dict[str, Any]) -> DraftPreview:
         """Validate a document the editor has not saved yet. Never raises.
@@ -166,11 +133,11 @@ class ProfileDraftService:
         refuses, or it is a profile the policy would move. So this returns all
         three rather than raising on the first.
         """
-        base = await self._base_profile(base_version_id)
+        base = await self.proposals.base_profile(base_version_id)
         try:
             candidate = Profile.model_validate(document)
         except ValidationError as exc:
-            return DraftPreview(valid=False, schema_errors=_schema_errors(exc))
+            return DraftPreview(valid=False, schema_errors=schema_errors(exc))
         bounds = await self.bounds()
         clamped, changes = clamp(candidate, bounds)
         violations = check(clamped, bounds)
@@ -194,19 +161,10 @@ class ProfileDraftService:
         notes: str = "",
     ) -> ProfileDraftRow:
         """A draft somebody typed. Same four layers, no model involved."""
-        base = await self._base_profile(base_version_id)
-        try:
-            candidate = Profile.model_validate(document)
-        except ValidationError as exc:
-            raise Unprocessable(
-                "That document is not a valid GaggiMate profile",
-                details={"schema_errors": _schema_errors(exc)},
-            ) from None
-        prepared = await self._prepare(base, candidate)
-        return await self._store(
+        return await self.proposals.create_manual(
             base_version_id=base_version_id,
-            prepared=prepared,
-            change_summary=change_summary or "Edited by hand.",
+            document=document,
+            change_summary=change_summary,
             notes=notes,
         )
 
@@ -229,7 +187,7 @@ class ProfileDraftService:
         approve. The caller gets the LLM layer's own message and a button that
         says "try again".
         """
-        base = await self._base_profile(base_version_id)
+        base = await self.proposals.base_profile(base_version_id)
         parent = await self._parent_draft(parent_draft_id)
         rendered = await self._render(
             base=base,
@@ -255,8 +213,8 @@ class ProfileDraftService:
                 f"The model could not draft a profile: {result.code}: {result.message}",
                 details={"code": result.code},
             )
-        prepared = await self._prepare(base, result.data.profile)
-        row = await self._store(
+        prepared: PreparedDraft = await self.proposals.prepare(base, result.data.profile)
+        row = await self.proposals.store(
             base_version_id=base_version_id,
             prepared=prepared,
             change_summary=result.data.change_summary,
@@ -291,41 +249,6 @@ class ProfileDraftService:
             notes=combined,
             parent_draft_id=parent.id,
             model=model,
-        )
-
-    async def _store(
-        self,
-        *,
-        base_version_id: int,
-        prepared: _Prepared,
-        change_summary: str,
-        notes: str,
-        analysis_id: int | None = None,
-        suggestion_id: int | None = None,
-        parent_draft_id: int | None = None,
-    ) -> ProfileDraftRow:
-        version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
-        return await self.drafts.create(
-            ProfileDraftWrite(
-                base_version_id=base_version_id,
-                draft_version_id=version.id,
-                # Resolved now rather than at push time: what this draft was
-                # derived from is a fact about this moment, and by the time
-                # somebody pushes it the mirror may point somewhere else — which
-                # is precisely the staleness the push then refuses.
-                base_device_profile_id=await self.profiles.find_device_id_for_version(
-                    base_version_id
-                ),
-                source_analysis_id=analysis_id,
-                source_suggestion_id=suggestion_id,
-                parent_draft_id=parent_draft_id,
-                change_summary=change_summary,
-                stop_condition_changes=[
-                    change.model_dump(mode="json") for change in prepared.stop_condition_changes
-                ],
-                clamp_changes=[change.model_dump(mode="json") for change in prepared.clamp_changes],
-                notes=notes,
-            )
         )
 
     # ── approving ────────────────────────────────────────────────────
@@ -593,10 +516,6 @@ class ProfileDraftService:
     async def _parent_draft(self, draft_id: int | None) -> ProfileDraftRow | None:
         return None if draft_id is None else await self._require(draft_id)
 
-    async def _base_profile(self, version_id: int) -> Profile:
-        version = await self._require_version(version_id)
-        return _profile_from_version(version)
-
     async def _require_version(self, version_id: int) -> ProfileVersionRow:
         version = await self.profiles.get_version(version_id)
         if version is None:
@@ -606,7 +525,7 @@ class ProfileDraftService:
     async def _draft_profile(self, draft: ProfileDraftRow) -> Profile:
         if draft.draft_version_id is None:
             raise Conflict("That draft has no document to push")
-        return _profile_from_version(await self._require_version(draft.draft_version_id))
+        return profile_from_version(await self._require_version(draft.draft_version_id))
 
     async def _mirror(self, device_id: str, served: Profile) -> None:
         """Put the pushed profile into the archive's own mirror straight away.
@@ -705,41 +624,6 @@ def _suggestion_line(suggestion: Any) -> str:
     unit = "" if suggestion.unit in ("", "none") else f" {suggestion.unit}"
     reason = f" — {suggestion.reason}" if suggestion.reason else ""
     return f"{suggestion.variable} {suggestion.direction}{magnitude}{unit}{reason}"
-
-
-def _profile_from_version(version: ProfileVersionRow) -> Profile:
-    """The stored canonical document, back as a :class:`Profile`.
-
-    The canonical form drops `id`, `favorite` and `selected` and collapses the
-    firmware's default transition, all of which are optional on the model — so
-    it re-validates without help. It is also the right starting point for a
-    diff: two profiles compared in canonical form differ only where they brew
-    differently.
-    """
-    if not version.profile:  # pragma: no cover - the column is NOT NULL
-        raise Unprocessable(f"Profile version {version.id} has no document")
-    return Profile.model_validate(version.profile)
-
-
-def _schema_errors(exc: ValidationError) -> list[str]:
-    """pydantic's errors as one line each, naming the field and the problem.
-
-    The *input* is deliberately left out: these travel to the client in
-    `error.details`, which is echoed verbatim, and the house rule is that
-    validation details name the field and the problem and never the value.
-    """
-    return [
-        f"{'.'.join(str(part) for part in error['loc']) or '(root)'}: {error['msg']}"
-        for error in exc.errors()
-    ]
-
-
-def _rejected(violations: list[Violation]) -> Unprocessable:
-    rejection = ProfileRejected(violations)
-    return Unprocessable(
-        str(rejection),
-        details={"violations": [violation.model_dump(mode="json") for violation in violations]},
-    )
 
 
 def _render_bounds(bounds: PolicyBounds) -> str:

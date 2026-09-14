@@ -901,8 +901,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         draft_id=draft.id,
         status=draft.status,
         change_summary=draft.change_summary,
-        clamp_changes=[_as_dict(change) for change in draft.clamp_changes],
-        stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes],
+        clamp_changes=[_as_dict(change) for change in draft.clamp_changes or []],
+        stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes or []],
     )
 
 

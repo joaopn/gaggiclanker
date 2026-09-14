@@ -13,13 +13,30 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine, Iterable
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
-__all__ = ["TaskRegistry"]
+__all__ = ["TaskRegistry", "TaskSpawner"]
 
 log = structlog.get_logger(__name__)
+
+
+class TaskSpawner(Protocol):
+    """Start a named background task, and nothing else.
+
+    What a caller that only queues work is given — the chat's tools, through
+    :class:`~gaggiclanker.tools.registry.ToolContext`. The full registry also
+    hands out its tasks (:meth:`TaskRegistry.get`) and cancels them by name, and
+    a task is not opaque: ``get_coro().cr_frame`` holds the ``self`` the
+    coroutine was called on. Narrowing the type is a statement of intent and no
+    more than that — what a model-driven caller can actually reach is decided by
+    *which* registry it is handed, and every task that talks to the machine is
+    in the one :class:`~gaggiclanker.device.connection.DeviceConnection` keeps
+    to itself.
+    """
+
+    def spawn(self, name: str, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]: ...
 
 
 class TaskRegistry:

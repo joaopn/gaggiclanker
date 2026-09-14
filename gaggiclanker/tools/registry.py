@@ -39,13 +39,18 @@ import json
 import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Literal, get_type_hints
+from typing import TYPE_CHECKING, Any, Literal, get_type_hints
 
 import structlog
 from pydantic import BaseModel, ValidationError
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.infra.tasks import TaskSpawner
 from gaggiclanker.settings_service import SettingsService
+
+if TYPE_CHECKING:
+    from gaggiclanker.drafts.proposals import DraftProposals
+    from gaggiclanker.starting.service import StartingPointService
 
 __all__ = [
     "DEFAULT_TOOL_TIMEOUT_S",
@@ -82,10 +87,28 @@ class ToolContext:
     """Everything a tool is allowed to reach, and who is asking.
 
     Services are optional because the two callers differ: the app has an
-    analyzer and a draft service on ``app.state``, the stdio MCP entry point
-    opens a database and nothing else. A tool that needs one it was not given
-    says so as an error value rather than raising ``AttributeError`` at the
-    bottom of a stack the model cannot read.
+    analyzer and a starting-point service on ``app.state``, the stdio MCP entry
+    point opens a database and nothing else. A tool that needs one it was not
+    given says so as an error value rather than raising ``AttributeError`` at
+    the bottom of a stack the model cannot read.
+
+    **Nothing here reaches the machine.** Not the device client, not the
+    connection that owns it, and not a service holding either: a tool that can
+    only read and propose is handed only things that read and propose. The
+    draft entry is :class:`~gaggiclanker.drafts.proposals.DraftProposals`, never
+    the service that pushes. ``tests/tools/test_no_machine_reachable.py`` walks
+    the contexts the chat and the stdio server build and fails if a client or a
+    connection is anywhere in the graph.
+
+    **The guarantee comes from what is put in, not from the types here.**
+    ``tasks`` is typed :class:`~gaggiclanker.infra.tasks.TaskSpawner` because
+    the two tools that queue work only ever call ``spawn`` — but a narrower type
+    stops nobody: whatever object is passed still answers ``get()`` and
+    ``cancel()`` if it has them, and a task hands out its own coroutine frame,
+    where the ``self`` it was called on is sitting. What makes this safe is that
+    the registry wired in holds no task that talks to the machine; the sync
+    engine's loops, a cleanup run and a notes send live on the registry
+    :class:`~gaggiclanker.device.connection.DeviceConnection` keeps to itself.
     """
 
     db: Database
@@ -94,12 +117,17 @@ class ToolContext:
     #: keep this module free of an import cycle through the analyzer.
     knowledge: Any = None
     analyzer: Any = None
-    drafts: Any = None
-    #: :class:`~gaggiclanker.starting.service.StartingPointService`. Untyped for
-    #: the reason the others are, and ``None`` over stdio MCP — a connection
-    #: with database access only cannot queue a provider call.
-    starting: Any = None
-    tasks: Any = None
+    #: Creates drafts and nothing else. Typed, and only under ``TYPE_CHECKING``,
+    #: so the wiring cannot hand a tool the draft service that pushes.
+    drafts: DraftProposals | None = None
+    #: ``None`` over stdio MCP — a connection with database access only cannot
+    #: queue a provider call.
+    starting: StartingPointService | None = None
+    #: Queues one background task by name. Never the full registry's type: see
+    #: the class docstring for why that is a statement of intent and not a
+    #: barrier. ``None`` over stdio MCP, where there is no application to queue
+    #: work on.
+    tasks: TaskSpawner | None = None
     #: :class:`~gaggiclanker.infra.ratelimit.RateLimiter`. The one tool that
     #: spends provider tokens checks it, so a model in a loop cannot do what the
     #: route it shortcuts is already stopped from doing.

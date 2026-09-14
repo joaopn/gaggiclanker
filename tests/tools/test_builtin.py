@@ -277,7 +277,7 @@ async def test_run_analysis_shares_the_analysis_rate_limit(
 async def test_a_tool_that_needs_a_service_says_so_rather_than_crashing(
     ctx: ToolContext, archive: Fixture, name: str
 ) -> None:
-    """Over stdio there is a database and nothing else, and that has to read well."""
+    """A context built without the service a tool needs has to say so readably."""
     arguments = (
         {"shot_id": archive.shots[0]}
         if name == "run_analysis"

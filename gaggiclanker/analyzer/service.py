@@ -65,7 +65,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
 )
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
-from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.infra.tasks import TaskRegistry, TaskSpawner
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import LlmMessage, LlmRequest, Ok
@@ -195,7 +195,7 @@ class AnalyzerService:
         self,
         shot_id: int,
         *,
-        tasks: TaskRegistry,
+        tasks: TaskSpawner,
         model: str | None = None,
     ) -> tuple[AnalysisRow, bool]:
         """Queue an analysis. Returns the row and whether this call started it.

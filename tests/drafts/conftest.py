@@ -123,6 +123,7 @@ def _rewire_llm(app: FastAPI, provider: FakeProvider) -> None:
         PromptService(app.state.drafts.prompts.repo),
         app.state.settings_service,
         connection=app.state.connection,
+        proposals=app.state.draft_proposals,
     )
 
 
