@@ -11,6 +11,15 @@ the ``claude -p --mcp-config`` child the ``claude_code`` provider starts (see
 
 The bare form matters: it is the container's entry point, and adding a
 subcommand must not change what ``CMD ["gaggiclanker"]`` does.
+
+**Building the parser must not build the application.** Every subcommand
+registers its arguments here so ``--help`` is complete, which means every module
+this one touches is loaded whichever command runs. The ``mcp`` server is started
+again for each chat turn and opens a SQLite file: it must not drag in a device
+client, a sync engine, an outbound HTTP layer or a web server on the way, so the
+work each command actually does is imported inside the function that does it.
+``tests/tools/test_no_machine_reachable.py`` runs the real entry point in a
+child process and fails if any of them arrives.
 """
 
 from __future__ import annotations
@@ -18,8 +27,6 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
-
-import uvicorn
 
 from gaggiclanker import __version__
 from gaggiclanker.imports.cli import add_import_parser, import_command
@@ -45,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def serve() -> None:
     """Run the API and the SPA on the configured host and port."""
+    # Not at module scope: this module is the entry point for `mcp` as well, and
+    # that command is spawned per chat turn to read a SQLite file. It has no use
+    # for a web server, and uvicorn pulls in the whole ASGI stack behind it.
+    import uvicorn
+
     env = EnvSettings()
     configure_logging(env.log_level, json_output=env.log_json)
     uvicorn.run(

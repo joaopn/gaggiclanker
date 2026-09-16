@@ -19,13 +19,16 @@ import argparse
 import asyncio
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.settings_repo import SettingsRepository
-from gaggiclanker.imports.service import ImportFile, ImportResult, ImportService, ImportSummary
 from gaggiclanker.settings import EnvSettings, load_dotenv_values
 from gaggiclanker.settings_service import SettingsService
+
+if TYPE_CHECKING:
+    from gaggiclanker.imports.service import ImportFile, ImportResult, ImportSummary
 
 __all__ = ["IMPORTABLE_SUFFIXES", "add_import_parser", "collect_files", "run_import"]
 
@@ -61,6 +64,8 @@ def collect_files(paths: Iterable[Path]) -> tuple[list[Path], list[ImportResult]
     in a shell that did not expand is a typo, not a reason to lose the rest of
     the batch.
     """
+    from gaggiclanker.imports.service import ImportResult
+
     found: list[Path] = []
     problems: list[ImportResult] = []
     for path in paths:
@@ -88,6 +93,14 @@ async def run_import(
     env: EnvSettings | None = None,
 ) -> ImportSummary:
     """Import every file under ``paths`` into the configured database."""
+    # Imported here rather than at module scope, and this is the one reason:
+    # ``gaggiclanker/__main__.py`` registers every subcommand's arguments to
+    # build its parser, so whatever this module imports is loaded by
+    # ``gaggiclanker mcp`` too — and the import service reaches the device
+    # client, the sync engine and the outbound HTTP layer. The chat spawns the
+    # MCP server once per turn; it has no business loading a machine client.
+    from gaggiclanker.imports.service import ImportFile, ImportResult, ImportService, ImportSummary
+
     env = env or EnvSettings()
     env.data_dir.mkdir(parents=True, exist_ok=True)
 

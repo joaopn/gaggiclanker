@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import subprocess
 import sys
 import threading
@@ -422,25 +423,81 @@ async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
         await db.close()
 
 
-def test_the_chat_and_the_stdio_server_do_not_import_the_device_layer() -> None:
-    """A separate interpreter, so this test's own imports cannot mask the answer."""
-    probe = (
-        "import sys\n"
-        "import gaggiclanker.tools, gaggiclanker.tools.mcp.stdio, gaggiclanker.chat.runner\n"
-        "import gaggiclanker.drafts.proposals, gaggiclanker.starting.service\n"
-        "print(sorted(m for m in sys.modules if m.startswith(('gaggiclanker.device',"
-        " 'gaggiclanker.sync', 'gaggiclanker.drafts.service', 'gaggiclanker.drafts.gate'))))\n"
-    )
+#: Module prefixes that put a machine within reach of whatever loaded them: the
+#: client and its write gate, the sync engine, and the draft service that
+#: pushes. `gaggiclanker.infra.outbound` is deliberately not here — it is how
+#: `gaggiclanker.settings` refuses to let the environment smuggle a credential
+#: into an outbound request, every command needs the settings, and it knows
+#: nothing about the machine.
+DEVICE_MODULE_PREFIXES = (
+    "gaggiclanker.device",
+    "gaggiclanker.sync",
+    "gaggiclanker.drafts.service",
+    "gaggiclanker.drafts.gate",
+    "gaggiclanker.imports.service",
+    "gaggiclanker.main",
+)
+
+#: Printed by each probe below and compared with ``[]``.
+_REPORT = (
+    "import sys, json\n"
+    f"_bad = {DEVICE_MODULE_PREFIXES!r}\n"
+    "print(json.dumps(sorted(m for m in sys.modules if m.startswith(_bad))))\n"
+)
+
+
+def _probe(source: str) -> list[str]:
+    """Run ``source`` in a fresh interpreter and read back the module list it printed.
+
+    A separate process every time, because this test's own imports would
+    otherwise answer the question for it: by the time pytest has collected this
+    file the device layer is loaded in *this* interpreter.
+    """
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-        [sys.executable, "-c", probe],
+        [sys.executable, "-c", source + _REPORT],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
         timeout=60,
     )
+    return list(json.loads(result.stdout.strip().splitlines()[-1]))
 
-    assert result.stdout.strip() == "[]"
+
+def test_the_chat_and_the_stdio_server_do_not_import_the_device_layer() -> None:
+    """Importing what a tool call needs must not load what a machine write needs."""
+    loaded = _probe(
+        "import gaggiclanker.tools, gaggiclanker.tools.mcp.stdio, gaggiclanker.chat.runner\n"
+        "import gaggiclanker.drafts.proposals, gaggiclanker.starting.service\n"
+    )
+
+    assert loaded == []
+
+
+def test_the_mcp_command_itself_does_not_import_the_device_layer() -> None:
+    """The real entry point, not only the module the chat's provider points at.
+
+    ``python -m gaggiclanker mcp`` goes through ``__main__``, which registers
+    every subcommand's arguments to build one parser — so a module imported for
+    the sake of ``gaggiclanker import`` is loaded by the MCP server too, and the
+    chat spawns one of those per turn. The probe runs the actual module with the
+    actual argument vector and stubs only ``asyncio.run``, so everything the
+    command imports has been imported by the time it would have served: the
+    parser, the dispatch and the coroutine are all real.
+    """
+    loaded = _probe(
+        "import asyncio, runpy, sys\n"
+        "asyncio.run = lambda coro, **kwargs: (coro.close(), 0)[1]\n"
+        "sys.argv = ['gaggiclanker', 'mcp']\n"
+        # The module ends in `sys.exit(main())`, which is the process exiting
+        # before anything could be reported; caught so the report still runs.
+        "try:\n"
+        "    runpy.run_module('gaggiclanker', run_name='__main__')\n"
+        "except SystemExit:\n"
+        "    pass\n"
+    )
+
+    assert loaded == []
 
 
 async def _await_named(app: FastAPI, name: str) -> None:
