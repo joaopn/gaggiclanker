@@ -15,7 +15,6 @@ import { humanizeKey } from "@/pages/settings/schema";
 
 const SOURCE_LABEL: Record<string, string> = {
   database: "saved here",
-  environment: "from the environment",
   default: "default",
 };
 

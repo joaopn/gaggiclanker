@@ -4,8 +4,11 @@
 #   open http://localhost:8000        # or http://<this box>:8000 from elsewhere
 #
 # Then enter the machine's address under Settings -> Machine; it connects on
-# save. Nothing needs copying or editing first: `.env` is tracked, every line in
-# it is commented out, and it exists only for an operator who wants a baseline.
+# save. Nothing needs copying or editing first, and there is nothing in this
+# file to fill in: every runtime setting is configured in the UI and stored in
+# the database. The few variables the process itself reads (DATA_DIR, HOST,
+# PORT, LOG_LEVEL, LOG_JSON, WEB_DIST, CORS_ORIGINS) are set by the image; the
+# README's Configuration section says what each one does.
 #
 # Networking, which is the only decision this file forces.
 #
@@ -82,21 +85,53 @@ services:
     # ports:
     #   - "${HOST_PORT:-8000}:8000"
 
+    # Not configuration. A tripwire.
+    #
+    # Nothing here configures this application: every runtime setting lives in
+    # the database and is edited in the UI, and the handful of values the
+    # process needs before it can open that database (DATA_DIR, WEB_DIST, HOST,
+    # PORT, LOG_LEVEL) are set by the image. What this block does is forward,
+    # and only forward, the exact names a boot **refuses** — the sign-in and LLM
+    # credential variables, and the retired device-writes switch.
+    #
+    # Why forward a name nothing reads: Compose substitutes `${VAR}` from a
+    # `.env` in this directory as well as from your shell, and a box upgrading
+    # from a release that read one may still have a `.env` holding AUTH_USER and
+    # AUTH_PASSWORD_HASH, an LLM key, or GAGGICLANKER_DEVICE_WRITES_ENABLED.
+    # Forwarded, those names reach the container and the app refuses to start,
+    # naming them (never their values). Not forwarded, the same box would come
+    # up with the sign-in that file used to configure silently off, and nothing
+    # would say so. Nothing else in a stale file reaches the container, which is
+    # the point: a leftover DATA_DIR or PORT in it must not quietly take effect.
+    #
+    # `${NAME:-}` carries no value of its own, and an unset or empty variable
+    # substitutes to empty, which the app counts as unset — so a clean box boots
+    # with this block exactly as it is. **This list tracks the refusal list in
+    # `gaggiclanker/settings.py` and must never grow into configuration**: a
+    # setting or a bootstrap variable added here would be the second place to
+    # configure this app that the database was meant to end.
+    # `tests/test_release.py` fails if it drifts either way.
     environment:
-      # An optional baseline for the display board's address, for a host that
-      # sets it in the shell. Normally it is entered under Settings -> Machine,
-      # which wins over this and applies without a restart.
-      GAGGIMATE_HOST: ${GAGGIMATE_HOST:-}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      # No credential is ever passed through here. Sign-in and every LLM
-      # provider's key or token are entered in the Settings page and live in
-      # the database; the app refuses to start while a variable that used to
-      # carry one is set.
-
-    # Tracked, every line commented out: optional overrides only.
-    env_file:
-      - path: .env
-        required: false
+      AUTH_USER: ${AUTH_USER:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
+      AUTH_TOKEN_TTL_S: ${AUTH_TOKEN_TTL_S:-}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      GAGGICLANKER_AUTH_PASSWORD: ${GAGGICLANKER_AUTH_PASSWORD:-}
+      GAGGICLANKER_AUTH_JWT_SECRET: ${GAGGICLANKER_AUTH_JWT_SECRET:-}
+      GAGGICLANKER_LLM_API_KEY: ${GAGGICLANKER_LLM_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      ANTHROPIC_CUSTOM_HEADERS: ${ANTHROPIC_CUSTOM_HEADERS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_ADMIN_KEY: ${OPENAI_ADMIN_KEY:-}
+      OPENAI_CUSTOM_HEADERS: ${OPENAI_CUSTOM_HEADERS:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GAGGICLANKER_DEVICE_WRITES_ENABLED: ${GAGGICLANKER_DEVICE_WRITES_ENABLED:-}
+      # To change the log level, uncomment this — it is the one bootstrap value
+      # worth touching from here, and the image's default is `info`:
+      # LOG_LEVEL: ${LOG_LEVEL:-info}
 
     # PORT is read from the environment rather than baked in, the way the
     # Dockerfile's own HEALTHCHECK does it: with host networking the operator

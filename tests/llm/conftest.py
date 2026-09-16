@@ -139,8 +139,8 @@ async def db(tmp_path: Any) -> AsyncIterator[Database]:
 
 @pytest.fixture
 def settings(db: Database) -> SettingsService:
-    """A settings service with no environment and no dotenv behind it."""
-    return SettingsService(SettingsRepository(db), dotenv={})
+    """A settings service over an empty table, so every key is its default."""
+    return SettingsService(SettingsRepository(db))
 
 
 @pytest.fixture

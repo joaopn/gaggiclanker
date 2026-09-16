@@ -116,7 +116,7 @@ async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
                 f"The archive at {path} predates the chat tools. Start gaggiclanker once to "
                 "apply its migrations, then try again."
             )
-        settings = SettingsService(SettingsRepository(db), dotenv={})
+        settings = SettingsService(SettingsRepository(db))
 
         async def context() -> ToolContext:
             return stdio_tool_context(db, settings, set_id=set_id)

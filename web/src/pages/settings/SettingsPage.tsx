@@ -102,7 +102,7 @@ export function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        subtitle="The runtime registry: database over environment over default."
+        subtitle="The runtime registry: what is saved here, or the shipped default."
         actions={
           <Button onClick={onSubmit} disabled={!settings || update.isPending}>
             {update.isPending ? "Saving..." : "Save changes"}

@@ -14,7 +14,7 @@ import pytest
 
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import running_app, seed_settings
 
 # ── with no machine configured ───────────────────────────────────────
 
@@ -53,17 +53,16 @@ async def test_the_live_stream_is_gone(env: EnvSettings) -> None:
 
 
 @pytest.fixture
-def device_env(
-    data_dir: Path, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch
-) -> EnvSettings:
-    monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "2")
-    return EnvSettings(
+async def device_env(data_dir: Path, fake_device: FakeDevice) -> EnvSettings:
+    """An archive that already holds the machine's address, as a restarted box does."""
+    env = EnvSettings(
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         LOG_JSON=True,
         _env_file=None,  # type: ignore[call-arg]
     )
+    await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=2)
+    return env
 
 
 async def test_status_reports_the_machine_it_connected_to(
@@ -91,13 +90,12 @@ async def test_sync_disabled_leaves_the_client_unstarted(
     data_dir: Path, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Somebody working on the archive should not take one of three WS slots."""
-    monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
-    monkeypatch.setenv("GAGGICLANKER_DEVICE_SYNC_ENABLED", "false")
     env = EnvSettings(
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         _env_file=None,  # type: ignore[call-arg]
     )
+    await seed_settings(env, gaggimateHost=fake_device.address, deviceSyncEnabled=False)
     async with running_app(env) as (app, client):
         assert app.state.connection.client is None
         assert (await client.get("/api/device/status")).json()["data"]["configured"] is False

@@ -1,8 +1,11 @@
 """Settings precedence, the API shape, and secret handling.
 
-The precedence rule (database > environment > default) is the part most likely
-to be broken by a future change, and the least likely to be noticed: a setting
-changed in the UI that silently does nothing looks like a UI bug for weeks.
+The precedence rule (database > default) is the part most likely to be broken
+by a future change, and the least likely to be noticed: a setting changed in the
+UI that silently does nothing looks like a UI bug for weeks. The environment is
+no longer part of that rule at all, which is a behaviour in its own right — a
+variable that used to configure a setting must now be inert and *said* to be
+inert, and the one that used to allow writes to the machine must stop the boot.
 """
 
 from __future__ import annotations
@@ -11,7 +14,14 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.settings import REMOVED_SETTINGS, SETTINGS_REGISTRY, EnvSettings, secret_hint
+from gaggiclanker.settings import (
+    DEVICE_WRITES_ENV_KEY,
+    FORMER_SETTING_ENV_KEYS,
+    REMOVED_SETTINGS,
+    SETTINGS_REGISTRY,
+    EnvSettings,
+    secret_hint,
+)
 from tests.conftest import running_app
 
 
@@ -44,22 +54,26 @@ async def test_every_registry_key_documents_itself(client: httpx.AsyncClient) ->
         assert payload["type"] in {"string", "int", "float", "bool"}
 
 
-async def test_environment_overrides_the_default(
+async def test_a_former_variable_does_not_configure_a_setting(
     monkeypatch: pytest.MonkeyPatch, env: EnvSettings
 ) -> None:
+    """The environment is inert: a setting is what the database says, or its default.
+
+    This is the rule the rest of the layer rests on. A variable that still works
+    is a second configuration surface that can disagree with the Settings page,
+    and disagreeing silently is how a value edited in the UI appears to do
+    nothing.
+    """
     monkeypatch.setenv("GAGGIMATE_HOST", "10.0.0.42")
     async with running_app(env) as (_app, client):
         settings = await get_settings(client)
-        assert settings["gaggimateHost"]["value"] == "10.0.0.42"
-        assert settings["gaggimateHost"]["source"] == "environment"
+        assert settings["gaggimateHost"]["value"] == ""
+        assert settings["gaggimateHost"]["source"] == "default"
         assert settings["gaggimateHost"]["override"] is None
 
 
-async def test_database_override_beats_the_environment(
-    monkeypatch: pytest.MonkeyPatch, env: EnvSettings
-) -> None:
-    """The value the maintainer set in the UI wins over the compose file."""
-    monkeypatch.setenv("GAGGIMATE_HOST", "10.0.0.42")
+async def test_a_stored_value_beats_the_default(env: EnvSettings) -> None:
+    """What the maintainer saved in the UI is what the app runs on."""
     async with running_app(env) as (_app, client):
         patch = await client.patch("/api/settings", json={"gaggimateHost": "gaggimate.local"})
         assert patch.status_code == 200
@@ -70,17 +84,18 @@ async def test_database_override_beats_the_environment(
         assert settings["gaggimateHost"]["source"] == "database"
 
 
-async def test_clearing_an_override_falls_back_to_the_environment(
+async def test_clearing_an_override_falls_back_to_the_default(
     monkeypatch: pytest.MonkeyPatch, env: EnvSettings
 ) -> None:
-    monkeypatch.setenv("GAGGIMATE_HOST", "10.0.0.42")
+    """Even with the old variable set: there is nothing between the row and the default."""
+    monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST", "12")
     async with running_app(env) as (_app, client):
-        await client.patch("/api/settings", json={"gaggimateHost": "gaggimate.local"})
-        await client.patch("/api/settings", json={"gaggimateHost": None})
+        await client.patch("/api/settings", json={"deviceCleanupKeepNewest": 15})
+        await client.patch("/api/settings", json={"deviceCleanupKeepNewest": None})
 
         settings = await get_settings(client)
-        assert settings["gaggimateHost"]["value"] == "10.0.0.42"
-        assert settings["gaggimateHost"]["source"] == "environment"
+        assert settings["deviceCleanupKeepNewest"]["value"] == 50
+        assert settings["deviceCleanupKeepNewest"]["source"] == "default"
 
 
 async def test_override_survives_a_restart(env: EnvSettings) -> None:
@@ -92,17 +107,6 @@ async def test_override_survives_a_restart(env: EnvSettings) -> None:
         settings = await get_settings(client)
         assert settings["deviceCleanupKeepNewest"]["value"] == 15
         assert settings["deviceCleanupKeepNewest"]["source"] == "database"
-
-
-async def test_unparseable_environment_value_falls_back_to_the_default(
-    monkeypatch: pytest.MonkeyPatch, env: EnvSettings
-) -> None:
-    """A typo in the compose file must not take the container down."""
-    monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST", "sixty")
-    async with running_app(env) as (_app, client):
-        settings = await get_settings(client)
-        assert settings["deviceCleanupKeepNewest"]["value"] == 50
-        assert settings["deviceCleanupKeepNewest"]["source"] == "default"
 
 
 async def test_a_row_for_a_key_that_no_longer_exists_is_ignored(env: EnvSettings) -> None:
@@ -130,14 +134,15 @@ async def test_a_row_for_a_key_that_no_longer_exists_is_ignored(env: EnvSettings
         assert set(settings) == set(SETTINGS_REGISTRY)
 
 
-async def test_a_retired_write_switch_in_the_environment_is_named_at_boot_and_does_nothing(
+async def test_former_setting_variables_are_named_once_at_boot_and_do_nothing(
     env: EnvSettings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Boot succeeds, one warning per variable names it, and the value is never logged.
+    """Boot succeeds, one line names every variable, and no value is logged.
 
-    Each of these used to switch on a write to the machine that no longer
-    happens on its own; an owner with one in a compose file should hear that
-    it is inert rather than find out by its silence.
+    Two kinds in one list: a variable that used to configure a setting that
+    still exists, and one whose setting was removed outright. Both do nothing
+    now, and an owner with either in a compose file should hear that rather
+    than find out by its silence.
     """
     from gaggiclanker.infra.logging import configure_logging
 
@@ -147,7 +152,8 @@ async def test_a_retired_write_switch_in_the_environment_is_named_at_boot_and_do
         "notesWritebackEnabled",
         "mcpEnabled",
     }
-    for env_key in REMOVED_SETTINGS.values():
+    named = ("GAGGIMATE_HOST", "GAGGICLANKER_MODEL_ANALYSIS", *REMOVED_SETTINGS.values())
+    for env_key in named:
         monkeypatch.setenv(env_key, "true-and-secret-looking")
     configure_logging("info", json_output=True)
     try:
@@ -160,40 +166,74 @@ async def test_a_retired_write_switch_in_the_environment_is_named_at_boot_and_do
 
     assert set(settings) == set(SETTINGS_REGISTRY)
     assert not set(REMOVED_SETTINGS) & set(settings)
-    warnings = [line for line in logged.splitlines() if "setting_removed_env_ignored" in line]
-    assert len(warnings) == len(REMOVED_SETTINGS)
-    for env_key in REMOVED_SETTINGS.values():
-        assert any(env_key in line for line in warnings), env_key
+    assert settings["gaggimateHost"]["source"] == "default"
+    warnings = [line for line in logged.splitlines() if "setting_env_ignored" in line]
+    assert len(warnings) == 1, logged
+    for env_key in named:
+        assert env_key in warnings[0], env_key
     assert "true-and-secret-looking" not in logged
-    # And it cannot be set back through the API either.
+    # And a removed key cannot be set back through the API either.
     assert response.status_code == 400
 
 
-async def test_no_warning_when_no_retired_variable_is_set(
+async def test_no_warning_when_no_former_variable_is_set(
     env: EnvSettings, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """An old compose file passing ``GAGGIMATE_HOST=`` through says nothing at all."""
     from gaggiclanker.infra.logging import configure_logging
 
-    for env_key in REMOVED_SETTINGS.values():
+    for env_key in FORMER_SETTING_ENV_KEYS:
         monkeypatch.delenv(env_key, raising=False)
     monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_AUTO", "  ")
+    monkeypatch.setenv("GAGGIMATE_HOST", "")
     configure_logging("info", json_output=True)
     try:
-        async with running_app(env):
+        async with running_app(env) as (_app, client):
             logged = capsys.readouterr().out
+            settings = await get_settings(client)
     finally:
         configure_logging("warning", json_output=True)
-    assert "setting_removed_env_ignored" not in logged
+    assert "setting_env_ignored" not in logged
+    assert settings["gaggimateHost"]["source"] == "default"
 
 
-async def test_empty_environment_value_is_not_an_override(
-    monkeypatch: pytest.MonkeyPatch, env: EnvSettings
+@pytest.mark.parametrize(
+    "name",
+    [DEVICE_WRITES_ENV_KEY, DEVICE_WRITES_ENV_KEY.lower(), "Gaggiclanker_Device_Writes_Enabled"],
+)
+async def test_the_retired_device_writes_switch_refuses_the_boot(
+    name: str,
+    env: EnvSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``GAGGIMATE_HOST=`` in a compose file means "unset", not "empty host"."""
-    monkeypatch.setenv("GAGGIMATE_HOST", "")
+    """The one former variable that stops the boot instead of being ignored.
+
+    It used to open the only path from this box to the machine. Ignoring it with
+    a line in a log nobody reads would leave its owner believing a file they
+    control still decides whether a profile can be written.
+    """
+    monkeypatch.setenv(name, "true")
+    with pytest.raises(RuntimeError) as caught:
+        async with running_app(env):
+            pass
+    logged = capsys.readouterr().out
+    assert name in str(caught.value)
+    assert "Settings" in str(caught.value)
+    assert [line for line in logged.splitlines() if "device_writes_env_refused" in line]
+    # Refused before the database was created, let alone opened.
+    assert not env.database_path.exists()
+
+
+async def test_an_empty_device_writes_switch_boots_with_writes_still_off(
+    env: EnvSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``GAGGICLANKER_DEVICE_WRITES_ENABLED=`` means unset, the rule everywhere here."""
+    monkeypatch.setenv(DEVICE_WRITES_ENV_KEY, "")
     async with running_app(env) as (_app, client):
         settings = await get_settings(client)
-        assert settings["gaggimateHost"]["source"] == "default"
+        assert settings["deviceWritesEnabled"]["value"] is False
+        assert settings["deviceWritesEnabled"]["source"] == "default"
 
 
 async def test_booleans_round_trip(client: httpx.AsyncClient) -> None:
@@ -285,14 +325,30 @@ async def test_unset_secret_reports_no_hint(client: httpx.AsyncClient) -> None:
     assert entry["hint"] is None
 
 
-def test_no_secret_setting_reads_the_environment() -> None:
-    """A credential is entered in Settings and lives in the database, never in a variable.
+def test_no_setting_declares_an_environment_variable_at_all() -> None:
+    """Not "no secret reads one": nothing in the registry can read one.
 
-    The whole registry, so a secret added later is covered the day it lands.
+    The field is gone from the declaration, so a setting added later cannot
+    acquire an environment layer by filling one in — which is what made this
+    worth removing rather than emptying.
     """
-    secrets = [definition for definition in SETTINGS_REGISTRY.values() if definition.secret]
-    assert secrets, "the registry has no secrets, so this test is checking nothing"
-    assert [d.key for d in secrets if d.env_key is not None] == []
+    from gaggiclanker.settings import SettingDefinition
+
+    assert "env_key" not in SettingDefinition.__slots__
+    assert [d.key for d in SETTINGS_REGISTRY.values() if d.secret], (
+        "the registry has no secrets, so this test is checking nothing"
+    )
+
+
+def test_the_variables_that_stop_a_boot_are_never_merely_ignored() -> None:
+    """The three lists are disjoint: a name is refused, or reported, never both."""
+    from gaggiclanker.settings import RETIRED_AUTH_ENV_KEYS
+
+    former = {name.upper() for name in FORMER_SETTING_ENV_KEYS}
+    assert former.isdisjoint({name.upper() for name in RETIRED_AUTH_ENV_KEYS})
+    assert DEVICE_WRITES_ENV_KEY.upper() not in former
+    # And every removed setting's variable is in the reported list.
+    assert {name.upper() for name in REMOVED_SETTINGS.values()} <= former
 
 
 def test_every_retired_credential_variable_is_refused_at_boot() -> None:
@@ -351,34 +407,3 @@ async def test_rejection_messages_are_fixed_strings(
     response = await client.patch("/api/settings", json={key: value})
     assert response.status_code == 400
     assert response.json()["error"]["details"] == [{"field": key, "message": message}]
-
-
-async def test_dotenv_is_part_of_the_environment(env: EnvSettings) -> None:
-    """A key set in .env must work for registry settings, not only bootstrap ones.
-
-    EnvSettings reads .env through pydantic-settings, so DATA_DIR from that file
-    worked while GAGGIMATE_HOST from the same file was ignored: one file, two
-    behaviours, and nothing telling the user which keys were which.
-    """
-    async with running_app(env, dotenv={"GAGGIMATE_HOST": "from-dotenv"}) as (_app, client):
-        settings = await get_settings(client)
-        assert settings["gaggimateHost"]["value"] == "from-dotenv"
-        assert settings["gaggimateHost"]["source"] == "environment"
-
-
-async def test_process_environment_beats_dotenv(
-    monkeypatch: pytest.MonkeyPatch, env: EnvSettings
-) -> None:
-    """Same precedence pydantic-settings applies to the bootstrap keys."""
-    monkeypatch.setenv("GAGGIMATE_HOST", "from-process-env")
-    async with running_app(env, dotenv={"GAGGIMATE_HOST": "from-dotenv"}) as (_app, client):
-        settings = await get_settings(client)
-        assert settings["gaggimateHost"]["value"] == "from-process-env"
-
-
-async def test_database_beats_dotenv_too(env: EnvSettings) -> None:
-    async with running_app(env, dotenv={"GAGGIMATE_HOST": "from-dotenv"}) as (_app, client):
-        await client.patch("/api/settings", json={"gaggimateHost": "from-ui"})
-        settings = await get_settings(client)
-        assert settings["gaggimateHost"]["value"] == "from-ui"
-        assert settings["gaggimateHost"]["source"] == "database"

@@ -21,7 +21,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import machine_tasks, running_app
+from tests.conftest import machine_tasks, running_app, seed_settings
 from tests.sync.conftest import CORRUPT_ID, NOTES_ID, SMALL_COUNT, build_archive_device
 
 #: One less than the machine holds: the device has already deleted one file.
@@ -62,11 +62,9 @@ async def served(
         LOG_JSON=True,
         _env_file=None,  # type: ignore[call-arg]
     )
+    await seed_settings(env, gaggimateHost=device.address)
     try:
-        # Through `dotenv` rather than os.environ: the settings service reads
-        # the same parsed file the bootstrap settings do, and a test that
-        # mutated the process environment would leak into its neighbours.
-        async with running_app(env, dotenv={"GAGGIMATE_HOST": device.address}) as (app, client):
+        async with running_app(env) as (app, client):
             await _pull_everything(client)
             yield device, app, client
     finally:

@@ -149,9 +149,6 @@ activemq-data/
 
 # Environments
 .env
-# ...except the one at the repository root: a tracked file of optional,
-# commented-out overrides. A .env anywhere else stays ignored.
-!/.env
 .envrc
 .venv
 env/

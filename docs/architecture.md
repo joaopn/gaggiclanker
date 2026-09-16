@@ -105,17 +105,21 @@ SQL. Repositories are the only code that writes SQL, services hold the logic,
 routes parse and delegate.
 
 **Settings are one declaration each.** A row in `SETTINGS_REGISTRY` gives you
-the database column, the API field, the validation, the environment variable and
-the UI control. Precedence is database > environment > default, so a value
-changed in the UI is not silently reverted by a variable in the compose file.
+the database column, the API field, the validation and the UI control. A setting
+is what the database holds or what the declaration defaults to — nothing else,
+and no environment variable, so there is no second surface that can disagree with
+the Settings page. Only what the process needs before it can open the database
+(`DATA_DIR`, `HOST`, `PORT`, `LOG_LEVEL`, `LOG_JSON`, `WEB_DIST`, `CORS_ORIGINS`)
+comes from the environment; a variable that used to configure a setting is named
+once at boot (`setting_env_ignored`) and otherwise ignored, and the one that used
+to allow writes to the machine stops the boot instead.
 Secrets are write-only through the API: a `GET` returns a four-character hint.
 
-**Credentials never come from the environment.** A secret registry key has no
-environment variable, and the sign-in settings have none either: they are
-entered in the Settings page and live in the database. A boot that finds one of
-the variables that used to carry a credential set refuses to start, naming it,
-rather than start with authentication silently off or a key still sitting in a
-compose file.
+**Credentials never come from the environment.** No setting reads a variable at
+all, the sign-in settings included: they are entered in the Settings page and
+live in the database. A boot that finds one of the variables that used to carry a
+credential set refuses to start, naming it, rather than start with authentication
+silently off or a key still sitting in a compose file.
 
 **Every credential for an external service lives only in the database** — and
 that includes what libraries and child processes would pick up on their own.

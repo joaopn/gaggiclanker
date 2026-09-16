@@ -28,6 +28,7 @@ from gaggiclanker.device.fake import FakeDevice, synthetic_slog_bytes
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.sync.engine import SHOT_INGESTED_EVENT, SYNC_PROGRESS_EVENT
+from tests.conftest import seed_settings
 from tests.device.conftest import parse_sse_frame, serving
 from tests.sync.conftest import SMALL_COUNT, build_archive_device
 
@@ -35,22 +36,22 @@ NEW_SHOT_ID = 900
 
 
 @pytest.fixture
-async def stocked(monkeypatch: pytest.MonkeyPatch) -> FakeDevice:
+async def stocked() -> FakeDevice:
     device = build_archive_device(SMALL_COUNT, header_only=False)
     await device.start()
-    monkeypatch.setenv("GAGGIMATE_HOST", device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "2")
     return device
 
 
 @pytest.fixture
-def sync_env(data_dir: Path, stocked: FakeDevice) -> EnvSettings:
-    return EnvSettings(
+async def sync_env(data_dir: Path, stocked: FakeDevice) -> EnvSettings:
+    env = EnvSettings(
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         LOG_JSON=True,
         _env_file=None,  # type: ignore[call-arg]
     )
+    await seed_settings(env, gaggimateHost=stocked.address, gaggimateTimeoutSeconds=2)
+    return env
 
 
 #: The passes a full pull runs. A test that waited only for the shot count would

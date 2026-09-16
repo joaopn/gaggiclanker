@@ -90,7 +90,7 @@ function settingsFixture(): SettingsMap {
       readonly: false,
       configured: true,
       hint: "sk-p",
-      source: "environment",
+      source: "database",
       description: "API key for the configured LLM provider.",
     },
   };
@@ -138,12 +138,12 @@ describe("SettingsPage", () => {
     expect(screen.getByText("set - sk-p...")).toBeInTheDocument();
   });
 
-  it("labels where each value came from, because precedence is the thing people get wrong", async () => {
+  it("labels where each value came from: saved here, or the shipped default", async () => {
     renderWithQueryClient(<SettingsPage />);
     await screen.findByLabelText("Gaggimate host");
     expect(screen.getAllByText("saved here").length).toBeGreaterThan(0);
     expect(screen.getAllByText("default").length).toBeGreaterThan(0);
-    expect(screen.getByText("from the environment")).toBeInTheDocument();
+    expect(screen.queryByText("from the environment")).not.toBeInTheDocument();
   });
 
   it("PATCHes only the fields that changed, and toasts on success", async () => {
@@ -156,8 +156,8 @@ describe("SettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
-    // Not the whole form: writing every key back would turn an environment
-    // baseline into a database override on the first save.
+    // Not the whole form: writing every key back would freeze every shipped
+    // default as a stored row on the first save.
     // `mock.calls[0][0]` rather than toHaveBeenCalledWith: react-query 5 passes
     // a mutation context as a second argument to every mutationFn.
     expect(patchSettings.mock.calls[0][0]).toEqual({ gaggimateHost: "10.0.0.9" });

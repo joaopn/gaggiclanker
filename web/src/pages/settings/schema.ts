@@ -122,11 +122,10 @@ function parseField(setting: ResolvedSetting, raw: string | boolean): SettingVal
 /**
  * Only what actually changed.
  *
- * Sending the whole form back would rewrite every key as a database override,
- * which is precisely what makes an environment variable stop working: after
- * one save the operator's compose file is shadowed by a row that happens to
- * hold the same value. See `settings_service.py` for the precedence this
- * protects.
+ * Sending the whole form back would rewrite every key as a stored override,
+ * so a default the maintainer never touched would be frozen at whatever it was
+ * the day somebody pressed Save — and a later release changing that default
+ * would silently not reach this box. A key nobody edited keeps no row.
  */
 export function toPatch(settings: SettingsMap, values: SettingsFormValues): SettingsPatch {
   const patch: SettingsPatch = {};

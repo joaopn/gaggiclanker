@@ -504,7 +504,7 @@ def budget() -> RateLimitBudget:
 @pytest.fixture
 def llm(db: Database, provider: FakeProvider, budget: RateLimitBudget) -> LlmService:
     return LlmService(
-        SettingsService(SettingsRepository(db), dotenv={}),
+        SettingsService(SettingsRepository(db)),
         budget=budget,
         mode_memory=ModeMemory(),
         provider_factory=lambda _config, _name: provider,

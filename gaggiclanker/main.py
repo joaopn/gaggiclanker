@@ -62,7 +62,13 @@ from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
-from gaggiclanker.settings import EnvSettings, load_dotenv_values, retired_auth_env_keys
+from gaggiclanker.settings import (
+    EnvSettings,
+    device_writes_env_key_set,
+    ignored_setting_env_keys,
+    load_dotenv_values,
+    retired_auth_env_keys,
+)
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
@@ -137,20 +143,31 @@ def check_configuration(
     teardown in :func:`lifespan` covers the ones that cannot.
     ``tests/test_startup.py`` holds both halves in place.
 
-    The one check today: no credential variable may be set — not the sign-in
-    settings, not an LLM provider's key or token, not a variable the SDKs would
+    Two checks today, and both refuse rather than warn.
+
+    **No credential variable may be set** — not the sign-in settings, not an LLM
+    provider's key or token, not a variable the SDKs would
     read a credential from, and no proxy variable carrying a user or password. Credentials are
     configured in the database alone, and an install that used to configure
     sign-in through the environment has its user and hash only there — starting
     with those variables silently ignored would switch authentication off and
     open every route. Refusing is the closed failure; the log names the
-    variables (never a value) and says where credentials live now. ``environ`` and ``dotenv`` are
+    variables (never a value) and says where credentials live now.
+
+    **The retired device-writes switch may not be set either.** Every other
+    former setting variable is ignored with a line in the boot log naming it
+    (:func:`~gaggiclanker.settings.ignored_setting_env_keys`, reported in
+    :func:`_start`), because ignoring a preference costs a trip to the Settings
+    page. That one allowed this box to write to an espresso machine, and its
+    owner would go on believing a file they control still gates the writes. So
+    it stops the boot instead.
+
+    ``environ`` and ``dotenv`` are
     parameters so a test can hand in its own; they default to the process
     environment and to nothing.
     """
-    retired = retired_auth_env_keys(
-        os.environ if environ is None else environ, {} if dotenv is None else dotenv
-    )
+    process_env = os.environ if environ is None else environ
+    retired = retired_auth_env_keys(process_env, {} if dotenv is None else dotenv)
     if retired:
         log.error(
             "auth_env_refused",
@@ -168,6 +185,21 @@ def check_configuration(
             "Settings → Authentication and provider keys under Settings → LLM. Refusing to start "
             "rather than start with authentication silently switched off or a credential taken "
             "from somewhere other than the database."
+        )
+
+    writes_switch = device_writes_env_key_set(process_env)
+    if writes_switch is not None:
+        log.error(
+            "device_writes_env_refused",
+            env_key=writes_switch,
+            fix="remove the variable and set Allow writes to the machine under Settings → Machine",
+        )
+        raise RuntimeError(
+            f"{writes_switch} no longer allows this box to write to the machine: writes are "
+            "switched on under Settings → Machine and the switch lives in the database. Remove "
+            "the variable from the environment and compose.yml, then set it there. Refusing to "
+            "start rather than ignore a switch that used to open the one path to an espresso "
+            "machine."
         )
 
 
@@ -253,14 +285,20 @@ async def _start(app: FastAPI, db: Database) -> None:
     await run_migrations(db)
 
     app.state.db = db
-    settings_service = SettingsService(SettingsRepository(db), dotenv=app.state.dotenv)
+    settings_service = SettingsService(SettingsRepository(db))
     app.state.settings_service = settings_service
-    # One line per retired variable still set, naming it and never its value:
-    # each of these used to switch on something that no longer exists — a write
-    # to the machine nothing does automatically any more, or a network endpoint
-    # for MCP — and whoever set it should hear that it is inert.
-    for env_key in settings_service.removed_env_keys():
-        log.warning("setting_removed_env_ignored", env_key=env_key)
+    # One line naming every former setting variable still set, and never a
+    # value. A runtime setting comes from the database or its default, so a
+    # variable in somebody's compose file configures nothing — and a file that
+    # silently does nothing is worse than one that is gone, because its owner
+    # goes on believing the box is configured the way the file says.
+    ignored = ignored_setting_env_keys(os.environ)
+    if ignored:
+        log.warning(
+            "setting_env_ignored",
+            env_keys=ignored,
+            fix="settings are configured in the Settings page and stored in the database",
+        )
     app.state.events = EventBus[SseEvent]()
     # The app's shared registry: analyses, chat runs, starting points — work a
     # language model can queue, and nothing that touches the machine. The tasks

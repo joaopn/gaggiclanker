@@ -1,10 +1,12 @@
-"""The release contract: the version, the tracked `.env`, and boot reconciliation.
+"""The release contract: the version, the configuration surface, and boot reconciliation.
 
-Documentation rots silently. A setting added to the registry with no line in
-`.env` is invisible to everyone who configures this from a file, and a line in
-`.env` naming a variable nothing reads is worse — it looks like it works. Both
-are one test. And because `.env` is tracked, every line in it is commented out:
-an untouched checkout must change nothing.
+There is one place to configure this application — the Settings page, backed by
+the database — and a handful of variables the process reads before there is a
+database to read. Documentation rots silently, so both halves are pinned here: a
+bootstrap variable with no line in the README is invisible to whoever deploys
+this, and a tracked file of variables would be a second surface that looks like
+it works and does not. A clean checkout must boot on its defaults with nothing
+copied or edited first.
 """
 
 from __future__ import annotations
@@ -21,80 +23,62 @@ from fastapi import FastAPI
 from gaggiclanker import __version__
 from gaggiclanker.db.repos.analyses import AnalysesRepository, AnalysisStart
 from gaggiclanker.db.repos.sync import SyncRepository
-from gaggiclanker.settings import SETTINGS_REGISTRY, EnvSettings
+from gaggiclanker.settings import (
+    DEVICE_WRITES_ENV_KEY,
+    FORMER_SETTING_ENV_KEYS,
+    RETIRED_AUTH_ENV_KEYS,
+    SETTINGS_REGISTRY,
+    EnvSettings,
+    SettingDefinition,
+)
 from tests.conftest import running_app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ENV_FILE = REPO_ROOT / ".env"
+README = REPO_ROOT / "README.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 COMPOSE = REPO_ROOT / "compose.yml"
 
-#: `NAME=value` at the start of a line, commented or not. Both count: a
-#: documented variable is documented whether or not the example sets it.
-_ASSIGNMENT = re.compile(r"^#?\s*([A-Z][A-Z0-9_]*)=", re.MULTILINE)
 
-#: Variables `.env` documents that are not registry keys. Each one is
-#: read by something — the bootstrap layer, Compose itself, or the image — and
-#: naming them here is what keeps the parity test honest rather than loose.
-_NON_REGISTRY_KEYS: frozenset[str] = frozenset(
-    {
-        # EnvSettings (gaggiclanker/settings.py), read once at startup.
-        "DATA_DIR",
-        "LOG_LEVEL",
-        "LOG_JSON",
-        "HOST",
-        "PORT",
-        "WEB_DIST",
-        "CORS_ORIGINS",
-        # Read by compose.yml, not by the app.
-        "HOST_PORT",
-        "APP_UID",
-        "APP_GID",
-    }
-)
+def bootstrap_variable_names() -> list[str]:
+    """The primary name of every :class:`EnvSettings` field."""
+    names = []
+    for name, field in EnvSettings.model_fields.items():
+        alias = field.validation_alias
+        names.append(str(alias.choices[0]) if hasattr(alias, "choices") else name.upper())  # type: ignore[union-attr]
+    return names
 
 
-def env_file_keys() -> set[str]:
-    return set(_ASSIGNMENT.findall(ENV_FILE.read_text(encoding="utf-8")))
+def test_no_setting_is_configured_from_the_environment() -> None:
+    """The registry declares values, never variable names.
+
+    A setting that could name one would bring back the second configuration
+    surface this release removed: a compose file that disagrees with the
+    Settings page, silently, with no way for the person looking at either to
+    tell which one the app is running on.
+    """
+    assert "env_key" not in SettingDefinition.__slots__
+    assert SETTINGS_REGISTRY, "an empty registry would make this test vacuous"
 
 
-def registry_env_keys() -> set[str]:
-    return {d.env_key for d in SETTINGS_REGISTRY.values() if d.env_key}
+def test_the_bootstrap_variables_are_documented_in_the_readme() -> None:
+    """The seven the process reads before it can open the database.
+
+    They are documented in the README's Configuration section rather than in a
+    file to copy, because a tracked file of variables is what this release got
+    rid of.
+    """
+    readme = README.read_text(encoding="utf-8")
+    for name in bootstrap_variable_names():
+        assert name in readme, f"{name} is not documented in README.md"
 
 
-def test_every_registry_setting_is_documented_in_env_file() -> None:
-    missing = sorted(registry_env_keys() - env_file_keys())
-    assert not missing, f"settings with no line in .env: {missing}"
+def test_the_repository_ships_no_env_file() -> None:
+    """A checkout has nothing to copy, edit, or conflict with on the next pull."""
+    assert not (REPO_ROOT / ".env").exists()
+    assert not (REPO_ROOT / ".env.example").exists()
 
 
-def test_env_file_documents_nothing_that_is_not_read() -> None:
-    unknown = sorted(env_file_keys() - registry_env_keys() - _NON_REGISTRY_KEYS)
-    assert not unknown, f".env names variables nothing reads: {unknown}"
-
-
-def test_every_line_of_the_env_file_is_a_comment() -> None:
-    """Tracked by git, so an untouched checkout must set nothing at all."""
-    active = [
-        (number, line)
-        for number, line in enumerate(ENV_FILE.read_text(encoding="utf-8").splitlines(), 1)
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
-    assert not active, f".env has lines that are not comments: {active}"
-
-
-def test_the_env_file_points_nowhere_real() -> None:
-    """No example value that would aim somebody's box at a machine that is not theirs."""
-    values = re.findall(
-        r"^#?\s*[A-Z][A-Z0-9_]*=(.*)$", ENV_FILE.read_text(encoding="utf-8"), re.MULTILINE
-    )
-    addresses = [
-        address for value in values for address in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", value)
-    ]
-    # Loopback is the fake device's and the simulator's, and HOST's own example.
-    assert all(address.startswith("127.") for address in addresses), addresses
-
-
-def test_the_env_file_is_not_ignored_but_other_env_files_are() -> None:
+def test_an_env_file_is_ignored_by_git_wherever_it_is() -> None:
     import subprocess
 
     def ignored(path: str) -> bool:
@@ -107,28 +91,54 @@ def test_the_env_file_is_not_ignored_but_other_env_files_are() -> None:
 
     if not (REPO_ROOT / ".git").exists():
         pytest.skip("not a git checkout")
-    assert not ignored(".env")
+    assert ignored(".env")
     assert ignored("web/.env")
     assert ignored(".envrc")
 
 
-def test_the_bootstrap_settings_are_all_documented() -> None:
-    """`EnvSettings`' own aliases, which the registry test above cannot see."""
-    documented = env_file_keys()
-    for name, field in EnvSettings.model_fields.items():
-        alias = field.validation_alias
-        primary = alias.choices[0] if hasattr(alias, "choices") else name.upper()  # type: ignore[union-attr]
-        assert str(primary) in documented, f"{name} is not in .env"
+def test_compose_forwards_exactly_the_names_a_boot_refuses() -> None:
+    """Compose's `environment:` is a tripwire, not a configuration surface.
+
+    The app reads no `.env`, but Compose still substitutes `${VAR}` from one in
+    the project directory as well as from the invoking shell. Forwarding exactly
+    the names :func:`~gaggiclanker.main.check_configuration` refuses means a box
+    upgrading from the era of that file cannot come up with the sign-in it used
+    to configure silently off, or with the retired device-writes switch silently
+    ignored — while nothing else in a stale file reaches the container, so a
+    leftover `DATA_DIR` or `PORT` in it does not quietly take effect.
+
+    Pinned in both directions. Short of the refusal list, a name stops tripping
+    and an upgrade goes quiet. Beyond it, `compose.yml` becomes the second place
+    to configure this application that the database was meant to end — so a
+    registry key or a bootstrap variable here fails this test. Every entry is
+    `${NAME:-}`: it forwards, it carries no value of its own (a credential
+    written in here would be a credential in a file), and an unset variable
+    substitutes to empty, which counts as unset, so a clean box boots.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
+    service = compose["services"]["gaggiclanker"]
+
+    # No `env_file`: that would let everything in a stale file through, not just
+    # the names worth refusing.
+    assert "env_file" not in service
+
+    forwarded: dict[str, str] = service["environment"]
+    assert set(forwarded) == {*RETIRED_AUTH_ENV_KEYS, DEVICE_WRITES_ENV_KEY}
+    assert all(value == f"${{{name}:-}}" for name, value in forwarded.items()), forwarded
+    assert set(forwarded).isdisjoint(FORMER_SETTING_ENV_KEYS)
+    assert set(forwarded).isdisjoint(bootstrap_variable_names())
 
 
-def test_no_credential_variable_is_named_in_the_env_file_or_compose() -> None:
-    """Credentials are entered in Settings; the files an operator copies must not invite them."""
-    from gaggiclanker.settings import RETIRED_AUTH_ENV_KEYS
+def test_compose_configures_no_setting_anywhere_in_the_file() -> None:
+    """A former setting variable assigned here would do nothing, which is worse than absent.
 
-    for path in (ENV_FILE, COMPOSE):
-        text = path.read_text(encoding="utf-8")
-        named = [name for name in RETIRED_AUTH_ENV_KEYS if name in text]
-        assert not named, f"{path.name} names retired credential variables: {named}"
+    Assignments, not mentions: the prose in that file legitimately names the
+    variables a boot refuses, which is how somebody reading it learns why.
+    """
+    text = COMPOSE.read_text(encoding="utf-8")
+    assigned = set(re.findall(r"^\s*([A-Z][A-Z0-9_]*)\s*[:=]", text, re.MULTILINE))
+    forbidden = assigned & set(FORMER_SETTING_ENV_KEYS)
+    assert not forbidden, f"compose.yml sets retired setting variables: {sorted(forbidden)}"
 
 
 def test_the_version_is_the_release_and_agrees_everywhere() -> None:

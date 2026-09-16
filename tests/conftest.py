@@ -21,10 +21,14 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.db.connection import Database
+from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
+from gaggiclanker.settings_service import SettingsService
 
 # Environment variables that would leak a developer's real configuration into a
 # test. Cleared for every test; a test that wants one sets it explicitly.
@@ -166,6 +170,32 @@ async def running_app(
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             yield app, client
+
+
+async def seed_settings(env: EnvSettings, **values: Any) -> None:
+    """Store runtime settings in the archive **before** an app boots on it.
+
+    A runtime setting lives in the database and nowhere else, so "an app that
+    starts already configured" means an archive whose rows are already there —
+    the state a box set up yesterday and restarted today is in. That is what a
+    test wanting a machine at boot needs, and it is why this writes the file
+    rather than patching a running app: a ``PATCH`` rebuilds the connection,
+    which is a different subject (``tests/device/test_reconfigure.py``).
+
+    Values go through :class:`SettingsService` rather than into the table by
+    hand, so a test cannot seed something the Settings page would refuse. The
+    keys are registry keys, so they read as keyword arguments:
+    ``seed_settings(env, gaggimateHost=device.address)``. Migrations run first,
+    exactly as they do at boot, so a never-used data directory works.
+    """
+    env.data_dir.mkdir(parents=True, exist_ok=True)
+    db = Database(env.database_path)
+    await db.connect()
+    try:
+        await run_migrations(db)
+        await SettingsService(SettingsRepository(db)).apply(dict(values))
+    finally:
+        await db.close()
 
 
 @pytest.fixture

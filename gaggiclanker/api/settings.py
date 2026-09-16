@@ -18,7 +18,7 @@ __all__ = ["router"]
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 # A PATCH body is a flat object of registry key -> value, with null meaning
-# "drop the override and fall back to the environment or the default". The
+# "drop the stored row and fall back to the declared default". The
 # union is deliberately wide: per-key type checking belongs to the registry,
 # which produces a message naming the expected type, rather than to a schema
 # that can only say "not a valid integer".

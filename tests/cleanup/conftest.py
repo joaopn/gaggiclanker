@@ -32,7 +32,7 @@ from fastapi import FastAPI
 from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import machine_tasks, running_app
+from tests.conftest import machine_tasks, running_app, seed_settings
 
 #: The ids the awkward shots carry in the seeded archive, re-exported so a test
 #: reads as "the quarantined one" rather than as a number.
@@ -84,7 +84,7 @@ async def fake_device() -> AsyncIterator[FakeDevice]:
 
 @pytest.fixture
 async def live(
-    env: EnvSettings, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch
+    env: EnvSettings, fake_device: FakeDevice
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     """The app, connected to the fake machine, with its shots already archived.
 
@@ -92,8 +92,7 @@ async def live(
     about shots the archive *has*: a cleanup with an empty archive is a cleanup
     that correctly refuses every shot, which is a different test.
     """
-    monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
+    await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=5)
     async with running_app(env) as (app, client):
         assert await app.state.connection.client.wait_connected(5.0)
         await app.state.connection.engine.sync_identity(trigger="test")

@@ -1,14 +1,15 @@
-"""Resolving runtime settings: database over environment over default.
+"""Resolving runtime settings: the database, or the declared default.
 
-The service is the only place that knows the precedence rule. Everything else —
-routes, the device client, the LLM layer — asks for a key and gets the
-effective value.
+The service is the only place that knows the precedence rule, and there are only
+two layers left for it to know: a stored row wins, and a key with no row is its
+default. Everything else — routes, the device client, the LLM layer — asks for a
+key and gets the effective value. Nothing here reads the environment; the
+variables that used to configure a setting are reported once at boot and
+otherwise ignored (``gaggiclanker/settings.py``).
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Mapping
 from typing import Any
 
 import structlog
@@ -16,7 +17,6 @@ import structlog
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.infra.errors import BadRequest
 from gaggiclanker.settings import (
-    REMOVED_SETTINGS,
     SETTING_PAIRS,
     SETTINGS_REGISTRY,
     ResolvedSetting,
@@ -44,16 +44,9 @@ class SettingsService:
         self,
         repo: SettingsRepository,
         registry: dict[str, SettingDefinition] | None = None,
-        dotenv: Mapping[str, str | None] | None = None,
     ) -> None:
         self.repo = repo
         self.registry = registry if registry is not None else SETTINGS_REGISTRY
-        # The ``.env`` file, already parsed. EnvSettings reads it for the
-        # bootstrap keys through pydantic-settings; without passing the same
-        # values here, a registry key set in ``.env`` would be invisible while
-        # DATA_DIR from the same file worked — one file, two behaviours, and no
-        # way for the user to tell which keys are which.
-        self.dotenv: Mapping[str, str | None] = dotenv or {}
 
     def definition(self, key: str) -> SettingDefinition:
         """The definition for ``key``, or a 400 naming the valid keys."""
@@ -64,40 +57,6 @@ class SettingsService:
                 details={"key": key, "known_keys": sorted(self.registry)},
             )
         return definition
-
-    def _raw_env(self, env_key: str) -> str | None:
-        """The environment value for ``env_key``: the process env over ``.env``.
-
-        The same precedence pydantic-settings applies to the bootstrap keys, so
-        the two layers cannot disagree about what "the environment" means.
-        """
-        raw = os.environ.get(env_key)
-        if raw is None:
-            raw = self.dotenv.get(env_key)
-        return raw
-
-    def _from_env(self, definition: SettingDefinition) -> Any | None:
-        """The environment value for a definition, or ``None``.
-
-        An unparseable environment value is a misconfiguration the operator
-        cannot see in the UI, so it is logged loudly and then ignored rather
-        than crashing the container on boot.
-        """
-        if definition.env_key is None:
-            return None
-        raw = self._raw_env(definition.env_key)
-        if raw is None or raw.strip() == "":
-            return None
-        try:
-            return definition.parse(raw)
-        except ValueError:
-            log.warning(
-                "setting_env_value_invalid",
-                setting=definition.key,
-                env_key=definition.env_key,
-                expected=definition.type,
-            )
-            return None
 
     def _resolve(self, definition: SettingDefinition, stored: str | None) -> ResolvedSetting:
         override: Any = None
@@ -111,12 +70,8 @@ class SettingsService:
                 log.warning("setting_stored_value_invalid", setting=definition.key)
                 override = None
 
-        env_value = self._from_env(definition)
-
         if override is not None:
             value, source = override, "database"
-        elif env_value is not None:
-            value, source = env_value, "environment"
         else:
             value, source = definition.default, "default"
 
@@ -131,19 +86,6 @@ class SettingsService:
             description=definition.description,
             readonly=definition.readonly,
         )
-
-    def removed_env_keys(self) -> list[str]:
-        """Environment variables still set for settings that no longer exist.
-
-        Only the names: a value is never logged, and for these the name is the
-        whole message — "this variable does nothing now". Empty values count as
-        unset, the same rule `_from_env` applies.
-        """
-        return [
-            env_key
-            for env_key in REMOVED_SETTINGS.values()
-            if (raw := self._raw_env(env_key)) is not None and raw.strip() != ""
-        ]
 
     async def resolve_all(self) -> dict[str, ResolvedSetting]:
         """Every registry key, resolved. Registry order is preserved."""
@@ -233,8 +175,8 @@ class SettingsService:
         """What ``keys`` will resolve to once ``validated`` is stored. Writes nothing.
 
         A key set in the body is its parsed value; a key cleared with ``None``
-        is what resolves with no stored row — the environment's value or the
-        default; a key the body leaves alone is what it resolves to now.
+        is what resolves with no stored row, which is its default; a key the
+        body leaves alone is what it resolves to now.
         """
         values: dict[str, Any] = {}
         for key in keys:
@@ -255,9 +197,9 @@ class SettingsService:
         or the one already resolved when the body moves only one of them — so
         raising the minimum above a maximum nobody touched is refused too.
 
-        A key sent as ``None`` clears its override, and what it reverts to is
-        not known until the row is gone. It is compared against its current
-        value instead, which errs towards refusing: a combination that would
+        A key sent as ``None`` clears its override, and is compared against its
+        current value rather than the default it is about to revert to. That
+        errs towards refusing: a combination that would
         have become valid is rejected and the person sends both halves. The
         alternative errs towards storing an inverted pair, and an inverted pair
         makes `clamp` stop clamping.

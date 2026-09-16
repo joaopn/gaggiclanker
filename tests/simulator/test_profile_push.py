@@ -45,7 +45,7 @@ from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import running_app, seed_settings
 from tests.drafts.conftest import every_profile_fixture
 from tests.llm.conftest import FakeProvider
 from tests.simulator.test_e2e import (
@@ -64,11 +64,11 @@ BREW_TIMEOUT_S = 90.0
 
 
 @pytest.fixture
-async def sim_env(env: EnvSettings, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[EnvSettings]:
+async def sim_env(env: EnvSettings) -> AsyncIterator[EnvSettings]:
+    """The bootstrap settings, plus an archive already holding the simulator's address."""
     if not await _simulator_is_up():
         pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
-    monkeypatch.setenv("GAGGIMATE_HOST", SIM_HOST)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "15")
+    await seed_settings(env, gaggimateHost=SIM_HOST, gaggimateTimeoutSeconds=15)
     yield env
 
 

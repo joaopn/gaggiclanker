@@ -24,7 +24,7 @@ import httpx
 import pytest
 
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import running_app, seed_settings
 from tests.sync.conftest import SMALL_COUNT, build_archive_device
 
 STORED = SMALL_COUNT - 1
@@ -82,10 +82,9 @@ async def test_a_backup_restores_into_a_fresh_data_dir(tmp_path: Path) -> None:
     restored.mkdir()
 
     try:
-        async with running_app(_env(original), dotenv={"GAGGIMATE_HOST": device.address}) as (
-            _app,
-            client,
-        ):
+        original_env = _env(original)
+        await seed_settings(original_env, gaggimateHost=device.address)
+        async with running_app(original_env) as (_app, client):
             await _pull(client)
             await _wait_for(client, STORED)
             before = (await client.get("/api/sync/status")).json()["data"]["counts"]
@@ -129,10 +128,9 @@ async def test_the_api_stays_responsive_during_a_backfill(tmp_path: Path, shots:
 
     timings: list[float] = []
     try:
-        async with running_app(_env(data_dir), dotenv={"GAGGIMATE_HOST": device.address}) as (
-            _app,
-            client,
-        ):
+        env = _env(data_dir)
+        await seed_settings(env, gaggimateHost=device.address)
+        async with running_app(env) as (_app, client):
             await _pull(client)
             # Poll health while the pull runs. It cannot finish before the
             # fetches do: two hundred files, two at a time, 50 ms each.

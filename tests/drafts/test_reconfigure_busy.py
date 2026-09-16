@@ -32,7 +32,7 @@ async def refused_while(app: FastAPI, client: httpx.AsyncClient, running: str) -
     assert response.status_code == 409, response.text
     assert running in error(response)["message"]
     settings = (await client.get("/api/settings")).json()["data"]
-    assert settings["gaggimateHost"]["source"] == "environment"
+    assert settings["gaggimateHost"]["value"] == before.host
     assert app.state.connection.client is before
 
 

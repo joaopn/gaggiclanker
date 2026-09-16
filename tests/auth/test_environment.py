@@ -15,9 +15,11 @@ import sqlite3
 import pytest
 
 from gaggiclanker.settings import (
+    FORMER_SETTING_ENV_KEYS,
     RETIRED_AUTH_ENV_KEYS,
     SETTINGS_REGISTRY,
     EnvSettings,
+    SettingDefinition,
     retired_auth_env_keys,
 )
 from tests.auth.conftest import sign_in
@@ -38,10 +40,14 @@ LOST_PASSWORD = "the-password-nobody-remembers"
 def test_no_auth_setting_reads_the_environment() -> None:
     auth_keys = [key for key in SETTINGS_REGISTRY if key.startswith("auth")]
     assert auth_keys == ["authUser", "authPasswordHash", "authTokenTtlSeconds"]
-    assert [key for key in auth_keys if SETTINGS_REGISTRY[key].env_key is not None] == []
-    # And no other key has quietly taken one of the retired names.
-    registry_env_keys = {d.env_key for d in SETTINGS_REGISTRY.values() if d.env_key}
-    assert registry_env_keys.isdisjoint(RETIRED_AUTH_ENV_KEYS)
+    # No registry key reads a variable at all now, auth or otherwise: the
+    # declaration has nowhere to name one. The credential names are still
+    # refused rather than merely inert, which is what the rest of this file is
+    # about, and no former setting variable shares one of them.
+    assert "env_key" not in SettingDefinition.__slots__
+    assert {name.upper() for name in FORMER_SETTING_ENV_KEYS}.isdisjoint(
+        {name.upper() for name in RETIRED_AUTH_ENV_KEYS}
+    )
 
 
 def test_the_bootstrap_settings_have_no_auth_field() -> None:

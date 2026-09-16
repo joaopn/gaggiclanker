@@ -40,7 +40,7 @@ async def archive(tool_db: Database) -> Fixture:
 
 @pytest.fixture
 def settings(tool_db: Database) -> SettingsService:
-    return SettingsService(SettingsRepository(tool_db), dotenv={})
+    return SettingsService(SettingsRepository(tool_db))
 
 
 @pytest.fixture

@@ -1,9 +1,10 @@
 """Fixtures for profile drafts and push: a fake machine, a mirrored archive, and a scripted model.
 
 The app is the real app with the real lifespan, pointed at
-:class:`~gaggiclanker.device.fake.FakeDevice` through `GAGGIMATE_HOST`. That
-matters more here than anywhere else in the suite: the thing under test is a
-*write* to a machine, and a mocked client would test the mock. The fake speaks
+:class:`~gaggiclanker.device.fake.FakeDevice` by an archive seeded with the
+machine's address before it boots. That matters more here than anywhere else
+in the suite: the thing under test is a *write* to a machine, and a mocked
+client would test the mock. The fake speaks
 the real wire protocol, generates ids the way `generateShortID` does,
 auto-favourites new profiles the way `saveProfile` does, and serialises what it
 stored the way `writeProfile` does — which is what the round-trip check is
@@ -34,7 +35,7 @@ from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import running_app, seed_settings
 from tests.llm.conftest import FakeProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -79,11 +80,9 @@ async def live(
     env: EnvSettings,
     fake_device: FakeDevice,
     provider: FakeProvider,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     """The app, connected to the fake machine, with a scripted model behind it."""
-    monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
+    await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=5)
     async with running_app(env) as (app, client):
         # The lifespan starts the device client's socket in the background and
         # returns without waiting for it, and `sync_profiles` refuses to send on

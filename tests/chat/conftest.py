@@ -72,7 +72,7 @@ def runner(
     bus: EventBus[SseEvent],
     tasks: TaskRegistry,
 ) -> ChatRunner:
-    settings = SettingsService(SettingsRepository(archive.db), dotenv={})
+    settings = SettingsService(SettingsRepository(archive.db))
     llm = LlmService(
         settings,
         budget=RateLimitBudget(retries=0),

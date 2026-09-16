@@ -248,7 +248,7 @@ export type LlmCallEvent = { call: LlmCall; running: number };
 export type LlmSnapshotEvent = LlmCallsData;
 
 export type SettingType = "string" | "int" | "float" | "bool";
-export type SettingSource = "database" | "environment" | "default";
+export type SettingSource = "database" | "default";
 
 /** A non-secret setting: value, default and override are all disclosed. */
 export type PlainSetting = {

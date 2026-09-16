@@ -43,7 +43,7 @@ from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.notes.writeback import writeback_task_name
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import machine_tasks, running_app
+from tests.conftest import machine_tasks, running_app, seed_settings
 from tests.simulator.test_e2e import (
     INGEST_TIMEOUT_S,
     _simulator_is_up,
@@ -54,26 +54,20 @@ from tests.simulator.test_e2e import (
 
 pytestmark = pytest.mark.simulator
 
-SIM_HOST_ENV = "GAGGIMATE_HOST"
-
 
 @pytest.fixture
-async def live(
-    env: EnvSettings, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
+async def live(env: EnvSettings) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     """The real app against the real firmware, with device writes on.
 
-    Turned on through the settings service rather than by poking the gate, so
-    the test goes through the same precedence chain the Settings page does —
-    and so a default that had drifted to "on" would not be hidden by the
-    fixture.
+    Both the machine's address and the write switch go through the settings
+    service, the way the Settings page writes them — so a default that had
+    drifted to "on" would not be hidden by the fixture.
     """
     from tests.simulator.test_e2e import SIM_HOST
 
     if not await _simulator_is_up():
         pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
-    monkeypatch.setenv(SIM_HOST_ENV, SIM_HOST)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "15")
+    await seed_settings(env, gaggimateHost=SIM_HOST, gaggimateTimeoutSeconds=15)
     async with running_app(env) as (app, client):
         await app.state.settings_service.apply({"deviceWritesEnabled": True})
         yield app, client

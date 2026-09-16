@@ -29,8 +29,13 @@ fills the UI with real shots and real curves:
 
 ```bash
 uv run python -m gaggiclanker.device.fake --port 8090
-GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload --no-access-log
+uv run uvicorn gaggiclanker.main:app --reload --no-access-log
+curl -X PATCH localhost:8000/api/settings \
+  -H 'content-type: application/json' -d '{"gaggimateHost": "127.0.0.1:8090"}'
 ```
+
+The machine's address is a setting in the database, not a variable: enter it once
+(here, or under Settings → Machine) and every later run picks it up.
 
 Point the dev server elsewhere with `GAGGICLANKER_BACKEND=http://host:port npm run dev`.
 Because the dev server proxies rather than talking cross-origin, `CORS_ORIGINS`

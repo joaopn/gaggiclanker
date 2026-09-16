@@ -55,7 +55,7 @@ const settings: SettingsMap = {
     value: 60,
     default: 60,
     override: null,
-    source: "environment",
+    source: "default",
     description: "",
   },
   apiKey: {

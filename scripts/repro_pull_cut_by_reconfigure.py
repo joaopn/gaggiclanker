@@ -35,7 +35,6 @@ cancelled records itself as an error saying it was stopped.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -55,19 +54,39 @@ async def main() -> int:
     # Slow enough that the pull is still reading the index when the rebuild
     # arrives, fast enough that the script finishes in a couple of seconds.
     device.history_delay_s = 1.0
-    os.environ["GAGGIMATE_HOST"] = device.address
-    os.environ["GAGGIMATE_TIMEOUT_S"] = "5"
     try:
         failures = 0
         for scenario in (reproduce, reproduce_shutdown):
             with tempfile.TemporaryDirectory() as tmp:
                 env = EnvSettings(DATA_DIR=tmp, LOG_LEVEL="error", _env_file=None)  # type: ignore[call-arg]
+                # The machine's address is a runtime setting, so it goes into
+                # the archive before the app boots on it — which is the state a
+                # configured box restarts in.
+                await store_machine(env, device.address)
                 app = create_app(env, web_dist=Path(tmp) / "no-web", dotenv={})
                 failures += await scenario(app, device)
                 device.requests.clear()
         return 1 if failures else 0
     finally:
         await device.stop()
+
+
+async def store_machine(env: EnvSettings, address: str) -> None:
+    """Write the machine's address into a fresh archive, through the settings service."""
+    from gaggiclanker.db.connection import Database
+    from gaggiclanker.db.migrations import run_migrations
+    from gaggiclanker.db.settings_repo import SettingsRepository
+    from gaggiclanker.settings_service import SettingsService
+
+    db = Database(env.database_path)
+    await db.connect()
+    try:
+        await run_migrations(db)
+        await SettingsService(SettingsRepository(db)).apply(
+            {"gaggimateHost": address, "gaggimateTimeoutSeconds": 5}
+        )
+    finally:
+        await db.close()
 
 
 async def ledger(db: object) -> tuple[list[object], int]:

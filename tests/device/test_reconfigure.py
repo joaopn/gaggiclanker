@@ -19,7 +19,7 @@ from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.sync.engine import LOOP_TASK_NAMES
-from tests.conftest import machine_tasks, running_app
+from tests.conftest import machine_tasks, running_app, seed_settings
 from tests.device.conftest import FIXTURES
 
 
@@ -43,16 +43,16 @@ async def fake_b() -> AsyncIterator[FakeDevice]:
 
 
 @pytest.fixture
-def env_a(data_dir: Path, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch) -> EnvSettings:
-    """Machine A as the environment's baseline, the way a compose file would set it."""
-    monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "2")
-    return EnvSettings(
+async def env_a(data_dir: Path, fake_device: FakeDevice) -> EnvSettings:
+    """Machine A already stored, the way a box that was configured yesterday holds it."""
+    env = EnvSettings(
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         LOG_JSON=True,
         _env_file=None,  # type: ignore[call-arg]
     )
+    await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=2)
+    return env
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ async def test_an_address_copied_from_the_browser_reaches_the_machine(
     assert status["host"] == fake_b.address
 
 
-async def test_emptying_the_host_leaves_no_client_and_a_reset_brings_the_baseline_back(
+async def test_emptying_the_host_leaves_no_client_and_setting_it_again_brings_one_back(
     on_a: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:
     app, client = on_a
@@ -155,8 +155,13 @@ async def test_emptying_the_host_leaves_no_client_and_a_reset_brings_the_baselin
     assert "No machine is configured" in refused.json()["error"]["message"]
     await wait_for(lambda: fake_device.client_count == 0)
 
-    # `null` drops the stored override, so the environment's host applies again.
+    # `null` drops the stored row, and the default is no machine at all — there
+    # is no layer under the database for it to fall back to.
     assert (await patch(client, {"gaggimateHost": None})).status_code == 200
+    assert app.state.connection.client is None
+
+    # Typing the address back in is what brings the connection back.
+    assert (await patch(client, {"gaggimateHost": fake_device.address})).status_code == 200
     back = current(app)
     assert back.host == fake_device.address
     assert await back.wait_connected(5.0)
@@ -199,7 +204,7 @@ async def test_a_patch_that_changes_no_effective_value_leaves_the_connection_alo
     app, client = on_a
     before = current(app)
 
-    # The environment's value, now stored: the source changes, the value does not.
+    # The address it is already on, written again: nothing effective changes.
     response = await patch(client, {"gaggimateHost": fake_device.address, "modelDefault": "x"})
     assert response.status_code == 200
     assert response.json()["data"]["gaggimateHost"]["source"] == "database"
@@ -439,9 +444,8 @@ async def test_every_pass_cut_short_is_recorded_as_stopped(
     from gaggiclanker.sync.engine import STOPPED_MESSAGE
 
     method, request, kind = PASSES[which]
-    monkeypatch.setenv("GAGGIMATE_HOST", archive_machine.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
     env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="warning", _env_file=None)  # type: ignore[call-arg]
+    await seed_settings(env, gaggimateHost=archive_machine.address, gaggimateTimeoutSeconds=5)
 
     async with running_app(env) as (app, client):
         machine = current(app)

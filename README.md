@@ -32,9 +32,9 @@ curl localhost:8000/health           # {"ok":true,"data":{"status":"ok",...}}
 open http://localhost:8000           # the UI
 ```
 
-Nothing to copy or edit first. Everything is configured from the UI and kept in
-the database; the tracked `.env` has every line commented out and exists only for
-an operator who wants an environment baseline.
+Nothing to copy, rename or edit first. Everything is configured from the UI and
+kept in the database, so a checkout is ready to start as it comes and a later
+`git pull` has no file of yours to conflict with.
 
 `compose.yml` uses **host networking** by default, so the app is on port 8000 of
 the box you started it on and mDNS names resolve. Docker Desktop does not
@@ -183,8 +183,15 @@ where binary was asked for, the three-client limit:
 
 ```bash
 uv run python -m gaggiclanker.device.fake --port 8090   # in one terminal
-GAGGIMATE_HOST=127.0.0.1:8090 uv run uvicorn gaggiclanker.main:app --reload
+uv run uvicorn gaggiclanker.main:app --reload           # in another
+curl -X PATCH localhost:8000/api/settings \
+  -H 'content-type: application/json' -d '{"gaggimateHost": "127.0.0.1:8090"}'
 ```
+
+The address is a setting like any other, so it is entered once — in the UI under
+Settings → Machine, or with the `PATCH` above — and stays in the archive's
+database file for every later run. The connection is rebuilt on save, so the app
+does not need restarting.
 
 It holds the fixture archive, so pressing "Pull from machine" against it fills
 the UI with real shots and real curves.
@@ -221,14 +228,64 @@ matters is the machine's host — the IP or hostname of the display board. Prefe
 fixed IP: mDNS (`gaggimate.local`) does not resolve from inside a Docker bridge
 network, and the firmware disables mDNS entirely when HomeKit is on.
 
-`.env` is optional. It is tracked by git with every line commented out, and
-documents each variable the app reads from the environment with the reasoning
-behind it; uncomment a line to set an operator baseline. Because it is tracked, a
-local edit will conflict with a future `git pull` that changes the file, and
-anything you put in it is one `git add -A` away from a commit.
+**There is no configuration file, and no environment variable for any of it.**
+A setting is what the Settings page saved, or the default this release ships;
+those are the only two possibilities, and `GET /api/settings` says which of them
+each key came from. Nothing is copied, nothing is edited before the first start,
+and nothing you change in the UI reverts on restart.
 
-Anything you change in the Settings page is stored in the database and wins over
-the environment, so a value edited in the UI does not revert on restart.
+The one exception is the handful of values the process needs *before* it can
+open the database, which the image already sets and most people never touch:
+
+| Variable | Default | What it is |
+|---|---|---|
+| `DATA_DIR` | `./data` (`/app/data` in the image) | Where the SQLite file and `backups/` live. |
+| `HOST` | `0.0.0.0` | Bind address. |
+| `PORT` | `8000` | Bind port; the healthcheck reads it too. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error`. |
+| `LOG_JSON` | `true` | JSON log lines, or human-readable console output for development. |
+| `WEB_DIST` | `<repo>/web/dist` | Where the built SPA is; the image sets it, a checkout does not need to. |
+| `CORS_ORIGINS` | empty | Comma-separated origins allowed to call the API. Only the Vite dev server needs one. |
+
+Each also accepts a `GAGGICLANKER_`-prefixed spelling (`GAGGICLANKER_DATA_DIR`)
+for a box running several services. The image sets the five a container needs;
+`compose.yml` sets none of them, and its `environment:` block is not
+configuration at all — it forwards exactly the variable names a boot refuses, so
+that a credential or the retired device-writes switch left in an old `.env` or
+in your shell stops the container instead of being silently ignored. There is a
+commented-out `LOG_LEVEL` line there if you want a different log level.
+
+**Upgrading from a release that read settings from the environment.** Before you
+pull, store anything you had set — in an old `.env`, in `compose.yml`'s
+`environment:`, or in the shell — in the database, because none of it is read any
+more. A boot that still finds one of those variables set logs
+`setting_env_ignored` with the names (never the values) and carries on with the
+database's values. Two are refused rather than ignored: any variable that used
+to carry a credential, and `GAGGICLANKER_DEVICE_WRITES_ENABLED`, which used to
+open the only path from this box to the machine — the container exits naming it,
+because silently ignoring either would leave the box less protected than its
+owner believes. If `git pull` complains about your own `.env`, move it aside —
+nothing in it configures a setting any more.
+
+**Typing the same value into the old Settings page and pressing Save does not
+store it.** The form sends only the fields whose value differs from the one it is
+showing you, and on the old version a value coming from the environment is
+already the value shown — so Save sends an empty change and the value is lost at
+the upgrade. Two ways round it, both on the old version, before you pull:
+
+* in the UI: change the field to something else, **Save**, change it back to what
+  you want, **Save** again; or
+* store the values in one request:
+
+  ```bash
+  curl -X PATCH http://localhost:8000/api/settings \
+    -H 'content-type: application/json' \
+    -d '{"gaggimateHost": "192.168.1.50", "deviceCleanupMode": "keep_newest"}'
+  ```
+
+  Add `-H "Authorization: Bearer <token>"` if sign-in is on. Check what stuck
+  with `curl -s localhost:8000/api/settings`: every key you moved should read
+  `"source": "database"`.
 
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
 or the sync switch under Settings → Machine closes the connection and opens the
@@ -547,10 +604,18 @@ Auth is on and refusing everybody, which is the correct thing for a broken
 credential to do. Delete the row as for a lost password above, then set the
 password you want under Settings → Authentication.
 
+**The container exits at boot with `device_writes_env_refused`.**
+`GAGGICLANKER_DEVICE_WRITES_ENABLED` is still set — in `compose.yml`, in a
+leftover `.env` compose passes through, or in the shell that started it. It no
+longer allows anything: writes to the machine are switched on under **Settings →
+Machine** and the switch lives in the database. Remove the variable, start the
+app, and set the switch there if you want writes on. The boot refuses rather
+than ignoring it because a switch that used to open the only path to your
+espresso machine must not change meaning quietly.
+
 **The container exits at boot with `auth_env_refused`.**
 A credential variable is still set — one of the old sign-in variables, or an LLM
-provider's API key or token — in `.env`, in `compose.yml` or in the shell that
-started it. The log line names which. Remove them, start the app, and enter
+provider's API key or token — in `compose.yml` or in the shell that started it. The log line names which. Remove them, start the app, and enter
 sign-in under Settings → Authentication and the key under Settings → LLM. An
 install that had
 sign-in configured only through the environment starts with auth off until you

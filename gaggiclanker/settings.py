@@ -8,15 +8,17 @@ Environment only, read once at startup.
 
 **Runtime settings** (:data:`SETTINGS_REGISTRY`) are the keys the maintainer can
 change from the UI without restarting the container. Each is declared once —
-key, type, default, secret flag, environment variable, prose description — and
-that one declaration drives the ``settings`` table, ``GET/PATCH /api/settings``,
-validation, and the hint shown for a secret. Adding a setting is one entry, the
-way cvclanker's ``settings-registry.ts`` works.
+key, type, default, secret flag, prose description — and that one declaration
+drives the ``settings`` table, ``GET/PATCH /api/settings``, validation, and the
+hint shown for a secret. Adding a setting is one entry, the way cvclanker's
+``settings-registry.ts`` works.
 
-Precedence for a runtime setting is **database > environment > default**. The
-environment is the operator's baseline (compose file, ``.env``); the database is
-what the maintainer changed in the UI, so it has to win — otherwise a value set
-in the UI would be silently ignored on a box that also sets the variable.
+Precedence for a runtime setting is **database > default**, and that is the
+whole rule. A runtime setting reads no environment variable at all: the Settings
+page is where it is changed, the database is where it lives, and there is no
+second, weaker surface that can disagree with either. The variables that used to
+configure one are listed in :data:`FORMER_SETTING_ENV_KEYS` so a boot can say,
+once, that they no longer do anything.
 
 Secrets are write-only through the API: ``PATCH`` accepts one, ``GET`` returns
 only a four-character hint, which is enough to tell "the right key is loaded"
@@ -41,6 +43,8 @@ from gaggiclanker.infra.outbound import PROXY_ENV_KEYS, url_carries_userinfo
 __all__ = [
     "CLEANUP_MODES",
     "DEFAULT_ENV_FILE",
+    "DEVICE_WRITES_ENV_KEY",
+    "FORMER_SETTING_ENV_KEYS",
     "NOTES_WRITEBACK_FIELDS",
     "REMOVED_SETTINGS",
     "RETIRED_AUTH_ENV_KEYS",
@@ -52,6 +56,8 @@ __all__ = [
     "SettingPair",
     "SettingType",
     "SettingValueError",
+    "device_writes_env_key_set",
+    "ignored_setting_env_keys",
     "is_argon2_hash",
     "load_dotenv_values",
     "retired_auth_env_keys",
@@ -112,10 +118,14 @@ _EXPECTED: dict[str, str] = {
 class EnvSettings(BaseSettings):
     """Bootstrap configuration, read from the environment once at startup.
 
-    Unprefixed names (``DATA_DIR``, ``LOG_LEVEL``, ``GAGGIMATE_HOST``) are
-    accepted because they read naturally in a compose file, with the
-    ``GAGGICLANKER_`` prefixed form as an alias for boxes that run several
-    services and want a namespace.
+    These seven are the only variables the application reads, because each one
+    answers a question that has to be answered before there is a database to ask:
+    where the file lives, what to bind, what to log. Everything else is a runtime
+    setting in the database.
+
+    Unprefixed names (``DATA_DIR``, ``LOG_LEVEL``, ``PORT``) are accepted because
+    they read naturally in a compose file, with the ``GAGGICLANKER_`` prefixed
+    form as an alias for boxes that run several services and want a namespace.
     """
 
     model_config = SettingsConfigDict(
@@ -190,7 +200,6 @@ class SettingDefinition:
     default: Any
     description: str
     secret: bool = False
-    env_key: str | None = None
     #: An extra rule on top of the type, run on every write. Returns an error
     #: message — a fixed string, never quoting the value — or ``None``.
     validate: Callable[[Any], str | None] | None = None
@@ -208,12 +217,12 @@ class SettingDefinition:
         return _EXPECTED[self.type]
 
     def parse(self, raw: str) -> Any:
-        """Coerce a stored/environment string into the declared type.
+        """Coerce a stored string into the declared type.
 
         Raises ``ValueError(self.expected)`` on anything that does not convert,
-        which the PATCH route turns into a 400 and the environment reader turns
-        into a warning plus the default. The message is fixed so neither path
-        can echo the value back.
+        which the PATCH route turns into a 400 and a stored row written out of
+        band turns into a warning plus the default. The message is fixed so
+        neither path can echo the value back.
         """
         text = raw.strip()
         match self.type:
@@ -308,7 +317,7 @@ class ResolvedSetting:
     value: Any
     default: Any
     override: Any
-    source: Literal["database", "environment", "default"]
+    source: Literal["database", "default"]
     secret: bool
     description: str
     #: Mirrors :attr:`SettingDefinition.readonly`. The UI reads it to render
@@ -529,11 +538,11 @@ SETTING_PAIRS: tuple[SettingPair, ...] = (
 )
 
 
-#: Registry keys that were removed, with the environment variable each one read.
-#: Kept so a boot can say, once, that a variable in somebody's compose file no
-#: longer does anything — silently ignoring a switch that used to allow writes
-#: to a machine, or open an endpoint, would leave its owner believing it still
-#: does. Their stored rows are deleted by a migration; nothing here resolves them.
+#: Registry keys that were removed, with the environment variable each one read
+#: while both existed. The key half is what a ``PATCH`` naming one is refused
+#: with; the variable half joins :data:`FORMER_SETTING_ENV_KEYS` in the boot
+#: report. Their stored rows are deleted by a migration; nothing here resolves
+#: them.
 REMOVED_SETTINGS: dict[str, str] = {
     # MCP device-write tools: MCP and the chat now read and propose, nothing more.
     "mcpDeviceWrites": "GAGGICLANKER_MCP_DEVICE_WRITES",
@@ -547,14 +556,77 @@ REMOVED_SETTINGS: dict[str, str] = {
 }
 
 
+#: The switch that used to let this box write to the machine from the
+#: environment. Set non-empty, it refuses the boot rather than joining the
+#: report below: every other former variable was a preference, and ignoring a
+#: preference costs somebody a trip to the Settings page. This one allowed
+#: writes to an espresso machine, and its owner reading a silent boot log would
+#: believe the writes were still gated by a file they control. So it is named
+#: and the container stops, the way a credential variable does.
+DEVICE_WRITES_ENV_KEY = "GAGGICLANKER_DEVICE_WRITES_ENABLED"
+
+
+#: Every environment variable that used to configure a runtime setting, and now
+#: configures nothing. Runtime settings resolve from the database or their
+#: default; an operator baseline in a compose file or a shell would be a second
+#: surface that can disagree with the Settings page, which is exactly the
+#: confusion this list exists to end.
+#:
+#: The names live here rather than on the definitions because they are history,
+#: not configuration: nothing reads them, and a setting added tomorrow has no
+#: business acquiring one. A boot that finds any of them set names them once
+#: (never a value) so the person who wrote them into a file hears that the file
+#: is inert, and goes to Settings.
+#:
+#: :data:`DEVICE_WRITES_ENV_KEY` is deliberately absent — it refuses the boot
+#: instead — and so are the credential variables of
+#: :data:`RETIRED_AUTH_ENV_KEYS`, for the same reason.
+FORMER_SETTING_ENV_KEYS: tuple[str, ...] = (
+    "GAGGIMATE_HOST",
+    "GAGGIMATE_PROTOCOL",
+    "GAGGIMATE_TIMEOUT_S",
+    "GAGGICLANKER_DEVICE_SYNC_ENABLED",
+    "GAGGICLANKER_DEVICE_CLEANUP_MODE",
+    "GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST",
+    "GAGGICLANKER_DEVICE_CLEANUP_MIN_FREE_KB",
+    "GAGGICLANKER_NOTES_WRITEBACK_FIELDS",
+    "GAGGICLANKER_PROFILE_POLICY_TEMP_MIN_C",
+    "GAGGICLANKER_PROFILE_POLICY_TEMP_MAX_C",
+    "GAGGICLANKER_PROFILE_POLICY_PRESSURE_MAX_BAR",
+    "GAGGICLANKER_PROFILE_POLICY_FLOW_MAX_ML_S",
+    "GAGGICLANKER_PROFILE_POLICY_PHASE_MIN_S",
+    "GAGGICLANKER_PROFILE_POLICY_PHASE_MAX_S",
+    "GAGGICLANKER_PROFILE_POLICY_MAX_PHASES",
+    "GAGGICLANKER_LLM_PROVIDER",
+    "GAGGICLANKER_LLM_BASE_URL",
+    "CLAUDE_CODE_BIN",
+    "CLAUDE_CODE_EFFORT",
+    "GAGGICLANKER_LLM_TIMEOUT_S",
+    "GAGGICLANKER_LLM_RATE_LIMIT_RETRIES",
+    "GAGGICLANKER_LLM_STORE_CALL_TEXT",
+    "GAGGICLANKER_ANALYSIS_CHUNK_TOKEN_BUDGET",
+    "GAGGICLANKER_MODEL",
+    "GAGGICLANKER_MODEL_ANALYSIS",
+    "GAGGICLANKER_MODEL_DRAFT",
+    "GAGGICLANKER_MODEL_CHAT",
+    "GAGGICLANKER_MODEL_STARTING_POINT",
+    "GAGGICLANKER_CHAT_MAX_TOOL_ROUNDS",
+    "GAGGICLANKER_CHAT_MAX_TOOL_CALLS",
+    "GAGGICLANKER_CHAT_HISTORY_TOKEN_BUDGET",
+    # The variables of settings that were removed outright, rather than moved
+    # into the database: same message, same list, one fewer thing to remember.
+    *REMOVED_SETTINGS.values(),
+)
+
+
 #: Environment variables that carry a credential for an external service, or
 #: used to, and must not be set: the sign-in settings, the LLM providers' keys and
 #: token, and the credential variables the SDKs underneath would otherwise honour
 #: on their own (a key, a bearer token, or extra headers that can replace the
 #: stored key's). Every credential lives in the database alone (Settings →
-#: Authentication, Settings → LLM), and a secret registry key never has an
-#: ``env_key``. These are not ignored with a warning the way
-#: :data:`REMOVED_SETTINGS` are: an install that configured its sign-in here has
+#: Authentication, Settings → LLM), and no registry key reads the environment at
+#: all. These are not ignored with a warning the way
+#: :data:`FORMER_SETTING_ENV_KEYS` are: an install that configured its sign-in here has
 #: its user and hash nowhere else, so ignoring the variables would switch
 #: authentication off and open the app — and a key left in a compose file is a
 #: key still sitting in a file nobody meant to keep it in. Startup refuses
@@ -617,6 +689,36 @@ def retired_auth_env_keys(
     return found
 
 
+def device_writes_env_key_set(environ: Mapping[str, str]) -> str | None:
+    """The name :data:`DEVICE_WRITES_ENV_KEY` is spelled as, if it is set non-empty.
+
+    Any case, for the reason :func:`retired_auth_env_keys` compares that way.
+    ``None`` when it is unset or empty — ``GAGGICLANKER_DEVICE_WRITES_ENABLED=``
+    left behind by an old compose file means "unset" and starts normally.
+    """
+    wanted = DEVICE_WRITES_ENV_KEY.upper()
+    for name, raw in environ.items():
+        if name.upper() == wanted and raw is not None and raw.strip() != "":
+            return name
+    return None
+
+
+def ignored_setting_env_keys(environ: Mapping[str, str]) -> list[str]:
+    """The former setting variables set non-empty, by name, for the boot report.
+
+    Names only, as they are spelled where they were found; the value is never
+    read and never logged — it could be anything, including something its owner
+    considers private. Empty counts as unset, the rule every environment read
+    here follows.
+    """
+    former = {name.upper() for name in FORMER_SETTING_ENV_KEYS}
+    return [
+        name
+        for name, raw in environ.items()
+        if name.upper() in former and raw is not None and raw.strip() != ""
+    ]
+
+
 def _registry(*definitions: SettingDefinition) -> dict[str, SettingDefinition]:
     return {definition.key: definition for definition in definitions}
 
@@ -630,7 +732,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="gaggimateHost",
         type="string",
         default="",
-        env_key="GAGGIMATE_HOST",
         description=(
             "Hostname or IP of the GaggiMate display board; an explicit host:port is accepted "
             "for a simulator or the fake device, and an address copied from the browser "
@@ -646,7 +747,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="gaggimateProtocol",
         type="string",
         default="ws",
-        env_key="GAGGIMATE_PROTOCOL",
         description=(
             "WebSocket scheme for the device connection: ws or wss. The firmware never "
             "terminates TLS (WebSocketHandler.cpp serves plain HTTP on port 80), so wss is only "
@@ -657,7 +757,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="gaggimateTimeoutSeconds",
         type="float",
         default=15.0,
-        env_key="GAGGIMATE_TIMEOUT_S",
         description=(
             "How long to wait for one device request — a WebSocket res:* frame or an HTTP "
             "body — before giving up. The machine's own web UI uses 30 s; shorter is better "
@@ -669,7 +768,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="deviceSyncEnabled",
         type="bool",
         default=True,
-        env_key="GAGGICLANKER_DEVICE_SYNC_ENABLED",
         description=(
             "Hold the WebSocket, so the header shows whether the machine is online and pulls "
             "and pushes can reach it. Turn off to work on an archive without touching the "
@@ -682,7 +780,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="deviceWritesEnabled",
         type="bool",
         default=False,
-        env_key="GAGGICLANKER_DEVICE_WRITES_ENABLED",
         description=(
             "Allow this box to write to the machine at all. Profiles: save a new one, delete "
             "one it created, select it, star it. From the Sync page only, when a person "
@@ -697,7 +794,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="deviceCleanupMode",
         type="string",
         default="off",
-        env_key="GAGGICLANKER_DEVICE_CLEANUP_MODE",
         validate=_one_of(CLEANUP_MODES, "the cleanup mode"),
         description=(
             "The cleanup the Sync page proposes, which runs only when a person confirms it "
@@ -713,7 +809,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="deviceCleanupKeepNewest",
         type="int",
         default=50,
-        env_key="GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST",
         validate=_at_least(
             5,
             "keep at least 5 shots on the machine: its own history screen is how most "
@@ -728,7 +823,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="deviceCleanupMinFreeKb",
         type="int",
         default=2048,
-        env_key="GAGGICLANKER_DEVICE_CLEANUP_MIN_FREE_KB",
         validate=_at_least(
             1024,
             "keep at least 1024 KB free: the firmware starts deleting shots of its own "
@@ -745,7 +839,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="notesWritebackFields",
         type="string",
         default="rating,balance,doseIn,doseOut,grindSetting",
-        env_key="GAGGICLANKER_NOTES_WRITEBACK_FIELDS",
         validate=_known_writeback_fields,
         description=(
             "Which judgement fields a notes send from the Sync page writes to the machine's "
@@ -759,7 +852,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="float",
         validate=_within_firmware_limits("profilePolicyTemperatureMinC"),
         default=60.0,
-        env_key="GAGGICLANKER_PROFILE_POLICY_TEMP_MIN_C",
         description=(
             "Safety policy: the coldest a profile or a phase override may ask for. The "
             "firmware accepts anything up to 150 °C; this is the bound a draft is clamped to "
@@ -771,7 +863,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="float",
         validate=_within_firmware_limits("profilePolicyTemperatureMaxC"),
         default=100.0,
-        env_key="GAGGICLANKER_PROFILE_POLICY_TEMP_MAX_C",
         description="Safety policy: the hottest a profile or a phase override may ask for, in °C.",
     ),
     SettingDefinition(
@@ -779,7 +870,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="float",
         validate=_within_firmware_limits("profilePolicyPressureMaxBar"),
         default=12.0,
-        env_key="GAGGICLANKER_PROFILE_POLICY_PRESSURE_MAX_BAR",
         description=(
             "Safety policy: the highest pump pressure or pressure stop condition a profile may "
             "carry, in bar. Twelve is the pump's own ceiling."
@@ -790,7 +880,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="float",
         validate=_within_firmware_limits("profilePolicyFlowMaxMlS"),
         default=10.0,
-        env_key="GAGGICLANKER_PROFILE_POLICY_FLOW_MAX_ML_S",
         description=(
             "Safety policy: the highest pump flow or flow stop condition a profile may carry, "
             "in ml/s. The firmware takes 15; ten is already more than a 58 mm basket passes "
@@ -802,7 +891,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="float",
         validate=_within_firmware_limits("profilePolicyPhaseDurationMinS"),
         default=0.5,
-        env_key="GAGGICLANKER_PROFILE_POLICY_PHASE_MIN_S",
         description="Safety policy: the shortest phase a profile may contain, in seconds.",
     ),
     SettingDefinition(
@@ -810,7 +898,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="float",
         validate=_within_firmware_limits("profilePolicyPhaseDurationMaxS"),
         default=120.0,
-        env_key="GAGGICLANKER_PROFILE_POLICY_PHASE_MAX_S",
         description=(
             "Safety policy: the longest phase a profile may contain, in seconds. The firmware's "
             "own cap is 300 s; a phase that long with no stop condition is the failure this "
@@ -822,7 +909,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="int",
         validate=_at_least_one_phase,
         default=10,
-        env_key="GAGGICLANKER_PROFILE_POLICY_MAX_PHASES",
         description=(
             "Safety policy: the most phases a profile may have. Exceeding it is refused rather "
             "than trimmed — truncating a profile would change what it brews while claiming to "
@@ -833,7 +919,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="llmProvider",
         type="string",
         default="claude_code",
-        env_key="GAGGICLANKER_LLM_PROVIDER",
         description=(
             "Which provider answers a call: openrouter, openai, ollama, lmstudio, "
             "openai_compatible, anthropic or claude_code. claude_code is the default because "
@@ -845,7 +930,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="llmBaseUrl",
         type="string",
         default="",
-        env_key="GAGGICLANKER_LLM_BASE_URL",
         description=(
             "Endpoint for the self-hosted and generic presets (ollama, lmstudio, "
             "openai_compatible), e.g. http://localhost:11434/v1. Ignored for the hosted "
@@ -896,7 +980,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="claudeCodeBin",
         type="string",
         default="claude",
-        env_key="CLAUDE_CODE_BIN",
         description=(
             "The Claude Code binary to run. A bare name is looked up on PATH; give an "
             "absolute path when the CLI is installed somewhere uvicorn's PATH does not reach."
@@ -906,7 +989,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="claudeCodeEffort",
         type="string",
         default="",
-        env_key="CLAUDE_CODE_EFFORT",
         description=(
             "How hard claude_code thinks: low, medium, high, xhigh or max. Empty lets the "
             "CLI decide. An unrecognised value is dropped rather than passed through."
@@ -916,7 +998,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="llmTimeoutSeconds",
         type="float",
         default=300.0,
-        env_key="GAGGICLANKER_LLM_TIMEOUT_S",
         description=(
             "How long one attempt may take before it is abandoned. Five minutes: a reasoning "
             "model working through a shot's diagnostics genuinely takes minutes, and a "
@@ -927,7 +1008,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="llmRateLimitRetries",
         type="int",
         default=2,
-        env_key="GAGGICLANKER_LLM_RATE_LIMIT_RETRIES",
         description=(
             "How many times the whole process retries a rate limit before it latches and "
             "stops calling the provider at all. Shared by every call, not per call: when the "
@@ -940,7 +1020,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="llmStoreCallText",
         type="bool",
         default=True,
-        env_key="GAGGICLANKER_LLM_STORE_CALL_TEXT",
         description=(
             "Keep the rendered prompt and the raw reply on each row of the call ledger, "
             "capped at 200 KB each. On by default because a prompt is editable, so without "
@@ -952,7 +1031,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="analysisChunkTokenBudget",
         type="int",
         default=1500,
-        env_key="GAGGICLANKER_ANALYSIS_CHUNK_TOKEN_BUDGET",
         description=(
             "How many estimated tokens of knowledge-base prose one analysis may be given. "
             "The retrieved excerpts are supporting context — the rule tier is what is "
@@ -965,7 +1043,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="modelDefault",
         type="string",
         default="",
-        env_key="GAGGICLANKER_MODEL",
         description=(
             "Model id used when a purpose has none of its own. Empty lets the provider "
             "choose — which for claude_code is the CLI's own default."
@@ -975,7 +1052,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="modelAnalysis",
         type="string",
         default="",
-        env_key="GAGGICLANKER_MODEL_ANALYSIS",
         description=(
             "Model for per-shot analysis, the slow careful one. Empty falls back to modelDefault."
         ),
@@ -984,7 +1060,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="modelDraft",
         type="string",
         default="",
-        env_key="GAGGICLANKER_MODEL_DRAFT",
         description=(
             "Model for drafts and summaries, where speed beats depth. Empty falls back to "
             "modelDefault."
@@ -1032,14 +1107,12 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="modelChat",
         type="string",
         default="",
-        env_key="GAGGICLANKER_MODEL_CHAT",
         description="Model for conversational turns. Empty falls back to modelDefault.",
     ),
     SettingDefinition(
         key="modelStartingPoint",
         type="string",
         default="",
-        env_key="GAGGICLANKER_MODEL_STARTING_POINT",
         description=(
             "Model for the starting-point wizard, which authors a whole profile in one "
             "call and wants the careful one. Empty falls back to modelDefault."
@@ -1049,7 +1122,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="chatMaxToolRounds",
         type="int",
         default=8,
-        env_key="GAGGICLANKER_CHAT_MAX_TOOL_ROUNDS",
         validate=_at_least(1, "a chat turn needs at least one round to answer in"),
         description=(
             "How many provider round-trips one chat answer may take. Each round is one "
@@ -1062,7 +1134,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="chatMaxToolCalls",
         type="int",
         default=20,
-        env_key="GAGGICLANKER_CHAT_MAX_TOOL_CALLS",
         validate=_at_least(1, "a chat turn needs at least one tool call to be useful"),
         description=(
             "How many tool calls one chat answer may make in total, across all rounds. "
@@ -1074,7 +1145,6 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         key="chatHistoryTokenBudget",
         type="int",
         default=12000,
-        env_key="GAGGICLANKER_CHAT_HISTORY_TOKEN_BUDGET",
         validate=_at_least(1000, "a history budget below 1000 tokens drops the question itself"),
         description=(
             "Roughly how many tokens of conversation history are sent with each turn. "

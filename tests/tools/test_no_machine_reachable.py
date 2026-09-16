@@ -64,7 +64,7 @@ from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
 from tests.analyzer.conftest import Fixture, build_fixture
-from tests.conftest import running_app
+from tests.conftest import running_app, seed_settings
 from tests.sync.conftest import FIRST_ID, SMALL_COUNT, build_archive_device
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -225,11 +225,10 @@ async def fake_device() -> AsyncIterator[FakeDevice]:
 
 @pytest.fixture
 async def connected(
-    env: EnvSettings, fake_device: FakeDevice, monkeypatch: pytest.MonkeyPatch
+    env: EnvSettings, fake_device: FakeDevice
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient, Fixture]]:
     """The app, connected to the fake machine, with the analyzer's archive in it."""
-    monkeypatch.setenv("GAGGIMATE_HOST", fake_device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
+    await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=5)
     async with running_app(env) as (app, client):
         connection = app.state.connection
         assert await connection.client.wait_connected(5.0), "the fake machine did not connect"
@@ -276,8 +275,7 @@ async def machine_busy(env: EnvSettings, monkeypatch: pytest.MonkeyPatch) -> Asy
     """
     device = build_archive_device(SMALL_COUNT, header_only=False)
     await device.start()
-    monkeypatch.setenv("GAGGIMATE_HOST", device.address)
-    monkeypatch.setenv("GAGGIMATE_TIMEOUT_S", "5")
+    await seed_settings(env, gaggimateHost=device.address, gaggimateTimeoutSeconds=5)
     release = asyncio.Event()
     try:
         async with running_app(env) as (app, _client):
@@ -413,7 +411,7 @@ async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
     await db.connect()
     try:
         await run_migrations(db)
-        settings = SettingsService(SettingsRepository(db), dotenv={})
+        settings = SettingsService(SettingsRepository(db))
 
         ctx = stdio_tool_context(db, settings, set_id=None)
 
@@ -576,7 +574,7 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
     try:
         await run_migrations(db)
         fixture = await build_fixture(db)
-        settings = SettingsService(SettingsRepository(db), dotenv={})
+        settings = SettingsService(SettingsRepository(db))
         ctx = stdio_tool_context(db, settings, set_id=fixture.set_id)
 
         drafted = await registry.dispatch(
