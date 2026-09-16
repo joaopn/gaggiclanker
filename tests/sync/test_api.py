@@ -21,7 +21,7 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import machine_tasks, running_app
 from tests.sync.conftest import CORRUPT_ID, NOTES_ID, SMALL_COUNT, build_archive_device
 
 #: One less than the machine holds: the device has already deleted one file.
@@ -78,11 +78,15 @@ async def test_the_lifespan_starts_the_sync_engine(
 ) -> None:
     _device, app, _client = served
     assert app.state.connection.engine is not None
-    # Every loop is registered, so shutdown cancels them in one call and nothing
-    # is mid-write when the database file is released.
+    # Every loop is registered with the connection that owns the client, so
+    # shutdown cancels them in one call and nothing is mid-write when the
+    # database file is released. Never with the app's shared registry: a loop's
+    # coroutine frame holds the engine, and that registry is handed to the
+    # chat's tools.
     assert {"sync-events", "sync-identity", "sync-shots", "sync-profiles"} <= set(
-        app.state.tasks.names
+        machine_tasks(app).names
     )
+    assert not [name for name in app.state.tasks.names if name.startswith("sync-")]
 
 
 async def test_the_shot_list_is_newest_first_with_what_a_table_needs(

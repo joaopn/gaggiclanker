@@ -21,6 +21,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from gaggiclanker.device.connection import DeviceConnection
+from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
 
@@ -185,6 +187,17 @@ async def client(
 async def app(app_and_client: tuple[FastAPI, httpx.AsyncClient]) -> FastAPI:
     """The app object, for reaching ``app.state``."""
     return app_and_client[0]
+
+
+def machine_tasks(app: FastAPI) -> TaskRegistry:
+    """The registry the machine's owner keeps its own background work in.
+
+    The sync engine's loops, a cleanup run and a notes send are here rather than
+    on ``app.state.tasks``: every coroutine in it holds the device client, and
+    the app's shared registry is handed to the chat's tools.
+    """
+    connection: DeviceConnection[Any] = app.state.connection
+    return connection.tasks
 
 
 @pytest.fixture

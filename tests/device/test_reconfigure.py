@@ -19,7 +19,7 @@ from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.sync.engine import LOOP_TASK_NAMES
-from tests.conftest import running_app
+from tests.conftest import machine_tasks, running_app
 from tests.device.conftest import FIXTURES
 
 
@@ -74,7 +74,7 @@ async def patch(client: httpx.AsyncClient, body: dict[str, object]) -> httpx.Res
 
 
 def sync_loops(app: FastAPI) -> list[str]:
-    return sorted(name for name in app.state.tasks.names if name.startswith("sync-"))
+    return sorted(name for name in machine_tasks(app).names if name.startswith("sync-"))
 
 
 def device_ws_tasks() -> int:

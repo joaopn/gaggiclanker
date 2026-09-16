@@ -43,7 +43,7 @@ from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.ids import pad6
 from gaggiclanker.notes.writeback import writeback_task_name
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import machine_tasks, running_app
 from tests.simulator.test_e2e import (
     INGEST_TIMEOUT_S,
     _simulator_is_up,
@@ -116,7 +116,7 @@ async def test_a_judgement_reaches_the_firmware_s_own_notes_card(
     assert shot in {item["shot_id"] for item in pending["items"]}
     accepted = await client.post("/api/device/notes/push", json={"shot_ids": [shot]})
     assert accepted.status_code == 202, accepted.text
-    task = app.state.tasks.get(writeback_task_name())
+    task = machine_tasks(app).get(writeback_task_name())
     if task is not None:
         await asyncio.wait_for(asyncio.shield(task), 30.0)
 

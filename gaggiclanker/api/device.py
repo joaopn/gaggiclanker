@@ -40,14 +40,31 @@ from gaggiclanker.cleanup.service import CleanupPlan, CleanupService, cleanup_ta
 from gaggiclanker.db.repos.cleanup import CleanupRepository, CleanupRunRow
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow
 from gaggiclanker.db.repos.judgements import PendingWritebackRow
-from gaggiclanker.device.connection import machine_operation
+from gaggiclanker.device.connection import DeviceConnection, machine_operation
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
+from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/device", tags=["device"])
+
+
+def _machine_tasks(connection: DeviceConnection[Any] | None) -> TaskRegistry:
+    """Where a cleanup run and a notes send belong: the machine owner's registry.
+
+    Never ``app.state.tasks``. Both coroutines hold the service that holds this
+    connection, and the app's registry is handed to the chat's tools — a task in
+    it can be reached through its own coroutine frame, and cancelled by name by
+    anything holding the registry. Keeping machine work on the connection is
+    what makes the reachability guarantee in `gaggiclanker/tools/registry.py`
+    true rather than merely intended. The busy check reads these same names, so
+    a settings change is still refused while either is in flight.
+    """
+    if connection is None:  # pragma: no cover - the app wires one whenever a service exists
+        raise ServiceUnavailable("No machine is configured, so there is nothing to run against it.")
+    return connection.tasks
 
 
 class DeviceStatusData(BaseModel):
@@ -185,9 +202,7 @@ async def get_cleanup_plan(cleanup: CleanupServiceDep) -> JSONResponse:
     status_code=202,
     summary="Delete the approved plan's shots from the machine, oldest first",
 )
-async def post_cleanup_run(
-    body: CleanupRunRequest, request: Request, cleanup: CleanupServiceDep
-) -> JSONResponse:
+async def post_cleanup_run(body: CleanupRunRequest, cleanup: CleanupServiceDep) -> JSONResponse:
     """202, and the work happens in a background task — but only for the plan shown.
 
     The body names the shots the preview showed and the person confirmed. A
@@ -208,7 +223,7 @@ async def post_cleanup_run(
     archive does not already hold intact.
     """
     service = _require_cleanup(cleanup)
-    tasks = request.app.state.tasks
+    tasks = _machine_tasks(service.connection)
     # Registered with the machine connection from the approval to the claim, so
     # a settings change cannot rebuild the client between the plan a person
     # confirmed and the run that deletes it; once the task holds its name, the
@@ -317,7 +332,6 @@ async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
 )
 async def post_notes_push(
     body: NotesPushRequest,
-    request: Request,
     notes: NotesWritebackServiceDep,
 ) -> JSONResponse:
     """202: one frame per shot, in a background task, stopping on the first device error.
@@ -328,7 +342,7 @@ async def post_notes_push(
     is a 403, audited. Saving a judgement never sends one.
     """
     service = _require_writeback(notes)
-    tasks = request.app.state.tasks
+    tasks = _machine_tasks(service.connection)
     # As for a cleanup run: held from the approval to the claim of the task name.
     async with machine_operation(service.connection, "a notes send"):
         if tasks.get(writeback_task_name()) is not None:

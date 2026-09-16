@@ -184,11 +184,12 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
     leave the very thread this exists to reap.
 
     The order is the acquisition order reversed. The machine connection first:
-    it stops the sync engine's loops and then the client, whose supervisor owns
-    a socket and an aiohttp session that have to be closed before the loop
-    stops accepting callbacks. Then the registry, so nothing is
-    mid-write. Then the LLM service, whose provider owns an HTTP client whose
-    connections must be released on the loop that made them. The database last.
+    it cancels its own registry — the sync loops, a cleanup run, a notes send —
+    and then stops the engine and the client, whose supervisor owns a socket and
+    an aiohttp session that have to be closed before the loop stops accepting
+    callbacks. Then the app's shared registry, so nothing is mid-write. Then the
+    LLM service, whose provider owns an HTTP client whose connections must be
+    released on the loop that made them. The database last.
     """
     connection: DeviceConnection[SyncEngine] | None = getattr(app.state, "connection", None)
     if connection is not None:
@@ -269,6 +270,10 @@ async def _start(app: FastAPI, db: Database) -> None:
     for env_key in settings_service.removed_env_keys():
         log.warning("setting_removed_env_ignored", env_key=env_key)
     app.state.events = EventBus[SseEvent]()
+    # The app's shared registry: analyses, chat runs, starting points — work a
+    # language model can queue, and nothing that touches the machine. The tasks
+    # that do live on the machine connection's own registry instead; see
+    # `gaggiclanker/device/connection.py`.
     app.state.tasks = TaskRegistry()
     app.state.rate_limits = RateLimiter()
 
@@ -355,7 +360,8 @@ async def _start(app: FastAPI, db: Database) -> None:
     # connection that owns it, and a per-request copy would have to build its
     # own — which would mean a second gate, or a client with none. Neither is
     # wired to anything that runs on its own: they act only when a person
-    # confirms an action on the Sync page.
+    # confirms an action on the Sync page, and the task each one spawns belongs
+    # to the connection's registry rather than to the app's.
     app.state.cleanup = CleanupService(
         db, settings_service, connection=app.state.connection, bus=app.state.events
     )
@@ -484,15 +490,16 @@ def build_device_connection(
         )
 
     def build_engine(client: GaggimateClient) -> SyncEngine:
-        # Every loop it owns is registered with the app's TaskRegistry, so
-        # shutdown cancels them in one call and a rebuild stops exactly them.
+        # Every loop it owns is registered with the connection's own registry —
+        # not `app.state.tasks` — so shutdown cancels them in one call, a
+        # rebuild stops exactly them, and nothing outside the device layer holds
+        # a handle to a task whose coroutine frame holds this client.
         return SyncEngine(client, db, app.state.events)
 
     return DeviceConnection(
         read_config=read_config,
         build_client=build_client,
         build_engine=build_engine,
-        tasks=app.state.tasks,
         # The two machine writes that outlive their request. Profile pushes and
         # rollbacks register themselves for as long as they run, and the sync
         # engine reports its own pulls.

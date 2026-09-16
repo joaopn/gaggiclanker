@@ -20,6 +20,7 @@ from gaggiclanker.cleanup.service import cleanup_task_name
 from gaggiclanker.notes.writeback import writeback_task_name
 from tests.cleanup.conftest import FIRST_ID, SMALL_COUNT, data, drain_tasks, error
 from tests.cleanup.test_notes_writeback import _judge, _shot_id
+from tests.conftest import machine_tasks
 
 ELSEWHERE = "127.0.0.1:9"
 
@@ -75,7 +76,10 @@ async def test_a_cleanup_run_holds_off_a_connection_change(
         json={"shot_ids": [item["shot_id"] for item in plan["planned"]]},
     )
     assert response.status_code == 202
-    assert app.state.tasks.get(cleanup_task_name()) is not None
+    # On the connection's registry, not the app's: everything a run holds leads
+    # back to the machine, and the app's registry is what a chat tool is handed.
+    assert machine_tasks(app).get(cleanup_task_name()) is not None
+    assert cleanup_task_name() not in app.state.tasks.names
 
     try:
         await assert_change_refused(app, client, "a cleanup run")
@@ -109,7 +113,8 @@ async def test_a_notes_send_holds_off_a_connection_change(
     monkeypatch.setattr(machine, "save_shot_notes", held)
     response = await client.post("/api/device/notes/push", json={"shot_ids": [shot]})
     assert response.status_code == 202
-    assert app.state.tasks.get(writeback_task_name()) is not None
+    assert machine_tasks(app).get(writeback_task_name()) is not None
+    assert writeback_task_name() not in app.state.tasks.names
 
     try:
         await assert_change_refused(app, client, "a notes send")

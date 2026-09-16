@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from gaggiclanker.cleanup.service import cleanup_task_name
 from gaggiclanker.domain.ids import pad6
 from tests.cleanup.conftest import FIRST_ID, SMALL_COUNT, data, error, service
+from tests.conftest import machine_tasks
 
 
 async def test_the_plan_route_is_a_dry_run(
@@ -44,7 +45,7 @@ async def test_the_run_route_answers_202_and_deletes_in_the_background(
     accepted = data(response)
     assert accepted["planned"] == 2
 
-    task = app.state.tasks.get(accepted["task"])
+    task = machine_tasks(app).get(accepted["task"])
     assert task is not None
     await asyncio.shield(task)
 
@@ -62,7 +63,7 @@ async def test_a_second_run_while_one_is_going_is_a_conflict(
         {"deviceCleanupMode": "keep_newest", "deviceCleanupKeepNewest": 5}
     )
     plan = await service(app).plan()
-    assert service(app).spawn(app.state.tasks, plan) is True
+    assert service(app).spawn(machine_tasks(app), plan) is True
     try:
         response = await client.post(
             "/api/device/cleanup/run",
@@ -71,7 +72,7 @@ async def test_a_second_run_while_one_is_going_is_a_conflict(
         assert response.status_code == 409
         assert "already running" in error(response)["message"]
     finally:
-        task = app.state.tasks.get(cleanup_task_name())
+        task = machine_tasks(app).get(cleanup_task_name())
         assert task is not None
         await asyncio.shield(task)
 
@@ -95,7 +96,7 @@ async def test_the_run_route_refuses_a_plan_that_changed_and_queues_nothing(
     body = error(response)
     assert "changed since it was previewed" in body["message"]
     assert body["details"] == {"field": "shot_ids", "planned": 4}
-    assert app.state.tasks.get(cleanup_task_name()) is None
+    assert machine_tasks(app).get(cleanup_task_name()) is None
     assert data(await client.get("/api/device/cleanup/runs"))["items"] == []
 
 
@@ -122,7 +123,7 @@ async def test_confirming_an_empty_plan_is_a_bad_request_and_writes_no_run(
     assert response.status_code == 400
     details = error(response)["details"]
     assert [(item["field"], item["type"]) for item in details] == [("body.shot_ids", "too_short")]
-    assert app.state.tasks.get(cleanup_task_name()) is None
+    assert machine_tasks(app).get(cleanup_task_name()) is None
     assert data(await client.get("/api/device/cleanup/runs"))["items"] == []
 
 
@@ -152,7 +153,7 @@ async def test_the_run_route_with_writes_off_is_a_403_naming_the_switch(
 
     assert response.status_code == 403
     assert "Device writes enabled" in error(response)["message"]
-    assert app.state.tasks.get(cleanup_task_name()) is None
+    assert machine_tasks(app).get(cleanup_task_name()) is None
 
 
 async def test_the_read_routes_answer_with_an_empty_plan_when_there_is_no_machine(

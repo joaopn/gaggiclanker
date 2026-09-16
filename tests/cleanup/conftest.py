@@ -32,7 +32,7 @@ from fastapi import FastAPI
 from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.settings import EnvSettings
-from tests.conftest import running_app
+from tests.conftest import machine_tasks, running_app
 
 #: The ids the awkward shots carry in the seeded archive, re-exported so a test
 #: reads as "the quarantined one" rather than as a number.
@@ -124,7 +124,11 @@ async def drain_tasks(app: FastAPI, prefix: str, *, timeout: float = 5.0) -> Non
     has to wait for the task rather than for the dictionary.
     """
     for _ in range(20):
-        pending = [task for name, task in app.state.tasks._tasks.items() if name.startswith(prefix)]
+        pending = [
+            task
+            for name in machine_tasks(app).names
+            if name.startswith(prefix) and (task := machine_tasks(app).get(name)) is not None
+        ]
         if not pending:
             return
         await asyncio.wait(pending, timeout=timeout)

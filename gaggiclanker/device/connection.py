@@ -28,6 +28,18 @@ to the connection at all, busy or not.
 client with the write gate attached and building the sync engine are handed in
 as callables by the lifespan, so this module imports neither the database nor
 the sync package — the direction `docs/architecture.md` draws.
+
+**Every background task that talks to the machine lives here.** This object
+keeps a :class:`~gaggiclanker.infra.tasks.TaskRegistry` of its own — the sync
+engine's loops, a cleanup run, a notes send — rather than sharing the app's.
+The app's registry is handed to things a language model drives (a chat run, an
+analysis, a starting point queue work on it), and a registry is not an opaque
+handle: every task in it answers ``get_coro()``, and a coroutine's frame holds
+the ``self`` it was called on. One shared registry therefore means a chat tool
+holding the sync engine, its client and its ``save_profile`` two public calls
+away, and ``cancel()`` on the four loop names one call away with no
+introspection at all. Two registries is what makes "a tool cannot reach the
+machine" a property of the object graph rather than of nobody having tried.
 """
 
 from __future__ import annotations
@@ -127,13 +139,14 @@ class DeviceConnection[EngineT: DeviceEngine]:
         read_config: Callable[[], Awaitable[DeviceConfig]],
         build_client: Callable[[DeviceConfig], GaggimateClient],
         build_engine: Callable[[GaggimateClient], EngineT],
-        tasks: TaskRegistry,
         busy_tasks: Mapping[str, str] | None = None,
     ) -> None:
         self._read_config = read_config
         self._build_client = build_client
         self._build_engine = build_engine
-        self._tasks = tasks
+        #: Built here, not handed in: see the module docstring. Everything in it
+        #: holds the client, so nothing outside the device layer may hold it.
+        self._tasks = TaskRegistry()
         #: Registry task names that use the machine, with the phrase a refusal
         #: says ("a cleanup run"). The cleanup run and the notes send run as
         #: background tasks and outlive the request that started them.
@@ -162,6 +175,20 @@ class DeviceConnection[EngineT: DeviceEngine]:
         """The configuration the current connection was built from."""
         return self._config
 
+    @property
+    def tasks(self) -> TaskRegistry:
+        """Where a background task that talks to the machine belongs.
+
+        The sync engine's loops are spawned here by :meth:`_build`; a cleanup
+        run and a notes send are spawned here by the two routes that start them
+        — both hold this connection through their service, so both belong to
+        the machine's owner rather than to the app's shared registry. The busy
+        check reads their names from here, so a rebuild is still refused while
+        either is in flight, and :meth:`stop` cancels them before anything else
+        goes.
+        """
+        return self._tasks
+
     def busy(self) -> str | None:
         """What is using the machine right now, as a phrase, or ``None``."""
         for phrase, count in self._operations.items():
@@ -182,8 +209,19 @@ class DeviceConnection[EngineT: DeviceEngine]:
             await self._build(await self._read_config())
 
     async def stop(self) -> None:
-        """Stop the engine and the client. Idempotent; the shutdown path."""
+        """Stop this connection's background work, then the engine and the client.
+
+        Idempotent; the shutdown path. The registry goes first because a
+        cleanup run and a notes send are machine writes that also write to the
+        archive, and the lifespan closes the database straight after this: they
+        have to be over before the client they write through disappears, and
+        long before the file is released. The engine's loops are in the same
+        registry and are cancelled here too, which leaves
+        :meth:`DeviceEngine.stop` nothing to cancel and its ledger backstop
+        still to run.
+        """
         async with self._lock:
+            await self._tasks.cancel_all()
             await self._teardown()
             self._config = None
 

@@ -29,6 +29,7 @@ from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import SHOT_FLAG_HAS_NOTES, ShotNotes
 from gaggiclanker.notes.writeback import NotesWritebackService, compose_device_notes
 from tests.cleanup.conftest import FIRST_ID, NOTES_ID, data, drain_tasks, error
+from tests.conftest import machine_tasks
 
 ALL_FIELDS = ["rating", "balance", "doseIn", "doseOut", "grindSetting", "notes"]
 
@@ -321,7 +322,7 @@ async def test_saving_a_judgement_never_contacts_the_machine(
     assert response.status_code == 200
     await asyncio.sleep(0.05)
 
-    assert not [name for name in app.state.tasks._tasks if name.startswith("notes-writeback")]
+    assert not [name for name in machine_tasks(app).names if name.startswith("notes-writeback")]
     assert "req:history:notes:save" not in fake_device.ws_requests
     assert fake_device.shots[FIRST_ID].notes is None
     assert await DeviceWritesRepository(app.state.db).list_writes() == []
@@ -407,7 +408,7 @@ async def test_a_selection_that_is_no_longer_pending_is_refused_and_sends_nothin
     assert response.status_code == 409
     body = error(response)
     assert body["details"] == {"field": "shot_ids", "not_pending": 1}
-    assert app.state.tasks.get("notes-writeback") is None
+    assert machine_tasks(app).get("notes-writeback") is None
     assert "req:history:notes:save" not in fake_device.ws_requests
 
 
@@ -432,7 +433,7 @@ async def test_a_send_needs_an_explicit_non_empty_selection(
 
     assert response.status_code == 400
     assert error(response)["code"] == "INVALID_REQUEST"
-    assert app.state.tasks.get("notes-writeback") is None
+    assert machine_tasks(app).get("notes-writeback") is None
     assert "req:history:notes:save" not in fake_device.ws_requests
 
 
@@ -457,7 +458,7 @@ async def test_a_send_with_device_writes_off_is_refused_and_audited(
 
     assert response.status_code == 403
     assert "Device writes enabled" in error(response)["message"]
-    assert app.state.tasks.get("notes-writeback") is None
+    assert machine_tasks(app).get("notes-writeback") is None
     assert "req:history:notes:save" not in fake_device.ws_requests
     rows = await DeviceWritesRepository(app.state.db).list_writes()
     assert [(row.kind, row.result, row.device_id) for row in rows] == [

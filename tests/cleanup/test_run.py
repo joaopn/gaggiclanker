@@ -30,6 +30,7 @@ from tests.cleanup.conftest import (
     SMALL_COUNT,
     service,
 )
+from tests.conftest import machine_tasks
 
 #: The wording somebody types on the touchscreen after the last notes pull.
 EDITED = "reworded on the machine"
@@ -178,7 +179,7 @@ async def test_only_one_run_at_a_time(
     """The registry name is claimed synchronously, so two tabs get one run."""
     app, _ = writes_on
     await _keep(app, 5)
-    tasks = app.state.tasks
+    tasks = machine_tasks(app)
 
     assert service(app).spawn(tasks, await service(app).plan()) is True
     assert service(app).spawn(tasks, await service(app).plan()) is False
@@ -244,7 +245,7 @@ async def test_a_clean_index_sync_never_starts_a_cleanup(
     assert run.status == "ok"
     await asyncio.sleep(0)
 
-    assert not [name for name in app.state.tasks._tasks if name.startswith("cleanup")]
+    assert not [name for name in machine_tasks(app).names if name.startswith("cleanup")]
     assert await CleanupRepository(app.state.db).list_runs() == []
     rows = await DeviceWritesRepository(app.state.db).list_writes()
     assert not [row for row in rows if row.kind == "shot_delete"]
@@ -286,7 +287,7 @@ async def test_retired_switches_in_the_environment_and_the_database_resurrect_no
     assert "req:history:delete" not in fake_device.ws_requests
     assert "req:history:notes:save" not in fake_device.ws_requests
     assert not [
-        name for name in app.state.tasks._tasks if name.startswith(("cleanup", "notes-writeback"))
+        name for name in machine_tasks(app).names if name.startswith(("cleanup", "notes-writeback"))
     ]
     assert await DeviceWritesRepository(app.state.db).list_writes() == []
     assert await CleanupRepository(app.state.db).list_runs() == []
@@ -361,7 +362,7 @@ async def test_a_run_deletes_only_the_approved_plan_even_if_the_policy_moves(
 
 
 async def _await_task(app: FastAPI, name: str) -> None:
-    task = app.state.tasks.get(name)
+    task = machine_tasks(app).get(name)
     assert task is not None, f"no background task named {name!r}"
     await asyncio.shield(task)
 
