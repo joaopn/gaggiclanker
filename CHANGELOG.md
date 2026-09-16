@@ -28,24 +28,79 @@ the running application.
 
 Removed setting: `mcpEnabled` (and its `GAGGICLANKER_MCP_ENABLED` variable). A
 stored value is deleted at upgrade (migration `0019`), and a boot with the
-variable still set logs `setting_removed_env_ignored` naming it.
+variable still set names it in the `setting_env_ignored` line described below.
 
-### Clone and start
+### Clone and start, and settings live only in the database
 
 **Starting is `git clone`, then `docker compose up -d --build`**, then entering
-the machine's address under Settings → Machine. There is no file to copy first.
-`.env.example` is gone; in its place `.env` is tracked by git as a file of
-optional overrides with every line commented out, so an untouched checkout
-changes nothing and the image's and the app's defaults apply. It no longer
-carries an example host that points anywhere, and it names no credential.
+the machine's address under Settings → Machine. There is no file to copy, rename
+or edit first: `.env.example` and the `.env` that briefly replaced it are both
+gone, and the repository ships no configuration file at all.
 
-**Upgrade note: move a local `.env` aside before you pull.** A `.env` you created
-from the old example is untracked, and git will refuse to overwrite it with the
-tracked one. Move it aside (`mv .env .env.local-backup`), pull, then carry over
-only the values you still want — uncomment the matching lines in the new `.env`,
-or better, enter them in the Settings page, which wins over the file anyway. Any
-credential in the old file must go into Settings instead: see *Credentials leave
-the environment* below.
+**Breaking: no runtime setting is read from the environment any more.** A
+setting is what the Settings page saved, or the shipped default — those are the
+only two possibilities, and `GET /api/settings` reports `source` as `database` or
+`default` accordingly (`environment` is gone from the field and from the badge on
+the Settings page). Every variable that used to configure one — `GAGGIMATE_HOST`,
+`GAGGIMATE_PROTOCOL`, `GAGGIMATE_TIMEOUT_S`, `GAGGICLANKER_DEVICE_SYNC_ENABLED`,
+the `GAGGICLANKER_DEVICE_CLEANUP_*`, `GAGGICLANKER_NOTES_WRITEBACK_FIELDS`, the
+`GAGGICLANKER_PROFILE_POLICY_*`, `GAGGICLANKER_LLM_*`, `GAGGICLANKER_MODEL*`,
+`GAGGICLANKER_ANALYSIS_CHUNK_TOKEN_BUDGET`, `GAGGICLANKER_CHAT_*`,
+`CLAUDE_CODE_BIN` and `CLAUDE_CODE_EFFORT` — now does nothing. Two
+configuration surfaces that could disagree silently, on a box whose whole
+configuration fits on one page, was one too many.
+
+Compose no longer passes a machine address through. The only variable it still
+sets is `LOG_LEVEL`; the image sets `DATA_DIR`, `HOST`, `PORT` and `WEB_DIST`,
+and `LOG_JSON` and `CORS_ORIGINS` fall back to their defaults. Those seven are
+the whole of what the process reads from the environment, and the README's
+Configuration section documents each one.
+
+Nothing parses a `.env` any more — not the settings, not the bootstrap values,
+not the credential check — so a file left next to the compose file is logged once
+as `dotenv_file_ignored` with its full path and read by nothing.
+
+`compose.yml`'s `environment:` block is not configuration either: it forwards
+exactly the variable names a boot refuses (the sign-in and LLM credentials, and
+`GAGGICLANKER_DEVICE_WRITES_ENABLED`) and nothing else, each as `${NAME:-}`.
+Compose substitutes those from a `.env` in the project directory as well as from
+your shell, so a box upgrading from the `.env.example` era with credentials still
+in that file stops at boot with the names in the log, rather than coming up with
+the sign-in that file used to configure silently off — while a stale `DATA_DIR`
+or `PORT` in the same file reaches nothing. An unset or empty variable
+substitutes to empty, which counts as unset, so a clean box boots.
+
+**Upgrade note: store your configuration in the database before you pull.**
+While the old version is still running, move anything you had set — in a `.env`,
+in `compose.yml`'s `environment:`, or in the shell — into the database, and then
+remove the variable. A boot that still finds one set logs `setting_env_ignored`
+once with the names (never the values) and starts on the database's values.
+
+Note that simply typing the value into the old Settings page and pressing Save
+does **not** store it: the form sends only the fields whose value differs from
+the one displayed, and a value coming from the environment is already displayed,
+so Save sends an empty change. Either change the field to something else, save,
+change it back and save again — or store it directly, which is one request:
+
+```bash
+curl -X PATCH http://localhost:8000/api/settings \
+  -H 'content-type: application/json' \
+  -d '{"gaggimateHost": "192.168.1.50", "deviceCleanupMode": "keep_newest"}'
+```
+
+Add `-H "Authorization: Bearer <token>"` if sign-in is on, and check what stuck
+with `curl -s localhost:8000/api/settings`: every key you moved should read
+`"source": "database"`.
+
+Two are refused rather than ignored, and the container exits naming them: any
+variable that used to carry a credential (see *Credentials leave the environment*
+below) and `GAGGICLANKER_DEVICE_WRITES_ENABLED`, which used to open the only path
+from this box to the machine. Turn writes on under Settings → Machine instead.
+Silently ignoring either would leave a box less protected than its owner
+believes. An empty value counts as unset in both cases, so an old compose file
+passing `${GAGGICLANKER_DEVICE_WRITES_ENABLED:-}` through still starts.
+
+If `git pull` stops on your own `.env`, move it aside — nothing reads it now.
 
 ### Machine settings apply live
 
@@ -73,7 +128,7 @@ would read a credential from, set non-empty — `AUTH_USER`, `AUTH_PASSWORD`,
 `GAGGICLANKER_LLM_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
 `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_API_KEY`,
 `OPENAI_ADMIN_KEY`, `OPENAI_CUSTOM_HEADERS` or `OPENROUTER_API_KEY`, in any
-letter case, in the process environment or in `.env` — refuses to start: it logs
+letter case, in the process environment — refuses to start: it logs
 `auth_env_refused` with the variable names (never a value) and exits non-zero.
 So does an `HTTP_PROXY`, `HTTPS_PROXY` or `ALL_PROXY` (either case) carrying a
 user or password; a proxy without one is still used.
