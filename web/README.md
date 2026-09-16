@@ -14,14 +14,14 @@ honours `WEB_DIST`).
 export PATH=/workspace/.tools/node/bin:$PATH   # see "Node" below
 
 npm ci              # install exactly what package-lock.json pins
-npm run dev         # Vite on :5173, proxying /api, /health and /openapi.json to :8000
+npm run dev         # Vite on :5173, proxying /api, /health and /openapi.json to :8042
 npm run build       # -> web/dist
 npm run check       # biome ci + tsc --noEmit + vitest run   <- run this before pushing
 npm run types       # just the type check
 npm run gen:api     # regenerate src/api/schema.d.ts from the backend's OpenAPI
 ```
 
-`npm run dev` expects the backend on `http://127.0.0.1:8000`
+`npm run dev` expects the backend on `http://127.0.0.1:8042`
 (`uv run uvicorn gaggiclanker.main:app --reload --no-access-log` from the repo
 root). For a shots list with anything in it, run the fake machine and pull from
 it — the fake holds the fixture archive, so one press of "Pull from machine"
@@ -30,7 +30,7 @@ fills the UI with real shots and real curves:
 ```bash
 uv run python -m gaggiclanker.device.fake --port 8090
 uv run uvicorn gaggiclanker.main:app --reload --no-access-log
-curl -X PATCH localhost:8000/api/settings \
+curl -X PATCH localhost:8042/api/settings \
   -H 'content-type: application/json' -d '{"gaggimateHost": "127.0.0.1:8090"}'
 ```
 
@@ -464,7 +464,7 @@ through `uv run`, so it works offline and needs no server. Against a running
 backend instead:
 
 ```bash
-npm run gen:api -- --url http://127.0.0.1:8000/api/openapi.json
+npm run gen:api -- --url http://127.0.0.1:8042/api/openapi.json
 # or GAGGICLANKER_OPENAPI_URL=... npm run gen:api
 ```
 

@@ -104,7 +104,7 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     DATA_DIR=/app/data \
     WEB_DIST=/app/web/dist \
     HOST=0.0.0.0 \
-    PORT=8000 \
+    PORT=8042 \
     LOG_LEVEL=info
 
 # Created and owned here so a fresh *named volume* inherits the right ownership
@@ -119,7 +119,7 @@ COPY --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # Deliberately NOT `USER app`: the entrypoint starts as root purely to make
 # DATA_DIR writable, then execs the app as uid ${APP_UID} via setpriv. No
 # application code ever runs as root.
-EXPOSE 8000
+EXPOSE 8042
 
 VOLUME ["/app/data"]
 
@@ -128,7 +128,7 @@ VOLUME ["/app/data"]
 # start-period covers the first-boot migrations; three retries at 30 s means a
 # wedged process is reported unhealthy inside two minutes.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8000'), timeout=4).status == 200 else 1)"
+    CMD python -c "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8042'), timeout=4).status == 200 else 1)"
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 

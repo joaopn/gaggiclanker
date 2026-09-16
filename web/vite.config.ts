@@ -7,7 +7,7 @@ import { defineConfig } from "vite";
 
 // The backend the dev server proxies to. Overridable so `npm run dev` can
 // point at a container or another box without editing this file.
-const BACKEND = process.env.GAGGICLANKER_BACKEND ?? "http://127.0.0.1:8000";
+const BACKEND = process.env.GAGGICLANKER_BACKEND ?? "http://127.0.0.1:8042";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

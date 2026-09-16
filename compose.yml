@@ -1,7 +1,7 @@
 # gaggiclanker — one service, one bind mount, one machine on the LAN.
 #
 #   docker compose up -d --build
-#   open http://localhost:8000        # or http://<this box>:8000 from elsewhere
+#   open http://localhost:8042        # or http://<this box>:8042 from elsewhere
 #
 # Then enter the machine's address under Settings -> Machine; it connects on
 # save. Nothing needs copying or editing first, and there is nothing in this
@@ -22,8 +22,8 @@
 #     when HomeKit is on, so a fixed IP is still the more reliable answer.)
 #   * No NAT between a long-lived WebSocket and the machine, and no bridge to
 #     time out an idle connection behind your back.
-#   * The app listens on PORT (8000 by default) directly on the host, so the
-#     UI is at http://<this box>:8000 with no port mapping to reason about.
+#   * The app listens on PORT (8042 by default) directly on the host, so the
+#     UI is at http://<this box>:8042 with no port mapping to reason about.
 #
 # The cost: `ports:` does not apply, the container shares the host's loopback,
 # and Docker Desktop on macOS and Windows does not support it at all.
@@ -33,7 +33,7 @@
 # DHCP-reserved hostname in Settings. That works whenever the GaggiMate
 # has an address routable from the Docker bridge, which on an ordinary home
 # network it does. It is the right choice on Docker Desktop, on a box where
-# 8000 is already taken (set HOST_PORT), or anywhere you would rather the
+# 8042 is already taken (set HOST_PORT), or anywhere you would rather the
 # container not see the host's other services. mDNS will not resolve, so the
 # machine's host must be an address, not a name.
 
@@ -83,16 +83,24 @@ services:
     # this. The machine's host must then be an IP or a DHCP-reserved hostname,
     # because mDNS does not resolve from a bridge network.
     # ports:
-    #   - "${HOST_PORT:-8000}:8000"
+    #   - "${HOST_PORT:-8042}:8042"
 
-    # Not configuration. A tripwire.
+    # One setting, and a tripwire.
     #
-    # Nothing here configures this application: every runtime setting lives in
-    # the database and is edited in the UI, and the handful of values the
-    # process needs before it can open that database (DATA_DIR, WEB_DIST, HOST,
-    # PORT, LOG_LEVEL) are set by the image. What this block does is forward,
-    # and only forward, the exact names a boot **refuses** — the sign-in and LLM
-    # credential variables, and the retired device-writes switch.
+    # PORT is the setting, and the only one that cannot live in the database:
+    # the process has to bind a socket before it can open a file and read one.
+    # So it is given at spawn and remembered nowhere —
+    #     PORT=9000 docker compose up -d --build
+    # — from your shell, or from a `.env` in this directory that Compose
+    # substitutes from. Give it again every time you start the app. The rest of
+    # the bootstrap values (DATA_DIR, WEB_DIST, HOST, LOG_LEVEL) are set by the
+    # image and are not worth a line here.
+    #
+    # Everything else below is a tripwire, not configuration. No runtime setting
+    # is read from the environment — they live in the database and are edited in
+    # the UI. What those lines do is forward, and only forward, the exact names
+    # a boot **refuses**: the sign-in and LLM credential variables, and the
+    # retired device-writes switch.
     #
     # Why forward a name nothing reads: Compose substitutes `${VAR}` from a
     # `.env` in this directory as well as from your shell, and a box upgrading
@@ -112,6 +120,7 @@ services:
     # configure this app that the database was meant to end.
     # `tests/test_release.py` fails if it drifts either way.
     environment:
+      PORT: ${PORT:-8042}
       AUTH_USER: ${AUTH_USER:-}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
@@ -129,20 +138,19 @@ services:
       OPENAI_CUSTOM_HEADERS: ${OPENAI_CUSTOM_HEADERS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       GAGGICLANKER_DEVICE_WRITES_ENABLED: ${GAGGICLANKER_DEVICE_WRITES_ENABLED:-}
-      # To change the log level, uncomment this — it is the one bootstrap value
-      # worth touching from here, and the image's default is `info`:
+      # To change the log level, uncomment this; the image's default is `info`:
       # LOG_LEVEL: ${LOG_LEVEL:-info}
 
     # PORT is read from the environment rather than baked in, the way the
     # Dockerfile's own HEALTHCHECK does it: with host networking the operator
-    # may well move the app off 8000, and a healthcheck pointing at the old
+    # may well move the app off 8042, and a healthcheck pointing at the old
     # port reports a perfectly healthy container as unhealthy for ever.
     healthcheck:
       test:
         - CMD
         - python
         - -c
-        - import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8000'), timeout=4).status == 200 else 1)
+        - import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8042'), timeout=4).status == 200 else 1)
       interval: 30s
       timeout: 5s
       retries: 3

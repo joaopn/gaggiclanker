@@ -37,6 +37,16 @@ the machine's address under Settings → Machine. There is no file to copy, rena
 or edit first: `.env.example` and the `.env` that briefly replaced it are both
 gone, and the repository ships no configuration file at all.
 
+**Breaking: the default port is now 8042**, not 8000 — it was the one number in
+this project likely to collide with something else on a home server. It is still
+the only thing given at spawn, because the process has to bind before it can read
+the database, and it is remembered nowhere: pass it again each time, from your
+shell or from a `.env` Compose substitutes from. To keep 8000, start with
+`PORT=8000 docker compose up -d --build`; with the bridge arrangement,
+`HOST_PORT=8000 docker compose up -d` publishes on 8000 and leaves the container
+on 8042. The image, its healthcheck, compose's healthcheck and the Vite dev proxy
+all moved together.
+
 **Breaking: no runtime setting is read from the environment any more.** A
 setting is what the Settings page saved, or the shipped default — those are the
 only two possibilities, and `GET /api/settings` reports `source` as `database` or
@@ -90,7 +100,8 @@ curl -X PATCH http://localhost:8000/api/settings \
 
 Add `-H "Authorization: Bearer <token>"` if sign-in is on, and check what stuck
 with `curl -s localhost:8000/api/settings`: every key you moved should read
-`"source": "database"`.
+`"source": "database"`. Port 8000 because that is the old version's default —
+see the port change below.
 
 Two are refused rather than ignored, and the container exits naming them: any
 variable that used to carry a credential (see *Credentials leave the environment*

@@ -38,6 +38,11 @@ README = REPO_ROOT / "README.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 COMPOSE = REPO_ROOT / "compose.yml"
 
+#: The declared bind port, and the only number any of the files below may use
+#: for it. Read from the model rather than instantiated, so the test says what
+#: the code ships rather than what this process happens to have in `PORT`.
+DEFAULT_PORT = EnvSettings.model_fields["port"].default
+
 
 def bootstrap_variable_names() -> list[str]:
     """The primary name of every :class:`EnvSettings` field."""
@@ -96,24 +101,31 @@ def test_an_env_file_is_ignored_by_git_wherever_it_is() -> None:
     assert ignored(".envrc")
 
 
-def test_compose_forwards_exactly_the_names_a_boot_refuses() -> None:
-    """Compose's `environment:` is a tripwire, not a configuration surface.
+def test_compose_passes_the_bind_port_and_otherwise_only_a_tripwire() -> None:
+    """One setting, and the names a boot refuses. Nothing else.
 
-    The app reads no `.env`, but Compose still substitutes `${VAR}` from one in
-    the project directory as well as from the invoking shell. Forwarding exactly
-    the names :func:`~gaggiclanker.main.check_configuration` refuses means a box
-    upgrading from the era of that file cannot come up with the sign-in it used
-    to configure silently off, or with the retired device-writes switch silently
+    `PORT` is the setting, and the only one that cannot be a row in the
+    database: the process binds a socket before it can open a file. So it is
+    given at spawn, carries the same default the code declares, and is
+    remembered nowhere.
+
+    The rest is a tripwire. The app reads no `.env`, but Compose still
+    substitutes `${VAR}` from one in the project directory as well as from the
+    invoking shell. Forwarding exactly the names
+    :func:`~gaggiclanker.main.check_configuration` refuses means a box upgrading
+    from the era of that file cannot come up with the sign-in it used to
+    configure silently off, or with the retired device-writes switch silently
     ignored — while nothing else in a stale file reaches the container, so a
-    leftover `DATA_DIR` or `PORT` in it does not quietly take effect.
+    leftover `DATA_DIR` in it does not quietly take effect.
 
     Pinned in both directions. Short of the refusal list, a name stops tripping
     and an upgrade goes quiet. Beyond it, `compose.yml` becomes the second place
     to configure this application that the database was meant to end — so a
-    registry key or a bootstrap variable here fails this test. Every entry is
-    `${NAME:-}`: it forwards, it carries no value of its own (a credential
-    written in here would be a credential in a file), and an unset variable
-    substitutes to empty, which counts as unset, so a clean box boots.
+    registry key, or a bootstrap variable other than `PORT`, fails this test.
+    Every tripwire entry is `${NAME:-}`: it forwards, it carries no value of its
+    own (a credential written in here would be a credential in a file), and an
+    unset variable substitutes to empty, which counts as unset, so a clean box
+    boots.
     """
     compose = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))
     service = compose["services"]["gaggiclanker"]
@@ -123,10 +135,34 @@ def test_compose_forwards_exactly_the_names_a_boot_refuses() -> None:
     assert "env_file" not in service
 
     forwarded: dict[str, str] = service["environment"]
-    assert set(forwarded) == {*RETIRED_AUTH_ENV_KEYS, DEVICE_WRITES_ENV_KEY}
-    assert all(value == f"${{{name}:-}}" for name, value in forwarded.items()), forwarded
+    assert set(forwarded) == {"PORT", *RETIRED_AUTH_ENV_KEYS, DEVICE_WRITES_ENV_KEY}
+
+    # The one real setting, defaulted from the same number the code declares.
+    assert forwarded["PORT"] == f"${{PORT:-{DEFAULT_PORT}}}"
+
+    tripwire = {name: value for name, value in forwarded.items() if name != "PORT"}
+    assert set(tripwire) == {*RETIRED_AUTH_ENV_KEYS, DEVICE_WRITES_ENV_KEY}
+    assert all(value == f"${{{name}:-}}" for name, value in tripwire.items()), tripwire
     assert set(forwarded).isdisjoint(FORMER_SETTING_ENV_KEYS)
-    assert set(forwarded).isdisjoint(bootstrap_variable_names())
+    assert set(forwarded) & set(bootstrap_variable_names()) == {"PORT"}
+
+
+def test_the_bind_port_default_is_the_same_number_everywhere() -> None:
+    """One default, in four files that cannot import each other.
+
+    The declaration in `EnvSettings` is the source; the image bakes it in, its
+    healthcheck falls back to it, and Compose's healthcheck and bridge mapping
+    repeat it. A mix would show up as a container reported unhealthy while it
+    served perfectly well on another port, which is a bad afternoon.
+    """
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    compose_text = COMPOSE.read_text(encoding="utf-8")
+
+    assert f"PORT={DEFAULT_PORT}" in dockerfile
+    assert f"EXPOSE {DEFAULT_PORT}" in dockerfile
+    assert f"'PORT','{DEFAULT_PORT}'" in dockerfile
+    assert f"'PORT','{DEFAULT_PORT}'" in compose_text
+    assert f'"${{HOST_PORT:-{DEFAULT_PORT}}}:{DEFAULT_PORT}"' in compose_text
 
 
 def test_compose_configures_no_setting_anywhere_in_the_file() -> None:

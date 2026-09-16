@@ -293,7 +293,7 @@ async def test_a_dotenv_in_the_working_directory_configures_nothing(
 
     # The bootstrap layer, read straight from the class the way uvicorn's entry
     # point does.
-    assert EnvSettings().port == 8000
+    assert EnvSettings().port == 8042
 
     env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="info", LOG_JSON=True)  # type: ignore[call-arg]
     try:

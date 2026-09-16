@@ -148,7 +148,7 @@ class EnvSettings(BaseSettings):
         description="Bind address for uvicorn.",
     )
     port: int = Field(
-        default=8000,
+        default=8042,
         validation_alias=AliasChoices("PORT", "GAGGICLANKER_PORT"),
         description="Bind port for uvicorn.",
     )

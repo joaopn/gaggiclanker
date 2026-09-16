@@ -27,23 +27,35 @@ low. This is the thing that remembers them.
 
 ```bash
 git clone <this repo> && cd gaggiclanker
-docker compose up -d --build         # builds the image and starts on :8000
-curl localhost:8000/health           # {"ok":true,"data":{"status":"ok",...}}
-open http://localhost:8000           # the UI
+docker compose up -d --build         # builds the image and starts on :8042
+curl localhost:8042/health           # {"ok":true,"data":{"status":"ok",...}}
+open http://localhost:8042           # the UI
 ```
 
 Nothing to copy, rename or edit first. Everything is configured from the UI and
 kept in the database, so a checkout is ready to start as it comes and a later
 `git pull` has no file of yours to conflict with.
 
-`compose.yml` uses **host networking** by default, so the app is on port 8000 of
+**The port is the one thing still given on the command line.** It defaults to
+8042 and cannot be a setting — the process has to bind a socket before it can
+open the database and read one — so it is passed at spawn and remembered
+nowhere. Give it again every time you start the app, from your shell or from a
+`.env` in this directory that Compose substitutes from:
+
+```bash
+PORT=9000 docker compose up -d --build   # host networking, the default here
+HOST_PORT=9000 docker compose up -d      # bridge: published on 9000, container stays on 8042
+PORT=9000 uv run gaggiclanker            # a source checkout, no Docker
+```
+
+`compose.yml` uses **host networking** by default, so the app is on port 8042 of
 the box you started it on and mDNS names resolve. Docker Desktop does not
 support that; swap in the `ports:` block the file documents next to it and use
 an IP for the machine's host.
 
 ### First run
 
-1. **Open the UI** at `http://<this box>:8000`.
+1. **Open the UI** at `http://<this box>:8042`.
 2. **Set the machine's address in Settings → Machine.** `gaggimateHost` is the
    display board's IP or hostname, with no scheme (`192.168.1.50`, or
    `192.168.1.50:80`). It connects on save, with no restart: the pill in the
@@ -68,7 +80,7 @@ an IP for the machine's host.
    hides `~/.claude` along with it. Any OpenAI-compatible gateway works too;
    see LLM settings below.
 6. **Take a backup** once there is something worth keeping: **Settings →
-   Backup**, or `curl -X POST localhost:8000/api/backup`.
+   Backup**, or `curl -X POST localhost:8042/api/backup`.
 
 Your data lives in `./data` — one SQLite file plus `backups/`. Back it up by
 copying that directory, or call `POST /api/backup` for a consistent snapshot
@@ -154,7 +166,7 @@ mount, including how to find and back up the file inside it.
 
 ```bash
 uv sync                                                        # install into .venv/
-uv run uvicorn gaggiclanker.main:app --reload --no-access-log  # dev server on :8000
+uv run uvicorn gaggiclanker.main:app --reload --no-access-log  # dev server on :8042
 uv run pytest                                                  # the suite, offline, on every core
 uv run pytest -n 0 tests/sync/test_pull.py                     # one file, without the worker start-up
 scripts/gates.sh                                               # the checks your change owes
@@ -184,7 +196,7 @@ where binary was asked for, the three-client limit:
 ```bash
 uv run python -m gaggiclanker.device.fake --port 8090   # in one terminal
 uv run uvicorn gaggiclanker.main:app --reload           # in another
-curl -X PATCH localhost:8000/api/settings \
+curl -X PATCH localhost:8042/api/settings \
   -H 'content-type: application/json' -d '{"gaggimateHost": "127.0.0.1:8090"}'
 ```
 
@@ -241,19 +253,22 @@ open the database, which the image already sets and most people never touch:
 |---|---|---|
 | `DATA_DIR` | `./data` (`/app/data` in the image) | Where the SQLite file and `backups/` live. |
 | `HOST` | `0.0.0.0` | Bind address. |
-| `PORT` | `8000` | Bind port; the healthcheck reads it too. |
+| `PORT` | `8042` | Bind port; the healthcheck reads it too. The one value given at spawn — see the Quick start. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warning` or `error`. |
 | `LOG_JSON` | `true` | JSON log lines, or human-readable console output for development. |
 | `WEB_DIST` | `<repo>/web/dist` | Where the built SPA is; the image sets it, a checkout does not need to. |
 | `CORS_ORIGINS` | empty | Comma-separated origins allowed to call the API. Only the Vite dev server needs one. |
 
 Each also accepts a `GAGGICLANKER_`-prefixed spelling (`GAGGICLANKER_DATA_DIR`)
-for a box running several services. The image sets the five a container needs;
-`compose.yml` sets none of them, and its `environment:` block is not
-configuration at all — it forwards exactly the variable names a boot refuses, so
-that a credential or the retired device-writes switch left in an old `.env` or
-in your shell stops the container instead of being silently ignored. There is a
-commented-out `LOG_LEVEL` line there if you want a different log level.
+for a box running several services. The image sets the ones a container needs.
+`compose.yml`'s `environment:` block carries exactly one of them — `PORT`,
+defaulting to 8042, because the app must bind before it can read a database, so
+it is given at spawn (`PORT=9000 docker compose up -d --build`) and stored
+nowhere. Everything else in that block is not configuration at all: it forwards
+the variable names a boot refuses, so that a credential or the retired
+device-writes switch left in an old `.env` or in your shell stops the container
+instead of being silently ignored. There is a commented-out `LOG_LEVEL` line
+there if you want a different log level.
 
 **Upgrading from a release that read settings from the environment.** Before you
 pull, store anything you had set — in an old `.env`, in `compose.yml`'s
@@ -297,6 +312,8 @@ the upgrade. Two ways round it, both on the old version, before you pull:
   Add `-H "Authorization: Bearer <token>"` if sign-in is on. Check what stuck
   with `curl -s localhost:8000/api/settings`: every key you moved should read
   `"source": "database"`.
+
+  (Port 8000 because that is the old version's default; the new one is 8042.)
 
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
 or the sync switch under Settings → Machine closes the connection and opens the
@@ -355,10 +372,10 @@ token that leaked can be killed from any other tab. Five failed sign-ins from
 one address buy a sixty-second lock.
 
 ```bash
-TOKEN=$(curl -sX POST localhost:8000/api/auth/login \
+TOKEN=$(curl -sX POST localhost:8042/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"barista","password":"something long"}' | jq -r .data.token)
-curl -H "Authorization: Bearer $TOKEN" localhost:8000/api/shots
+curl -H "Authorization: Bearer $TOKEN" localhost:8042/api/shots
 ```
 
 Auth is the boundary, not a full security posture: there is one user, no roles,
@@ -371,7 +388,7 @@ Everything is in one SQLite file under `DATA_DIR` (`./data` by default), so a
 backup is a file copy and a restore is a file copy back.
 
 ```bash
-curl -X POST localhost:8000/api/backup     # or Settings -> Backup in the UI
+curl -X POST localhost:8042/api/backup     # or Settings -> Backup in the UI
 ls data/backups/
 ```
 
