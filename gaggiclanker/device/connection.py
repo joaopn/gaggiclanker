@@ -54,6 +54,7 @@ from typing import Any, Protocol
 import structlog
 
 from gaggiclanker.device.client import GaggimateClient
+from gaggiclanker.domain.address import machine_host
 from gaggiclanker.infra.errors import Conflict
 from gaggiclanker.infra.tasks import TaskRegistry
 
@@ -102,7 +103,7 @@ class DeviceConfig:
 def device_config(values: Mapping[str, Any]) -> DeviceConfig:
     """Build a :class:`DeviceConfig` from resolved setting values, keyed by registry key."""
     return DeviceConfig(
-        host=str(values.get("gaggimateHost") or "").strip(),
+        host=machine_host(str(values.get("gaggimateHost") or "")),
         protocol=str(values.get("gaggimateProtocol") or "ws"),
         timeout=float(values.get("gaggimateTimeoutSeconds") or 0.0),
         sync_enabled=bool(values.get("deviceSyncEnabled")),

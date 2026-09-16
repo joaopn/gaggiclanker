@@ -120,6 +120,25 @@ async def test_changing_the_host_connects_to_the_new_machine_without_a_restart(
     assert fake_b.client_count == 1
 
 
+async def test_an_address_copied_from_the_browser_reaches_the_machine(
+    on_a: tuple[FastAPI, httpx.AsyncClient], fake_b: FakeDevice
+) -> None:
+    """``http://host/`` is what the machine's web UI shows, so it is what gets pasted."""
+    app, client = on_a
+
+    response = await patch(client, {"gaggimateHost": f"http://{fake_b.address}/"})
+    assert response.status_code == 200, response.text
+
+    new = current(app)
+    assert new.host == fake_b.address
+    assert await new.wait_connected(5.0)
+    run = await app.state.connection.engine.sync_identity(trigger="test")
+    assert run is not None and run.status == "ok"
+    status = (await client.get("/api/device/status")).json()["data"]
+    assert status["connected"] is True
+    assert status["host"] == fake_b.address
+
+
 async def test_emptying_the_host_leaves_no_client_and_a_reset_brings_the_baseline_back(
     on_a: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
 ) -> None:

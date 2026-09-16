@@ -222,6 +222,28 @@ async def test_non_numeric_value_for_an_int_setting_is_rejected(
     assert any(item["field"] == "deviceCleanupKeepNewest" for item in details)
 
 
+@pytest.mark.parametrize(
+    "typed", ["https://10.0.0.9", "wss://10.0.0.9", "10.0.0.9/gaggimate", "user@10.0.0.9"]
+)
+async def test_a_machine_address_the_client_cannot_use_is_refused(
+    client: httpx.AsyncClient, typed: str
+) -> None:
+    response = await client.patch("/api/settings", json={"gaggimateHost": typed})
+    assert response.status_code == 400
+    assert typed not in response.text
+
+    settings = await get_settings(client)
+    assert settings["gaggimateHost"]["source"] == "default"
+
+
+@pytest.mark.parametrize("typed", ["http://10.0.0.9/", "ws://10.0.0.9:8080", "gaggimate.local"])
+async def test_a_machine_address_with_a_plain_scheme_is_accepted(
+    client: httpx.AsyncClient, typed: str
+) -> None:
+    response = await client.patch("/api/settings", json={"gaggimateHost": typed})
+    assert response.status_code == 200, response.text
+
+
 async def test_unknown_key_is_rejected_and_nothing_is_written(
     client: httpx.AsyncClient,
 ) -> None:

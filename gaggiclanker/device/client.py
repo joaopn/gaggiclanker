@@ -98,6 +98,7 @@ from gaggiclanker.device.writes import (
     PendingWrite,
     payload_hash,
 )
+from gaggiclanker.domain.address import machine_host
 from gaggiclanker.domain.ids import pad6, unpad
 from gaggiclanker.domain.index import parse_index
 from gaggiclanker.domain.models import (
@@ -252,6 +253,9 @@ class GaggimateClient:
         slog_retry_budget: float = SLOG_RETRY_BUDGET_S,
         write_gate: DeviceWriteGate | None = None,
     ) -> None:
+        # Reduced here as well as in the settings path: every URL is built from
+        # `self.host`, and a scheme left on it resolves a host named `http`.
+        host = machine_host(host)
         if not host:
             raise ValueError("GaggimateClient needs a host; an empty host means 'no machine'")
         self.host = host

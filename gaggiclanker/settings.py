@@ -35,6 +35,7 @@ from dotenv import dotenv_values
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from gaggiclanker.domain.address import host_problem
 from gaggiclanker.infra.outbound import PROXY_ENV_KEYS, url_carries_userinfo
 
 __all__ = [
@@ -631,13 +632,15 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         default="",
         env_key="GAGGIMATE_HOST",
         description=(
-            "Hostname or IP of the GaggiMate display board, without a scheme; an explicit "
-            "host:port is accepted for a simulator or the fake device. Empty disables device "
+            "Hostname or IP of the GaggiMate display board; an explicit host:port is accepted "
+            "for a simulator or the fake device, and an address copied from the browser "
+            "(http://192.168.1.50/) is reduced to its host. Empty disables device "
             "sync. mDNS (gaggimate.local) is unreliable from inside a container and is off "
             "entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation. A "
             "change applies immediately: the connection is rebuilt without a restart, and "
             "refused while a push, a cleanup, a notes send or a pull is using the machine."
         ),
+        validate=lambda value: host_problem(str(value)),
     ),
     SettingDefinition(
         key="gaggimateProtocol",
