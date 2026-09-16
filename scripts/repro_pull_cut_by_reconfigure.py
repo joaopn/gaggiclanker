@@ -58,12 +58,12 @@ async def main() -> int:
         failures = 0
         for scenario in (reproduce, reproduce_shutdown):
             with tempfile.TemporaryDirectory() as tmp:
-                env = EnvSettings(DATA_DIR=tmp, LOG_LEVEL="error", _env_file=None)  # type: ignore[call-arg]
+                env = EnvSettings(DATA_DIR=tmp, LOG_LEVEL="error")
                 # The machine's address is a runtime setting, so it goes into
                 # the archive before the app boots on it — which is the state a
                 # configured box restarts in.
                 await store_machine(env, device.address)
-                app = create_app(env, web_dist=Path(tmp) / "no-web", dotenv={})
+                app = create_app(env, web_dist=Path(tmp) / "no-web")
                 failures += await scenario(app, device)
                 device.requests.clear()
         return 1 if failures else 0

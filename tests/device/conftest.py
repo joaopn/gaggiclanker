@@ -132,7 +132,7 @@ async def serving(env: EnvSettings) -> AsyncIterator[tuple[FastAPI, str]]:
     is happier in-process; the ones that read an event stream need a socket, a
     real uvicorn and its lifespan.
     """
-    app = create_app(env, web_dist=NO_WEB_DIST, dotenv={})
+    app = create_app(env, web_dist=NO_WEB_DIST)
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
     server = uvicorn.Server(config)
     # See `_clear_sse_shutdown_flag`: a previous block in this session may have

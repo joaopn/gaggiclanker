@@ -33,7 +33,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import structlog
-from dotenv import dotenv_values
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -42,7 +41,6 @@ from gaggiclanker.infra.outbound import PROXY_ENV_KEYS, url_carries_userinfo
 
 __all__ = [
     "CLEANUP_MODES",
-    "DEFAULT_ENV_FILE",
     "DEVICE_WRITES_ENV_KEY",
     "FORMER_SETTING_ENV_KEYS",
     "NOTES_WRITEBACK_FIELDS",
@@ -59,7 +57,6 @@ __all__ = [
     "device_writes_env_key_set",
     "ignored_setting_env_keys",
     "is_argon2_hash",
-    "load_dotenv_values",
     "retired_auth_env_keys",
     "secret_hint",
 ]
@@ -75,22 +72,14 @@ class SettingValueError(ValueError):
     """
 
 
-# Where both layers look for a dotenv file: the working directory, which is the
-# repository root in a checkout and /app in the container.
-DEFAULT_ENV_FILE = Path(".env")
-
-
-def load_dotenv_values(path: Path | None = None) -> dict[str, str | None]:
-    """Parse a dotenv file into a mapping. A missing file is an empty mapping.
-
-    ``EnvSettings`` gets the same file through pydantic-settings; this is for
-    the runtime registry, which resolves its keys itself and would otherwise
-    ignore a file the bootstrap layer honours.
-    """
-    target = DEFAULT_ENV_FILE if path is None else path
-    if not target.is_file():
-        return {}
-    return dict(dotenv_values(target))
+#: The file this application deliberately does not read, in the working
+#: directory — the repository root in a checkout, ``/app`` in the container.
+#: Nothing parses it: the seven bootstrap variables come from the process
+#: environment and everything else is a setting in the database. It is named
+#: here only so a boot can say it is being ignored, because an operator who
+#: left one behind would otherwise have no way to tell a file that is read from
+#: a file that is not.
+IGNORED_ENV_FILE = Path(".env")
 
 
 log = structlog.get_logger(__name__)
@@ -128,9 +117,12 @@ class EnvSettings(BaseSettings):
     form as an alias for boxes that run several services and want a namespace.
     """
 
+    # ``env_file=None``: the process environment and nothing else. A dotenv
+    # file would be a second configuration surface for the seven values below,
+    # and a file that configures only some of what it looks like it configures
+    # is worse than no file at all.
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        env_file=None,
         extra="ignore",
         case_sensitive=False,
     )
@@ -655,16 +647,13 @@ RETIRED_AUTH_ENV_KEYS: tuple[str, ...] = (
 )
 
 
-def retired_auth_env_keys(
-    environ: Mapping[str, str], dotenv: Mapping[str, str | None]
-) -> list[str]:
-    """The refused variables set non-empty in the process env or ``.env``, by name.
+def retired_auth_env_keys(environ: Mapping[str, str]) -> list[str]:
+    """The refused variables set non-empty in the process environment, by name.
 
-    Names only, as they are spelled where they were found (the process
-    environment first, then ``.env``); a value never leaves this function.
-    Compared without regard to case, because the libraries that read them are
-    not all case-sensitive and pydantic-settings was not: a lower-case
-    ``auth_jwt_secret`` is refused, not silently dropped.
+    Names only, as they are spelled where they were found; a value never leaves
+    this function. Compared without regard to case, because the libraries that
+    read them are not all case-sensitive and pydantic-settings was not: a
+    lower-case ``auth_jwt_secret`` is refused, not silently dropped.
 
     Two kinds of variable are refused:
 
@@ -679,13 +668,12 @@ def retired_auth_env_keys(
     retired = {name.upper() for name in RETIRED_AUTH_ENV_KEYS}
     proxies = {name.upper() for name in PROXY_ENV_KEYS}
     found: list[str] = []
-    for source in (environ, dotenv):
-        for name, raw in source.items():
-            if raw is None or raw.strip() == "" or name in found:
-                continue
-            upper = name.upper()
-            if upper in retired or (upper in proxies and url_carries_userinfo(raw)):
-                found.append(name)
+    for name, raw in environ.items():
+        if raw is None or raw.strip() == "":
+            continue
+        upper = name.upper()
+        if upper in retired or (upper in proxies and url_carries_userinfo(raw)):
+            found.append(name)
     return found
 
 

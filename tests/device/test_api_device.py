@@ -59,8 +59,7 @@ async def device_env(data_dir: Path, fake_device: FakeDevice) -> EnvSettings:
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         LOG_JSON=True,
-        _env_file=None,  # type: ignore[call-arg]
-    )
+    )  # type: ignore[call-arg]
     await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=2)
     return env
 
@@ -93,8 +92,7 @@ async def test_sync_disabled_leaves_the_client_unstarted(
     env = EnvSettings(
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
-        _env_file=None,  # type: ignore[call-arg]
-    )
+    )  # type: ignore[call-arg]
     await seed_settings(env, gaggimateHost=fake_device.address, deviceSyncEnabled=False)
     async with running_app(env) as (app, client):
         assert app.state.connection.client is None

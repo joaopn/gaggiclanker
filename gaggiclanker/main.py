@@ -63,10 +63,10 @@ from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 from gaggiclanker.settings import (
+    IGNORED_ENV_FILE,
     EnvSettings,
     device_writes_env_key_set,
     ignored_setting_env_keys,
-    load_dotenv_values,
     retired_auth_env_keys,
 )
 from gaggiclanker.settings_service import SettingsService
@@ -122,8 +122,8 @@ def ensure_data_dir(data_dir: Path) -> None:
 
 def check_configuration(
     env: EnvSettings,
-    dotenv: Mapping[str, str | None] | None = None,
     environ: Mapping[str, str] | None = None,
+    env_file: Path | None = None,
 ) -> None:
     """Every check that needs nothing but the environment. Runs first, always.
 
@@ -162,12 +162,23 @@ def check_configuration(
     owner would go on believing a file they control still gates the writes. So
     it stops the boot instead.
 
-    ``environ`` and ``dotenv`` are
-    parameters so a test can hand in its own; they default to the process
-    environment and to nothing.
+    It also says, once, that a ``.env`` left in the working directory is not
+    read. Nothing parses one — not the bootstrap settings, not the registry, not
+    this check — and a file sitting next to the compose file that looks like
+    configuration and is not is worth one line naming its path.
+
+    ``environ`` and ``env_file`` are parameters so a test can hand in its own;
+    they default to the process environment and to ``./.env``.
     """
     process_env = os.environ if environ is None else environ
-    retired = retired_auth_env_keys(process_env, {} if dotenv is None else dotenv)
+    candidate = IGNORED_ENV_FILE if env_file is None else env_file
+    if candidate.is_file():
+        # Resolved: the relative `.env` says nothing about which directory the
+        # process is actually in, which is the one thing somebody hunting a
+        # stale file needs.
+        log.info("dotenv_file_ignored", path=str(candidate.resolve()))
+
+    retired = retired_auth_env_keys(process_env)
     if retired:
         log.error(
             "auth_env_refused",
@@ -180,8 +191,8 @@ def check_configuration(
         )
         raise RuntimeError(
             "Credentials for external services live only in the database, and these variables "
-            f"carry one: {', '.join(retired)}. Remove them from the environment, compose.yml and "
-            ".env (a proxy may stay if it names no user or password), then enter sign-in under "
+            f"carry one: {', '.join(retired)}. Remove them from the environment and compose.yml "
+            "(a proxy may stay if it names no user or password), then enter sign-in under "
             "Settings → Authentication and provider keys under Settings → LLM. Refusing to start "
             "rather than start with authentication silently switched off or a credential taken "
             "from somewhere other than the database."
@@ -249,7 +260,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Before anything is opened: see check_configuration for why the order is
     # not a matter of taste.
-    check_configuration(env, app.state.dotenv)
+    check_configuration(env)
     ensure_data_dir(env.data_dir)
 
     db = Database(env.database_path)
@@ -504,16 +515,11 @@ def build_device_connection(
     )
 
 
-def create_app(
-    env: EnvSettings | None = None,
-    *,
-    web_dist: Path | None = None,
-    dotenv: Mapping[str, str | None] | None = None,
-) -> FastAPI:
+def create_app(env: EnvSettings | None = None, *, web_dist: Path | None = None) -> FastAPI:
     """Build the application.
 
-    ``env`` defaults to reading the process environment and ``dotenv`` to
-    parsing ``./.env``; both are parameters so a test gets neither by accident.
+    ``env`` defaults to reading the process environment; it is a parameter so a
+    test gets its own data directory rather than the developer's.
     ``web_dist`` overrides
     where the built SPA is looked for (falling back to ``WEB_DIST`` and then to
     ``<repo>/web/dist``); it is a parameter so a test can point at a fixture
@@ -532,7 +538,6 @@ def create_app(
         openapi_url="/api/openapi.json",
     )
     app.state.env = env
-    app.state.dotenv = load_dotenv_values() if dotenv is None else dotenv
 
     # Middleware is applied outermost-last, so this block reads bottom-up. The
     # resulting order, outermost first:

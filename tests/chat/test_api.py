@@ -40,7 +40,7 @@ async def chat_app(
     from gaggiclanker.main import create_app
     from tests.conftest import NO_WEB_DIST
 
-    app = create_app(env, web_dist=NO_WEB_DIST, dotenv={})
+    app = create_app(env, web_dist=NO_WEB_DIST)
     provider = FakeProvider(chat_script=[ChatTurn(text="Pull two more.")])
     async with app.router.lifespan_context(app):
         fixture = await build_fixture(app.state.db)

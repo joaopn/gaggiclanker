@@ -60,8 +60,7 @@ async def served(
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         LOG_JSON=True,
-        _env_file=None,  # type: ignore[call-arg]
-    )
+    )  # type: ignore[call-arg]
     await seed_settings(env, gaggimateHost=device.address)
     try:
         async with running_app(env) as (app, client):

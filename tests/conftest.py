@@ -12,7 +12,7 @@ own app object, so nothing is shared between tests but the process.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -130,27 +130,13 @@ def data_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def env(data_dir: Path) -> EnvSettings:
-    """Bootstrap settings pointed at the temp data directory.
-
-    ``_env_file=None`` so a ``.env`` in the working directory cannot reach a
-    test run.
-    """
-    return EnvSettings(
-        DATA_DIR=str(data_dir),
-        LOG_LEVEL="warning",
-        LOG_JSON=True,
-        # pydantic-settings takes _env_file per instance; it is not in the
-        # generated __init__ signature, hence the ignore.
-        _env_file=None,  # type: ignore[call-arg]
-    )
+    """Bootstrap settings pointed at the temp data directory."""
+    return EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="warning", LOG_JSON=True)  # type: ignore[call-arg]
 
 
 @asynccontextmanager
 async def running_app(
-    env: EnvSettings,
-    *,
-    web_dist: Path | None = _UNSET,
-    dotenv: Mapping[str, str | None] | None = None,
+    env: EnvSettings, *, web_dist: Path | None = _UNSET
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient]]:
     """Build an app, run its lifespan, and hand back a client speaking ASGI to it.
 
@@ -160,12 +146,9 @@ async def running_app(
     ``web_dist`` defaults to a directory that does not exist, so no test sees a
     mounted SPA by accident (see :data:`NO_WEB_DIST`). Pass a fixture directory
     to mount one, or ``None`` to exercise the real ``WEB_DIST``/default chain.
-
-    ``dotenv`` defaults to empty rather than to parsing ``./.env``, so a file in
-    the working directory cannot reach a test the way it reaches production.
     """
     resolved = NO_WEB_DIST if web_dist is _UNSET else web_dist
-    app = create_app(env, web_dist=resolved, dotenv={} if dotenv is None else dotenv)
+    app = create_app(env, web_dist=resolved)
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -240,6 +223,6 @@ def make_env(data_dir: Path) -> Callable[..., EnvSettings]:
             "LOG_LEVEL": "warning",
         }
         values.update(overrides)
-        return EnvSettings(_env_file=None, **values)  # type: ignore[call-arg,arg-type]
+        return EnvSettings(**values)  # type: ignore[arg-type]
 
     return factory

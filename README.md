@@ -265,7 +265,18 @@ to carry a credential, and `GAGGICLANKER_DEVICE_WRITES_ENABLED`, which used to
 open the only path from this box to the machine — the container exits naming it,
 because silently ignoring either would leave the box less protected than its
 owner believes. If `git pull` complains about your own `.env`, move it aside —
-nothing in it configures a setting any more.
+nothing parses one any more, however you run this: not the settings, not the
+bootstrap values, not the credential check. A boot that finds a file called
+`.env` beside it logs `dotenv_file_ignored` with its full path, so it is not
+mistaken for configuration.
+
+Compose is the one thing that still looks at such a file, and only in one narrow
+way: it substitutes `${VAR}` in `compose.yml` from a `.env` in the project
+directory, and `compose.yml` names exactly the variables a boot refuses. So a
+stale `.env` holding `AUTH_USER`, a provider key or
+`GAGGICLANKER_DEVICE_WRITES_ENABLED` still stops the container, loudly, with the
+names in the log — while a stale `DATA_DIR` or `PORT` in the same file reaches
+nothing.
 
 **Typing the same value into the old Settings page and pressing Save does not
 store it.** The form sends only the fields whose value differs from the one it is
@@ -300,8 +311,8 @@ live in the database only — and nothing else can supply one: the provider
 clients ignore the SDKs' own key, header, organisation and base-URL variables,
 profile files and `.netrc`, and a proxy is used only if it names no user or
 password. The variables that used to carry a credential, or that the SDKs would
-read one from, are refused: a boot that finds one set (in any letter case, in the
-environment or in `.env`), or a proxy variable with a user or password in it,
+read one from, are refused: a boot that finds one set in the environment (in any
+letter case), or a proxy variable with a user or password in it,
 logs `auth_env_refused` with the variable names (never a value) and exits, rather
 than start with authentication silently switched off. Empty values count as
 unset.

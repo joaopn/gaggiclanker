@@ -9,10 +9,6 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    # Imported directly by settings.py (dotenv_values) to feed the runtime
-    # registry the same file pydantic-settings reads, so it is a declared
-    # dependency rather than one inherited from pydantic-settings.
-    "python-dotenv>=1.0",
     "aiosqlite>=0.20",
     # The device transport. aiohttp for HTTP (bounded concurrency, binary
     # bodies) and for the in-process fake device's server; websockets for the

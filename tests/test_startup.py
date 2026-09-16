@@ -93,7 +93,7 @@ async def test_app_refuses_to_start_on_an_unwritable_data_dir(tmp_path: Path) ->
     target = tmp_path / "data"
     target.mkdir()
     target.chmod(0o555)
-    app = create_app(EnvSettings(DATA_DIR=str(target), _env_file=None), dotenv={})  # type: ignore[call-arg]
+    app = create_app(EnvSettings(DATA_DIR=str(target)))  # type: ignore[call-arg]
     try:
         with pytest.raises(RuntimeError, match="not writable"):
             async with app.router.lifespan_context(app):
@@ -236,13 +236,93 @@ async def test_a_startup_failure_is_logged_with_its_cause(
 
 
 def test_a_retired_sign_in_variable_is_refused_by_the_config_check() -> None:
-    env = EnvSettings(_env_file=None)  # type: ignore[call-arg]
+    env = EnvSettings()
     with pytest.raises(RuntimeError, match="AUTH_USER"):
-        check_configuration(env, dotenv={}, environ={"AUTH_USER": "barista"})
+        check_configuration(env, environ={"AUTH_USER": "barista"})
 
 
 def test_no_sign_in_variable_passes_the_config_check() -> None:
-    check_configuration(EnvSettings(_env_file=None), dotenv={}, environ={})  # type: ignore[call-arg]
+    check_configuration(EnvSettings(), environ={})
+
+
+def test_a_leftover_env_file_is_named_and_never_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Nothing parses one; the line exists so a stale file is not mistaken for configuration.
+
+    The file here holds both a former setting variable and a credential name.
+    Neither has any effect — the boot does not refuse, and nothing in the file
+    reaches a log line — which is the whole claim: it is a file, not a layer.
+    """
+    from gaggiclanker.infra.logging import configure_logging
+
+    leftover = tmp_path / ".env"
+    leftover.write_text("GAGGIMATE_HOST=10.0.0.42\nAUTH_USER=barista\n", encoding="utf-8")
+    configure_logging("info", json_output=True)
+    try:
+        check_configuration(EnvSettings(), environ={}, env_file=leftover)
+        logged = capsys.readouterr().out
+    finally:
+        configure_logging("warning", json_output=True)
+
+    lines = [line for line in logged.splitlines() if "dotenv_file_ignored" in line]
+    assert len(lines) == 1 and str(leftover.resolve()) in lines[0]
+    assert "10.0.0.42" not in logged
+    assert "barista" not in logged
+
+
+async def test_a_dotenv_in_the_working_directory_configures_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The whole claim, from the working directory a real process would run in.
+
+    The checks above hand :func:`check_configuration` a path; this one puts a
+    file where the process would find it on its own and boots an app on top.
+    Both layers have to ignore it: ``PORT`` would be read by pydantic-settings
+    the moment ``env_file`` came back on ``EnvSettings``, and ``GAGGIMATE_HOST``
+    by the registry if it ever grew an environment layer again. Neither has any
+    effect, and the file is named in the log so nobody mistakes it for the
+    reason their box is configured the way it is.
+    """
+    from gaggiclanker.infra.logging import configure_logging
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("PORT=9999\nGAGGIMATE_HOST=10.9.9.9\n", encoding="utf-8")
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    # The bootstrap layer, read straight from the class the way uvicorn's entry
+    # point does.
+    assert EnvSettings().port == 8000
+
+    env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="info", LOG_JSON=True)  # type: ignore[call-arg]
+    try:
+        async with running_app(env) as (_app, client):
+            logged = capsys.readouterr().out
+            settings = (await client.get("/api/settings")).json()["data"]
+    finally:
+        configure_logging("warning", json_output=True)
+
+    assert settings["gaggimateHost"]["value"] == ""
+    assert settings["gaggimateHost"]["source"] == "default"
+    lines = [line for line in logged.splitlines() if "dotenv_file_ignored" in line]
+    assert len(lines) == 1, logged
+    assert str((tmp_path / ".env").resolve()) in lines[0]
+    assert "10.9.9.9" not in logged
+
+
+def test_no_line_when_there_is_no_env_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from gaggiclanker.infra.logging import configure_logging
+
+    configure_logging("info", json_output=True)
+    try:
+        check_configuration(EnvSettings(), environ={}, env_file=tmp_path / ".env")
+        logged = capsys.readouterr().out
+    finally:
+        configure_logging("warning", json_output=True)
+    assert "dotenv_file_ignored" not in logged
 
 
 async def test_a_retired_sign_in_variable_fails_before_the_database_is_opened(

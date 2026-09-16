@@ -1,11 +1,11 @@
 """Credentials are configured in the database only, and the environment cannot touch them.
 
-Two halves. The environment carries no credential at all — no auth or secret
-registry key reads a variable, and the bootstrap settings have no auth field.
-And because an install that used to configure sign-in through the environment
-has its user and hash nowhere else, a boot that finds one of the old variables
-set — a sign-in one or an LLM provider's key or token — refuses to start:
-ignoring them would switch authentication off and open the app.
+Two halves. The environment carries no credential at all — no setting reads a
+variable, and the bootstrap settings have no auth field. And because an install
+that used to configure sign-in through the environment has its user and hash
+nowhere else, a boot that finds one of the old variables set — a sign-in one or
+an LLM provider's key or token — refuses to start: ignoring them would switch
+authentication off and open the app.
 """
 
 from __future__ import annotations
@@ -58,15 +58,13 @@ def test_the_bootstrap_settings_have_no_auth_field() -> None:
 
 
 def test_empty_values_count_as_unset() -> None:
-    environ = {"AUTH_USER": "", "AUTH_PASSWORD": "   "}
-    dotenv: dict[str, str | None] = {"AUTH_PASSWORD_HASH": "", "AUTH_JWT_SECRET": None}
-    assert retired_auth_env_keys(environ, dotenv) == []
+    environ = {"AUTH_USER": "", "AUTH_PASSWORD": "   ", "AUTH_PASSWORD_HASH": ""}
+    assert retired_auth_env_keys(environ) == []
 
 
-def test_a_name_set_in_either_place_is_found_once() -> None:
-    environ = {"AUTH_USER": "barista"}
-    dotenv: dict[str, str | None] = {"AUTH_USER": "barista", "AUTH_TOKEN_TTL_S": "60"}
-    assert retired_auth_env_keys(environ, dotenv) == ["AUTH_USER", "AUTH_TOKEN_TTL_S"]
+def test_every_name_set_is_reported() -> None:
+    environ = {"AUTH_USER": "barista", "AUTH_TOKEN_TTL_S": "60", "PATH": "/usr/bin"}
+    assert retired_auth_env_keys(environ) == ["AUTH_USER", "AUTH_TOKEN_TTL_S"]
 
 
 # ---------------------------------------------------------------------------
@@ -100,16 +98,6 @@ async def test_each_retired_name_in_the_process_env_refuses_boot(
     _assert_refused_by_name(name, caught, capsys.readouterr().out)
     # Refused before the database was created, let alone opened.
     assert not env.database_path.exists()
-
-
-@pytest.mark.parametrize("name", RETIRED_AUTH_ENV_KEYS)
-async def test_each_retired_name_in_dotenv_refuses_boot(
-    name: str, env: EnvSettings, capsys: pytest.CaptureFixture[str]
-) -> None:
-    with pytest.raises(RuntimeError) as caught:
-        async with running_app(env, dotenv={name: SECRET_LOOKING_VALUE}):
-            pass
-    _assert_refused_by_name(name, caught, capsys.readouterr().out)
 
 
 @pytest.mark.parametrize("name", ["auth_jwt_secret", "Openai_Api_Key", "claude_code_oauth_token"])
@@ -150,25 +138,20 @@ async def test_a_proxy_with_credentials_in_the_process_env_refuses_boot(
     assert "proxy.test" not in str(caught.value)
 
 
-async def test_a_proxy_with_credentials_in_dotenv_refuses_boot(env: EnvSettings) -> None:
-    with pytest.raises(RuntimeError, match="HTTPS_PROXY"):
-        async with running_app(env, dotenv={"HTTPS_PROXY": "user:pw@proxy.test:3128"}):
-            pass
-
-
 async def test_a_proxy_without_credentials_boots(
     env: EnvSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A proxy is a route, not a credential: naming one is fine."""
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.test:3128")
     monkeypatch.setenv("http_proxy", "proxy.test:3128")
-    async with running_app(env, dotenv={"ALL_PROXY": "socks5://proxy.test:1080"}) as (_app, client):
+    monkeypatch.setenv("ALL_PROXY", "socks5://proxy.test:1080")
+    async with running_app(env) as (_app, client):
         assert (await client.get("/api/shots")).status_code == 200
 
 
 def test_names_are_matched_without_regard_to_case_and_reported_as_spelled() -> None:
     environ = {"auth_user": "barista", "Https_Proxy": "http://u:p@proxy.test", "HTTP_PROXY": "p:1"}
-    assert retired_auth_env_keys(environ, {}) == ["auth_user", "Https_Proxy"]
+    assert retired_auth_env_keys(environ) == ["auth_user", "Https_Proxy"]
 
 
 async def test_empty_retired_names_boot_normally(
@@ -177,8 +160,7 @@ async def test_empty_retired_names_boot_normally(
     """An old compose file passing `${AUTH_USER:-}` through must not brick a box."""
     for name in RETIRED_AUTH_ENV_KEYS:
         monkeypatch.setenv(name, "")
-    dotenv: dict[str, str | None] = dict.fromkeys(RETIRED_AUTH_ENV_KEYS, "")
-    async with running_app(env, dotenv=dotenv) as (_app, client):
+    async with running_app(env) as (_app, client):
         assert (await client.get("/api/shots")).status_code == 200
         status = (await client.get("/api/auth/status")).json()["data"]
         assert status["auth_required"] is False

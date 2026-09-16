@@ -49,8 +49,7 @@ async def env_a(data_dir: Path, fake_device: FakeDevice) -> EnvSettings:
         DATA_DIR=str(data_dir),
         LOG_LEVEL="warning",
         LOG_JSON=True,
-        _env_file=None,  # type: ignore[call-arg]
-    )
+    )  # type: ignore[call-arg]
     await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=2)
     return env
 
@@ -444,7 +443,7 @@ async def test_every_pass_cut_short_is_recorded_as_stopped(
     from gaggiclanker.sync.engine import STOPPED_MESSAGE
 
     method, request, kind = PASSES[which]
-    env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="warning", _env_file=None)  # type: ignore[call-arg]
+    env = EnvSettings(DATA_DIR=str(data_dir), LOG_LEVEL="warning")  # type: ignore[call-arg]
     await seed_settings(env, gaggimateHost=archive_machine.address, gaggimateTimeoutSeconds=5)
 
     async with running_app(env) as (app, client):
