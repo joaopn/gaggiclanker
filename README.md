@@ -96,7 +96,7 @@ Nine of them, in the order the sidebar lists them:
 | **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
-| **Beans** | `g b` | The coffees: roaster, origin, variety, process, roast level. |
+| **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Knowledge** | `g k` | The dial-in rules, the prose documents, and the insights waiting for a decision. |

@@ -10,6 +10,25 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The Beans page after using it
+
+- **No variety.** The field is gone from the bean, the form, the card, the API,
+  `v_beans` and both prompts: it was blank on most beans and nothing reasoned
+  from it.
+- **Description.** "What the bag claims it tastes of" is now `description`, a
+  free-form description of the coffee in your own words (what the bag or the
+  roaster says, tasting notes, anything worth knowing), in a three-row box, up
+  to 2000 characters. The API field and the `v_beans` column are `description`
+  (formerly `tasting_notes_bag`), and the analysis and starting-point prompts
+  receive it as `description`.
+- **Decaf** sits in the grid with a label like the other fields.
+- **Roaster and origin suggest what you have already recorded**, archived beans
+  included: type to filter, pick with the mouse or with the arrows and Enter.
+  Anything else you type is kept as typed.
+- **A bean can be deleted**, after an inline confirmation: `DELETE
+  /api/beans/{id}`. A bean any Set uses cannot (409, with the number of Sets);
+  archive it instead. Starting-point runs about a deleted bean go with it.
+
 ### MCP has no network endpoint
 
 The Streamable HTTP endpoint at `/mcp` is gone, and so is its switch. MCP is the

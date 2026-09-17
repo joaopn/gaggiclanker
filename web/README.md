@@ -184,7 +184,8 @@ Sets and judgement add a fourth:
 ```
 src/
   lib/
-    sets.ts           how a recipe, a Set and a bean are written down
+    sets.ts           how a recipe, a Set and a bean are written down, and the roasters and
+                      origins the bean form suggests
   hooks/
     useCatalog.ts     the vocabularies, the beans, the grinders, the machine
     useSets.ts        Sets, versions, trends, the verdict and the assignment
@@ -486,7 +487,7 @@ added later that can end up as a `Slot` child needs the same treatment. The
 suite is the check: a stray `Warning: Function components cannot be given refs`
 in `npm run check` output is this, and it is not cosmetic.
 
-### …and the one primitive that is not radix
+### …and the primitives that are not radix
 
 `ui/popover.tsx` is written by hand. Radix positions its overlays with
 floating-ui, and floating-ui under jsdom costs **about fifteen seconds per
@@ -502,6 +503,14 @@ The same limit applies to anything else radix positions. `DropdownMenu`,
 `Select` and `Tooltip` are fine to *render* in a test — opening their content
 is what costs the fifteen seconds, so a test that has to drive an open menu
 should use this popover instead.
+
+`ui/combobox.tsx` is the other one: a text input with a list of suggestions
+under it (the bean form's roaster and origin). The list is positioned by CSS
+inside a `relative` wrapper and nothing is measured, so a test types into it and
+picks from it at no cost. It follows the WAI-ARIA combobox pattern — focus
+stays in the input, `aria-activedescendant` follows the arrows, Enter picks the
+active option and otherwise submits the form, Escape closes the list without
+bubbling — and free text is always the value.
 
 ## One tsconfig, on purpose
 
