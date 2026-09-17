@@ -195,6 +195,30 @@ port_is_free() {
     ! curl -fsS --max-time 1 "http://127.0.0.1:$SIM_PORT/api/status" >/dev/null 2>&1
 }
 
+# Is the process `serve` started still there? Asked after a test run, where the
+# answer "no" means the simulator died under the suite.
+simulator_is_running() {
+    local pid
+    [[ -f "$SIM_PID" ]] || return 1
+    pid="$(cat "$SIM_PID")"
+    [[ -n "$pid" ]] || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+# How it ended, in words, for a message. Empty when nothing was filed — which
+# is the normal case for a simulator that `stop` killed.
+simulator_exit_note() {
+    local status
+    [[ -f "$SIM_STATUS" ]] || return 0
+    status="$(cat "$SIM_STATUS")"
+    [[ "$status" =~ ^[0-9]+$ ]] || return 0
+    if ((status > 128)); then
+        printf 'exit status %s — SIG%s' "$status" "$(kill -l "$((status - 128))" 2>/dev/null || echo "?")"
+    else
+        printf 'exit status %s' "$status"
+    fi
+}
+
 stop() {
     if [[ -f "$SIM_PID" ]]; then
         local pid
@@ -268,10 +292,34 @@ case "${1:-test}" in
     test)
         serve
         trap stop EXIT
+        status=0
         # `-n 0`: the suite runs in parallel by default, but there is one
         # simulator, it allows three WebSocket clients and it brews one shot at
         # a time. These tests take turns.
-        (cd "$REPO_ROOT" && GAGGIMATE_SIM_HOST="127.0.0.1:$SIM_PORT" uv run pytest -m simulator -n 0)
+        #
+        # `GAGGIMATE_SIM_SUPERVISED` tells the tests that this run started the
+        # simulator, so one that stops answering has died and is a failure
+        # rather than a reason to skip; the log and status paths go with it so
+        # the failure can name them.
+        (
+            cd "$REPO_ROOT" &&
+                GAGGIMATE_SIM_HOST="127.0.0.1:$SIM_PORT" \
+                    GAGGIMATE_SIM_SUPERVISED=1 \
+                    GAGGIMATE_SIM_LOG="$SIM_LOG" \
+                    GAGGIMATE_SIM_STATUS="$SIM_STATUS" \
+                    uv run pytest -m simulator -n 0
+        ) || status=$?
+        # A simulator that died takes the rest of the suite with it, and a
+        # suite whose tests all skipped still reports success. Whatever pytest
+        # said, a run that ended without its simulator failed.
+        if ! simulator_is_running; then
+            note="$(simulator_exit_note)"
+            echo "sim.sh: the simulator did not survive the run${note:+ ($note)}; see $SIM_LOG" >&2
+            if [[ "$status" -eq 0 ]]; then
+                status=1
+            fi
+        fi
+        exit "$status"
         ;;
     *) die "usage: sim.sh [build|run|serve|test|stop|clean]" ;;
 esac

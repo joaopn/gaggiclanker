@@ -39,7 +39,10 @@ with `-n 0`.
 **`sim.sh` — the GaggiMate firmware simulator.** Builds the real display
 firmware natively and runs the `-m simulator` tests against it; the header of
 the script has the prerequisites. Those tests run one at a time (`-n 0`),
-because there is one simulator and it brews one shot at a time.
+because there is one simulator and it brews one shot at a time. A run that
+started its own simulator and then lost it ends non-zero and says how the
+simulator went; the tests that find it gone fail rather than skip, so a
+simulator dying mid-suite cannot pass for a green run with skips.
 
 **`repro_<bug>.py` — one per open bug.** The project's rule is that a bug gets
 a reproduction before it gets a fix: the script exits

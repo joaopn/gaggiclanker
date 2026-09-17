@@ -46,9 +46,9 @@ from gaggiclanker.settings import EnvSettings
 from tests.conftest import machine_tasks, running_app, seed_settings
 from tests.simulator.test_e2e import (
     INGEST_TIMEOUT_S,
-    _simulator_is_up,
     _until,
     data,
+    require_simulator,
     trigger_a_brew,
 )
 
@@ -65,8 +65,7 @@ async def live(env: EnvSettings) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClie
     """
     from tests.simulator.test_e2e import SIM_HOST
 
-    if not await _simulator_is_up():
-        pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
+    await require_simulator()
     await seed_settings(env, gaggimateHost=SIM_HOST, gaggimateTimeoutSeconds=15)
     async with running_app(env) as (app, client):
         await app.state.settings_service.apply({"deviceWritesEnabled": True})

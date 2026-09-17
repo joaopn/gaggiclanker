@@ -30,7 +30,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -54,6 +56,11 @@ pytestmark = pytest.mark.simulator
 #: Port 80 is remapped to 8080 in the sim so it needs no root (`sim/README.md`).
 SIM_HOST = os.environ.get("GAGGIMATE_SIM_HOST", "127.0.0.1:8080")
 
+#: Set by ``scripts/sim.sh test``, which starts the simulator itself. It is the
+#: difference between "nobody started one" and "the one this run started is
+#: gone", and the two deserve opposite answers.
+SUPERVISED = "GAGGIMATE_SIM_SUPERVISED"
+
 #: `MODE_BREW` from `src/display/core/constants.h`.
 MODE_BREW = 1
 
@@ -75,8 +82,7 @@ async def sim_env(env: EnvSettings) -> AsyncIterator[EnvSettings]:
     in. Setting it on a *running* app is its own subject, in
     `tests/simulator/test_reconfigure.py`.
     """
-    if not await _simulator_is_up():
-        pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
+    await require_simulator()
     await seed_settings(env, gaggimateHost=SIM_HOST, gaggimateTimeoutSeconds=15)
     yield env
 
@@ -124,6 +130,43 @@ async def _simulator_is_up() -> bool:
             return (await probe.get(f"http://{SIM_HOST}/api/status")).status_code == 200
     except httpx.HTTPError:
         return False
+
+
+async def require_simulator() -> None:
+    """Skip when nobody started a simulator; fail when the run's own one has died.
+
+    Every fixture in this directory asks first, and the answer used to be the
+    same either way: skip. That made a simulator dying mid-run indistinguishable
+    from a developer running the suite without one — the test that was talking
+    to it timed out, every test after it skipped, and the run came back green
+    with skips. When ``scripts/sim.sh test`` started the simulator, its absence
+    is a failure, and one that says where to look.
+    """
+    if await _simulator_is_up():
+        return
+    if not os.environ.get(SUPERVISED):
+        pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
+    log = os.environ.get("GAGGIMATE_SIM_LOG", "/tmp/gaggimate-sim.log")
+    pytest.fail(
+        f"the simulator this run started is no longer answering on http://{SIM_HOST}"
+        f"{_how_it_died()}. Its log is {log}; the tests after this one have no machine "
+        f"to talk to."
+    )
+
+
+def _how_it_died() -> str:
+    """The exit status ``scripts/sim.sh`` filed, when it was in a position to."""
+    path = os.environ.get("GAGGIMATE_SIM_STATUS", "/tmp/gaggimate-sim.status")
+    try:
+        status = int(Path(path).read_text().strip())
+    except (OSError, ValueError):
+        return ""
+    if status > 128:
+        try:
+            return f" (exit status {status} — {signal.Signals(status - 128).name})"
+        except ValueError:
+            return f" (exit status {status} — signal {status - 128})"
+    return f" (exit status {status})"
 
 
 def data(response: httpx.Response) -> Any:

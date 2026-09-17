@@ -51,8 +51,8 @@ from tests.llm.conftest import FakeProvider
 from tests.simulator.test_e2e import (
     MODE_BREW,
     SIM_HOST,
-    _simulator_is_up,
     data,
+    require_simulator,
 )
 
 pytestmark = pytest.mark.simulator
@@ -66,8 +66,7 @@ BREW_TIMEOUT_S = 90.0
 @pytest.fixture
 async def sim_env(env: EnvSettings) -> AsyncIterator[EnvSettings]:
     """The bootstrap settings, plus an archive already holding the simulator's address."""
-    if not await _simulator_is_up():
-        pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
+    await require_simulator()
     await seed_settings(env, gaggimateHost=SIM_HOST, gaggimateTimeoutSeconds=15)
     yield env
 

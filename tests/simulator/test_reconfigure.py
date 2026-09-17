@@ -16,14 +16,13 @@ import pytest
 
 from gaggiclanker.settings import EnvSettings
 from tests.conftest import running_app
-from tests.simulator.test_e2e import SIM_HOST, _simulator_is_up, _until, data
+from tests.simulator.test_e2e import SIM_HOST, _until, data, require_simulator
 
 pytestmark = pytest.mark.simulator
 
 
 async def test_setting_the_host_at_runtime_connects_and_reads_identity(env: EnvSettings) -> None:
-    if not await _simulator_is_up():
-        pytest.skip(f"no simulator on http://{SIM_HOST} — start one with `scripts/sim.sh serve`")
+    await require_simulator()
 
     async with running_app(env) as (app, client):
         assert data(await client.get("/api/device/status"))["configured"] is False
