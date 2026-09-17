@@ -68,6 +68,9 @@ NODE_BIN_DIR="${NODE_BIN_DIR:-/workspace/.tools/node/bin}"
 SIM_PORT="${GAGGIMATE_SIM_PORT:-8080}"
 SIM_LOG="${GAGGIMATE_SIM_LOG:-/tmp/gaggimate-sim.log}"
 SIM_PID="${GAGGIMATE_SIM_PID:-/tmp/gaggimate-sim.pid}"
+# Where the simulator's own exit status is filed when it ends by itself, so a
+# run that found it gone can say how it died rather than only that it is.
+SIM_STATUS="${GAGGIMATE_SIM_STATUS:-/tmp/gaggimate-sim.status}"
 PROGRAM="$SIM_WORKDIR/.pio/build/display-sim/program"
 
 die() { echo "sim.sh: $*" >&2; exit 1; }
@@ -138,6 +141,7 @@ serve() {
     build
     [[ -x "$PROGRAM" ]] || die "the build produced no $PROGRAM"
     echo "sim.sh: starting the simulator, logging to $SIM_LOG"
+    rm -f "$SIM_STATUS"
     # SDL_VIDEODRIVER=dummy so it runs without an X server; the web UI and the
     # WebSocket are what we are after, not the panel.
     #
@@ -149,8 +153,28 @@ serve() {
     # `exec` keeps that leader's pid equal to `$!` (the subshell is replaced
     # rather than waited on), and `disown` stops this script waiting for it, so
     # `serve` returns and the simulator stays.
-    ( cd "$SIM_WORKDIR" && exec setsid env SDL_VIDEODRIVER=dummy "$PROGRAM" ) \
-        >"$SIM_LOG" 2>&1 </dev/null &
+    #
+    # `trap '' PIPE` because SIG_IGN survives both the fork and the exec, and
+    # the simulator needs it to survive a client that hangs up: its web shim
+    # writes every response with a plain `send()` — no MSG_NOSIGNAL — so one
+    # write to a socket whose peer had already closed killed the whole process
+    # with SIGPIPE, mid-suite, right after it had answered a request. What that
+    # looked like from outside was a test timing out on a shot that never
+    # arrived and every test after it reporting "no simulator".
+    #
+    # The `bash -c` wrapper is there to file the program's exit status: the
+    # simulator is disowned, so nothing waits for it, and without the file a
+    # run that finds it gone cannot say whether it was killed, crashed, or
+    # exited. It stays the session and group leader, so `stop` still reaches
+    # the whole group; being killed by `stop` files nothing, which is the
+    # difference we want.
+    (
+        cd "$SIM_WORKDIR" || exit 1
+        trap '' PIPE
+        exec setsid bash -c \
+            'SDL_VIDEODRIVER=dummy "$1"; status=$?; printf %s "$status" >"$2"; exit "$status"' \
+            sim "$PROGRAM" "$SIM_STATUS"
+    ) >"$SIM_LOG" 2>&1 </dev/null &
     local pid=$!
     disown "%%" 2>/dev/null || true
     echo "$pid" >"$SIM_PID"
@@ -223,6 +247,9 @@ case "${1:-test}" in
     run)
         build
         [[ -x "$PROGRAM" ]] || die "the build produced no $PROGRAM"
+        # Ignored the same way `serve` ignores it, and for the same reason: a
+        # browser tab closed mid-response must not take the simulator with it.
+        trap '' PIPE
         cd "$SIM_WORKDIR" && exec "$PROGRAM"
         ;;
     serve) serve ;;
