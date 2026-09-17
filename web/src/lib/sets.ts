@@ -44,6 +44,46 @@ export function beanLabel(bean: Pick<BeanRow, "name" | "roaster">): string {
 }
 
 /**
+ * The roasters (or origins) already recorded, for the bean form to suggest.
+ *
+ * Archived beans count: a coffee you stopped buying was still roasted by
+ * somebody you may buy from again. Values are trimmed and compared without
+ * case, so "Square Mile" and "square mile " are one suggestion, spelled the way
+ * most beans spell it (ties go to the spelling first in code-point order, so
+ * the answer does not depend on the order the beans arrived in). Sorted
+ * alphabetically, without case.
+ */
+export function beanFieldSuggestions(
+  beans: readonly Pick<BeanRow, "roaster" | "origin">[],
+  field: "roaster" | "origin",
+): string[] {
+  const spellings = new Map<string, Map<string, number>>();
+  for (const bean of beans) {
+    const value = bean[field]?.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    const counts = spellings.get(key) ?? new Map<string, number>();
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+    spellings.set(key, counts);
+  }
+  const chosen = [...spellings.values()].map((counts) => {
+    let best = "";
+    let bestCount = 0;
+    for (const [spelling, count] of counts) {
+      if (count > bestCount || (count === bestCount && spelling < best)) {
+        best = spelling;
+        bestCount = count;
+      }
+    }
+    return best;
+  });
+  return chosen.sort((a, b) => {
+    const byName = a.toLowerCase().localeCompare(b.toLowerCase());
+    return byName !== 0 ? byName : a < b ? -1 : a > b ? 1 : 0;
+  });
+}
+
+/**
  * A grind reading as the two fields a version stores.
  *
  * `grind_setting` is the text a person reads back ("22", "between 3 and 4") and

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { grindPatch, setSummary, versionRatio, versionSummary } from "@/lib/sets";
-import { setRow, version } from "@/test/setsFixtures";
+import {
+  beanFieldSuggestions,
+  grindPatch,
+  setSummary,
+  versionRatio,
+  versionSummary,
+} from "@/lib/sets";
+import { bean, setRow, version } from "@/test/setsFixtures";
 
 describe("recipes", () => {
   it("writes a version on one line", () => {
@@ -48,5 +54,41 @@ describe("grindPatch", () => {
     expect(grindPatch("")).toEqual({});
     expect(grindPatch(null)).toEqual({});
     expect(grindPatch(undefined)).toEqual({});
+  });
+});
+
+describe("beanFieldSuggestions", () => {
+  it("offers each roaster once, sorted, archived beans included", () => {
+    const beans = [
+      bean({ roaster: "Square Mile" }),
+      bean({ roaster: "hasbean" }),
+      bean({ roaster: "  Square Mile " }),
+      bean({ roaster: "square mile", archived: true }),
+      bean({ roaster: "Assembly", archived: true }),
+      bean({ roaster: null }),
+      bean({ roaster: "   " }),
+    ];
+    expect(beanFieldSuggestions(beans, "roaster")).toEqual(["Assembly", "hasbean", "Square Mile"]);
+  });
+
+  it("keeps the most common spelling, and the first one alphabetically on a tie", () => {
+    expect(
+      beanFieldSuggestions(
+        [bean({ origin: "kenya" }), bean({ origin: "Kenya" }), bean({ origin: "kenya" })],
+        "origin",
+      ),
+    ).toEqual(["kenya"]);
+    expect(
+      beanFieldSuggestions([bean({ origin: "kenya" }), bean({ origin: "Kenya" })], "origin"),
+    ).toEqual(["Kenya"]);
+    expect(
+      beanFieldSuggestions([bean({ origin: "Kenya" }), bean({ origin: "kenya" })], "origin"),
+    ).toEqual(["Kenya"]);
+  });
+
+  it("reads the field it is asked for", () => {
+    const beans = [bean({ roaster: "Hasbean", origin: "Ethiopia" })];
+    expect(beanFieldSuggestions(beans, "origin")).toEqual(["Ethiopia"]);
+    expect(beanFieldSuggestions([], "origin")).toEqual([]);
   });
 });
