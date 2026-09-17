@@ -12,9 +12,10 @@ reasons from — roast level, process, origin — lives here, typed and from a
 closed vocabulary (`gaggiclanker/domain/vocab.py`), because a rule keyed on
 "medium-light" cannot match "med light".
 
-Beans are archived rather than deleted. A coffee you have stopped buying is
-still the coffee a hundred shots were pulled with, and a Set that points at it
-must keep resolving.
+Archiving is how a coffee is retired. A coffee you have stopped buying is still
+the coffee a hundred shots were pulled with, and a Set that points at it must
+keep resolving. Deleting is for a bean nobody used — a typo, a duplicate — and
+is refused while any Set points at it.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.vocab import Process, RoastLevel
 
-__all__ = ["BeanRow", "BeanWrite", "BeansRepository"]
+__all__ = ["BeanDeletion", "BeanRow", "BeanWrite", "BeansRepository"]
 
 
 class BeanWrite(BaseModel):
@@ -63,6 +64,18 @@ class BeanRow(BeanWrite):
     created_at: str
     #: How many Sets point at this bean. The archive button asks before it hides
     #: a bean that is still in use, and a delete would have to refuse.
+    set_count: int = 0
+
+
+class BeanDeletion(BaseModel):
+    """What a delete did: nothing to delete, refused because Sets use it, or done."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    found: bool
+    deleted: bool
+    #: The Sets that pointed at the bean when the delete was asked for; a
+    #: refusal names the number so the person knows why.
     set_count: int = 0
 
 
@@ -125,6 +138,26 @@ class BeansRepository(Repository):
             "UPDATE beans SET archived = ? WHERE id = ?", (int(archived), bean_id)
         )
         return None if cursor.rowcount == 0 else await self.get(bean_id)
+
+    async def delete(self, bean_id: int) -> BeanDeletion:
+        """Delete a bean no Set uses.
+
+        The count and the delete run in one transaction: `Database.transaction()`
+        serialises writers, so a Set created between the check and the delete
+        cannot be orphaned. `sets.bean_id` has no `ON DELETE`, so the foreign key
+        would refuse anyway; the check is what turns that into a reason a person
+        can act on. Starting-point runs about the bean cascade with it (0014).
+        """
+        async with self.db.transaction():
+            if await self.db.fetch_value("SELECT 1 FROM beans WHERE id = ?", (bean_id,)) is None:
+                return BeanDeletion(found=False, deleted=False)
+            set_count = int(
+                await self.db.fetch_value("SELECT COUNT(*) FROM sets WHERE bean_id = ?", (bean_id,))
+            )
+            if set_count > 0:
+                return BeanDeletion(found=True, deleted=False, set_count=set_count)
+            await self.db.execute("DELETE FROM beans WHERE id = ?", (bean_id,))
+        return BeanDeletion(found=True, deleted=True)
 
     async def get(self, bean_id: int) -> BeanRow | None:
         row = await self.db.fetch_one(f"{_SELECT} WHERE b.id = ?", (bean_id,))

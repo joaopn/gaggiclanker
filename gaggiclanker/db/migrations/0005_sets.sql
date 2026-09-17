@@ -30,8 +30,9 @@
 -- Both are nullable: a bag whose roaster printed neither is still a bag, and a
 -- NULL is an honest "not stated" where 'other' would be a claim.
 --
--- `archived` rather than DELETE: a bean that is finished is still the bean a
--- year of shots was pulled with.
+-- `archived` is how a finished bean is retired: it is still the bean a year of
+-- shots was pulled with. A delete is only for a bean nobody used, and
+-- `sets.bean_id` below has no ON DELETE, so a bean a Set points at cannot go.
 CREATE TABLE beans (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     name              TEXT    NOT NULL,

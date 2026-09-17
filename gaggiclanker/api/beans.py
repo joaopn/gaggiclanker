@@ -1,9 +1,11 @@
 """`/api/beans` — the bags.
 
-CRUD plus archive. No delete: a finished bag is still the bag a hundred shots
-were pulled with, and a Set pointing at a deleted bean would be a Set whose page
-cannot render. `POST /api/beans/{id}/archive` hides it from the pickers and
-leaves every reference intact.
+CRUD plus archive and delete. Archive is how a coffee is retired: a finished
+bag is still the coffee a hundred shots were pulled with, and
+`POST /api/beans/{id}/archive` hides it from the pickers and leaves every
+reference intact. `DELETE /api/beans/{id}` is for a bean nobody used — a typo, a
+duplicate — and answers 409 while any Set points at it, because Sets cannot be
+deleted and a Set whose bean is gone is a Set whose page cannot render.
 
 `GET /api/beans/{id}/similar-sets` is the wizard's evidence query on its own. It
 lives here rather than under `/api/starting-points` because it is a fact about a
@@ -23,7 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from gaggiclanker.api.deps import BeansRepoDep, DatabaseDep
 from gaggiclanker.db.repos.beans import BeanRow, BeanWrite
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import NotFound
+from gaggiclanker.infra.errors import Conflict, NotFound
 from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_sets
 
 __all__ = ["router"]
@@ -84,6 +86,31 @@ async def update_bean(bean_id: int, body: BeanWrite, beans: BeansRepoDep) -> JSO
     if row is None:
         raise NotFound(f"No bean {bean_id}")
     return envelope_response(row.model_dump(mode="json"))
+
+
+@router.delete(
+    "/{bean_id}",
+    response_model=ApiResponse[dict[str, bool]],
+    summary="Delete a bean no Set uses",
+)
+async def delete_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
+    """A real delete, refused for a bean that is in use.
+
+    Starting-point runs about the bean go with it (their foreign key cascades).
+    Nothing else holds a bean id that has to keep resolving: an analysis keeps
+    its own snapshot of the facts it was given, and an insight scoped to the id
+    simply never matches again, because ids are never reused.
+    """
+    outcome = await beans.delete(bean_id)
+    if not outcome.found:
+        raise NotFound(f"No bean {bean_id}")
+    if not outcome.deleted:
+        noun = "Set uses" if outcome.set_count == 1 else "Sets use"
+        raise Conflict(
+            f"{outcome.set_count} {noun} this bean. Archive it instead.",
+            details={"field": "bean_id", "message": "archive a bean that Sets use"},
+        )
+    return envelope_response({"deleted": True})
 
 
 @router.post(

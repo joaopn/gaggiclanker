@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.repos.starting import StartingPointRunsRepository, StartingPointStart
 
 
 def data(response: httpx.Response) -> Any:
@@ -144,6 +145,59 @@ class TestBeans:
 
     async def test_missing_bean_is_a_404(self, client: httpx.AsyncClient) -> None:
         assert (await client.get("/api/beans/404")).status_code == 404
+
+    async def test_the_description_is_free_text_up_to_2000_characters(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        text = "Sweet and juicy.\nThe roaster says: plum, cocoa.\n" + "x" * 1900
+        created = data(await client.post("/api/beans", json={"name": "x", "description": text}))
+        assert created["description"] == text
+        assert "variety" not in created
+
+        too_long = await client.post("/api/beans", json={"name": "x", "description": "x" * 2001})
+        assert too_long.status_code == 400
+
+    async def test_an_unused_bean_can_be_deleted(self, client: httpx.AsyncClient) -> None:
+        created = data(await client.post("/api/beans", json={"name": "Typo"}))
+
+        response = await client.delete(f"/api/beans/{created['id']}")
+
+        assert data(response) == {"deleted": True}
+        assert (await client.get(f"/api/beans/{created['id']}")).status_code == 404
+        assert data(await client.get("/api/beans?include_archived=true"))["items"] == []
+
+    async def test_deleting_a_missing_bean_is_a_404(self, client: httpx.AsyncClient) -> None:
+        response = await client.delete("/api/beans/404")
+        assert response.status_code == 404
+        assert error(response)["code"] == "NOT_FOUND"
+
+    async def test_a_bean_a_set_uses_cannot_be_deleted(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        await _make_set(client, bean_id)
+        await _make_set(client, bean_id, name="Second")
+
+        response = await client.delete(f"/api/beans/{bean_id}")
+
+        assert response.status_code == 409
+        body = error(response)
+        assert body["code"] == "CONFLICT"
+        assert body["message"] == "2 Sets use this bean. Archive it instead."
+        # Still there, and still resolving for the Sets that point at it.
+        assert data(await client.get(f"/api/beans/{bean_id}"))["set_count"] == 2
+
+    async def test_deleting_a_bean_removes_its_starting_point_runs(
+        self, client: httpx.AsyncClient, app: FastAPI
+    ) -> None:
+        created = data(await client.post("/api/beans", json={"name": "Asked about once"}))
+        runs = StartingPointRunsRepository(app.state.db)
+        run_id = await runs.start(StartingPointStart(bean_id=created["id"]))
+        assert await runs.get(run_id) is not None
+
+        assert data(await client.delete(f"/api/beans/{created['id']}")) == {"deleted": True}
+
+        assert await runs.get(run_id) is None
+        assert await app.state.db.fetch_all("PRAGMA foreign_key_check") == []
 
 
 class TestGrinders:

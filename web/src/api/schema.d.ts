@@ -157,7 +157,16 @@ export interface paths {
          */
         put: operations["update_bean_api_beans__bean_id__put"];
         post?: never;
-        delete?: never;
+        /**
+         * Delete a bean no Set uses
+         * @description A real delete, refused for a bean that is in use.
+         *
+         *     Starting-point runs about the bean go with it (their foreign key cascades).
+         *     Nothing else holds a bean id that has to keep resolving: an analysis keeps
+         *     its own snapshot of the facts it was given, and an insight scoped to the id
+         *     simply never matches again, because ids are never reused.
+         */
+        delete: operations["delete_bean_api_beans__bean_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6314,6 +6323,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_BeanRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_bean_api_beans__bean_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bean_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_dict_str__bool__"];
                 };
             };
             /** @description Validation Error */
