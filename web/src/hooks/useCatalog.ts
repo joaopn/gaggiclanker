@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   createBean,
   createGrinder,
+  deleteBean,
   getBeans,
   getGrinders,
   getMachine,
@@ -92,6 +93,24 @@ export function useArchiveBean(): UseMutationResult<
     onSuccess: (bean) =>
       toast.success(bean.archived ? `${bean.name} archived` : `${bean.name} is back`),
     onError: (error) => toast.error(error.message),
+    onSettled: () => invalidateBeans(queryClient),
+  });
+}
+
+/**
+ * Delete a bean nobody used. Takes the name too, so the toast can say which one
+ * went after the row is already gone from the cache.
+ */
+export function useDeleteBean(): UseMutationResult<
+  { deleted: boolean },
+  Error,
+  { id: number; name: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }) => deleteBean(id),
+    onSuccess: (_result, { name }) => toast.success(`${name} deleted`),
+    onError: (error) => toast.error(`Could not delete the bean: ${error.message}`),
     onSettled: () => invalidateBeans(queryClient),
   });
 }

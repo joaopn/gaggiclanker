@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BeansPage } from "@/pages/BeansPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
@@ -14,6 +14,7 @@ const {
   createBean,
   updateBean,
   setBeanArchived,
+  deleteBean,
   getVocabulary,
   getGrinders,
   getMachines,
@@ -24,6 +25,7 @@ const {
   createBean: vi.fn(),
   updateBean: vi.fn(),
   setBeanArchived: vi.fn(),
+  deleteBean: vi.fn(),
   getVocabulary: vi.fn(),
   getGrinders: vi.fn(),
   getMachines: vi.fn(),
@@ -36,6 +38,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   createBean,
   updateBean,
   setBeanArchived,
+  deleteBean,
   getVocabulary,
   getGrinders,
   getMachines,
@@ -50,6 +53,7 @@ beforeEach(() => {
   createBean.mockResolvedValue(bean({ id: 2, name: "Kenya Kiambu" }));
   updateBean.mockResolvedValue(bean({ name: "Kenya Kiambu" }));
   setBeanArchived.mockResolvedValue(bean({ archived: true }));
+  deleteBean.mockResolvedValue({ deleted: true });
   // The "Start a Set" shortcut mounts the New Set dialog, which asks for these.
   getGrinders.mockResolvedValue({ items: [grinder()] });
   getMachines.mockResolvedValue({ items: [] });
@@ -82,6 +86,99 @@ describe("BeansPage", () => {
     expect(screen.getByLabelText("Roast level")).toBeInTheDocument();
   });
 
+  it("has a multi-line description, decaf among the fields, and no variety", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Add a coffee/ }));
+
+    const form = await screen.findByTestId("bean-form");
+    expect(within(form).queryByLabelText("Variety")).not.toBeInTheDocument();
+    expect(within(form).queryByText(/What the bag claims/)).not.toBeInTheDocument();
+    const description = within(form).getByLabelText("Description");
+    expect(description.tagName).toBe("TEXTAREA");
+    expect(description).toHaveAttribute("rows", "3");
+    // Decaf is a field like the others: in the grid, with its label above it.
+    const decaf = within(form).getByLabelText("Decaf");
+    expect(decaf).toHaveAttribute("type", "checkbox");
+    expect(decaf.closest(".grid")).toBe(within(form).getByLabelText("Name").closest(".grid"));
+
+    await user.type(await screen.findByLabelText("Name"), "Kenya Kiambu");
+    await user.type(description, "Blackcurrant and tomato.{Enter}Washed at Kiambu.");
+    await user.click(decaf);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(createBean).toHaveBeenCalled());
+    expect(createBean.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        description: "Blackcurrant and tomato.\nWashed at Kiambu.",
+        decaf: true,
+      }),
+    );
+    expect(createBean.mock.calls[0][0]).not.toHaveProperty("variety");
+  });
+
+  it("shows the description on the card as written", async () => {
+    getBeans.mockResolvedValue({
+      items: [bean({ description: "Peach and jasmine.\nFrom the Guji zone." })],
+    });
+    renderWithQueryClient(<BeansPage />);
+
+    const text = await screen.findByText(/Peach and jasmine\./);
+    expect(text).toHaveClass("whitespace-pre-line");
+    expect(text.textContent).toBe("Peach and jasmine.\nFrom the Guji zone.");
+    expect(screen.queryByText(/The bag says/)).not.toBeInTheDocument();
+  });
+
+  it("suggests roasters and origins already recorded, archived coffees included", async () => {
+    getBeans.mockImplementation(async (includeArchived: boolean) => ({
+      items: includeArchived
+        ? [bean(), bean({ id: 7, roaster: "Assembly", origin: "Kenya", archived: true })]
+        : [bean()],
+    }));
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Add a coffee/ }));
+    await user.type(await screen.findByLabelText("Name"), "Kenya Kiambu");
+
+    // The mouse: type, click the suggestion.
+    const roaster = screen.getByRole("combobox", { name: "Roaster" });
+    await user.type(roaster, "ass");
+    await user.click(await screen.findByRole("option", { name: "Assembly" }));
+    expect(roaster).toHaveValue("Assembly");
+
+    // The keyboard: type, arrow down, Enter picks it and does not submit.
+    const origin = screen.getByRole("combobox", { name: "Origin" });
+    await user.type(origin, "ken");
+    expect(screen.getByRole("option", { name: "Kenya" })).toBeInTheDocument();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(origin).toHaveValue("Kenya");
+    expect(createBean).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(createBean).toHaveBeenCalled());
+    expect(createBean.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ roaster: "Assembly", origin: "Kenya" }),
+    );
+  });
+
+  it("saves a roaster nobody has recorded yet exactly as typed", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Add a coffee/ }));
+    await user.type(await screen.findByLabelText("Name"), "Kenya Kiambu");
+    await user.type(screen.getByRole("combobox", { name: "Roaster" }), "Has Bean Coffee");
+    // Enter with no suggestion highlighted submits the form, as it always did.
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(createBean).toHaveBeenCalled());
+    expect(createBean.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ roaster: "Has Bean Coffee" }),
+    );
+  });
+
   it("records a coffee with the vocabularies the server serves", async () => {
     const user = setupUser();
     renderWithQueryClient(<BeansPage />);
@@ -111,6 +208,72 @@ describe("BeansPage", () => {
 
     await waitFor(() => expect(setBeanArchived).toHaveBeenCalled());
     expect(setBeanArchived.mock.calls[0].slice(0, 2)).toEqual([1, true]);
+  });
+
+  it("deletes a coffee nobody used, after asking", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ set_count: 0 })] });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Delete Ethiopia Guji" }));
+    const confirm = screen.getByTestId("bean-delete-confirm");
+    expect(confirm).toHaveTextContent("Delete Ethiopia Guji? This cannot be undone.");
+    expect(deleteBean).not.toHaveBeenCalled();
+
+    await user.click(within(confirm).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(deleteBean).toHaveBeenCalled());
+    expect(deleteBean.mock.calls[0][0]).toBe(1);
+    await waitFor(() =>
+      expect(screen.queryByTestId("bean-delete-confirm")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not delete when the question is cancelled", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ set_count: 0 })] });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Delete Ethiopia Guji" }));
+    await user.click(
+      within(screen.getByTestId("bean-delete-confirm")).getByRole("button", { name: "Cancel" }),
+    );
+
+    expect(screen.queryByTestId("bean-delete-confirm")).not.toBeInTheDocument();
+    expect(deleteBean).not.toHaveBeenCalled();
+  });
+
+  it("says why a coffee a Set uses cannot be deleted, and offers archiving", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ set_count: 2 })] });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Delete Ethiopia Guji" }));
+    const confirm = screen.getByTestId("bean-delete-confirm");
+
+    expect(confirm).toHaveTextContent("2 Sets use this coffee, so it cannot be deleted.");
+    expect(within(confirm).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    await user.click(within(confirm).getByRole("button", { name: "Archive" }));
+
+    await waitFor(() => expect(setBeanArchived).toHaveBeenCalled());
+    expect(setBeanArchived.mock.calls[0].slice(0, 2)).toEqual([1, true]);
+    expect(deleteBean).not.toHaveBeenCalled();
+  });
+
+  it("closes the form when the coffee it is editing is deleted", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ set_count: 0 })] });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Ethiopia Guji" }));
+    expect(screen.getByTestId("bean-form")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete Ethiopia Guji" }));
+    await user.click(
+      within(screen.getByTestId("bean-delete-confirm")).getByRole("button", { name: "Delete" }),
+    );
+
+    await waitFor(() => expect(screen.queryByTestId("bean-form")).not.toBeInTheDocument());
   });
 
   it("opens the New Set dialog on the coffee you pressed it from", async () => {

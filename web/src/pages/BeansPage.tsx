@@ -1,5 +1,5 @@
-import { Archive, ArchiveRestore, Bean, Pencil, Plus, Sparkles } from "lucide-react";
-import { useId, useState } from "react";
+import { Archive, ArchiveRestore, Bean, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { BeanRow, BeanWrite } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -8,10 +8,18 @@ import { SectionCard } from "@/components/layout/SectionCard";
 import { NewSetDialog } from "@/components/sets/NewSetDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useArchiveBean, useBeans, useSaveBean, useVocabulary } from "@/hooks/useCatalog";
+import {
+  useArchiveBean,
+  useBeans,
+  useDeleteBean,
+  useSaveBean,
+  useVocabulary,
+} from "@/hooks/useCatalog";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
+import { beanFieldSuggestions } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,6 +34,12 @@ import { cn } from "@/lib/utils";
  * everything closed is picked from `GET /api/vocab`. Roast level and process
  * are the two fields the analyser reasons from, which is why they are selects
  * rather than text: a rule keyed on "medium-light" cannot match "med light".
+ * Roaster and origin stay free text, but suggest the spellings already used, so
+ * the same roaster does not end up recorded three ways.
+ *
+ * Archive is how a coffee with history is retired; delete is for a bean nobody
+ * used (a typo, a duplicate), and the server refuses it while a Set points at
+ * the bean.
  */
 
 const FIELD = cn(
@@ -118,6 +132,13 @@ export function BeansPage() {
               bean={bean}
               onEdit={() => setEditing(bean)}
               onStartSet={() => setStartingFrom(bean.id)}
+              onDeleted={() =>
+                // A form still editing a bean that no longer exists could only
+                // fail to save.
+                setEditing((current) =>
+                  current !== "new" && current?.id === bean.id ? null : current,
+                )
+              }
             />
           ))}
         </div>
@@ -130,12 +151,16 @@ function BeanCard({
   bean,
   onEdit,
   onStartSet,
+  onDeleted,
 }: {
   bean: BeanRow;
   onEdit: () => void;
   onStartSet: () => void;
+  onDeleted: () => void;
 }) {
   const archive = useArchiveBean();
+  const remove = useDeleteBean();
+  const [confirming, setConfirming] = useState(false);
   const facts = [bean.origin, bean.process, bean.roast_level, bean.decaf ? "decaf" : null].filter(
     Boolean,
   );
@@ -174,6 +199,15 @@ function BeanCard({
               <Archive className="size-3.5" aria-hidden="true" />
             )}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Delete ${bean.name}`}
+            aria-expanded={confirming}
+            onClick={() => setConfirming((current) => !current)}
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+          </Button>
         </div>
       }
     >
@@ -188,7 +222,7 @@ function BeanCard({
           </div>
         ) : null}
         {bean.description ? (
-          <p className="text-muted-foreground text-sm">{bean.description}</p>
+          <p className="whitespace-pre-line text-muted-foreground text-sm">{bean.description}</p>
         ) : null}
         {bean.notes ? <p className="text-sm">{bean.notes}</p> : null}
         <p className="text-muted-foreground text-xs">
@@ -197,14 +231,103 @@ function BeanCard({
             : `${bean.set_count} Set${bean.set_count === 1 ? "" : "s"}`}
           {bean.archived ? " · archived" : ""}
         </p>
+        {confirming ? (
+          <DeleteConfirm
+            bean={bean}
+            pending={remove.isPending}
+            onDelete={async () => {
+              if (await attempt(() => remove.mutateAsync({ id: bean.id, name: bean.name }))) {
+                onDeleted();
+              }
+              setConfirming(false);
+            }}
+            onArchive={() => {
+              archive.mutate({ id: bean.id, archived: true });
+              setConfirming(false);
+            }}
+            onCancel={() => setConfirming(false)}
+          />
+        ) : null}
       </div>
     </SectionCard>
+  );
+}
+
+/**
+ * The inline "are you sure" under a bean card.
+ *
+ * Inline rather than a dialog, like the Sync page's confirmations: the coffee
+ * stays on screen while somebody decides, and nothing positioned has to open
+ * for a test to drive it. Focus stays on the trash button, so a stray Enter
+ * toggles the question rather than answering it.
+ *
+ * A bean a Set uses gets the reason instead of a Delete button, and the way out
+ * that does work: archiving. The server would refuse the delete anyway; asking
+ * first and then showing a 409 would be asking a question with one answer.
+ */
+function DeleteConfirm({
+  bean,
+  pending,
+  onDelete,
+  onArchive,
+  onCancel,
+}: {
+  bean: BeanRow;
+  pending: boolean;
+  onDelete: () => void;
+  onArchive: () => void;
+  onCancel: () => void;
+}) {
+  const inUse = bean.set_count > 0;
+  return (
+    <section
+      aria-label={`Delete ${bean.name}?`}
+      data-testid="bean-delete-confirm"
+      className="space-y-2 rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+    >
+      {inUse ? (
+        <p className="text-sm">
+          {bean.set_count === 1 ? "A Set uses" : `${bean.set_count} Sets use`} this coffee, so it
+          cannot be deleted.{" "}
+          {bean.archived ? "It is already archived." : "Archive it to take it out of the pickers."}
+        </p>
+      ) : (
+        <p className="font-medium text-sm">Delete {bean.name}? This cannot be undone.</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {inUse ? (
+          bean.archived ? null : (
+            <Button size="sm" variant="secondary" onClick={onArchive}>
+              Archive
+            </Button>
+          )
+        ) : (
+          <Button size="sm" variant="destructive" disabled={pending} onClick={onDelete}>
+            {pending ? "Deleting…" : "Delete"}
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </section>
   );
 }
 
 function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }) {
   const vocab = useVocabulary();
   const save = useSaveBean();
+  // Every bean, archived ones included: a roaster you stopped buying from is
+  // still a spelling worth offering.
+  const allBeans = useBeans(true);
+  const roasters = useMemo(
+    () => beanFieldSuggestions(allBeans.data?.items ?? [], "roaster"),
+    [allBeans.data],
+  );
+  const origins = useMemo(
+    () => beanFieldSuggestions(allBeans.data?.items ?? [], "origin"),
+    [allBeans.data],
+  );
   const [draft, setDraft] = useState<BeanWrite>(() =>
     bean
       ? {
@@ -257,11 +380,23 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
             />
           </Labelled>
           <Labelled id={ids.roaster} label="Roaster">
-            <input
+            <Combobox
               id={ids.roaster}
               className={FIELD}
               value={draft.roaster ?? ""}
-              onChange={(event) => set("roaster", event.target.value || null)}
+              onValueChange={(value) => set("roaster", value || null)}
+              options={roasters}
+              listLabel="Roasters already recorded"
+            />
+          </Labelled>
+          <Labelled id={ids.origin} label="Origin">
+            <Combobox
+              id={ids.origin}
+              className={FIELD}
+              value={draft.origin ?? ""}
+              onValueChange={(value) => set("origin", value || null)}
+              options={origins}
+              listLabel="Origins already recorded"
             />
           </Labelled>
           <Labelled id={ids.roast} label="Roast level">
@@ -298,31 +433,26 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
               ))}
             </select>
           </Labelled>
-          <Labelled id={ids.origin} label="Origin">
-            <input
-              id={ids.origin}
-              className={FIELD}
-              value={draft.origin ?? ""}
-              onChange={(event) => set("origin", event.target.value || null)}
-            />
+          {/* Shaped like its neighbours: the label above, the control in a row
+              as tall as their inputs, so it reads as one of the fields. */}
+          <Labelled id={ids.decaf} label="Decaf">
+            <div className="flex h-8 items-center">
+              <input
+                id={ids.decaf}
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={draft.decaf ?? false}
+                onChange={(event) => set("decaf", event.target.checked)}
+              />
+            </div>
           </Labelled>
-          <div className="flex items-end gap-2">
-            <input
-              id={ids.decaf}
-              type="checkbox"
-              className="size-4 accent-primary"
-              checked={draft.decaf ?? false}
-              onChange={(event) => set("decaf", event.target.checked)}
-            />
-            <label htmlFor={ids.decaf} className="pb-1.5 text-sm">
-              Decaf
-            </label>
-          </div>
         </div>
         <Labelled id={ids.description} label="Description">
-          <input
+          <textarea
             id={ids.description}
-            className={FIELD}
+            rows={3}
+            placeholder="What the bag or the roaster says, tasting notes, anything worth knowing about this coffee"
+            className={cn(FIELD, "h-auto py-1.5")}
             value={draft.description ?? ""}
             onChange={(event) => set("description", event.target.value)}
           />

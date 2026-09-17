@@ -698,7 +698,15 @@ export async function updateBean(id: number, body: BeanWrite): Promise<BeanRow> 
   return fetchApi<BeanRow>(`/beans/${id}`, { method: "PUT", body: JSON.stringify(body) });
 }
 
-/** Hide a finished bag. Never a delete: its Sets still point at it. */
+/**
+ * Delete a bean nobody used. The server answers 409 while any Set points at it,
+ * because archiving is how a coffee with history is retired.
+ */
+export async function deleteBean(id: number): Promise<{ deleted: boolean }> {
+  return fetchApi<{ deleted: boolean }>(`/beans/${id}`, { method: "DELETE" });
+}
+
+/** Hide a finished bag. Its Sets still point at it, so it stays resolvable. */
 export async function setBeanArchived(id: number, archived: boolean): Promise<BeanRow> {
   return fetchApi<BeanRow>(`/beans/${id}/${archived ? "archive" : "unarchive"}`, {
     method: "POST",
