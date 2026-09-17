@@ -203,7 +203,6 @@ function BeanCard({
             variant="ghost"
             size="sm"
             aria-label={`Delete ${bean.name}`}
-            aria-expanded={confirming}
             onClick={() => setConfirming((current) => !current)}
           >
             <Trash2 className="size-3.5" aria-hidden="true" />

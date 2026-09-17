@@ -401,7 +401,7 @@ path, so the schema, the safety policy and the audit are unchanged:
   importer, so a file becomes a version with its own staging button.
 
 **A bean is a type of coffee, not a bag**, and `beans.roast_date` is gone.
-Roaster, origin, variety, process and roast level stay true of every bag you
+Roaster, origin, process and roast level stay true of every bag you
 ever buy of that coffee; the date was true of one of them, so re-buying either
 aged the old row silently or forced a duplicate bean.
 
