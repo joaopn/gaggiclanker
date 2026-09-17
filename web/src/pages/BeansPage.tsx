@@ -37,11 +37,10 @@ const EMPTY: BeanWrite = {
   name: "",
   roaster: null,
   origin: null,
-  variety: null,
   process: null,
   roast_level: null,
   decaf: false,
-  tasting_notes_bag: "",
+  description: "",
   notes: "",
 };
 
@@ -137,13 +136,9 @@ function BeanCard({
   onStartSet: () => void;
 }) {
   const archive = useArchiveBean();
-  const facts = [
-    bean.origin,
-    bean.variety,
-    bean.process,
-    bean.roast_level,
-    bean.decaf ? "decaf" : null,
-  ].filter(Boolean);
+  const facts = [bean.origin, bean.process, bean.roast_level, bean.decaf ? "decaf" : null].filter(
+    Boolean,
+  );
 
   return (
     <SectionCard
@@ -192,8 +187,8 @@ function BeanCard({
             ))}
           </div>
         ) : null}
-        {bean.tasting_notes_bag ? (
-          <p className="text-muted-foreground text-sm">The bag says: {bean.tasting_notes_bag}</p>
+        {bean.description ? (
+          <p className="text-muted-foreground text-sm">{bean.description}</p>
         ) : null}
         {bean.notes ? <p className="text-sm">{bean.notes}</p> : null}
         <p className="text-muted-foreground text-xs">
@@ -216,11 +211,10 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
           name: bean.name,
           roaster: bean.roaster,
           origin: bean.origin,
-          variety: bean.variety,
           process: bean.process,
           roast_level: bean.roast_level,
           decaf: bean.decaf ?? false,
-          tasting_notes_bag: bean.tasting_notes_bag ?? "",
+          description: bean.description ?? "",
           notes: bean.notes ?? "",
         }
       : EMPTY,
@@ -229,11 +223,10 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
     name: useId(),
     roaster: useId(),
     origin: useId(),
-    variety: useId(),
     process: useId(),
     roast: useId(),
     decaf: useId(),
-    bagNotes: useId(),
+    description: useId(),
     notes: useId(),
   };
 
@@ -313,14 +306,6 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
               onChange={(event) => set("origin", event.target.value || null)}
             />
           </Labelled>
-          <Labelled id={ids.variety} label="Variety">
-            <input
-              id={ids.variety}
-              className={FIELD}
-              value={draft.variety ?? ""}
-              onChange={(event) => set("variety", event.target.value || null)}
-            />
-          </Labelled>
           <div className="flex items-end gap-2">
             <input
               id={ids.decaf}
@@ -334,12 +319,12 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
             </label>
           </div>
         </div>
-        <Labelled id={ids.bagNotes} label="What the bag claims it tastes of">
+        <Labelled id={ids.description} label="Description">
           <input
-            id={ids.bagNotes}
+            id={ids.description}
             className={FIELD}
-            value={draft.tasting_notes_bag ?? ""}
-            onChange={(event) => set("tasting_notes_bag", event.target.value)}
+            value={draft.description ?? ""}
+            onChange={(event) => set("description", event.target.value)}
           />
         </Labelled>
         <Labelled id={ids.notes} label="Your notes">

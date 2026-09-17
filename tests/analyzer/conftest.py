@@ -395,10 +395,9 @@ async def build_fixture(db: Database) -> Fixture:
             name="Ethiopia Guji",
             roaster="Hasbean",
             origin="Ethiopia",
-            variety="Heirloom",
             process="natural",
             roast_level="light",
-            tasting_notes_bag="peach, jasmine, lemon",
+            description="peach, jasmine, lemon",
         )
     )
     grinder = await GrindersRepository(db).create(

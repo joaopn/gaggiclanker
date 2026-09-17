@@ -43,12 +43,13 @@ class BeanWrite(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     roaster: str | None = Field(default=None, max_length=200)
     origin: str | None = Field(default=None, max_length=200)
-    variety: str | None = Field(default=None, max_length=200)
     process: Process | None = None
     roast_level: RoastLevel | None = None
     decaf: bool = False
-    #: What the bag claims it tastes of, verbatim.
-    tasting_notes_bag: str = Field(default="", max_length=500)
+    #: A free-form description of the coffee in the person's words: what the
+    #: bag or the roaster says, tasting notes, anything worth knowing about the
+    #: bean. Both prompts get it as written, under `description`.
+    description: str = Field(default="", max_length=2000)
     notes: str = Field(default="", max_length=2000)
 
 
@@ -71,11 +72,10 @@ _WRITABLE = (
     "name",
     "roaster",
     "origin",
-    "variety",
     "process",
     "roast_level",
     "decaf",
-    "tasting_notes_bag",
+    "description",
     "notes",
 )
 

@@ -2813,6 +2813,11 @@ export interface components {
              * @default false
              */
             decaf: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
             /** Id */
             id: number;
             /** Name */
@@ -2833,13 +2838,6 @@ export interface components {
              * @default 0
              */
             set_count: number;
-            /**
-             * Tasting Notes Bag
-             * @default
-             */
-            tasting_notes_bag: string;
-            /** Variety */
-            variety?: string | null;
         };
         /**
          * BeanWrite
@@ -2855,6 +2853,11 @@ export interface components {
              * @default false
              */
             decaf: boolean;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
             /** Name */
             name: string;
             /**
@@ -2868,13 +2871,6 @@ export interface components {
             roast_level?: components["schemas"]["RoastLevel"] | null;
             /** Roaster */
             roaster?: string | null;
-            /**
-             * Tasting Notes Bag
-             * @default
-             */
-            tasting_notes_bag: string;
-            /** Variety */
-            variety?: string | null;
         };
         /** Body_import_files_api_import_post */
         Body_import_files_api_import_post: {

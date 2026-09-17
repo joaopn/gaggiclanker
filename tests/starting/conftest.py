@@ -471,10 +471,9 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             name="Kenya Nyeri",
             roaster="Square Mile",
             origin="Kenya",
-            variety="SL28",
             process="washed",
             roast_level="light",
-            tasting_notes_bag="blackcurrant, tomato, cane sugar",
+            description="blackcurrant, tomato, cane sugar",
         )
     )
 

@@ -133,11 +133,10 @@ class SetFacts(BaseModel):
     bean_name: str = ""
     roaster: str = ""
     origin: str = ""
-    variety: str = ""
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
-    bag_tasting_notes: str = ""
+    description: str = ""
     grinder_name: str = ""
     grinder_model: str = ""
     burr_type: str = "unknown"
@@ -592,11 +591,10 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             bean_name=bean.name if bean else "",
             roaster=(bean.roaster or "") if bean else "",
             origin=(bean.origin or "") if bean else "",
-            variety=(bean.variety or "") if bean else "",
             process=bean.process if bean else None,
             roast_level=bean.roast_level if bean else None,
             decaf=bool(bean.decaf) if bean else False,
-            bag_tasting_notes=(bean.tasting_notes_bag or "") if bean else "",
+            description=(bean.description or "") if bean else "",
             grinder_name=grinder.name if grinder else "",
             grinder_model=(grinder.model or "") if grinder else "",
             burr_type=grinder.burr_type if grinder else "unknown",
@@ -922,11 +920,10 @@ def _render_set(facts: SetFacts) -> str:
             _line("bean", facts.bean_name),
             _line("roaster", facts.roaster),
             _line("origin", facts.origin),
-            _line("variety", facts.variety),
             _line("process", facts.process or "not stated"),
             _line("roast level", facts.roast_level or "not stated"),
             _line("decaf", "yes" if facts.decaf else None),
-            _line("roaster's tasting notes", facts.bag_tasting_notes),
+            _line("description", facts.description),
         ]
     )
     kit = _block(

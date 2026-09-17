@@ -2,11 +2,10 @@
 bean: Kenya Nyeri
 roaster: Square Mile
 origin: Kenya
-variety: SL28
 process: washed
 roast level: light
 today: 2026-03-10
-roaster's tasting notes: blackcurrant, tomato, cane sugar
+description: blackcurrant, tomato, cane sugar
 
 === hardware_facts ===
 GRINDER

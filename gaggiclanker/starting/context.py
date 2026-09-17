@@ -84,11 +84,10 @@ class BeanFacts(BaseModel):
     name: str
     roaster: str = ""
     origin: str = ""
-    variety: str = ""
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
-    bag_tasting_notes: str = ""
+    description: str = ""
     notes: str = ""
 
 
@@ -235,11 +234,10 @@ async def build_context(
         name=inputs.bean.name,
         roaster=inputs.bean.roaster or "",
         origin=inputs.bean.origin or "",
-        variety=inputs.bean.variety or "",
         process=inputs.bean.process,
         roast_level=inputs.bean.roast_level,
         decaf=inputs.bean.decaf,
-        bag_tasting_notes=inputs.bean.tasting_notes_bag,
+        description=inputs.bean.description,
         notes=inputs.bean.notes,
     )
     hardware = HardwareFacts(
@@ -463,12 +461,11 @@ def _render_bean(bean: BeanFacts, as_of: str) -> str:
             _line("bean", bean.name),
             _line("roaster", bean.roaster),
             _line("origin", bean.origin or "not stated"),
-            _line("variety", bean.variety),
             _line("process", bean.process or "not stated"),
             _line("roast level", bean.roast_level or "not stated"),
             _line("decaf", "yes" if bean.decaf else None),
             _line("today", as_of),
-            _line("roaster's tasting notes", bean.bag_tasting_notes),
+            _line("description", bean.description),
             _line("notes", bean.notes),
         ]
     )

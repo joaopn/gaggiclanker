@@ -243,10 +243,9 @@ BEAN
 bean: Ethiopia Guji
 roaster: Hasbean
 origin: Ethiopia
-variety: Heirloom
 process: natural
 roast level: light
-roaster's tasting notes: peach, jasmine, lemon
+description: peach, jasmine, lemon
 
 KIT
 grinder: Niche Zero NZ

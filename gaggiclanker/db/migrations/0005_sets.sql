@@ -37,7 +37,6 @@ CREATE TABLE beans (
     name              TEXT    NOT NULL,
     roaster           TEXT,
     origin            TEXT,
-    variety           TEXT,
     altitude_m        INTEGER,
     process           TEXT    CHECK (process IS NULL OR process IN
                               ('washed', 'natural', 'honey', 'anaerobic', 'other')),
@@ -48,10 +47,10 @@ CREATE TABLE beans (
     -- "grind finer".
     roast_date        TEXT,
     decaf             INTEGER NOT NULL DEFAULT 0,
-    -- What the bag claims it tastes of, verbatim. Kept apart from `notes`
-    -- because it is the roaster's claim, not the user's finding, and the
-    -- analyzer is told which is which.
-    tasting_notes_bag TEXT    NOT NULL DEFAULT '',
+    -- A free-form description of the coffee in the person's words: what the
+    -- bag or the roaster says, tasting notes, anything worth knowing about the
+    -- bean. The prompts get it as written, not as a verified fact.
+    description       TEXT    NOT NULL DEFAULT '',
     notes             TEXT    NOT NULL DEFAULT '',
     archived          INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
