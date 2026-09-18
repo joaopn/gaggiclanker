@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEventInvalidation } from "@/hooks/useEventInvalidation";
 import { buildSignInPath, setAuthNavigator } from "@/lib/auth-navigation";
 import { DEFAULT_ROUTE } from "@/lib/navigation";
+import { DEFAULT_SETTINGS_PAGE, settingsPath } from "@/lib/settingsPages";
 import { BeansPage } from "@/pages/BeansPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DevicePage } from "@/pages/DevicePage";
@@ -105,7 +106,13 @@ export function App() {
               bookmark, and a hard refresh on one, land somewhere useful. */}
           <Route path="/import" element={<Navigate to="/shots" replace />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          {/* Settings is a group of pages; the bare path, and the `g ,` chord that
+              goes to it, land on the first one. */}
+          <Route
+            path="/settings"
+            element={<Navigate to={settingsPath(DEFAULT_SETTINGS_PAGE)} replace />}
+          />
+          <Route path="/settings/:page" element={<SettingsPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

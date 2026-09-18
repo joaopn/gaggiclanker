@@ -169,7 +169,7 @@ describe("ProfilesPage staging queue", () => {
     expect(banner).toHaveTextContent("switched off");
     expect(within(banner).getByRole("link", { name: /Settings/ })).toHaveAttribute(
       "href",
-      "/settings",
+      "/settings/machine#writes",
     );
   });
 

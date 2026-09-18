@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
 import { NAV_LINKS } from "@/lib/navigation";
+import { SETTINGS_PAGES } from "@/lib/settingsPages";
 import { createTestQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 const { getHealth, getSettings, getDeviceStatus } = vi.hoisted(() => ({
@@ -55,10 +56,11 @@ describe("AppShell", () => {
   it("lists the nine destinations in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
-    // The label span, not the anchor: the anchor's text carries the chord too.
-    const labels = Array.from(nav.querySelectorAll("a")).map((link) =>
-      link.querySelector("span")?.textContent?.trim(),
-    );
+    // The label span, not the row: the row's text carries the chord too. The
+    // top-level rows only — Settings is a disclosure, and its pages are a list
+    // of their own under it.
+    const rows = Array.from(nav.querySelectorAll(":scope > a, :scope > div > button"));
+    const labels = rows.map((row) => row.querySelector("span")?.textContent?.trim());
     expect(labels).toEqual([
       "Shots",
       "Chat",
@@ -98,12 +100,60 @@ describe("AppShell", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Shots" })).toBeInTheDocument());
   });
 
-  it("navigates to Settings on `g ,`", async () => {
+  it("navigates to the first settings page on `g ,`", async () => {
     const user = setupUser();
     renderApp("/shots");
     await user.keyboard("g,");
     await waitFor(() => expect(getSettings).toHaveBeenCalled());
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Machine" })).toBeInTheDocument();
+  });
+
+  describe("the Settings group", () => {
+    it("is a closed disclosure away from settings, and opens on a click", async () => {
+      const user = setupUser();
+      renderApp("/shots");
+      const nav = within(screen.getByTestId("sidebar"));
+
+      const settings = nav.getByRole("button", { name: /^Settings/ });
+      expect(settings).toHaveAttribute("aria-expanded", "false");
+      const list = document.getElementById(String(settings.getAttribute("aria-controls")));
+      expect(list).not.toBeVisible();
+
+      await user.click(settings);
+
+      expect(settings).toHaveAttribute("aria-expanded", "true");
+      expect(list).toBeVisible();
+      const pages = within(list as HTMLElement).getAllByRole("link");
+      expect(pages.map((link) => link.textContent)).toEqual(SETTINGS_PAGES.map((p) => p.label));
+      expect(pages.map((link) => link.getAttribute("href"))).toEqual(
+        SETTINGS_PAGES.map((p) => `/settings/${p.id}`),
+      );
+    });
+
+    it("starts open on a settings page, with that page marked", () => {
+      renderApp("/settings/llm");
+      const nav = within(screen.getByTestId("sidebar"));
+      expect(nav.getByRole("button", { name: /^Settings/ })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      const current = nav.getAllByRole("link", { current: "page" });
+      expect(current.map((link) => link.textContent)).toEqual(["LLM"]);
+    });
+
+    it("goes to a page from the list", async () => {
+      const user = setupUser();
+      renderApp("/shots");
+      const nav = within(screen.getByTestId("sidebar"));
+      await user.click(nav.getByRole("button", { name: /^Settings/ }));
+      await user.click(nav.getByRole("link", { name: "Profile safety" }));
+      expect(await screen.findByRole("heading", { name: "Profile safety" })).toBeInTheDocument();
+    });
+
+    it("redirects the bare settings path to the first page", async () => {
+      renderApp("/settings");
+      expect(await screen.findByRole("heading", { name: "Machine" })).toBeInTheDocument();
+    });
   });
 
   it("ignores a chord typed into a text field", async () => {
@@ -120,7 +170,7 @@ describe("AppShell", () => {
         description: "Hostname or IP of the display board.",
       },
     });
-    renderApp("/settings");
+    renderApp("/settings/machine#connection");
 
     const host = await screen.findByLabelText("Gaggimate host");
     await user.click(host);
@@ -128,7 +178,7 @@ describe("AppShell", () => {
 
     // Still on Settings, and the letters landed in the box: a shortcut that
     // fires mid-sentence is worse than no shortcut at all.
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Machine" })).toBeInTheDocument();
     expect(host).toHaveValue("gs");
   });
 
@@ -235,10 +285,11 @@ describe("AppShell", () => {
       const nav = screen.getByTestId("sidebar").querySelector("nav");
       expect(nav).not.toBeNull();
       // Hidden visually, present for assistive tech: the label is still in the
-      // accessible name of every link, with its chord.
+      // accessible name of every entry, with its chord. Settings is a button
+      // rather than a link, since it opens its list.
       for (const link of NAV_LINKS) {
         expect(
-          within(nav as HTMLElement).getByRole("link", {
+          within(nav as HTMLElement).getByRole(link.children ? "button" : "link", {
             name: `${link.label} (${link.shortcutLabel})`,
           }),
         ).toBeInTheDocument();
@@ -246,6 +297,17 @@ describe("AppShell", () => {
       // And the active entry is still the active entry.
       const current = within(nav as HTMLElement).getAllByRole("link", { current: "page" });
       expect(current.map((el) => el.getAttribute("aria-label"))).toEqual(["Beans (g b)"]);
+    });
+
+    it("names the settings pages on the rail too", async () => {
+      window.localStorage.setItem("sidebar.collapsed.v1", "true");
+      renderApp("/settings/system");
+      const nav = within(screen.getByTestId("sidebar"));
+      for (const page of SETTINGS_PAGES) {
+        expect(nav.getByRole("link", { name: page.label })).toBeInTheDocument();
+      }
+      const current = nav.getAllByRole("link", { current: "page" });
+      expect(current.map((el) => el.getAttribute("aria-label"))).toEqual(["System"]);
     });
 
     it("keeps the nav id unique with the mobile sheet open", async () => {

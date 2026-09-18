@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon,
   SlidersHorizontal,
 } from "lucide-react";
+import { SETTINGS_PAGES, settingsPath } from "@/lib/settingsPages";
 
 export type NavLink = {
   to: string;
@@ -21,7 +22,15 @@ export type NavLink = {
   shortcutLabel: string;
   /** Extra path prefixes that should light this entry up (detail routes). */
   activePaths?: string[];
+  /**
+   * Pages under this entry. An entry with children is a disclosure in the
+   * sidebar rather than a link — it opens the list, and the chord goes to
+   * `to`, which redirects to the first child.
+   */
+  children?: NavChild[];
 };
+
+export type NavChild = { to: string; label: string; icon: LucideIcon };
 
 /**
  * The sidebar, in order. One table drives the sidebar, the mobile sheet, the
@@ -71,13 +80,18 @@ export const NAV_LINKS: NavLink[] = [
     icon: SettingsIcon,
     shortcut: "g ,",
     shortcutLabel: "g ,",
+    children: SETTINGS_PAGES.map((page) => ({
+      to: settingsPath(page.id),
+      label: page.label,
+      icon: page.icon,
+    })),
   },
 ];
 
 /** The landing route. Shots is the archive, so it is the front page. */
 export const DEFAULT_ROUTE = "/shots";
 
-export function isNavActive(link: NavLink, pathname: string): boolean {
+export function isNavActive(link: Pick<NavLink, "to" | "activePaths">, pathname: string): boolean {
   const prefixes = [link.to, ...(link.activePaths ?? [])];
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }

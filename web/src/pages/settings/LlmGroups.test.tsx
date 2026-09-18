@@ -2,8 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResolvedSetting } from "@/api/types";
-import { LlmSection } from "@/pages/settings/LlmSection";
-import type { SettingsFormValues } from "@/pages/settings/schema";
+import { LlmModelsGroup, LlmProviderGroup, RateLimitLatch } from "@/pages/settings/LlmGroups";
+import { groupFor, type SettingsFormValues } from "@/pages/settings/schema";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
@@ -82,10 +82,25 @@ function Harness({ provider = "claude_code" }: { provider?: string }) {
       modelAnalysis: "",
     },
   });
-  return <LlmSection entries={ENTRIES} control={form.control} errors={form.formState.errors} />;
+  const props = { control: form.control, errors: form.formState.errors };
+  // The three pieces the LLM page places in its Provider, Models and Limits
+  // cards, together: the provider picked in one decides what the others show.
+  return (
+    <>
+      <LlmProviderGroup
+        entries={ENTRIES.filter((entry) => groupFor(entry.key) === "provider")}
+        {...props}
+      />
+      <LlmModelsGroup
+        entries={ENTRIES.filter((entry) => groupFor(entry.key) === "models")}
+        {...props}
+      />
+      <RateLimitLatch />
+    </>
+  );
 }
 
-describe("LlmSection", () => {
+describe("LLM groups", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getLlmStatus.mockResolvedValue({

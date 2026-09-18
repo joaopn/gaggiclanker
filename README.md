@@ -80,7 +80,7 @@ an IP for the machine's host.
    hides `~/.claude` along with it. Any OpenAI-compatible gateway works too;
    see LLM settings below.
 6. **Take a backup** once there is something worth keeping: **Settings →
-   Backup**, or `curl -X POST localhost:8042/api/backup`.
+   System → Backup**, or `curl -X POST localhost:8042/api/backup`.
 
 Your data lives in `./data` — one SQLite file plus `backups/`. Back it up by
 copying that directory, or call `POST /api/backup` for a consistent snapshot
@@ -235,7 +235,7 @@ The reference checkout under `external/` is never modified.
 
 ## Configuration
 
-The Settings page is where everything is configured; the one setting that
+The Settings pages are where everything is configured; the one setting that
 matters is the machine's host — the IP or hostname of the display board. Prefer a
 fixed IP: mDNS (`gaggimate.local`) does not resolve from inside a Docker bridge
 network, and the firmware disables mDNS entirely when HomeKit is on.
@@ -433,8 +433,8 @@ and `..._MODEL_CHAT` override it per kind of call, and an empty value lets the
 provider choose. `GAGGICLANKER_LLM_TIMEOUT_S` bounds one attempt, and
 `GAGGICLANKER_LLM_RATE_LIMIT_RETRIES` is a process-wide budget: when the provider
 throttles the account the whole app stops rather than failing every queued shot
-in turn, and the Settings page has the button that starts it again. The Settings
-page also edits the prompts themselves — they are rows in the database, seeded
+in turn, and Settings → LLM has the button that starts it again. Settings →
+Prompts edits the prompts themselves — they are rows in the database, seeded
 from the YAML files in `gaggiclanker/prompts/`, and an edit takes effect on the
 next call without a restart.
 
@@ -608,7 +608,7 @@ Docker created the bind-mount source as `root:root` and the app runs as uid
 `interrupted` means the process stopped mid-call — a restart, an OOM, a power
 cut — and the next boot said so rather than leaving a spinner. Press the button
 again. If it fails instead, the row carries the provider's error; a rate limit
-latches the whole app on purpose and the Settings page has the button that
+latches the whole app on purpose and Settings → LLM has the button that
 clears it.
 
 **I am locked out after mistyping the password.**

@@ -1,5 +1,5 @@
-import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { ChevronRight, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { type ReactElement, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
 import { LlmActivity } from "@/components/LlmActivity";
@@ -10,7 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHotkeys } from "@/hooks/useHotkeys";
-import { isNavActive, NAV_LINKS } from "@/lib/navigation";
+import {
+  isNavActive,
+  NAV_LINKS,
+  type NavChild,
+  type NavLink as NavLinkEntry,
+} from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 /**
@@ -60,56 +65,191 @@ function NavItems({
   /** Set on the desktop rail only — see {@link NAV_ID}. */
   id?: string;
 }) {
-  const { pathname } = useLocation();
   return (
     <nav id={id} aria-label="Main" className="flex flex-col gap-0.5">
-      {NAV_LINKS.map((link) => {
-        const Icon = link.icon;
-        const active = isNavActive(link, pathname);
-        const entry = (
-          <NavLink
+      {NAV_LINKS.map((link) =>
+        link.children ? (
+          <NavGroup
             key={link.to}
-            to={link.to}
-            onClick={onNavigate}
-            aria-current={active ? "page" : undefined}
-            // The name is on the link itself rather than only in the tooltip.
-            // A tooltip is a hover affordance; a screen reader and a keyboard
-            // both need the destination without one, and the test asserts this
-            // rather than opening a radix overlay it cannot drive under jsdom.
-            aria-label={collapsed ? `${link.label} (${link.shortcutLabel})` : undefined}
-            className={cn(
-              "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-              collapsed && "justify-center px-0",
-              active
-                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
-            )}
-          >
-            <Icon className="size-4 shrink-0" aria-hidden="true" />
-            {/* `sr-only` rather than absent: the rail still reads as a list of
-                destinations, and the active entry is still announced. */}
-            <span className={collapsed ? "sr-only" : "flex-1"}>{link.label}</span>
-            <kbd
-              className={cn(
-                "font-mono text-[10px] text-muted-foreground",
-                collapsed ? "sr-only" : "hidden sm:inline",
-              )}
-            >
-              {link.shortcutLabel}
-            </kbd>
-          </NavLink>
-        );
-        if (!collapsed) return entry;
-        return (
-          <Tooltip key={link.to}>
-            <TooltipTrigger asChild>{entry}</TooltipTrigger>
-            <TooltipContent side="right">
-              {link.label} · {link.shortcutLabel}
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
+            link={link}
+            items={link.children}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        ) : (
+          <NavEntry
+            key={link.to}
+            link={link}
+            shortcutLabel={link.shortcutLabel}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        ),
+      )}
     </nav>
+  );
+}
+
+function navRowClass(collapsed: boolean, active: boolean) {
+  return cn(
+    "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+    collapsed && "justify-center px-0",
+    active
+      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+      : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+  );
+}
+
+function NavShortcut({ label, collapsed }: { label: string; collapsed: boolean }) {
+  return (
+    <kbd
+      className={cn(
+        "font-mono text-[10px] text-muted-foreground",
+        collapsed ? "sr-only" : "hidden sm:inline",
+      )}
+    >
+      {label}
+    </kbd>
+  );
+}
+
+/** Folded to the icon rail, an entry is named by a tooltip for a mouse. */
+function RailTooltip({
+  collapsed,
+  text,
+  children,
+}: {
+  collapsed: boolean;
+  text: string;
+  children: ReactElement;
+}) {
+  if (!collapsed) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function NavEntry({
+  link,
+  shortcutLabel,
+  collapsed,
+  onNavigate,
+}: {
+  link: Pick<NavLinkEntry, "to" | "label" | "icon" | "activePaths">;
+  /** Absent on a group's children: only top-level entries have a chord. */
+  shortcutLabel?: string;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  const { pathname } = useLocation();
+  const Icon = link.icon;
+  const active = isNavActive(link, pathname);
+  const named = shortcutLabel ? `${link.label} (${shortcutLabel})` : link.label;
+  return (
+    <RailTooltip
+      collapsed={collapsed}
+      text={shortcutLabel ? `${link.label} · ${shortcutLabel}` : link.label}
+    >
+      <NavLink
+        to={link.to}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        // The name is on the link itself rather than only in the tooltip.
+        // A tooltip is a hover affordance; a screen reader and a keyboard
+        // both need the destination without one, and the test asserts this
+        // rather than opening a radix overlay it cannot drive under jsdom.
+        aria-label={collapsed ? named : undefined}
+        className={navRowClass(collapsed, active)}
+      >
+        <Icon className="size-4 shrink-0" aria-hidden="true" />
+        {/* `sr-only` rather than absent: the rail still reads as a list of
+            destinations, and the active entry is still announced. */}
+        <span className={collapsed ? "sr-only" : "flex-1"}>{link.label}</span>
+        {shortcutLabel ? <NavShortcut label={shortcutLabel} collapsed={collapsed} /> : null}
+      </NavLink>
+    </RailTooltip>
+  );
+}
+
+/**
+ * An entry whose pages are listed under it: Settings.
+ *
+ * The row is a disclosure, not a link — it opens and closes the list, which is
+ * always rendered and toggled with `hidden` so `aria-controls` resolves. It
+ * starts open, and reopens, whenever the current page is one of its own, so
+ * the page you are on is never folded out of sight. On the icon rail the
+ * children are icons of their own under it, each named like any other entry.
+ */
+function NavGroup({
+  link,
+  items,
+  collapsed,
+  onNavigate,
+}: {
+  link: NavLinkEntry;
+  items: NavChild[];
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  const { pathname } = useLocation();
+  const inside = isNavActive(link, pathname);
+  const [open, setOpen] = useState(inside);
+  const listId = useId();
+  const Icon = link.icon;
+
+  useEffect(() => {
+    if (inside) setOpen(true);
+  }, [inside]);
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <RailTooltip collapsed={collapsed} text={`${link.label} · ${link.shortcutLabel}`}>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-label={collapsed ? `${link.label} (${link.shortcutLabel})` : undefined}
+          onClick={() => setOpen((current) => !current)}
+          className={cn(
+            navRowClass(collapsed, false),
+            "text-left",
+            inside && "text-sidebar-foreground",
+          )}
+        >
+          <Icon className="size-4 shrink-0" aria-hidden="true" />
+          <span className={collapsed ? "sr-only" : "flex-1"}>{link.label}</span>
+          <NavShortcut label={link.shortcutLabel} collapsed={collapsed} />
+          {collapsed ? null : (
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
+                open && "rotate-90",
+              )}
+            />
+          )}
+        </button>
+      </RailTooltip>
+      <ul
+        id={listId}
+        hidden={!open}
+        aria-label={link.label}
+        className={cn(
+          "flex flex-col gap-0.5",
+          collapsed ? "border-border border-t pt-0.5" : "ml-4 border-border border-l pl-2",
+          !open && "hidden",
+        )}
+      >
+        {items.map((item) => (
+          <li key={item.to}>
+            <NavEntry link={item} collapsed={collapsed} onNavigate={onNavigate} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

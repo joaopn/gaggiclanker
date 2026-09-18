@@ -3,7 +3,10 @@ import type { PlainSetting, SettingsMap } from "@/api/types";
 import {
   buildSettingsSchema,
   fieldSchema,
+  groupEntries,
+  groupFor,
   humanizeKey,
+  SETTINGS_GROUPS,
   sectionFor,
   toFormValues,
   toPatch,
@@ -124,8 +127,8 @@ describe("labels and sections", () => {
   });
 
   it("routes a key to a section by prefix, defaulting to General", () => {
-    expect(sectionFor("gaggimateHost")).toBe("device");
-    expect(sectionFor("deviceSyncEnabled")).toBe("device");
+    expect(sectionFor("gaggimateHost")).toBe("machine");
+    expect(sectionFor("deviceSyncEnabled")).toBe("machine");
     expect(sectionFor("llmProvider")).toBe("llm");
     // The LLM keys are named after what they configure rather than sharing one
     // prefix, so the section covers three of them.
@@ -134,10 +137,44 @@ describe("labels and sections", () => {
     expect(sectionFor("modelAnalysis")).toBe("llm");
     // The writes switch is about the machine; the seven bounds are about what
     // may be written, which is a different question and its own section.
-    expect(sectionFor("deviceWritesEnabled")).toBe("device");
+    expect(sectionFor("deviceWritesEnabled")).toBe("machine");
     expect(sectionFor("profilePolicyTemperatureMaxC")).toBe("safety");
     expect(sectionFor("profilePolicyMaxPhases")).toBe("safety");
     expect(sectionFor("somethingNew")).toBe("general");
+  });
+
+  it("names every grouped key on the page that key's prefix sends it to", () => {
+    // A key listed under a heading on the wrong page would be claimed by a
+    // group that never receives it, and would silently fall into "Other".
+    for (const [page, groups] of Object.entries(SETTINGS_GROUPS)) {
+      for (const group of groups) {
+        for (const key of group.keys) expect(sectionFor(key), key).toBe(page);
+      }
+    }
+  });
+
+  it("sorts a page's keys into its groups, in the groups' order, with the rest under Other", () => {
+    expect(groupFor("gaggimateHost")).toBe("connection");
+    expect(groupFor("notesWritebackFields")).toBe("writes");
+    expect(groupFor("modelStartingPoint")).toBe("models");
+    expect(groupFor("deviceSomethingNew")).toBe("other");
+
+    const entries = [
+      "deviceCleanupMode",
+      "deviceSomethingNew",
+      "gaggimateHost",
+      "deviceWritesEnabled",
+    ].map((key) => plain({ key, type: "string", value: "" }));
+    const grouped = groupEntries("machine", entries);
+    expect(grouped.map(({ group }) => group.id)).toEqual([
+      "connection",
+      "writes",
+      "cleanup",
+      "other",
+    ]);
+    expect(grouped.at(-1)?.entries.map((entry) => entry.key)).toEqual(["deviceSomethingNew"]);
+    // An empty group is left out rather than drawn as a card with nothing in it.
+    expect(groupEntries("safety", [])).toEqual([]);
   });
 
   it("refuses a policy bound wider than the firmware's own limit", () => {

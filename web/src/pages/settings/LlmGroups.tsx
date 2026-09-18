@@ -42,8 +42,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   claude_code: "Claude Code CLI (subscription)",
 };
 
-const MODEL_KEY_ORDER = ["modelDefault", "modelAnalysis", "modelDraft", "modelChat"];
-
 /** Keys the Claude Code panel owns, so the generic list does not repeat them. */
 const CLAUDE_CODE_KEYS = new Set(["claudeCodeBin", "claudeCodeEffort"]);
 
@@ -55,8 +53,24 @@ function isRelevant(key: string, provider: string): boolean {
   return true;
 }
 
+type GroupProps = {
+  entries: ResolvedSetting[];
+  control: Control<SettingsFormValues>;
+  errors: FieldErrors<SettingsFormValues>;
+  disabled?: boolean;
+};
+
 /**
- * The LLM section of the settings page.
+ * The provider as the form currently has it, not as the server last saw it:
+ * switching the picker should hide the irrelevant boxes immediately, before
+ * anything is saved.
+ */
+function useFormProvider(control: Control<SettingsFormValues>): string {
+  return String(useWatch({ control, name: "llmProvider", defaultValue: "" }) || "claude_code");
+}
+
+/**
+ * The LLM page's Provider card.
  *
  * The registry fields are still rendered by the shared `SettingField`, so the
  * form, its validation and its "only send what changed" patch all keep working
@@ -65,44 +79,20 @@ function isRelevant(key: string, provider: string): boolean {
  * closed set and want a picker, and that a credential is worth testing before
  * an analysis fails at midnight.
  */
-export function LlmSection({
-  entries,
-  control,
-  errors,
-  disabled,
-}: {
-  entries: ResolvedSetting[];
-  control: Control<SettingsFormValues>;
-  errors: FieldErrors<SettingsFormValues>;
-  disabled?: boolean;
-}) {
+export function LlmProviderGroup({ entries, control, errors, disabled }: GroupProps) {
   const status = useLlmStatus();
   const validate = useValidateLlm();
-  const resetRateLimit = useResetRateLimit();
-  const [wantModels, setWantModels] = useState(false);
-
-  // The provider as the form currently has it, not as the server last saw it:
-  // switching the picker should hide the irrelevant boxes immediately, before
-  // anything is saved.
-  const provider = String(
-    useWatch({ control, name: "llmProvider", defaultValue: "" }) || "claude_code",
-  );
-  const models = useLlmModels(provider, wantModels);
+  const provider = useFormProvider(control);
 
   const byKey = new Map(entries.map((entry) => [entry.key, entry]));
   const providerField = byKey.get("llmProvider");
-  const modelFields = MODEL_KEY_ORDER.map((key) => byKey.get(key)).filter(
-    (entry): entry is ResolvedSetting => entry !== undefined,
-  );
   const rest = entries.filter(
     (entry) =>
       entry.key !== "llmProvider" &&
-      !MODEL_KEY_ORDER.includes(entry.key) &&
       !CLAUDE_CODE_KEYS.has(entry.key) &&
       isRelevant(entry.key, provider),
   );
 
-  const rateLimit = status.data?.rate_limit;
   const claudeCode = status.data?.claude_code as
     | { version?: string; authenticated?: boolean; detail?: string }
     | undefined;
@@ -169,57 +159,6 @@ export function LlmSection({
         </p>
       </div>
 
-      {/* Models per purpose. */}
-      <div className="space-y-4 border-border border-t pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h4 className="font-medium text-sm">Models</h4>
-            <p className="text-muted-foreground text-xs">
-              Each purpose falls back to the default, and the default falls back to whatever the
-              provider picks.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setWantModels(true)}
-            disabled={models.isFetching}
-          >
-            {models.isFetching ? "Listing..." : "List models"}
-          </Button>
-        </div>
-
-        {wantModels && models.data ? (
-          <div
-            className="flex flex-wrap gap-1.5 rounded-md border border-border p-2"
-            data-testid="model-suggestions"
-          >
-            {models.data.models.length === 0 ? (
-              <span className="text-muted-foreground text-xs">
-                The provider offered no model list.
-              </span>
-            ) : (
-              models.data.models.slice(0, 40).map((id) => (
-                <Badge key={id} variant="secondary" className="font-mono font-normal text-[10px]">
-                  {id}
-                </Badge>
-              ))
-            )}
-          </div>
-        ) : null}
-
-        {modelFields.map((setting) => (
-          <SettingField
-            key={setting.key}
-            setting={setting}
-            control={control}
-            error={errors[setting.key]}
-            disabled={disabled}
-          />
-        ))}
-      </div>
-
       {/* The Claude Code panel, only when it is the provider in use. */}
       {provider === "claude_code" ? (
         <div className="space-y-4 border-border border-t pt-4" data-testid="claude-code-panel">
@@ -284,36 +223,105 @@ export function LlmSection({
           })}
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      {/* The rate-limit latch. */}
-      <div className="space-y-2 border-border border-t pt-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h4 className="font-medium text-sm">Rate limit</h4>
-          <Badge
-            variant={rateLimit?.stopped ? "destructive" : "secondary"}
-            className="font-normal text-[10px]"
-            data-testid="rate-limit-state"
-          >
-            {rateLimit?.stopped
-              ? "stopped"
-              : `${rateLimit?.remaining ?? "-"} of ${rateLimit?.retries ?? "-"} retries left`}
-          </Badge>
-        </div>
-        <p className="text-muted-foreground text-xs">
-          When the provider throttles the account, the whole process stops rather than failing every
-          queued shot in turn. Clearing it is deliberate: an automatic timer would just walk back
-          into the same wall.
-        </p>
+/**
+ * The LLM page's Models card: one field per purpose, and the provider's own
+ * model list on request - asking costs a call, so it waits for the button.
+ */
+export function LlmModelsGroup({ entries, control, errors, disabled }: GroupProps) {
+  const [wantModels, setWantModels] = useState(false);
+  const provider = useFormProvider(control);
+  const models = useLlmModels(provider, wantModels);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => resetRateLimit.mutate()}
-          disabled={resetRateLimit.isPending}
+          onClick={() => setWantModels(true)}
+          disabled={models.isFetching}
         >
-          {resetRateLimit.isPending ? "Clearing..." : "Clear the rate-limit stop"}
+          {models.isFetching ? "Listing..." : "List models"}
         </Button>
+        <p className="text-muted-foreground text-xs">What the provider says it offers.</p>
       </div>
+
+      {wantModels && models.data ? (
+        <div
+          className="flex flex-wrap gap-1.5 rounded-md border border-border p-2"
+          data-testid="model-suggestions"
+        >
+          {models.data.models.length === 0 ? (
+            <span className="text-muted-foreground text-xs">
+              The provider offered no model list.
+            </span>
+          ) : (
+            models.data.models.slice(0, 40).map((id) => (
+              <Badge key={id} variant="secondary" className="font-mono font-normal text-[10px]">
+                {id}
+              </Badge>
+            ))
+          )}
+        </div>
+      ) : null}
+
+      {entries.map((setting) => (
+        <SettingField
+          key={setting.key}
+          setting={setting}
+          control={control}
+          error={errors[setting.key]}
+          disabled={disabled}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The rate-limit latch, under the retry count that trips it.
+ *
+ * When the provider throttles the account, the whole process stops rather than
+ * failing every queued shot in turn.
+ */
+export function RateLimitLatch() {
+  const status = useLlmStatus();
+  const resetRateLimit = useResetRateLimit();
+  const rateLimit = status.data?.rate_limit;
+
+  return (
+    <div className="space-y-2 border-border border-t pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="font-medium text-sm">Rate limit</h4>
+        <Badge
+          variant={rateLimit?.stopped ? "destructive" : "secondary"}
+          className="font-normal text-[10px]"
+          data-testid="rate-limit-state"
+        >
+          {rateLimit?.stopped
+            ? "stopped"
+            : `${rateLimit?.remaining ?? "-"} of ${rateLimit?.retries ?? "-"} retries left`}
+        </Badge>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        When the provider throttles the account, the whole process stops rather than failing every
+        queued shot in turn. Clearing it is deliberate: an automatic timer would just walk back into
+        the same wall.
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => resetRateLimit.mutate()}
+        disabled={resetRateLimit.isPending}
+      >
+        {resetRateLimit.isPending ? "Clearing..." : "Clear the rate-limit stop"}
+      </Button>
     </div>
   );
 }

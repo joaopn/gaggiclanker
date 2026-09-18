@@ -1,6 +1,7 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PromptsSection } from "@/pages/settings/PromptsSection";
+import { findSettingsPage, type SettingsPageInfo } from "@/lib/settingsPages";
+import { PromptsPage } from "@/pages/settings/PromptsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({
@@ -26,9 +27,20 @@ vi.mock("@/api/client", async (importOriginal) => ({
   resetPrompt,
 }));
 
+const PAGE = findSettingsPage("prompts") as SettingsPageInfo;
+
 const PING = "name: ping\nuser: |\n  Say one thing about {{topic}}.\n";
 
-describe("PromptsSection", () => {
+/** Render the page and open the `ping` card, as a person would. */
+async function openPing(user = setupUser()) {
+  renderWithQueryClient(<PromptsPage page={PAGE} />);
+  await user.click(await screen.findByRole("button", { name: "ping" }));
+  const editor = await screen.findByLabelText("Content of ping");
+  await waitFor(() => expect(editor).toHaveValue(PING));
+  return { user, editor };
+}
+
+describe("PromptsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getPrompts.mockResolvedValue({
@@ -63,13 +75,52 @@ describe("PromptsSection", () => {
     });
   });
 
-  it("opens on the first prompt and shows its text and declared variables", async () => {
-    renderWithQueryClient(<PromptsSection />);
+  it("lists every prompt as a closed card, and fetches none of their texts until one opens", async () => {
+    renderWithQueryClient(<PromptsPage page={PAGE} />);
 
-    const editor = await screen.findByLabelText("Prompt content");
-    await waitFor(() => expect(editor).toHaveValue(PING));
+    const ping = await screen.findByRole("button", { name: "ping" });
+    expect(ping).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "fragments/style" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    // What a closed card still says: the summary, and whether it was edited.
+    expect(screen.getByText("the self test")).toBeInTheDocument();
+    expect(screen.getByText("edited - no longer tracks the shipped version")).toBeInTheDocument();
+    expect(getPrompt).not.toHaveBeenCalled();
+  });
+
+  it("opens a prompt's card on its text and declared variables", async () => {
+    await openPing();
+    expect(getPrompt).toHaveBeenCalledWith("ping");
     expect(screen.getByText("{{topic}}")).toBeInTheDocument();
-    expect(screen.getByText("as shipped")).toBeInTheDocument();
+  });
+
+  it("opens the card a link names", async () => {
+    renderWithQueryClient(<PromptsPage page={PAGE} />, {
+      initialEntries: ["/settings/prompts#ping"],
+    });
+    expect(await screen.findByLabelText("Content of ping")).toBeVisible();
+    expect(screen.getByRole("button", { name: "ping" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("ignores a hash that does not decode", async () => {
+    renderWithQueryClient(<PromptsPage page={PAGE} />, {
+      initialEntries: ["/settings/prompts#%E0%A4%A"],
+    });
+    expect(await screen.findByRole("button", { name: "ping" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("keeps an unsaved draft when its card is closed and opened again", async () => {
+    const { user, editor } = await openPing();
+    await user.type(editor, "# half done");
+    await user.click(screen.getByRole("button", { name: "ping" }));
+    expect(editor).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: "ping" }));
+    expect(editor).toHaveValue(`${PING}# half done`);
   });
 
   it("saves an edit and says so", async () => {
@@ -81,11 +132,8 @@ describe("PromptsSection", () => {
       updated_at: "2026-09-11T00:01:00.000Z",
       fragment: false,
     });
-    const user = setupUser();
-    renderWithQueryClient(<PromptsSection />);
+    const { user, editor } = await openPing();
 
-    const editor = await screen.findByLabelText("Prompt content");
-    await waitFor(() => expect(editor).toHaveValue(PING));
     await user.type(editor, "# edited");
     await user.click(screen.getByRole("button", { name: /save prompt/i }));
 
@@ -98,11 +146,8 @@ describe("PromptsSection", () => {
     // The one moment the user most wants their text back is the moment it did
     // not save.
     putPrompt.mockRejectedValue(new Error("prompt 'ping' is not valid YAML"));
-    const user = setupUser();
-    renderWithQueryClient(<PromptsSection />);
+    const { user, editor } = await openPing();
 
-    const editor = await screen.findByLabelText("Prompt content");
-    await waitFor(() => expect(editor).toHaveValue(PING));
     // `[` starts a key descriptor in user-event's mini-language, so the broken
     // YAML is typed without it; what is being asserted is that the draft
     // survives, not which character broke the document.
@@ -114,17 +159,13 @@ describe("PromptsSection", () => {
   });
 
   it("offers reset only for a prompt that has been edited", async () => {
-    renderWithQueryClient(<PromptsSection />);
-
-    await screen.findByLabelText("Prompt content");
-    expect(screen.getByRole("button", { name: /reset to default/i })).toBeDisabled();
+    const { editor } = await openPing();
+    const card = editor.closest("[data-slot=card]") as HTMLElement;
+    expect(within(card).getByRole("button", { name: /reset to default/i })).toBeDisabled();
   });
 
   it("does nothing until the text actually changes", async () => {
-    renderWithQueryClient(<PromptsSection />);
-
-    const editor = await screen.findByLabelText("Prompt content");
-    await waitFor(() => expect(editor).toHaveValue(PING));
+    await openPing();
     expect(screen.getByRole("button", { name: /save prompt/i })).toBeDisabled();
   });
 });

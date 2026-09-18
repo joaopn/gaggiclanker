@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SettingsMap } from "@/api/types";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -93,7 +94,27 @@ function settingsFixture(): SettingsMap {
       source: "database",
       description: "API key for the configured LLM provider.",
     },
+    llmTimeoutSeconds: {
+      key: "llmTimeoutSeconds",
+      type: "float",
+      secret: false,
+      readonly: false,
+      value: 300,
+      default: 300,
+      override: null,
+      source: "default",
+      description: "How long one attempt may take.",
+    },
   };
+}
+
+function renderAt(path: string) {
+  return renderWithQueryClient(
+    <Routes>
+      <Route path="/settings/:page" element={<SettingsPage />} />
+    </Routes>,
+    { initialEntries: [path] },
+  );
 }
 
 describe("SettingsPage", () => {
@@ -101,9 +122,9 @@ describe("SettingsPage", () => {
     vi.clearAllMocks();
     getSettings.mockResolvedValue(settingsFixture());
     getHealth.mockResolvedValue({ status: "ok", version: "0.1.0", database: "ok" });
-    // The LLM section and the prompt editor both read on mount. Neither is
-    // what these tests are about, but an unmocked fetch in jsdom is an
-    // unhandled rejection rather than a quiet failure.
+    // The LLM page reads the provider status on mount. It is not what most of
+    // these tests are about, but an unmocked fetch in jsdom is an unhandled
+    // rejection rather than a quiet failure.
     getLlmStatus.mockResolvedValue({
       provider: "openrouter",
       providers: ["openrouter", "claude_code"],
@@ -118,8 +139,59 @@ describe("SettingsPage", () => {
     patchSettings.mockImplementation(async () => settingsFixture());
   });
 
+  it("titles each page after its sidebar entry", async () => {
+    renderAt("/settings/safety");
+    expect(await screen.findByRole("heading", { name: "Profile safety" })).toBeInTheDocument();
+  });
+
+  it("answers an unknown settings page with the not-found page", () => {
+    renderAt("/settings/nothing-here");
+    expect(screen.getByText("No such page")).toBeInTheDocument();
+  });
+
+  it("shows only the page's own settings, under their headings", async () => {
+    renderAt("/settings/machine");
+    await screen.findByLabelText("Gaggimate host");
+    expect(screen.queryByLabelText("Llm api key")).not.toBeInTheDocument();
+    // Headings with nothing in them are left out: the fixture has no writes keys.
+    expect(screen.getByRole("button", { name: "Connection" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Storage cleanup" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Writes" })).not.toBeInTheDocument();
+  });
+
+  it("starts with every card closed, and opens one on a click", async () => {
+    const user = setupUser();
+    renderAt("/settings/machine");
+    const host = await screen.findByLabelText("Gaggimate host");
+
+    const connection = screen.getByRole("button", { name: "Connection" });
+    const cleanup = screen.getByRole("button", { name: "Storage cleanup" });
+    expect(connection).toHaveAttribute("aria-expanded", "false");
+    expect(cleanup).toHaveAttribute("aria-expanded", "false");
+    // Closed, not unmounted: the field keeps its value for the save.
+    expect(host).not.toBeVisible();
+    expect(host).toHaveValue("10.0.0.5");
+
+    await user.click(connection);
+    expect(connection).toHaveAttribute("aria-expanded", "true");
+    expect(
+      document.getElementById(String(connection.getAttribute("aria-controls"))),
+    ).toContainElement(host);
+    expect(host).toBeVisible();
+    expect(cleanup).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(connection);
+    expect(host).not.toBeVisible();
+  });
+
+  it("opens the card a link names", async () => {
+    renderAt("/settings/machine#cleanup");
+    expect(await screen.findByLabelText("Device cleanup keep newest")).toBeVisible();
+    expect(screen.getByLabelText("Gaggimate host")).not.toBeVisible();
+  });
+
   it("renders a control per registry entry, chosen by the declared type", async () => {
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
 
     const host = await screen.findByLabelText("Gaggimate host");
     expect(host).toHaveValue("10.0.0.5");
@@ -129,7 +201,7 @@ describe("SettingsPage", () => {
   });
 
   it("shows a secret as a hint and never as a value", async () => {
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/llm");
 
     const field = (await screen.findByLabelText("Llm api key")) as HTMLInputElement;
     expect(field).toHaveValue("");
@@ -139,7 +211,7 @@ describe("SettingsPage", () => {
   });
 
   it("labels where each value came from: saved here, or the shipped default", async () => {
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
     await screen.findByLabelText("Gaggimate host");
     expect(screen.getAllByText("saved here").length).toBeGreaterThan(0);
     expect(screen.getAllByText("default").length).toBeGreaterThan(0);
@@ -148,9 +220,10 @@ describe("SettingsPage", () => {
 
   it("PATCHes only the fields that changed, and toasts on success", async () => {
     const user = setupUser();
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
 
-    const host = await screen.findByLabelText("Gaggimate host");
+    await user.click(await screen.findByRole("button", { name: "Connection" }));
+    const host = screen.getByLabelText("Gaggimate host");
     await user.clear(host);
     await user.type(host, "10.0.0.9");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
@@ -166,44 +239,54 @@ describe("SettingsPage", () => {
 
   it("leaves a blank secret alone", async () => {
     const user = setupUser();
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/llm");
 
-    const host = await screen.findByLabelText("Gaggimate host");
-    await user.clear(host);
-    await user.type(host, "10.0.0.9");
+    await user.click(await screen.findByRole("button", { name: "Limits and the call ledger" }));
+    const timeout = screen.getByLabelText("Llm timeout seconds");
+    await user.clear(timeout);
+    await user.type(timeout, "120");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(patchSettings).toHaveBeenCalled());
-    expect(patchSettings.mock.calls[0][0]).not.toHaveProperty("llmApiKey");
+    expect(patchSettings.mock.calls[0][0]).toEqual({ llmTimeoutSeconds: 120 });
   });
 
   it("sends a typed secret through", async () => {
     const user = setupUser();
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/llm");
 
-    await user.type(await screen.findByLabelText("Llm api key"), "sk-new-key");
+    await user.click(await screen.findByRole("button", { name: "Provider" }));
+    await user.type(screen.getByLabelText("Llm api key"), "sk-new-key");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(patchSettings).toHaveBeenCalled());
     expect(patchSettings.mock.calls[0][0]).toEqual({ llmApiKey: "sk-new-key" });
   });
 
-  it("refuses to save a non-integer in an int field", async () => {
+  it("refuses to save a non-integer, and opens the closed card that holds it", async () => {
     const user = setupUser();
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
+    const cleanup = await screen.findByRole("button", { name: "Storage cleanup" });
 
-    const keep = await screen.findByLabelText("Device cleanup keep newest");
+    await user.click(cleanup);
+    const keep = screen.getByLabelText("Device cleanup keep newest");
     await user.clear(keep);
     await user.type(keep, "fifty");
+    await user.click(cleanup);
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
-    expect(await screen.findByText("expected an integer")).toBeInTheDocument();
+    expect(await screen.findByText("expected an integer")).toBeVisible();
+    expect(cleanup).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Connection" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(patchSettings).not.toHaveBeenCalled();
   });
 
   it("says so instead of sending an empty PATCH", async () => {
     const user = setupUser();
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
     await screen.findByLabelText("Gaggimate host");
 
     await user.click(screen.getByRole("button", { name: "Save changes" }));
@@ -215,9 +298,10 @@ describe("SettingsPage", () => {
   it("surfaces a save failure without losing the edit", async () => {
     const user = setupUser();
     patchSettings.mockRejectedValueOnce(new Error("Database is unavailable"));
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
 
-    const host = await screen.findByLabelText("Gaggimate host");
+    await user.click(await screen.findByRole("button", { name: "Connection" }));
+    const host = screen.getByLabelText("Gaggimate host");
     await user.clear(host);
     await user.type(host, "10.0.0.9");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
@@ -228,7 +312,7 @@ describe("SettingsPage", () => {
 
   it("shows an error state when the registry cannot be read", async () => {
     getSettings.mockRejectedValue(new Error("Expected JSON but received HTML"));
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/machine");
 
     expect(await screen.findByText("Could not load settings")).toBeInTheDocument();
   });
@@ -241,15 +325,23 @@ describe("SettingsPage", () => {
       size_bytes: 4096,
       created_at: "2026-01-01T00:00:00Z",
     });
-    renderWithQueryClient(<SettingsPage />);
+    renderAt("/settings/system");
 
+    await user.click(screen.getByRole("button", { name: "Status" }));
     await waitFor(() => expect(screen.getByTestId("health-version")).toHaveTextContent("0.1.0"));
+    expect(screen.getByTestId("health-database")).toBeVisible();
     expect(screen.getByTestId("health-database")).toHaveTextContent("ok");
 
+    await user.click(screen.getByRole("button", { name: "Backup" }));
     await user.click(screen.getByRole("button", { name: "Back up database" }));
     await waitFor(() => expect(createBackup).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith("Backup written: gaggiclanker-20260101.db"),
     );
+  });
+
+  it("opens the import page's only card", () => {
+    renderAt("/settings/import");
+    expect(screen.getByRole("link", { name: "Open the shots page" })).toBeVisible();
   });
 });

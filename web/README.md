@@ -175,8 +175,8 @@ src/
   components/
     LlmActivity.tsx   the header indicator and the sheet behind it
   pages/settings/
-    LlmSection.tsx    the provider picker and everything that depends on which one
-    PromptsSection.tsx  the YAML editor, with an "edited" badge and reset
+    LlmGroups.tsx     the provider picker and everything that depends on which one
+    PromptsPage.tsx   one card per prompt: the YAML editor, an "edited" badge, reset
 ```
 
 Sets and judgement add a fourth:
@@ -430,6 +430,19 @@ to the table needs nothing extra to work folded. The state lives in
 `try/catch`, and the `[` chord toggles it alongside the `g` chords. Tests assert
 the rail through `data-collapsed` on the `<aside>` and the links' accessible
 names; they never open the tooltip, which is radix and not drivable under jsdom.
+
+**Settings is a group, not a page.** Its `NAV_LINKS` entry carries `children`, so
+the sidebar draws it as a disclosure listing one page per entry of
+`SETTINGS_PAGES` (`src/lib/settingsPages.ts`); it starts open whenever the
+current route is one of its pages. `/settings` redirects to the first page and
+`/settings/:page` picks the component in `pages/settings/SettingsPage.tsx`. The
+registry pages are one form each over the keys `sectionFor` sends them, sorted
+into collapsible cards by `SETTINGS_GROUPS` in `schema.ts`; a key no group
+names lands in an "Other" card, so a new setting is editable without an edit
+here. Every card starts closed, `#<card>` in a link opens that one
+(`/settings/machine#writes`), and a save that fails validation opens the cards
+holding the bad fields. A new settings page is an entry in `SETTINGS_PAGES`, a
+case in `SettingsPage`, and its path in the deep-link test.
 
 **A route is not a nav entry.** `NAV_LINKS` is the sidebar, and the sidebar is
 places you *decide to go*; a page reached from the one place you are already
