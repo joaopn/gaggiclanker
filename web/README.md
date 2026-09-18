@@ -440,8 +440,10 @@ ids, read behind `try/catch`); one that opened because its page is showing is
 not recorded. A page inside a group keeps its own chord — `navShortcuts()`
 flattens the table for the bindings and the shortcut sheet — and a group may
 have a chord of its own that goes to its `to`. The rows are Shots, Chat, Brew
-setup (Sets, Beans, Hardware), Machine (Profiles, Sync, Device), Knowledge and
-Settings; no group nests another.
+setup (Sets, Beans, Hardware), Machine (Profiles, Sync, Device) and Settings;
+no group nests another. A group's children need not share its URL prefix:
+`/knowledge` is listed under Settings beside Prompts and keeps its own address
+and chord, so every citation link into it still resolves.
 
 **Settings is a group of pages.** Its children are one page per entry of
 `SETTINGS_PAGES` (`src/lib/settingsPages.ts`). `/settings` redirects to the first page and

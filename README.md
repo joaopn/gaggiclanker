@@ -88,11 +88,11 @@ taken while the app is running.
 
 ### The pages
 
-The sidebar has six rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware),
-**Machine** (Profiles, Sync, Device), Knowledge and **Settings** (one page per
-heading). A group opens when you click it, and on its own when you are on one of
-its pages; one you open by hand stays open next time. The pages, in the order
-the sidebar lists them:
+The sidebar has five rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware),
+**Machine** (Profiles, Sync, Device) and **Settings** (one page per heading,
+with Knowledge beside Prompts). A group opens when you click it, and on its own
+when you are on one of its pages; one you open by hand stays open next time. The
+pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
@@ -104,8 +104,8 @@ the sidebar lists them:
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
-| **Knowledge** | `g k` | The dial-in rules, the prose documents, and the insights waiting for a decision. |
 | **Settings** | `g ,` | Machine, Profile safety, LLM, Prompts, Authentication, General, Import and System, each a page of collapsible cards. |
+| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights an analysis proposes are confirmed on that analysis. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
 to an icon rail and back; the choice is remembered in the browser. Folded, every

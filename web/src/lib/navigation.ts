@@ -55,17 +55,34 @@ export function isNavGroup(item: NavItem): item is NavGroup {
  * `g <key>` shortcuts and the shortcut sheet, so adding a page is one entry
  * here plus one `<Route>` in App.tsx.
  *
- * Six rows rather than a dozen. What you open every day — the archive, the
- * chat, the knowledge base — is a row of its own. Everything that goes into a
- * shot (a Set, and the bean and the hardware it names) is under Brew setup;
- * everything about the machine itself (its profiles and the queue that pushes
- * to it, the exchanges with it, what it is) is under Machine. A page inside a
- * group keeps its own chord, so `g e` is still one step from anywhere.
+ * Five rows rather than a dozen. What you open every day — the archive and the
+ * chat — is a row of its own. Everything that goes into a shot (a Set, and the
+ * bean and the hardware it names) is under Brew setup; everything about the
+ * machine itself (its profiles and the queue that pushes to it, the exchanges
+ * with it, what it is) is under Machine; what is set up once and then mostly
+ * left alone is under Settings. A page inside a group keeps its own chord, so
+ * `g e` is still one step from anywhere.
  *
  * Not every route is here. Importing files is the drop zone on the shots
  * page; staging a profile is a section of the profiles page. A destination
  * earns a row by being somewhere you decide to go, not by existing.
  */
+/**
+ * The knowledge base, listed under Settings beside Prompts: its rules and
+ * documents ship with the app and are tuned rarely, like the prompts. It stays
+ * a page of its own at `/knowledge` rather than becoming a settings page — it
+ * is a tabbed reader every analysis and chat citation links into — and keeps
+ * its chord. Insights an analysis proposes are confirmed on that analysis, so
+ * the queue does not depend on this row being in view.
+ */
+const KNOWLEDGE: NavPage = {
+  to: "/knowledge",
+  label: "Knowledge",
+  icon: BookOpen,
+  shortcut: "g k",
+  shortcutLabel: "g k",
+};
+
 export const NAV_LINKS: NavItem[] = [
   { to: "/shots", label: "Shots", icon: Coffee, shortcut: "g s", shortcutLabel: "g s" },
   // Its own entry rather than a panel on a page: a conversation is a place you
@@ -108,7 +125,6 @@ export const NAV_LINKS: NavItem[] = [
       { to: "/device", label: "Device", icon: Activity },
     ],
   },
-  { to: "/knowledge", label: "Knowledge", icon: BookOpen, shortcut: "g k", shortcutLabel: "g k" },
   {
     id: "settings",
     label: "Settings",
@@ -116,11 +132,10 @@ export const NAV_LINKS: NavItem[] = [
     to: "/settings",
     shortcut: "g ,",
     shortcutLabel: "g ,",
-    children: SETTINGS_PAGES.map((page) => ({
-      to: settingsPath(page.id),
-      label: page.label,
-      icon: page.icon,
-    })),
+    children: SETTINGS_PAGES.flatMap((page) => {
+      const entry: NavPage = { to: settingsPath(page.id), label: page.label, icon: page.icon };
+      return page.id === "prompts" ? [entry, KNOWLEDGE] : [entry];
+    }),
   },
 ];
 

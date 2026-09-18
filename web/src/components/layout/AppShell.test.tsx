@@ -53,7 +53,7 @@ describe("AppShell", () => {
     }
   });
 
-  it("lists the six rows in order, and nothing else", () => {
+  it("lists the five rows in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
     // The label span, not the row: the row's text carries the chord too. The
@@ -61,7 +61,7 @@ describe("AppShell", () => {
     // of their own under it.
     const rows = Array.from(nav.querySelectorAll(":scope > a, :scope > div > button"));
     const labels = rows.map((row) => row.querySelector("span")?.textContent?.trim());
-    expect(labels).toEqual(["Shots", "Chat", "Brew setup", "Machine", "Knowledge", "Settings"]);
+    expect(labels).toEqual(["Shots", "Chat", "Brew setup", "Machine", "Settings"]);
   });
 
   describe("the groups", () => {
@@ -200,10 +200,12 @@ describe("AppShell", () => {
       expect(settings).toHaveAttribute("aria-expanded", "true");
       expect(list).toBeVisible();
       const pages = within(list as HTMLElement).getAllByRole("link");
-      expect(pages.map((link) => link.textContent)).toEqual(SETTINGS_PAGES.map((p) => p.label));
-      expect(pages.map((link) => link.getAttribute("href"))).toEqual(
-        SETTINGS_PAGES.map((p) => `/settings/${p.id}`),
+      // The settings pages, with the knowledge base beside Prompts.
+      const paths = SETTINGS_PAGES.flatMap((p) =>
+        p.id === "prompts" ? [`/settings/${p.id}`, "/knowledge"] : [`/settings/${p.id}`],
       );
+      expect(pages.map((link) => link.getAttribute("href"))).toEqual(paths);
+      expect(pages.map((link) => link.querySelector("span")?.textContent)).toContain("Knowledge");
     });
 
     it("starts open on a settings page, with that page marked", () => {
@@ -224,6 +226,21 @@ describe("AppShell", () => {
       await user.click(nav.getByRole("button", { name: /^Settings/ }));
       await user.click(nav.getByRole("link", { name: "Profile safety" }));
       expect(await screen.findByRole("heading", { name: "Profile safety" })).toBeInTheDocument();
+    });
+
+    it("opens on the knowledge base, which keeps its own address and chord", async () => {
+      const user = setupUser();
+      renderApp("/shots");
+      await user.keyboard("gk");
+      expect(await screen.findByRole("heading", { name: "Knowledge" })).toBeInTheDocument();
+
+      const nav = within(screen.getByTestId("sidebar"));
+      expect(nav.getByRole("button", { name: /^Settings/ })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      const current = nav.getAllByRole("link", { current: "page" });
+      expect(current.map((link) => link.getAttribute("href"))).toEqual(["/knowledge"]);
     });
 
     it("redirects the bare settings path to the first page", async () => {
