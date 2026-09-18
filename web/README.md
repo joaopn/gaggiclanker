@@ -448,10 +448,12 @@ and chord, so every citation link into it still resolves.
 **Settings is a group of pages.** Its children are one page per entry of
 `SETTINGS_PAGES` (`src/lib/settingsPages.ts`). `/settings` redirects to the first page and
 `/settings/:page` picks the component in `pages/settings/SettingsPage.tsx`. The
-registry pages are one form each over the keys `sectionFor` sends them, sorted
+registry pages are one form each over the keys `sectionFor` sends them (Machine,
+Profile safety and Authentication by prefix, everything else to LLM), sorted
 into collapsible cards by `SETTINGS_GROUPS` in `schema.ts`; a key no group
 names lands in an "Other" card, so a new setting is editable without an edit
-here. Every card starts closed, `#<card>` in a link opens that one
+here. A page folded into another leaves a `RETIRED` entry in `SettingsPage`
+(`/settings/general` goes to `/settings/llm`, `#card` kept). Every card starts closed, `#<card>` in a link opens that one
 (`/settings/machine#writes`), and a save that fails validation opens the cards
 holding the bad fields. A new settings page is an entry in `SETTINGS_PAGES`, a
 case in `SettingsPage`, and its path in the deep-link test.

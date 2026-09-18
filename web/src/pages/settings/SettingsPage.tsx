@@ -1,5 +1,5 @@
-import { useParams } from "react-router-dom";
-import { findSettingsPage } from "@/lib/settingsPages";
+import { Navigate, useLocation, useParams } from "react-router-dom";
+import { findSettingsPage, type SettingsPageId, settingsPath } from "@/lib/settingsPages";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ImportPage } from "@/pages/settings/ImportPage";
 import { PromptsPage } from "@/pages/settings/PromptsPage";
@@ -13,8 +13,18 @@ import { SystemPage } from "@/pages/settings/SystemPage";
  * settings page to the next, so without the key the Machine page's form, and
  * which of its cards were open, would carry over onto the LLM page.
  */
+/**
+ * Pages folded into another. An old link, or a hard refresh on one, lands on
+ * the page that took the cards over, with its `#card` intact.
+ */
+const RETIRED: Record<string, SettingsPageId> = { general: "llm" };
+
 export function SettingsPage() {
-  const page = findSettingsPage(useParams().page);
+  const requested = useParams().page ?? "";
+  const { hash } = useLocation();
+  const page = findSettingsPage(requested);
+  const successor = RETIRED[requested];
+  if (successor) return <Navigate to={{ pathname: settingsPath(successor), hash }} replace />;
   if (!page) return <NotFoundPage />;
   switch (page.id) {
     case "prompts":

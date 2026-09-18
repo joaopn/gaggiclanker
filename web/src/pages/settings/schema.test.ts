@@ -126,7 +126,7 @@ describe("labels and sections", () => {
     expect(humanizeKey("gaggimateHost")).toBe("Gaggimate host");
   });
 
-  it("routes a key to a section by prefix, defaulting to General", () => {
+  it("routes a key to a page by prefix, defaulting to the LLM page", () => {
     expect(sectionFor("gaggimateHost")).toBe("machine");
     expect(sectionFor("deviceSyncEnabled")).toBe("machine");
     expect(sectionFor("llmProvider")).toBe("llm");
@@ -140,7 +140,12 @@ describe("labels and sections", () => {
     expect(sectionFor("deviceWritesEnabled")).toBe("machine");
     expect(sectionFor("profilePolicyTemperatureMaxC")).toBe("safety");
     expect(sectionFor("profilePolicyMaxPhases")).toBe("safety");
-    expect(sectionFor("somethingNew")).toBe("general");
+    // The analysis and chat budgets bound what a call may consume.
+    expect(sectionFor("analysisChunkTokenBudget")).toBe("llm");
+    expect(sectionFor("chatMaxToolRounds")).toBe("llm");
+    // No catch-all page: an unrecognised key is visible under LLM's "Other".
+    expect(sectionFor("somethingNew")).toBe("llm");
+    expect(groupFor("somethingNew")).toBe("other");
   });
 
   it("names every grouped key on the page that key's prefix sends it to", () => {

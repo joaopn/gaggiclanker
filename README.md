@@ -104,7 +104,7 @@ pages, in the order the sidebar lists them:
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
-| **Settings** | `g ,` | Machine, Profile safety, LLM, Prompts, Authentication, General, Import and System, each a page of collapsible cards. |
+| **Settings** | `g ,` | Machine, Profile safety, LLM, Prompts, Authentication, Import and System, each a page of collapsible cards. The LLM page also holds the analysis and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights an analysis proposes are confirmed on that analysis. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it

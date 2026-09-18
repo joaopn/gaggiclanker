@@ -94,6 +94,17 @@ function settingsFixture(): SettingsMap {
       source: "database",
       description: "API key for the configured LLM provider.",
     },
+    chatMaxToolRounds: {
+      key: "chatMaxToolRounds",
+      type: "int",
+      secret: false,
+      readonly: false,
+      value: 8,
+      default: 8,
+      override: null,
+      source: "default",
+      description: "How many provider round-trips one chat answer may take.",
+    },
     llmTimeoutSeconds: {
       key: "llmTimeoutSeconds",
       type: "float",
@@ -142,6 +153,23 @@ describe("SettingsPage", () => {
   it("titles each page after its sidebar entry", async () => {
     renderAt("/settings/safety");
     expect(await screen.findByRole("heading", { name: "Profile safety" })).toBeInTheDocument();
+  });
+
+  it("puts the chat budgets on the LLM page, under their own heading", async () => {
+    renderAt("/settings/llm#chat");
+    expect(await screen.findByLabelText("Chat max tool rounds")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("sends the retired General page to the LLM page, keeping the card it named", async () => {
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/settings/:page" element={<SettingsPage />} />
+      </Routes>,
+      { initialEntries: ["/settings/general#chat"] },
+    );
+    expect(await screen.findByRole("heading", { name: "LLM" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Chat max tool rounds")).toBeVisible();
   });
 
   it("answers an unknown settings page with the not-found page", () => {

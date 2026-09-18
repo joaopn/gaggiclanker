@@ -153,23 +153,20 @@ export function humanizeKey(key: string): string {
 }
 
 /** The settings pages whose fields come from the registry. */
-export type RegistryPageId = Extract<
-  SettingsPageId,
-  "machine" | "safety" | "llm" | "auth" | "general"
->;
+export type RegistryPageId = Extract<SettingsPageId, "machine" | "safety" | "llm" | "auth">;
 
 /**
  * Which key belongs to which registry page. Prefix-based, so a new registry
- * entry lands somewhere sensible without an edit here; anything unrecognised
- * falls onto "General" rather than disappearing.
+ * entry lands somewhere sensible without an edit here.
  *
- * The LLM prefixes are three rather than one because the keys are named after
- * the things they configure - `anthropicApiKey`, `claudeCodeBin`,
- * `modelAnalysis` - which reads better in the API than an `llm` prefix glued
- * onto everything would.
+ * Three pages are recognised by prefix, and everything else is the LLM page's.
+ * That is not a catch-all by accident: the LLM keys are named after the things
+ * they configure - `anthropicApiKey`, `claudeCodeBin`, `modelAnalysis`,
+ * `chatMaxToolRounds`, `analysisChunkTokenBudget` - rather than sharing one
+ * prefix, and they are most of the registry. A key that is not an LLM setting
+ * and has no prefix here still shows up, in the LLM page's trailing "Other"
+ * card, plainly unsorted until somebody gives it a prefix.
  */
-const LLM_PREFIXES = ["llm", "anthropic", "claudeCode", "model"];
-
 export function sectionFor(key: string): RegistryPageId {
   // Before the `device` prefix check: `profilePolicy*` is about what may be
   // written, not about how the machine is reached, and burying seven bounds in
@@ -177,13 +174,12 @@ export function sectionFor(key: string): RegistryPageId {
   if (key.startsWith("profilePolicy")) return "safety";
   // `notesWriteback*` is named after what it writes rather than after the
   // machine, but it is a device write behind the same master switch — so it
-  // belongs beside `deviceWritesEnabled` rather than in "General", where a
-  // person turning writes on would never find it.
+  // belongs beside `deviceWritesEnabled`, where a person turning writes on
+  // will find it.
   if (key.startsWith("device") || key.startsWith("gaggimate") || key.startsWith("notesWriteback"))
     return "machine";
-  if (LLM_PREFIXES.some((prefix) => key.startsWith(prefix))) return "llm";
   if (key.startsWith("auth")) return "auth";
-  return "general";
+  return "llm";
 }
 
 export type SettingsGroup = {
@@ -277,6 +273,18 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       description: "How long a call may take, when throttling stops everything, and what is kept.",
       keys: ["llmTimeoutSeconds", "llmRateLimitRetries", "llmStoreCallText"],
     },
+    {
+      id: "analysis",
+      title: "Analysis",
+      description: "How much of the knowledge base one analysis may read.",
+      keys: ["analysisChunkTokenBudget"],
+    },
+    {
+      id: "chat",
+      title: "Chat",
+      description: "How far one chat answer may go, and how much history it carries.",
+      keys: ["chatMaxToolRounds", "chatMaxToolCalls", "chatHistoryTokenBudget"],
+    },
   ],
   auth: [
     {
@@ -290,20 +298,6 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       title: "Sessions",
       description: "How long a signed-in browser stays signed in.",
       keys: ["authTokenTtlSeconds"],
-    },
-  ],
-  general: [
-    {
-      id: "analysis",
-      title: "Analysis",
-      description: "How much of the knowledge base one analysis may read.",
-      keys: ["analysisChunkTokenBudget"],
-    },
-    {
-      id: "chat",
-      title: "Chat",
-      description: "How far one chat answer may go, and how much history it carries.",
-      keys: ["chatMaxToolRounds", "chatMaxToolCalls", "chatHistoryTokenBudget"],
     },
   ],
 };

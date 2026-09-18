@@ -1,14 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  Bot,
-  Gauge,
-  KeyRound,
-  ScrollText,
-  Server,
-  Settings2,
-  ShieldCheck,
-  Upload,
-} from "lucide-react";
+import { Bot, Gauge, KeyRound, ScrollText, Server, ShieldCheck, Upload } from "lucide-react";
 
 export type SettingsPageId =
   | "machine"
@@ -16,7 +7,6 @@ export type SettingsPageId =
   | "llm"
   | "prompts"
   | "auth"
-  | "general"
   | "import"
   | "system";
 
@@ -55,7 +45,8 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     id: "llm",
     label: "LLM",
     icon: Bot,
-    description: "Which provider answers a call, what it costs, and which model does what.",
+    description:
+      "Which provider answers a call, which model does what, and how much an analysis or a chat answer may take.",
   },
   {
     id: "prompts",
@@ -70,12 +61,6 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     icon: KeyRound,
     description:
       "Off unless a username and a password are both set. Turn it on if anything you do not trust can reach this box.",
-  },
-  {
-    id: "general",
-    label: "General",
-    icon: Settings2,
-    description: "Analysis and chat budgets, and anything else in the registry.",
   },
   {
     id: "import",
