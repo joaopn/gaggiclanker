@@ -10,6 +10,24 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Settings and the sidebar, regrouped
+
+The sidebar has five rows instead of nine: Shots, Chat, **Brew setup** (Sets,
+Beans, Hardware), **Machine** (Profiles, Sync, Device) and **Settings**. A
+group opens when you click it, and on its own while you are on one of its
+pages; one you open by hand stays open next time. Every `g` chord still goes
+where it did, and the device page has a row of its own under Machine.
+
+Settings is a group of pages rather than one long page, in the order you are
+likely to need them: **Machine access** and **LLM** first, since nothing works
+until both are filled in, then Authentication, Knowledge, Prompts, Profile
+safety, System and Import. On each page the settings sit in cards under
+subheadings, all closed until you open one; a save that fails validation opens
+the card with the problem. The page that used to be called Machine is Machine
+access, so it is not confused with the sidebar's Machine group, and the old
+General page's analysis and chat budgets are cards on the LLM page. Knowledge
+keeps its own address, so every citation link into it still works.
+
 ### The Beans page after using it
 
 - **No variety.** The field is gone from the bean, the form, the card, the API,
@@ -52,7 +70,7 @@ variable still set names it in the `setting_env_ignored` line described below.
 ### Clone and start, and settings live only in the database
 
 **Starting is `git clone`, then `docker compose up -d --build`**, then entering
-the machine's address under Settings → Machine. There is no file to copy, rename
+the machine's address under Settings → Machine access. There is no file to copy, rename
 or edit first: `.env.example` and the `.env` that briefly replaced it are both
 gone, and the repository ships no configuration file at all.
 
@@ -125,7 +143,7 @@ see the port change below.
 Two are refused rather than ignored, and the container exits naming them: any
 variable that used to carry a credential (see *Credentials leave the environment*
 below) and `GAGGICLANKER_DEVICE_WRITES_ENABLED`, which used to open the only path
-from this box to the machine. Turn writes on under Settings → Machine instead.
+from this box to the machine. Turn writes on under Settings → Machine access instead.
 Silently ignoring either would leave a box less protected than its owner
 believes. An empty value counts as unset in both cases, so an old compose file
 passing `${GAGGICLANKER_DEVICE_WRITES_ENABLED:-}` through still starts.
@@ -135,7 +153,7 @@ If `git pull` stops on your own `.env`, move it aside — nothing reads it now.
 ### Machine settings apply live
 
 Changing the machine's host, protocol, timeout or **Device sync enabled** under
-Settings → Machine now takes effect on save: the connection to the old machine is
+Settings → Machine access now takes effect on save: the connection to the old machine is
 closed and the new one opened, with no restart, and the header pill and the Sync
 page follow straight away. A save that leaves the effective values as they were
 does nothing to the connection. While a profile push or rollback, a cleanup run,
@@ -568,7 +586,7 @@ New: `GET /api/device/cleanup/plan`, `POST /api/device/cleanup/run`,
 `GET /api/device/cleanup/runs`, `GET /api/device/notes/pending`,
 `POST /api/device/notes/push`, `POST /api/shots/{id}/notes-writeback`, a Storage
 card and a notes card on the Device page, "Sync notes to machine" on a shot, and
-six settings under Settings → Machine. Migration `0010`.
+six settings under Settings → Machine access. Migration `0010`.
 
 ### Knowledge base tiers 2 and 3
 

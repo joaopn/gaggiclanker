@@ -164,7 +164,7 @@ function CleanupPreview({ plan, pending }: { plan: CleanupPlan | undefined; pend
         {planned.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="cleanup-plan-empty">
             {plan.policy.mode === "off"
-              ? "Nothing: no cleanup policy is set. Pick one under Settings → Machine."
+              ? "Nothing: no cleanup policy is set. Pick one under Settings → Machine access."
               : "Nothing: the machine is already within the policy."}
           </p>
         ) : (

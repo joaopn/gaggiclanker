@@ -34,7 +34,7 @@ log = structlog.get_logger(__name__)
 #: and the useful part is where the switch is, not that there is one.
 DISABLED_MESSAGE = (
     "Writing to the machine is switched off. Turn on 'Device writes enabled' under "
-    "Settings → Machine to let gaggiclanker write to the display. "
+    "Settings → Machine access to let gaggiclanker write to the display. "
     "Nothing was sent."
 )
 

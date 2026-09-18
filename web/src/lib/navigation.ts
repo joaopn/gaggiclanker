@@ -68,7 +68,7 @@ export function isNavGroup(item: NavItem): item is NavGroup {
  * earns a row by being somewhere you decide to go, not by existing.
  */
 /**
- * The knowledge base, listed under Settings beside Prompts: its rules and
+ * The knowledge base, listed under Settings just before Prompts: its rules and
  * documents ship with the app and are tuned rarely, like the prompts. It stays
  * a page of its own at `/knowledge` rather than becoming a settings page — it
  * is a tabbed reader every analysis and chat citation links into — and keeps
@@ -134,7 +134,7 @@ export const NAV_LINKS: NavItem[] = [
     shortcutLabel: "g ,",
     children: SETTINGS_PAGES.flatMap((page) => {
       const entry: NavPage = { to: settingsPath(page.id), label: page.label, icon: page.icon };
-      return page.id === "prompts" ? [entry, KNOWLEDGE] : [entry];
+      return page.id === "prompts" ? [KNOWLEDGE, entry] : [entry];
     }),
   },
 ];

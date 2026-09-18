@@ -3,7 +3,7 @@
 #   docker compose up -d --build
 #   open http://localhost:8042        # or http://<this box>:8042 from elsewhere
 #
-# Then enter the machine's address under Settings -> Machine; it connects on
+# Then enter the machine's address under Settings -> Machine access; it connects on
 # save. Nothing needs copying or editing first, and there is nothing in this
 # file to fill in: every runtime setting is configured in the UI and stored in
 # the database. The few variables the process itself reads (DATA_DIR, HOST,

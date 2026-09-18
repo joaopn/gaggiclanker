@@ -174,7 +174,7 @@ describe("CleanupSection", () => {
     await screen.findByTestId("cleanup-blocked");
 
     expect(screen.getByRole("button", { name: /Delete 2 shots…/ })).toBeDisabled();
-    expect(screen.getByTestId("cleanup-blocked")).toHaveTextContent("Settings → Machine");
+    expect(screen.getByTestId("cleanup-blocked")).toHaveTextContent("Settings → Machine access");
   });
 
   it("cannot run while the machine is not connected", async () => {

@@ -130,7 +130,7 @@ export function ProfilesPage() {
             Staging and approving work; pushing is refused before anything reaches the wire, and the
             refusal is recorded in the write audit. Turn on "Device writes enabled" under{" "}
             <Link className="underline underline-offset-2" to="/settings/machine#writes">
-              Settings → Machine
+              Settings → Machine access
             </Link>
             .
           </p>

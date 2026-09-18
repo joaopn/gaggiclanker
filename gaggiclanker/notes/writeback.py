@@ -282,7 +282,7 @@ class NotesWritebackService:
                 shot_id=shot_id,
                 reason=(
                     "Writing to the machine is switched off. Turn on 'Device writes enabled' "
-                    "under Settings → Machine."
+                    "under Settings → Machine access."
                 ),
             )
         if self.client is None:

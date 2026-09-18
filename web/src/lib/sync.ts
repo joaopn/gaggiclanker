@@ -142,7 +142,7 @@ export function writeBlocker({
 }: WriteReadiness): string | null {
   if (!configured) return "No machine is configured. Set its address in Settings.";
   if (!writesEnabled) {
-    return "Device writes are off. Turn on “Device writes enabled” under Settings → Machine.";
+    return "Device writes are off. Turn on “Device writes enabled” under Settings → Machine access.";
   }
   if (!connected) return "The machine is not connected. Nothing can be written to it until it is.";
   return null;

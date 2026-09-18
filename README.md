@@ -56,7 +56,7 @@ an IP for the machine's host.
 ### First run
 
 1. **Open the UI** at `http://<this box>:8042`.
-2. **Set the machine's address in Settings → Machine.** `gaggimateHost` is the
+2. **Set the machine's address in Settings → Machine access.** `gaggimateHost` is the
    display board's IP or hostname, with no scheme (`192.168.1.50`, or
    `192.168.1.50:80`). It connects on save, with no restart: the pill in the
    header goes green within a few seconds of the WebSocket connecting. Prefer a
@@ -90,7 +90,7 @@ taken while the app is running.
 
 The sidebar has five rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware),
 **Machine** (Profiles, Sync, Device) and **Settings** (one page per heading,
-with Knowledge beside Prompts). A group opens when you click it, and on its own
+with Knowledge just before Prompts). A group opens when you click it, and on its own
 when you are on one of its pages; one you open by hand stays open next time. The
 pages, in the order the sidebar lists them:
 
@@ -104,7 +104,7 @@ pages, in the order the sidebar lists them:
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
-| **Settings** | `g ,` | Machine, Profile safety, LLM, Prompts, Authentication, Import and System, each a page of collapsible cards. The LLM page also holds the analysis and chat budgets. |
+| **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the analysis and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights an analysis proposes are confirmed on that analysis. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
@@ -119,7 +119,7 @@ redirect to the Sync page.
 
 ### What gaggiclanker writes to the machine, and who starts it
 
-Nothing, until **Device writes enabled** is on under Settings → Machine. With it
+Nothing, until **Device writes enabled** is on under Settings → Machine access. With it
 on: **profiles may be pushed by the app** (see below); **everything else written
 to or deleted from the machine happens only from the Sync page, by a person.**
 
@@ -204,7 +204,7 @@ curl -X PATCH localhost:8042/api/settings \
 ```
 
 The address is a setting like any other, so it is entered once — in the UI under
-Settings → Machine, or with the `PATCH` above — and stays in the archive's
+Settings → Machine access, or with the `PATCH` above — and stays in the archive's
 database file for every later run. The connection is rebuilt on save, so the app
 does not need restarting.
 
@@ -319,7 +319,7 @@ the upgrade. Two ways round it, both on the old version, before you pull:
   (Port 8000 because that is the old version's default; the new one is 8042.)
 
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
-or the sync switch under Settings → Machine closes the connection and opens the
+or the sync switch under Settings → Machine access closes the connection and opens the
 new one, with no restart; the header pill follows within a few seconds. While a
 profile push, a cleanup run, a notes send or a pull is using the machine, such a
 change is refused with the reason and nothing is saved — wait for it to finish
@@ -558,7 +558,7 @@ gaggiclanker's own HTTP API, behind buttons a person presses.
 ## Troubleshooting
 
 **The device pill never goes green.**
-Check the host under Settings → Machine first: `curl http://<host>/api/status`
+Check the host under Settings → Machine access first: `curl http://<host>/api/status`
 should answer a small JSON document. Then check you are not out of WebSocket
 slots — see below.
 `GET /api/device/status` reports what the client thinks, and the container log
@@ -639,7 +639,7 @@ password you want under Settings → Authentication.
 `GAGGICLANKER_DEVICE_WRITES_ENABLED` is still set — in `compose.yml`, in a
 leftover `.env` compose passes through, or in the shell that started it. It no
 longer allows anything: writes to the machine are switched on under **Settings →
-Machine** and the switch lives in the database. Remove the variable, start the
+Machine access** and the switch lives in the database. Remove the variable, start the
 app, and set the switch there if you want writes on. The boot refuses rather
 than ignoring it because a switch that used to open the only path to your
 espresso machine must not change meaning quietly.

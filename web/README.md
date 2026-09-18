@@ -35,7 +35,7 @@ curl -X PATCH localhost:8042/api/settings \
 ```
 
 The machine's address is a setting in the database, not a variable: enter it once
-(here, or under Settings → Machine) and every later run picks it up.
+(here, or under Settings → Machine access) and every later run picks it up.
 
 Point the dev server elsewhere with `GAGGICLANKER_BACKEND=http://host:port npm run dev`.
 Because the dev server proxies rather than talking cross-origin, `CORS_ORIGINS`
@@ -442,14 +442,14 @@ flattens the table for the bindings and the shortcut sheet — and a group may
 have a chord of its own that goes to its `to`. The rows are Shots, Chat, Brew
 setup (Sets, Beans, Hardware), Machine (Profiles, Sync, Device) and Settings;
 no group nests another. A group's children need not share its URL prefix:
-`/knowledge` is listed under Settings beside Prompts and keeps its own address
+`/knowledge` is listed under Settings just before Prompts and keeps its own address
 and chord, so every citation link into it still resolves.
 
 **Settings is a group of pages.** Its children are one page per entry of
 `SETTINGS_PAGES` (`src/lib/settingsPages.ts`). `/settings` redirects to the first page and
 `/settings/:page` picks the component in `pages/settings/SettingsPage.tsx`. The
-registry pages are one form each over the keys `sectionFor` sends them (Machine,
-Profile safety and Authentication by prefix, everything else to LLM), sorted
+registry pages are one form each over the keys `sectionFor` sends them (Machine
+access, Profile safety and Authentication by prefix, everything else to LLM), sorted
 into collapsible cards by `SETTINGS_GROUPS` in `schema.ts`; a key no group
 names lands in an "Other" card, so a new setting is editable without an edit
 here. A page folded into another leaves a `RETIRED` entry in `SettingsPage`

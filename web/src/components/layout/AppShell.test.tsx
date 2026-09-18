@@ -181,7 +181,7 @@ describe("AppShell", () => {
     renderApp("/shots");
     await user.keyboard("g,");
     await waitFor(() => expect(getSettings).toHaveBeenCalled());
-    expect(screen.getByRole("heading", { name: "Machine" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Machine access" })).toBeInTheDocument();
   });
 
   describe("the Settings group", () => {
@@ -200,12 +200,23 @@ describe("AppShell", () => {
       expect(settings).toHaveAttribute("aria-expanded", "true");
       expect(list).toBeVisible();
       const pages = within(list as HTMLElement).getAllByRole("link");
-      // The settings pages, with the knowledge base beside Prompts.
+      // The settings pages, with the knowledge base just before Prompts.
       const paths = SETTINGS_PAGES.flatMap((p) =>
-        p.id === "prompts" ? [`/settings/${p.id}`, "/knowledge"] : [`/settings/${p.id}`],
+        p.id === "prompts" ? ["/knowledge", `/settings/${p.id}`] : [`/settings/${p.id}`],
       );
       expect(pages.map((link) => link.getAttribute("href"))).toEqual(paths);
-      expect(pages.map((link) => link.querySelector("span")?.textContent)).toContain("Knowledge");
+      // Ordered by how likely a page is to need editing: the two nothing works
+      // without first, what most people never touch or do once last.
+      expect(pages.map((link) => link.querySelector("span")?.textContent)).toEqual([
+        "Machine access",
+        "LLM",
+        "Authentication",
+        "Knowledge",
+        "Prompts",
+        "Profile safety",
+        "System",
+        "Import",
+      ]);
     });
 
     it("starts open on a settings page, with that page marked", () => {
@@ -245,7 +256,7 @@ describe("AppShell", () => {
 
     it("redirects the bare settings path to the first page", async () => {
       renderApp("/settings");
-      expect(await screen.findByRole("heading", { name: "Machine" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Machine access" })).toBeInTheDocument();
     });
   });
 
@@ -271,7 +282,7 @@ describe("AppShell", () => {
 
     // Still on Settings, and the letters landed in the box: a shortcut that
     // fires mid-sentence is worse than no shortcut at all.
-    expect(screen.getByRole("heading", { name: "Machine" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Machine access" })).toBeInTheDocument();
     expect(host).toHaveValue("gs");
   });
 
