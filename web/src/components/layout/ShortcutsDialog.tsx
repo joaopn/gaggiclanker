@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { NAV_LINKS } from "@/lib/navigation";
+import { navShortcuts } from "@/lib/navigation";
 
 /** Rendered from the nav table, so it cannot drift from the real bindings. */
 export function ShortcutsDialog({
@@ -25,7 +25,7 @@ export function ShortcutsDialog({
           </DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
-          {NAV_LINKS.map((link) => (
+          {navShortcuts().map((link) => (
             <div key={link.to} className="contents">
               <dt className="font-mono text-muted-foreground text-xs">{link.shortcutLabel}</dt>
               <dd>Go to {link.label}</dd>

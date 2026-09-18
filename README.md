@@ -88,31 +88,34 @@ taken while the app is running.
 
 ### The pages
 
-Nine of them, in the order the sidebar lists them:
+The sidebar has six rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware),
+**Machine** (Profiles, Sync, Device), Knowledge and **Settings** (one page per
+heading). A group opens when you click it, and on its own when you are on one of
+its pages; one you open by hand stays open next time. The pages, in the order
+the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
 | **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, your judgement and the machine's notes; each row can be analysed from the list. The pull button and the import drop zone are both here. |
 | **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
-| **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
+| **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
+| **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Knowledge** | `g k` | The dial-in rules, the prose documents, and the insights waiting for a decision. |
-| **Settings** | `g ,` | The machine, the provider, the prompts, backup, and the device-write switch. |
+| **Settings** | `g ,` | Machine, Profile safety, LLM, Prompts, Authentication, General, Import and System, each a page of collapsible cards. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
 to an icon rail and back; the choice is remembered in the browser. Folded, every
 entry keeps its name — a tooltip for a mouse, the accessible name for everything
 else — so nothing is lost but the fourteen rems.
 
-Two more pages exist without a sidebar row, because each has a better way in.
-The device page — what the machine is, its versions and its connection — is
-behind the status pill in the header, and the old import page is now the drop
-zone on the Shots page. `/device`, `/import` and `/drafts` all still resolve, the
-last two by redirecting; the device page's old storage, notes, sync and writes
-anchors redirect to the Sync page.
+The old import page is now the drop zone on the Shots page, and the old drafts
+page is the staging section of Profiles; `/import` and `/drafts` still resolve,
+by redirecting. The device page's old storage, notes, sync and writes anchors
+redirect to the Sync page.
 
 ### What gaggiclanker writes to the machine, and who starts it
 

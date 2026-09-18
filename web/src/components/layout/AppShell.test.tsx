@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "@/App";
-import { NAV_LINKS } from "@/lib/navigation";
+import { isNavGroup, NAV_LINKS } from "@/lib/navigation";
 import { SETTINGS_PAGES } from "@/lib/settingsPages";
 import { createTestQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -53,25 +53,101 @@ describe("AppShell", () => {
     }
   });
 
-  it("lists the nine destinations in order, and nothing else", () => {
+  it("lists the six rows in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];
     // The label span, not the row: the row's text carries the chord too. The
-    // top-level rows only — Settings is a disclosure, and its pages are a list
+    // top-level rows only — a group is a disclosure, and its pages are a list
     // of their own under it.
     const rows = Array.from(nav.querySelectorAll(":scope > a, :scope > div > button"));
     const labels = rows.map((row) => row.querySelector("span")?.textContent?.trim());
-    expect(labels).toEqual([
-      "Shots",
-      "Chat",
-      "Profiles",
-      "Sets",
-      "Beans",
-      "Hardware",
-      "Sync",
-      "Knowledge",
-      "Settings",
-    ]);
+    expect(labels).toEqual(["Shots", "Chat", "Brew setup", "Machine", "Knowledge", "Settings"]);
+  });
+
+  describe("the groups", () => {
+    function groupList(name: string) {
+      const button = within(screen.getByTestId("sidebar")).getByRole("button", { name });
+      const list = document.getElementById(String(button.getAttribute("aria-controls")));
+      return { button, list: list as HTMLElement };
+    }
+
+    it("puts the brew setup and the machine's pages under their groups", async () => {
+      const user = setupUser();
+      renderApp("/shots");
+
+      const brew = groupList("Brew setup");
+      const machine = groupList("Machine");
+      expect(brew.button).toHaveAttribute("aria-expanded", "false");
+      expect(machine.button).toHaveAttribute("aria-expanded", "false");
+
+      await user.click(brew.button);
+      await user.click(machine.button);
+
+      const hrefs = (list: HTMLElement) =>
+        within(list)
+          .getAllByRole("link")
+          .map((link) => link.getAttribute("href"));
+      expect(hrefs(brew.list)).toEqual(["/sets", "/beans", "/hardware"]);
+      // The device page has a row now, beside the other pages about the machine.
+      expect(hrefs(machine.list)).toEqual(["/profiles", "/sync", "/device"]);
+    });
+
+    it("opens the group holding the current page, and only that one", () => {
+      renderApp("/hardware");
+      expect(groupList("Brew setup").button).toHaveAttribute("aria-expanded", "true");
+      expect(groupList("Machine").button).toHaveAttribute("aria-expanded", "false");
+      const current = within(screen.getByTestId("sidebar")).getAllByRole("link", {
+        current: "page",
+      });
+      expect(current.map((link) => link.textContent)).toEqual(["Hardwareg h"]);
+    });
+
+    it("keeps each grouped page's chord", async () => {
+      const user = setupUser();
+      renderApp("/shots");
+      await user.keyboard("ge");
+      expect(await screen.findByRole("heading", { name: "Sets" })).toBeInTheDocument();
+      await user.keyboard("gh");
+      expect(await screen.findByRole("heading", { name: "Hardware" })).toBeInTheDocument();
+    });
+
+    it("remembers a group opened by hand, and forgets it when closed", async () => {
+      const user = setupUser();
+      const { unmount } = renderApp("/shots");
+      await user.click(groupList("Machine").button);
+      expect(JSON.parse(window.localStorage.getItem("sidebar.groups.v1") ?? "[]")).toEqual([
+        "machine",
+      ]);
+      unmount();
+
+      renderApp("/shots");
+      const machine = groupList("Machine").button;
+      expect(machine).toHaveAttribute("aria-expanded", "true");
+      expect(groupList("Brew setup").button).toHaveAttribute("aria-expanded", "false");
+
+      await user.click(machine);
+      expect(JSON.parse(window.localStorage.getItem("sidebar.groups.v1") ?? "[]")).toEqual([]);
+    });
+
+    it("does not record a group that opened because its page is showing", () => {
+      renderApp("/beans");
+      expect(window.localStorage.getItem("sidebar.groups.v1")).toBeNull();
+    });
+
+    it("renders with closed groups when the stored state is unreadable", () => {
+      window.localStorage.setItem("sidebar.groups.v1", "{not json");
+      renderApp("/shots");
+      expect(groupList("Machine").button).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("lists a grouped page's chord in the shortcut sheet", async () => {
+      const user = setupUser();
+      renderApp();
+      await user.keyboard("?");
+      expect(await screen.findByText("Go to Sets")).toBeInTheDocument();
+      expect(screen.getByText("Go to Settings")).toBeInTheDocument();
+      expect(screen.queryByText("Go to Device")).not.toBeInTheDocument();
+    });
   });
 
   // The three retired chords. `g i`, `g d` and `g r` used to be Import, Device
@@ -285,12 +361,14 @@ describe("AppShell", () => {
       const nav = screen.getByTestId("sidebar").querySelector("nav");
       expect(nav).not.toBeNull();
       // Hidden visually, present for assistive tech: the label is still in the
-      // accessible name of every entry, with its chord. Settings is a button
-      // rather than a link, since it opens its list.
+      // accessible name of every entry, with its chord when it has one. A
+      // group is a button rather than a link, since it opens its list.
+      const named = (entry: { label: string; shortcutLabel?: string }) =>
+        entry.shortcutLabel ? `${entry.label} (${entry.shortcutLabel})` : entry.label;
       for (const link of NAV_LINKS) {
         expect(
-          within(nav as HTMLElement).getByRole(link.children ? "button" : "link", {
-            name: `${link.label} (${link.shortcutLabel})`,
+          within(nav as HTMLElement).getByRole(isNavGroup(link) ? "button" : "link", {
+            name: named(link),
           }),
         ).toBeInTheDocument();
       }

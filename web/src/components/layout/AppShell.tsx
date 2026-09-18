@@ -11,10 +11,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import {
+  isGroupActive,
   isNavActive,
+  isNavGroup,
   NAV_LINKS,
-  type NavChild,
-  type NavLink as NavLinkEntry,
+  type NavGroup as NavGroupItem,
+  type NavPage,
+  navShortcuts,
 } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +57,31 @@ function writeCollapsed(collapsed: boolean): void {
   }
 }
 
+/**
+ * The groups somebody opened by hand, so a group they keep open stays open
+ * from one visit to the next. A group opened because the current page is in
+ * it is not recorded: that one opens itself anyway.
+ */
+const OPEN_GROUPS_KEY = "sidebar.groups.v1";
+
+function readOpenGroups(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(OPEN_GROUPS_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeGroupOpen(id: string, open: boolean): void {
+  try {
+    const others = readOpenGroups().filter((stored) => stored !== id);
+    window.localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(open ? [...others, id] : others));
+  } catch {
+    // As above: remembered for this session only.
+  }
+}
+
 function NavItems({
   onNavigate,
   collapsed = false,
@@ -68,22 +96,10 @@ function NavItems({
   return (
     <nav id={id} aria-label="Main" className="flex flex-col gap-0.5">
       {NAV_LINKS.map((link) =>
-        link.children ? (
-          <NavGroup
-            key={link.to}
-            link={link}
-            items={link.children}
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-          />
+        isNavGroup(link) ? (
+          <NavGroup key={link.id} group={link} collapsed={collapsed} onNavigate={onNavigate} />
         ) : (
-          <NavEntry
-            key={link.to}
-            link={link}
-            shortcutLabel={link.shortcutLabel}
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-          />
+          <NavEntry key={link.to} link={link} collapsed={collapsed} onNavigate={onNavigate} />
         ),
       )}
     </nav>
@@ -134,17 +150,15 @@ function RailTooltip({
 
 function NavEntry({
   link,
-  shortcutLabel,
   collapsed,
   onNavigate,
 }: {
-  link: Pick<NavLinkEntry, "to" | "label" | "icon" | "activePaths">;
-  /** Absent on a group's children: only top-level entries have a chord. */
-  shortcutLabel?: string;
+  link: NavPage;
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
   const { pathname } = useLocation();
+  const { shortcutLabel } = link;
   const Icon = link.icon;
   const active = isNavActive(link, pathname);
   const named = shortcutLabel ? `${link.label} (${shortcutLabel})` : link.label;
@@ -175,44 +189,54 @@ function NavEntry({
 }
 
 /**
- * An entry whose pages are listed under it: Settings.
+ * A row whose pages are listed under it: Brew setup, Machine, Settings.
  *
  * The row is a disclosure, not a link — it opens and closes the list, which is
  * always rendered and toggled with `hidden` so `aria-controls` resolves. It
  * starts open, and reopens, whenever the current page is one of its own, so
- * the page you are on is never folded out of sight. On the icon rail the
- * children are icons of their own under it, each named like any other entry.
+ * the page you are on is never folded out of sight; one opened by hand stays
+ * open across visits (`sidebar.groups.v1`). On the icon rail the children are
+ * icons of their own under it, each named like any other entry.
  */
 function NavGroup({
-  link,
-  items,
+  group,
   collapsed,
   onNavigate,
 }: {
-  link: NavLinkEntry;
-  items: NavChild[];
+  group: NavGroupItem;
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
   const { pathname } = useLocation();
-  const inside = isNavActive(link, pathname);
-  const [open, setOpen] = useState(inside);
+  const inside = isGroupActive(group, pathname);
+  const [open, setOpen] = useState(() => inside || readOpenGroups().includes(group.id));
   const listId = useId();
-  const Icon = link.icon;
+  const Icon = group.icon;
+  const { shortcutLabel } = group;
+  const named = shortcutLabel ? `${group.label} (${shortcutLabel})` : group.label;
 
   useEffect(() => {
     if (inside) setOpen(true);
   }, [inside]);
 
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    writeGroupOpen(group.id, next);
+  };
+
   return (
     <div className="flex flex-col gap-0.5">
-      <RailTooltip collapsed={collapsed} text={`${link.label} · ${link.shortcutLabel}`}>
+      <RailTooltip
+        collapsed={collapsed}
+        text={shortcutLabel ? `${group.label} · ${shortcutLabel}` : group.label}
+      >
         <button
           type="button"
           aria-expanded={open}
           aria-controls={listId}
-          aria-label={collapsed ? `${link.label} (${link.shortcutLabel})` : undefined}
-          onClick={() => setOpen((current) => !current)}
+          aria-label={collapsed ? named : undefined}
+          onClick={toggle}
           className={cn(
             navRowClass(collapsed, false),
             "text-left",
@@ -220,8 +244,8 @@ function NavGroup({
           )}
         >
           <Icon className="size-4 shrink-0" aria-hidden="true" />
-          <span className={collapsed ? "sr-only" : "flex-1"}>{link.label}</span>
-          <NavShortcut label={link.shortcutLabel} collapsed={collapsed} />
+          <span className={collapsed ? "sr-only" : "flex-1"}>{group.label}</span>
+          {shortcutLabel ? <NavShortcut label={shortcutLabel} collapsed={collapsed} /> : null}
           {collapsed ? null : (
             <ChevronRight
               aria-hidden="true"
@@ -236,14 +260,14 @@ function NavGroup({
       <ul
         id={listId}
         hidden={!open}
-        aria-label={link.label}
+        aria-label={group.label}
         className={cn(
           "flex flex-col gap-0.5",
           collapsed ? "border-border border-t pt-0.5" : "ml-4 border-border border-l pl-2",
           !open && "hidden",
         )}
       >
-        {items.map((item) => (
+        {group.children.map((item) => (
           <li key={item.to}>
             <NavEntry link={item} collapsed={collapsed} onNavigate={onNavigate} />
           </li>
@@ -290,7 +314,7 @@ export function AppShell() {
       "?": () => setShortcutsOpen(true),
       "[": toggleSidebar,
     };
-    for (const link of NAV_LINKS) {
+    for (const link of navShortcuts()) {
       map[link.shortcut] = () => {
         setMobileOpen(false);
         navigate(link.to);

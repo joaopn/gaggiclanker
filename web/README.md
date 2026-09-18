@@ -415,7 +415,8 @@ uv run python scripts/build_web_shot_fixture.py
 ## How to add a page
 
 1. Add an entry to `NAV_LINKS` in `src/lib/navigation.ts` (path, label, icon,
-   `g <key>` chord). That one entry drives the sidebar, the mobile sheet, the
+   optional `g <key>` chord), as a row of its own or among a group's
+   `children`. That one entry drives the sidebar, the mobile sheet, the
    shortcut binding and the shortcut dialog.
 2. Write `src/pages/<Name>Page.tsx`, composing `PageHeader` + `SectionCard`.
 3. Add the `<Route>` to `src/App.tsx`, inside the `AppShell` layout route.
@@ -431,10 +432,19 @@ to the table needs nothing extra to work folded. The state lives in
 the rail through `data-collapsed` on the `<aside>` and the links' accessible
 names; they never open the tooltip, which is radix and not drivable under jsdom.
 
-**Settings is a group, not a page.** Its `NAV_LINKS` entry carries `children`, so
-the sidebar draws it as a disclosure listing one page per entry of
-`SETTINGS_PAGES` (`src/lib/settingsPages.ts`); it starts open whenever the
-current route is one of its pages. `/settings` redirects to the first page and
+**Groups.** An entry with `children` is a `NavGroup`: the sidebar draws it as a
+disclosure (a button with `aria-expanded`, the list always rendered and toggled
+with `hidden`) that opens whenever the current route is one of its pages. One
+opened by hand is remembered in `localStorage` under `sidebar.groups.v1` (group
+ids, read behind `try/catch`); one that opened because its page is showing is
+not recorded. A page inside a group keeps its own chord — `navShortcuts()`
+flattens the table for the bindings and the shortcut sheet — and a group may
+have a chord of its own that goes to its `to`. The rows are Shots, Chat, Brew
+setup (Sets, Beans, Hardware), Machine (Profiles, Sync, Device), Knowledge and
+Settings; no group nests another.
+
+**Settings is a group of pages.** Its children are one page per entry of
+`SETTINGS_PAGES` (`src/lib/settingsPages.ts`). `/settings` redirects to the first page and
 `/settings/:page` picks the component in `pages/settings/SettingsPage.tsx`. The
 registry pages are one form each over the keys `sectionFor` sends them, sorted
 into collapsible cards by `SETTINGS_GROUPS` in `schema.ts`; a key no group
@@ -446,9 +456,8 @@ case in `SettingsPage`, and its path in the deep-link test.
 
 **A route is not a nav entry.** `NAV_LINKS` is the sidebar, and the sidebar is
 places you *decide to go*; a page reached from the one place you are already
-standing does not earn a row. `/device` has a route, a page and tests and no
-entry — the status pill in the header is the way in, and the pill says so in
-screen-reader text. Its old card anchors (`#storage`, `#notes`, `#sync`,
+standing does not earn a row. `/device` is under Machine and is also the status
+pill's destination; it has no chord, since `g d` was retired once already. Its old card anchors (`#storage`, `#notes`, `#sync`,
 `#writes`) redirect to the sections of `/sync` that took them over. `/import` and `/drafts` are `<Navigate>` redirects to the
 drop zone on the shots page and to `/profiles#staged`: the pages behind them
 became a strip and a section, and the routes stay so old bookmarks and a hard

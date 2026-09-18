@@ -81,8 +81,8 @@ export function DeviceStatusPill() {
             )}
           />
           {label}
-          {/* The device page is not in the sidebar — this pill is the way to
-              it — so the link says so out loud as well as in the tooltip. */}
+          {/* The pill's text is the machine's state, not a destination, so the
+              link says where it goes out loud as well as in the tooltip. */}
           <span className="sr-only">Open the device page</span>
         </Link>
       </TooltipTrigger>
