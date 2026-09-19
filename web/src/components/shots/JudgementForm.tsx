@@ -1,10 +1,18 @@
 import { Trash2 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { JudgementWrite, ShotJudgement } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
+import {
+  Field,
+  FlavorNoteRows,
+  RatingInput,
+  Segmented,
+} from "@/components/shots/JudgementControls";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
+import { useFlavorPicks } from "@/hooks/useFlavorPicks";
 import { useDeleteJudgement, useSaveJudgement } from "@/hooks/useSets";
+import { flattenWheel } from "@/lib/flavorWheel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -15,10 +23,15 @@ import { cn } from "@/lib/utils";
  * the coffee was good, and a flawless extraction of stale beans is a high score
  * and a bad cup.
  *
- * Every closed vocabulary on this form — balance and the decisions — comes
- * from `GET /api/vocab` rather than from a list typed here. A UI that
- * hard-codes an enum drifts from the database the first time one changes, and
- * the symptom is a 422 on a value the user picked from a dropdown we shipped.
+ * Every closed vocabulary on this form — balance, the flavour wheel, the
+ * decisions — comes from `GET /api/vocab` rather than from a list typed here.
+ * A UI that hard-codes an enum drifts from the database the first time one
+ * changes, and the symptom is a 422 on a value the user picked from a dropdown
+ * we shipped.
+ *
+ * The shot page's form, saved with its own button. The panel under a shot row
+ * has a quicker one (`QuickJudgement`) that saves on every click; the two
+ * share their controls, so a verdict looks the same in both places.
  */
 
 /** The firmware's own cap (`ShotNotes.notes`), matched by the server model. */
@@ -94,18 +107,13 @@ const FIELD = cn(
 export function JudgementForm({
   shotId,
   judgement,
-  compact = false,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
-  /**
-   * Without the paragraph under the title. The shots list's open row has the
-   * form beside a chart in half a panel, and the explanation is the shot
-   * page's to give once.
-   */
-  compact?: boolean;
 }) {
   const vocab = useVocabulary();
+  const picks = useFlavorPicks();
+  const wheel = useMemo(() => flattenWheel(vocab.data?.flavor_wheel ?? []), [vocab.data]);
   const save = useSaveJudgement();
   const remove = useDeleteJudgement();
   const [state, setState] = useState<FormState>(() => toState(judgement));
@@ -132,11 +140,7 @@ export function JudgementForm({
   return (
     <SectionCard
       title="Your judgement"
-      description={
-        compact
-          ? undefined
-          : "How the coffee tasted. Kept apart from the execution score on purpose: a perfectly executed shot of stale beans scores well and tastes of cardboard."
-      }
+      description="How the coffee tasted. Kept apart from the execution score on purpose: a perfectly executed shot of stale beans scores well and tastes of cardboard."
       actions={
         judgement?.seeded_from_device_note ? (
           <span
@@ -184,6 +188,25 @@ export function JudgementForm({
             />
           </Field>
         </div>
+
+        {vocab.data ? (
+          <FlavorNoteRows
+            picks={{ taste: picks.data?.taste ?? [], aroma: picks.data?.aroma ?? [] }}
+            taste={state.tasteNotes}
+            aroma={state.aromaNotes}
+            wheel={wheel}
+            onToggle={(kind, note) => {
+              const key = kind === "taste" ? "tasteNotes" : "aromaNotes";
+              const current = state[key];
+              set(
+                key,
+                current.includes(note)
+                  ? current.filter((value) => value !== note)
+                  : [...current, note],
+              );
+            }}
+          />
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Dose in (g)" htmlFor={ids.doseIn}>
@@ -254,99 +277,5 @@ export function JudgementForm({
         </div>
       </form>
     </SectionCard>
-  );
-}
-
-function Field({
-  label,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  htmlFor?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 flex-1">
-      <label htmlFor={htmlFor} className="mb-1 block text-muted-foreground text-xs">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-/**
- * Five stars, as five buttons.
- *
- * Clicking the star that is already set clears the rating: "not rated" is a
- * real answer and there is nowhere else to say it. A radio group would need a
- * sixth control for the same thing.
- */
-function RatingInput({
-  value,
-  onChange,
-}: {
-  value: number | null;
-  onChange: (next: number | null) => void;
-}) {
-  return (
-    <div className="flex items-center gap-1" data-testid="rating-input">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          aria-label={`${star} star${star > 1 ? "s" : ""}`}
-          aria-pressed={value != null && star <= value}
-          onClick={() => onChange(value === star ? null : star)}
-          className={cn(
-            "rounded px-0.5 text-lg leading-none transition-colors",
-            value != null && star <= value ? "text-status-warn-text" : "text-muted-foreground/40",
-          )}
-        >
-          ★
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/**
- * A segmented control over a closed vocabulary, with the same "click it again
- * to clear it" rule as the stars — "not decided yet" is most shots.
- */
-function Segmented({
-  name,
-  options,
-  value,
-  onChange,
-}: {
-  name: string;
-  options: Array<{ value: string; label: string }>;
-  value: string | null;
-  onChange: (next: string | null) => void;
-}) {
-  return (
-    <div className="inline-flex flex-wrap gap-1" data-testid={`segmented-${name}`}>
-      {options.map((option) => {
-        const on = value === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(on ? null : option.value)}
-            className={cn(
-              "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
-              on
-                ? "border-foreground/30 bg-muted font-medium"
-                : "border-border text-muted-foreground hover:bg-muted/50",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }

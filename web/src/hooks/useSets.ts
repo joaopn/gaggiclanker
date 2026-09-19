@@ -169,13 +169,18 @@ function toWrite(judgement: ShotJudgement | null | undefined): JudgementWrite {
  * usually already in the cache, buys the property that a click in a list
  * cannot destroy something typed on the detail page.
  */
-export function usePatchJudgement(): UseMutationResult<
-  ShotJudgement,
-  Error,
-  { shotId: number; patch: Partial<JudgementWrite> }
-> {
+export function usePatchJudgement(
+  shotId?: number,
+): UseMutationResult<ShotJudgement, Error, { shotId: number; patch: Partial<JudgementWrite> }> {
   const queryClient = useQueryClient();
   return useMutation({
+    // One queue per shot, shared by every control that writes its verdict (the
+    // row's stars and decision, the panel under it). Each write reads the
+    // verdict and puts it back with one field changed, so two in flight at
+    // once — a star, then a chip, a moment apart — could each read the verdict
+    // from before the other and the second would undo the first. Queued, each
+    // reads what the one before it wrote.
+    scope: shotId === undefined ? undefined : { id: `judgement-${shotId}` },
     mutationFn: async ({ shotId, patch }) => {
       const detail = await queryClient.fetchQuery({
         queryKey: queryKeys.shots.detail(String(shotId)),

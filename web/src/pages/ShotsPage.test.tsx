@@ -15,7 +15,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { judgement, setRow } from "@/test/setsFixtures";
+import { flavorPicks, judgement, setRow, vocabulary } from "@/test/setsFixtures";
 import { shot129, syntheticSamples } from "@/test/shotFixture";
 
 vi.mock("sonner", () => ({
@@ -36,6 +36,8 @@ const {
   runSync,
   importFiles,
   runAnalysis,
+  getVocabulary,
+  getFlavorPicks,
 } = vi.hoisted(() => ({
   getShots: vi.fn(),
   getSyncStatus: vi.fn(),
@@ -49,6 +51,8 @@ const {
   runSync: vi.fn(),
   importFiles: vi.fn(),
   runAnalysis: vi.fn(),
+  getVocabulary: vi.fn(),
+  getFlavorPicks: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -64,6 +68,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   runSync,
   importFiles,
   runAnalysis,
+  getVocabulary,
+  getFlavorPicks,
 }));
 
 /** Shaped exactly like `ShotListRow` in gaggiclanker/db/repos/shots.py. */
@@ -202,6 +208,8 @@ beforeEach(() => {
   getShotSamples.mockResolvedValue(samplesData);
   getSets.mockResolvedValue({ items: [setRow()] });
   getShot.mockResolvedValue({ ...shot129, judgement: judgement() });
+  getVocabulary.mockResolvedValue(vocabulary);
+  getFlavorPicks.mockResolvedValue(flavorPicks());
   putJudgement.mockImplementation((_id: number, body: unknown) => Promise.resolve(body));
   putShotSetVersion.mockResolvedValue(shot());
   getDeviceStatus.mockResolvedValue({
@@ -735,7 +743,7 @@ describe("ShotsPage open rows", () => {
       shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
     ]);
 
-  it("opens the curve, the judgement form and the machine's notes under the row", async () => {
+  it("opens the curve, the quick judgement and the machine's notes under the row", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
@@ -754,7 +762,10 @@ describe("ShotsPage open rows", () => {
     // The real chart, lazy, with its text summary; the full curve, not a sparkline.
     expect(await within(panel).findByTestId("chart-series")).toHaveTextContent(/points/);
     expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
-    expect(within(panel).getByTestId("judgement-form")).toBeInTheDocument();
+    expect(within(panel).getByTestId("quick-judgement")).toBeInTheDocument();
+    // The quick one: no doses, no grind, no decision, and nothing to press Save on.
+    expect(within(panel).queryByLabelText("Dose in (g)")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /Save/ })).not.toBeInTheDocument();
     expect(within(panel).getByTestId("device-notes")).toBeInTheDocument();
     expect(within(panel).getByRole("link", { name: /Open shot page/ })).toHaveAttribute(
       "href",
@@ -853,8 +864,7 @@ describe("ShotsPage open rows", () => {
     );
 
     // The same for Escape that cancels an IME composition, wherever focus is.
-    const dose = within(panel).getByLabelText("Dose in (g)");
-    dose.focus();
+    within(panel).getByRole("button", { name: "2 stars" }).focus();
     fireEvent.keyDown(toggle(), { key: "Escape", isComposing: true });
     expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
 
@@ -923,7 +933,7 @@ describe("ShotsPage open rows", () => {
     });
 
     await user.click(toggle("000101"));
-    await within(await screen.findByTestId("shot-panel")).findByTestId("judgement-form");
+    await within(await screen.findByTestId("shot-panel")).findByTestId("quick-judgement");
     await waitFor(() => expect(writes.length).toBeGreaterThan(0));
     const before = top;
     writes.length = 0;
@@ -980,12 +990,12 @@ describe("ShotsPage open rows", () => {
     await listed();
     await user.click(toggle());
     const panel = await screen.findByTestId("shot-panel");
-    const form = await within(panel).findByTestId("judgement-form");
+    const form = await within(panel).findByTestId("quick-judgement");
 
     // What the server holds once the PUT lands; the list is re-read after it.
     getShots.mockResolvedValue(listData([shot({ judgement_rating: 2 })]));
+    // The click is the save: there is no button to press after it.
     await user.click(within(form).getByRole("button", { name: "2 stars" }));
-    await user.click(within(form).getByRole("button", { name: "Save judgement" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
     expect(putJudgement.mock.calls[0]).toEqual([1, expect.objectContaining({ rating: 2 })]);
@@ -1007,7 +1017,7 @@ describe("ShotsPage open rows", () => {
     renderList();
     await listed();
     await user.click(toggle());
-    const form = await screen.findByTestId("judgement-form");
+    const form = await screen.findByTestId("quick-judgement");
     expect(within(form).getByRole("button", { name: "4 stars" })).toHaveAttribute(
       "aria-pressed",
       "true",

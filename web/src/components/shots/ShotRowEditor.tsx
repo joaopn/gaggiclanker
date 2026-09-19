@@ -59,7 +59,7 @@ export function ShotRowEditor({ shot, className }: { shot: ShotListRow; classNam
  */
 function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
   const sets = useSets();
-  const patch = usePatchJudgement();
+  const patch = usePatchJudgement(shot.id);
   const assign = useAssignShot();
   const ids = { notes: useId(), set: useId() };
 

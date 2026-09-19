@@ -3,7 +3,7 @@ import { lazy, Suspense, useLayoutEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ShotListRow, ShotPhase } from "@/api/types";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
-import { JudgementForm } from "@/components/shots/JudgementForm";
+import { QuickJudgement } from "@/components/shots/QuickJudgement";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotSamples } from "@/hooks/useArchive";
 import { DEFAULT_SERIES } from "@/lib/shotChart";
@@ -28,10 +28,12 @@ const CHART_HEIGHT = 200;
  * leaving the list.
  *
  * Three things, because those are the three that were asked for: the curve,
- * the verdict and the machine's own notes. The judgement is the shot page's
- * own form rather than a smaller copy, so a verdict written here is the same
- * verdict with the same fields, and the row editor's three-field panel is not
- * turned into a fourth way to write one. The curve and the notes are links to
+ * the verdict and the machine's own notes. The verdict is the quick one
+ * (`QuickJudgement`): rating, balance, aroma and taste notes and a line of
+ * notes, each saved on the click, because this is what somebody fills in for
+ * every shot and a form with a Save button and six more fields is not. The
+ * decision is on the row; doses and grind are on the shot page, whose full
+ * form writes the same verdict. The curve and the notes are links to
  * the shot page — they are what somebody clicks when they want more of the
  * same — while the form is not, because a click inside a form is a click on a
  * field. "Open shot page" is the explicit way there, for a keyboard and for a
@@ -62,9 +64,9 @@ export function ShotRowPanel({
   const samples = useShotSamples(shot.id, { enabled: !shot.quarantined });
   const ready = !detail.isPending && (shot.quarantined || !samples.isPending);
 
-  // Measured after every commit, and on every resize after that — the form's
-  // taste chips wrap differently at every width, and the vocabulary arrives a
-  // moment after the panel does. `getBoundingClientRect` rather than
+  // Measured after every commit, and on every resize after that — the flavour
+  // chips wrap differently at every width, and the vocabulary and the picks
+  // arrive a moment after the panel does. `getBoundingClientRect` rather than
   // `offsetHeight` so a fractional height does not accumulate into a row's
   // worth of drift over a long scroll.
   useLayoutEffect(() => {
@@ -178,7 +180,7 @@ export function ShotRowPanel({
               Could not load this shot: {detail.error.message}
             </p>
           ) : (
-            <JudgementForm shotId={shot.id} judgement={detail.data.judgement} compact />
+            <QuickJudgement shotId={shot.id} judgement={detail.data.judgement} />
           )}
         </div>
       </div>

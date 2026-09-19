@@ -42,7 +42,7 @@ import { cn } from "@/lib/utils";
  * `ROW_HEIGHT` for the window arithmetic to hold.
  *
  * **A row opens in place** rather than navigating: clicking it shows the curve,
- * the judgement form and the machine's notes directly below it
+ * the quick judgement and the machine's notes directly below it
  * (`ShotRowPanel`), and clicking it again closes them. One row is open at a
  * time — opening another closes the first — because the window arithmetic
  * accounts for exactly one panel, and because two open forms is two places to
@@ -686,8 +686,8 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
  * A rating is the one thing about a cup somebody records for every shot, and
  * for most shots it is the only thing — so it is a click in the list rather
  * than a page visit. The write merges into whatever verdict already exists
- * (`usePatchJudgement`), because `PUT` replaces the row and the taste tags,
- * doses, grind and decision typed on the detail page must survive a star.
+ * (`usePatchJudgement`), because `PUT` replaces the row and the flavour notes,
+ * doses, grind and decision typed elsewhere must survive a star.
  *
  * What is shown and what a click means are two different numbers, which is why
  * `ownRating` is passed separately. A row shows the machine's own notes-card
@@ -698,7 +698,7 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
  * over what was typed at the machine.
  */
 function RatingCell({ shot }: { shot: ShotListRow }) {
-  const patch = usePatchJudgement();
+  const patch = usePatchJudgement(shot.id);
   const own = shot.judgement_rating ?? null;
   return (
     <RatingStars

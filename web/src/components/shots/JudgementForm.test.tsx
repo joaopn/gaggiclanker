@@ -1,22 +1,24 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { judgement, vocabulary } from "@/test/setsFixtures";
+import { flavorPicks, judgement, vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   Toaster: () => null,
 }));
 
-const { getVocabulary, putJudgement, deleteJudgement } = vi.hoisted(() => ({
+const { getVocabulary, getFlavorPicks, putJudgement, deleteJudgement } = vi.hoisted(() => ({
   getVocabulary: vi.fn(),
+  getFlavorPicks: vi.fn(),
   putJudgement: vi.fn(),
   deleteJudgement: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getVocabulary,
+  getFlavorPicks,
   putJudgement,
   deleteJudgement,
 }));
@@ -24,6 +26,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   getVocabulary.mockResolvedValue(vocabulary);
+  getFlavorPicks.mockResolvedValue(flavorPicks());
   putJudgement.mockImplementation(async (_id: number, body: unknown) => ({
     ...judgement(),
     ...(body as object),
@@ -78,6 +81,35 @@ describe("JudgementForm", () => {
     expect(putJudgement).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ rating: 4, balance: "sour", decision: null }),
+    );
+  });
+
+  it("edits the aroma and taste notes with the panel's chips, saved with the form", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<JudgementForm shotId={1} judgement={judgement()} />);
+
+    const taste = within(await screen.findByRole("group", { name: "Taste notes" }));
+    const aroma = within(screen.getByRole("group", { name: "Aroma notes" }));
+    // The recorded note that is not a pick is there to be taken off.
+    expect(taste.getByRole("button", { name: "Sour/Fermented › Sour" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(taste.getByRole("button", { name: "Sour/Fermented › Sour" }));
+    await user.click(taste.getByRole("button", { name: "Other › Chemical › Bitter" }));
+    await user.click(aroma.getByRole("button", { name: "Floral" }));
+    // Nothing is written until the form is saved.
+    expect(putJudgement).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Save judgement" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    expect(putJudgement.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        taste_notes: ["other.chemical.bitter"],
+        aroma_notes: ["fruity.berry", "floral"],
+        decision: "improve",
+      }),
     );
   });
 
