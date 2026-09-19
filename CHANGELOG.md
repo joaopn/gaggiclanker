@@ -10,6 +10,38 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A judgement for every shot, on the flavour wheel
+
+- **Quick judgement under a shot row.** The panel that opens under a row is no
+  longer the full form with a Save button. It holds what you can fill in for
+  every shot in a few clicks: rating, balance, aroma notes, taste notes and a
+  line of notes. Every click saves; the notes save when you leave the field or
+  press Ctrl/Cmd+Enter. Doses and grind stay on the shot page, whose form
+  writes the same verdict.
+- **The flavour wheel.** Taste and aroma are recorded as notes on the SCA/WCR
+  Coffee Taster's Flavor Wheel, all three tiers, from "Fruity" to
+  "Blackberry". It replaces the old taste chips (sour side, dialled in, bitter
+  side, strength). The balance — sour, balanced, bitter, the GaggiMate's own
+  three words — stays a control of its own, and it is still what goes to the
+  machine's notes card; the wheel's notes stay here.
+- **Taste wheel page** under Brew setup (`g w`): the wheel, drawn, where you
+  pick which notes the shot panel offers for taste and for aroma. A fresh
+  archive starts with ten or so of each. The chips under a shot show your
+  picks plus anything already recorded on that shot.
+- **Decision on the row.** The shots table's Analyse column is replaced by a
+  Decision column: Keep, Improve or Discard, one click each, a second click
+  to clear. "Adjust" is now "Improve". Start an analysis from the shot page;
+  the Flags column still shows where it got to. If you had Analyse among your
+  columns, Decision takes its place.
+- **A narrower Set column.** The Set column has a drag handle like the others
+  and starts narrower; a long Set name truncates, with the whole name on
+  hover.
+- **The analyzer reads the wheel.** An analysis sees your notes with their
+  path on the wheel, and the taste rules on the Knowledge page are keyed on
+  wheel notes and the balance. The rules about mouthfeel, strength and finish
+  (astringent, watery, flat, too intense) have no note on the wheel, so no
+  analysis selects them for now; their text is still there.
+
 ### Settings and the sidebar, regrouped
 
 The sidebar has five rows instead of nine: Shots, Chat, **Brew setup** (Sets,

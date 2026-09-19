@@ -103,21 +103,23 @@ src/
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
     shots/            table, filters, columns, pull button, drop zone, import results, row editor,
-                      ShotRowPanel (an open row), AnalyseCell, DeviceNotesCard
+                      ShotRowPanel (an open row), QuickJudgement (its verdict), DecisionCell,
+                      DeviceNotesCard
 ```
 
 Four things about the shots table are worth knowing before editing it.
 
 **A row opens in place; it is not a link.** The row's stretched overlay is a
 `<button>` with `aria-expanded`, and the controls in the row (compare box, stars,
-Set badge or menu, Analyse, the row editor) are lifted above it with `z-[1]`, the
-same arrangement the link used — a button wrapping them would be invalid HTML.
+Set badge or menu, the decision, the row editor) are lifted above it with `z-[1]`,
+the same arrangement the link used — a button wrapping them would be invalid HTML.
 The open panel (`ShotRowPanel`) is the shot page's own `ShotChart`, lazy, so the
-list with nothing open never downloads Chart.js; the shot page's own
-`JudgementForm`; and `DeviceNotesCard`, which the shot page uses too. It reads the
-shot with `useShot` and `useShotSamples`, the page's keys, so the stars in the row
-and the form in the panel invalidate each other through `shots`. Escape closes
-the panel unless a popover inside the row owns the key.
+list with nothing open never downloads Chart.js; `QuickJudgement`, the verdict
+somebody gives every shot (rating, balance, aroma and taste chips, a line of
+notes, each saved on the click); and `DeviceNotesCard`, which the shot page uses
+too. It reads the shot with `useShot` and `useShotSamples`, the page's keys, so
+the stars in the row and the panel invalidate each other through `shots`. Escape
+closes the panel unless a popover inside the row owns the key.
 
 **One open row, and the window knows its height.** `useVirtualRows` takes the
 open row's index and the panel's measured height; the arithmetic is the pure
@@ -127,17 +129,18 @@ would need a measured list, which is why opening one closes the other.
 **Widths are rem, per column, per browser.** Fixed columns have a drag handle
 (a focusable `separator`: arrows, Home/End, double-click resets) and store under
 `shots.widths.v1`, apart from the column choice under `shots.columns.v1`. Only
-Set, Profile and Notes are flexible tracks; nothing is `auto`, because each row is
+Profile and Notes are flexible tracks; nothing is `auto`, because each row is
 its own grid and an `auto` track sized by one row's content put that row out of
 line. A stored column choice that is exactly the previous default reads as the
-current default; any other stored choice is kept.
+current default, a stored Analyse column reads as Decision, and any other stored
+choice is kept.
 
-**The Analyse column refuses what the shot page refuses**, which is a
-quarantined shot; a shot with no Set gets the page's warning as a title. Its
-running state is the row's `analysis_state`, refreshed by the `analysis.*` events
-in `EVENT_INVALIDATIONS`, and a synchronous guard makes a double click one paid
-call. A failed row carries `analysis_error`, the newest analysis's error, for the
-Retry button's title.
+**Every write to a verdict merges and queues.** The stars, the Decision column,
+the row editor and the quick judgement all go through `usePatchJudgement(shotId)`:
+it reads the verdict, changes the fields it was given and puts the whole row back
+(`PUT` replaces), and it runs in a mutation scope per shot, so a star and a chip
+clicked a moment apart cannot each read the verdict from before the other. None
+of them writes an empty verdict to clear something on a shot nobody has judged.
 
 The Sync page is where a person starts every exchange with the machine:
 
@@ -193,9 +196,32 @@ src/
     charts/
       SetTrendChart.tsx   score, rating, duration and ratio across a Set's versions
     sets/             SetBadge, VersionTimeline, NewSetDialog
-    shots/            JudgementForm, AssignToSet, NeedsSetMenu
+    shots/            JudgementForm, JudgementControls (shared with the quick judgement),
+                      AssignToSet, NeedsSetMenu
   pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
 ```
+
+The Taste wheel is the last page of Brew setup:
+
+```
+src/
+  lib/
+    flavorWheel.ts    walking the wheel /api/vocab serves: wheel order, a note's path,
+                      the sunburst's geometry, the category colours
+  hooks/
+    useFlavorPicks.ts the notes the shot panel offers, and the optimistic write
+  components/taste/
+    FlavorWheelChart.tsx  the sunburst, a pointer control hidden from assistive technology
+  pages/
+    TasteWheelPage.tsx    the Taste | Aroma switch, the wheel, the two lists, "All notes"
+```
+
+The wheel is the vocabulary and comes from the server like every other; the
+category colours are the one part of it typed here, because they are
+presentation. The drawing is not a keyboard interface — a hundred and ten
+segments would be a hundred and ten tab stops — so the "All notes" list of
+checkboxes, each named by its path ("Fruity › Berry › Blackberry"), is the
+control a keyboard, a screen reader and the tests use.
 
 The analyzer adds a fifth:
 
@@ -339,7 +365,7 @@ leaned on" list. That link is the whole point of asking the model to cite: it is
 how a rule that misleads gets found and turned off.
 
 Nothing in `src/` types a coffee word. Roast levels, processes, burr types,
-grind step units, balance, the taste chips *with their definitions*, the
+grind step units, balance, the flavour wheel, the
 decisions, the Set-version origins, the shot styles, the suggestion variables,
 directions, units and statuses, and the rule categories and confidences all come
 from `GET /api/vocab`
@@ -440,7 +466,7 @@ ids, read behind `try/catch`); one that opened because its page is showing is
 not recorded. A page inside a group keeps its own chord — `navShortcuts()`
 flattens the table for the bindings and the shortcut sheet — and a group may
 have a chord of its own that goes to its `to`. The rows are Shots, Chat, Brew
-setup (Sets, Beans, Hardware), Machine (Profiles, Sync, Device) and Settings;
+setup (Sets, Beans, Hardware, Taste wheel), Machine (Profiles, Sync, Device) and Settings;
 no group nests another. A group's children need not share its URL prefix:
 `/knowledge` is listed under Settings just before Prompts and keeps its own address
 and chord, so every citation link into it still resolves.

@@ -88,7 +88,7 @@ taken while the app is running.
 
 ### The pages
 
-The sidebar has five rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware),
+The sidebar has five rows: Shots, Chat, **Brew setup** (Sets, Beans, Hardware, Taste wheel),
 **Machine** (Profiles, Sync, Device) and **Settings** (one page per heading,
 with Knowledge just before Prompts). A group opens when you click it, and on its own
 when you are on one of its pages; one you open by hand stays open next time. The
@@ -96,11 +96,12 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, your judgement and the machine's notes; each row can be analysed from the list. The pull button and the import drop zone are both here. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, a quick judgement (rating, balance, aroma and taste notes from the flavour wheel, a line of notes; every click saves) and the machine's notes. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The pull button and the import drop zone are both here. |
 | **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
+| **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
@@ -128,6 +129,8 @@ to or deleted from the machine happens only from the Sync page, by a person.**
   Saving a judgement never sends it. A card edited on the machine more recently
   than your verdict is left alone, and a verdict that came from the machine and
   was never edited is never sent back. `notesWritebackFields` picks the fields.
+  Taste and aroma notes stay here: the machine's notes card has no field for
+  them, and the balance goes as its own sour/balanced/bitter.
 * **Clean up the machine's storage** shows the plan your cleanup policy
   (`deviceCleanupMode`) proposes: which shots would be deleted and why, and which
   are kept and why. Confirming deletes exactly those shots, oldest first — if the
