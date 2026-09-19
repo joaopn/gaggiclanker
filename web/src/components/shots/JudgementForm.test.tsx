@@ -36,23 +36,8 @@ describe("JudgementForm", () => {
     renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
 
     // Balance and the decisions come from /api/vocab, labels and all.
-    expect(
-      await screen.findByRole("button", { name: "Sour — under-extracted" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Adjust and pull again" })).toBeInTheDocument();
-  });
-
-  it("shows each taste chip's definition, grouped by direction", async () => {
-    renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
-
-    const salty = await screen.findByRole("button", { name: "salty" });
-    expect(salty).toHaveAttribute(
-      "title",
-      "A faint saline note — the classic under-extraction tell.",
-    );
-    // The grouping is the diagnosis, not decoration.
-    expect(screen.getByText("Sour side")).toBeInTheDocument();
-    expect(screen.getByText("Bitter side")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Sour" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Improve" })).toBeInTheDocument();
   });
 
   it("computes the ratio from the two doses as they are typed", async () => {
@@ -82,18 +67,17 @@ describe("JudgementForm", () => {
     renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
 
     await user.click(await screen.findByRole("button", { name: "4 stars" }));
-    await user.click(screen.getByRole("button", { name: "Sour — under-extracted" }));
-    await user.click(screen.getByRole("button", { name: "salty" }));
+    await user.click(screen.getByRole("button", { name: "Sour" }));
     // "Not rated" and "not decided" are real answers, and the second click is
     // the only place to say them.
-    await user.click(screen.getByRole("button", { name: "astringent" }));
-    await user.click(screen.getByRole("button", { name: "astringent" }));
+    await user.click(screen.getByRole("button", { name: "Keep" }));
+    await user.click(screen.getByRole("button", { name: "Keep" }));
     await user.click(screen.getByRole("button", { name: "Save judgement" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
     expect(putJudgement).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ rating: 4, balance: "sour", taste_tags: ["salty"] }),
+      expect.objectContaining({ rating: 4, balance: "sour", decision: null }),
     );
   });
 
@@ -110,8 +94,8 @@ describe("JudgementForm", () => {
 
     expect(await screen.findByLabelText("Dose in (g)")).toHaveValue("18");
     expect(screen.getByRole("button", { name: "4 stars" })).toHaveAttribute("aria-pressed", "true");
-    // The chips only render once /api/vocab has answered, so this one waits.
-    expect(await screen.findByRole("button", { name: "sour" })).toHaveAttribute(
+    // The balance only renders once /api/vocab has answered, so this one waits.
+    expect(await screen.findByRole("button", { name: "Sour" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

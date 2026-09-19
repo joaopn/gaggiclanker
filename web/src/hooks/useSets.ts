@@ -143,13 +143,14 @@ export function useSaveJudgement(): UseMutationResult<
  * everything it renders, so a field left out is a field the user cleared. That
  * is right for a form and wrong for anything that changes one thing, which is
  * what a list row does: a rating clicked in the list must not take the taste
- * tags, the doses, the grind and the decision with it.
+ * and aroma notes, the doses, the grind and the decision with it.
  */
 function toWrite(judgement: ShotJudgement | null | undefined): JudgementWrite {
   return {
     rating: judgement?.rating ?? null,
     balance: judgement?.balance ?? null,
-    taste_tags: judgement?.taste_tags ?? [],
+    taste_notes: judgement?.taste_notes ?? [],
+    aroma_notes: judgement?.aroma_notes ?? [],
     dose_in_g: judgement?.dose_in_g ?? null,
     dose_out_g: judgement?.dose_out_g ?? null,
     grind_setting: judgement?.grind_setting ?? null,

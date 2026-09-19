@@ -1,6 +1,6 @@
 import { Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import type { JudgementWrite, ShotJudgement, TasteGroup } from "@/api/types";
+import type { JudgementWrite, ShotJudgement } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
@@ -15,11 +15,10 @@ import { cn } from "@/lib/utils";
  * the coffee was good, and a flawless extraction of stale beans is a high score
  * and a bad cup.
  *
- * Every closed vocabulary on this form — balance, the taste chips and their
- * definitions, the decisions — comes from `GET /api/vocab` rather than from a
- * list typed here. A UI that hard-codes an enum drifts from the database the
- * first time one changes, and the symptom is a 422 on a value the user picked
- * from a dropdown we shipped.
+ * Every closed vocabulary on this form — balance and the decisions — comes
+ * from `GET /api/vocab` rather than from a list typed here. A UI that
+ * hard-codes an enum drifts from the database the first time one changes, and
+ * the symptom is a 422 on a value the user picked from a dropdown we shipped.
  */
 
 /** The firmware's own cap (`ShotNotes.notes`), matched by the server model. */
@@ -28,7 +27,8 @@ export const NOTES_MAX = 200;
 type FormState = {
   rating: number | null;
   balance: string | null;
-  tasteTags: string[];
+  tasteNotes: string[];
+  aromaNotes: string[];
   doseIn: string;
   doseOut: string;
   grind: string;
@@ -39,7 +39,8 @@ type FormState = {
 const EMPTY: FormState = {
   rating: null,
   balance: null,
-  tasteTags: [],
+  tasteNotes: [],
+  aromaNotes: [],
   doseIn: "",
   doseOut: "",
   grind: "",
@@ -52,7 +53,8 @@ function toState(judgement: ShotJudgement | null | undefined): FormState {
   return {
     rating: judgement.rating ?? null,
     balance: judgement.balance ?? null,
-    tasteTags: judgement.taste_tags ?? [],
+    tasteNotes: judgement.taste_notes ?? [],
+    aromaNotes: judgement.aroma_notes ?? [],
     // Numbers live in the form as strings, which is what an `<input>` deals in.
     // One representation means there is no "empty string or undefined or zero"
     // question at every call site, and `toBody` is the single place where empty
@@ -74,7 +76,8 @@ export function toBody(state: FormState): JudgementWrite {
   return {
     rating: state.rating,
     balance: state.balance as JudgementWrite["balance"],
-    taste_tags: state.tasteTags,
+    taste_notes: state.tasteNotes,
+    aroma_notes: state.aromaNotes,
     dose_in_g: toNumber(state.doseIn),
     dose_out_g: toNumber(state.doseOut),
     grind_setting: state.grind.trim() || null,
@@ -181,19 +184,6 @@ export function JudgementForm({
             />
           </Field>
         </div>
-
-        <TasteChips
-          groups={vocab.data?.taste_groups ?? []}
-          selected={state.tasteTags}
-          onToggle={(tag) =>
-            set(
-              "tasteTags",
-              state.tasteTags.includes(tag)
-                ? state.tasteTags.filter((value) => value !== tag)
-                : [...state.tasteTags, tag],
-            )
-          }
-        />
 
         <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Dose in (g)" htmlFor={ids.doseIn}>
@@ -357,60 +347,6 @@ function Segmented({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * The taste vocabulary, grouped, each chip carrying its definition.
- *
- * The grouping is the useful part rather than decoration: "sour side" and
- * "bitter side" are the two directions an extraction can be wrong in, and
- * "strength" is the axis that is independent of both — a cup can be perfectly
- * balanced and simply too weak, which is a dose-and-yield fix rather than a
- * grind one. The definitions are on `title` because the words are jargon:
- * "astringent" and "bitter" are the same thing to most people and opposite
- * things to a barista.
- */
-function TasteChips({
-  groups,
-  selected,
-  onToggle,
-}: {
-  groups: TasteGroup[];
-  selected: string[];
-  onToggle: (tag: string) => void;
-}) {
-  if (groups.length === 0) return null;
-  return (
-    <div className="space-y-2" data-testid="taste-chips">
-      {groups.map((group) => (
-        <div key={group.value} className="flex flex-wrap items-center gap-1.5">
-          <span className="w-24 shrink-0 text-muted-foreground text-xs" title={group.meaning}>
-            {group.label}
-          </span>
-          {group.tags.map((tag) => {
-            const on = selected.includes(tag.value);
-            return (
-              <button
-                key={tag.value}
-                type="button"
-                title={tag.meaning}
-                aria-pressed={on}
-                onClick={() => onToggle(tag.value)}
-                className={cn(
-                  "rounded-full border px-2 py-0.5 text-xs transition-colors",
-                  on
-                    ? "border-foreground/30 bg-muted font-medium"
-                    : "border-border text-muted-foreground hover:bg-muted/50",
-                )}
-              >
-                {tag.label}
-              </button>
-            );
-          })}
-        </div>
-      ))}
     </div>
   );
 }

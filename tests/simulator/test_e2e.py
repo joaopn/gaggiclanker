@@ -300,7 +300,7 @@ async def test_the_whole_prototype_against_the_simulator(
             json={
                 "rating": 3,
                 "balance": "sour",
-                "taste_tags": ["sour"],
+                "taste_notes": ["sour_fermented.sour"],
                 "notes": "Simulated, and sharp.",
             },
         )

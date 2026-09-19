@@ -83,14 +83,29 @@ class TestVocab:
             "anaerobic",
             "other",
         }
-        groups = {group["value"] for group in body["taste_groups"]}
-        assert groups == {"sour", "dialled_in", "bitter", "strength"}
-        # Every chip carries its one-line definition: the words are jargon and a
-        # chip without one teaches nothing.
-        for group in body["taste_groups"]:
-            assert group["meaning"]
-            for tag in group["tags"]:
-                assert tag["meaning"], tag
+        # The flavour wheel as a tree, centre first, every node labelled.
+        wheel = body["flavor_wheel"]
+        assert [node["label"] for node in wheel] == [
+            "Floral",
+            "Fruity",
+            "Sour/Fermented",
+            "Green/Vegetative",
+            "Other",
+            "Roasted",
+            "Spices",
+            "Nutty/Cocoa",
+            "Sweet",
+        ]
+        berry = next(node for node in wheel[1]["children"] if node["value"] == "fruity.berry")
+        assert berry["children"][0] == {
+            "value": "fruity.berry.blackberry",
+            "label": "Blackberry",
+            "children": [],
+        }
+        assert "taste_groups" not in body
+        assert [term["value"] for term in body["decisions"]] == ["keep", "improve", "discard"]
+        assert [term["label"] for term in body["decisions"]] == ["Keep", "Improve", "Discard"]
+        assert [term["label"] for term in body["balances"]] == ["Sour", "Balanced", "Bitter"]
 
     async def test_the_enums_reach_openapi(self, client: httpx.AsyncClient) -> None:
         """The front end generates its types from this document.
@@ -346,15 +361,19 @@ class TestJudgementAndAssignment:
                 json={
                     "rating": 4,
                     "balance": "sour",
-                    "taste_tags": ["sour", "thin"],
+                    "taste_notes": ["sour_fermented.sour"],
+                    "aroma_notes": ["fruity.berry", "floral"],
                     "dose_in_g": 18,
                     "dose_out_g": 36,
                     "notes": "sharp",
-                    "decision": "adjust",
+                    "decision": "improve",
                 },
             )
         )
         assert saved["ratio"] == 2.0
+        assert saved["taste_notes"] == ["sour_fermented.sour"]
+        assert saved["aroma_notes"] == ["fruity.berry", "floral"]
+        assert saved["decision"] == "improve"
 
         detail = data(await client.get(f"/api/shots/{shot_id}"))
         assert detail["judgement"]["rating"] == 4
@@ -394,14 +413,21 @@ class TestJudgementAndAssignment:
         assert listed[0]["judgement_notes"] is None
         assert listed[0]["judgement_rating"] is None
 
-    async def test_an_unknown_taste_tag_is_refused(
-        self, client: httpx.AsyncClient, shot_id: int
+    @pytest.mark.parametrize("field", ["taste_notes", "aroma_notes"])
+    async def test_an_unknown_note_is_refused_by_name(
+        self, client: httpx.AsyncClient, shot_id: int, field: str
     ) -> None:
         response = await client.put(
-            f"/api/shots/{shot_id}/judgement", json={"taste_tags": ["delicious"]}
+            f"/api/shots/{shot_id}/judgement", json={field: ["fruity", "delicious"]}
         )
         assert response.status_code == 400
         assert "delicious" in str(error(response)["details"])
+
+    async def test_the_old_decision_word_is_refused(
+        self, client: httpx.AsyncClient, shot_id: int
+    ) -> None:
+        response = await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": "adjust"})
+        assert response.status_code == 400
 
     async def test_judging_a_shot_that_is_not_there(self, client: httpx.AsyncClient) -> None:
         assert (await client.put("/api/shots/404/judgement", json={})).status_code == 404

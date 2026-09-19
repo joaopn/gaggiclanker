@@ -14,11 +14,15 @@ precisely so that a rule that misleads can be found and turned off.
 
 **The signal grammar.** `applies.signal` is a list of tokens, and a rule matches
 if *any* of them is present. The tokens are built by
-:func:`gaggiclanker.analyzer.context.signal_tokens` and there are seven shapes:
+:func:`gaggiclanker.analyzer.context.signal_tokens` and there are eight shapes:
 
     ``<metric>:<LABEL>``   a diagnostics band, e.g. ``channeling_risk:HIGH``
     ``primary:<name>``     a channeling indicator that fired, e.g. ``primary:pressure_cliff``
-    ``taste:<tag>``        a taste chip the user picked
+    ``taste:<slug>``       a flavour-wheel taste note the user recorded, and every
+                           node inside it (``taste:other.chemical.bitter`` and
+                           ``taste:other.chemical``, ``taste:other``); plus
+                           ``taste:sour_and_bitter`` when the cup is on both sides
+    ``aroma:<slug>``       the same for an aroma note
     ``balance:<value>``    the user's sour/balanced/bitter verdict
     ``first_drip:<fast|slow>``, ``avg_flow:<high|low>``, ``temp:<cold|hot>``
     ``scale:absent``       the shot was pulled without a scale
@@ -248,8 +252,8 @@ def _matches(applies: dict[str, Any], context: SetContext, style: str, signals: 
         return False
 
     tokens = applies.get("signal")
-    # Any-match, not all-match. A taste rule lists every chip that points at the
-    # same suspect ("sour", "sharp", the sour balance verdict); requiring all of
+    # Any-match, not all-match. A taste rule lists every note that points at the
+    # same suspect (a sour note, the sour balance verdict); requiring all of
     # them would mean the rule only fired for somebody who ticked every box.
     return not (tokens is not None and not (set(tokens) & signals))
 

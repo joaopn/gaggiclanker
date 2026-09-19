@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_fie
 from gaggiclanker.db.repos.base import dumps, utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.models import ShotNotes
-from gaggiclanker.domain.vocab import TASTE_TAGS, Balance, Decision
+from gaggiclanker.domain.vocab import FLAVOR_NOTES, Balance, Decision
 
 __all__ = [
     "JudgementWrite",
@@ -73,26 +73,27 @@ class JudgementWrite(BaseModel):
     #: on the way in, because 0 is a number somebody would average.
     rating: int | None = Field(default=None, ge=1, le=5)
     balance: Balance | None = None
-    #: Slugs from :data:`gaggiclanker.domain.vocab.TASTE_TAGS`. Validated here
-    #: rather than in the schema, so a bad tag is a 422 naming the tag instead
-    #: of a CHECK constraint failure naming a column.
-    taste_tags: list[str] = Field(default_factory=list)
+    #: Flavour-wheel slugs from :data:`gaggiclanker.domain.vocab.FLAVOR_NOTES`,
+    #: what the cup tasted of and what it smelt of. Validated here rather than
+    #: in the schema, so a bad note is an error naming the note instead of a
+    #: CHECK constraint failure naming a column.
+    taste_notes: list[str] = Field(default_factory=list)
+    aroma_notes: list[str] = Field(default_factory=list)
     dose_in_g: float | None = Field(default=None, gt=0, le=100)
     dose_out_g: float | None = Field(default=None, gt=0, le=500)
     grind_setting: str | None = Field(default=None, max_length=GRIND_MAX)
     notes: str = Field(default="", max_length=NOTES_MAX)
     decision: Decision | None = None
 
-    @field_validator("taste_tags")
+    @field_validator("taste_notes", "aroma_notes")
     @classmethod
-    def _known_tags(cls, value: list[str]) -> list[str]:
-        unknown = [tag for tag in value if tag not in TASTE_TAGS]
+    def _known_notes(cls, value: list[str]) -> list[str]:
+        unknown = [note for note in value if note not in FLAVOR_NOTES]
         if unknown:
-            raise ValueError(f"unknown taste tags: {', '.join(sorted(unknown))}")
+            raise ValueError(f"unknown flavour notes: {', '.join(sorted(set(unknown)))}")
         # De-duplicated, order preserved: the chips are a set, but the order the
         # user picked them in is the order they read back best.
-        seen: dict[str, None] = dict.fromkeys(value)
-        return list(seen)
+        return list(dict.fromkeys(value))
 
 
 class PendingWritebackRow(BaseModel):
@@ -123,7 +124,8 @@ class ShotJudgementRow(BaseModel):
     shot_id: int
     rating: int | None = None
     balance: Balance | None = None
-    taste_tags: list[str] = Field(default_factory=list, validation_alias="taste_tags_json")
+    taste_notes: list[str] = Field(default_factory=list, validation_alias="taste_notes_json")
+    aroma_notes: list[str] = Field(default_factory=list, validation_alias="aroma_notes_json")
     dose_in_g: float | None = None
     dose_out_g: float | None = None
     grind_setting: str | None = None
@@ -137,13 +139,13 @@ class ShotJudgementRow(BaseModel):
     device_synced_at: str | None = None
     updated_at: str
 
-    @field_validator("taste_tags", mode="before")
+    @field_validator("taste_notes", "aroma_notes", mode="before")
     @classmethod
-    def _decode_tags(cls, value: Any) -> Any:
+    def _decode_notes(cls, value: Any) -> Any:
         if isinstance(value, str):
             decoded = json.loads(value)
             if not isinstance(decoded, list):
-                raise ValueError("taste_tags_json is not a JSON array")
+                raise ValueError("a note column is not a JSON array")
             return decoded
         return value
 
@@ -168,7 +170,8 @@ def _values(shot_id: int, judgement: JudgementWrite) -> dict[str, Any]:
         "shot_id": shot_id,
         "rating": payload["rating"],
         "balance": payload["balance"],
-        "taste_tags_json": dumps(payload["taste_tags"]),
+        "taste_notes_json": dumps(payload["taste_notes"]),
+        "aroma_notes_json": dumps(payload["aroma_notes"]),
         "dose_in_g": payload["dose_in_g"],
         "dose_out_g": payload["dose_out_g"],
         "grind_setting": payload["grind_setting"],

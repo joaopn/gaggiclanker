@@ -101,7 +101,7 @@ async def test_selection_is_deterministic(db: Database) -> None:
     """Same inputs, same ids, same order — twice."""
     repo = RulesRepository(db)
     await seed_rules(repo)
-    signals = {"channeling_risk:HIGH", "taste:sour", "first_drip:fast"}
+    signals = {"channeling_risk:HIGH", "taste:sour_fermented.sour", "first_drip:fast"}
 
     first = await select_rules(repo, LIGHT_NATURAL, "bloom", signals)
     second = await select_rules(repo, LIGHT_NATURAL, "bloom", set(signals))
@@ -177,12 +177,17 @@ async def test_the_channeling_rule_needs_both_sides_of_the_cup(db: Database) -> 
     repo = RulesRepository(db)
     await seed_rules(repo)
 
-    sour_only = await select_rules(repo, LIGHT_NATURAL, "classic", {"taste:sour", "balance:sour"})
+    sour_only = await select_rules(
+        repo, LIGHT_NATURAL, "classic", {"taste:sour_fermented.sour", "balance:sour"}
+    )
     assert "sour" in sour_only.keys
     assert "sour_and_bitter_is_channeling" not in sour_only.keys
 
     both = await select_rules(
-        repo, LIGHT_NATURAL, "classic", {"taste:sour", "taste:bitter", "taste:sour_and_bitter"}
+        repo,
+        LIGHT_NATURAL,
+        "classic",
+        {"taste:sour_fermented.sour", "taste:other.chemical.bitter", "taste:sour_and_bitter"},
     )
     assert "sour_and_bitter_is_channeling" in both.keys
 
@@ -238,5 +243,7 @@ async def test_a_retired_rule_stays_in_an_older_archive_and_is_never_selected(
     await seed_rules(repo)
 
     assert await repo.get_by_key("temperature_by_roast", "high_altitude") is not None
-    selection = await select_rules(repo, LIGHT_NATURAL, "classic", {"taste:sour", "balance:sour"})
+    selection = await select_rules(
+        repo, LIGHT_NATURAL, "classic", {"taste:sour_fermented.sour", "balance:sour"}
+    )
     assert "high_altitude" not in selection.keys

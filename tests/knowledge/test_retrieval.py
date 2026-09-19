@@ -22,12 +22,15 @@ CHANNELED = RetrievalContext(
         "channeling_risk:HIGH",
         "flow_adherence:GOOD",
         "primary:pressure_cliff",
-        "taste:sour",
-        "taste:bitter",
+        "taste:sour_fermented",
+        "taste:sour_fermented.sour",
+        "taste:other",
+        "taste:other.chemical",
+        "taste:other.chemical.bitter",
         "taste:sour_and_bitter",
         "style:bloom",
     ),
-    taste_tags=("sour", "bitter"),
+    taste_notes=("sour_fermented.sour", "other.chemical.bitter"),
     balance="sour",
     roast_level="light",
     process="natural",
@@ -58,8 +61,21 @@ async def test_a_normal_band_produces_no_query(seeded_docs: KnowledgeService) ->
 
 
 async def test_queries_are_deduplicated(seeded_docs: KnowledgeService) -> None:
-    context = RetrievalContext(taste_tags=("sour", "sour"), balance=None)
+    context = RetrievalContext(
+        taste_notes=("sour_fermented.sour", "sour_fermented.sour"), balance=None
+    )
     assert seeded_docs.queries_for(context) == ["sour taste cause fix"]
+
+
+async def test_a_note_is_searched_for_by_its_label(seeded_docs: KnowledgeService) -> None:
+    """The prose says "blackberry" and "papery", never the slug's path."""
+    context = RetrievalContext(
+        taste_notes=("fruity.berry.blackberry", "other.papery_musty"), balance=None
+    )
+    assert seeded_docs.queries_for(context) == [
+        "blackberry taste cause fix",
+        "papery/musty taste cause fix",
+    ]
 
 
 async def test_the_same_context_selects_the_same_excerpts_twice(
@@ -141,8 +157,8 @@ async def test_extra_queries_are_appended_for_the_chat(
 #: grind and roast temperature.
 DIALLING_IN = RetrievalContext(
     style="turbo",
-    signals=("resistance_level:LOW", "taste:bitter", "style:turbo"),
-    taste_tags=("bitter",),
+    signals=("resistance_level:LOW", "taste:other.chemical.bitter", "style:turbo"),
+    taste_notes=("other.chemical.bitter",),
     balance="bitter",
     roast_level="dark",
     process="washed",
@@ -203,11 +219,17 @@ async def test_a_taste_query_does_not_carry_the_word_espresso(
     specification table — outranked the passage that explains what a thin shot
     means, and an analysis of a sour bloom shot was handed milk drink formats.
     """
-    queries = seeded_docs.queries_for(RetrievalContext(taste_tags=("thin",), balance=None))
-    assert queries == ["thin taste cause fix"]
+    queries = seeded_docs.queries_for(
+        RetrievalContext(taste_notes=("other.chemical.salty",), balance=None)
+    )
+    assert queries == ["salty taste cause fix"]
 
     chosen = await seeded_docs.select_chunks(
-        RetrievalContext(taste_tags=("sour", "thin"), balance="sour", process="natural")
+        RetrievalContext(
+            taste_notes=("sour_fermented.sour", "other.chemical.salty"),
+            balance="sour",
+            process="natural",
+        )
     )
     assert "MILK_AND_DRINKS" not in {excerpt.doc_slug for excerpt in chosen}
     assert "ESPRESSO_TASTING_GUIDE" in {excerpt.doc_slug for excerpt in chosen}

@@ -1,12 +1,13 @@
 === judgement ===
 rating: 3/5
 balance: sour
-taste tags: sour, thin
+taste: Sour/Fermented › Sour › Citric acid; Fruity › Citrus fruit › Lemon
+aroma: Floral › Floral › Jasmine
 dose in: 18 g
 dose out: 37.5 g
 ratio: 1:2.08
 grind as set: 22 numbers
-decision: adjust
+decision: improve
 notes: Sharp up front, nothing behind it.
 
 === knowledge_excerpts ===
@@ -212,7 +213,6 @@ band_meanings:
 
 taste_to_suspect:
   [sour] Sour: under-extracted. Expect high flow, an early first drip, or a low temperature. Grind finer first; if it is already fine, add 5 g of yield and a degree of heat.
-  [watery] Watery or thin: low pressure and high flow. That is a strength problem, not an extraction one — shorten the ratio or raise the dose before changing the grind.
 
 profile_design_defaults:
   [bloom] A bloom is the pump OFF for 5-15 s — not the valve closed. The valve stays at 1.
@@ -316,22 +316,22 @@ bloom (detected from profile: phase 'Bloom' runs the pump at zero — a bloom, n
 
 === trajectory ===
   shot 000101 (v1, 2026-03-02T08:10:00.000Z): 21 s, 38 g, score 7.4, channeling MODERATE
-    you said: rating 2/5, balance sour, tastes sour, thin
+    you said: rating 2/5, balance sour, tastes of Sour/Fermented › Sour
     notes: Gushed. Sour and thin.
     advice that followed: grind finer 2 grinder_steps -> accepted
   shot 000102 (v1, 2026-03-02T08:20:00.000Z): 23 s, 37.2 g, score 8.1, channeling LOW
-    you said: rating 3/5, balance sour, tastes sour
+    you said: rating 3/5, balance sour, tastes of Sour/Fermented › Sour › Citric acid
     notes: Better, still sharp.
     advice that followed: grind finer 1 grinder_steps -> accepted
   shot 000103 (v1, 2026-03-02T08:30:00.000Z): 25 s, 36.4 g, score 8.6, channeling LOW
-    you said: rating 3/5, balance sour, tastes sour, quick_finish
+    you said: rating 3/5, balance sour, tastes of Sour/Fermented › Sour; Fruity › Citrus fruit
     notes: Still on the sour side of balanced.
     advice that followed: temperature increase 1 c -> rejected
   shot 000104 (v1, 2026-03-03T08:05:00.000Z): 26.5 s, 36 g, score 8.8, channeling LOW
-    you said: rating 4/5, balance balanced, tastes sweet
+    you said: rating 4/5, balance balanced, tastes of Sweet › Brown sugar › Caramelized; Nutty/Cocoa › Cocoa
     notes: Best so far.
     advice that followed: no suggestions were made
   shot 000105 (v1, 2026-03-03T08:15:00.000Z): 24 s, 36.8 g, score 8.2, channeling LOW
-    you said: rating 3/5, balance sour, tastes sour, thin
+    you said: rating 3/5, balance sour, tastes of Sour/Fermented › Sour
     notes: Went backwards.
     advice that followed: yield increase 5 g -> open

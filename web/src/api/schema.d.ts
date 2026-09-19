@@ -537,6 +537,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/flavor-picks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The flavour-wheel notes the shot panel offers */
+        get: operations["get_flavor_picks_api_flavor_picks_get"];
+        /** Replace both lists of flavour-wheel notes */
+        put: operations["put_flavor_picks_api_flavor_picks_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/grinders": {
         parameters: {
             query?: never;
@@ -2292,6 +2310,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[FlavorPicks] */
+        ApiResponse_FlavorPicks_: {
+            data?: components["schemas"]["FlavorPicks"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[GrinderListData] */
         ApiResponse_GrinderListData_: {
             data?: components["schemas"]["GrinderListData"] | null;
@@ -3218,7 +3244,7 @@ export interface components {
             provider: string;
         };
         /** @enum {string} */
-        Decision: "keep" | "adjust" | "discard";
+        Decision: "keep" | "improve" | "discard";
         /**
          * DeviceProfileSummary
          * @description A device profile joined to its current version — what `GET /api/profiles` returns.
@@ -3615,6 +3641,32 @@ export interface components {
             label: string;
         };
         /**
+         * FlavorNode
+         * @description One segment of the flavour wheel: its stored slug, its label, what sits outside it.
+         */
+        FlavorNode: {
+            /** Children */
+            children?: components["schemas"]["FlavorNode"][];
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * FlavorPicks
+         * @description Both lists, as the API takes them and gives them back.
+         *
+         *     One model for reading and writing: the page always sends both lists, and a
+         *     write that replaced one while leaving the other would need a second verb
+         *     for no gain.
+         */
+        FlavorPicks: {
+            /** Aroma */
+            aroma?: string[];
+            /** Taste */
+            taste?: string[];
+        };
+        /**
          * ReloadData
          * @description ``{"changed": 4}`` — how many rows the re-seed touched.
          */
@@ -3902,6 +3954,8 @@ export interface components {
          *     refusing it would make the form argue with the user.
          */
         JudgementWrite: {
+            /** Aroma Notes */
+            aroma_notes?: string[];
             balance?: components["schemas"]["Balance"] | null;
             decision?: components["schemas"]["Decision"] | null;
             /** Dose In G */
@@ -3917,8 +3971,8 @@ export interface components {
             notes: string;
             /** Rating */
             rating?: number | null;
-            /** Taste Tags */
-            taste_tags?: string[];
+            /** Taste Notes */
+            taste_notes?: string[];
         };
         /** LlmCallsData */
         LlmCallsData: {
@@ -5108,6 +5162,8 @@ export interface components {
          * @description One row of `shot_judgements`, as read back.
          */
         ShotJudgementRow: {
+            /** Aroma Notes */
+            aroma_notes?: string[];
             balance?: components["schemas"]["Balance"] | null;
             decision?: components["schemas"]["Decision"] | null;
             /** Device Synced At */
@@ -5142,8 +5198,8 @@ export interface components {
             seeded_from_device_note: boolean;
             /** Shot Id */
             shot_id: number;
-            /** Taste Tags */
-            taste_tags?: string[];
+            /** Taste Notes */
+            taste_notes?: string[];
             /** Updated At */
             updated_at: string;
         };
@@ -5850,32 +5906,6 @@ export interface components {
             value: number;
         };
         /**
-         * TasteGroup
-         * @description A named group of chips, with the direction it points.
-         */
-        TasteGroup: {
-            /** Label */
-            label: string;
-            /** Meaning */
-            meaning: string;
-            /** Tags */
-            tags: components["schemas"]["TasteTag"][];
-            /** Value */
-            value: string;
-        };
-        /**
-         * TasteTag
-         * @description One taste chip: the stored slug, the word a person reads, what it means.
-         */
-        TasteTag: {
-            /** Label */
-            label: string;
-            /** Meaning */
-            meaning: string;
-            /** Value */
-            value: string;
-        };
-        /**
          * Term
          * @description One member of a simple vocabulary: the stored value and its label.
          */
@@ -5995,6 +6025,8 @@ export interface components {
             burr_types: components["schemas"]["Term"][];
             /** Decisions */
             decisions: components["schemas"]["Term"][];
+            /** Flavor Wheel */
+            flavor_wheel: components["schemas"]["FlavorNode"][];
             /** Origins */
             origins: components["schemas"]["Term"][];
             /** Processes */
@@ -6017,8 +6049,6 @@ export interface components {
             suggestion_units: components["schemas"]["Term"][];
             /** Suggestion Variables */
             suggestion_variables: components["schemas"]["Term"][];
-            /** Taste Groups */
-            taste_groups: components["schemas"]["TasteGroup"][];
         };
     };
     responses: never;
@@ -6961,6 +6991,59 @@ export interface operations {
             };
         };
     };
+    get_flavor_picks_api_flavor_picks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_FlavorPicks_"];
+                };
+            };
+        };
+    };
+    put_flavor_picks_api_flavor_picks_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FlavorPicks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_FlavorPicks_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_grinders_api_grinders_get: {
         parameters: {
             query?: never;
@@ -7366,7 +7449,7 @@ export interface operations {
     list_rules_api_knowledge_rules_get: {
         parameters: {
             query?: {
-                /** @description Comma-separated `dimension:value` tokens — `roast_level:light,process:natural,style:bloom,signal:taste:sour`. Narrows to the rules a shot in that situation would be told. */
+                /** @description Comma-separated `dimension:value` tokens — `roast_level:light,process:natural,style:bloom,signal:balance:sour`. Narrows to the rules a shot in that situation would be told. */
                 applies?: string | null;
                 category?: string | null;
                 enabled?: boolean | null;

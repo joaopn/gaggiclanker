@@ -172,10 +172,11 @@ CREATE INDEX idx_shots_set_version ON shots(set_version_id);
 -- of stale beans scores well and tastes of cardboard, and an archive that
 -- averaged the two could not tell you that.
 --
--- One row per shot, so the primary key *is* the shot id. `taste_tags_json` is a
--- JSON array of tag slugs from `gaggiclanker/domain/vocab.py`; it is a
--- serialised list rather than a join table because it is never queried by tag
--- alone — it is read with the shot, and shown with it.
+-- One row per shot, so the primary key *is* the shot id. `taste_notes_json` and
+-- `aroma_notes_json` are JSON arrays of flavour-wheel slugs from
+-- `gaggiclanker/domain/vocab.py` (`fruity.berry.blackberry`); they are
+-- serialised lists rather than a join table because they are never queried by
+-- note alone — they are read with the shot, and shown with it.
 --
 -- `seeded_from_device_note` is the flag that keeps sync honest. The machine's
 -- own notes card is the same data, so the first time a shot arrives with notes
@@ -191,7 +192,8 @@ CREATE TABLE shot_judgements (
     rating                  INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
     balance                 TEXT    CHECK (balance IS NULL OR balance IN
                                     ('sour', 'balanced', 'bitter')),
-    taste_tags_json         TEXT    NOT NULL DEFAULT '[]',
+    taste_notes_json        TEXT    NOT NULL DEFAULT '[]',
+    aroma_notes_json        TEXT    NOT NULL DEFAULT '[]',
     dose_in_g               REAL,
     dose_out_g              REAL,
     grind_setting           TEXT,
@@ -200,7 +202,7 @@ CREATE TABLE shot_judgements (
     -- ever enables that.
     notes                   TEXT    NOT NULL DEFAULT '',
     decision                TEXT    CHECK (decision IS NULL OR decision IN
-                                    ('keep', 'adjust', 'discard')),
+                                    ('keep', 'improve', 'discard')),
     seeded_from_device_note INTEGER NOT NULL DEFAULT 0,
     -- When this judgement was last reconciled with the device's notes card.
     -- Set by the seeding path; NULL on a judgement typed here.

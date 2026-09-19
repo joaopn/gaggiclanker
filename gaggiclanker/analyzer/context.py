@@ -49,6 +49,7 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotsRepository
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
+from gaggiclanker.domain.vocab import flavor_ancestors, flavor_path
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -79,11 +80,22 @@ CURVE_POINTS = 40
 #: stops growing faster than it gets more useful.
 TRAJECTORY_SHOTS = 5
 
-#: The two sides of crema's taste vocabulary, for the one rule that needs both
-#: at once. `thin` and `weak_watery` are strength rather than extraction, so
-#: they are not on the sour side here even though they sit in that group.
-_SOUR_TAGS = frozenset({"sour", "sharp", "salty", "quick_finish"})
-_BITTER_TAGS = frozenset({"bitter", "harsh", "astringent", "drying", "hollow"})
+#: The two sides of the cup on the flavour wheel, for the one rule that needs
+#: both at once: a note at or under one of these nodes puts the cup on that
+#: side. The balance says the same thing in one word and counts too. Salty is
+#: not on the sour side here: it is under-extraction, but it has its own rule,
+#: and "salty and bitter" is not the channeling pattern Rao describes.
+_SOUR_NODES = ("sour_fermented.sour",)
+_BITTER_NODES = ("other.chemical.bitter", "roasted.burnt")
+
+
+def _under(note: str, nodes: tuple[str, ...]) -> bool:
+    return any(note == node or note.startswith(f"{node}.") for node in nodes)
+
+
+def _with_ancestors(notes: list[str]) -> list[str]:
+    """Each note and every node inside it on the wheel, first seen first."""
+    return list(dict.fromkeys(value for note in notes for value in (*flavor_ancestors(note), note)))
 
 
 class ShotFacts(BaseModel):
@@ -171,7 +183,8 @@ class TrajectoryEntry(BaseModel):
     resistance_avg: float | None = None
     rating: int | None = None
     balance: str | None = None
-    taste_tags: list[str] = Field(default_factory=list)
+    taste_notes: list[str] = Field(default_factory=list)
+    aroma_notes: list[str] = Field(default_factory=list)
     notes: str = ""
     #: The suggestions made *after* this shot and what became of them. The point
     #: of the whole section: advice that was accepted and did not help is the
@@ -186,7 +199,9 @@ class JudgementFacts(BaseModel):
 
     rating: int | None = None
     balance: str | None = None
-    taste_tags: list[str] = Field(default_factory=list)
+    #: Flavour-wheel slugs, as recorded; rendered with their path.
+    taste_notes: list[str] = Field(default_factory=list)
+    aroma_notes: list[str] = Field(default_factory=list)
     dose_in_g: float | None = None
     dose_out_g: float | None = None
     ratio: float | None = None
@@ -366,7 +381,8 @@ async def build_context(
         else JudgementFacts(
             rating=judgement_row.rating,
             balance=judgement_row.balance,
-            taste_tags=list(judgement_row.taste_tags),
+            taste_notes=list(judgement_row.taste_notes),
+            aroma_notes=list(judgement_row.aroma_notes),
             dose_in_g=judgement_row.dose_in_g,
             dose_out_g=judgement_row.dose_out_g,
             ratio=judgement_row.ratio,
@@ -471,7 +487,7 @@ def retrieval_context(
     return RetrievalContext(
         style=style,
         signals=tuple(signals),
-        taste_tags=tuple(judgement.taste_tags) if judgement else (),
+        taste_notes=tuple(judgement.taste_notes) if judgement else (),
         balance=judgement.balance if judgement else None,
         roast_level=facts.roast_level if facts else None,
         process=facts.process if facts else None,
@@ -539,15 +555,27 @@ def signal_tokens(
         tokens.add("yield:tiny")
 
     if judgement is not None:
-        tokens.update(f"taste:{tag}" for tag in judgement.taste_tags)
+        # A note fires every node inside it on the wheel as well, so a rule
+        # keyed on `taste:sour_fermented.sour` hears "acetic acid" and a person
+        # who was only sure enough to say "sour" still reaches the same rule.
+        tokens.update(f"taste:{note}" for note in _with_ancestors(judgement.taste_notes))
+        tokens.update(f"aroma:{note}" for note in _with_ancestors(judgement.aroma_notes))
         if judgement.balance:
             tokens.add(f"balance:{judgement.balance}")
         # Sour AND bitter in the same cup is channeling, not an extraction
         # level — a different diagnosis with different advice (Rao: do *not*
         # grind finer). It gets its own token because a rule that matched
         # "sour or bitter" would fire on every ordinary sour cup and contradict
-        # the sour rule sitting beside it.
-        if _SOUR_TAGS & set(judgement.taste_tags) and _BITTER_TAGS & set(judgement.taste_tags):
+        # the sour rule sitting beside it. Either side can come from the
+        # balance or from a taste note; the balance is one word, so both sides
+        # at once needs at least one note.
+        sour = judgement.balance == "sour" or any(
+            _under(note, _SOUR_NODES) for note in judgement.taste_notes
+        )
+        bitter = judgement.balance == "bitter" or any(
+            _under(note, _BITTER_NODES) for note in judgement.taste_notes
+        )
+        if sour and bitter:
             tokens.add("taste:sour_and_bitter")
 
     return sorted(tokens)
@@ -711,7 +739,8 @@ async def _trajectory(db: Database, shot: ShotDetailRow, *, limit: int) -> list[
                 resistance_avg=diagnostics.get("resistance_avg"),
                 rating=verdict.rating if verdict else None,
                 balance=verdict.balance if verdict else None,
-                taste_tags=list(verdict.taste_tags) if verdict else [],
+                taste_notes=list(verdict.taste_notes) if verdict else [],
+                aroma_notes=list(verdict.aroma_notes) if verdict else [],
                 notes=verdict.notes if verdict else "",
                 suggestions=[
                     f"{item.variable} {item.direction}"
@@ -973,10 +1002,12 @@ def _render_trajectory(entries: list[TrajectoryEntry]) -> str:
         return "No earlier shots in this Set. This is the first one to go on."
     blocks: list[str] = []
     for entry in entries:
-        taste = ", ".join(entry.taste_tags) or "no tags"
+        taste = _notes(entry.taste_notes) or "no notes"
+        aroma = f", smells of {_notes(entry.aroma_notes)}" if entry.aroma_notes else ""
         verdict = (
-            f"rating {entry.rating}/5, balance {entry.balance or 'not stated'}, tastes {taste}"
-            if entry.rating or entry.balance or entry.taste_tags
+            f"rating {entry.rating}/5, balance {entry.balance or 'not stated'}, "
+            f"tastes of {taste}{aroma}"
+            if entry.rating or entry.balance or entry.taste_notes or entry.aroma_notes
             else "NOT JUDGED"
         )
         advice = "; ".join(entry.suggestions) or "no suggestions were made"
@@ -991,6 +1022,11 @@ def _render_trajectory(entries: list[TrajectoryEntry]) -> str:
     return "\n".join(blocks)
 
 
+def _notes(notes: list[str]) -> str:
+    """Flavour-wheel notes as a person reads them: each with its path from the centre."""
+    return "; ".join(flavor_path(note) for note in notes)
+
+
 def _render_judgement(judgement: JudgementFacts | None) -> str:
     if judgement is None:
         return (
@@ -1002,7 +1038,8 @@ def _render_judgement(judgement: JudgementFacts | None) -> str:
             [
                 _line("rating", None if judgement.rating is None else f"{judgement.rating}/5"),
                 _line("balance", judgement.balance),
-                _line("taste tags", ", ".join(judgement.taste_tags) or None),
+                _line("taste", _notes(judgement.taste_notes) or None),
+                _line("aroma", _notes(judgement.aroma_notes) or None),
                 _line("dose in", judgement.dose_in_g, " g"),
                 _line("dose out", judgement.dose_out_g, " g"),
                 _line("ratio", None if judgement.ratio is None else f"1:{judgement.ratio:g}"),

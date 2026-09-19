@@ -1850,7 +1850,7 @@ describe("ShotsPage row editing", () => {
 
   it("leaves the rest of a verdict alone when a star is clicked", async () => {
     // `PUT` replaces the whole row, so a rating set from the list has to carry
-    // back everything typed on the detail page. Losing somebody's taste tags
+    // back everything typed on the detail page. Losing somebody's taste notes
     // to a star is exactly the kind of data loss this project must not do.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
@@ -1864,12 +1864,13 @@ describe("ShotsPage row editing", () => {
     expect(putJudgement.mock.calls[0][1]).toEqual({
       rating: 2,
       balance: "sour",
-      taste_tags: ["sour"],
+      taste_notes: ["sour_fermented.sour"],
+      aroma_notes: ["fruity.berry"],
       dose_in_g: 18,
       dose_out_g: 36,
       grind_setting: "22",
       notes: "sharp at the end",
-      decision: "adjust",
+      decision: "improve",
     });
   });
 

@@ -100,7 +100,7 @@ async def list_rules(
         Query(
             description=(
                 "Comma-separated `dimension:value` tokens — "
-                "`roast_level:light,process:natural,style:bloom,signal:taste:sour`. "
+                "`roast_level:light,process:natural,style:bloom,signal:balance:sour`. "
                 "Narrows to the rules a shot in that situation would be told."
             )
         ),
@@ -124,7 +124,7 @@ async def list_rules(
             "Every `applies` token is `dimension:value`",
             details={
                 "field": "applies",
-                "message": "for example roast_level:light,style:bloom,signal:taste:sour",
+                "message": "for example roast_level:light,style:bloom,signal:balance:sour",
             },
         )
     items = await rules.list_rules(category=category, enabled=enabled, applies=tokens or None)

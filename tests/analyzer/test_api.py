@@ -103,7 +103,7 @@ async def test_rules_can_be_narrowed_to_what_a_situation_would_select(
 
     response = await client.get(
         "/api/knowledge/rules",
-        params={"applies": "roast_level:light,process:natural,style:bloom,signal:taste:sour"},
+        params={"applies": "roast_level:light,process:natural,style:bloom,signal:balance:sour"},
     )
     keys = {item["key"] for item in response.json()["data"]["items"]}
 

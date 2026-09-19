@@ -10,8 +10,9 @@
 # the originals are the ~21 000 words under `external/gaggimate-mcp/knowledge/`.
 # Individual rules cite further sources in `source` / `source_ref`: Lance
 # Hedrick for the tasting method, Scott Rao for the sour-and-bitter channeling
-# rule, INEI for the traditional espresso standard, and crema for the taste
-# vocabulary and the diagnostic bands.
+# rule, INEI for the traditional espresso standard, and crema for the
+# diagnostic bands. The taste signals are notes on the SCA/WCR Coffee Taster's
+# Flavor Wheel plus the GaggiMate's own sour/balanced/bitter balance.
 #
 # The diagnostic band meanings are **ours**. They describe the thresholds in
 # `gaggiclanker/domain/diagnostics.py`, which are upstream's calibration
@@ -264,8 +265,8 @@ rules:
 
   - category: temperature_by_roast
     key: taste_adjustment
-    applies: { signal: ["taste:sour", "taste:bitter", "taste:astringent",
-                    "balance:sour", "balance:bitter"] }
+    applies: { signal: ["balance:sour", "balance:bitter", "taste:sour_fermented.sour",
+                        "taste:other.chemical.bitter", "taste:roasted.burnt"] }
     value:
       text: >-
         Within the roast's window, sour moves the temperature up 1-2 °C and
@@ -1010,7 +1011,7 @@ rules:
 
   - category: taste_to_suspect
     key: sour
-    applies: { signal: ["taste:sour", "taste:sharp", "balance:sour"] }
+    applies: { signal: ["balance:sour", "taste:sour_fermented.sour"] }
     value:
       text: >-
         Sour: under-extracted. Expect high flow, an early first drip, or a low
@@ -1025,7 +1026,7 @@ rules:
 
   - category: taste_to_suspect
     key: bitter
-    applies: { signal: ["taste:bitter", "taste:harsh", "balance:bitter"] }
+    applies: { signal: ["balance:bitter", "taste:other.chemical.bitter", "taste:roasted.burnt"] }
     value:
       text: >-
         Bitter: over-extracted. Expect a long shot time, a high temperature, or
@@ -1040,7 +1041,7 @@ rules:
 
   - category: taste_to_suspect
     key: salty
-    applies: { signal: ["taste:salty"] }
+    applies: { signal: ["taste:other.chemical.salty"] }
     value:
       text: >-
         Salty is severe under-extraction — further under than sour. Treat it as
@@ -1052,7 +1053,11 @@ rules:
 
   - category: taste_to_suspect
     key: astringent
-    applies: { signal: ["taste:astringent", "taste:drying"] }
+    # A mouthfeel, and mouthfeel is not on the flavour wheel, so no note the
+    # shot panel records says this. The rule keeps its text for the
+    # Knowledge page and the chat's get_rules; an empty signal list selects it
+    # for no analysis until something records these words again.
+    applies: { signal: [] }
     value:
       text: >-
         Astringent and drying: a pressure spike followed by a drop, erratic flow,
@@ -1065,7 +1070,8 @@ rules:
 
   - category: taste_to_suspect
     key: watery
-    applies: { signal: ["taste:weak_watery", "taste:thin"] }
+    # Strength and body, which are not on the flavour wheel either.
+    applies: { signal: [] }
     value:
       text: >-
         Watery or thin: low pressure and high flow. That is a strength problem,
@@ -1079,7 +1085,8 @@ rules:
 
   - category: taste_to_suspect
     key: flat
-    applies: { signal: ["taste:hollow", "taste:quick_finish"] }
+    # A finish, which is not on the flavour wheel either.
+    applies: { signal: [] }
     value:
       text: >-
         Flat or hollow: temperature drift, a pre-infusion that was too short, or
@@ -1092,7 +1099,8 @@ rules:
 
   - category: taste_to_suspect
     key: too_intense
-    applies: { signal: ["taste:too_intense"] }
+    # Strength, which is not on the flavour wheel either.
+    applies: { signal: [] }
     value:
       text: >-
         Too intense or muddy: the cup is over-concentrated rather than

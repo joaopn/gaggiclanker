@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from gaggiclanker.analyzer.context import build_context
 from tests.analyzer.conftest import Fixture
 
@@ -137,7 +139,13 @@ async def test_the_curve_is_downsampled_to_forty_points(fixture: Fixture) -> Non
 async def test_the_signals_drive_rule_selection(fixture: Fixture) -> None:
     context = await build_context(fixture.db, fixture.shots[-1])
     assert "channeling_risk:LOW" in context.signals
-    assert "taste:sour" in context.signals
+    # The note and every node inside it on the wheel, so a rule keyed on the
+    # group hears a note recorded at the leaf.
+    assert "taste:sour_fermented.sour.citric_acid" in context.signals
+    assert "taste:sour_fermented.sour" in context.signals
+    assert "taste:sour_fermented" in context.signals
+    assert "aroma:floral.floral.jasmine" in context.signals
+    assert "aroma:floral" in context.signals
     assert "balance:sour" in context.signals
     assert "style:bloom" in context.signals
     # And the rules those signals select are in the document.
@@ -150,11 +158,12 @@ async def test_sour_and_bitter_together_gets_its_own_token(fixture: Fixture) -> 
     from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
     plain = await build_context(fixture.db, fixture.shots[-1])
-    assert "taste:sour" in plain.signals
+    assert "taste:sour_fermented.sour" in plain.signals
     assert "taste:sour_and_bitter" not in plain.signals
 
     await JudgementsRepository(fixture.db).upsert(
-        fixture.shots[-1], JudgementWrite(taste_tags=["sour", "harsh"])
+        fixture.shots[-1],
+        JudgementWrite(taste_notes=["sour_fermented.sour.acetic_acid", "roasted.burnt.acrid"]),
     )
     both = await build_context(fixture.db, fixture.shots[-1])
 
@@ -162,10 +171,41 @@ async def test_sour_and_bitter_together_gets_its_own_token(fixture: Fixture) -> 
     assert "sour_and_bitter_is_channeling" in both.rule_keys
 
 
+@pytest.mark.parametrize(
+    ("balance", "notes", "expected"),
+    [
+        # Either side can be the balance's word…
+        ("sour", ["other.chemical.bitter"], True),
+        ("bitter", ["sour_fermented.sour"], True),
+        # …or a note, at any depth under the side's node.
+        (None, ["sour_fermented.sour.malic_acid", "roasted.burnt"], True),
+        # One side is not both.
+        ("sour", ["sour_fermented.sour.citric_acid"], False),
+        ("bitter", ["roasted.burnt.ashy"], False),
+        # Winey is fermented, not sour; salty is its own rule.
+        ("bitter", ["sour_fermented.alcohol_fermented.winey", "other.chemical.salty"], False),
+    ],
+)
+async def test_both_sides_come_from_the_balance_or_the_notes(
+    fixture: Fixture, balance: str | None, notes: list[str], expected: bool
+) -> None:
+    from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
+
+    await JudgementsRepository(fixture.db).upsert(
+        fixture.shots[-1],
+        JudgementWrite(balance=balance, taste_notes=notes),  # type: ignore[arg-type]
+    )
+    context = await build_context(fixture.db, fixture.shots[-1])
+    assert ("taste:sour_and_bitter" in context.signals) is expected
+
+
 async def test_the_judgement_is_marked_as_ground_truth(fixture: Fixture) -> None:
     rendered = (await build_context(fixture.db, fixture.shots[-1])).render()["judgement"]
     assert "rating: 3/5" in rendered
     assert "balance: sour" in rendered
+    # Notes are read the way a person reads the wheel: from the centre out.
+    assert "taste: Sour/Fermented › Sour › Citric acid; Fruity › Citrus fruit › Lemon" in rendered
+    assert "aroma: Floral › Floral › Jasmine" in rendered
     assert "Sharp up front" in rendered
 
 

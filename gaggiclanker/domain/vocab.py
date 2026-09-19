@@ -5,27 +5,25 @@ pydantic ``Literal`` that becomes an OpenAPI enum, and a control in the front
 end — and the only way they stay equal is for two of the three to be generated
 from the third. This module is the third.
 
-``GET /api/vocab`` serves the whole of it, so the UI renders a taste chip, a
+``GET /api/vocab`` serves the whole of it, so the UI renders a flavour note, a
 roast-level select or a decision button from data rather than from a list typed
 into a component; the migration's CHECK constraints are written against the same
 tuples and there is a test that walks the database's own schema to prove they
 still agree.
 
-The taste vocabulary is crema's, kept
-verbatim including its grouping into sour side / dialled in / bitter side /
-strength. The grouping is the useful part: a tag on its own is a word, but
-"three of the five tags you picked are on the sour side" is a diagnosis, and it
-is what the analyzer is handed. Each tag carries a one-line meaning because the
-words are jargon — "astringent" and "bitter" are the same thing to most people
-and opposite things to a barista — and a chip whose definition appears on hover
-teaches the vocabulary rather than assuming it.
+What a cup tasted and smelt like is recorded against the SCA/WCR Coffee
+Taster's Flavor Wheel — the standard a coffee person already reads — as two
+lists of notes, one for taste and one for aroma. The extraction direction is
+not on the wheel and does not need to be: it is the balance (sour, balanced,
+bitter), the GaggiMate's own three-way verdict, kept as a control of its own.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Literal, get_args
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "ACTIONABLE_VARIABLES",
@@ -33,6 +31,10 @@ __all__ = [
     "BALANCES",
     "BURR_TYPES",
     "DECISIONS",
+    "FLAVOR_LABELS",
+    "FLAVOR_NOTES",
+    "FLAVOR_PICK_KINDS",
+    "FLAVOR_WHEEL",
     "PROCESSES",
     "ROAST_LEVELS",
     "RULE_CATEGORIES",
@@ -44,12 +46,12 @@ __all__ = [
     "SUGGESTION_STATUSES",
     "SUGGESTION_UNITS",
     "SUGGESTION_VARIABLES",
-    "TASTE_GROUPS",
-    "TASTE_TAGS",
     "AnalysisStatus",
     "Balance",
     "BurrType",
     "Decision",
+    "FlavorNode",
+    "FlavorPickKind",
     "Process",
     "RoastLevel",
     "RuleCategory",
@@ -61,9 +63,10 @@ __all__ = [
     "SuggestionStatus",
     "SuggestionUnit",
     "SuggestionVariable",
-    "TasteGroup",
-    "TasteTag",
     "Vocabulary",
+    "flavor_ancestors",
+    "flavor_path",
+    "in_wheel_order",
     "vocabulary",
 ]
 
@@ -99,8 +102,13 @@ type StepUnit = Literal["clicks", "numbers", "microns", "free"]
 #: is a copy rather than a translation.
 type Balance = Literal["sour", "balanced", "bitter"]
 
-#: What to do next. NULL is "not decided yet", which is most shots.
-type Decision = Literal["keep", "adjust", "discard"]
+#: What to do next with this recipe: keep it, improve on it, or throw the shot
+#: away. NULL is "not decided yet", which is most shots.
+type Decision = Literal["keep", "improve", "discard"]
+
+#: The two lists of wheel notes a person keeps for the shot panel: the notes
+#: offered on its Taste row and the ones offered on its Aroma row.
+type FlavorPickKind = Literal["taste", "aroma"]
 
 # ── sets ─────────────────────────────────────────────────────────────
 
@@ -198,6 +206,7 @@ BURR_TYPES: tuple[str, ...] = get_args(BurrType.__value__)
 STEP_UNITS: tuple[str, ...] = get_args(StepUnit.__value__)
 BALANCES: tuple[str, ...] = get_args(Balance.__value__)
 DECISIONS: tuple[str, ...] = get_args(Decision.__value__)
+FLAVOR_PICK_KINDS: tuple[str, ...] = get_args(FlavorPickKind.__value__)
 SET_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
 SHOT_STYLES: tuple[str, ...] = get_args(ShotStyle.__value__)
 SUGGESTION_VARIABLES: tuple[str, ...] = get_args(SuggestionVariable.__value__)
@@ -209,156 +218,215 @@ RULE_CONFIDENCES: tuple[str, ...] = get_args(RuleConfidence.__value__)
 RULE_CATEGORIES: tuple[str, ...] = get_args(RuleCategory.__value__)
 
 
-class TasteTag(BaseModel):
-    """One taste chip: the stored slug, the word a person reads, what it means."""
+class FlavorNode(BaseModel):
+    """One segment of the flavour wheel: its stored slug, its label, what sits outside it."""
 
     model_config = ConfigDict(extra="forbid")
 
-    #: What goes in `shot_judgements.taste_tags_json`. Slugs rather than labels
-    #: because "weak/watery" in a JSON array is a string with a slash in it that
-    #: somebody will eventually try to put in a URL.
+    #: The slug path, e.g. ``fruity.berry.blackberry``. What goes in
+    #: `shot_judgements.taste_notes_json` and `aroma_notes_json`. The path rather
+    #: than the leaf alone because the wheel repeats words across tiers
+    #: ("Floral" the category and "Floral" the group; "Bitter" under Chemical is
+    #: not the balance's bitter), and a path is what makes "any note under
+    #: Sour" a prefix test.
     value: str
     label: str
-    meaning: str
+    children: list[FlavorNode] = Field(default_factory=list)
 
 
-class TasteGroup(BaseModel):
-    """A named group of chips, with the direction it points."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    value: str
-    label: str
-    #: What picking tags from this group tells the analyzer, in one line.
-    meaning: str
-    tags: list[TasteTag]
-
-
-#: crema's vocabulary, verbatim.
+#: The SCA/WCR Coffee Taster's Flavor Wheel (2016), all three tiers, in the
+#: wheel's own clockwise order.
 #:
-#: The four groups are not decoration: "sour side" and "bitter side" are the two
-#: directions an extraction can be wrong in, "dialled in" is the target, and
-#: "strength" is the axis that is *independent* of extraction — a cup can be
-#: perfectly balanced and simply too weak, which is a dose-and-yield problem and
-#: not a grind problem. Folding strength into the other three is the classic
-#: dial-in mistake, and keeping it as its own group is how the UI stops making
-#: it.
-TASTE_GROUPS: tuple[TasteGroup, ...] = (
-    TasteGroup(
-        value="sour",
-        label="Sour side",
-        meaning="Under-extracted: the water left before it had taken the sugars.",
-        tags=[
-            TasteTag(
-                value="sour",
-                label="sour",
-                meaning="Puckering, lemon-juice acidity with nothing behind it.",
+#: Written as labels and turned into slugs by :func:`_slug`, so the list reads
+#: like the printed wheel and a slug cannot disagree with its label. Any node at
+#: any tier is a note somebody can record: the wheel is read from the centre
+#: outwards — "fruity" when unsure, "blackberry" when sure — and a vocabulary
+#: that accepted only leaves would make the unsure answer impossible to give.
+_WHEEL: tuple[tuple[str, tuple[tuple[str, tuple[str, ...]], ...]], ...] = (
+    ("Floral", (("Black tea", ()), ("Floral", ("Chamomile", "Rose", "Jasmine")))),
+    (
+        "Fruity",
+        (
+            ("Berry", ("Blackberry", "Raspberry", "Blueberry", "Strawberry")),
+            ("Dried fruit", ("Raisin", "Prune")),
+            (
+                "Other fruit",
+                (
+                    "Coconut",
+                    "Cherry",
+                    "Pomegranate",
+                    "Pineapple",
+                    "Grape",
+                    "Apple",
+                    "Peach",
+                    "Pear",
+                ),
             ),
-            TasteTag(
-                value="sharp",
-                label="sharp",
-                meaning="Acidity with an edge on it — biting rather than bright.",
-            ),
-            TasteTag(
-                value="thin",
-                label="thin",
-                meaning="Watery body: the cup feels dilute even at the right yield.",
-            ),
-            TasteTag(
-                value="salty",
-                label="salty",
-                meaning="A faint saline note — the classic under-extraction tell.",
-            ),
-            TasteTag(
-                value="quick_finish",
-                label="quick finish",
-                meaning="The flavour drops away a second after the sip.",
-            ),
-        ],
-    ),
-    TasteGroup(
-        value="dialled_in",
-        label="Dialled in",
-        meaning="Where you are aiming: sweetness carrying the cup, nothing sticking out.",
-        tags=[
-            TasteTag(
-                value="sweet",
-                label="sweet",
-                meaning="Sugar-browning sweetness carries the cup.",
-            ),
-            TasteTag(
-                value="balanced",
-                label="balanced",
-                meaning="Acidity, sweetness and bitterness in proportion.",
-            ),
-            TasteTag(
-                value="syrupy",
-                label="syrupy",
-                meaning="Heavy, coating body that clings to the tongue.",
-            ),
-            TasteTag(
-                value="long_finish",
-                label="long finish",
-                meaning="The flavour is still there half a minute after the sip.",
-            ),
-        ],
-    ),
-    TasteGroup(
-        value="bitter",
-        label="Bitter side",
-        meaning="Over-extracted: the water kept going and took the bitter compounds too.",
-        tags=[
-            TasteTag(
-                value="bitter",
-                label="bitter",
-                meaning="Dark, burnt-cocoa bitterness dominating the cup.",
-            ),
-            TasteTag(
-                value="harsh",
-                label="harsh",
-                meaning="Rough and aggressive rather than merely bitter.",
-            ),
-            TasteTag(
-                value="astringent",
-                label="astringent",
-                meaning="Mouth-drying grip, like over-steeped black tea.",
-            ),
-            TasteTag(
-                value="drying",
-                label="drying",
-                meaning="Leaves the tongue papery after the swallow.",
-            ),
-            TasteTag(
-                value="hollow",
-                label="hollow",
-                meaning="Bitter edges with nothing in the middle.",
-            ),
-        ],
-    ),
-    TasteGroup(
-        value="strength",
-        label="Strength",
-        meaning=(
-            "Independent of extraction: a cup can be balanced and still be the wrong "
-            "concentration, which is a dose-and-yield fix rather than a grind one."
+            ("Citrus fruit", ("Grapefruit", "Orange", "Lemon", "Lime")),
         ),
-        tags=[
-            TasteTag(
-                value="weak_watery",
-                label="weak / watery",
-                meaning="Right balance, too little of it — the cup is under strength.",
+    ),
+    (
+        "Sour/Fermented",
+        (
+            (
+                "Sour",
+                (
+                    "Sour aromatics",
+                    "Acetic acid",
+                    "Butyric acid",
+                    "Isovaleric acid",
+                    "Citric acid",
+                    "Malic acid",
+                ),
             ),
-            TasteTag(
-                value="too_intense",
-                label="too intense / muddy",
-                meaning="Overwhelming and smeared; flavours run into each other.",
+            ("Alcohol/Fermented", ("Winey", "Whiskey", "Fermented", "Overripe")),
+        ),
+    ),
+    (
+        "Green/Vegetative",
+        (
+            ("Olive oil", ()),
+            ("Raw", ()),
+            (
+                "Green/Vegetative",
+                (
+                    "Under-ripe",
+                    "Peapod",
+                    "Fresh",
+                    "Dark green",
+                    "Vegetative",
+                    "Hay-like",
+                    "Herb-like",
+                ),
             ),
-        ],
+            ("Beany", ()),
+        ),
+    ),
+    (
+        "Other",
+        (
+            (
+                "Papery/Musty",
+                (
+                    "Stale",
+                    "Cardboard",
+                    "Papery",
+                    "Woody",
+                    "Moldy/Damp",
+                    "Musty/Dusty",
+                    "Musty/Earthy",
+                    "Animalic",
+                    "Meaty brothy",
+                    "Phenolic",
+                ),
+            ),
+            ("Chemical", ("Bitter", "Salty", "Medicinal", "Petroleum", "Skunky", "Rubber")),
+        ),
+    ),
+    (
+        "Roasted",
+        (
+            ("Pipe tobacco", ()),
+            ("Tobacco", ()),
+            ("Burnt", ("Acrid", "Ashy", "Smoky", "Brown roast")),
+            ("Cereal", ("Grain", "Malt")),
+        ),
+    ),
+    (
+        "Spices",
+        (
+            ("Pungent", ()),
+            ("Pepper", ()),
+            ("Brown spice", ("Anise", "Nutmeg", "Cinnamon", "Clove")),
+        ),
+    ),
+    (
+        "Nutty/Cocoa",
+        (
+            ("Nutty", ("Peanuts", "Hazelnut", "Almond")),
+            ("Cocoa", ("Chocolate", "Dark chocolate")),
+        ),
+    ),
+    (
+        "Sweet",
+        (
+            ("Brown sugar", ("Molasses", "Maple syrup", "Caramelized", "Honey")),
+            ("Vanilla", ()),
+            ("Vanillin", ()),
+            ("Overall sweet", ()),
+            ("Sweet aromatics", ()),
+        ),
     ),
 )
 
-#: Every tag slug, flattened. The validator for `taste_tags_json`.
-TASTE_TAGS: tuple[str, ...] = tuple(tag.value for group in TASTE_GROUPS for tag in group.tags)
+
+def _slug(label: str) -> str:
+    """``"Sour/Fermented"`` → ``"sour_fermented"``: lowercase, one ``_`` per run of the rest."""
+    return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+
+
+def _build_wheel() -> tuple[FlavorNode, ...]:
+    nodes: list[FlavorNode] = []
+    for category, groups in _WHEEL:
+        top = _slug(category)
+        children: list[FlavorNode] = []
+        for group, leaves in groups:
+            middle = f"{top}.{_slug(group)}"
+            children.append(
+                FlavorNode(
+                    value=middle,
+                    label=group,
+                    children=[
+                        FlavorNode(value=f"{middle}.{_slug(leaf)}", label=leaf) for leaf in leaves
+                    ],
+                )
+            )
+        nodes.append(FlavorNode(value=top, label=category, children=children))
+    return tuple(nodes)
+
+
+FLAVOR_WHEEL: tuple[FlavorNode, ...] = _build_wheel()
+
+
+def _walk(nodes: list[FlavorNode] | tuple[FlavorNode, ...]) -> list[FlavorNode]:
+    out: list[FlavorNode] = []
+    for node in nodes:
+        out.append(node)
+        out.extend(_walk(node.children))
+    return out
+
+
+#: Every node's slug, every tier, in wheel order (each node before what sits
+#: outside it). The validator for both note columns, and the sort key that
+#: puts a list of notes in the order a person reads them off the wheel.
+FLAVOR_NOTES: tuple[str, ...] = tuple(node.value for node in _walk(FLAVOR_WHEEL))
+
+#: Slug → its own label ("fruity.berry.blackberry" → "Blackberry").
+FLAVOR_LABELS: dict[str, str] = {node.value: node.label for node in _walk(FLAVOR_WHEEL)}
+
+_FLAVOR_ORDER: dict[str, int] = {value: index for index, value in enumerate(FLAVOR_NOTES)}
+
+
+def flavor_ancestors(note: str) -> tuple[str, ...]:
+    """The nodes inside ``note`` on the wheel, centre first; empty for a category.
+
+    The slug is the path, so this is string work rather than a tree walk:
+    ``"sour_fermented.sour.acetic_acid"`` → ``("sour_fermented",
+    "sour_fermented.sour")``.
+    """
+    parts = note.split(".")
+    return tuple(".".join(parts[:depth]) for depth in range(1, len(parts)))
+
+
+def flavor_path(note: str) -> str:
+    """How a person reads a note off the wheel: ``"Fruity › Berry › Blackberry"``."""
+    return " › ".join(FLAVOR_LABELS[value] for value in (*flavor_ancestors(note), note))
+
+
+def in_wheel_order(notes: list[str] | tuple[str, ...]) -> list[str]:
+    """Known notes, de-duplicated, in wheel order. Unknown ones are the caller's to refuse."""
+    last = len(_FLAVOR_ORDER)
+    return sorted(dict.fromkeys(notes), key=lambda note: _FLAVOR_ORDER.get(note, last))
 
 
 class Term(BaseModel):
@@ -387,7 +455,8 @@ class Vocabulary(BaseModel):
     balances: list[Term]
     decisions: list[Term]
     origins: list[Term]
-    taste_groups: list[TasteGroup]
+    #: The flavour wheel, as a tree: nine categories, their groups, their notes.
+    flavor_wheel: list[FlavorNode]
     #: The analyzer's own closed sets, served for the same reason as the
     #: rest: the Knowledge page and the suggestion cards render these words, and
     #: a component that typed them would drift from the CHECK constraint behind
@@ -409,16 +478,18 @@ def _terms(values: tuple[str, ...], labels: dict[str, str] | None = None) -> lis
     ]
 
 
-#: Labels that are not just the slug with its punctuation softened.
+#: Labels that are not just the slug with its punctuation softened. Short on
+#: purpose: they sit on a shot row and in a panel beside a curve, and the
+#: balance's three are the GaggiMate's own words.
 _BALANCE_LABELS = {
-    "sour": "Sour — under-extracted",
+    "sour": "Sour",
     "balanced": "Balanced",
-    "bitter": "Bitter — over-extracted",
+    "bitter": "Bitter",
 }
 _DECISION_LABELS = {
-    "keep": "Keep this recipe",
-    "adjust": "Adjust and pull again",
-    "discard": "Discard — something went wrong",
+    "keep": "Keep",
+    "improve": "Improve",
+    "discard": "Discard",
 }
 _ORIGIN_LABELS = {
     "manual": "You changed it",
@@ -479,7 +550,7 @@ def vocabulary() -> Vocabulary:
         balances=_terms(BALANCES, _BALANCE_LABELS),
         decisions=_terms(DECISIONS, _DECISION_LABELS),
         origins=_terms(SET_VERSION_ORIGINS, _ORIGIN_LABELS),
-        taste_groups=list(TASTE_GROUPS),
+        flavor_wheel=[node.model_copy(deep=True) for node in FLAVOR_WHEEL],
         shot_styles=_terms(SHOT_STYLES, _STYLE_LABELS),
         suggestion_variables=_terms(SUGGESTION_VARIABLES, _VARIABLE_LABELS),
         suggestion_directions=_terms(SUGGESTION_DIRECTIONS),

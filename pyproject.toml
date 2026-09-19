@@ -85,6 +85,9 @@ select = [
 ignore = [
     "S101",  # assert: pytest uses it, and we use it for invariants
 ]
+# The flavour wheel's path separator ("Fruity › Berry › Blackberry"), chosen
+# because the wheel's own labels already use "/" and ">" reads as a comparison.
+allowed-confusables = ["›"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests reach into internals, hardcode fake secrets and bind test ports.

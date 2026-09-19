@@ -40,8 +40,8 @@ export type MachinePatch = components["schemas"]["MachinePatch"];
 // Sets, beans, grinders and the judgement. Every one of these is a real
 // pydantic model on the server, so none of them is retyped here.
 export type Vocabulary = components["schemas"]["Vocabulary"];
-export type TasteGroup = components["schemas"]["TasteGroup"];
-export type TasteTag = components["schemas"]["TasteTag"];
+export type FlavorNode = components["schemas"]["FlavorNode"];
+export type FlavorPicks = components["schemas"]["FlavorPicks"];
 export type VocabTerm = components["schemas"]["Term"];
 export type BeanRow = components["schemas"]["BeanRow"];
 export type BeanWrite = components["schemas"]["BeanWrite"];

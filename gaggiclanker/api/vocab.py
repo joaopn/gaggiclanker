@@ -1,8 +1,8 @@
 """`/api/vocab` — the closed vocabularies, served as data.
 
 One request on page load and the front end has every enum it needs: roast
-levels, processes, burr types, grind step units, balance, the taste chips with
-their groups and definitions, the decisions, and where a Set version came from.
+levels, processes, burr types, grind step units, balance, the flavour wheel,
+the decisions, and where a Set version came from.
 
 It exists so that nothing in `web/src` types a list of coffee words. A UI that
 hard-codes an enum drifts from the database the first time one changes, and the

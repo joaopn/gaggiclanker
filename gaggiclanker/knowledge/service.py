@@ -43,6 +43,7 @@ from gaggiclanker.db.repos.knowledge_docs import (
     content_hash,
 )
 from gaggiclanker.db.repos.knowledge_insights import InsightRow, InsightsRepository
+from gaggiclanker.domain.vocab import FLAVOR_LABELS
 from gaggiclanker.knowledge.chunker import chunk_markdown
 
 __all__ = [
@@ -129,9 +130,9 @@ class RetrievalContext:
     #: The signal tokens rule selection was made against, exactly as
     #: :func:`gaggiclanker.analyzer.context.signal_tokens` produced them.
     signals: tuple[str, ...] = ()
-    #: The user's taste chips and their balance verdict. Ground truth for taste,
-    #: so they lead the query list.
-    taste_tags: tuple[str, ...] = ()
+    #: The user's taste notes (flavour-wheel slugs) and their balance verdict.
+    #: Ground truth for taste, so they lead the query list.
+    taste_notes: tuple[str, ...] = ()
     balance: str | None = None
     #: The bean, for the two queries that are about the coffee rather than the
     #: shot. ``None`` means "not stated" and produces no query.
@@ -360,12 +361,14 @@ class KnowledgeService:
             add("channeling sour and bitter puck preparation distribution")
         if context.balance and context.balance != "balanced":
             add(f"{context.balance} taste cause extraction adjustment")
-        for tag in context.taste_tags:
+        for note in context.taste_notes:
             # No "espresso" in the query. It is the most common word in a corpus
             # that is entirely about espresso, so it contributes nothing to the
             # ranking except term frequency — and a chunk that happens to repeat
-            # it, like the drinks table, outranks the one that explains the tag.
-            add(f"{tag} taste cause fix")
+            # it, like the drinks table, outranks the one that explains the note.
+            # The note's own label, not its slug: the prose says "bitter", not
+            # "other chemical bitter".
+            add(f"{FLAVOR_LABELS.get(note, note).lower()} taste cause fix")
 
         # 2. The channeling indicators that fired, by name.
         for token in context.signals:

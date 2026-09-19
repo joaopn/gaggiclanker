@@ -122,7 +122,7 @@ class RulesRepository(Repository):
 
         ``applies`` narrows to the rules a given situation would select: each
         token is ``dimension:value`` (``roast_level:light``, ``style:bloom``,
-        ``signal:taste:sour``) and a rule matches when every dimension it
+        ``signal:balance:sour``) and a rule matches when every dimension it
         *states* is satisfied by one of them. That is the same question
         `select_rules` answers, which is why it is worth having here — "what
         would this bean actually be told" is the thing somebody editing a rule

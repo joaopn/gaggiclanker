@@ -22,12 +22,17 @@ from gaggiclanker.domain.vocab import (
     BALANCES,
     BURR_TYPES,
     DECISIONS,
+    FLAVOR_LABELS,
+    FLAVOR_NOTES,
+    FLAVOR_PICK_KINDS,
+    FLAVOR_WHEEL,
     PROCESSES,
     ROAST_LEVELS,
     SET_VERSION_ORIGINS,
     STEP_UNITS,
-    TASTE_GROUPS,
-    TASTE_TAGS,
+    flavor_ancestors,
+    flavor_path,
+    in_wheel_order,
     vocabulary,
 )
 
@@ -40,6 +45,7 @@ CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
     ("set_versions", "origin", SET_VERSION_ORIGINS),
     ("shot_judgements", "balance", BALANCES),
     ("shot_judgements", "decision", DECISIONS),
+    ("flavor_picks", "kind", FLAVOR_PICK_KINDS),
 ]
 
 
@@ -77,12 +83,48 @@ async def test_balance_is_the_same_three_words_the_firmware_uses() -> None:
     assert set(get_args(BalanceTaste)) == set(BALANCES)
 
 
-def test_every_taste_tag_is_unique_and_grouped() -> None:
-    assert len(TASTE_TAGS) == len(set(TASTE_TAGS))
-    flattened = [tag.value for group in TASTE_GROUPS for tag in group.tags]
-    assert flattened == list(TASTE_TAGS)
-    # crema's four groups, with the counts from its own vocabulary.
-    assert [len(group.tags) for group in TASTE_GROUPS] == [5, 4, 5, 2]
+def test_the_wheel_is_the_whole_sca_wheel_with_unique_slugs() -> None:
+    """Nine categories, 28 groups, 73 notes: the 2016 wheel, all three tiers."""
+    assert len(FLAVOR_WHEEL) == 9
+    assert sum(len(category.children) for category in FLAVOR_WHEEL) == 28
+    leaves = [
+        leaf.value
+        for category in FLAVOR_WHEEL
+        for group in category.children
+        for leaf in group.children
+    ]
+    assert len(leaves) == 73
+    assert len(FLAVOR_NOTES) == 110
+    assert len(set(FLAVOR_NOTES)) == len(FLAVOR_NOTES)
+    # Nothing deeper than three tiers, and every slug is its parent's plus one step.
+    for category in FLAVOR_WHEEL:
+        for group in category.children:
+            assert group.value.startswith(f"{category.value}.")
+            for leaf in group.children:
+                assert leaf.value.startswith(f"{group.value}.")
+                assert leaf.children == []
+
+
+def test_a_slug_is_the_path_of_its_labels() -> None:
+    # The category and the group of the same name are two notes, not one.
+    assert FLAVOR_LABELS["floral"] == FLAVOR_LABELS["floral.floral"] == "Floral"
+    assert FLAVOR_LABELS["other.papery_musty.moldy_damp"] == "Moldy/Damp"
+    assert flavor_ancestors("sour_fermented.sour.acetic_acid") == (
+        "sour_fermented",
+        "sour_fermented.sour",
+    )
+    assert flavor_ancestors("sweet") == ()
+    assert flavor_path("fruity.berry.blackberry") == "Fruity › Berry › Blackberry"
+
+
+def test_wheel_order_is_centre_first_and_clockwise() -> None:
+    assert FLAVOR_NOTES[:3] == ("floral", "floral.black_tea", "floral.floral")
+    assert FLAVOR_NOTES[-1] == "sweet.sweet_aromatics"
+    assert in_wheel_order(["sweet", "floral.floral.rose", "sweet", "floral"]) == [
+        "floral",
+        "floral.floral.rose",
+        "sweet",
+    ]
 
 
 def test_the_served_vocabulary_carries_every_term() -> None:

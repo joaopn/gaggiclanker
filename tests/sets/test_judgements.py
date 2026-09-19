@@ -30,16 +30,19 @@ class TestJudgement:
             JudgementWrite(
                 rating=4,
                 balance="sour",
-                taste_tags=["sour", "thin"],
+                taste_notes=["sour_fermented.sour", "fruity.citrus_fruit.lemon"],
+                aroma_notes=["floral.floral.jasmine"],
                 dose_in_g=18.0,
                 dose_out_g=36.0,
                 grind_setting="22",
                 notes="a bit sharp on the finish",
-                decision="adjust",
+                decision="improve",
             ),
         )
         assert row.rating == 4
-        assert row.taste_tags == ["sour", "thin"]
+        assert row.taste_notes == ["sour_fermented.sour", "fruity.citrus_fruit.lemon"]
+        assert row.aroma_notes == ["floral.floral.jasmine"]
+        assert row.decision == "improve"
         assert row.ratio == 2.0
         assert row.seeded_from_device_note is False
 
@@ -57,12 +60,20 @@ class TestJudgement:
         # the user cleared.
         assert row.notes == ""
 
-    async def test_unknown_taste_tags_are_refused_by_name(self) -> None:
+    @pytest.mark.parametrize("field", ["taste_notes", "aroma_notes"])
+    async def test_unknown_notes_are_refused_by_name(self, field: str) -> None:
         with pytest.raises(ValueError, match="delicious"):
-            JudgementWrite(taste_tags=["sour", "delicious"])
+            JudgementWrite.model_validate({field: ["fruity", "delicious"]})
 
-    async def test_tags_are_de_duplicated_in_the_order_they_were_picked(self) -> None:
-        assert JudgementWrite(taste_tags=["thin", "sour", "thin"]).taste_tags == ["thin", "sour"]
+    @pytest.mark.parametrize("field", ["taste_notes", "aroma_notes"])
+    async def test_notes_are_de_duplicated_in_the_order_they_were_picked(self, field: str) -> None:
+        picked = ["sweet", "fruity.berry", "sweet"]
+        written = JudgementWrite.model_validate({field: picked})
+        assert getattr(written, field) == ["sweet", "fruity.berry"]
+
+    async def test_the_old_decision_word_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="decision"):
+            JudgementWrite.model_validate({"decision": "adjust"})
 
     async def test_notes_are_capped_at_the_firmware_limit(self) -> None:
         with pytest.raises(ValueError, match="200"):

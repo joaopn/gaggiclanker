@@ -107,7 +107,10 @@ SCHEMA_NOTES = (
     "Timestamps are ISO-8601 UTC strings, so ORDER BY on them is chronological and "
     "date(started_at) works. Every row cap is enforced server-side — ask for an aggregate "
     "rather than a thousand rows. v_shots already joins the Set, the bean, the grinder and "
-    "the judgement, so most questions need no join at all."
+    "the judgement, so most questions need no join at all. v_judgements.taste_notes_json and "
+    "aroma_notes_json are JSON arrays of SCA flavour-wheel notes, each the path from the "
+    "centre joined by dots (fruity.berry.blackberry), so json_each with LIKE "
+    "'sour_fermented.sour%' finds every sour note."
 )
 
 
@@ -597,7 +600,7 @@ class GetRulesInput(_Model):
         max_length=20,
         description=(
             "Tokens of the form dimension:value (roast_level:light, style:bloom, "
-            "signal:taste:sour). A rule is returned when every dimension it states is "
+            "signal:balance:sour). A rule is returned when every dimension it states is "
             "satisfied by one of them."
         ),
     )

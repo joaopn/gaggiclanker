@@ -49,14 +49,14 @@ export const vocabulary: Vocabulary = {
     { value: "free", label: "free" },
   ],
   balances: [
-    { value: "sour", label: "Sour — under-extracted" },
+    { value: "sour", label: "Sour" },
     { value: "balanced", label: "Balanced" },
-    { value: "bitter", label: "Bitter — over-extracted" },
+    { value: "bitter", label: "Bitter" },
   ],
   decisions: [
-    { value: "keep", label: "Keep this recipe" },
-    { value: "adjust", label: "Adjust and pull again" },
-    { value: "discard", label: "Discard — something went wrong" },
+    { value: "keep", label: "Keep" },
+    { value: "improve", label: "Improve" },
+    { value: "discard", label: "Discard" },
   ],
   origins: [
     { value: "manual", label: "You changed it" },
@@ -106,34 +106,88 @@ export const vocabulary: Vocabulary = {
     { value: "expert", label: "Expert heuristic" },
     { value: "calibrated", label: "Calibrated on real shots" },
   ],
-  taste_groups: [
+  // A slice of the wheel, not all 110 notes: every tier, a category whose
+  // group and category share a label, and a group with no notes outside it.
+  flavor_wheel: [
     {
-      value: "sour",
-      label: "Sour side",
-      meaning: "Under-extracted: the water left before it had taken the sugars.",
-      tags: [
+      value: "floral",
+      label: "Floral",
+      children: [
+        { value: "floral.black_tea", label: "Black tea", children: [] },
         {
-          value: "sour",
-          label: "sour",
-          meaning: "Puckering, lemon-juice acidity with nothing behind it.",
-        },
-        {
-          value: "salty",
-          label: "salty",
-          meaning: "A faint saline note — the classic under-extraction tell.",
+          value: "floral.floral",
+          label: "Floral",
+          children: [{ value: "floral.floral.jasmine", label: "Jasmine", children: [] }],
         },
       ],
     },
     {
-      value: "bitter",
-      label: "Bitter side",
-      meaning: "Over-extracted: the water kept going.",
-      tags: [
+      value: "fruity",
+      label: "Fruity",
+      children: [
         {
-          value: "astringent",
-          label: "astringent",
-          meaning: "Mouth-drying grip, like over-steeped black tea.",
+          value: "fruity.berry",
+          label: "Berry",
+          children: [
+            { value: "fruity.berry.blackberry", label: "Blackberry", children: [] },
+            { value: "fruity.berry.raspberry", label: "Raspberry", children: [] },
+          ],
         },
+        {
+          value: "fruity.citrus_fruit",
+          label: "Citrus fruit",
+          children: [{ value: "fruity.citrus_fruit.lemon", label: "Lemon", children: [] }],
+        },
+      ],
+    },
+    {
+      value: "sour_fermented",
+      label: "Sour/Fermented",
+      children: [
+        {
+          value: "sour_fermented.sour",
+          label: "Sour",
+          children: [
+            { value: "sour_fermented.sour.citric_acid", label: "Citric acid", children: [] },
+          ],
+        },
+      ],
+    },
+    {
+      value: "other",
+      label: "Other",
+      children: [
+        {
+          value: "other.chemical",
+          label: "Chemical",
+          children: [
+            { value: "other.chemical.bitter", label: "Bitter", children: [] },
+            { value: "other.chemical.salty", label: "Salty", children: [] },
+          ],
+        },
+      ],
+    },
+    {
+      value: "nutty_cocoa",
+      label: "Nutty/Cocoa",
+      children: [
+        {
+          value: "nutty_cocoa.cocoa",
+          label: "Cocoa",
+          children: [{ value: "nutty_cocoa.cocoa.chocolate", label: "Chocolate", children: [] }],
+        },
+      ],
+    },
+    {
+      value: "sweet",
+      label: "Sweet",
+      children: [
+        {
+          value: "sweet.brown_sugar",
+          label: "Brown sugar",
+          children: [{ value: "sweet.brown_sugar.honey", label: "Honey", children: [] }],
+        },
+        { value: "sweet.vanilla", label: "Vanilla", children: [] },
       ],
     },
   ],
@@ -219,12 +273,13 @@ export function judgement(overrides: Partial<ShotJudgement> = {}): ShotJudgement
     shot_id: 1,
     rating: 4,
     balance: "sour",
-    taste_tags: ["sour"],
+    taste_notes: ["sour_fermented.sour"],
+    aroma_notes: ["fruity.berry"],
     dose_in_g: 18,
     dose_out_g: 36,
     grind_setting: "22",
     notes: "sharp at the end",
-    decision: "adjust",
+    decision: "improve",
     seeded_from_device_note: false,
     device_synced_at: null,
     updated_at: "2026-04-03T08:00:00.000Z",

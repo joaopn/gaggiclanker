@@ -21,6 +21,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
+from gaggiclanker.db.repos.flavor_picks import FlavorPicksRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
@@ -60,6 +61,7 @@ __all__ = [
     "DraftServiceDep",
     "EnvSettingsDep",
     "EventBusDep",
+    "FlavorPicksRepoDep",
     "GrindersRepoDep",
     "InsightsRepoDep",
     "JudgementsRepoDep",
@@ -219,6 +221,10 @@ def get_judgements_repo(request: Request) -> JudgementsRepository:
     return JudgementsRepository(get_database(request))
 
 
+def get_flavor_picks_repo(request: Request) -> FlavorPicksRepository:
+    return FlavorPicksRepository(get_database(request))
+
+
 def get_rules_repo(request: Request) -> RulesRepository:
     return RulesRepository(get_database(request))
 
@@ -315,6 +321,7 @@ BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
 GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
 SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]
+FlavorPicksRepoDep = Annotated[FlavorPicksRepository, Depends(get_flavor_picks_repo)]
 RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
 KnowledgeDocsRepoDep = Annotated[KnowledgeDocsRepository, Depends(get_knowledge_docs_repo)]
 InsightsRepoDep = Annotated[InsightsRepository, Depends(get_insights_repo)]

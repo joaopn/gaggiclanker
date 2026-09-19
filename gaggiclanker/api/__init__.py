@@ -12,6 +12,7 @@ from gaggiclanker.api import (
     chat,
     device,
     drafts,
+    flavor_picks,
     grinders,
     health,
     imports,
@@ -44,6 +45,7 @@ api_router.include_router(profiles.versions_router)
 api_router.include_router(drafts.router)
 api_router.include_router(machine.router)
 api_router.include_router(vocab.router)
+api_router.include_router(flavor_picks.router)
 api_router.include_router(beans.router)
 api_router.include_router(grinders.router)
 api_router.include_router(sets.router)
