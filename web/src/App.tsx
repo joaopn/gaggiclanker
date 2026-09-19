@@ -20,6 +20,7 @@ import { ShotsPage } from "@/pages/ShotsPage";
 import { SignInPage } from "@/pages/SignInPage";
 import { SyncPage } from "@/pages/SyncPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
+import { TasteWheelPage } from "@/pages/TasteWheelPage";
 
 /**
  * The shot page is the only route that needs Chart.js, and Chart.js is the
@@ -95,6 +96,7 @@ export function App() {
           />
           <Route path="/beans" element={<BeansPage />} />
           <Route path="/hardware" element={<HardwarePage />} />
+          <Route path="/taste-wheel" element={<TasteWheelPage />} />
           <Route path="/profiles" element={<ProfilesPage />} />
           {/* The draft queue is a section of the profiles page now. The route
               stays as a redirect: a bookmark, and a hard refresh on one, land

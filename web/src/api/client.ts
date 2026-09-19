@@ -33,6 +33,7 @@ import type {
   DraftCreateBody,
   DraftPreview,
   DraftPushResult,
+  FlavorPicks,
   GrinderRow,
   GrinderWrite,
   HealthData,
@@ -682,6 +683,19 @@ export const MODEL_KEYS: Record<LlmPurpose, string> = {
  */
 export async function getVocabulary(): Promise<Vocabulary> {
   return fetchApi<Vocabulary>("/vocab");
+}
+
+/**
+ * The flavour-wheel notes the shot panel offers, one list for taste and one
+ * for aroma, in wheel order.
+ */
+export async function getFlavorPicks(): Promise<FlavorPicks> {
+  return fetchApi<FlavorPicks>("/flavor-picks");
+}
+
+/** Both lists, whole: the server de-duplicates and puts them in wheel order. */
+export async function putFlavorPicks(body: FlavorPicks): Promise<FlavorPicks> {
+  return fetchApi<FlavorPicks>("/flavor-picks", { method: "PUT", body: JSON.stringify(body) });
 }
 
 export async function getBeans(includeArchived = false): Promise<{ items: BeanRow[] }> {

@@ -91,6 +91,12 @@ export const queryKeys = {
    * only ever return the same bytes.
    */
   vocab: { all: ["vocab"] as const, current: () => ["vocab", "current"] as const },
+  /**
+   * Which wheel notes the shot panel offers. Not under `vocab`: the wheel is
+   * fixed, this is a person's choice from it and changes on the Taste wheel
+   * page.
+   */
+  flavorPicks: { all: ["flavor-picks"] as const },
   profiles: {
     all: ["profiles"] as const,
     list: () => ["profiles", "list"] as const,

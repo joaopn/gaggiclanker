@@ -7,6 +7,7 @@ import {
   CircuitBoard,
   Coffee,
   Cpu,
+  Donut,
   FlaskConical,
   Layers,
   MessageSquare,
@@ -56,8 +57,9 @@ export function isNavGroup(item: NavItem): item is NavGroup {
  * here plus one `<Route>` in App.tsx.
  *
  * Five rows rather than a dozen. What you open every day — the archive and the
- * chat — is a row of its own. Everything that goes into a shot (a Set, and the
- * bean and the hardware it names) is under Brew setup; everything about the
+ * chat — is a row of its own. Everything that goes into a shot (a Set, the
+ * bean and the hardware it names, and the notes it is tasted with) is under
+ * Brew setup; everything about the
  * machine itself (its profiles and the queue that pushes to it, the exchanges
  * with it, what it is) is under Machine; what is set up once and then mostly
  * left alone is under Settings. A page inside a group keeps its own chord, so
@@ -97,6 +99,16 @@ export const NAV_LINKS: NavItem[] = [
       { to: "/sets", label: "Sets", icon: Layers, shortcut: "g e", shortcutLabel: "g e" },
       { to: "/beans", label: "Beans", icon: Bean, shortcut: "g b", shortcutLabel: "g b" },
       { to: "/hardware", label: "Hardware", icon: Cpu, shortcut: "g h", shortcutLabel: "g h" },
+      // The flavour wheel, and which of its notes the shot panel offers. Here
+      // rather than under Settings: it is chosen the way a bean or a grinder is,
+      // for what is being brewed, and revisited when that changes.
+      {
+        to: "/taste-wheel",
+        label: "Taste wheel",
+        icon: Donut,
+        shortcut: "g w",
+        shortcutLabel: "g w",
+      },
     ],
   },
   {

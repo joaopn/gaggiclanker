@@ -87,7 +87,7 @@ describe("AppShell", () => {
         within(list)
           .getAllByRole("link")
           .map((link) => link.getAttribute("href"));
-      expect(hrefs(brew.list)).toEqual(["/sets", "/beans", "/hardware"]);
+      expect(hrefs(brew.list)).toEqual(["/sets", "/beans", "/hardware", "/taste-wheel"]);
       // The device page has a row now, beside the other pages about the machine.
       expect(hrefs(machine.list)).toEqual(["/profiles", "/sync", "/device"]);
     });

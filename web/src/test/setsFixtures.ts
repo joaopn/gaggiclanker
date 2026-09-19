@@ -1,5 +1,6 @@
 import type {
   BeanRow,
+  FlavorPicks,
   GrinderRow,
   SetDetailData,
   SetRow,
@@ -192,6 +193,15 @@ export const vocabulary: Vocabulary = {
     },
   ],
 };
+
+/** What the shot panel offers, in wheel order: a short list per row. */
+export function flavorPicks(overrides: Partial<FlavorPicks> = {}): FlavorPicks {
+  return {
+    taste: ["fruity.berry", "other.chemical.bitter", "nutty_cocoa.cocoa.chocolate"],
+    aroma: ["floral", "fruity.berry"],
+    ...overrides,
+  };
+}
 
 export function bean(overrides: Partial<BeanRow> = {}): BeanRow {
   return {
