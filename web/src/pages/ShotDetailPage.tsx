@@ -67,8 +67,8 @@ export function ShotDetailPage() {
   const { hash } = useLocation();
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
-  // rest here with `#set`, and its Analyse column links an analysed shot here
-  // with `#analysis`. Both panels are far down a long page, and landing at the
+  // rest here with `#set`, and a link to a shot's analysis comes here with
+  // `#analysis`. Both panels are far down a long page, and landing at the
   // top of it would leave the reader to find the thing the link promised. It
   // waits for the shot, because until then the panels do not exist.
   const arrived = shot.isSuccess;

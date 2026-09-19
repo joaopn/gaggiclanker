@@ -354,8 +354,7 @@ describe("ShotDetailPage Set panel", () => {
   });
 
   it("scrolls to the analysis when the link asks for it", async () => {
-    // The shots list's Analyse column links an analysed shot here with
-    // `#analysis`.
+    // A link to a shot's analysis comes here with `#analysis`.
     const scrolled: string[] = [];
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
       this: Element,

@@ -23,7 +23,7 @@ export type ShotColumnId =
   | "rating"
   | "set"
   | "notes"
-  | "analyze"
+  | "decision"
   | "flags";
 
 export type ShotColumn = {
@@ -54,12 +54,18 @@ export type FixedSize = { rem: number; min: number; max: number };
  * down its first column; the time beside it then says where in that bag a shot
  * fell.
  *
- * Only Set, Profile and Notes are flexible, and the rest are fixed rather than
+ * Only Profile and Notes are flexible, and the rest are fixed rather than
  * `auto`. Every row is a grid of its own (see `ShotsTable`), and an `auto`
  * track is sized by the content of *that* row: a long Set name in one row
  * pushed every later column of that row sideways, out of line with the header.
  * A `fr` track resolves identically in every row, because the fixed tracks
  * beside it are the same everywhere.
+ *
+ * Set was flexible too, and took a share of every spare pixel for a badge that
+ * says a name and a version — the widest column on the row, with no way to
+ * make it narrower. It is fixed and resizable now, with a smaller default; the
+ * badge truncates to whatever width it is given and says the whole name on
+ * hover.
  *
  * Time is sized for the list's own compact format (`formatListTime`), measured
  * rather than guessed: the widest current-year form of the locales checked is
@@ -69,7 +75,7 @@ export type FixedSize = { rem: number; min: number; max: number };
  * either.
  */
 export const SHOT_COLUMNS: ShotColumn[] = [
-  { id: "set", label: "Set", size: { track: "minmax(8rem,1fr)" }, narrowHidden: true },
+  { id: "set", label: "Set", size: { rem: 8, min: 4, max: 20 }, narrowHidden: true },
   { id: "time", label: "Time", size: { rem: 7.5, min: 4.5, max: 16 } },
   { id: "profile", label: "Profile", size: { track: "minmax(8rem,1fr)" } },
   // The sparkline is drawn at a fixed 96 px; narrower than that clips it.
@@ -80,8 +86,15 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
   { id: "notes", label: "Notes", size: { track: "minmax(8rem,1.2fr)" }, narrowHidden: true },
-  // "Analysing…" is the widest thing the cell says, with its icon.
-  { id: "analyze", label: "Analyse", size: { rem: 7, min: 5.5, max: 12 }, narrowHidden: true },
+  // Keep, Improve and Discard side by side at text-xs: 9.6rem in DejaVu Sans,
+  // which is wider than the system faces a browser actually uses, so the
+  // minimum still shows all three words.
+  {
+    id: "decision",
+    label: "Decision",
+    size: { rem: 10.5, min: 9.75, max: 14 },
+    narrowHidden: true,
+  },
   { id: "flags", label: "Flags", size: { rem: 9, min: 4, max: 24 }, narrowHidden: true },
 ];
 
@@ -96,11 +109,12 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * things to see. Notes is off because it is long: it is there for somebody who
  * wants to read a session back, not for scanning.
  *
- * Analyse replaced Flags. The flags are mostly absences (imported, gone from
- * the machine, incomplete) that matter on a handful of rows, while "has the
- * model looked at this yet, and if not, look" is a question for every row —
- * and a column that answers it with a button is worth more than a badge that
- * only reports it. Flags stays in the chooser.
+ * Decision is where Flags was. The flags are mostly absences (imported, gone
+ * from the machine, incomplete) that matter on a handful of rows, while "keep
+ * this recipe, improve on it, or bin the shot" is the question every shot
+ * ends on — and a column that answers it with a click is worth more than a
+ * badge. An analysis is started from the shot page; its state is in Flags,
+ * which stays in the chooser.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",
@@ -109,11 +123,12 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "yield",
   "score",
   "rating",
-  "analyze",
+  "decision",
 ];
 
 /**
- * The default before Analyse replaced Flags, as a v1 value could hold it.
+ * The default before the column after Rating replaced Flags, as a v1 value
+ * could hold it.
  *
  * A stored value only exists once somebody has used the chooser, so a stored
  * copy of the old default means "I looked, and this is what I wanted" only in
@@ -149,6 +164,14 @@ function isPreviousDefault(ids: ShotColumnId[]): boolean {
 /** Bump the suffix when the meaning of a stored value changes, never the keys. */
 export const SHOT_COLUMNS_KEY = "shots.columns.v1";
 
+/**
+ * Columns that were replaced, and what took their place. The Analyse button
+ * gave way to Decision: somebody who chose the button gets its replacement in
+ * the same place rather than losing a column without a word. Any other stored
+ * choice is kept as made.
+ */
+const REPLACED: Record<string, ShotColumnId> = { analyze: "decision" };
+
 const ALL_IDS = new Set<string>(SHOT_COLUMNS.map((column) => column.id));
 
 function isColumnId(value: unknown): value is ShotColumnId {
@@ -169,7 +192,9 @@ export function loadShotColumns(storage: Storage | undefined = safeStorage()): S
     if (!raw) return DEFAULT_SHOT_COLUMNS;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return DEFAULT_SHOT_COLUMNS;
-    const known = parsed.filter(isColumnId);
+    const known = parsed
+      .map((value) => (typeof value === "string" ? (REPLACED[value] ?? value) : value))
+      .filter(isColumnId);
     if (known.length === 0 || isPreviousDefault(known)) return DEFAULT_SHOT_COLUMNS;
     return known;
   } catch {

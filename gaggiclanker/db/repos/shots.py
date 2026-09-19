@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.vocab import Decision
 
 __all__ = [
     "SAMPLE_FIELDS",
@@ -190,6 +191,9 @@ class ShotListRow(BaseModel):
     #: The join that carries `rating` and `has_judgement` is already here, so
     #: this costs a column and no query.
     judgement_notes: str | None = None
+    #: The verdict's decision — keep, improve, discard — which the list shows
+    #: and sets from the row. The same join, one more column.
+    judgement_decision: Decision | None = None
     #: What the user says they were brewing. NULL is the `needs_set`
     #: state: the shot arrived while no Set matched it, and it is waiting for
     #: somebody to say which one it belongs to.
@@ -337,6 +341,7 @@ _LIST_COLUMNS = """
     j.shot_id IS NOT NULL AS has_judgement,
     j.rating AS judgement_rating,
     j.notes AS judgement_notes,
+    j.decision AS judgement_decision,
     s.set_version_id,
     sv.set_id AS badge_set_id,
     st.name AS badge_set_name,

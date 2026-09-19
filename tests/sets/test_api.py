@@ -395,15 +395,17 @@ class TestJudgementAndAssignment:
         listed = data(await client.get("/api/shots"))["items"]
         assert [row["judgement_notes"] for row in listed] == [None]
         assert [row["judgement_rating"] for row in listed] == [None]
+        assert [row["judgement_decision"] for row in listed] == [None]
 
         await client.put(
             f"/api/shots/{shot_id}/judgement",
-            json={"rating": 4, "notes": "sharp, and short by a gram"},
+            json={"rating": 4, "notes": "sharp, and short by a gram", "decision": "improve"},
         )
 
         listed = data(await client.get("/api/shots"))["items"]
         assert listed[0]["judgement_notes"] == "sharp, and short by a gram"
         assert listed[0]["judgement_rating"] == 4
+        assert listed[0]["judgement_decision"] == "improve"
         # …and the filter agrees with the column, which it would not if the
         # verdict's rating were invisible to the query.
         assert data(await client.get("/api/shots", params={"min_rating": 4}))["total"] == 1
@@ -412,6 +414,7 @@ class TestJudgementAndAssignment:
         listed = data(await client.get("/api/shots"))["items"]
         assert listed[0]["judgement_notes"] is None
         assert listed[0]["judgement_rating"] is None
+        assert listed[0]["judgement_decision"] is None
 
     @pytest.mark.parametrize("field", ["taste_notes", "aroma_notes"])
     async def test_an_unknown_note_is_refused_by_name(

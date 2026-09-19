@@ -18,12 +18,15 @@ export function SetBadge({ badge, className }: { badge: ShotSetBadge; className?
       asChild
       data-testid="set-badge"
       data-state="assigned"
-      className={cn("gap-1", className)}
+      // As wide as its name, up to whatever the column gives it: the name is
+      // what gives way, down to an ellipsis, and the version and the icon
+      // stay. The whole name is on hover.
+      className={cn("max-w-full gap-1", className)}
     >
       <Link to={`/sets/${badge.set_id}`} title={`${badge.set_name}, version ${badge.version_no}`}>
-        <Layers className="size-3" aria-hidden="true" />
-        <span className="max-w-[9rem] truncate">{badge.set_name}</span>
-        <span className="tabular-nums opacity-70">v{badge.version_no}</span>
+        <Layers className="size-3 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 truncate">{badge.set_name}</span>
+        <span className="shrink-0 tabular-nums opacity-70">v{badge.version_no}</span>
       </Link>
     </Badge>
   );

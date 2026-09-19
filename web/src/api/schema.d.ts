@@ -5088,6 +5088,7 @@ export interface components {
             index_rating?: number | null;
             /** Index Volume G */
             index_volume_g?: number | null;
+            judgement_decision?: components["schemas"]["Decision"] | null;
             /** Judgement Notes */
             judgement_notes?: string | null;
             /** Judgement Rating */
@@ -5277,6 +5278,7 @@ export interface components {
             index_max_pressure_bar?: number | null;
             /** Index Rating */
             index_rating?: number | null;
+            judgement_decision?: components["schemas"]["Decision"] | null;
             /** Judgement Notes */
             judgement_notes?: string | null;
             /** Judgement Rating */

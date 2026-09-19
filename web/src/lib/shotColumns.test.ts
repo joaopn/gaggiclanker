@@ -56,9 +56,24 @@ describe("loadShotColumns", () => {
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("notes");
   });
 
-  it("shows Analyse by default, and Flags only to somebody who asks", () => {
-    expect(DEFAULT_SHOT_COLUMNS).toContain("analyze");
+  it("shows Decision by default, and Flags only to somebody who asks", () => {
+    expect(DEFAULT_SHOT_COLUMNS).toContain("decision");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("flags");
+    expect(SHOT_COLUMNS.map((column) => column.id)).not.toContain("analyze");
+  });
+
+  it("gives somebody who chose the Analyse button its replacement in its place", () => {
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["time", "rating", "analyze", "flags"]),
+    );
+    expect(loadShotColumns()).toEqual(["time", "rating", "decision", "flags"]);
+    // The old default, Analyse included, is the new default.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["set", "time", "duration", "yield", "score", "rating", "analyze"]),
+    );
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
 
   it("reads a stored copy of the previous default as the new default", () => {
@@ -148,8 +163,22 @@ describe("gridTemplates", () => {
   });
 
   it("adds no filler track when a flexible column already takes the rest", () => {
-    const { wide } = gridTemplates(visibleColumns(["set", "time"]));
-    expect(wide).toBe("minmax(8rem,1fr) 7.5rem");
+    const { wide } = gridTemplates(visibleColumns(["time", "profile"]));
+    expect(wide).toBe("7.5rem minmax(8rem,1fr)");
+  });
+
+  it("makes the Set a fixed column that can be dragged narrower than it was", () => {
+    const set = SHOT_COLUMNS.find((column) => column.id === "set");
+    const size = set ? fixedSize(set) : null;
+    expect(size).toEqual({ rem: 8, min: 4, max: 20 });
+    expect(gridTemplates(visibleColumns(["set", "time"]), { set: 2 }).wide).toBe(
+      "4rem 7.5rem minmax(0,1fr)",
+    );
+  });
+
+  it("sizes Decision for its three words", () => {
+    const decision = SHOT_COLUMNS.find((column) => column.id === "decision");
+    expect(decision && fixedSize(decision)).toEqual({ rem: 10.5, min: 9.75, max: 14 });
   });
 
   it("covers every column the chooser offers", () => {
@@ -158,11 +187,11 @@ describe("gridTemplates", () => {
   });
 
   it("draws a fixed column at the reader's width, clamped to its bounds", () => {
-    const columns = visibleColumns(["set", "time", "score"]);
-    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("minmax(8rem,1fr) 9.25rem 3.25rem");
+    const columns = visibleColumns(["profile", "time", "score"]);
+    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem minmax(8rem,1fr) 3.25rem");
     // A stored width from a looser release is still drawn inside today's bounds.
     expect(gridTemplates(columns, { time: 1, score: 99 }).wide).toBe(
-      "minmax(8rem,1fr) 4.5rem 6rem",
+      "4.5rem minmax(8rem,1fr) 6rem",
     );
   });
 
@@ -187,7 +216,7 @@ describe("column widths", () => {
       JSON.stringify({
         time: 8,
         // A flexible column has no width to store.
-        set: 12,
+        profile: 12,
         // Not a column any more.
         vibes: 5,
         // Not a number.

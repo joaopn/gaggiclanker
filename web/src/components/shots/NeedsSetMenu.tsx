@@ -35,7 +35,7 @@ export function NeedsSetMenu({ shot, className }: { shot: ShotListRow; className
           asChild
           variant="outline"
           className={cn(
-            "cursor-pointer border-dashed text-muted-foreground hover:bg-muted hover:text-foreground",
+            "max-w-full cursor-pointer border-dashed text-muted-foreground hover:bg-muted hover:text-foreground",
             "focus-visible:outline-none",
             className,
           )}
@@ -50,8 +50,9 @@ export function NeedsSetMenu({ shot, className }: { shot: ShotListRow; className
             // pressing it does, and for which row of a list of identical badges.
             aria-label={`needs a Set: choose one for shot ${shot.device_id}`}
           >
-            needs a Set
-            <ChevronDown className="size-3" aria-hidden="true" />
+            {/* Truncates like an assigned badge when the Set column is narrow. */}
+            <span className="min-w-0 truncate">needs a Set</span>
+            <ChevronDown className="size-3 shrink-0" aria-hidden="true" />
           </button>
         </Badge>
       </PopoverTrigger>

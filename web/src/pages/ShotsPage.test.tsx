@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -13,7 +13,6 @@ import type {
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { ShotsPage } from "@/pages/ShotsPage";
-import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { flavorPicks, judgement, setRow, vocabulary } from "@/test/setsFixtures";
 import { shot129, syntheticSamples } from "@/test/shotFixture";
@@ -35,7 +34,6 @@ const {
   getDeviceStatus,
   runSync,
   importFiles,
-  runAnalysis,
   getVocabulary,
   getFlavorPicks,
 } = vi.hoisted(() => ({
@@ -50,7 +48,6 @@ const {
   getDeviceStatus: vi.fn(),
   runSync: vi.fn(),
   importFiles: vi.fn(),
-  runAnalysis: vi.fn(),
   getVocabulary: vi.fn(),
   getFlavorPicks: vi.fn(),
 }));
@@ -67,7 +64,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getDeviceStatus,
   runSync,
   importFiles,
-  runAnalysis,
   getVocabulary,
   getFlavorPicks,
 }));
@@ -278,11 +274,13 @@ describe("ShotsPage", () => {
     await listed();
 
     const toggle = screen.getByRole("button", { name: "Shot 000101" });
+    // The decisions render once the vocabulary has answered.
+    await screen.findByRole("button", { name: "Keep shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
       screen.getByRole("button", { name: /^needs a Set/ }),
-      screen.getByRole("button", { name: "Analyse shot 000101" }),
+      ...screen.getAllByRole("button", { name: /^(Keep|Improve|Discard) shot 000101$/ }),
       ...screen.getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
     ]) {
       expect(toggle.contains(control)).toBe(false);
@@ -567,158 +565,183 @@ describe("ShotsPage column widths", () => {
     expect(template().split(" ")[1]).toBe("7.5rem");
     expect(screen.getByTestId("reset-widths")).toBeDisabled();
   });
-});
 
-describe("ShotsPage Analyse column", () => {
-  /** The list with somewhere to navigate to, so a navigation is visible. */
-  function renderList() {
-    return renderWithQueryClient(
-      <Routes>
-        <Route path="/" element={<ShotsPage />} />
-        <Route path="/shots/:shotId" element={<ShotPageProbe />} />
-      </Routes>,
+  it("lets the Set column be narrowed, within its bounds, where it used to take the spare room", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({
+          set_badge: {
+            set_id: 3,
+            set_name: "A long Set name for a Guji on the Niche",
+            version_no: 2,
+          },
+          set_version_id: 22,
+        }),
+      ]),
     );
-  }
-
-  /** Stands in for the shot page and says which fragment it was opened at. */
-  function ShotPageProbe() {
-    const { hash } = useLocation();
-    return <p>the shot page{hash}</p>;
-  }
-
-  function cell(): HTMLElement {
-    return screen.getByTestId("analyse-cell");
-  }
-
-  it("is in the default columns in place of Flags", async () => {
-    getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    expect(screen.getByTestId("header-analyze")).toHaveTextContent("Analyse");
+    const handle = screen.getByRole("separator", { name: "Resize the Set column" });
+    expect(handle).toHaveAttribute("aria-valuenow", "8");
+    expect(template().split(" ")[0]).toBe("8rem");
+    handle.focus();
+    await user.keyboard("{Home}{ArrowLeft}");
+    expect(handle).toHaveAttribute("aria-valuenow", "4");
+    expect(template().split(" ")[0]).toBe("4rem");
+    await user.keyboard("{End}{ArrowRight}");
+    expect(handle).toHaveAttribute("aria-valuenow", "20");
+    // The name gives way to the width rather than the badge overflowing it.
+    const badge = screen.getByTestId("set-badge");
+    expect(badge).toHaveClass("max-w-full");
+    expect(within(badge).getByText(/A long Set name/)).toHaveClass("min-w-0", "truncate");
+  });
+});
+
+describe("ShotsPage Decision column", () => {
+  function cell(): HTMLElement {
+    return screen.getByTestId("decision-cell");
+  }
+
+  /** The list, with the decisions drawn: their words come from the vocabulary. */
+  async function decisions(): Promise<void> {
+    await listed();
+    await within(cell()).findByRole("button", { name: "Keep shot 000101" });
+  }
+
+  it("is in the default columns where Analyse was, and Analyse is gone", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+
+    expect(screen.getByTestId("header-decision")).toHaveTextContent("Decision");
+    expect(screen.queryByTestId("header-analyze")).not.toBeInTheDocument();
     expect(screen.queryByTestId("header-flags")).not.toBeInTheDocument();
+    expect(
+      within(cell())
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Keep", "Improve", "Discard"]);
+    // Fixed and resizable, like the columns beside it.
+    expect(screen.getByRole("separator", { name: "Resize the Decision column" })).toBeVisible();
   });
 
-  it("analyses a shot that has none, once, however fast the clicks come", async () => {
+  it("records a decision from the row, merged into the verdict, and clears it again", async () => {
+    const user = setupUser();
     getShots.mockResolvedValue(
-      listData([
-        shot({
-          set_version_id: 22,
-          set_badge: { set_id: 3, set_name: "Guji", version_no: 2 },
-        }),
-      ]),
+      listData([shot({ has_judgement: true, judgement_decision: "improve" })]),
     );
-    runAnalysis.mockResolvedValue(analysis({ shot_id: 1, status: "running" }));
 
-    renderList();
-    await listed();
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    expect(within(cell()).getByRole("button", { name: "Improve shot 000101" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
-    const button = within(cell()).getByRole("button", { name: "Analyse shot 000101" });
-    // A shot in a Set carries no warning.
-    expect(button).not.toHaveAttribute("title");
-    // Two clicks inside one act: both handlers run before React re-renders,
-    // which is a double click on a slow machine — the button that would
-    // disappear after the first is still there for the second.
-    act(() => {
-      button.click();
-      button.click();
+    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
+
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
+    // The rest of the verdict rides along: a decision never takes the rating,
+    // the notes or the flavour notes with it.
+    expect(putJudgement.mock.calls[0][1]).toEqual({
+      rating: 4,
+      balance: "sour",
+      taste_notes: ["sour_fermented.sour"],
+      aroma_notes: ["fruity.berry"],
+      dose_in_g: 18,
+      dose_out_g: 36,
+      grind_setting: "22",
+      notes: "sharp at the end",
+      decision: "keep",
     });
-
-    await waitFor(() => expect(runAnalysis).toHaveBeenCalledTimes(1));
-    expect(runAnalysis).toHaveBeenCalledWith(1, { model: undefined, force: false });
-    // Still on the list, and still saying it is on it until the row catches up.
-    expect(screen.getByTestId("shot-rows")).toBeInTheDocument();
-    expect(cell()).toHaveAttribute("data-state", "running");
-    expect(within(cell()).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(cell()).getByRole("button", { name: "Keep shot 000101" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // Clicking the pressed one clears it: "not decided yet" is a real answer.
+    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
+    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: null }));
+    // Still the list: a decision is not a click on the row.
+    expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
   });
 
-  it("follows the row to Analysed when the analysis finishes", async () => {
-    getShots.mockResolvedValue(listData([shot({ analysis_state: "running" })]));
-
-    const { queryClient } = renderList();
-    await listed();
-    expect(cell()).toHaveAttribute("data-state", "running");
-    expect(cell()).toHaveTextContent("Analysing…");
-
-    // What the LLM stream's `analysis.finished` does to this page.
-    getShots.mockResolvedValue(listData([shot({ analysis_state: "ok" })]));
-    for (const queryKey of EVENT_INVALIDATIONS["analysis.finished"]) {
-      await queryClient.invalidateQueries({ queryKey });
-    }
-
-    await waitFor(() => expect(cell()).toHaveAttribute("data-state", "ok"));
-  });
-
-  it("links an analysed shot to the analysis on its page", async () => {
+  it("does not flick back to the first of two quick decisions", async () => {
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ analysis_state: "ok" })]));
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true, judgement_decision: null })]));
+    // The writes land when the test says so, one at a time: the second queues
+    // behind the first.
+    const landed: Array<() => void> = [];
+    putJudgement.mockImplementation(
+      (_id: number, body: unknown) => new Promise((resolve) => landed.push(() => resolve(body))),
+    );
 
-    renderList();
-    await listed();
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
+    await user.click(within(cell()).getByRole("button", { name: "Improve shot 000101" }));
+    const pressed = () =>
+      within(cell())
+        .getAllByRole("button", { pressed: true })
+        .map((button) => button.textContent);
+    expect(pressed()).toEqual(["Improve"]);
 
-    const link = screen.getByRole("link", { name: /^Analysed/ });
-    expect(link).toHaveAttribute("href", "/shots/1#analysis");
-    await user.click(link);
-    expect(await screen.findByText("the shot page#analysis")).toBeInTheDocument();
-    expect(runAnalysis).not.toHaveBeenCalled();
-  });
-
-  it("offers a retry with the reason when the last one failed, forcing a re-run", async () => {
-    const user = setupUser();
+    // Keep lands, and the list is re-read with it while Improve is queued.
+    await waitFor(() => expect(landed).toHaveLength(1));
     getShots.mockResolvedValue(
-      listData([shot({ analysis_state: "failed", analysis_error: "rate_limited: slow down" })]),
+      listData([shot({ has_judgement: true, judgement_decision: "keep" })]),
     );
-    runAnalysis.mockResolvedValue(analysis({ shot_id: 1, status: "running" }));
+    const reads = getShots.mock.calls.length;
+    landed[0]();
+    await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads));
+    await waitFor(() => expect(landed).toHaveLength(2));
+    expect(pressed()).toEqual(["Improve"]);
 
-    renderList();
-    await listed();
-
-    const retry = screen.getByRole("button", { name: "Retry the analysis of shot 000101" });
-    expect(retry).toHaveAttribute("title", "The last analysis failed: rate_limited: slow down");
-    await user.click(retry);
-
-    await waitFor(() =>
-      expect(runAnalysis).toHaveBeenCalledWith(1, { model: undefined, force: true }),
+    getShots.mockResolvedValue(
+      listData([shot({ has_judgement: true, judgement_decision: "improve" })]),
     );
+    landed[1]();
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
+    expect(putJudgement.mock.calls[1][1]).toEqual(expect.objectContaining({ decision: "improve" }));
+    await waitFor(() => expect(getShots.mock.calls.length).toBeGreaterThan(reads + 1));
+    expect(pressed()).toEqual(["Improve"]);
   });
 
-  it("stops waiting when a retry fails again straight away", async () => {
+  it("writes nothing to clear a decision on a shot nobody has judged", async () => {
     const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ analysis_state: "failed" })]));
-    runAnalysis.mockResolvedValue(
-      analysis({ shot_id: 1, status: "failed", error: "auth: no key" }),
+    // A row the list has not caught up with: it shows a decision, but there is
+    // no verdict behind it to take one out of.
+    getShots.mockResolvedValue(
+      listData([shot({ has_judgement: false, judgement_decision: "keep" })]),
     );
 
-    renderList();
-    await listed();
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    await user.click(within(cell()).getByRole("button", { name: "Keep shot 000101" }));
 
-    await user.click(screen.getByRole("button", { name: "Retry the analysis of shot 000101" }));
-
-    await waitFor(() => expect(cell()).toHaveAttribute("data-state", "failed"));
-    expect(toast.error).toHaveBeenCalledWith("auth: no key");
+    expect(putJudgement).not.toHaveBeenCalled();
   });
 
-  it("refuses a quarantined shot, as the shot page does, and says why", async () => {
-    getShots.mockResolvedValue(listData([shot({ quarantined: true, analysis_state: "none" })]));
+  it("puts the row's decision back when the write fails", async () => {
+    const user = setupUser();
+    putJudgement.mockRejectedValueOnce(new Error("disk full"));
+    getShots.mockResolvedValue(listData([shot({ has_judgement: true, judgement_decision: null })]));
 
-    renderList();
-    await listed();
+    renderWithQueryClient(<ShotsPage />);
+    await decisions();
+    await user.click(within(cell()).getByRole("button", { name: "Discard shot 000101" }));
 
-    expect(cell()).toHaveAttribute("data-state", "unavailable");
-    expect(cell()).toHaveAttribute("title", expect.stringMatching(/^Quarantined/));
-    expect(within(cell()).getByRole("button", { name: "Analyse shot 000101" })).toBeDisabled();
-  });
-
-  it("warns, without refusing, that a shot with no Set has no recipe to reason from", async () => {
-    getShots.mockResolvedValue(listData([shot({ set_badge: null })]));
-
-    renderList();
-    await listed();
-
-    const button = within(cell()).getByRole("button", { name: "Analyse shot 000101" });
-    expect(button).toBeEnabled();
-    expect(button).toHaveAttribute("title", expect.stringMatching(/^Not in a Set/));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(within(cell()).getByRole("button", { name: "Discard shot 000101" })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      ),
+    );
   });
 });
 
@@ -1045,7 +1068,6 @@ describe("ShotsPage open rows", () => {
   it("does not toggle the row from any of the row's own controls", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: null, rating: null })]));
-    runAnalysis.mockResolvedValue(analysis({ shot_id: 1, status: "running" }));
 
     renderList();
     await listed();
@@ -1054,10 +1076,11 @@ describe("ShotsPage open rows", () => {
     // is painted over them; in a browser it is the lift above the stretched
     // toggle that does. Each control, or a wrapper of it, carries it.
     const row = screen.getByTestId("shot-row");
+    await within(row).findByRole("button", { name: "Keep shot 000101" });
     for (const control of [
       screen.getByRole("checkbox", { name: "Compare shot 000101" }),
       ...within(row).getAllByRole("button", { name: /^(Rate|Clear the rating)/ }),
-      within(row).getByTestId("analyse-cell"),
+      ...within(row).getAllByRole("button", { name: /^(Keep|Improve|Discard) shot/ }),
       screen.getByRole("button", { name: /^needs a Set/ }),
       screen.getByRole("button", { name: "Edit shot 000101" }),
     ]) {
@@ -1066,13 +1089,13 @@ describe("ShotsPage open rows", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^Rate shot 000101 3 of 5/ }));
-    await user.click(screen.getByRole("button", { name: "Analyse shot 000101" }));
+    await user.click(screen.getByRole("button", { name: "Keep shot 000101" }));
     await user.click(screen.getByRole("button", { name: /^needs a Set/ }));
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Edit shot 000101" }));
     await user.keyboard("{Escape}");
 
-    await waitFor(() => expect(runAnalysis).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(2));
     expect(screen.queryByTestId("shot-panel")).not.toBeInTheDocument();
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
