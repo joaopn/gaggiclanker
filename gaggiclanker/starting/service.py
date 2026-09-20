@@ -21,11 +21,19 @@ the same three reasons and with the same consequences:
 
 **`accept` is where the money is.** It creates the Set and its first version
 with `origin='starting_point'` — the only origin that can appear on a version 1
-— and, when the chosen option carried a whole profile document, a draft through
+— and, when the chosen option needs one, a draft through
 `DraftProposals.create_manual`, which is what puts it through the schema, the
 safety policy and the clamp. A document the policy refuses is a 422 naming
 every violation, and the Set is **not** created: half-accepting an option would
 leave a Set pointing at a profile that does not exist.
+
+An option needs a draft in two cases: it authored a whole profile, or it picked
+one from the library and suggests a temperature that profile does not brew at.
+The second is not optional politeness — the machine heats to what the document
+says, a Set version records no temperature of its own, so the only way taking
+an option can make its suggested temperature true is to draft the profile at
+it. Nothing is pushed either way; the person approves the draft on the Profiles
+page.
 
 The accept is idempotent by refusal rather than by repetition, and the *order*
 is what makes that true: the run is claimed with a guarded UPDATE before
@@ -58,6 +66,9 @@ from gaggiclanker.db.repos.starting import (
     StartingPointRunsRepository,
     StartingPointStart,
 )
+from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.profile_policy import clamp
+from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
@@ -495,15 +506,23 @@ class StartingPointService:
         )
 
     async def _draft_for(self, option: StartingPointOption) -> ProfileDraftRow | None:
-        """The draft this option's profile document becomes, if it carried one.
+        """The draft this option becomes, if it needs one.
 
-        Goes through ``create_manual`` rather than a private path, because that
-        is the method that runs the schema check, the clamp and the policy —
-        the same four layers a hand-typed profile gets, and that is not
-        negotiable for a document a language model wrote.
+        Two ways an option needs a draft, and both end in ``create_manual``
+        rather than a private path, because that is the method that runs the
+        schema check, the clamp and the policy — the same four layers a
+        hand-typed profile gets, and that is not negotiable for a document a
+        language model had a hand in.
+
+        The first is an option that **authored** a profile. The second is an
+        option that points at a profile already in the library and suggests a
+        different temperature from the one that profile brews at: the machine
+        heats to what the document says, so taking that option without touching
+        the profile would file a Set whose stated temperature is not the one it
+        brews. See :meth:`_temperature_draft_for`.
         """
         if option.profile is None:
-            return None
+            return await self._temperature_draft_for(option)
         if self.drafts is None:
             raise Unprocessable(
                 "This option carries a new profile, and drafting is not available",
@@ -526,6 +545,89 @@ class StartingPointService:
             notes=f"Proposed by the starting-point wizard ({option.option}).",
         )
         return draft
+
+    async def _temperature_draft_for(self, option: StartingPointOption) -> ProfileDraftRow | None:
+        """The library profile this option picked, redrafted at its temperature.
+
+        An option still suggests a temperature — the rule tier's advice about
+        roast level is half of what this feature is for — and taking the option
+        has to make that temperature true. A Set version records none, so the
+        only place it can be true is the profile, and the only way to change a
+        profile is a draft somebody approves and pushes. Nothing here reaches
+        the machine: the person approves it on the Profiles page exactly as
+        they would a drafted profile of their own.
+
+        Nothing is staged when the two already agree, which is the common case
+        for an option that picked the profile *because* it brews at the right
+        temperature. A profile that states none (the firmware's 0) counts as
+        disagreeing: filing a Set that claims 94 °C against a document that
+        names no temperature would be the same lie in a quieter form.
+
+        **The words say what the draft carries, not what the option asked
+        for.** The safety policy clamps the temperature into its own range, so
+        an option at 98 °C under a policy capped at 95 stages a draft that
+        brews at 95 — and a change summary reading "Brew at 98 °C" would be a
+        sentence the document beside it contradicts. The clamp is applied here
+        first, with the bounds the draft service is about to use, so the
+        summary states 95 and says the option asked for 98. If the clamp lands
+        exactly where the profile already brews there is nothing left to
+        change, and nothing is staged: an empty draft is a chore, not a
+        proposal.
+
+        The base is the picked profile itself, so the diff the person approves
+        is one line — which is the whole reason this is a draft of that profile
+        rather than an authored document.
+        """
+        if option.profile_version_id is None:
+            return None
+        from gaggiclanker.db.repos.profiles import ProfilesRepository
+
+        version = await ProfilesRepository(self.db).get_version(option.profile_version_id)
+        if version is None or not version.profile:
+            return None
+        stated = profile_recipe(version.profile).temperature_c
+        # A twentieth of a degree is not a change anybody asked for, and the
+        # firmware would not brew it differently either.
+        if stated is not None and _same_temperature(stated, option.temperature_c):
+            return None
+        if self.drafts is None:
+            raise Unprocessable(
+                "This option brews the profile you already have at a different temperature, "
+                "and drafting is not available",
+                details={
+                    "field": "option",
+                    "message": (
+                        "the draft service is not wired up on this connection; pick an option "
+                        "whose temperature matches the profile it names"
+                    ),
+                },
+            )
+        document = {**version.profile, "temperature": option.temperature_c}
+        # The same `clamp` and the same bounds `create_manual` is about to
+        # apply, so this is what the stored draft will brew at.
+        clamped, _ = clamp(Profile.model_validate(document), await self.drafts.bounds())
+        staged_at = profile_recipe(clamped.to_device()).temperature_c
+        if staged_at is None or (stated is not None and _same_temperature(stated, staged_at)):
+            return None
+
+        was = "no temperature" if stated is None else f"{stated:g} °C"
+        capped = (
+            ""
+            if _same_temperature(staged_at, option.temperature_c)
+            else (
+                f" The starting point asked for {option.temperature_c:g} °C and the profile "
+                "safety policy capped it."
+            )
+        )
+        return await self.drafts.create_manual(
+            base_version_id=option.profile_version_id,
+            document=document,
+            change_summary=f"Brew at {staged_at:g} °C ({was} before).{capped}",
+            notes=(
+                f"Proposed by the starting-point wizard ({option.option}): the draft brews "
+                f"at {staged_at:g} °C, and this profile is where that lives.{capped}"
+            ),
+        )
 
     async def _base_version_for(self, option: StartingPointOption) -> int:
         """What the new profile is diffed against.
@@ -678,6 +780,17 @@ def _set_name(run: StartingPointRunRow) -> str:
     grinder = (run.grinder_name or "").strip()
     name = f"{bean} on the {grinder}" if grinder else bean
     return name[:200]
+
+
+def _same_temperature(left: float, right: float) -> bool:
+    """Whether two brew temperatures are the same number, near enough.
+
+    A twentieth of a degree apart is not a change anybody asked for, the
+    firmware would not brew it differently, and comparing floats for equality
+    after a clamp has touched them is how a draft that changes nothing gets
+    staged.
+    """
+    return abs(left - right) < 0.05
 
 
 def _intent(
