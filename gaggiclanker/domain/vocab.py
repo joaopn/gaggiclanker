@@ -35,6 +35,8 @@ __all__ = [
     "FLAVOR_NOTES",
     "FLAVOR_PICK_KINDS",
     "FLAVOR_WHEEL",
+    "MEASURE_DECIMALS",
+    "MEASURE_DIFFERENCE_DECIMALS",
     "OUTCOME_STATES",
     "PROCESSES",
     "ROAST_LEVELS",
@@ -42,6 +44,7 @@ __all__ = [
     "RULE_CONFIDENCES",
     "SET_VERSION_ORIGINS",
     "SHOT_STYLES",
+    "SPREAD_MEASURES",
     "STEP_UNITS",
     "SUGGESTION_DIRECTIONS",
     "SUGGESTION_STATUSES",
@@ -61,6 +64,7 @@ __all__ = [
     "RuleConfidence",
     "SetVersionOrigin",
     "ShotStyle",
+    "SpreadMeasure",
     "StepUnit",
     "SuggestionDirection",
     "SuggestionStatus",
@@ -135,6 +139,28 @@ type VersionOutcome = Literal["held", "partly_held", "failed", "inconclusive"]
 #: nobody has graded yet, and the other four are the recorded grade.
 type OutcomeState = Literal[
     "no_prediction", "open", "held", "partly_held", "failed", "inconclusive"
+]
+
+#: The measures the spread is worked out over, and the measures a version's
+#: evidence lays side by side.
+#:
+#: Six because these are the numbers the archive already holds for an ordinary
+#: shot — the duration and the final weight are columns, the first drip, the
+#: peak pressure and the average brew flow are read out of the diagnostics that
+#: were computed at ingest, and the rating is the person's. Nothing here is
+#: derived a second time, and a measure whose value a shot does not carry is
+#: simply not counted for that shot.
+#:
+#: The slugs are the field names `domain/spread.py` reads off a counted shot, so
+#: a measure added here and forgotten there fails at the model rather than
+#: quietly serving nothing.
+type SpreadMeasure = Literal[
+    "shot_time_s",
+    "first_drip_s",
+    "yield_g",
+    "peak_pressure_bar",
+    "brew_flow_ml_s",
+    "rating",
 ]
 
 # ── analysis ─────────────────────────────────────────────────────────
@@ -233,6 +259,34 @@ FLAVOR_PICK_KINDS: tuple[str, ...] = get_args(FlavorPickKind.__value__)
 SET_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
 VERSION_OUTCOMES: tuple[str, ...] = get_args(VersionOutcome.__value__)
 OUTCOME_STATES: tuple[str, ...] = get_args(OutcomeState.__value__)
+#: Typed as the literal rather than as plain strings, unlike its neighbours:
+#: these slugs are also model fields and pydantic needs the enum, and one
+#: tuple typed twice is how a cast creeps into every caller.
+SPREAD_MEASURES: tuple[SpreadMeasure, ...] = get_args(SpreadMeasure.__value__)
+
+#: How each measure is written down. One decimal reads as a shot time or a
+#: weight does; bar and ml/s get two, because a tenth of a bar is a real
+#: difference and 0.3 bar rounded to one decimal is the whole floor. Here
+#: beside the labels and the units rather than in `domain/spread.py`, because
+#: this is how a measure is *read* and the front end is served it.
+MEASURE_DECIMALS: dict[SpreadMeasure, int] = {
+    "shot_time_s": 1,
+    "first_drip_s": 1,
+    "yield_g": 1,
+    "peak_pressure_bar": 2,
+    "brew_flow_ml_s": 2,
+    "rating": 1,
+}
+
+#: One decimal finer, and that is the whole reason it exists: a difference and
+#: the yardstick it is held against decide a verdict, and at the means' own
+#: precision "32.0 minus 30.0 is +2.0, beyond 2.0" reads as a contradiction of
+#: itself. Written one place finer, the same row reads "+2.04 against 2.00" and
+#: says what the arithmetic actually found. Derived rather than typed out, so a
+#: measure cannot end up with a difference coarser than its own mean.
+MEASURE_DIFFERENCE_DECIMALS: dict[SpreadMeasure, int] = {
+    measure: decimals + 1 for measure, decimals in MEASURE_DECIMALS.items()
+}
 SHOT_STYLES: tuple[str, ...] = get_args(ShotStyle.__value__)
 SUGGESTION_VARIABLES: tuple[str, ...] = get_args(SuggestionVariable.__value__)
 SUGGESTION_DIRECTIONS: tuple[str, ...] = get_args(SuggestionDirection.__value__)
