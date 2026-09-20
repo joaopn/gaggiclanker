@@ -31,6 +31,7 @@ from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
@@ -74,6 +75,7 @@ __all__ = [
     "ProfilesRepoDep",
     "PromptServiceDep",
     "RulesRepoDep",
+    "SetProposalsRepoDep",
     "SetsRepoDep",
     "SettingsServiceDep",
     "ShotsRepoDep",
@@ -217,6 +219,10 @@ def get_sets_repo(request: Request) -> SetsRepository:
     return SetsRepository(get_database(request))
 
 
+def get_set_proposals_repo(request: Request) -> SetProposalsRepository:
+    return SetProposalsRepository(get_database(request))
+
+
 def get_judgements_repo(request: Request) -> JudgementsRepository:
     return JudgementsRepository(get_database(request))
 
@@ -320,6 +326,7 @@ SyncRepoDep = Annotated[SyncRepository, Depends(get_sync_repo)]
 BeansRepoDep = Annotated[BeansRepository, Depends(get_beans_repo)]
 GrindersRepoDep = Annotated[GrindersRepository, Depends(get_grinders_repo)]
 SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
+SetProposalsRepoDep = Annotated[SetProposalsRepository, Depends(get_set_proposals_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]
 FlavorPicksRepoDep = Annotated[FlavorPicksRepository, Depends(get_flavor_picks_repo)]
 RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]

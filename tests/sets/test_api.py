@@ -14,6 +14,8 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
+from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
+from gaggiclanker.db.repos.sets import SetVersionPatch
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository, StartingPointStart
 
@@ -951,3 +953,277 @@ class TestTrendsRoute:
         assert point["duration_s"] == 28.0
         assert point["ratio"] == 2.0
         assert point["rating"] == 4
+
+
+class TestProposals:
+    """A change an agent proposed, and the two buttons only a person reaches.
+
+    There is no route that *creates* a proposal here on purpose: creating one is
+    the chat tool's job and accepting one is the person's, and these tests are
+    about the half that answers to a press. The rows are made through the
+    repository, which is what the tool does with the same call.
+    """
+
+    @staticmethod
+    async def _propose(app: FastAPI, set_id: int, **over: Any) -> Any:
+        spec: dict[str, Any] = {
+            "patch": SetVersionPatch(grind_setting="21"),
+            "reason": "one click finer, chasing the sourness out",
+            "prediction": "Compared to v1: two to four seconds longer and less sour.",
+        }
+        spec.update(over)
+        result = await SetProposalsRepository(app.state.db).create(set_id, ProposalWrite(**spec))
+        assert result.proposal is not None, result.refused
+        return result.proposal
+
+    async def test_the_set_page_carries_the_waiting_proposal(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        await self._propose(app, created["id"])
+
+        body = data(await client.get(f"/api/sets/{created['id']}"))
+        proposal = body["proposal"]
+        assert proposal["status"] == "proposed"
+        assert proposal["changed"] == ["the grind"]
+        assert proposal["base_is_current"] is True
+        assert proposal["compares_to_version_no"] == 1
+        # Rendered the way the log renders a version's own diff.
+        assert proposal["changes"] == [
+            {
+                "field": "grind_setting",
+                "label": "Grind",
+                "before": "22",
+                "after": "21",
+                "from_profile": False,
+            }
+        ]
+        # Nothing has changed yet: the Set is still on v1.
+        assert body["set"]["current_version_no"] == 1
+
+    async def test_a_set_with_nothing_waiting_says_so(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        assert data(await client.get(f"/api/sets/{created['id']}"))["proposal"] is None
+
+    async def test_accept_records_the_version_and_links_the_log_to_the_chat(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        thread = data(
+            await client.post(
+                "/api/chat/threads",
+                json={"title": "About v1", "set_id": created["id"]},
+            )
+        )
+        proposal = await self._propose(app, created["id"], thread_id=thread["id"])
+
+        body = data(
+            await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={})
+        )
+        assert body["proposal"]["status"] == "accepted"
+        assert body["version"]["version_no"] == 2
+        assert body["version"]["origin"] == "chat"
+        assert body["version"]["grind_setting"] == "21"
+        assert body["version"]["intent"] == "one click finer, chasing the sourness out"
+        assert body["version"]["prediction"].startswith("Compared to v1")
+
+        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        assert detail["proposal"] is None
+        assert detail["versions"][0]["chat_thread_id"] == thread["id"]
+
+    async def test_a_version_recorded_by_hand_retires_the_waiting_proposal(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        """No stale question left on the page, and no button that can only refuse."""
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+        await client.post(
+            f"/api/sets/{created['id']}/versions",
+            json={"dose_g": 19.0, "intent": "by hand"},
+        )
+
+        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        assert detail["proposal"] is None
+        listed = data(await client.get(f"/api/sets/{created['id']}/proposals"))["items"]
+        assert [item["status"] for item in listed] == ["stale"]
+
+        response = await client.post(
+            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+        )
+        assert response.status_code == 409
+        assert error(response)["code"] == "PROPOSAL_DECIDED"
+        # Two versions, not three: the hand-made change is where the Set is.
+        assert len(data(await client.get(f"/api/sets/{created['id']}"))["versions"]) == 2
+
+    async def test_accept_answers_the_stale_code_when_it_is_the_one_to_catch_it(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        """The defence behind the retirement, put back by hand to reach it."""
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+        await client.post(
+            f"/api/sets/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
+        )
+        await app.state.db.execute(
+            "UPDATE set_version_proposals SET status = 'proposed' WHERE id = ?", (proposal.id,)
+        )
+
+        response = await client.post(
+            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+        )
+        assert response.status_code == 409
+        body = error(response)
+        assert body["code"] == "PROPOSAL_STALE"
+        assert body["details"]["field"] == "base_version_id"
+
+    async def test_accept_refuses_while_the_current_prediction_is_open(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+        version_id = data(await client.get(f"/api/sets/{created['id']}"))["versions"][0]["version"][
+            "id"
+        ]
+        await client.patch(
+            f"/api/sets/{created['id']}/versions/{version_id}/prediction",
+            json={"prediction": "Expect about 30 s.", "compares_to_version_id": None},
+        )
+
+        response = await client.post(
+            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+        )
+        assert response.status_code == 409
+        assert error(response)["code"] == "PROPOSAL_OUTCOME_OPEN"
+        # Still waiting, so the person can grade and come back to it.
+        assert data(await client.get(f"/api/sets/{created['id']}"))["proposal"] is not None
+
+    async def test_accepting_twice_is_a_conflict(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+        url = f"/api/sets/{created['id']}/proposals/{proposal.id}/accept"
+        assert (await client.post(url, json={})).status_code == 200
+        response = await client.post(url, json={})
+        assert response.status_code == 409
+        assert error(response)["code"] == "PROPOSAL_DECIDED"
+
+    async def test_decline_records_the_note_and_creates_nothing(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+
+        body = data(
+            await client.post(
+                f"/api/sets/{created['id']}/proposals/{proposal.id}/decline",
+                json={"note": "tried that last week"},
+            )
+        )
+        assert body["proposal"]["status"] == "declined"
+        assert body["proposal"]["decline_note"] == "tried that last week"
+        assert body["version"] is None
+        assert len(data(await client.get(f"/api/sets/{created['id']}"))["versions"]) == 1
+
+    async def test_the_list_holds_the_answered_ones_too(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        first = await self._propose(app, created["id"])
+        await client.post(f"/api/sets/{created['id']}/proposals/{first.id}/decline", json={})
+        await self._propose(app, created["id"], patch=SetVersionPatch(dose_g=18.5))
+
+        items = data(await client.get(f"/api/sets/{created['id']}/proposals"))["items"]
+        assert [item["status"] for item in items] == ["proposed", "declined"]
+        assert [item["changed"] for item in items] == [["the dose"], ["the grind"]]
+
+    async def test_a_proposal_of_another_set_is_not_found(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        mine = await _make_set(client, bean_id)
+        theirs = await _make_set(client, bean_id, name="Another coffee")
+        proposal = await self._propose(app, theirs["id"])
+
+        response = await client.post(
+            f"/api/sets/{mine['id']}/proposals/{proposal.id}/accept", json={}
+        )
+        assert response.status_code == 404
+
+    async def test_a_proposal_nobody_can_read_does_not_take_the_page_down(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        """One damaged row is a card that says so, not a Set page that will not load."""
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+        await app.state.db.execute(
+            "UPDATE set_version_proposals SET patch_json = ? WHERE id = ?",
+            ("not json at all", proposal.id),
+        )
+
+        served = data(await client.get(f"/api/sets/{created['id']}"))["proposal"]
+        assert served["readable"] is False
+        assert served["changes"] == []
+        assert served["changed"] == []
+        assert (
+            data(await client.get(f"/api/sets/{created['id']}/proposals"))["items"][0]["readable"]
+            is False
+        )
+
+        refused = await client.post(
+            f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={}
+        )
+        assert refused.status_code == 409
+        assert error(refused)["code"] == "PROPOSAL_UNREADABLE"
+
+        declined = data(
+            await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/decline", json={})
+        )
+        assert declined["proposal"]["status"] == "declined"
+
+    async def test_a_decline_note_longer_than_a_note_is_refused(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+
+        response = await client.post(
+            f"/api/sets/{created['id']}/proposals/{proposal.id}/decline",
+            json={"note": "x" * 501},
+        )
+
+        # 400 rather than 422: the envelope's own validation handler answers a
+        # malformed body, which a note ten times its cap is.
+        assert response.status_code == 400
+        # And it is still waiting: a refused note declines nothing.
+        assert data(await client.get(f"/api/sets/{created['id']}"))["proposal"] is not None
+
+    async def test_a_decline_note_of_five_hundred_is_kept(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+
+        body = data(
+            await client.post(
+                f"/api/sets/{created['id']}/proposals/{proposal.id}/decline",
+                json={"note": "y" * 500},
+            )
+        )
+        assert body["proposal"]["decline_note"] == "y" * 500
+
+    async def test_details_never_echo_what_was_sent(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        proposal = await self._propose(app, created["id"])
+        await client.post(
+            f"/api/sets/{created['id']}/versions", json={"dose_g": 19.0, "intent": "by hand"}
+        )
+        body = error(
+            await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={})
+        )
+        rendered = str(body)
+        assert "chasing the sourness out" not in rendered
+        assert "less sour" not in rendered

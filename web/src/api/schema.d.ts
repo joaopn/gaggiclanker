@@ -1502,6 +1502,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every change an agent has proposed for this Set
+         * @description Newest first, waiting and answered alike.
+         *
+         *     The answered ones are the point as much as the waiting one: a declined
+         *     proposal is a record of what the person did not want, and a stale one says
+         *     the Set moved on while somebody was thinking about it.
+         */
+        get: operations["list_proposals_api_sets__set_id__proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a proposed change: record it as this Set's next version
+         * @description A person's press, and the only way a proposal becomes a version.
+         *
+         *     There is no tool for this, in the chat or over MCP, and there never will
+         *     be: an agent that could accept its own proposal would be an agent changing
+         *     what the next shot is filed under without anybody agreeing to it.
+         *
+         *     **Nothing is sent to the machine.** A proposal that names a different
+         *     profile records that this Set now brews with that profile, exactly as the
+         *     Add a version form does. Putting a profile on the display stays a separate
+         *     act on the Profiles page.
+         */
+        post: operations["accept_proposal_api_sets__set_id__proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/proposals/{proposal_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a proposed change down, optionally saying why
+         * @description Nothing is created. The note is what the next conversation is told.
+         */
+        post: operations["decline_proposal_api_sets__set_id__proposals__proposal_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/rollback": {
         parameters: {
             query?: never;
@@ -2687,6 +2760,22 @@ export interface components {
         /** ApiResponse[SetListData] */
         ApiResponse_SetListData_: {
             data?: components["schemas"]["SetListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetProposalDecision] */
+        ApiResponse_SetProposalDecision_: {
+            data?: components["schemas"]["SetProposalDecision"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetProposalListData] */
+        ApiResponse_SetProposalListData_: {
+            data?: components["schemas"]["SetProposalListData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4777,6 +4866,23 @@ export interface components {
             }[];
         };
         /**
+         * ProposalDecline
+         * @description `POST .../decline`: the turn-down, and optionally why.
+         *
+         *     The note is worth typing: it is what the next conversation is told, and
+         *     "not that, the last two finer grinds went the wrong way" is the sentence
+         *     that stops the same proposal coming back next week.
+         */
+        ProposalDecline: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** @enum {string} */
+        ProposalStatus: "proposed" | "accepted" | "declined" | "stale";
+        /**
          * ProviderBody
          * @description ``{"provider": "openrouter"}``, or an empty body for the configured one.
          */
@@ -4986,6 +5092,7 @@ export interface components {
             judgements: {
                 [key: string]: components["schemas"]["ShotJudgementRow"];
             };
+            proposal?: components["schemas"]["SetProposalDetail"] | null;
             /** Rollback Target Version Id */
             rollback_target_version_id?: number | null;
             set: components["schemas"]["SetRow"];
@@ -5013,6 +5120,99 @@ export interface components {
         SetListData: {
             /** Items */
             items: components["schemas"]["SetRow"][];
+        };
+        /**
+         * SetProposalDecision
+         * @description What accepting one produced: the proposal as it now stands, and the version.
+         */
+        SetProposalDecision: {
+            proposal: components["schemas"]["SetProposalDetail"];
+            version?: components["schemas"]["SetVersionRow"] | null;
+        };
+        /**
+         * SetProposalDetail
+         * @description One proposed change, as the card that asks about it needs it.
+         *
+         *     Written out field by field rather than dumped from the repository's row,
+         *     because the row carries the change as a **patch** — a shape whose nulls mean
+         *     "clear this field" and whose absences mean "leave it alone". That is the
+         *     right thing to store and the wrong thing to hand a browser, which wants the
+         *     same before-and-after lines the experiment log already draws. So the patch
+         *     stays inside the repository and `changes` comes out.
+         */
+        SetProposalDetail: {
+            /**
+             * Base Is Current
+             * @default true
+             */
+            base_is_current: boolean;
+            /** Base Version Id */
+            base_version_id: number;
+            /** Base Version No */
+            base_version_no?: number | null;
+            /**
+             * Changed
+             * @default []
+             */
+            changed: string[];
+            /**
+             * Changes
+             * @default []
+             */
+            changes: components["schemas"]["FieldChange"][];
+            /**
+             * Combined Reason
+             * @default
+             */
+            combined_reason: string;
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Compares To Version No */
+            compares_to_version_no?: number | null;
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Decline Note
+             * @default
+             */
+            decline_note: string;
+            /** Id */
+            id: number;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /**
+             * Readable
+             * @default true
+             */
+            readable: boolean;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Resulting Version Id */
+            resulting_version_id?: number | null;
+            /** Resulting Version No */
+            resulting_version_no?: number | null;
+            /** Set Id */
+            set_id: number;
+            /** @default proposed */
+            status: components["schemas"]["ProposalStatus"];
+            /** Thread Id */
+            thread_id?: number | null;
+        };
+        /**
+         * SetProposalListData
+         * @description `GET /api/sets/{id}/proposals`: every change ever proposed, newest first.
+         */
+        SetProposalListData: {
+            /** Items */
+            items: components["schemas"]["SetProposalDetail"][];
         };
         /**
          * SetRow
@@ -5216,6 +5416,8 @@ export interface components {
         SetVersionDetail: {
             /** Changes */
             changes: components["schemas"]["FieldChange"][];
+            /** Chat Thread Id */
+            chat_thread_id?: number | null;
             /**
              * Dead End
              * @default false
@@ -9117,6 +9319,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_api_sets__set_id__proposals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetProposalListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_proposal_api_sets__set_id__proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_proposal_api_sets__set_id__proposals__proposal_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalDecline"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetProposalDecision_"];
                 };
             };
             /** @description Validation Error */

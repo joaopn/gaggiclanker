@@ -71,6 +71,7 @@ from gaggiclanker.domain.vocab import (
 )
 
 __all__ = [
+    "RECIPE_FIELDS",
     "VERSION_FIELDS",
     "FieldChange",
     "RollbackWrite",
@@ -713,8 +714,11 @@ _MEASURE_COLUMNS = """
                                           '$.diagnostics.extraction.flow_avg_brew_ml_s')
                         END AS brew_flow_ml_s""".strip()
 
-#: Every column of `set_versions` that a new version copies from its parent.
-_INHERITED = (
+#: Every column of `set_versions` that a new version copies from its parent —
+#: which is exactly the recipe. Named and exported because a proposed change is
+#: stored as a patch of these and nothing else, and two lists of "what the
+#: recipe is" would disagree the day a sixth field appears.
+RECIPE_FIELDS: tuple[str, ...] = (
     "profile_version_id",
     "grind_setting",
     "grind_value",
@@ -879,30 +883,56 @@ class SetsRepository(Repository):
         that writes the child, so two versions added at once cannot both claim
         the same parent or the same `version_no`.
         """
+        async with self.db.transaction():
+            version_id = await self.append_version(set_id, patch)
+        return None if version_id is None else await self.get_version(version_id)
+
+    async def append_version(
+        self, set_id: int, patch: SetVersionPatch, *, keep_proposal: int | None = None
+    ) -> int | None:
+        """The append itself, inside a transaction the caller already holds.
+
+        Separate from :meth:`add_version` because accepting a proposed change
+        has to do this **and** four other reads and writes in one transaction —
+        the proposal is still waiting, the Set has not moved on since, the
+        current prediction has been graded — and this application shares one
+        connection whose ``transaction()`` refuses to nest. A caller that opens
+        no transaction of its own wants :meth:`add_version`.
+
+        ``keep_proposal`` is the proposal being accepted, which is the one
+        waiting proposal this append does **not** make stale. See
+        :meth:`_insert_version`.
+
+        Returns the new version's id, or ``None`` when the Set has no current
+        version to build on.
+        """
         sent = patch.model_dump(exclude_unset=True)
         now = utc_now()
-        async with self.db.transaction():
-            parent = await self._current_version_row(set_id)
-            if parent is None:
-                return None
-            values = {field: getattr(parent, field) for field in _INHERITED}
-            for field in _INHERITED:
-                if field in sent:
-                    values[field] = sent[field]
-            values["intent"] = patch.intent
-            values["origin"] = patch.origin
-            values["origin_analysis_id"] = patch.origin_analysis_id
-            values["pushed_device_profile_id"] = patch.pushed_device_profile_id
-            # Omitted is "against the version I changed from"; an explicit null
-            # is "against nothing". `sent` is what tells them apart.
-            compares_to = (
-                sent["compares_to_version_id"] if "compares_to_version_id" in sent else parent.id
-            )
-            values.update(_prediction_values(patch.prediction, compares_to, now=now))
-            version_id = await self._insert_version(
-                set_id, parent.version_no + 1, parent.id, values, now
-            )
-        return await self.get_version(version_id)
+        parent = await self._current_version_row(set_id)
+        if parent is None:
+            return None
+        values = {field: getattr(parent, field) for field in RECIPE_FIELDS}
+        for field in RECIPE_FIELDS:
+            if field in sent:
+                values[field] = sent[field]
+        values["intent"] = patch.intent
+        values["origin"] = patch.origin
+        values["origin_analysis_id"] = patch.origin_analysis_id
+        values["pushed_device_profile_id"] = patch.pushed_device_profile_id
+        # Omitted is "against the version I changed from"; an explicit null
+        # is "against nothing". `sent` is what tells them apart.
+        compares_to = (
+            sent["compares_to_version_id"] if "compares_to_version_id" in sent else parent.id
+        )
+        values.update(_prediction_values(patch.prediction, compares_to, now=now))
+        return await self._insert_version(
+            set_id,
+            parent.version_no + 1,
+            parent.id,
+            values,
+            now,
+            keep_proposal=keep_proposal,
+        )
 
     async def _insert_version(
         self,
@@ -911,7 +941,27 @@ class SetsRepository(Repository):
         parent_version_id: int | None,
         values: dict[str, Any],
         now: str,
+        *,
+        keep_proposal: int | None = None,
     ) -> int:
+        """Write one version row, and retire whatever it has overtaken.
+
+        Every path that appends a version to a Set comes through here — the Add
+        a version form, a roll back, a pushed profile draft, an accepted
+        analysis suggestion, and accepting a proposal — which is why the
+        retirement lives here rather than in each of them. A change an agent
+        proposed was argued against the version that was current when it was
+        made; the moment the Set moves on, that argument is about a recipe
+        nobody is brewing, and leaving the row saying "waiting" would tell the
+        next conversation something false and leave the person a button that can
+        only answer 409.
+
+        So it becomes `stale`, in the same transaction as the version that
+        overtook it, and the agent is free to propose afresh.
+        ``keep_proposal`` is the exception and the only one: accepting a
+        proposal appends a version too, and that proposal is not overtaken by
+        the version it created.
+        """
         payload: dict[str, Any] = {
             "set_id": set_id,
             "version_no": version_no,
@@ -926,13 +976,23 @@ class SetsRepository(Repository):
             "prediction_at": values.get("prediction_at"),
             "created_at": now,
         }
-        for field in _INHERITED:
+        for field in RECIPE_FIELDS:
             payload[field] = values.get(field)
         columns = ", ".join(payload)
         placeholders = ", ".join(f":{name}" for name in payload)
         cursor = await self.db.execute(
             f"INSERT INTO set_versions ({columns}) VALUES ({placeholders})",  # noqa: S608 - keys are the literal payload above
             payload,
+        )
+        await self.db.execute(
+            """
+            UPDATE set_version_proposals
+               SET status = 'stale', decided_at = :now
+             WHERE set_id = :set_id
+               AND status = 'proposed'
+               AND (:keep IS NULL OR id != :keep)
+            """,
+            {"set_id": set_id, "now": now, "keep": keep_proposal},
         )
         return int(cursor.lastrowid or 0)
 
@@ -1056,7 +1116,7 @@ class SetsRepository(Repository):
                 return VersionWriteResult(refused="no_target")
             if target.id == current.id:
                 return VersionWriteResult(refused="current_version")
-            values: dict[str, Any] = {field: getattr(target, field) for field in _INHERITED}
+            values: dict[str, Any] = {field: getattr(target, field) for field in RECIPE_FIELDS}
             values["intent"] = spec.intent
             values["origin"] = "manual"
             values["restores_version_id"] = target.id
