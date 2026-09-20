@@ -1,9 +1,16 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SetDetailPage } from "@/pages/SetDetailPage";
 import { knowledgeInsight, suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { labelCounts, setDetail, trackRecord, trends, vocabulary } from "@/test/setsFixtures";
+import {
+  labelCounts,
+  proposal,
+  setDetail,
+  trackRecord,
+  trends,
+  vocabulary,
+} from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -62,6 +69,7 @@ const {
   getProfileVersions,
   createProfileDraft,
   pushProfileDraft,
+  acceptSetProposal,
 } = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
@@ -81,6 +89,7 @@ const {
   // place by one person.
   createProfileDraft: vi.fn(),
   pushProfileDraft: vi.fn(),
+  acceptSetProposal: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -96,6 +105,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getProfileVersions,
   createProfileDraft,
   pushProfileDraft,
+  acceptSetProposal,
 }));
 
 beforeEach(() => {
@@ -127,6 +137,53 @@ beforeEach(() => {
 });
 
 describe("SetDetailPage", () => {
+  it("puts a waiting change above the log, with both answers", async () => {
+    getSet.mockResolvedValue(setDetail({ proposal: proposal() }));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const card = await screen.findByTestId("proposal-card");
+    expect(card).toHaveTextContent("A change is waiting for you");
+    expect(card).toHaveTextContent("a touch more body");
+    expect(within(card).getByRole("button", { name: /Accept/ })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /Decline/ })).toBeInTheDocument();
+    // And it is above the log: the log is a record, this is a question.
+    const log = screen.getByTestId("version-timeline");
+    expect(card.compareDocumentPosition(log) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("accepts a waiting change through the route, not through a version write", async () => {
+    const user = setupUser();
+    getSet.mockResolvedValue(setDetail({ proposal: proposal() }));
+    acceptSetProposal.mockResolvedValue({
+      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
+      version: { version_no: 3 },
+    });
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Accept/ }));
+
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5));
+    // Accepting is not "add a version with these fields": the server owns the
+    // staleness and outcome checks, and a client-side append would skip them.
+    expect(addSetVersion).not.toHaveBeenCalled();
+  });
+
+  it("shows nothing where nothing has been proposed", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+    await screen.findByTestId("version-timeline");
+    expect(screen.queryByTestId("proposal-card")).not.toBeInTheDocument();
+  });
+
+  it("links an accepted version's log entry back to the room it was argued in", async () => {
+    const detail = setDetail();
+    detail.versions[0].chat_thread_id = 9;
+    getSet.mockResolvedValue(detail);
+    renderWithQueryClient(<SetDetailPage />);
+
+    const link = (await screen.findByTestId("version-proposed-in")).querySelector("a");
+    expect(link).toHaveAttribute("href", "/chat?thread=9");
+  });
+
   it("draws the trend chart for a Set with several versions and its shots", async () => {
     renderWithQueryClient(<SetDetailPage />);
 

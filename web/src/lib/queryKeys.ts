@@ -64,6 +64,15 @@ export const queryKeys = {
      * over-fetch the shots list could not afford costs one request here.
      */
     trends: (id: string) => ["sets", "trends", id] as const,
+    /**
+     * Every change an agent has proposed for a Set, waiting and answered.
+     *
+     * Its own key rather than a slice of the detail, because the chat reads
+     * it without the Set page being open: a proposal card in a conversation
+     * has to know whether the person has answered it yet, and loading the
+     * whole Set page's payload for that would fetch five hundred shots.
+     */
+    proposals: (id: string) => ["sets", "proposals", id] as const,
   },
   beans: {
     all: ["beans"] as const,

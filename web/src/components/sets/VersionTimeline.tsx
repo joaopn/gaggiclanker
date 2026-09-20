@@ -237,6 +237,21 @@ export function VersionTimeline({
               </Link>
             </p>
 
+            {/* A version an agent proposed was argued somewhere *else*: in the
+                conversation about the version before it. That room holds the
+                reasoning this entry is the result of, and it is a different
+                thread from the one above. */}
+            {entry.chat_thread_id ? (
+              <p className="text-xs" data-testid="version-proposed-in">
+                <Link
+                  to={`/chat?thread=${entry.chat_thread_id}`}
+                  className="text-muted-foreground underline underline-offset-2"
+                >
+                  Proposed in a conversation — read it
+                </Link>
+              </p>
+            ) : null}
+
             <p className="text-muted-foreground text-xs" data-testid="version-labels">
               {/* This version's shots, not the whole Set's: the count beside
                   the link is this version's, and a link that widened to the

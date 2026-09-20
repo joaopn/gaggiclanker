@@ -4,6 +4,7 @@ import type {
   GrinderRow,
   MeasureSpread,
   SetDetailData,
+  SetProposal,
   SetRow,
   SetTrends,
   SetVersionDetail,
@@ -389,6 +390,35 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
     track_record: trackRecord(),
     spread: spreadReport(),
     rollback_target_version_id: null,
+    proposal: null,
+    ...overrides,
+  };
+}
+
+export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
+  return {
+    id: 5,
+    set_id: 3,
+    thread_id: 9,
+    base_version_id: 22,
+    base_version_no: 2,
+    base_is_current: true,
+    changes: [
+      { field: "dose_g", label: "Dose", before: "18 g", after: "18.5 g", from_profile: false },
+    ],
+    changed: ["the dose"],
+    readable: true,
+    reason: "Half a gram more, to carry the finish.",
+    prediction: "Compared to v2: a touch more body and no slower.",
+    compares_to_version_id: 22,
+    compares_to_version_no: 2,
+    combined_reason: "",
+    status: "proposed",
+    decline_note: "",
+    resulting_version_id: null,
+    resulting_version_no: null,
+    created_at: "2026-03-01T09:00:00.000Z",
+    decided_at: null,
     ...overrides,
   };
 }

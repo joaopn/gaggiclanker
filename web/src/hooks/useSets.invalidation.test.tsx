@@ -1,30 +1,44 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useRollbackSet, useSetVersionOutcome, useSetVersionPrediction } from "@/hooks/useSets";
+import {
+  useDecideProposal,
+  useRollbackSet,
+  useSetVersionOutcome,
+  useSetVersionPrediction,
+} from "@/hooks/useSets";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { version } from "@/test/setsFixtures";
+import { proposal, version } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
   Toaster: () => null,
 }));
 
-const { setVersionPrediction, setVersionOutcome, clearVersionOutcome, rollbackSet } = vi.hoisted(
-  () => ({
-    setVersionPrediction: vi.fn(),
-    setVersionOutcome: vi.fn(),
-    clearVersionOutcome: vi.fn(),
-    rollbackSet: vi.fn(),
-  }),
-);
+const {
+  setVersionPrediction,
+  setVersionOutcome,
+  clearVersionOutcome,
+  rollbackSet,
+  acceptSetProposal,
+  declineSetProposal,
+} = vi.hoisted(() => ({
+  setVersionPrediction: vi.fn(),
+  setVersionOutcome: vi.fn(),
+  clearVersionOutcome: vi.fn(),
+  rollbackSet: vi.fn(),
+  acceptSetProposal: vi.fn(),
+  declineSetProposal: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   setVersionPrediction,
   setVersionOutcome,
   clearVersionOutcome,
   rollbackSet,
+  acceptSetProposal,
+  declineSetProposal,
 }));
 
 beforeEach(() => {
@@ -33,6 +47,11 @@ beforeEach(() => {
   setVersionOutcome.mockResolvedValue(version());
   clearVersionOutcome.mockResolvedValue(version());
   rollbackSet.mockResolvedValue(version({ version_no: 3, restores_version_no: 1 }));
+  acceptSetProposal.mockResolvedValue({ proposal: proposal(), version: version() });
+  declineSetProposal.mockResolvedValue({
+    proposal: proposal({ status: "declined" }),
+    version: null,
+  });
 });
 
 /**
@@ -95,6 +114,30 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     expect(keys).toContainEqual(["shots", "detail"]);
     // Not `["shots"]`: that would refetch every open list and its filters.
     expect(keys).not.toContainEqual(queryKeys.shots.all);
+  });
+
+  it("accepting a proposal sweeps the Sets, because a version appeared", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDecideProposal());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ setId: 3, proposalId: 5, decision: "accept" });
+
+    await waitFor(() => expect(keys.length).toBe(1));
+    expect(keys).toEqual([queryKeys.sets.all]);
+  });
+
+  it("declining touches the Set detail and the proposals, and no shot", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDecideProposal());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ setId: 3, proposalId: 5, decision: "decline", note: "" });
+
+    await waitFor(() => expect(keys.length).toBe(2));
+    // No version, no shot, no chart: one row changed. Sweeping `sets` would
+    // refetch every open Set page's five hundred shots to record a sentence.
+    expect(keys).toContainEqual(queryKeys.sets.detail("3"));
+    expect(keys).toContainEqual(queryKeys.sets.proposals("3"));
+    expect(keys).not.toContainEqual(queryKeys.sets.all);
   });
 
   it("a roll back sweeps the Sets, and nothing else", async () => {

@@ -73,10 +73,13 @@ import type {
   ProfileVersionRow,
   PromptData,
   PromptListData,
+  ProposalDecline,
   RollbackWrite,
   SetCreate,
   SetDetailData,
   SetListData,
+  SetProposalDecision,
+  SetProposalListData,
   SetRow,
   SetTrends,
   SettingsMap,
@@ -818,6 +821,40 @@ export async function clearVersionOutcome(id: number, versionId: number): Promis
 /** Go back to an earlier recipe. Appends a version; writes nothing to the machine. */
 export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetVersionRow> {
   return fetchApi<SetVersionRow>(`/sets/${id}/rollback`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Every change an agent has proposed for a Set, newest first.
+ *
+ * Waiting and answered alike: a declined proposal is the record of what the
+ * person did not want, and the chat's card reads its own row back from here to
+ * know whether it is still a question.
+ */
+export async function getSetProposals(id: number): Promise<SetProposalListData> {
+  return fetchApi<SetProposalListData>(`/sets/${id}/proposals`);
+}
+
+/** Record a proposed change as the Set's next version. A person's press. */
+export async function acceptSetProposal(
+  id: number,
+  proposalId: number,
+): Promise<SetProposalDecision> {
+  return fetchApi<SetProposalDecision>(`/sets/${id}/proposals/${proposalId}/accept`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+/** Turn one down, optionally saying why. Creates nothing. */
+export async function declineSetProposal(
+  id: number,
+  proposalId: number,
+  body: ProposalDecline = { note: "" },
+): Promise<SetProposalDecision> {
+  return fetchApi<SetProposalDecision>(`/sets/${id}/proposals/${proposalId}/decline`, {
     method: "POST",
     body: JSON.stringify(body),
   });

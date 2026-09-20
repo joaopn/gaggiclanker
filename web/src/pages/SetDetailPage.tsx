@@ -24,6 +24,7 @@ import {
   recipeHint,
   temperatureNote,
 } from "@/components/sets/NewSetDialog";
+import { ProposalCard } from "@/components/sets/ProposalCard";
 import { RollbackButton } from "@/components/sets/RollbackButton";
 import { SetSpread } from "@/components/sets/SetSpread";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
@@ -231,6 +232,14 @@ export function SetDetailPage() {
         description="Newest first: what changed, what you were trying, what you predicted it would do, the shots it produced and how the prediction turned out."
       >
         <TrackRecord detail={detail.data} setId={row.id} />
+        {/* Above everything in the log, because it is the only thing here that
+            is a question rather than a record: a change somebody is waiting to
+            answer, and the log's first entry is not it yet. */}
+        {detail.data.proposal ? (
+          <div className="mb-3">
+            <ProposalCard setId={row.id} proposal={detail.data.proposal} showThreadLink />
+          </div>
+        ) : null}
         {/* Above the log, because it is what every comparison in the log is
             held against: three seconds is a lot or nothing depending on it. */}
         <SetSpread spread={detail.data.spread ?? []} />

@@ -7,13 +7,16 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  acceptSetProposal,
   activateSet,
   addSetVersion,
   archiveSet,
   clearVersionOutcome,
   createSet,
+  declineSetProposal,
   deleteJudgement,
   getSet,
+  getSetProposals,
   getSets,
   getSetTrends,
   getShot,
@@ -29,6 +32,8 @@ import type {
   SetCreate,
   SetDetailData,
   SetListData,
+  SetProposalDecision,
+  SetProposalListData,
   SetRow,
   SetTrends,
   SetVersionPatch,
@@ -78,6 +83,70 @@ export function useSetTrends(id: number | undefined): UseQueryResult<SetTrends, 
     queryKey: queryKeys.sets.trends(String(id)),
     queryFn: () => getSetTrends(id as number),
     enabled: id !== undefined && Number.isFinite(id),
+  });
+}
+
+/**
+ * The changes an agent has proposed for a Set.
+ *
+ * Read on the Set page's behalf by the page itself (the detail carries the
+ * waiting one) and, on its own, by a proposal card inside a conversation: that
+ * card has to say whether the person has answered yet, and it is often open
+ * when the Set page is not.
+ */
+export function useSetProposals(
+  id: number | undefined,
+): UseQueryResult<SetProposalListData, Error> {
+  return useQuery({
+    queryKey: queryKeys.sets.proposals(String(id)),
+    queryFn: () => getSetProposals(id as number),
+    enabled: id !== undefined && Number.isFinite(id),
+  });
+}
+
+/**
+ * Accept or decline one. The two answers to the same question, so one hook.
+ *
+ * They invalidate different things, because they change different things.
+ * **Accepting** appends a version: the Sets list's version count moves, the
+ * trend chart gains a boundary and the Set page's whole log changes, so the
+ * `sets` prefix goes. **Declining** changes one row — no version, no shot, no
+ * chart — so it reaches the Set detail (which carries the waiting proposal)
+ * and the proposals list, and nothing else. A decline that swept the prefix
+ * would refetch every open Set page's five hundred shots to record a sentence.
+ *
+ * The failure is the interesting half: the server answers a stale proposal and
+ * an ungraded prediction with sentences the person can act on, so the toast
+ * carries the server's words rather than "Could not accept".
+ */
+export function useDecideProposal(): UseMutationResult<
+  SetProposalDecision,
+  Error,
+  { setId: number; proposalId: number; decision: "accept" | "decline"; note?: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, proposalId, decision, note }) =>
+      decision === "accept"
+        ? acceptSetProposal(setId, proposalId)
+        : declineSetProposal(setId, proposalId, { note: note ?? "" }),
+    onSuccess: (result) =>
+      toast.success(
+        result.version
+          ? `Version ${result.version.version_no} recorded. Nothing was sent to the machine.`
+          : "Proposal declined",
+      ),
+    onError: (error) => toast.error(error.message),
+    onSettled: (_data, _error, variables) => {
+      if (variables.decision === "accept") {
+        void invalidateSets(queryClient);
+        return;
+      }
+      void invalidateSetDetail(queryClient, String(variables.setId));
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.sets.proposals(String(variables.setId)),
+      });
+    },
   });
 }
 

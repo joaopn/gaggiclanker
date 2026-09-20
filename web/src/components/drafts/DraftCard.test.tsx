@@ -48,6 +48,32 @@ beforeEach(() => {
 });
 
 describe("DraftCard", () => {
+  it("shows the prediction a Set's draft carries, and where it lands", () => {
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({
+          set_id: 3,
+          set_name: "Guji on the Niche",
+          prediction: "Compared to v2: less of the dry finish, and no slower.",
+          compares_to_version_no: 2,
+        })}
+      />,
+    );
+
+    const block = screen.getByTestId("draft-prediction");
+    expect(block).toHaveTextContent("Guji on the Niche");
+    expect(block).toHaveTextContent("compared to v2");
+    expect(block).toHaveTextContent("less of the dry finish");
+    // Where it lands matters as much as what it says: pushing this draft for a
+    // different Set records no prediction at all.
+    expect(block).toHaveTextContent("when you push this draft for that Set");
+  });
+
+  it("shows no prediction block on a draft nobody predicted anything about", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} />);
+    expect(screen.queryByTestId("draft-prediction")).not.toBeInTheDocument();
+  });
+
   it("shows what the draft actually changes, per phase and per field", async () => {
     renderWithQueryClient(<DraftCard draft={draft()} />);
 

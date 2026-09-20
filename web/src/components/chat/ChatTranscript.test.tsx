@@ -1,8 +1,20 @@
 import { screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { proposal } from "@/test/setsFixtures";
+
+const { getSetProposals } = vi.hoisted(() => ({ getSetProposals: vi.fn() }));
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  getSetProposals,
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  getSetProposals.mockResolvedValue({ items: [] });
+});
 
 /**
  * The transcript is where the feature's honesty lives: a reader has to be able
@@ -108,9 +120,9 @@ describe("ChatTranscript", () => {
     expect(screen.getAllByText(/"shot_id": 129/).length).toBeGreaterThan(0);
   });
 
-  it("marks a propose call as a proposal without expanding anything", () => {
-    const messages: ChatMessage[] = [
-      message({ id: 1, role: "user", content: "start a version" }),
+  function proposed(): ChatMessage[] {
+    return [
+      message({ id: 1, role: "user", content: "what should I change?" }),
       message({
         id: 2,
         role: "assistant",
@@ -125,25 +137,57 @@ describe("ChatTranscript", () => {
             name: "propose_set_version",
             ok: true,
             content: JSON.stringify({
-              version: { set_id: 3, version_no: 4 },
-              changed: ["grind_setting"],
+              proposal_id: 5,
+              set_id: 3,
+              status: "proposed",
+              changed: ["the dose"],
+              change_summary: "Dose 18 g → 18.5 g",
             }),
           },
         ],
       }),
-      message({ id: 4, role: "assistant", content: "Created v4." }),
+      message({ id: 4, role: "assistant", content: "Half a gram more — accept it if you agree." }),
     ];
+  }
 
+  it("marks a propose call as a proposal without expanding anything", () => {
     renderWithQueryClient(
-      <ChatTranscript messages={messages} runs={[]} permissions={PERMISSIONS} />,
+      <ChatTranscript messages={proposed()} runs={[]} permissions={PERMISSIONS} />,
     );
 
     expect(screen.getByTestId("tool-trace")).toHaveTextContent("proposal");
+    // Before the row is read back, the transcript's own summary is the card.
     const card = screen.getByTestId("propose-card-set_version");
-    expect(within(card).getByRole("link", { name: /Set version v4/ })).toHaveAttribute(
-      "href",
-      "/sets/3",
+    expect(card).toHaveTextContent("A change to this Set: the dose");
+    expect(card).toHaveTextContent("Dose 18 g → 18.5 g");
+  });
+
+  it("offers the decision on the card once the proposal is read back", async () => {
+    getSetProposals.mockResolvedValue({ items: [proposal()] });
+
+    renderWithQueryClient(
+      <ChatTranscript messages={proposed()} runs={[]} permissions={PERMISSIONS} />,
     );
+
+    // Live rather than from the transcript: a conversation read a week later
+    // must not offer to accept something that was accepted on the Set page.
+    const card = await screen.findByTestId("proposal-card");
+    expect(within(card).getByRole("button", { name: /Accept/ })).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /Decline/ })).toBeInTheDocument();
+  });
+
+  it("says how a proposal was answered instead of offering it again", async () => {
+    getSetProposals.mockResolvedValue({
+      items: [proposal({ status: "declined", decline_note: "The dose is not the problem." })],
+    });
+
+    renderWithQueryClient(
+      <ChatTranscript messages={proposed()} runs={[]} permissions={PERMISSIONS} />,
+    );
+
+    const decided = await screen.findByTestId("proposal-decided");
+    expect(decided).toHaveTextContent("The dose is not the problem.");
+    expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
   });
 
   it("points a drafted profile at the staging section of the profiles page", () => {

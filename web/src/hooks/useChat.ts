@@ -80,6 +80,27 @@ export type ChatStreamEvent = {
 };
 
 /** One tool call and whatever came back, paired for the trace. */
+/**
+ * The Set a tool result proposed a change to, or `null`.
+ *
+ * Read from the tool's own output rather than guessed from the thread: the
+ * output is what the card is built from, and a result that proposed nothing
+ * must not invalidate anything.
+ */
+export function proposedSetId(content: string | undefined): number | null {
+  if (!content) return null;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object") return null;
+    const output = parsed as Record<string, unknown>;
+    if (output.proposal_id === undefined) return null;
+    const setId = Number(output.set_id);
+    return Number.isFinite(setId) ? setId : null;
+  } catch {
+    return null;
+  }
+}
+
 export type TraceEntry = {
   id: string;
   name: string;
@@ -269,6 +290,18 @@ export function useChatRun(runId: number | null, threadId: number | null): LiveR
                 : entry,
             ),
           );
+          // A proposed change appears mid-answer and its card reads the row
+          // back to know whether it is still a question. Waiting for the run
+          // to finish would leave the person looking at a card with no buttons
+          // while the model writes three more paragraphs.
+          if (event.ok !== false) {
+            const setId = proposedSetId(event.content);
+            if (setId !== null) {
+              void queryClient.invalidateQueries({
+                queryKey: queryKeys.sets.proposals(String(setId)),
+              });
+            }
+          }
           break;
         case "message":
           // The stored message is about to arrive through the thread query, so

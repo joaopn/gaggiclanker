@@ -1,7 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import { FilePen, Layers, Lightbulb } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
+import { useSetProposals } from "@/hooks/useSets";
 
 /**
  * What a `propose_` tool created, as a card that links to it.
@@ -20,6 +22,9 @@ export type Proposal = {
   detail: string;
   href: string;
   icon: LucideIcon;
+  /** A proposed Set change: which Set, and which row on it. */
+  setId?: number;
+  proposalId?: number;
 };
 
 function parse(content: string | undefined): Record<string, unknown> | null {
@@ -39,25 +44,33 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
   if (!output) return null;
 
   if (entry.name === "propose_set_version") {
-    const version = output.version as Record<string, unknown> | undefined;
-    if (!version) return null;
+    const proposalId = output.proposal_id;
+    const setId = output.set_id;
+    if (proposalId === undefined || setId === undefined) return null;
     const changed = Array.isArray(output.changed) ? (output.changed as string[]) : [];
     return {
       kind: "set_version",
-      label: `Set version v${String(version.version_no ?? "?")}`,
-      detail: changed.length > 0 ? `changed ${changed.join(", ")}` : "created",
-      href: `/sets/${String(version.set_id ?? "")}`,
+      // "Proposed", not "created": the version does not exist until the person
+      // presses Accept, and this card is where they press it.
+      label: `A change to this Set${changed.length > 0 ? `: ${changed.join(", ")}` : ""}`,
+      detail: String(output.change_summary ?? "waiting for you"),
+      href: `/sets/${String(setId)}`,
       icon: Layers,
+      setId: Number(setId),
+      proposalId: Number(proposalId),
     };
   }
 
   if (entry.name === "draft_profile") {
     const draftId = output.draft_id;
     if (draftId === undefined) return null;
+    const prediction = String(output.prediction ?? "");
     return {
       kind: "draft",
       label: `Profile draft #${String(draftId)}`,
-      detail: String(output.change_summary ?? "waiting for approval"),
+      detail: prediction
+        ? `${String(output.change_summary ?? "")} — predicts: ${prediction}`
+        : String(output.change_summary ?? "waiting for approval"),
       href: "/profiles#staged",
       icon: FilePen,
     };
@@ -80,8 +93,45 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
   return null;
 }
 
+/**
+ * A proposed Set change, read back live so the buttons tell the truth.
+ *
+ * The tool's own output is a snapshot of the moment it was called, and this
+ * card is read again every time the conversation is scrolled to — days later,
+ * after the person has answered it on the Set page. So the row is fetched
+ * rather than rendered from the transcript, and a proposal that has since been
+ * accepted says so here instead of offering to accept it a second time.
+ *
+ * Until the fetch lands, the summary from the transcript is what is shown: a
+ * card that flashed empty would be worse than one that starts as a line of
+ * text.
+ */
+function ProposedChange({ proposal }: { proposal: Proposal }) {
+  const setId = proposal.setId as number;
+  const proposals = useSetProposals(setId);
+  const row = proposals.data?.items.find((item) => item.id === proposal.proposalId);
+  if (!row) {
+    return (
+      <div className="m-2 mt-0" data-testid="propose-card-set_version">
+        <p className="rounded-md border border-primary/40 bg-primary/5 p-2 text-sm">
+          {proposal.label}
+          <span className="block text-muted-foreground text-xs">{proposal.detail}</span>
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="m-2 mt-0" data-testid="propose-card-set_version">
+      <ProposalCard setId={setId} proposal={row} />
+    </div>
+  );
+}
+
 export function ProposeCard({ proposal }: { proposal: Proposal }) {
   const Icon = proposal.icon;
+  if (proposal.kind === "set_version" && proposal.setId && proposal.proposalId) {
+    return <ProposedChange proposal={proposal} />;
+  }
   return (
     <div
       className="m-2 mt-0 rounded-md border border-primary/40 bg-primary/5 p-2"

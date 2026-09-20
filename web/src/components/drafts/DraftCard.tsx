@@ -89,6 +89,28 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
 
       {draft.change_summary ? <p className="mt-2 text-sm">{draft.change_summary}</p> : null}
 
+      {/* A draft proposed inside a Set's conversation is an experiment on that
+          Set, and this is what it claims. It says where the claim lands,
+          because "the prediction is recorded" is only true of a push for this
+          Set — pushing it for another one records none. */}
+      {draft.prediction ? (
+        <div
+          className="mt-2 rounded-md border border-border bg-muted/40 p-2"
+          data-testid="draft-prediction"
+        >
+          <p className="text-muted-foreground text-xs">
+            Prediction for {draft.set_name ?? "its Set"}
+            {draft.compares_to_version_no ? ` · compared to v${draft.compares_to_version_no}` : ""}
+          </p>
+          <p className="text-sm">{draft.prediction}</p>
+          <p className="mt-1 text-muted-foreground text-xs">
+            {draft.status === "pushed"
+              ? "Recorded on the Set when this was pushed for it."
+              : "It is recorded on the Set when you push this draft for that Set, and not before."}
+          </p>
+        </div>
+      ) : null}
+
       <div className="mt-3">
         <h4 className="mb-1 font-medium text-sm">What changes</h4>
         {detail.isPending ? (
