@@ -243,11 +243,22 @@ SELECT v.id AS set_version_id,
        v.target_temperature_c,
        v.intent,
        v.origin,
+       -- The experiment half of a version: what it was expected to do, against
+       -- which version, and how that turned out. The two comparisons are joined
+       -- back to their version *numbers* because a model reading this view
+       -- reasons in "v3", never in a row id.
+       v.prediction,
+       cmp.version_no AS compares_to_version_no,
+       res.version_no AS restores_version_no,
+       v.outcome,
+       v.outcome_note,
        v.created_at,
        (SELECT COUNT(*) FROM shots s WHERE s.set_version_id = v.id) AS shot_count
   FROM set_versions v
   JOIN sets st ON st.id = v.set_id
-  LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id;
+  LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
+  LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
+  LEFT JOIN set_versions res ON res.id = v.restores_version_id;
 
 CREATE VIEW v_judgements AS
 SELECT j.shot_id,

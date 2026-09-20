@@ -5,6 +5,7 @@ import type {
   SetDetailData,
   SetRow,
   SetTrends,
+  SetVersionDetail,
   SetVersionRow,
   ShotJudgement,
   SimilarSet,
@@ -64,6 +65,20 @@ export const vocabulary: Vocabulary = {
     { value: "analysis", label: "From an analysis" },
     { value: "chat", label: "From the chat" },
     { value: "starting_point", label: "From the starting-point wizard" },
+  ],
+  version_outcomes: [
+    { value: "held", label: "Held" },
+    { value: "partly_held", label: "Partly held" },
+    { value: "failed", label: "Failed" },
+    { value: "inconclusive", label: "Inconclusive" },
+  ],
+  outcome_states: [
+    { value: "no_prediction", label: "No prediction" },
+    { value: "open", label: "Open" },
+    { value: "held", label: "Held" },
+    { value: "partly_held", label: "Partly held" },
+    { value: "failed", label: "Failed" },
+    { value: "inconclusive", label: "Inconclusive" },
   ],
   // The analyzer's own closed sets, served from the same endpoint for the same reason:
   // the suggestion cards and the Knowledge page render these words.
@@ -272,6 +287,16 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
     intent: "",
     origin: "manual",
     origin_analysis_id: null,
+    prediction: "",
+    compares_to_version_id: null,
+    compares_to_version_no: null,
+    restores_version_id: null,
+    restores_version_no: null,
+    prediction_at: null,
+    outcome: null,
+    outcome_note: "",
+    outcome_at: null,
+    outcome_state: "no_prediction",
     created_at: "2026-04-02T00:00:00.000Z",
     shot_count: 2,
     ...overrides,
@@ -313,10 +338,35 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
         }),
         changes: [{ field: "grind_setting", label: "Grind", before: "22", after: "21" }],
         shots: [],
+        dead_end: false,
+        labels: labelCounts(),
       },
-      { version: version(), changes: [], shots: [] },
+      { version: version(), changes: [], shots: [], dead_end: false, labels: labelCounts() },
     ],
     judgements: {},
+    track_record: trackRecord(),
+    rollback_target_version_id: null,
+    ...overrides,
+  };
+}
+
+export function labelCounts(
+  overrides: Partial<SetVersionDetail["labels"]> = {},
+): SetVersionDetail["labels"] {
+  return { keep: 0, improve: 0, discard: 0, unlabelled: 0, ...overrides };
+}
+
+export function trackRecord(
+  overrides: Partial<SetDetailData["track_record"]> = {},
+): SetDetailData["track_record"] {
+  return {
+    no_prediction: 0,
+    open: 0,
+    held: 0,
+    partly_held: 0,
+    failed: 0,
+    inconclusive: 0,
+    graded: 0,
     ...overrides,
   };
 }

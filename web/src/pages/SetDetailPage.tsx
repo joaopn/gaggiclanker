@@ -341,6 +341,7 @@ function NewVersionForm({ setId, onDone }: { setId: number; onDone: () => void }
             setId,
             patch: {
               intent,
+              prediction: "",
               origin: "manual",
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),

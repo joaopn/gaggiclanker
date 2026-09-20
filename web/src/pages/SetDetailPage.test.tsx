@@ -136,6 +136,7 @@ describe("SetDetailPage", () => {
     // them as changed and the timeline's diff would say nothing.
     expect(patch).toEqual({
       intent: "finer still",
+      prediction: "",
       origin: "manual",
       grind_setting: "20",
       grind_value: 20,

@@ -177,6 +177,9 @@ export function AssignToSet({
                     setId: branchTarget.id,
                     patch: {
                       intent,
+                      // Recording what was actually pulled, after the fact: there is
+                      // nothing left to predict about it.
+                      prediction: "",
                       origin: "manual",
                       // Only the fields the judgement actually carries are sent:
                       // omitting one inherits the parent's value, and sending an

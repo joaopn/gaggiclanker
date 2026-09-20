@@ -9,11 +9,18 @@ the design rather than an omission — see `db/repos/sets.py`.
 `GET /api/sets/{id}` is the page: the Set, every version newest first with the
 diff against its parent already computed, and the shots grouped under the
 version they were pulled with.
+
+Three routes do edit a version, and they are the exceptions that prove the
+rule: they write the **prediction** (only while the version has no shots) and
+the **outcome** (at any time, and clearable). Neither is part of the recipe. The
+fourth, `/rollback`, appends a version like everything else — it just copies its
+recipe from an earlier one instead of the current one.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, replace
 from typing import Annotated, NoReturn
@@ -37,17 +44,26 @@ from gaggiclanker.db.repos.analyses import SuggestionRow
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.sets import (
     FieldChange,
+    RollbackWrite,
     SetRow,
+    SetTrackRecord,
     SetTrends,
     SetVersionPatch,
     SetVersionRow,
     SetVersionWrite,
     SetWrite,
+    VersionLabelCounts,
+    VersionOutcomeWrite,
+    VersionPredictionWrite,
+    VersionRefusal,
+    VersionWriteResult,
+    dead_end_ids,
+    track_record,
     version_changes,
 )
 from gaggiclanker.db.repos.shots import ShotListRow
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
+from gaggiclanker.infra.errors import AppError, Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
 
 __all__ = ["router"]
@@ -104,6 +120,12 @@ class SetVersionDetail(BaseModel):
     #: for version 1, which is a baseline rather than a change to anything.
     changes: list[FieldChange]
     shots: list[ShotListRow]
+    #: A later roll back stepped over this version. Computed from the list, not
+    #: from the row: it is a fact about what came after, not about this version.
+    dead_end: bool = False
+    #: How this version's shots were labelled. Counted over the Set's shots
+    #: rather than over `shots` above, which is capped at `SHOTS_PER_SET`.
+    labels: VersionLabelCounts = VersionLabelCounts()
 
 
 class SuggestionListData(BaseModel):
@@ -130,6 +152,11 @@ class SetDetailData(BaseModel):
     #: Verdicts for the shots above, keyed by shot id as a string (JSON object
     #: keys are strings, and pretending otherwise costs the client a cast).
     judgements: dict[str, ShotJudgementRow]
+    #: How often this Set's predictions held. The page's one headline number.
+    track_record: SetTrackRecord = SetTrackRecord()
+    #: The version the page offers to go back to: the newest one other than the
+    #: current that has a Keep shot. NULL when there is nowhere to go back to.
+    rollback_target_version_id: int | None = None
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -138,6 +165,100 @@ def _missing(field: str, value: int, noun: str) -> NoReturn:
         f"No {noun} {value}",
         details={"field": field, "message": f"that {noun} does not exist"},
     )
+
+
+def _unwrap(result: VersionWriteResult, set_id: int, version_id: int | None = None) -> JSONResponse:
+    """The written version, or the one error its refusal means.
+
+    The repository answers with a slug and no opinion about HTTP; this is the
+    one place a slug becomes a status, a code and a sentence. `details` names
+    the field at fault and never repeats what was sent — a prediction is the
+    person's own words and has no business in an error body.
+    """
+    if result.version is not None:
+        return envelope_response(result.version.model_dump(mode="json"))
+    raise _REFUSALS[result.refused or "no_version"](set_id, version_id)
+
+
+def _refusal_no_version(set_id: int, version_id: int | None) -> AppError:
+    return NotFound(f"No version {version_id} in Set {set_id}")
+
+
+def _refusal_has_shots(set_id: int, version_id: int | None) -> AppError:
+    return Conflict(
+        f"Version {version_id} already has shots",
+        code="VERSION_HAS_SHOTS",
+        details={
+            "field": "prediction",
+            "message": "a prediction is written before the shots, not after them",
+        },
+    )
+
+
+def _refusal_has_outcome(set_id: int, version_id: int | None) -> AppError:
+    return Conflict(
+        f"Version {version_id} has already been graded",
+        code="VERSION_HAS_OUTCOME",
+        details={
+            "field": "prediction",
+            "message": "clear the outcome first — it grades the prediction as it was written",
+        },
+    )
+
+
+def _refusal_bad_compare(set_id: int, version_id: int | None) -> AppError:
+    return Unprocessable(
+        "That is not a version this prediction can be compared against",
+        details={
+            "field": "compares_to_version_id",
+            "message": "it must be an earlier version of this Set",
+        },
+    )
+
+
+def _refusal_no_prediction(set_id: int, version_id: int | None) -> AppError:
+    return Unprocessable(
+        f"Version {version_id} states no prediction",
+        details={"field": "outcome", "message": "there is nothing to grade"},
+    )
+
+
+def _refusal_nothing_to_grade(set_id: int, version_id: int | None) -> AppError:
+    return Conflict(
+        f"Version {version_id} has no shot you have formed a view about",
+        code="NOTHING_TO_GRADE",
+        details={
+            "field": "outcome",
+            "message": "label a shot Keep or Improve before grading the prediction",
+        },
+    )
+
+
+def _refusal_no_target(set_id: int, version_id: int | None) -> AppError:
+    return Unprocessable(
+        f"No such version in Set {set_id}",
+        details={"field": "to_version_id", "message": "it must be a version of this Set"},
+    )
+
+
+def _refusal_current_version(set_id: int, version_id: int | None) -> AppError:
+    return Unprocessable(
+        "That is already the current version",
+        details={"field": "to_version_id", "message": "pick an earlier version to go back to"},
+    )
+
+
+#: Every refusal the repository can answer with, and the error it becomes.
+_REFUSALS: dict[VersionRefusal, Callable[[int, int | None], AppError]] = {
+    "no_version": _refusal_no_version,
+    "has_shots": _refusal_has_shots,
+    "has_outcome": _refusal_has_outcome,
+    "bad_compare": _refusal_bad_compare,
+    "no_prediction": _refusal_no_prediction,
+    "nothing_to_grade": _refusal_nothing_to_grade,
+    "no_target": _refusal_no_target,
+    "current_version": _refusal_current_version,
+}
 
 
 @router.get("", response_model=ApiResponse[SetListData], summary="The Sets, active one first")
@@ -224,11 +345,15 @@ async def get_set(
         if shot.set_version_id in grouped:
             grouped[shot.set_version_id].append(shot)
 
+    dead_ends = dead_end_ids(versions)
+    counts = await sets.label_counts(set_id)
     details = [
         SetVersionDetail(
             version=version,
             changes=version_changes(version, by_id.get(version.parent_version_id or 0), labels),
             shots=grouped[version.id],
+            dead_end=version.id in dead_ends,
+            labels=counts.get(version.id, VersionLabelCounts()),
         )
         for version in versions
     ]
@@ -238,6 +363,8 @@ async def get_set(
             set=row,
             versions=details,
             judgements={str(shot_id): verdict for shot_id, verdict in verdicts.items()},
+            track_record=track_record(versions),
+            rollback_target_version_id=await sets.rollback_target(set_id),
         ).model_dump(mode="json")
     )
 
@@ -256,10 +383,88 @@ async def add_version(set_id: int, body: SetVersionPatch, sets: SetsRepoDep) -> 
     than compared against defaults — "no dose" and "same dose as before" are
     different statements about the coffee.
     """
+    # The Set first: a comparison check against a Set that is not there would
+    # answer "that is not a version of this Set", which is true and useless
+    # when the Set itself is the thing that does not exist.
+    if await sets.get(set_id) is None:
+        raise NotFound(f"No Set {set_id}")
+    # The one reference on this body that is not a recipe field. Checked here
+    # because it is the only place it can arrive: `add_version` inherits and
+    # appends, and a comparison against a version of somebody else's Set is a
+    # bad request rather than something the append should quietly drop. Every
+    # candidate is older by construction — the new version is the highest there
+    # is — so only the "same Set" half of the rule applies here.
+    compare = body.compares_to_version_id
+    if body.prediction and compare is not None:
+        if await sets.version_of_set(set_id, compare) is None:
+            raise _refusal_bad_compare(set_id, None)
     version = await sets.add_version(set_id, body)
-    if version is None:
+    if version is None:  # pragma: no cover - the Set was checked above
         raise NotFound(f"No Set {set_id}")
     return envelope_response(version.model_dump(mode="json"), status_code=201)
+
+
+@router.patch(
+    "/{set_id}/versions/{version_id}/prediction",
+    response_model=ApiResponse[SetVersionRow],
+    summary="Say what this version is expected to do differently",
+)
+async def set_prediction(
+    set_id: int, version_id: int, body: VersionPredictionWrite, sets: SetsRepoDep
+) -> JSONResponse:
+    """Writable only while the version has no shots.
+
+    An empty `prediction` takes the prediction back, comparison and all — which
+    is the only way to remove one, and still only before the first shot.
+    """
+    return _unwrap(await sets.set_prediction(set_id, version_id, body), set_id, version_id)
+
+
+@router.put(
+    "/{set_id}/versions/{version_id}/outcome",
+    response_model=ApiResponse[SetVersionRow],
+    summary="Grade this version's prediction",
+)
+async def set_outcome(
+    set_id: int, version_id: int, body: VersionOutcomeWrite, sets: SetsRepoDep
+) -> JSONResponse:
+    """Held, partly held, failed or inconclusive, with the why beside it.
+
+    Recordable only once the version has a prediction and a shot somebody
+    labelled Keep or Improve; changeable afterwards as often as you like.
+    """
+    return _unwrap(await sets.set_outcome(set_id, version_id, body), set_id, version_id)
+
+
+@router.delete(
+    "/{set_id}/versions/{version_id}/outcome",
+    response_model=ApiResponse[SetVersionRow],
+    summary="Take back the grade on this version's prediction",
+)
+async def clear_outcome(set_id: int, version_id: int, sets: SetsRepoDep) -> JSONResponse:
+    return _unwrap(await sets.clear_outcome(set_id, version_id), set_id, version_id)
+
+
+@router.post(
+    "/{set_id}/rollback",
+    response_model=ApiResponse[SetVersionRow],
+    status_code=201,
+    summary="Go back to an earlier recipe, as a new version",
+)
+async def rollback(set_id: int, body: RollbackWrite, sets: SetsRepoDep) -> JSONResponse:
+    """Append a version whose recipe is `to_version_id`'s.
+
+    Nothing is written to the machine. If the restored version names a
+    different profile, the log says so exactly as it does for any other version
+    that changes one, and putting that profile on the machine stays a separate,
+    deliberate act.
+    """
+    if await sets.get(set_id) is None:
+        raise NotFound(f"No Set {set_id}")
+    result = await sets.rollback(set_id, body)
+    if result.version is None:
+        return _unwrap(result, set_id, body.to_version_id)
+    return envelope_response(result.version.model_dump(mode="json"), status_code=201)
 
 
 @router.post(

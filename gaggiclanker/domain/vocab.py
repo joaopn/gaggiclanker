@@ -35,6 +35,7 @@ __all__ = [
     "FLAVOR_NOTES",
     "FLAVOR_PICK_KINDS",
     "FLAVOR_WHEEL",
+    "OUTCOME_STATES",
     "PROCESSES",
     "ROAST_LEVELS",
     "RULE_CATEGORIES",
@@ -46,12 +47,14 @@ __all__ = [
     "SUGGESTION_STATUSES",
     "SUGGESTION_UNITS",
     "SUGGESTION_VARIABLES",
+    "VERSION_OUTCOMES",
     "AnalysisStatus",
     "Balance",
     "BurrType",
     "Decision",
     "FlavorNode",
     "FlavorPickKind",
+    "OutcomeState",
     "Process",
     "RoastLevel",
     "RuleCategory",
@@ -63,6 +66,7 @@ __all__ = [
     "SuggestionStatus",
     "SuggestionUnit",
     "SuggestionVariable",
+    "VersionOutcome",
     "Vocabulary",
     "flavor_ancestors",
     "flavor_path",
@@ -117,6 +121,21 @@ type FlavorPickKind = Literal["taste", "aroma"]
 #: `starting_point` is the starting-point wizard — the only origin that can appear on a
 #: *first* version, which is what makes "how good is the cold start" answerable.
 type SetVersionOrigin = Literal["manual", "analysis", "chat", "starting_point"]
+
+#: A person's grade of a version's prediction, recorded after the shots are in.
+#: Four values rather than a yes/no because the honest answer to "did what you
+#: expected happen" is usually neither: a change that fixed the sourness and
+#: lengthened the shot partly held, and one whose two shots were both channelled
+#: is inconclusive — filing either as a failure would teach the wrong lesson.
+type VersionOutcome = Literal["held", "partly_held", "failed", "inconclusive"]
+
+#: What the experiment log shows for a version, which is the outcome plus the
+#: two states that are not an outcome at all. Derived from the row, never
+#: stored: `no_prediction` is an empty `prediction`, `open` is a prediction
+#: nobody has graded yet, and the other four are the recorded grade.
+type OutcomeState = Literal[
+    "no_prediction", "open", "held", "partly_held", "failed", "inconclusive"
+]
 
 # ── analysis ─────────────────────────────────────────────────────────
 
@@ -208,6 +227,8 @@ BALANCES: tuple[str, ...] = get_args(Balance.__value__)
 DECISIONS: tuple[str, ...] = get_args(Decision.__value__)
 FLAVOR_PICK_KINDS: tuple[str, ...] = get_args(FlavorPickKind.__value__)
 SET_VERSION_ORIGINS: tuple[str, ...] = get_args(SetVersionOrigin.__value__)
+VERSION_OUTCOMES: tuple[str, ...] = get_args(VersionOutcome.__value__)
+OUTCOME_STATES: tuple[str, ...] = get_args(OutcomeState.__value__)
 SHOT_STYLES: tuple[str, ...] = get_args(ShotStyle.__value__)
 SUGGESTION_VARIABLES: tuple[str, ...] = get_args(SuggestionVariable.__value__)
 SUGGESTION_DIRECTIONS: tuple[str, ...] = get_args(SuggestionDirection.__value__)
@@ -455,6 +476,12 @@ class Vocabulary(BaseModel):
     balances: list[Term]
     decisions: list[Term]
     origins: list[Term]
+    #: The four grades a version prediction can be given, which is what the
+    #: "record an outcome" control offers.
+    version_outcomes: list[Term]
+    #: The six states the experiment log renders, the four above plus the two
+    #: that are not a grade: `no_prediction` and `open`.
+    outcome_states: list[Term]
     #: The flavour wheel, as a tree: nine categories, their groups, their notes.
     flavor_wheel: list[FlavorNode]
     #: The analyzer's own closed sets, served for the same reason as the
@@ -490,6 +517,14 @@ _DECISION_LABELS = {
     "keep": "Keep",
     "improve": "Improve",
     "discard": "Discard",
+}
+_OUTCOME_LABELS = {
+    "held": "Held",
+    "partly_held": "Partly held",
+    "failed": "Failed",
+    "inconclusive": "Inconclusive",
+    "open": "Open",
+    "no_prediction": "No prediction",
 }
 _ORIGIN_LABELS = {
     "manual": "You changed it",
@@ -550,6 +585,8 @@ def vocabulary() -> Vocabulary:
         balances=_terms(BALANCES, _BALANCE_LABELS),
         decisions=_terms(DECISIONS, _DECISION_LABELS),
         origins=_terms(SET_VERSION_ORIGINS, _ORIGIN_LABELS),
+        version_outcomes=_terms(VERSION_OUTCOMES, _OUTCOME_LABELS),
+        outcome_states=_terms(OUTCOME_STATES, _OUTCOME_LABELS),
         flavor_wheel=[node.model_copy(deep=True) for node in FLAVOR_WHEEL],
         shot_styles=_terms(SHOT_STYLES, _STYLE_LABELS),
         suggestion_variables=_terms(SUGGESTION_VARIABLES, _VARIABLE_LABELS),

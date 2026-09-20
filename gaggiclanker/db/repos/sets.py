@@ -5,13 +5,35 @@ grinder. A **set version** is one concrete recipe that was actually brewed with
 — a profile version, a grind, a dose, a target yield, a temperature — plus the
 one sentence saying why it differs from the version before it.
 
-Three properties follow from that split, and every method here exists to keep
+Four properties follow from that split, and every method here exists to keep
 one of them true:
 
-* **versions are immutable.** Nothing updates a `set_versions` row. Changing
-  anything appends a new version whose `parent_version_id` is the one it came
-  from, because the product's whole question is "what did changing this do" and
-  an edited row answers it with today's value for every shot ever attached.
+* **the recipe is immutable.** Nothing updates the recipe half of a
+  `set_versions` row. Changing anything appends a new version whose
+  `parent_version_id` is the one it came from, because the product's whole
+  question is "what did changing this do" and an edited row answers it with
+  today's value for every shot ever attached.
+* **a prediction is written before the shots or not at all.** What a version was
+  expected to do differently can be typed and re-typed while the version has no
+  shots, and is refused afterwards: a prediction written once the cup has been
+  tasted is a memory, not a prediction. It is refused again once a grade has
+  been recorded, which the grade has to be taken back first. The **outcome** —
+  somebody's grade of that prediction — is the opposite: it is only recordable
+  once there is something to grade, and it can be changed or taken back at any
+  time.
+
+  Both windows live here, in :meth:`SetsRepository.set_prediction` and
+  :meth:`SetsRepository.set_outcome`, beside the other rules that depend on
+  another table's rows. A trigger could enforce the first one, and that is
+  exactly why it does not: the rule would then exist in two places with two
+  wordings, the refusal would arrive as a constraint failure rather than as an
+  error code a route can turn into a sentence, and a test of it would have to go
+  through SQL rather than through the method everything else calls.
+
+  The window is honest, not airtight: somebody who unfiles every shot from a
+  version and clears its grade can write a fresh prediction on it. That is
+  accepted. The rule guards against the habit of writing a prediction down after
+  the fact, not against somebody setting out to deceive themselves.
 * **one Set is active at a time**, enforced by a partial unique index rather
   than by whoever remembers to clear the old flag. It is what auto-assignment
   consults when a shot lands.
@@ -21,26 +43,52 @@ one of them true:
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repository import Repository
-from gaggiclanker.domain.vocab import SetVersionOrigin
+from gaggiclanker.domain.vocab import (
+    VERSION_OUTCOMES,
+    OutcomeState,
+    SetVersionOrigin,
+    VersionOutcome,
+)
 
 __all__ = [
     "VERSION_FIELDS",
     "FieldChange",
+    "RollbackWrite",
     "SetRow",
+    "SetTrackRecord",
     "SetTrends",
     "SetVersionPatch",
     "SetVersionRow",
     "SetVersionWrite",
     "SetWrite",
     "SetsRepository",
+    "VersionLabelCounts",
+    "VersionOutcomeWrite",
+    "VersionPredictionWrite",
+    "VersionRefusal",
+    "VersionWriteResult",
+    "dead_end_ids",
+    "track_record",
     "version_changes",
 ]
+
+#: How long a prediction or an outcome note may be. Generous for a sentence or
+#: three and short of an essay: this is read beside a shot, not filed.
+TEXT_MAX = 1000
+
+#: A prediction or an outcome note as it is accepted: stripped, then capped.
+#: Stripped on the model rather than at each call site, so a field somebody left
+#: as three spaces is "no prediction" everywhere at once — including in
+#: `outcome_state`, which asks whether the text is empty.
+LongText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=TEXT_MAX)]
 
 
 class SetWrite(BaseModel):
@@ -73,6 +121,11 @@ class SetVersionWrite(BaseModel):
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
     target_temperature_c: float | None = Field(default=None, ge=25, le=150)
     intent: str = Field(default="", max_length=500)
+    #: What this version is expected to do differently. On a Set's first version
+    #: there is nothing earlier to compare against, so there is no
+    #: `compares_to_version_id` here: the prediction is graded against the
+    #: numbers this version itself states.
+    prediction: LongText = ""
     origin: SetVersionOrigin = "manual"
     #: The analysis whose accepted suggestion produced this version.
     origin_analysis_id: int | None = None
@@ -98,6 +151,16 @@ class SetVersionPatch(BaseModel):
     #: Not inherited, and asked for on every new version: a change with no
     #: stated intent is indistinguishable from a typo three weeks later.
     intent: str = Field(default="", max_length=500)
+    #: Not inherited either, and for a stronger reason: a prediction belongs to
+    #: one version's one change, and carrying the last one forward would put a
+    #: guess nobody made on the record.
+    prediction: LongText = ""
+    #: Which version the prediction is measured against. **Omitted** it is the
+    #: parent — the version this one was changed from, which is what "less
+    #: bitter than before" means nine times in ten. Sent as **null** it is
+    #: nothing: the prediction is graded on the numbers this version states.
+    #: The two are told apart by ``exclude_unset``, like every other field here.
+    compares_to_version_id: int | None = None
     origin: SetVersionOrigin = "manual"
     origin_analysis_id: int | None = None
     #: The profile id the firmware assigned when this version's profile was
@@ -132,8 +195,145 @@ class SetVersionRow(BaseModel):
     #: display, and NULL again the moment somebody deletes it from there — a
     #: device id is the machine's to own.
     pushed_device_profile_id: str | None = None
+    #: What this version was expected to do differently, in the person's words.
+    #: Empty is the common case and means exactly that: nobody committed to a
+    #: guess, so there is nothing here to be right or wrong about.
+    prediction: str = ""
+    compares_to_version_id: int | None = None
+    #: The compared-to version's number, joined in. A reader — and a model
+    #: reading the curated view — thinks in "v3", never in a row id.
+    compares_to_version_no: int | None = None
+    #: The version whose recipe this one restores, when it came from a roll
+    #: back, and its number beside it.
+    restores_version_id: int | None = None
+    restores_version_no: int | None = None
+    prediction_at: str | None = None
+    outcome: VersionOutcome | None = None
+    outcome_note: str = ""
+    outcome_at: str | None = None
     created_at: str
     shot_count: int = 0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def outcome_state(self) -> OutcomeState:
+        """What the experiment log shows for this version.
+
+        Derived rather than stored, because it is two columns read together and
+        a stored copy would be a third value that can disagree with both. The
+        distinction that matters is between "nobody predicted anything" and
+        "somebody predicted something and has not said how it went": the first
+        is not a gap in the record, the second is.
+        """
+        if not self.prediction:
+            return "no_prediction"
+        return self.outcome or "open"
+
+
+class VersionPredictionWrite(BaseModel):
+    """`PATCH .../versions/{id}/prediction`: the guess, and what it is against.
+
+    ``prediction`` is **required**, with no default: an empty string is how one
+    is taken back, and that has to be something a caller says rather than
+    something a caller omits. A body with neither is a mistake, not a removal,
+    and it is answered as one. The compared-to version and the timestamp go with
+    the text when it goes, because a comparison with nothing to compare would be
+    a dangling reference nobody can read.
+
+    ``compares_to_version_id`` follows :class:`SetVersionPatch`: omitted is the
+    parent, an explicit null is "nothing to compare against".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    prediction: LongText
+    compares_to_version_id: int | None = None
+
+
+class VersionOutcomeWrite(BaseModel):
+    """`PUT .../versions/{id}/outcome`: the grade, and why it was given."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: VersionOutcome
+    note: LongText = ""
+
+
+class RollbackWrite(BaseModel):
+    """`POST /api/sets/{id}/rollback`: go back to a recipe that worked.
+
+    Nothing is written to the machine by this, ever. A roll back is a statement
+    about the archive — "this is what I am brewing again" — and if the restored
+    version names a different profile the log says so exactly as it does for any
+    other version that changes one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    to_version_id: int
+    intent: str = Field(default="", max_length=500)
+    prediction: LongText = ""
+
+
+class VersionLabelCounts(BaseModel):
+    """How the shots on one version were labelled, for the log's one line."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    keep: int = 0
+    improve: int = 0
+    discard: int = 0
+    #: Shots on this version with no decision yet — judged or not.
+    unlabelled: int = 0
+
+
+class SetTrackRecord(BaseModel):
+    """How often this Set's predictions turned out right.
+
+    ``graded`` is the four recorded outcomes together, which is the denominator
+    of the sentence the page leads with. The un-graded two are counted as well
+    rather than folded away: "four of six held" reads very differently beside
+    "and nine versions predicted nothing".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    no_prediction: int = 0
+    open: int = 0
+    held: int = 0
+    partly_held: int = 0
+    failed: int = 0
+    inconclusive: int = 0
+    graded: int = 0
+
+
+#: Why a guarded write to a version was refused. A slug rather than an HTTP
+#: status: the repository has no opinion about statuses, and the route that
+#: does is the one place the mapping is written down.
+type VersionRefusal = Literal[
+    "no_version",
+    "has_shots",
+    "has_outcome",
+    "bad_compare",
+    "no_prediction",
+    "nothing_to_grade",
+    "no_target",
+    "current_version",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class VersionWriteResult:
+    """A guarded write: the row it produced, or the reason there is none.
+
+    Deliberately not an exception. Every refusal here is an ordinary answer to
+    an ordinary request — the version already has shots, the prediction it would
+    grade does not exist — and a route turns each one into its own status and
+    message. Exactly one of the two fields is set.
+    """
+
+    version: SetVersionRow | None = None
+    refused: VersionRefusal | None = None
 
 
 class SetRow(BaseModel):
@@ -279,6 +479,88 @@ def version_changes(
     return changes
 
 
+def _prediction_values(prediction: str, compares_to: int | None, *, now: str) -> dict[str, Any]:
+    """The three prediction columns, which are written and cleared together.
+
+    An empty prediction takes its comparison and its timestamp with it: a
+    `compares_to_version_id` with no prediction beside it is a reference to a
+    version nothing says anything about, and the log would have to render it as
+    something.
+
+    ``compares_to`` is already resolved by the caller, because only the caller
+    can tell "the field was not sent" (inherit the parent) from "the field was
+    sent as null" (compare against nothing, and grade the version on the numbers
+    it states). Defaulting here would make the two indistinguishable, which is
+    the bug this signature exists to prevent.
+    """
+    if not prediction:
+        return {"prediction": "", "compares_to_version_id": None, "prediction_at": None}
+    return {
+        "prediction": prediction,
+        "compares_to_version_id": compares_to,
+        "prediction_at": now,
+    }
+
+
+def live_line(versions: Sequence[SetVersionRow]) -> list[int]:
+    """The versions still on the line being brewed, newest first.
+
+    Walked back from the current version rather than filtered: a version is on
+    the line if you can reach it by stepping backwards from where the Set is
+    now. From a version that **restores** an earlier one, the step goes to what
+    it restored — everything in between was stepped over. From any other, it
+    goes to its parent.
+
+    Reaching an id twice would be a cycle in data that should have none, and the
+    walk stops rather than spinning: a malformed row must not hang the Set page.
+    """
+    by_id = {version.id: version for version in versions}
+    node = max(versions, key=lambda version: version.version_no, default=None)
+    line: list[int] = []
+    seen: set[int] = set()
+    while node is not None and node.id not in seen:
+        seen.add(node.id)
+        line.append(node.id)
+        node = by_id.get(node.restores_version_id or node.parent_version_id or 0)
+    return line
+
+
+def dead_end_ids(versions: Sequence[SetVersionRow]) -> set[int]:
+    """The versions that are not on the live line.
+
+    A roll back from v5 to v3 appends v6 whose recipe is v3's and says so in
+    `restores_version_id`. What that makes v4 and v5 is not "wrong" — they were
+    real attempts — but a branch nobody is on any more, and the log mutes them
+    so the line a reader follows is the one still being brewed.
+
+    "Off the line" rather than "between the roll back and its target", because
+    the two stop agreeing as soon as roll backs overlap: with v5 restoring v2,
+    v6 restoring v4 and v7 restoring v3, the live line is v7, v3, v2, v1 and v6
+    is a dead end even though nothing later spans it. Walking the line is the
+    definition; a span test is an approximation of it that happens to be right
+    for one roll back.
+
+    Pure, over the list the page already holds.
+    """
+    live = set(live_line(versions))
+    return {version.id for version in versions if version.id not in live}
+
+
+def track_record(versions: Sequence[SetVersionRow]) -> SetTrackRecord:
+    """How this Set's predictions have gone, counted by state.
+
+    ``graded`` is every state that is a grade, derived from the vocabulary
+    rather than from a list written out here: an outcome added to
+    `VersionOutcome` and forgotten in this sum would quietly shrink the
+    denominator of the only number the Set page leads with.
+    """
+    counts: dict[str, int] = dict.fromkeys(SetTrackRecord.model_fields, 0)
+    for version in versions:
+        counts[version.outcome_state] += 1
+    counts["graded"] = sum(counts[outcome] for outcome in VERSION_OUTCOMES)
+    return SetTrackRecord(**counts)
+
+
 #: Every column of `set_versions` that a new version copies from its parent.
 _INHERITED = (
     "profile_version_id",
@@ -314,11 +596,18 @@ _SET_SELECT = """
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
 """
 
+#: The two self-joins resolve a row id into the version *number* a reader sees.
+#: Joined rather than looked up by the caller, because the shot page is handed
+#: one version and has no list to resolve it against.
 _VERSION_SELECT = """
     SELECT v.*, pv.label AS profile_label,
+           cmp.version_no AS compares_to_version_no,
+           res.version_no AS restores_version_no,
            (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count
     FROM set_versions v
     LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
+    LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
+    LEFT JOIN set_versions res ON res.id = v.restores_version_id
 """
 
 
@@ -361,7 +650,11 @@ class SetsRepository(Repository):
                 },
             )
             set_id = int(cursor.lastrowid or 0)
-            await self._insert_version(set_id, 1, None, version.model_dump(), now)
+            values = version.model_dump()
+            # Version 1 has no parent, so a prediction on it compares against
+            # nothing: it is graded against the numbers the version states.
+            values.update(_prediction_values(version.prediction, None, now=now))
+            await self._insert_version(set_id, 1, None, values, now)
         stored = await self.get(set_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("the set vanished between write and read")
@@ -428,6 +721,7 @@ class SetsRepository(Repository):
         the same parent or the same `version_no`.
         """
         sent = patch.model_dump(exclude_unset=True)
+        now = utc_now()
         async with self.db.transaction():
             parent = await self._current_version_row(set_id)
             if parent is None:
@@ -440,8 +734,14 @@ class SetsRepository(Repository):
             values["origin"] = patch.origin
             values["origin_analysis_id"] = patch.origin_analysis_id
             values["pushed_device_profile_id"] = patch.pushed_device_profile_id
+            # Omitted is "against the version I changed from"; an explicit null
+            # is "against nothing". `sent` is what tells them apart.
+            compares_to = (
+                sent["compares_to_version_id"] if "compares_to_version_id" in sent else parent.id
+            )
+            values.update(_prediction_values(patch.prediction, compares_to, now=now))
             version_id = await self._insert_version(
-                set_id, parent.version_no + 1, parent.id, values, utc_now()
+                set_id, parent.version_no + 1, parent.id, values, now
             )
         return await self.get_version(version_id)
 
@@ -461,6 +761,10 @@ class SetsRepository(Repository):
             "origin": values.get("origin", "manual"),
             "origin_analysis_id": values.get("origin_analysis_id"),
             "pushed_device_profile_id": values.get("pushed_device_profile_id"),
+            "prediction": values.get("prediction", ""),
+            "compares_to_version_id": values.get("compares_to_version_id"),
+            "restores_version_id": values.get("restores_version_id"),
+            "prediction_at": values.get("prediction_at"),
             "created_at": now,
         }
         for field in _INHERITED:
@@ -472,6 +776,233 @@ class SetsRepository(Repository):
             payload,
         )
         return int(cursor.lastrowid or 0)
+
+    # ── the prediction, the outcome and the roll back ─────────────────
+    #
+    # Three guarded writes. Each reads the version inside the transaction it
+    # writes in, because every guard here is about state that another request
+    # can change: a shot lands, a judgement is typed, a version is added.
+
+    async def set_prediction(
+        self, set_id: int, version_id: int, spec: VersionPredictionWrite
+    ) -> VersionWriteResult:
+        """Write what this version is expected to do differently.
+
+        Refused once the version has a shot, and again once its prediction has
+        been graded. A prediction typed after the cup was tasted grades itself,
+        and an archive that let one in would report a track record nobody could
+        trust — which is the only number on the Set page worth reading.
+
+        Not airtight, and deliberately so: unfiling every shot and clearing the
+        grade opens the window again. The rule is against the habit, not against
+        somebody determined to rewrite their own record.
+        """
+        now = utc_now()
+        async with self.db.transaction():
+            version = await self.version_of_set(set_id, version_id)
+            if version is None:
+                return VersionWriteResult(refused="no_version")
+            if version.shot_count > 0:
+                return VersionWriteResult(refused="has_shots")
+            # A grade already given is a statement about the prediction as it
+            # was written. Rewriting the prediction underneath it would leave
+            # the grade attached to something nobody ever predicted, so the
+            # grade comes off first, deliberately.
+            if version.outcome is not None:
+                return VersionWriteResult(refused="has_outcome")
+            compares_to = (
+                spec.compares_to_version_id
+                if "compares_to_version_id" in spec.model_fields_set
+                else version.parent_version_id
+            )
+            if spec.prediction and compares_to is not None:
+                if await self.comparison_target(set_id, version.version_no, compares_to) is None:
+                    return VersionWriteResult(refused="bad_compare")
+            values = _prediction_values(spec.prediction, compares_to, now=now)
+            await self.db.execute(
+                """
+                UPDATE set_versions
+                   SET prediction = :prediction,
+                       compares_to_version_id = :compares_to_version_id,
+                       prediction_at = :prediction_at
+                 WHERE id = :id
+                """,
+                {**values, "id": version_id},
+            )
+        return VersionWriteResult(version=await self.get_version(version_id))
+
+    async def set_outcome(
+        self, set_id: int, version_id: int, spec: VersionOutcomeWrite
+    ) -> VersionWriteResult:
+        """Grade this version's prediction. Changeable, and never automatic.
+
+        Two things have to exist before there is a grade to give: a prediction,
+        and a shot somebody has actually formed a view about. "Judged,
+        non-discarded" means a decision of keep or improve — a discarded shot
+        says the shot went wrong, not that the recipe did, and grading a
+        prediction on one would be reading the wrong signal.
+        """
+        now = utc_now()
+        async with self.db.transaction():
+            version = await self.version_of_set(set_id, version_id)
+            if version is None:
+                return VersionWriteResult(refused="no_version")
+            if not version.prediction:
+                return VersionWriteResult(refused="no_prediction")
+            if not await self._has_gradable_shot(version_id):
+                return VersionWriteResult(refused="nothing_to_grade")
+            await self.db.execute(
+                """
+                UPDATE set_versions
+                   SET outcome = :outcome, outcome_note = :note, outcome_at = :now
+                 WHERE id = :id
+                """,
+                {"outcome": spec.outcome, "note": spec.note, "now": now, "id": version_id},
+            )
+        return VersionWriteResult(version=await self.get_version(version_id))
+
+    async def clear_outcome(self, set_id: int, version_id: int) -> VersionWriteResult:
+        """Take a grade back. Always allowed: second thoughts are ordinary."""
+        async with self.db.transaction():
+            version = await self.version_of_set(set_id, version_id)
+            if version is None:
+                return VersionWriteResult(refused="no_version")
+            await self.db.execute(
+                "UPDATE set_versions SET outcome = NULL, outcome_note = '', outcome_at = NULL "
+                "WHERE id = ?",
+                (version_id,),
+            )
+        return VersionWriteResult(version=await self.get_version(version_id))
+
+    async def rollback(self, set_id: int, spec: RollbackWrite) -> VersionWriteResult:
+        """Append a version whose recipe is an earlier one's.
+
+        A roll back is an ordinary new version with two extra facts on it:
+        `restores_version_id` names the recipe it copied, and
+        `parent_version_id` is still whatever was current — so the diff the log
+        draws is the reversal, field by field, rather than an empty entry that
+        only says "went back".
+
+        `pushed_device_profile_id` is not copied, exactly as it is not on any
+        other new version: it names a file on the display, and nothing here
+        writes to the machine.
+        """
+        now = utc_now()
+        async with self.db.transaction():
+            current = await self._current_version_row(set_id)
+            if current is None:
+                return VersionWriteResult(refused="no_version")
+            target = await self.version_of_set(set_id, spec.to_version_id)
+            if target is None:
+                return VersionWriteResult(refused="no_target")
+            if target.id == current.id:
+                return VersionWriteResult(refused="current_version")
+            values: dict[str, Any] = {field: getattr(target, field) for field in _INHERITED}
+            values["intent"] = spec.intent
+            values["origin"] = "manual"
+            values["restores_version_id"] = target.id
+            values.update(_prediction_values(spec.prediction, current.id, now=now))
+            version_id = await self._insert_version(
+                set_id, current.version_no + 1, current.id, values, now
+            )
+        return VersionWriteResult(version=await self.get_version(version_id))
+
+    async def comparison_target(
+        self, set_id: int, version_no: int, compares_to: int
+    ) -> SetVersionRow | None:
+        """The version a prediction on `version_no` may name, or ``None``.
+
+        Two conditions, in one place because both routes that accept a
+        comparison have to agree on them:
+
+        * **the same Set.** Two Sets are two coffees, and "less bitter than v2"
+          across them compares nothing anybody brewed.
+        * **older.** A prediction reads "compared to vN", and a vN that did not
+          exist yet is not something this version could have been expected to
+          improve on. This also rules out a version against itself, which is
+          the degenerate case of the same mistake.
+
+        `POST /versions` calls :meth:`version_of_set` instead, because there the
+        version does not exist yet and every candidate is older by construction.
+        """
+        target = await self.version_of_set(set_id, compares_to)
+        if target is None or target.version_no >= version_no:
+            return None
+        return target
+
+    async def version_of_set(self, set_id: int, version_id: int) -> SetVersionRow | None:
+        """A version, but only if it belongs to the Set the route named.
+
+        Public because the route that accepts a compared-to version on a *new*
+        version needs the same check, and two copies of "is this id one of this
+        Set's" is how they come to disagree.
+        """
+        row = await self.db.fetch_one(
+            f"{_VERSION_SELECT} WHERE v.id = ? AND v.set_id = ?", (version_id, set_id)
+        )
+        return self.to_model(SetVersionRow, row)
+
+    async def _has_gradable_shot(self, version_id: int) -> bool:
+        found = await self.db.fetch_value(
+            """
+            SELECT 1 FROM shots s
+            JOIN shot_judgements j ON j.shot_id = s.id
+            WHERE s.set_version_id = ? AND j.decision IN ('keep', 'improve')
+            LIMIT 1
+            """,
+            (version_id,),
+        )
+        return found is not None
+
+    async def label_counts(self, set_id: int) -> dict[int, VersionLabelCounts]:
+        """How every version's shots were labelled, in one grouped pass."""
+        rows = await self.db.fetch_all(
+            """
+            SELECT sh.set_version_id AS version_id,
+                   SUM(j.decision = 'keep') AS keep,
+                   SUM(j.decision = 'improve') AS improve,
+                   SUM(j.decision = 'discard') AS discard,
+                   SUM(j.decision IS NULL) AS unlabelled
+            FROM shots sh
+            JOIN set_versions v ON v.id = sh.set_version_id
+            LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            WHERE v.set_id = ?
+            GROUP BY sh.set_version_id
+            """,
+            (set_id,),
+        )
+        return {
+            int(row["version_id"]): VersionLabelCounts(
+                keep=int(row["keep"] or 0),
+                improve=int(row["improve"] or 0),
+                discard=int(row["discard"] or 0),
+                unlabelled=int(row["unlabelled"] or 0),
+            )
+            for row in rows
+        }
+
+    async def rollback_target(self, set_id: int) -> int | None:
+        """The newest version worth going back to: the last one with a Keep.
+
+        Never the current version — going back to where you already are is not
+        a roll back — and never one whose only shots were discarded or never
+        labelled, because "it worked" is a thing somebody said, not a thing a
+        shot count implies.
+        """
+        value = await self.db.fetch_value(
+            """
+            SELECT v.id FROM set_versions v
+            WHERE v.set_id = :set_id
+              AND v.version_no < (SELECT MAX(v2.version_no) FROM set_versions v2
+                                   WHERE v2.set_id = :set_id)
+              AND EXISTS (SELECT 1 FROM shots sh
+                            JOIN shot_judgements j ON j.shot_id = sh.id
+                           WHERE sh.set_version_id = v.id AND j.decision = 'keep')
+            ORDER BY v.version_no DESC LIMIT 1
+            """,
+            {"set_id": set_id},
+        )
+        return None if value is None else int(value)
 
     async def clear_pushed_device_profile(self, device_id: str) -> int:
         """Forget a device id every Set version that names it. Returns the count.

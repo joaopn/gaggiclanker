@@ -114,10 +114,36 @@ CREATE INDEX idx_sets_bean ON sets(bean_id);
 
 -- ── set versions ─────────────────────────────────────────────────────
 --
--- Immutable once created. `parent_version_id` is what makes the history a
--- trajectory rather than a list: the diff shown in the UI, and the "what did
--- you change and did it help" the analyzer needs, are both computed against the
--- parent rather than stored.
+-- A row here has three halves with three different lifetimes, and keeping them
+-- apart is what makes the record trustworthy:
+--
+--   * **the recipe is immutable.** `profile_version_id` through
+--     `target_temperature_c`, plus `intent`: written once, never updated.
+--     Changing anything appends a new version instead, because the product's
+--     question is "what did changing this do" and an edited row answers it with
+--     today's value for every shot ever attached.
+--   * **the prediction is writable only until the first shot.** `prediction`,
+--     `compares_to_version_id` and `prediction_at` say what this version was
+--     expected to do differently, and a prediction typed after the cup was
+--     tasted is not a prediction. The rule lives in `SetsRepository`, beside
+--     the other rules that depend on rows in another table: one place, one
+--     error code the route turns into a sentence, and a test that goes through
+--     the method every caller uses. A trigger could raise here instead, and
+--     that is the reason it does not — the rule would then be written twice,
+--     and the refusal would reach the client as a constraint failure.
+--
+--     The window is honest rather than airtight: unfiling every shot and
+--     clearing the grade opens it again. It guards against the habit of writing
+--     a prediction down after the fact, not against somebody setting out to
+--     deceive themselves.
+--   * **the outcome is an annotation and can change.** `outcome`,
+--     `outcome_note` and `outcome_at` are somebody's grade of that prediction,
+--     recorded after the shots, and second thoughts about a grade are ordinary:
+--     it can be re-recorded or cleared at any time.
+--
+-- `parent_version_id` is what makes the history a trajectory rather than a
+-- list: the diff shown in the UI, and the "what did you change and did it help"
+-- the analyzer needs, are both computed against the parent rather than stored.
 --
 -- `origin` says who proposed this version — the user ('manual'), an accepted
 -- analysis suggestion ('analysis', with `origin_analysis_id` naming it),
@@ -147,6 +173,34 @@ CREATE TABLE set_versions (
     origin               TEXT    NOT NULL DEFAULT 'manual'
                          CHECK (origin IN ('manual', 'analysis', 'chat')),
     origin_analysis_id   INTEGER,
+    -- What this version is expected to do differently, in the person's own
+    -- words, and which version that comparison is against. Empty is allowed
+    -- and common: a prediction is optional, and a version with none is simply
+    -- not an experiment anybody committed to a guess about.
+    prediction           TEXT    NOT NULL DEFAULT '',
+    -- Which version the prediction is measured against. NULL means "compared
+    -- to nothing": the prediction is graded on the numbers this version itself
+    -- states. That is forced on the first version of a Set, where there is
+    -- nothing earlier, and available as a deliberate choice on any other — a
+    -- version can state an absolute target ("a clean 1:2 in 28 s") rather than
+    -- a relative one. NULL is also what a version with no prediction carries,
+    -- because the two columns are written and cleared together.
+    --
+    -- When it is set it must be an **older version of the same Set**: two Sets
+    -- are two coffees, and a version that did not exist yet is not something
+    -- this one could have been expected to improve on. `SetsRepository` is
+    -- where that is enforced, for the reasons the prediction lock above gives.
+    compares_to_version_id INTEGER REFERENCES set_versions(id),
+    -- Set only by a roll back: the earlier version of the same Set whose recipe
+    -- this one copies. `parent_version_id` still points at whatever was current
+    -- when the roll back happened, so the diff reads as the reversal it is,
+    -- and this column is what says the reversal was deliberate.
+    restores_version_id  INTEGER REFERENCES set_versions(id),
+    prediction_at        TEXT,
+    outcome              TEXT    CHECK (outcome IS NULL OR outcome IN
+                              ('held', 'partly_held', 'failed', 'inconclusive')),
+    outcome_note         TEXT    NOT NULL DEFAULT '',
+    outcome_at           TEXT,
     created_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     UNIQUE (set_id, version_no)

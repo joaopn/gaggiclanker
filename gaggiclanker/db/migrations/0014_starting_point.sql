@@ -21,8 +21,9 @@
 -- already existed; this one describes the cold start, which is the one the
 -- wizard exists to make less cold and therefore the one worth measuring.
 --
--- **The hard part is that two columns point at this table**:
--- `set_versions.parent_version_id` at itself, and
+-- **The hard part is that four columns point at this table**:
+-- `set_versions.parent_version_id`, `compares_to_version_id` and
+-- `restores_version_id` at itself, and
 -- `suggestions.resulting_set_version_id` from 0006. The connection runs with
 -- `foreign_keys = ON`, and `PRAGMA foreign_keys` is a no-op inside a
 -- transaction, so the standard 12-step rebuild is not available here.
@@ -46,15 +47,25 @@ PRAGMA defer_foreign_keys = ON;
 
 -- The two stashes. TEMP, so they live in the temp schema and cannot collide
 -- with a real table, and dropped explicitly at the foot of this file rather
--- than left to the connection's lifetime.
+-- than left to the connection's lifetime. The first holds all three
+-- self-references of a row: they are nulled and restored together, because a
+-- single surviving one is enough to move the deferred counter.
 CREATE TEMP TABLE _sv_parents AS
-SELECT id, parent_version_id FROM set_versions WHERE parent_version_id IS NOT NULL;
+SELECT id, parent_version_id, compares_to_version_id, restores_version_id
+  FROM set_versions
+ WHERE parent_version_id IS NOT NULL
+    OR compares_to_version_id IS NOT NULL
+    OR restores_version_id IS NOT NULL;
 
 CREATE TEMP TABLE _sv_suggestions AS
 SELECT id, resulting_set_version_id FROM suggestions
  WHERE resulting_set_version_id IS NOT NULL;
 
-UPDATE set_versions SET parent_version_id = NULL WHERE parent_version_id IS NOT NULL;
+UPDATE set_versions
+   SET parent_version_id = NULL, compares_to_version_id = NULL, restores_version_id = NULL
+ WHERE parent_version_id IS NOT NULL
+    OR compares_to_version_id IS NOT NULL
+    OR restores_version_id IS NOT NULL;
 UPDATE suggestions SET resulting_set_version_id = NULL WHERE resulting_set_version_id IS NOT NULL;
 
 -- The three curated views from 0013 read `set_versions`, and SQLite re-parses
@@ -83,23 +94,35 @@ CREATE TABLE set_versions_new (
     origin               TEXT    NOT NULL DEFAULT 'manual'
                          CHECK (origin IN ('manual', 'analysis', 'chat', 'starting_point')),
     origin_analysis_id   INTEGER,
+    prediction           TEXT    NOT NULL DEFAULT '',
+    compares_to_version_id INTEGER REFERENCES set_versions(id),
+    restores_version_id  INTEGER REFERENCES set_versions(id),
+    prediction_at        TEXT,
+    outcome              TEXT    CHECK (outcome IS NULL OR outcome IN
+                              ('held', 'partly_held', 'failed', 'inconclusive')),
+    outcome_note         TEXT    NOT NULL DEFAULT '',
+    outcome_at           TEXT,
     pushed_device_profile_id TEXT,
     created_at           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     UNIQUE (set_id, version_no)
 ) STRICT;
 
--- `parent_version_id` is copied as NULL and restored below. Until the rename,
--- this table's own foreign key still names the OLD `set_versions`, so a row
--- carrying a parent here would be a child of the table the next statement
+-- The three self-references are copied as NULL and restored below. Until the
+-- rename, this table's own foreign keys still name the OLD `set_versions`, so a
+-- row carrying one here would be a child of the table the next statement
 -- drops — which is the counter this whole dance exists to avoid touching.
 INSERT INTO set_versions_new
     (id, set_id, version_no, parent_version_id, profile_version_id, grind_setting,
      grind_value, dose_g, target_yield_g, target_temperature_c, intent, origin,
-     origin_analysis_id, pushed_device_profile_id, created_at)
+     origin_analysis_id, prediction, compares_to_version_id, restores_version_id,
+     prediction_at, outcome, outcome_note, outcome_at,
+     pushed_device_profile_id, created_at)
 SELECT id, set_id, version_no, NULL, profile_version_id, grind_setting,
        grind_value, dose_g, target_yield_g, target_temperature_c, intent, origin,
-       origin_analysis_id, pushed_device_profile_id, created_at
+       origin_analysis_id, prediction, NULL, NULL,
+       prediction_at, outcome, outcome_note, outcome_at,
+       pushed_device_profile_id, created_at
 FROM set_versions;
 
 DROP TABLE set_versions;
@@ -113,7 +136,12 @@ CREATE INDEX idx_set_versions_profile ON set_versions(profile_version_id);
 -- remap, and a version whose parent was somehow missing from the stash simply
 -- stays NULL rather than failing the upgrade.
 UPDATE set_versions
-   SET parent_version_id = (SELECT p.parent_version_id FROM _sv_parents p WHERE p.id = set_versions.id)
+   SET parent_version_id =
+       (SELECT p.parent_version_id FROM _sv_parents p WHERE p.id = set_versions.id),
+       compares_to_version_id =
+       (SELECT p.compares_to_version_id FROM _sv_parents p WHERE p.id = set_versions.id),
+       restores_version_id =
+       (SELECT p.restores_version_id FROM _sv_parents p WHERE p.id = set_versions.id)
  WHERE id IN (SELECT id FROM _sv_parents);
 
 UPDATE suggestions
@@ -216,11 +244,22 @@ SELECT v.id AS set_version_id,
        v.target_temperature_c,
        v.intent,
        v.origin,
+       -- The experiment half of a version: what it was expected to do, against
+       -- which version, and how that turned out. The two comparisons are joined
+       -- back to their version *numbers* because a model reading this view
+       -- reasons in "v3", never in a row id.
+       v.prediction,
+       cmp.version_no AS compares_to_version_no,
+       res.version_no AS restores_version_no,
+       v.outcome,
+       v.outcome_note,
        v.created_at,
        (SELECT COUNT(*) FROM shots s WHERE s.set_version_id = v.id) AS shot_count
   FROM set_versions v
   JOIN sets st ON st.id = v.set_id
-  LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id;
+  LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
+  LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
+  LEFT JOIN set_versions res ON res.id = v.restores_version_id;
 
 -- ── the runs ─────────────────────────────────────────────────────────
 --

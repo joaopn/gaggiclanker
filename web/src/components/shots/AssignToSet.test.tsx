@@ -74,6 +74,8 @@ describe("AssignToSet", () => {
       3,
       {
         intent: "a touch finer",
+        // Recording after the fact: nothing left to predict about this shot.
+        prediction: "",
         origin: "manual",
         grind_setting: "20",
         // The number travels with the text (the shared `grindPatch` helper).

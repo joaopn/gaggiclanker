@@ -338,6 +338,350 @@ class TestSets:
         assert (await client.get("/api/sets/404/trends")).status_code == 404
 
 
+class TestPredictionsAndOutcomes:
+    """The experiment log's writes, over HTTP: envelope, codes, and no echo."""
+
+    async def _version_ids(self, client: httpx.AsyncClient, set_id: int) -> list[int]:
+        detail = data(await client.get(f"/api/sets/{set_id}"))
+        return [entry["version"]["id"] for entry in reversed(detail["versions"])]
+
+    async def _labelled_shot(
+        self,
+        client: httpx.AsyncClient,
+        app: FastAPI,
+        version_id: int,
+        device_id: str,
+        decision: str,
+    ) -> int:
+        shot_id = await ShotsRepository(app.state.db).insert(
+            ShotInsert(device_id=device_id, raw_slog=b"not-a-slog")
+        )
+        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": version_id})
+        await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
+        return shot_id
+
+    async def test_a_prediction_is_recorded_and_read_back_with_the_version(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        await client.post(f"/api/sets/{created['id']}/versions", json={"intent": "one finer"})
+        first, second = await self._version_ids(client, created["id"])
+
+        body = data(
+            await client.patch(
+                f"/api/sets/{created['id']}/versions/{second}/prediction",
+                json={"prediction": "less bitter, a shorter shot"},
+            )
+        )
+
+        assert body["prediction"] == "less bitter, a shorter shot"
+        assert body["compares_to_version_id"] == first
+        assert body["compares_to_version_no"] == 1
+        assert body["outcome_state"] == "open"
+
+    async def test_a_prediction_after_the_first_shot_is_its_own_conflict(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        (first,) = await self._version_ids(client, created["id"])
+        await self._labelled_shot(client, app, first, "000801", "keep")
+
+        response = await client.patch(
+            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            json={"prediction": "a secret I am typing afterwards"},
+        )
+
+        assert response.status_code == 409
+        body = error(response)
+        assert body["code"] == "VERSION_HAS_SHOTS"
+        assert body["details"]["field"] == "prediction"
+        # `details` names the field and the problem, never what was sent.
+        assert "secret" not in response.text
+
+    async def test_a_comparison_outside_the_set_is_refused_by_field(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        other = await _make_set(client, bean_id, name="A different bag")
+        (foreign,) = await self._version_ids(client, other["id"])
+        (mine,) = await self._version_ids(client, created["id"])
+
+        response = await client.patch(
+            f"/api/sets/{created['id']}/versions/{mine}/prediction",
+            json={"prediction": "x", "compares_to_version_id": foreign},
+        )
+
+        assert response.status_code == 422
+        assert error(response)["details"]["field"] == "compares_to_version_id"
+
+        # The same check on the route that creates a version with one.
+        refused = await client.post(
+            f"/api/sets/{created['id']}/versions",
+            json={"intent": "one finer", "prediction": "x", "compares_to_version_id": foreign},
+        )
+        assert refused.status_code == 422
+        assert error(refused)["details"]["field"] == "compares_to_version_id"
+
+    async def test_a_body_with_no_prediction_field_is_a_bad_request(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        """Removing a prediction is `""`, and that is something you say.
+
+        An empty body is a caller that forgot the field, not a caller asking
+        for the prediction to go, and answering it as a removal would delete
+        somebody's words on a typo.
+        """
+        created = await _make_set(client, bean_id)
+        (first,) = await self._version_ids(client, created["id"])
+        await client.patch(
+            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            json={"prediction": "less bitter"},
+        )
+
+        response = await client.patch(
+            f"/api/sets/{created['id']}/versions/{first}/prediction", json={}
+        )
+
+        assert response.status_code == 400
+        assert error(response)["code"] == "INVALID_REQUEST"
+        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        assert detail["versions"][0]["version"]["prediction"] == "less bitter"
+
+    async def test_a_comparison_must_be_older_than_the_version_making_it(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        for step in ("21", "20"):
+            await client.post(
+                f"/api/sets/{created['id']}/versions", json={"grind_setting": step, "intent": step}
+            )
+        _first, second, third = await self._version_ids(client, created["id"])
+
+        response = await client.patch(
+            f"/api/sets/{created['id']}/versions/{second}/prediction",
+            json={"prediction": "x", "compares_to_version_id": third},
+        )
+
+        assert response.status_code == 422
+        assert error(response)["details"]["field"] == "compares_to_version_id"
+
+    async def test_a_new_version_on_a_set_that_is_not_there_is_a_404(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        """Not "that is not a version of this Set" — the Set is what is missing."""
+        created = await _make_set(client, bean_id)
+        (mine,) = await self._version_ids(client, created["id"])
+
+        response = await client.post(
+            "/api/sets/909/versions",
+            json={"intent": "x", "prediction": "y", "compares_to_version_id": mine},
+        )
+
+        assert response.status_code == 404
+        assert error(response)["code"] == "NOT_FOUND"
+
+    async def test_an_explicit_null_comparison_reaches_the_row(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        """Over the wire too: omitting the key and sending null differ."""
+        created = await _make_set(client, bean_id)
+        await client.post(f"/api/sets/{created['id']}/versions", json={"intent": "one finer"})
+        first, second = await self._version_ids(client, created["id"])
+
+        omitted = data(
+            await client.patch(
+                f"/api/sets/{created['id']}/versions/{second}/prediction",
+                json={"prediction": "less bitter"},
+            )
+        )
+        assert omitted["compares_to_version_id"] == first
+
+        explicit = data(
+            await client.patch(
+                f"/api/sets/{created['id']}/versions/{second}/prediction",
+                json={"prediction": "less bitter", "compares_to_version_id": None},
+            )
+        )
+        assert explicit["compares_to_version_id"] is None
+
+    async def test_a_prediction_is_refused_while_a_grade_stands(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        (first,) = await self._version_ids(client, created["id"])
+        await client.patch(
+            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            json={"prediction": "less bitter"},
+        )
+        shot_id = await self._labelled_shot(client, app, first, "000805", "keep")
+        await client.put(
+            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
+        )
+        # Unfiling the shot reopens the "no shots" window; the grade does not.
+        await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": None})
+
+        response = await client.patch(
+            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            json={"prediction": "a different claim"},
+        )
+
+        assert response.status_code == 409
+        body = error(response)
+        assert body["code"] == "VERSION_HAS_OUTCOME"
+        assert body["details"]["field"] == "prediction"
+        assert "different claim" not in response.text
+
+        # Clearing the grade opens it again.
+        await client.delete(f"/api/sets/{created['id']}/versions/{first}/outcome")
+        assert (
+            await client.patch(
+                f"/api/sets/{created['id']}/versions/{first}/prediction",
+                json={"prediction": "a different claim"},
+            )
+        ).status_code == 200
+
+    async def test_an_outcome_needs_a_prediction_and_something_to_grade(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        (first,) = await self._version_ids(client, created["id"])
+
+        # No prediction at all: 422, because the request is impossible, not
+        # merely premature.
+        response = await client.put(
+            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
+        )
+        assert response.status_code == 422
+        assert error(response)["details"]["field"] == "outcome"
+
+        await client.patch(
+            f"/api/sets/{created['id']}/versions/{first}/prediction",
+            json={"prediction": "a clean 1:2"},
+        )
+        response = await client.put(
+            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "held"}
+        )
+        assert response.status_code == 409
+        assert error(response)["code"] == "NOTHING_TO_GRADE"
+
+        await self._labelled_shot(client, app, first, "000802", "improve")
+        body = data(
+            await client.put(
+                f"/api/sets/{created['id']}/versions/{first}/outcome",
+                json={"outcome": "partly_held", "note": "shorter, still sharp"},
+            )
+        )
+        assert body["outcome"] == "partly_held"
+        assert body["outcome_state"] == "partly_held"
+
+        cleared = data(await client.delete(f"/api/sets/{created['id']}/versions/{first}/outcome"))
+        assert cleared["outcome"] is None
+        assert cleared["outcome_state"] == "open"
+
+    async def test_an_unknown_grade_is_refused_by_the_closed_vocabulary(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        """A grade the CHECK constraint would reject never reaches it."""
+        created = await _make_set(client, bean_id)
+        (first,) = await self._version_ids(client, created["id"])
+
+        response = await client.put(
+            f"/api/sets/{created['id']}/versions/{first}/outcome", json={"outcome": "sort of"}
+        )
+
+        assert response.status_code == 400
+        assert error(response)["code"] == "INVALID_REQUEST"
+
+    async def test_a_roll_back_appends_a_version_and_says_what_it_restored(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        await client.post(
+            f"/api/sets/{created['id']}/versions", json={"grind_setting": "19", "intent": "a turbo"}
+        )
+        first, second = await self._version_ids(client, created["id"])
+
+        response = await client.post(
+            f"/api/sets/{created['id']}/rollback",
+            json={"to_version_id": first, "intent": "that was worse"},
+        )
+
+        assert response.status_code == 201
+        body = data(response)
+        assert body["version_no"] == 3
+        assert body["grind_setting"] == "22"
+        assert body["parent_version_id"] == second
+        assert body["restores_version_id"] == first
+        assert body["restores_version_no"] == 1
+
+        # Rolling back to where you already are is a 422 naming the field.
+        refused = await client.post(
+            f"/api/sets/{created['id']}/rollback", json={"to_version_id": body["id"]}
+        )
+        assert refused.status_code == 422
+        assert error(refused)["details"]["field"] == "to_version_id"
+
+    async def test_the_set_page_carries_the_track_record_and_the_roll_back_target(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        await client.post(f"/api/sets/{created['id']}/versions", json={"intent": "one finer"})
+        first, second = await self._version_ids(client, created["id"])
+        await self._labelled_shot(client, app, first, "000803", "keep")
+        await client.patch(
+            f"/api/sets/{created['id']}/versions/{second}/prediction",
+            json={"prediction": "less bitter"},
+        )
+        await self._labelled_shot(client, app, second, "000804", "improve")
+        await client.put(
+            f"/api/sets/{created['id']}/versions/{second}/outcome", json={"outcome": "failed"}
+        )
+
+        detail = data(await client.get(f"/api/sets/{created['id']}"))
+
+        assert detail["track_record"]["failed"] == 1
+        assert detail["track_record"]["graded"] == 1
+        assert detail["track_record"]["no_prediction"] == 1
+        assert detail["rollback_target_version_id"] == first
+        newest = detail["versions"][0]
+        assert newest["labels"] == {"keep": 0, "improve": 1, "discard": 0, "unlabelled": 0}
+        assert newest["dead_end"] is False
+
+    async def test_a_roll_back_marks_what_it_stepped_over_on_the_page(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        for step in ("21", "20"):
+            await client.post(
+                f"/api/sets/{created['id']}/versions", json={"grind_setting": step, "intent": step}
+            )
+        first, second, _third = await self._version_ids(client, created["id"])
+        await client.post(f"/api/sets/{created['id']}/rollback", json={"to_version_id": first})
+
+        detail = data(await client.get(f"/api/sets/{created['id']}"))
+
+        muted = {
+            entry["version"]["version_no"] for entry in detail["versions"] if entry["dead_end"]
+        }
+        assert muted == {2, 3}
+        assert second
+
+    async def test_the_writes_on_a_version_that_is_not_there_are_404s(
+        self, client: httpx.AsyncClient, bean_id: int
+    ) -> None:
+        created = await _make_set(client, bean_id)
+        base = f"/api/sets/{created['id']}/versions/909"
+
+        assert (
+            await client.patch(f"{base}/prediction", json={"prediction": "x"})
+        ).status_code == 404
+        assert (await client.put(f"{base}/outcome", json={"outcome": "held"})).status_code == 404
+        assert (await client.delete(f"{base}/outcome")).status_code == 404
+        assert (
+            await client.post("/api/sets/404/rollback", json={"to_version_id": 1})
+        ).status_code == 404
+
+
 class TestJudgementAndAssignment:
     @pytest.fixture
     async def shot_id(self, app: FastAPI) -> int:

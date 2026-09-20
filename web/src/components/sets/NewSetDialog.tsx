@@ -100,6 +100,9 @@ export function toCreateBody(draft: Draft): SetCreate {
       target_yield_g: toNumber(draft.targetYieldG),
       target_temperature_c: toNumber(draft.targetTemperatureC),
       intent: draft.intent,
+      // The starting point is not an experiment against anything, so it
+      // states no prediction; one is added from the Set page when it is.
+      prediction: "",
       origin: "manual",
       origin_analysis_id: null,
     },

@@ -1465,6 +1465,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Go back to an earlier recipe, as a new version
+         * @description Append a version whose recipe is `to_version_id`'s.
+         *
+         *     Nothing is written to the machine. If the restored version names a
+         *     different profile, the log says so exactly as it does for any other version
+         *     that changes one, and putting that profile on the machine stays a separate,
+         *     deliberate act.
+         */
+        post: operations["rollback_api_sets__set_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/suggestions": {
         parameters: {
             query?: never;
@@ -1528,6 +1553,53 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions/{version_id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Grade this version's prediction
+         * @description Held, partly held, failed or inconclusive, with the why beside it.
+         *
+         *     Recordable only once the version has a prediction and a shot somebody
+         *     labelled Keep or Improve; changeable afterwards as often as you like.
+         */
+        put: operations["set_outcome_api_sets__set_id__versions__version_id__outcome_put"];
+        post?: never;
+        /** Take back the grade on this version's prediction */
+        delete: operations["clear_outcome_api_sets__set_id__versions__version_id__outcome_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions/{version_id}/prediction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Say what this version is expected to do differently
+         * @description Writable only while the version has no shots.
+         *
+         *     An empty `prediction` takes the prediction back, comparison and all — which
+         *     is the only way to remove one, and still only before the first shot.
+         */
+        patch: operations["set_prediction_api_sets__set_id__versions__version_id__prediction_patch"];
         trace?: never;
     };
     "/api/settings": {
@@ -4158,6 +4230,8 @@ export interface components {
         };
         /** @enum {string} */
         OptionKey: "conservative" | "recommended" | "adventurous";
+        /** @enum {string} */
+        OutcomeState: "no_prediction" | "open" | "held" | "partly_held" | "failed" | "inconclusive";
         /**
          * PasswordBody
          * @description A password change. The plain values never leave this request.
@@ -4535,6 +4609,29 @@ export interface components {
         /** @enum {string} */
         RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
         /**
+         * RollbackWrite
+         * @description `POST /api/sets/{id}/rollback`: go back to a recipe that worked.
+         *
+         *     Nothing is written to the machine by this, ever. A roll back is a statement
+         *     about the archive — "this is what I am brewing again" — and if the restored
+         *     version names a different profile the log says so exactly as it does for any
+         *     other version that changes one.
+         */
+        RollbackWrite: {
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /** To Version Id */
+            to_version_id: number;
+        };
+        /**
          * RuleListData
          * @description Every rule that matched the filter, in selection order.
          */
@@ -4671,6 +4768,7 @@ export interface components {
             /**
              * @default {
              *       "intent": "",
+             *       "prediction": "",
              *       "origin": "manual"
              *     }
              */
@@ -4685,7 +4783,21 @@ export interface components {
             judgements: {
                 [key: string]: components["schemas"]["ShotJudgementRow"];
             };
+            /** Rollback Target Version Id */
+            rollback_target_version_id?: number | null;
             set: components["schemas"]["SetRow"];
+            /**
+             * @default {
+             *       "no_prediction": 0,
+             *       "open": 0,
+             *       "held": 0,
+             *       "partly_held": 0,
+             *       "failed": 0,
+             *       "inconclusive": 0,
+             *       "graded": 0
+             *     }
+             */
+            track_record: components["schemas"]["SetTrackRecord"];
             /** Versions */
             versions: components["schemas"]["SetVersionDetail"][];
         };
@@ -4760,6 +4872,52 @@ export interface components {
             [key: string]: components["schemas"]["SettingValue"];
         };
         SettingValue: string | number | boolean | null;
+        /**
+         * SetTrackRecord
+         * @description How often this Set's predictions turned out right.
+         *
+         *     ``graded`` is the four recorded outcomes together, which is the denominator
+         *     of the sentence the page leads with. The un-graded two are counted as well
+         *     rather than folded away: "four of six held" reads very differently beside
+         *     "and nine versions predicted nothing".
+         */
+        SetTrackRecord: {
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Graded
+             * @default 0
+             */
+            graded: number;
+            /**
+             * Held
+             * @default 0
+             */
+            held: number;
+            /**
+             * Inconclusive
+             * @default 0
+             */
+            inconclusive: number;
+            /**
+             * No Prediction
+             * @default 0
+             */
+            no_prediction: number;
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Partly Held
+             * @default 0
+             */
+            partly_held: number;
+        };
         /**
          * SetTrendPoint
          * @description One shot on the Set's trend chart.
@@ -4850,6 +5008,20 @@ export interface components {
         SetVersionDetail: {
             /** Changes */
             changes: components["schemas"]["FieldChange"][];
+            /**
+             * Dead End
+             * @default false
+             */
+            dead_end: boolean;
+            /**
+             * @default {
+             *       "keep": 0,
+             *       "improve": 0,
+             *       "discard": 0,
+             *       "unlabelled": 0
+             *     }
+             */
+            labels: components["schemas"]["VersionLabelCounts"];
             /** Shots */
             shots: components["schemas"]["ShotListRow"][];
             version: components["schemas"]["SetVersionRow"];
@@ -4866,6 +5038,8 @@ export interface components {
          *     :meth:`SetsRepository.add_version` reads.
          */
         SetVersionPatch: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
             /** Dose G */
             dose_g?: number | null;
             /** Grind Setting */
@@ -4881,6 +5055,11 @@ export interface components {
             origin: components["schemas"]["SetVersionOrigin"];
             /** Origin Analysis Id */
             origin_analysis_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
             /** Profile Version Id */
             profile_version_id?: number | null;
             /** Pushed Device Profile Id */
@@ -4895,6 +5074,10 @@ export interface components {
          * @description One row of `set_versions`, with the labels a reader needs beside it.
          */
         SetVersionRow: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Compares To Version No */
+            compares_to_version_no?: number | null;
             /** Created At */
             created_at: string;
             /** Dose G */
@@ -4914,14 +5097,43 @@ export interface components {
             origin: components["schemas"]["SetVersionOrigin"];
             /** Origin Analysis Id */
             origin_analysis_id?: number | null;
+            outcome?: components["schemas"]["VersionOutcome"] | null;
+            /** Outcome At */
+            outcome_at?: string | null;
+            /**
+             * Outcome Note
+             * @default
+             */
+            outcome_note: string;
+            /**
+             * @description What the experiment log shows for this version.
+             *
+             *     Derived rather than stored, because it is two columns read together and
+             *     a stored copy would be a third value that can disagree with both. The
+             *     distinction that matters is between "nobody predicted anything" and
+             *     "somebody predicted something and has not said how it went": the first
+             *     is not a gap in the record, the second is.
+             */
+            readonly outcome_state: components["schemas"]["OutcomeState"];
             /** Parent Version Id */
             parent_version_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /** Prediction At */
+            prediction_at?: string | null;
             /** Profile Label */
             profile_label?: string | null;
             /** Profile Version Id */
             profile_version_id?: number | null;
             /** Pushed Device Profile Id */
             pushed_device_profile_id?: string | null;
+            /** Restores Version Id */
+            restores_version_id?: number | null;
+            /** Restores Version No */
+            restores_version_no?: number | null;
             /** Set Id */
             set_id: number;
             /**
@@ -4956,6 +5168,11 @@ export interface components {
             origin: components["schemas"]["SetVersionOrigin"];
             /** Origin Analysis Id */
             origin_analysis_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
             /** Profile Version Id */
             profile_version_id?: number | null;
             /** Target Temperature C */
@@ -6001,6 +6218,66 @@ export interface components {
             type: string;
         };
         /**
+         * VersionLabelCounts
+         * @description How the shots on one version were labelled, for the log's one line.
+         */
+        VersionLabelCounts: {
+            /**
+             * Discard
+             * @default 0
+             */
+            discard: number;
+            /**
+             * Improve
+             * @default 0
+             */
+            improve: number;
+            /**
+             * Keep
+             * @default 0
+             */
+            keep: number;
+            /**
+             * Unlabelled
+             * @default 0
+             */
+            unlabelled: number;
+        };
+        /** @enum {string} */
+        VersionOutcome: "held" | "partly_held" | "failed" | "inconclusive";
+        /**
+         * VersionOutcomeWrite
+         * @description `PUT .../versions/{id}/outcome`: the grade, and why it was given.
+         */
+        VersionOutcomeWrite: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            outcome: components["schemas"]["VersionOutcome"];
+        };
+        /**
+         * VersionPredictionWrite
+         * @description `PATCH .../versions/{id}/prediction`: the guess, and what it is against.
+         *
+         *     ``prediction`` is **required**, with no default: an empty string is how one
+         *     is taken back, and that has to be something a caller says rather than
+         *     something a caller omits. A body with neither is a mistake, not a removal,
+         *     and it is answered as one. The compared-to version and the timestamp go with
+         *     the text when it goes, because a comparison with nothing to compare would be
+         *     a dangling reference nobody can read.
+         *
+         *     ``compares_to_version_id`` follows :class:`SetVersionPatch`: omitted is the
+         *     parent, an explicit null is "nothing to compare against".
+         */
+        VersionPredictionWrite: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Prediction */
+            prediction: string;
+        };
+        /**
          * Violation
          * @description One thing :func:`clamp` could not fix, in words a person can act on.
          */
@@ -6031,6 +6308,8 @@ export interface components {
             flavor_wheel: components["schemas"]["FlavorNode"][];
             /** Origins */
             origins: components["schemas"]["Term"][];
+            /** Outcome States */
+            outcome_states: components["schemas"]["Term"][];
             /** Processes */
             processes: components["schemas"]["Term"][];
             /** Roast Levels */
@@ -6051,6 +6330,8 @@ export interface components {
             suggestion_units: components["schemas"]["Term"][];
             /** Suggestion Variables */
             suggestion_variables: components["schemas"]["Term"][];
+            /** Version Outcomes */
+            version_outcomes: components["schemas"]["Term"][];
         };
     };
     responses: never;
@@ -8573,6 +8854,41 @@ export interface operations {
             };
         };
     };
+    rollback_api_sets__set_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_suggestions_api_sets__set_id__suggestions_get: {
         parameters: {
             query?: never;
@@ -8652,6 +8968,110 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_outcome_api_sets__set_id__versions__version_id__outcome_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionOutcomeWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_outcome_api_sets__set_id__versions__version_id__outcome_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_prediction_api_sets__set_id__versions__version_id__prediction_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionPredictionWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

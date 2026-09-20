@@ -189,6 +189,24 @@ async def test_every_allowed_view_actually_exists(archive: Fixture) -> None:
         assert result.columns
 
 
+async def test_the_version_view_carries_the_experiment_log(archive: Fixture) -> None:
+    """The chat reads the ledger through this view, so the columns are API.
+
+    Without the prediction and the outcome here, a model asked "which of my
+    guesses held" would answer from the intent field, which is what you were
+    trying rather than what you expected.
+    """
+    result = await run_query(archive.db.path, "SELECT * FROM v_set_versions LIMIT 1")
+
+    assert {
+        "prediction",
+        "compares_to_version_no",
+        "restores_version_no",
+        "outcome",
+        "outcome_note",
+    } <= set(result.columns)
+
+
 # -- the bounds ------------------------------------------------------------
 
 

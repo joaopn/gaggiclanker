@@ -26,10 +26,12 @@ from gaggiclanker.domain.vocab import (
     FLAVOR_NOTES,
     FLAVOR_PICK_KINDS,
     FLAVOR_WHEEL,
+    OUTCOME_STATES,
     PROCESSES,
     ROAST_LEVELS,
     SET_VERSION_ORIGINS,
     STEP_UNITS,
+    VERSION_OUTCOMES,
     flavor_ancestors,
     flavor_path,
     in_wheel_order,
@@ -43,6 +45,7 @@ CHECKED: list[tuple[str, str, tuple[str, ...]]] = [
     ("grinders", "burr_type", BURR_TYPES),
     ("grinders", "step_unit", STEP_UNITS),
     ("set_versions", "origin", SET_VERSION_ORIGINS),
+    ("set_versions", "outcome", VERSION_OUTCOMES),
     ("shot_judgements", "balance", BALANCES),
     ("shot_judgements", "decision", DECISIONS),
     ("flavor_picks", "kind", FLAVOR_PICK_KINDS),
@@ -131,6 +134,11 @@ def test_the_served_vocabulary_carries_every_term() -> None:
     served = vocabulary()
     assert [term.value for term in served.roast_levels] == list(ROAST_LEVELS)
     assert [term.value for term in served.decisions] == list(DECISIONS)
+    # Six states are rendered and only four can be recorded: `open` and
+    # `no_prediction` are what a version looks like, not grades anybody gave.
+    assert [term.value for term in served.version_outcomes] == list(VERSION_OUTCOMES)
+    assert [term.value for term in served.outcome_states] == list(OUTCOME_STATES)
+    assert [term.label for term in served.outcome_states][:2] == ["No prediction", "Open"]
     assert all(term.label for term in served.balances)
     # A fresh object each call: a shared pydantic instance is a mutable thing
     # handed to every request at once.
