@@ -10,6 +10,41 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The spread, and the evidence behind a prediction
+
+- **A Set now says how much its shots vary when nothing in the recipe
+  changed** — "Shot time ±1.8 s · from 9 repeat shots of 3 recipes", above the experiment
+  log. Shots brewed with the same profile, grind, dose and target yield are
+  repeats of each other, wherever they were filed, so a roll back's shots count
+  as repeats of the recipe it copied. Each group is measured against its own
+  average and those distances are pooled across the Set, which is what lets
+  many versions of two or three shots each add up to a usable figure. Six
+  measures: shot time, time to first drip, yield, peak pressure, average brew
+  flow and your rating, each used only where the archive already holds it — a
+  measure nothing records is left off the block. The yield follows the order the
+  rest of the app already uses: the one you typed, then the scale, then the
+  device's own index. It is arithmetic the app does, the same way every time; no
+  model is involved.
+- **Until there is enough to trust, it says so and names a floor.** Below three
+  degrees of freedom the line reads "not measured yet · differences under 2 s
+  are not counted". The floors are 2 s for the shot time, 1 s for the first
+  drip, 1 g for the yield, 0.3 bar for the peak pressure, 0.2 ml/s for the brew
+  flow and half a star for the rating — first numbers, to be tuned with use.
+- **Every version that predicted something carries its evidence.** An Evidence
+  disclosure in the log lays all of that version's counted shots beside all of
+  the compared version's, measure by measure, with the mean and the count on
+  each side, the difference with its sign, and whether it is beyond the spread
+  or inside it — in words, with what it was held against, and a sentence saying
+  what that yardstick is. Differences and yardsticks are written a decimal finer
+  than the means, so a row never reads "+2.0 s, beyond 2.0 s" when the
+  arithmetic found "+2.04 s, beyond 2.00 s". The balance and the
+  Keep / Improve / unlabelled counts for both sides sit under it as plain
+  facts. It opens by itself on a prediction nobody has graded yet that has
+  shots to grade it with. Quarantined, incomplete and Discard shots are left
+  out of all of it; unlabelled shots count.
+- None of this appears on the shot page or the quick judgement panel: the
+  prediction stays hidden there until the shot is labelled.
+
 ### A Set version has no temperature of its own
 
 - **The brew temperature comes from the profile, everywhere.** A Set version

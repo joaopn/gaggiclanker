@@ -162,6 +162,68 @@ Two rules keep that number honest:
 The outcome is the other way round: it can be changed or taken back whenever you
 like, because a second opinion about a grade is ordinary.
 
+### The spread: how much your shots vary anyway
+
+Above the log the Set page says how much its shots differ **when nothing in the
+recipe changed** — "Shot time ±1.8 s · from 9 repeat shots of 3 recipes". It is the number
+every comparison on that page is held against, because "31 s against 34 s" means
+nothing until you know whether three seconds is a lot for this grinder, this
+basket and this bag. It is arithmetic the app does, the same way every time; no
+model is involved.
+
+**What counts as a repeat.** Shots brewed with the same five recipe fields —
+profile version, grind text, grind number, dose, target yield — are repeats of
+each other, whichever version they were filed under. That means a roll back's
+shots count as repeats of the version whose recipe it copied, with no special
+case, and so do the shots of a version that only changed the words. Each group's
+shots are measured against their own average and those distances are pooled
+across the whole Set, so many versions of two or three shots each still add up
+to one usable figure. A group of one contributes nothing: a single shot has no
+distance from itself.
+
+**Which shots count.** Everything filed under the Set that is not quarantined,
+not incomplete and not labelled Discard. Shots you have not labelled count too —
+they are plain data, and leaving them out would make the number depend on how
+diligent you have been with the buttons.
+
+**Six measures**, each used only where the archive already holds it: shot time,
+time to first drip, yield, peak pressure, average brew flow and your rating. The
+yield is the one you typed into the judgement if you did, then the machine's
+final weight, then the volume its own index recorded — the same order the
+starting-point wizard scores a recipe by, because a machine with no scale
+records nothing and the only yield that exists is the one you wrote down. A
+measure your machine or your scale records nothing for is left off the block
+rather than carried as an empty line, and so is a number the archive wrote as
+zero to mean "there was nothing to average".
+
+**Before it is measured.** It takes three degrees of freedom — four shots pulled
+with one recipe, or two recipes with three shots and two, since each recipe
+spends one degree on its own average — before the figure is worth trusting. Until then the
+line says "not measured yet" and names a conservative floor instead: 2 s for the
+shot time, 1 s for the first drip, 1 g for the yield, 0.3 bar for the peak
+pressure, 0.2 ml/s for the brew flow and half a star for the rating. These are
+first numbers, to be tuned with use.
+
+**The evidence behind a prediction.** Every version that predicted something
+carries an **Evidence** disclosure in the log: all of that version's counted
+shots against all of the compared version's, measure by measure, with the mean
+and the count on each side, the difference with its sign, and what that
+difference shows — *beyond the spread* or *inside it*, and what it was held
+against. All the shots on both sides, never a chosen one. The yardstick is the
+floor while the spread is not measured yet, and two standard errors of the
+difference once it is (`2 × spread × sqrt(1/n + 1/n_other)`), never less than
+the floor: a difference exactly the size of the yardstick counts as inside it,
+and the comparison is made on the numbers rather than on what is printed. A
+difference and its yardstick are written one decimal finer than the means they
+came from, so a row can never read "+2.0 s, beyond 2.0 s" when what happened was
+"+2.04 s, beyond 2.00 s".
+Under the table sit the balance counts and the Keep / Improve / unlabelled
+counts for both sides, as plain facts with no verdict on them. It is closed
+unless the prediction is still ungraded and there are shots to grade it with.
+None of this appears on the shot page: the prediction is hidden there until you
+have labelled the shot, and a table of what the version has been doing would
+give it away whole.
+
 **Roll back to this version** appends a new version whose recipe is the old
 one's, with the version that was current as its parent — so the log shows the
 reversal field by field rather than an empty entry. When the current version has

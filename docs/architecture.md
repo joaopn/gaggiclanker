@@ -141,6 +141,50 @@ honest rather than airtight — unfiling every shot and clearing the grade opens
 it again — and it is meant to be: it guards against writing a prediction down
 after the fact, not against somebody setting out to deceive themselves.
 
+**The spread is a pooled within-recipe deviation, and the app works it out, not
+a model.** Shots sharing all five recipe fields are repeats; each group's shots
+are measured against their own mean and the squared distances are pooled over
+the Set, `sqrt(sum_g sum_i (x_gi - mean_g)^2 / sum_g (n_g - 1))`. Pooled rather
+than the deviation of all the Set's shots, because a Set's shots are *meant* to
+differ — that figure would measure the dial-in and grow every time a change
+worked — and rather than the deviation of the one version with the most shots,
+because a Set is usually many versions of two or three shots each and the
+pooling is what turns those into one figure. A roll back needs no special case:
+it copies the recipe, so its shots land in the same group.
+
+Three decisions sit on top of it. **Three degrees of freedom** before it counts
+as measured: below that a sample deviation is mostly noise about itself, and
+"±0.4 s" read off two pairs would be believed by a reader who cannot see how
+thin it is — so it is still served, flagged, and not used. **Floors** per
+measure, conservative first numbers rather than settings, because a floor tuned
+per Set would be tuning what counts as evidence. **Two standard errors** of the
+difference between two means, `2 * spread * sqrt(1/n_this + 1/n_other)`, floored
+at the floor: it is the ordinary "outside the noise" bar and the one yardstick
+that shrinks properly as either side collects shots, while the floor stops a
+spread that has collapsed to nothing from making every difference significant.
+
+Two smaller choices follow from the same worry about being believed. A
+difference and the yardstick it is held against are **served one decimal finer
+than the means**, because at the means' own precision "32.0 minus 30.0 is +2.0,
+beyond 2.0" reads as a contradiction of its own verdict; the comparison itself
+is made on the unrounded values, so the display can never decide a grade. And
+**the front end is served the precision** in `/api/vocab` beside the label and
+the unit, rather than formatting to a rule of its own, which would either invent
+digits or drop the one that mattered.
+
+The arithmetic is `domain/spread.py`, pure, with hand-computed tests: what a
+prediction is graded against has to be something a person can redo on paper.
+`SetsRepository.counted_shots` is the only SQL — it decides which shots count
+(not quarantined, not incomplete, not Discard; unlabelled shots do count) and
+reads each measure where it already lives, two columns, three paths into the
+diagnostics stored at ingest, and the judgement's rating. Nothing is derived a
+second time. Grouping sorts by shot id before it sums, and for one specific
+reason: the pooled total is accumulated across groups with `+=`, a left fold,
+and floating-point addition is not associative — a Set with one scattered recipe
+and two tight ones totals differently depending on which is added first. A
+figure that moved when a query's ORDER BY changed would be impossible to
+explain, so a test walks every permutation of such a Set.
+
 **A version is a dead end when it is not on the live line.** The live line is
 walked backwards from the Set's current version: from a version that restores an
 earlier one, the step goes to what it restored; from any other, to its parent.
