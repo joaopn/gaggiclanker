@@ -130,8 +130,13 @@ class ChatRequest:
     #: ``claude_code`` reads it, and it has to: the CLI runs the tool loop
     #: itself against our MCP server, so a scope the runner keeps to itself
     #: would make `get_set` with no argument answer "not scoped" on the default
-    #: provider and succeed on every other one.
+    #: provider and succeed on every other one — and, worse, would leave the
+    #: CLI's child offering the whole archive's tools inside a conversation
+    #: about one Set.
     set_id: int | None = None
+    #: The version being argued, beside it. Carried for the same reason and
+    #: forwarded to the same place; the two travel together everywhere.
+    set_version_id: int | None = None
     #: Set by the caller to stop the turn. Checked between streamed chunks and
     #: passed to the subprocess providers as the signal to kill the child; it is
     #: an ``Event`` rather than task cancellation so a cancelled run can still

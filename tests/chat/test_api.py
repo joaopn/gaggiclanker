@@ -23,6 +23,7 @@ from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings
+from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
 from tests.analyzer.conftest import Fixture, build_fixture
 from tests.llm.conftest import FakeProvider
 
@@ -250,8 +251,23 @@ async def test_the_tool_list_names_each_permission_class(
 
     by_name = {tool["name"]: tool["permission"] for tool in tools}
     assert by_name["query_shots"] == "read"
-    assert by_name["propose_set_version"] == "propose"
+    assert by_name["draft_profile"] == "propose"
     assert set(by_name.values()) == {"read", "propose"}
+
+
+async def test_the_tool_list_is_the_scope_s_list_for_the_kind_asked_about(
+    chat_app: tuple[FastAPI, httpx.AsyncClient, FakeProvider, Fixture],
+) -> None:
+    """What the page shows beside a conversation is what that conversation has."""
+    _app, client, _provider, _fixture = chat_app
+
+    general = {tool["name"] for tool in data(await client.get("/api/chat/tools"))["tools"]}
+    scoped = {tool["name"] for tool in data(await client.get("/api/chat/tools?kind=set"))["tools"]}
+
+    assert general == GENERAL_TOOLS
+    assert scoped == SET_TOOLS
+    assert "query_shots" not in scoped
+    assert "propose_set_version" not in general
 
 
 async def test_unknown_threads_and_runs_are_404s(

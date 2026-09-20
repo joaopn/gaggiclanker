@@ -45,17 +45,26 @@ one of them true:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    computed_field,
+    field_validator,
+)
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
+    Decision,
     OutcomeState,
     SetVersionOrigin,
     VersionOutcome,
@@ -66,6 +75,7 @@ __all__ = [
     "FieldChange",
     "RollbackWrite",
     "SetRow",
+    "SetShotRow",
     "SetTrackRecord",
     "SetTrends",
     "SetVersionPatch",
@@ -384,6 +394,59 @@ class FieldChange(BaseModel):
     from_profile: bool = False
 
 
+class SetShotRow(BaseModel):
+    """One shot of a Set as it is read back one line at a time.
+
+    The six measures the spread is worked out from, the person's verdict, and
+    the two flags that say a shot's numbers are not to be trusted. Everything
+    optional, because every one of them is something that may not have been
+    recorded — and a missing number is a fact, never a zero.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: int
+    version_id: int
+    version_no: int
+    started_at: str | None = None
+    #: Never parsed; its numbers are whatever the header happened to hold.
+    quarantined: bool = False
+    #: Stopped early, so its shot time measures the interruption.
+    incomplete: bool = False
+
+    shot_time_s: float | None = None
+    first_drip_s: float | None = None
+    yield_g: float | None = None
+    peak_pressure_bar: float | None = None
+    brew_flow_ml_s: float | None = None
+
+    rating: int | None = None
+    balance: str | None = None
+    decision: Decision | None = None
+    notes: str = ""
+    taste_notes: list[str] = Field(default_factory=list, validation_alias="taste_notes_json")
+    aroma_notes: list[str] = Field(default_factory=list, validation_alias="aroma_notes_json")
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _no_notes_is_empty(cls, value: Any) -> Any:
+        """A shot with no judgement row at all joins to NULL, not to ''."""
+        return "" if value is None else value
+
+    @field_validator("taste_notes", "aroma_notes", mode="before")
+    @classmethod
+    def _decode_notes(cls, value: Any) -> Any:
+        """The JSON array as stored, read the way the judgement row reads it."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            decoded = json.loads(value)
+            if not isinstance(decoded, list):
+                raise ValueError("a note column is not a JSON array")
+            return decoded
+        return value
+
+
 class SetTrendPoint(BaseModel):
     """One shot on the Set's trend chart."""
 
@@ -621,6 +684,34 @@ def track_record(versions: Sequence[SetVersionRow]) -> SetTrackRecord:
     counts["graded"] = sum(counts[outcome] for outcome in VERSION_OUTCOMES)
     return SetTrackRecord(**counts)
 
+
+#: The six measures, read out of what is stored, for every caller that wants
+#: them. One constant rather than the same CASE expressions written twice: the
+#: spread holds a difference against these numbers and a chat reads the same
+#: shots one line each, and two copies of "zero means not recorded" would drift
+#: the day one of them is fixed. `sh` is the shots row and `j` the judgement.
+_MEASURE_COLUMNS = """
+                   CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END AS shot_time_s,
+                   CASE WHEN json_type(sh.diagnostics_json,
+                                       '$.summary.flow.time_to_first_drip_s')
+                             IN ('integer', 'real')
+                        THEN json_extract(sh.diagnostics_json,
+                                          '$.summary.flow.time_to_first_drip_s')
+                        END AS first_drip_s,
+                   COALESCE(j.dose_out_g, sh.final_weight_g, sh.index_volume_g) AS yield_g,
+                   CASE WHEN json_type(sh.diagnostics_json, '$.summary.pressure.max_bar')
+                             IN ('integer', 'real')
+                         AND json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar') > 0
+                        THEN json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar')
+                        END AS peak_pressure_bar,
+                   CASE WHEN json_type(sh.diagnostics_json,
+                                       '$.diagnostics.extraction.flow_avg_brew_ml_s')
+                             IN ('integer', 'real')
+                         AND json_extract(sh.diagnostics_json,
+                                          '$.diagnostics.extraction.flow_avg_brew_ml_s') > 0
+                        THEN json_extract(sh.diagnostics_json,
+                                          '$.diagnostics.extraction.flow_avg_brew_ml_s')
+                        END AS brew_flow_ml_s""".strip()
 
 #: Every column of `set_versions` that a new version copies from its parent.
 _INHERITED = (
@@ -1290,7 +1381,7 @@ class SetsRepository(Repository):
         is then a pass over one list rather than a second query.
         """
         rows = await self.db.fetch_all(
-            """
+            f"""
             SELECT sh.id AS shot_id,
                    sh.set_version_id AS version_id,
                    v.version_no,
@@ -1299,27 +1390,7 @@ class SetsRepository(Repository):
                    v.grind_value,
                    v.dose_g,
                    v.target_yield_g,
-                   CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END AS shot_time_s,
-                   CASE WHEN json_type(sh.diagnostics_json,
-                                       '$.summary.flow.time_to_first_drip_s')
-                             IN ('integer', 'real')
-                        THEN json_extract(sh.diagnostics_json,
-                                          '$.summary.flow.time_to_first_drip_s')
-                        END AS first_drip_s,
-                   COALESCE(j.dose_out_g, sh.final_weight_g, sh.index_volume_g) AS yield_g,
-                   CASE WHEN json_type(sh.diagnostics_json, '$.summary.pressure.max_bar')
-                             IN ('integer', 'real')
-                         AND json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar') > 0
-                        THEN json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar')
-                        END AS peak_pressure_bar,
-                   CASE WHEN json_type(sh.diagnostics_json,
-                                       '$.diagnostics.extraction.flow_avg_brew_ml_s')
-                             IN ('integer', 'real')
-                         AND json_extract(sh.diagnostics_json,
-                                          '$.diagnostics.extraction.flow_avg_brew_ml_s') > 0
-                        THEN json_extract(sh.diagnostics_json,
-                                          '$.diagnostics.extraction.flow_avg_brew_ml_s')
-                        END AS brew_flow_ml_s,
+                   {_MEASURE_COLUMNS},
                    j.rating,
                    j.balance,
                    j.decision
@@ -1331,10 +1402,82 @@ class SetsRepository(Repository):
               AND sh.incomplete = 0
               AND (j.decision IS NULL OR j.decision != 'discard')
             ORDER BY sh.id
-            """,
+            """,  # noqa: S608 - the interpolation is the module constant above, the id is bound
             (set_id,),
         )
         return self.to_models(CountedShot, rows)
+
+    async def shot_ids(self, set_id: int) -> set[int]:
+        """Every shot filed under this Set, as a set of ids.
+
+        For the callers whose question is "is this shot one of ours" — the
+        insight tools, which must not hand another Set's shot ids back as
+        evidence or accept one as it. Ids only: the answer is a membership
+        test, and loading rows to make it would be the expensive way to say no.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT sh.id FROM shots sh
+            JOIN set_versions v ON v.id = sh.set_version_id
+            WHERE v.set_id = ?
+            """,
+            (set_id,),
+        )
+        return {int(row["id"]) for row in rows}
+
+    async def set_shots(
+        self,
+        set_id: int,
+        *,
+        version_no: int | None = None,
+        decision: Decision | None = None,
+        limit: int = 50,
+    ) -> list[SetShotRow]:
+        """This Set's shots, newest first, with the measures and the verdict.
+
+        What :meth:`counted_shots` leaves out on purpose is here: a quarantined,
+        an incomplete and a **Discard** shot are all listed, each saying which
+        it is. This is the reading list rather than the arithmetic — "gather
+        when it went good and when it went bad" — and a discarded shot is part
+        of that story even though it counts towards nothing.
+
+        The measures are read exactly as the spread reads them, from the same
+        constant, so a number here and a number in the evidence table can never
+        be two different readings of the same shot.
+        """
+        where = ["v.set_id = :set_id"]
+        params: dict[str, Any] = {"set_id": set_id, "limit": limit}
+        if version_no is not None:
+            where.append("v.version_no = :version_no")
+            params["version_no"] = version_no
+        if decision is not None:
+            where.append("j.decision = :decision")
+            params["decision"] = decision
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT sh.id AS shot_id,
+                   sh.set_version_id AS version_id,
+                   v.version_no,
+                   sh.started_at,
+                   sh.quarantined,
+                   sh.incomplete,
+                   {_MEASURE_COLUMNS},
+                   j.rating,
+                   j.balance,
+                   j.decision,
+                   j.notes,
+                   j.taste_notes_json,
+                   j.aroma_notes_json
+            FROM shots sh
+            JOIN set_versions v ON v.id = sh.set_version_id
+            LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            WHERE {" AND ".join(where)}
+            ORDER BY COALESCE(sh.started_at, '') DESC, sh.id DESC
+            LIMIT :limit
+            """,  # noqa: S608 - the clauses are the literals above, every value is bound
+            params,
+        )
+        return self.to_models(SetShotRow, rows)
 
     # ── trends ───────────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@ same as the analyzer's: a retry loop in a tab nobody is watching.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
@@ -38,6 +38,7 @@ from gaggiclanker.infra.errors import NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import rate_limit
 from gaggiclanker.infra.sse import SseEvent, SseEventBus, sse_response
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, registry
+from gaggiclanker.tools.scope import ChatKind, ToolScope
 
 __all__ = ["CHAT_RATE_LIMIT", "router"]
 
@@ -133,20 +134,33 @@ class ToolList(BaseModel):
 @router.get(
     "/tools",
     response_model=ApiResponse[ToolList],
-    summary="The tools the chat may call, with their permission class",
+    summary="The tools a conversation of this kind may call",
 )
-async def list_tools() -> JSONResponse:
+async def list_tools(
+    kind: Annotated[ChatKind, Query(description="Which kind of conversation to answer for.")] = (
+        "general"
+    ),
+) -> JSONResponse:
     """Read-only, and the same list the runner sends the provider.
 
-    The UI needs it to render a trace: a tool call arrives as a name, and a
-    panel that said "propose_set_version" without saying that is a *proposal*
-    would be hiding the one thing a reader has to know.
+    Per kind, because the two are different surfaces and the page shows what
+    the agent can do *here*: a Set's chat that listed `query_shots` would be
+    promising a thing that conversation cannot do. The page never filters this
+    itself — the scope is the server's, and a second copy of the rule in the
+    browser is a copy that can disagree.
+
+    It also labels a trace: a tool call arrives as a name, and a panel that said
+    "propose_set_version" without saying that is a *proposal* would be hiding
+    the one thing a reader has to know.
     """
+    # Only the kind matters here, so the ids are left out: which Set a
+    # conversation is about never changes which tools it has.
+    scope = ToolScope(kind=kind)
     return envelope_response(
         ToolList(
             tools=[
                 ToolInfo(name=spec.name, permission=spec.permission, description=spec.description)
-                for spec in registry.specs(CHAT_PERMISSIONS)
+                for spec in registry.specs(CHAT_PERMISSIONS, scope)
             ]
         ).model_dump(mode="json")
     )

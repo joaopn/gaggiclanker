@@ -139,7 +139,8 @@ def test_an_unannotated_tool_is_refused_at_import_time() -> None:
 # -- the dispatcher --------------------------------------------------------
 
 
-async def test_a_successful_call_returns_the_model_and_audits_it(ctx: ToolContext) -> None:
+async def test_a_successful_call_returns_the_model_and_audits_it(own_ctx: ToolContext) -> None:
+    ctx = own_ctx
     local = build_registry()
 
     @local.tool("double", permission="read")
@@ -164,9 +165,17 @@ async def test_an_unknown_tool_is_refused_and_names_the_real_ones(ctx: ToolConte
 
 
 async def test_a_tool_outside_the_permission_set_is_refused_and_audited(
-    ctx: ToolContext,
+    set_ctx: ToolContext,
 ) -> None:
-    narrowed = ToolContext(db=ctx.db, settings=ctx.settings, caller="test", permissions=READ_ONLY)
+    """A tool this conversation *has*, refused for what the caller may do."""
+    ctx = set_ctx
+    narrowed = ToolContext(
+        db=ctx.db,
+        settings=ctx.settings,
+        scope=ctx.scope,
+        caller="test",
+        permissions=READ_ONLY,
+    )
 
     outcome = await registry.dispatch(narrowed, "record_insight", {"text": "x"})
 
@@ -187,7 +196,8 @@ async def test_bad_arguments_come_back_as_a_message_the_model_can_act_on(
     assert "shot_id" in outcome.data["detail"]
 
 
-async def test_a_tool_that_raises_is_a_value_not_an_exception(ctx: ToolContext) -> None:
+async def test_a_tool_that_raises_is_a_value_not_an_exception(own_ctx: ToolContext) -> None:
+    ctx = own_ctx
     local = build_registry()
 
     @local.tool("explode")
@@ -201,7 +211,8 @@ async def test_a_tool_that_raises_is_a_value_not_an_exception(ctx: ToolContext) 
     assert (await ToolCallsRepository(ctx.db).recent())[0].status == "error"
 
 
-async def test_a_slow_tool_is_cut_off_at_its_own_timeout(ctx: ToolContext) -> None:
+async def test_a_slow_tool_is_cut_off_at_its_own_timeout(own_ctx: ToolContext) -> None:
+    ctx = own_ctx
     local = build_registry()
 
     @local.tool("stall", timeout_s=0.05)
@@ -216,8 +227,9 @@ async def test_a_slow_tool_is_cut_off_at_its_own_timeout(ctx: ToolContext) -> No
     assert (await ToolCallsRepository(ctx.db).recent())[0].status == "timeout"
 
 
-async def test_cancellation_is_not_swallowed_as_a_tool_failure(ctx: ToolContext) -> None:
+async def test_cancellation_is_not_swallowed_as_a_tool_failure(own_ctx: ToolContext) -> None:
     """A cancelled run is not a failed tool, and the runner owns the status."""
+    ctx = own_ctx
     local = build_registry()
 
     @local.tool("wait")

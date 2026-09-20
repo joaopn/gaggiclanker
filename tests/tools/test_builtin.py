@@ -103,15 +103,14 @@ async def test_get_set_returns_the_versions_and_the_trajectory(
 
 
 async def test_get_set_falls_back_to_the_conversation_scope(
-    ctx: ToolContext, archive: Fixture
+    set_ctx: ToolContext, archive: Fixture
 ) -> None:
-    """ "How is it going?" has an answer when the thread is scoped."""
-    data = await call(ctx, "get_set")
+    """ "How is it going?" has an answer when the conversation is about a Set."""
+    data = await call(set_ctx, "get_set")
     assert data["set"]["id"] == archive.set_id
 
 
 async def test_get_set_says_what_to_do_when_there_is_no_scope(ctx: ToolContext) -> None:
-    ctx.set_id = None
     data = await refuse(ctx, "get_set")
     assert "list_sets" in data["detail"]
 
@@ -173,13 +172,13 @@ async def test_get_insights_returns_only_confirmed_ones_by_default(
 
 
 async def test_propose_set_version_creates_a_chat_version(
-    ctx: ToolContext, archive: Fixture
+    set_ctx: ToolContext, archive: Fixture
 ) -> None:
     before = await SetsRepository(archive.db).current_version(archive.set_id)
     assert before is not None
 
     data = await call(
-        ctx,
+        set_ctx,
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
@@ -193,14 +192,14 @@ async def test_propose_set_version_creates_a_chat_version(
 
 
 async def test_propose_set_version_refuses_a_version_that_changes_nothing(
-    ctx: ToolContext,
+    set_ctx: ToolContext,
 ) -> None:
-    data = await refuse(ctx, "propose_set_version", reason="because")
+    data = await refuse(set_ctx, "propose_set_version", reason="because")
     assert "change something" in data["detail"]
 
 
 async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
-    ctx: ToolContext, archive: Fixture
+    set_ctx: ToolContext, archive: Fixture
 ) -> None:
     """A temperature argument is a refusal, not a silently dropped field.
 
@@ -210,7 +209,7 @@ async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
     change a temperature — a profile draft somebody approves.
     """
     data = await refuse(
-        ctx,
+        set_ctx,
         "propose_set_version",
         reason="a degree hotter",
         target_temperature_c=94,
@@ -227,10 +226,10 @@ async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
 
 
 async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
-    ctx: ToolContext, archive: Fixture
+    set_ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(
-        ctx,
+        set_ctx,
         "record_insight",
         text="This grinder wants two clicks finer for anything anaerobic.",
         evidence_shot_ids=archive.shots[:2],
@@ -245,24 +244,32 @@ async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
 
 
 async def test_a_recorded_insight_does_not_reach_the_next_prompt(
-    ctx: ToolContext, archive: Fixture
+    set_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The loop tier 3 exists to break: propose, then be believed next turn."""
-    await call(ctx, "record_insight", text="Always go finer.", grinder_id=archive.grinder_id)
+    await call(set_ctx, "record_insight", text="Always go finer.", grinder_id=archive.grinder_id)
 
-    listed = await call(ctx, "get_insights")
+    listed = await call(set_ctx, "get_insights")
 
     assert "Always go finer." not in [insight["text"] for insight in listed["insights"]]
 
 
 async def test_the_propose_tools_are_refused_for_a_read_only_caller(
-    ctx: ToolContext,
+    set_ctx: ToolContext,
 ) -> None:
-    read_only = ToolContext(db=ctx.db, settings=ctx.settings, caller="test", permissions=READ_ONLY)
+    """The permission class, not the scope: these three are in this scope."""
+    read_only = ToolContext(
+        db=set_ctx.db,
+        settings=set_ctx.settings,
+        scope=set_ctx.scope,
+        caller="test",
+        permissions=READ_ONLY,
+    )
 
     for name in ("propose_set_version", "draft_profile", "record_insight"):
         outcome = await registry.dispatch(read_only, name, {})
         assert outcome.status == "refused", name
+        assert "permission class" in outcome.error, name
 
 
 # -- the tools that need the running application ---------------------------
@@ -285,29 +292,36 @@ async def test_run_analysis_is_propose_class_because_it_spends_money(
 async def test_run_analysis_shares_the_analysis_rate_limit(
     ctx: ToolContext, archive: Fixture
 ) -> None:
-    """Going through a tool must not be a way around the route's own limit."""
+    """Going through a tool must not be a way around the route's own limit.
+
+    Called rather than dispatched, unlike everything else in this file: no
+    conversation offers `run_analysis` any more — a Set's chat grades its own
+    prediction and a general one is not about a shot — so the dispatcher would
+    refuse it for being out of scope before the limiter it is about. That
+    refusal is asserted in `tests/tools/test_scope.py`; this is the tool.
+    """
     from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, RateLimiter
+    from gaggiclanker.tools.builtin import RunAnalysisInput, run_analysis
 
     ctx.rate_limits = RateLimiter()
     # No analyzer is wired, so every permitted call stops at "needs the running
     # application" — which is after the limiter, and is the point.
     for _ in range(ANALYSIS_RATE_LIMIT):
-        data = await refuse(ctx, "run_analysis", shot_id=archive.shots[0])
-        assert "running gaggiclanker application" in data["detail"]
+        with pytest.raises(ValueError, match="running gaggiclanker application"):
+            await run_analysis(ctx, RunAnalysisInput(shot_id=archive.shots[0]))
 
-    data = await refuse(ctx, "run_analysis", shot_id=archive.shots[0])
+    with pytest.raises(ValueError, match="Rate limit reached"):
+        await run_analysis(ctx, RunAnalysisInput(shot_id=archive.shots[0]))
 
-    assert "Rate limit reached" in data["detail"]
 
-
-@pytest.mark.parametrize("name", ["run_analysis", "draft_profile"])
+@pytest.mark.parametrize("name", ["starting_point", "draft_profile"])
 async def test_a_tool_that_needs_a_service_says_so_rather_than_crashing(
     ctx: ToolContext, archive: Fixture, name: str
 ) -> None:
     """A context built without the service a tool needs has to say so readably."""
     arguments = (
-        {"shot_id": archive.shots[0]}
-        if name == "run_analysis"
+        {"bean_id": archive.bean_id}
+        if name == "starting_point"
         else {"base_version_id": archive.profile_version_id, "patch": {}, "reason": "x"}
     )
 

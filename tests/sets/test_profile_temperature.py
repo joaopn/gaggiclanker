@@ -199,8 +199,12 @@ def test_every_sql_copy_of_the_rule_is_the_same_sentence() -> None:
         source / "starting" / "similar.py",
         *sorted((source / "db" / "migrations").glob("*.sql")),
     ]
+    # Anchored on `pv.json`, which every copy of *this* rule reads: the same
+    # files hold other guarded `json_extract`s now (the spread's measures), and
+    # a pattern that started at any `CASE WHEN json_type(` would swallow one of
+    # those and the prose between it and the temperature.
     pattern = re.compile(
-        r"CASE WHEN json_type\(.*?END AS profile_temperature_c", re.DOTALL | re.IGNORECASE
+        r"CASE WHEN json_type\(pv\.json.*?END AS profile_temperature_c", re.DOTALL | re.IGNORECASE
     )
     found: dict[str, list[str]] = {}
     for path in roots:

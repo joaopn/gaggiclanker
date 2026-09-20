@@ -43,7 +43,6 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.analyzer.service import analysis_task_name
 from gaggiclanker.cleanup.service import cleanup_task_name
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
@@ -63,6 +62,7 @@ from gaggiclanker.starting.service import starting_point_task_name
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
+from gaggiclanker.tools.scope import ToolScope
 from tests.analyzer.conftest import Fixture, build_fixture
 from tests.conftest import running_app, seed_settings
 from tests.sync.conftest import FIRST_ID, SMALL_COUNT, build_archive_device
@@ -253,11 +253,20 @@ async def test_nothing_the_chat_hands_a_tool_reaches_the_machine(
 ) -> None:
     app, _, fixture = connected
 
-    ctx = app.state.chat.tool_context(set_id=fixture.set_id, run_id=None)
+    for label, scope in (
+        # Both kinds, because they are two contexts with two tool surfaces and
+        # "nothing reaches the machine" is a property of what is in the object,
+        # not of what may be called on it. Excluding either would leave the one
+        # that was excluded untested for exactly the mistake this file exists
+        # to catch.
+        ("chat/set", ToolScope.for_thread(fixture.set_id)),
+        ("chat/general", ToolScope()),
+    ):
+        ctx = app.state.chat.tool_context(scope=scope, run_id=None)
 
-    assert isinstance(ctx.drafts, DraftProposals)
-    assert ctx.starting is app.state.starting
-    assert machine_paths(ctx, label="chat") == []
+        assert isinstance(ctx.drafts, DraftProposals)
+        assert ctx.starting is app.state.starting
+        assert machine_paths(ctx, label=label) == []
     # The runner itself, too: it is what builds a context per run.
     assert machine_paths(app.state.chat, label="runner") == []
 
@@ -343,13 +352,18 @@ async def test_nothing_reaches_the_machine_while_both_machine_writes_are_running
     model drives.
     """
     app = machine_busy
-    ctx = app.state.chat.tool_context(set_id=None, run_id=None)
-
-    assert machine_paths(ctx, label="chat") == []
+    for label, scope in (
+        ("chat/general", ToolScope()),
+        ("chat/set", ToolScope.for_thread(1)),
+    ):
+        ctx = app.state.chat.tool_context(scope=scope, run_id=None)
+        assert machine_paths(ctx, label=label) == []
     assert machine_paths(app.state.chat, label="runner") == []
-    # The stdio server's context over the same live archive, for the same reason.
-    stdio = stdio_tool_context(app.state.db, app.state.settings_service, set_id=None)
-    assert machine_paths(stdio, label="stdio") == []
+    # The stdio server's contexts over the same live archive, both kinds, for
+    # the same reason: the CLI provider spawns one of these per turn.
+    for label, scope in (("stdio/general", ToolScope()), ("stdio/set", ToolScope.for_thread(1))):
+        stdio = stdio_tool_context(app.state.db, app.state.settings_service, scope=scope)
+        assert machine_paths(stdio, label=label) == []
     # And the control still holds with everything running: the walk is looking.
     assert machine_paths(app.state.drafts, label="drafts") != []
 
@@ -376,7 +390,9 @@ async def test_the_walk_follows_a_task_into_its_coroutine_frame(
     try:
         await asyncio.wait_for(running.wait(), 5.0)
 
-        paths = machine_paths(app.state.chat.tool_context(set_id=None, run_id=None), label="chat")
+        paths = machine_paths(
+            app.state.chat.tool_context(scope=ToolScope(), run_id=None), label="chat"
+        )
 
         assert any(path.endswith("DeviceConnection") for path in paths), paths
     finally:
@@ -393,7 +409,7 @@ async def test_the_walk_finds_the_machine_through_the_connections_own_registry(
     whole arrangement exists to prevent — is found through the same frames.
     """
     app, _, _ = connected
-    ctx = app.state.chat.tool_context(set_id=None, run_id=None)
+    ctx = app.state.chat.tool_context(scope=ToolScope(), run_id=None)
     assert app.state.connection.tasks.names, (
         "the sync loops must be running for this to mean anything"
     )
@@ -413,10 +429,11 @@ async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
         await run_migrations(db)
         settings = SettingsService(SettingsRepository(db))
 
-        ctx = stdio_tool_context(db, settings, set_id=None)
+        for label, scope in (("general", ToolScope()), ("set", ToolScope.for_thread(1))):
+            ctx = stdio_tool_context(db, settings, scope=scope)
 
-        assert isinstance(ctx.drafts, DraftProposals)
-        assert machine_paths(ctx, label="stdio") == []
+            assert isinstance(ctx.drafts, DraftProposals)
+            assert machine_paths(ctx, label=f"stdio/{label}") == []
     finally:
         await db.close()
 
@@ -515,7 +532,11 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
     app, client, fixture = connected
-    ctx = app.state.chat.tool_context(set_id=fixture.set_id, run_id=None)
+    # Each proposal is dispatched in a conversation that has it: proposing a Set
+    # version belongs in that Set's own chat, and a starting point is a question
+    # about a bag with no Set yet.
+    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(fixture.set_id), run_id=None)
+    general = app.state.chat.tool_context(scope=ToolScope(), run_id=None)
     proposers = {spec.name for spec in registry.specs(frozenset({"propose"}))}
     assert proposers == {
         "draft_profile",
@@ -554,12 +575,8 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert learned.ok, learned.data
     assert learned.data["confirmed"] is False
 
-    analysed = await registry.dispatch(ctx, "run_analysis", {"shot_id": fixture.shots[-1]})
-    assert analysed.ok, analysed.data
-    await _await_named(app, analysis_task_name(fixture.shots[-1]))
-
     started = await registry.dispatch(
-        ctx, "starting_point", {"bean_id": fixture.bean_id, "grinder_id": fixture.grinder_id}
+        general, "starting_point", {"bean_id": fixture.bean_id, "grinder_id": fixture.grinder_id}
     )
     assert started.ok, started.data
     await _await_named(app, starting_point_task_name(fixture.bean_id, fixture.grinder_id))
@@ -575,7 +592,8 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
         await run_migrations(db)
         fixture = await build_fixture(db)
         settings = SettingsService(SettingsRepository(db))
-        ctx = stdio_tool_context(db, settings, set_id=fixture.set_id)
+        ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.set_id))
+        general = stdio_tool_context(db, settings, scope=ToolScope())
 
         drafted = await registry.dispatch(
             ctx,
@@ -588,12 +606,8 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
         ).ok
         assert (await registry.dispatch(ctx, "record_insight", {"text": "Noted."})).ok
 
-        for name, arguments in (
-            ("run_analysis", {"shot_id": fixture.shots[-1]}),
-            ("starting_point", {"bean_id": fixture.bean_id}),
-        ):
-            outcome = await registry.dispatch(ctx, name, arguments)
-            assert outcome.status == "error", name
-            assert "running gaggiclanker application" in outcome.error
+        outcome = await registry.dispatch(general, "starting_point", {"bean_id": fixture.bean_id})
+        assert outcome.status == "error"
+        assert "running gaggiclanker application" in outcome.error
     finally:
         await db.close()

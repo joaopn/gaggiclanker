@@ -61,6 +61,7 @@ from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import Usage
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolRegistry
+from gaggiclanker.tools.scope import ToolScope
 
 if TYPE_CHECKING:
     from gaggiclanker.drafts.proposals import DraftProposals
@@ -192,7 +193,11 @@ class ChatRunner:
 
         state = _RunState(run_id=run.id, thread_id=thread_id)
         self._running[run.id] = state
-        registry.spawn(run_task_name(run.id), self._background(state, thread.set_id))
+        # The thread's two columns decide what this turn is: one experiment, or
+        # the archive. Read once, here, and carried through the run — every
+        # later decision about tools is this one value.
+        scope = ToolScope.for_thread(thread.set_id, thread.set_version_id)
+        registry.spawn(run_task_name(run.id), self._background(state, scope))
         return run, stored
 
     async def cancel(self, run_id: int) -> ChatRunRow:
@@ -217,7 +222,7 @@ class ChatRunner:
 
     # -- the loop ----------------------------------------------------------
 
-    async def _background(self, state: _RunState, set_id: int | None) -> None:
+    async def _background(self, state: _RunState, scope: ToolScope) -> None:
         started = time.monotonic()
         config = await self.llm.config()
         model = config.resolve_model("chat")
@@ -231,7 +236,7 @@ class ChatRunner:
         status = "ok"
         error: str | None = None
         try:
-            await self._loop(state, set_id, model=model)
+            await self._loop(state, scope, model=model)
         except asyncio.CancelledError:
             status = "cancelled"
             error = "The run was cancelled."
@@ -279,14 +284,14 @@ class ChatRunner:
                 duration_ms=int((time.monotonic() - started) * 1000),
             )
 
-    async def _loop(self, state: _RunState, set_id: int | None, *, model: str) -> None:
+    async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
         rendered = await self.prompts.load(
-            CHAT_PROMPT, {"scope": await scope_block(self.db, set_id)}
+            CHAT_PROMPT, {"scope": await scope_block(self.db, scope.set_id)}
         )
         history = await self._history(state.thread_id, budget.history_tokens)
         provider = await self.llm.provider_for(await self.llm.config())
-        schemas = self._schemas(provider)
+        schemas = self._schemas(provider, scope)
 
         for round_number in range(budget.max_rounds):
             turn = await self._turn(
@@ -298,7 +303,8 @@ class ChatRunner:
                     system=rendered.system,
                     model=model,
                     timeout_s=(await self.llm.config()).timeout_s,
-                    set_id=set_id,
+                    set_id=scope.set_id,
+                    set_version_id=scope.set_version_id,
                     cancel=state.cancel,
                 ),
             )
@@ -335,7 +341,7 @@ class ChatRunner:
                 )
             )
             history.append(ChatMessage(role="assistant", content=turn.text, tool_calls=list(calls)))
-            results = await self._dispatch(state, calls, set_id)
+            results = await self._dispatch(state, calls, scope)
             history.append(ChatMessage(role="tool", tool_results=results))
             await self.repo.add_message(
                 ChatMessageWrite(
@@ -372,7 +378,8 @@ class ChatRunner:
                 system=rendered.system,
                 model=model,
                 timeout_s=(await self.llm.config()).timeout_s,
-                set_id=set_id,
+                set_id=scope.set_id,
+                set_version_id=scope.set_version_id,
                 cancel=state.cancel,
             ),
         )
@@ -400,7 +407,7 @@ class ChatRunner:
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
 
-    def tool_context(self, *, set_id: int | None, run_id: int | None) -> ToolContext:
+    def tool_context(self, *, scope: ToolScope, run_id: int | None) -> ToolContext:
         """What one run's tools are handed. Nothing in it reaches the machine."""
         return ToolContext(
             db=self.db,
@@ -411,7 +418,7 @@ class ChatRunner:
             starting=self.starting,
             tasks=self.tasks,
             rate_limits=self.rate_limits,
-            set_id=set_id,
+            scope=scope,
             run_id=run_id,
             caller="chat",
             # The one permission set every model-driven caller gets; MCP is handed
@@ -420,9 +427,9 @@ class ChatRunner:
         )
 
     async def _dispatch(
-        self, state: _RunState, calls: list[ChatToolCall], set_id: int | None
+        self, state: _RunState, calls: list[ChatToolCall], scope: ToolScope
     ) -> list[ChatToolResult]:
-        ctx = self.tool_context(set_id=set_id, run_id=state.run_id)
+        ctx = self.tool_context(scope=scope, run_id=state.run_id)
         results: list[ChatToolResult] = []
         for call in calls:
             if state.cancel.is_set():
@@ -529,18 +536,25 @@ class ChatRunner:
 
     # -- assembly ----------------------------------------------------------
 
-    def _schemas(self, provider: Any) -> list[dict[str, Any]]:
-        """Tool schemas in this provider's dialect.
+    def _schemas(self, provider: Any, scope: ToolScope) -> list[dict[str, Any]]:
+        """Tool schemas in this provider's dialect, for this conversation only.
+
+        The scope is applied here rather than left to the dispatcher because a
+        tool a conversation does not have should not be *described* to it: a
+        model told about `query_shots` inside a Set's chat will plan around it
+        and then be refused, which reads as a broken tool rather than as a
+        limit.
 
         ``claude_code`` gets none: its tools come from the MCP server named on
-        its command line, and sending schemas as well would describe the same
-        tools twice in two namespaces.
+        its command line — narrowed by the same scope, through the environment
+        the child is spawned with — and sending schemas as well would describe
+        the same tools twice in two namespaces.
         """
         if getattr(provider, "id", "") == "claude_code":
             return []
         if getattr(provider, "id", "") == "anthropic":
-            return self.tools.anthropic_schemas(CHAT_PERMISSIONS)
-        return self.tools.openai_schemas(CHAT_PERMISSIONS)
+            return self.tools.anthropic_schemas(CHAT_PERMISSIONS, scope)
+        return self.tools.openai_schemas(CHAT_PERMISSIONS, scope)
 
     async def _budget(self) -> _Budget:
         settings = self.llm.settings

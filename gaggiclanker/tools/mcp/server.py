@@ -47,11 +47,14 @@ from gaggiclanker.tools.registry import (
     ToolRegistry,
     ToolSpec,
 )
+from gaggiclanker.tools.scope import ToolScope
 
 __all__ = [
     "MCP_INSTRUCTIONS",
     "SERVER_NAME",
+    "SET_INSTRUCTIONS",
     "build_mcp_server",
+    "instructions_for",
 ]
 
 log = structlog.get_logger(__name__)
@@ -74,6 +77,26 @@ MCP_INSTRUCTIONS = (
     "with propose_, draft_ or record_ create something the user must confirm; nothing here "
     "writes to the espresso machine."
 )
+
+#: The same, for a server serving one Set's conversation. It names the tools
+#: that exist *here* rather than the two that do not: a first line telling a
+#: model to start with `describe_schema` inside a Set's chat is a first tool
+#: call that comes back refused.
+SET_INSTRUCTIONS = (
+    "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
+    "about one Set — one coffee being dialled in — and it can see that Set only: its "
+    "versions with their predictions and outcomes, its shots, and the knowledge base.\n\n"
+    "Start with get_set for the experiment so far, then list_set_shots for the shots behind "
+    "it. Cite shots by id and knowledge passages by their heading_path. Tools whose names "
+    "begin with propose_, draft_ or record_ create something the user must confirm; nothing "
+    "here writes to the espresso machine."
+)
+
+
+def instructions_for(scope: ToolScope | None) -> str:
+    """What the client is told this connection is, from the same scope."""
+    return SET_INSTRUCTIONS if scope is not None and scope.kind == "set" else MCP_INSTRUCTIONS
+
 
 #: Produces the context one call runs with. Async so building one may read the
 #: archive; the stdio entry point's is a plain constructor today.
@@ -151,38 +174,48 @@ def build_mcp_server(
     *,
     registry: ToolRegistry,
     permissions: frozenset[str] = CHAT_PERMISSIONS,
+    scope: ToolScope | None = None,
     db_for_resources: Any = None,
 ) -> MCPServer[Any]:
-    """An ``MCPServer`` carrying every tool this caller is allowed to see.
+    """An ``MCPServer`` carrying every tool this conversation is allowed to see.
 
     ``permissions`` defaults to the chat's own set, and both entry points leave
     it there: the MCP server is read-only by design (``propose`` writes to this
-    archive, never to the machine), and no setting widens it. A tool outside the
-    set is not merely refused at call time, it is not advertised. A client that
-    cannot see a tool does not plan around it.
+    archive, never to the machine), and no setting widens it. ``scope`` is the
+    other narrowing, and it is the one that differs per conversation — a Set's
+    chat gets the Set's tools and a general one gets the archive's, from the
+    same function the dispatcher and the provider schemas use.
+
+    A tool outside either set is not merely refused at call time, it is not
+    advertised. A client that cannot see a tool does not plan around it.
     """
 
     server: MCPServer[Any] = MCPServer(
         name=SERVER_NAME,
         title="gaggiclanker",
         version=__version__,
-        instructions=MCP_INSTRUCTIONS,
+        instructions=instructions_for(scope),
         # The tools are ours and the clients are the user's own agents; a
         # duplicate-name warning would only fire on a programming error, which
         # `ToolRegistry.register` already refuses.
         warn_on_duplicate_tools=False,
     )
-    for spec in registry.specs(permissions):
+    for spec in registry.specs(permissions, scope):
         server.add_tool(
             _wrapper(spec, registry, context),
             name=spec.name,
             description=spec.description,
         )
-    _add_resources(server, context, db_for_resources)
+    _add_resources(server, context, db_for_resources, scope)
     return server
 
 
-def _add_resources(server: MCPServer[Any], context: ContextFactory, db: Any = None) -> None:
+def _add_resources(
+    server: MCPServer[Any],
+    context: ContextFactory,
+    db: Any = None,
+    scope: ToolScope | None = None,
+) -> None:
     """Three resources: the rules, one knowledge document, one Set.
 
     Resources rather than tools because that is what they are — addressable
@@ -241,6 +274,14 @@ def _add_resources(server: MCPServer[Any], context: ContextFactory, db: Any = No
             identifier = int(set_id)
         except ValueError:
             raise ResourceError(f"{set_id!r} is not a Set id") from None
+        # The scope is a limit here as well as on the tools. A resource is
+        # fetched by URI rather than called, so a client that can read any Set
+        # by address would be the one way around a Set conversation's whole
+        # point — and the refusal says nothing about the Set it refuses.
+        if scope is not None and scope.kind == "set" and identifier != scope.set_id:
+            raise ResourceError(
+                f"This conversation is about Set {scope.set_id} and can see no other"
+            )
         repo = SetsRepository(await _db())
         row = await repo.get(identifier)
         if row is None:

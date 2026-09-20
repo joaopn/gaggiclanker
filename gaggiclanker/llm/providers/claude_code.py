@@ -450,7 +450,13 @@ MCP_TOOL_GLOB = f"mcp__{MCP_SERVER_NAME}__*"
 STREAM_IDLE_TIMEOUT_S = 120.0
 
 
-def build_mcp_config(*, data_dir: str, executable: str, set_id: int | None = None) -> str:
+def build_mcp_config(
+    *,
+    data_dir: str,
+    executable: str,
+    set_id: int | None = None,
+    set_version_id: int | None = None,
+) -> str:
     """The `--mcp-config` document: our stdio MCP server, and only it.
 
     Passed as a JSON *string* rather than a path because it is per-call and
@@ -460,11 +466,18 @@ def build_mcp_config(*, data_dir: str, executable: str, set_id: int | None = Non
 
     `env` is the child server's whole environment as far as gaggiclanker is
     concerned: `DATA_DIR` is how it finds the archive, and it is the same
-    directory this process opened, so the two see one database.
+    directory this process opened, so the two see one database. The Set and its
+    version are the conversation's **scope**, not a convenience: the child
+    builds its tool surface from them, so a Set conversation's child offers the
+    Set's tools only and refuses any other Set — which is what makes this
+    provider's own tool loop obey the same limit as the dispatcher the API
+    providers go through.
     """
     env: dict[str, str] = {"DATA_DIR": data_dir}
     if set_id is not None:
         env["GAGGICLANKER_MCP_SET_ID"] = str(set_id)
+        if set_version_id is not None:
+            env["GAGGICLANKER_MCP_SET_VERSION_ID"] = str(set_version_id)
     return json.dumps(
         {
             "mcpServers": {
@@ -710,10 +723,12 @@ class ClaudeCodeProvider:
                     build_mcp_config(
                         data_dir=self.data_dir,
                         executable=sys.executable,
-                        # The conversation's Set, so an unqualified `get_set` in
-                        # the CLI's own loop answers the same question it does
-                        # on every other provider.
+                        # The conversation's scope, so the CLI's own loop gets
+                        # the tools this conversation has and no others — and so
+                        # an unqualified `get_set` answers the same question it
+                        # does on every other provider.
                         set_id=request.set_id,
+                        set_version_id=request.set_version_id,
                     )
                     if self.data_dir
                     else ""

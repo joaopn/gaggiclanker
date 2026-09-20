@@ -26,6 +26,13 @@ it not do the thing" needs. The input is stored as a hash: an argument can be a
 whole SQL statement, the transcript already holds the readable copy, and this
 table is for "which tool, how long, did it work".
 
+**What exists is decided by the conversation, not by the caller.**
+:mod:`gaggiclanker.tools.scope` maps a conversation's kind — one Set, or the
+archive — to the tools it has, and the dispatcher refuses anything outside it
+with a message the model can read. The same scope produces the schemas the
+provider is sent and the registrations the MCP server makes, so a tool a Set
+conversation cannot call is also a tool it was never told about.
+
 **A tool cannot hang the run.** Each one has its own timeout and a tool that
 blows it comes back as an error *value* the model can read and react to, not as
 an exception that ends the turn. A model that is told "that query took too long,
@@ -49,6 +56,7 @@ from pydantic import BaseModel, ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.infra.tasks import TaskSpawner
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.tools.scope import ToolScope
 
 if TYPE_CHECKING:
     from gaggiclanker.drafts.proposals import DraftProposals
@@ -134,10 +142,12 @@ class ToolContext:
     #: spends provider tokens checks it, so a model in a loop cannot do what the
     #: route it shortcuts is already stopped from doing.
     rate_limits: Any = None
-    #: The Set the conversation is scoped to, if any. Tools that take a
-    #: ``set_id`` fall back to it, which is what makes "how is it going?" a
-    #: question with an answer.
-    set_id: int | None = None
+    #: What this conversation is: the whole archive read-only, or one Set. It
+    #: decides which tools exist (the schemas, the dispatcher and the MCP
+    #: server all read it) and it is what tools taking a ``set_id`` resolve
+    #: against — so "how is it going?" has an answer, and "how is Set 7 going?"
+    #: asked inside Set 3's conversation has a refusal.
+    scope: ToolScope = field(default_factory=ToolScope)
     user: str = ""
     #: Bookkeeping for the audit row: which run, and whether this came from the
     #: chat's own dispatch or through its stdio MCP server.
@@ -145,6 +155,16 @@ class ToolContext:
     caller: str = "chat"
     #: What this caller may invoke. Narrowed by the dispatcher, never widened.
     permissions: frozenset[str] = field(default_factory=lambda: CHAT_PERMISSIONS)
+
+    @property
+    def set_id(self) -> int | None:
+        """The Set this conversation is about, if it is about one.
+
+        A property over the scope rather than a field beside it: two places to
+        read the Set from is two answers the day one of them is set and the
+        other is not.
+        """
+        return self.scope.set_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,11 +252,20 @@ class ToolRegistry:
     def get(self, name: str) -> ToolSpec | None:
         return self._tools.get(name)
 
-    def names(self) -> list[str]:
-        return sorted(self._tools)
+    def names(self, scope: ToolScope | None = None) -> list[str]:
+        """Every registered tool, or only the ones this conversation has."""
+        return [name for name in sorted(self._tools) if scope is None or scope.allows(name)]
 
-    def specs(self, permissions: Iterable[str] = CHAT_PERMISSIONS) -> list[ToolSpec]:
+    def specs(
+        self, permissions: Iterable[str] = CHAT_PERMISSIONS, scope: ToolScope | None = None
+    ) -> list[ToolSpec]:
         """Every tool this caller may see, in a stable order.
+
+        Two narrowings, and they answer different questions. ``permissions`` is
+        what the *caller* may do — read, or read and propose. ``scope`` is what
+        this *conversation* has at all, which is the Set-or-archive rule in
+        :mod:`gaggiclanker.tools.scope`; left ``None`` it is the whole registry,
+        which is what the docs and a test of the registry itself want.
 
         Sorted by name rather than registration order because the list becomes
         a prompt: a tool list that reorders itself between calls busts the
@@ -245,35 +274,50 @@ class ToolRegistry:
         allowed = frozenset(permissions)
         return [
             self._tools[name]
-            for name in sorted(self._tools)
+            for name in self.names(scope)
             if self._tools[name].permission in allowed
         ]
 
-    def openai_schemas(self, permissions: Iterable[str] = CHAT_PERMISSIONS) -> list[dict[str, Any]]:
-        return [spec.openai_schema() for spec in self.specs(permissions)]
+    def openai_schemas(
+        self, permissions: Iterable[str] = CHAT_PERMISSIONS, scope: ToolScope | None = None
+    ) -> list[dict[str, Any]]:
+        return [spec.openai_schema() for spec in self.specs(permissions, scope)]
 
     def anthropic_schemas(
-        self, permissions: Iterable[str] = CHAT_PERMISSIONS
+        self, permissions: Iterable[str] = CHAT_PERMISSIONS, scope: ToolScope | None = None
     ) -> list[dict[str, Any]]:
-        return [spec.anthropic_schema() for spec in self.specs(permissions)]
+        return [spec.anthropic_schema() for spec in self.specs(permissions, scope)]
 
     # -- the dispatcher ---------------------------------------------------
 
     async def dispatch(self, ctx: ToolContext, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         """Run one tool. Never raises for anything the tool or the model did.
 
-        The order is deliberate: exists, permitted, arguments valid, then run.
-        An unknown tool and a refused one are different messages, because the
-        first is the model hallucinating a name and the second is a switch in
-        Settings.
+        The order is deliberate: exists, in scope, permitted, arguments valid,
+        then run. The three refusals are different messages because they are
+        different mistakes — a hallucinated name, a tool this conversation does
+        not have, and a caller that may only read — and a model that is told
+        which one it made stops making it.
+
+        A tool outside the scope is refused here as well as left out of the
+        schemas, because "not offered" is not a guarantee: a provider replaying
+        an older turn, or a model that has read the name somewhere, will call
+        it. The refusal is an error *value* the model reads, never an exception
+        that ends the run.
         """
         started = time.monotonic()
         spec = self._tools.get(name)
         if spec is None:
             outcome = _refused(
-                name, f"No tool named {name!r}. Call one of: {', '.join(self.names())}."
+                name,
+                f"No tool named {name!r}. Call one of: {', '.join(self.names(ctx.scope))}.",
             )
             await self._audit(ctx, outcome, permission="read")
+            return outcome
+
+        if not ctx.scope.allows(name):
+            outcome = _refused(name, ctx.scope.refusal(name))
+            await self._audit(ctx, outcome, permission=spec.permission)
             return outcome
 
         if spec.permission not in ctx.permissions:

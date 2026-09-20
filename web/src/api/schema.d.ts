@@ -382,12 +382,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The tools the chat may call, with their permission class
+         * The tools a conversation of this kind may call
          * @description Read-only, and the same list the runner sends the provider.
          *
-         *     The UI needs it to render a trace: a tool call arrives as a name, and a
-         *     panel that said "propose_set_version" without saying that is a *proposal*
-         *     would be hiding the one thing a reader has to know.
+         *     Per kind, because the two are different surfaces and the page shows what
+         *     the agent can do *here*: a Set's chat that listed `query_shots` would be
+         *     promising a thing that conversation cannot do. The page never filters this
+         *     itself — the scope is the server's, and a second copy of the rule in the
+         *     browser is a copy that can disagree.
+         *
+         *     It also labels a trace: a tool call arrives as a name, and a panel that said
+         *     "propose_set_version" without saying that is a *proposal* would be hiding
+         *     the one thing a reader has to know.
          */
         get: operations["list_tools_api_chat_tools_get"];
         put?: never;
@@ -3026,6 +3032,8 @@ export interface components {
         };
         /** @enum {string} */
         BurrType: "conical" | "flat" | "unknown";
+        /** @enum {string} */
+        ChatKind: "general" | "set";
         /**
          * ChatMessageRow
          * @description One turn as stored.
@@ -7324,7 +7332,10 @@ export interface operations {
     };
     list_tools_api_chat_tools_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Which kind of conversation to answer for. */
+                kind?: components["schemas"]["ChatKind"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7338,6 +7349,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ToolList_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

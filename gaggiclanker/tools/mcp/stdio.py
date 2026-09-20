@@ -4,6 +4,14 @@ Its caller is the ``claude_code`` chat provider, which points the Claude Code CL
 at this entry point through a generated ``--mcp-config``; the CLI spawns it as a
 child process for the length of one chat turn.
 
+**The conversation's scope arrives in the environment**, because the CLI runs
+the tool loop itself: `GAGGICLANKER_MCP_SET_ID` (and the version beside it)
+makes this server a Set conversation, offering the Set's tools and refusing any
+other Set, and its absence makes it a general one. The mapping from those two
+ids to a surface is :mod:`gaggiclanker.tools.scope`, the same one the dispatcher
+and the provider schemas use — the CLI's loop is out of the dispatcher's reach,
+so the surface is narrowed where it is built instead.
+
 It opens the archive directly from ``DATA_DIR`` and wires nothing else: no
 machine connection, and nothing that could reach one. Proposing a profile draft
 needs only the database and the safety bounds, so ``draft_profile`` works here
@@ -26,6 +34,7 @@ from pathlib import Path
 import structlog
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -33,8 +42,15 @@ from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools import registry as tool_registry
 from gaggiclanker.tools.mcp.server import build_mcp_server
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
+from gaggiclanker.tools.scope import ToolScope
 
-__all__ = ["add_mcp_parser", "mcp_command", "serve_stdio", "stdio_tool_context"]
+__all__ = [
+    "add_mcp_parser",
+    "mcp_command",
+    "scope_from",
+    "serve_stdio",
+    "stdio_tool_context",
+]
 
 log = structlog.get_logger(__name__)
 
@@ -61,8 +77,19 @@ def add_mcp_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParse
         type=int,
         default=None,
         help=(
-            "Scope tools that take a Set to this one, so the chat can ask 'how is it "
-            "going' without naming it. Defaults to $GAGGICLANKER_MCP_SET_ID."
+            "The Set this conversation is about. It is a limit, not a default: with it "
+            "the server offers the Set conversation's tools and refuses any other Set. "
+            "Without it the server is a general conversation — the whole archive, "
+            "read-only. Defaults to $GAGGICLANKER_MCP_SET_ID."
+        ),
+    )
+    parser.add_argument(
+        "--set-version-id",
+        type=int,
+        default=None,
+        help=(
+            "Which version of that Set is being argued. Defaults to "
+            "$GAGGICLANKER_MCP_SET_VERSION_ID. Ignored without --set-id."
         ),
     )
 
@@ -71,15 +98,71 @@ def _data_dir(given: str) -> Path:
     return Path(given or os.environ.get("DATA_DIR") or "data").expanduser().resolve()
 
 
-def _set_id(given: int | None) -> int | None:
+def _identifier(given: int | None, variable: str) -> int | None:
+    """One scope id, from the flag or the environment, or a refusal to start.
+
+    **A scope that is present must parse.** The whole point of the scope is that
+    it narrows what this server offers, so anything it cannot read is a server
+    that would serve the *wider* surface — a Set's conversation with the whole
+    archive in it. `abc`, `-1`, `1e0`, `²` and an empty string are all "somebody
+    meant to scope this and it did not arrive", and every one of them exits
+    rather than falling back to a general conversation. Absent is the only way
+    to ask for a general one.
+
+    The flag and the variable are both read and must agree, because they are two
+    ways of saying the same thing and a disagreement means one of them is stale.
+    """
+    from_flag: int | None = None
     if given is not None:
-        return given
-    raw = os.environ.get("GAGGICLANKER_MCP_SET_ID", "").strip()
-    return int(raw) if raw.isdigit() else None
+        if given <= 0:
+            raise SystemExit(f"{variable}: a scope id must be a positive integer, got {given}")
+        from_flag = given
+
+    from_env: int | None = None
+    raw = os.environ.get(variable)
+    if raw is not None:
+        stripped = raw.strip()
+        if not stripped.isascii() or not stripped.isdigit() or int(stripped) <= 0:
+            raise SystemExit(
+                f"{variable}: a scope id must be a positive integer, got {raw!r}. "
+                "Unset it for a conversation about the whole archive."
+            )
+        from_env = int(stripped)
+
+    if from_flag is not None and from_env is not None and from_flag != from_env:
+        raise SystemExit(
+            f"{variable} is {from_env} and the flag says {from_flag}; they must agree."
+        )
+    return from_flag if from_flag is not None else from_env
+
+
+def scope_from(args: argparse.Namespace) -> ToolScope:
+    """The conversation this server is serving, from the flags or the environment.
+
+    The kind follows the Set: a server told which Set it is about is a Set
+    conversation and a server told nothing is a general one. One rule, and it
+    is :meth:`ToolScope.for_thread` — the same one the runner applies to a
+    thread's two columns, so the CLI's own tool loop sees exactly the surface
+    the other providers are sent schemas for.
+
+    Everything it cannot make sense of is an exit, never a fallback: see
+    :func:`_identifier`. A version without a Set is one of those — it names a
+    row this server could not check against anything.
+    """
+    set_id = _identifier(getattr(args, "set_id", None), "GAGGICLANKER_MCP_SET_ID")
+    version_id = _identifier(
+        getattr(args, "set_version_id", None), "GAGGICLANKER_MCP_SET_VERSION_ID"
+    )
+    if set_id is None and version_id is not None:
+        raise SystemExit(
+            "GAGGICLANKER_MCP_SET_VERSION_ID is set without GAGGICLANKER_MCP_SET_ID: "
+            "a version belongs to a Set, and without it there is nothing to check it against."
+        )
+    return ToolScope.for_thread(set_id, version_id)
 
 
 def stdio_tool_context(
-    db: Database, settings: SettingsService, *, set_id: int | None = None
+    db: Database, settings: SettingsService, *, scope: ToolScope | None = None
 ) -> ToolContext:
     """What one tool call over stdio is handed: the archive, and no machine.
 
@@ -91,13 +174,13 @@ def stdio_tool_context(
         settings=settings,
         knowledge=KnowledgeService(db),
         drafts=DraftProposals(db, settings),
-        set_id=set_id,
+        scope=scope or ToolScope(),
         caller="mcp-stdio",
         permissions=CHAT_PERMISSIONS,
     )
 
 
-async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
+async def serve_stdio(data_dir: Path, *, scope: ToolScope | None = None) -> int:
     """Open the archive and run the protocol on stdio until the client hangs up."""
     path = data_dir / "gaggiclanker.db"
     if not path.exists():
@@ -117,12 +200,18 @@ async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
                 "apply its migrations, then try again."
             )
         settings = SettingsService(SettingsRepository(db))
+        conversation = scope or ToolScope()
+        await _check_scope_exists(db, conversation)
 
         async def context() -> ToolContext:
-            return stdio_tool_context(db, settings, set_id=set_id)
+            return stdio_tool_context(db, settings, scope=conversation)
 
         server = build_mcp_server(
-            context, registry=tool_registry, permissions=CHAT_PERMISSIONS, db_for_resources=db
+            context,
+            registry=tool_registry,
+            permissions=CHAT_PERMISSIONS,
+            scope=conversation,
+            db_for_resources=db,
         )
         await server.run_stdio_async()
     finally:
@@ -130,10 +219,28 @@ async def serve_stdio(data_dir: Path, *, set_id: int | None = None) -> int:
     return 0
 
 
+async def _check_scope_exists(db: Database, scope: ToolScope) -> None:
+    """The scope has to name rows that exist, or the server does not start.
+
+    Checked here rather than in :func:`scope_from` because it needs the archive.
+    A Set id nobody recognises would serve a conversation about nothing with a
+    Set's tools, and a version of *another* Set would put this conversation's
+    opening context and its tools on two different experiments.
+    """
+    if scope.kind != "set" or scope.set_id is None:
+        return
+    sets = SetsRepository(db)
+    if await sets.get(scope.set_id) is None:
+        raise SystemExit(f"No Set {scope.set_id} in this archive.")
+    if scope.set_version_id is not None:
+        if await sets.version_of_set(scope.set_id, scope.set_version_id) is None:
+            raise SystemExit(
+                f"Version {scope.set_version_id} is not a version of Set {scope.set_id}."
+            )
+
+
 def mcp_command(args: argparse.Namespace) -> int:
     """The argparse entry point. Synchronous, because ``main`` is."""
     import asyncio
 
-    return asyncio.run(
-        serve_stdio(_data_dir(args.data_dir), set_id=_set_id(getattr(args, "set_id", None)))
-    )
+    return asyncio.run(serve_stdio(_data_dir(args.data_dir), scope=scope_from(args)))

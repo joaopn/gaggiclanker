@@ -1,10 +1,16 @@
 """The tools themselves. One module, because the set is small and domain-bound.
 
-Nineteen tools in two permission classes, and the third is empty on purpose.
+Twenty tools in two permission classes, and the third is empty on purpose.
 The read tools answer questions about the archive; the propose tools turn a
 conclusion into a row somebody still has to confirm, or queue work that costs
 money; there are no device-write tools here at all, and that is the feature —
 pushing a profile and deleting a shot off the machine stay buttons in the UI.
+
+Which of the twenty a conversation *has* is not decided here:
+:mod:`gaggiclanker.tools.scope` decides it from the conversation's kind. What
+is decided here is what a tool does when it is called inside a Set's
+conversation — the Set is the conversation's and another one is refused, and a
+shot filed elsewhere is refused in words that do not say whether it exists.
 
 Two shapes recur and are worth stating once. **Every output is a pydantic model**,
 so the JSON the model reads is the JSON the schema promised and `mypy --strict`
@@ -279,8 +285,8 @@ def _json(raw: Any) -> Any:
 )
 async def get_shot(ctx: ToolContext, args: GetShotInput) -> ShotOutput:
     found = await _shot_summary(ctx, args.shot_id)
-    if found is None:
-        raise ValueError(f"No shot {args.shot_id} in the archive.")
+    _shot_of_scope(ctx, args.shot_id, found[1] if found is not None else None)
+    assert found is not None  # _shot_of_scope raises when there is nothing
     summary, data = found
     out = ShotOutput(shot=summary, diagnostics=_json(data.get("diagnostics_json")))
 
@@ -365,8 +371,8 @@ async def compare_shots(ctx: ToolContext, args: CompareInput) -> CompareOutput:
     raw: list[dict[str, Any]] = []
     for shot_id in args.shot_ids:
         found = await _shot_summary(ctx, shot_id)
-        if found is None:
-            raise ValueError(f"No shot {shot_id} in the archive.")
+        _shot_of_scope(ctx, shot_id, found[1] if found is not None else None)
+        assert found is not None  # _shot_of_scope raises when there is nothing
         summaries.append(found[0])
         raw.append(found[1])
 
@@ -397,13 +403,47 @@ class SetOutput(_Model):
 
 
 def _resolve_set(ctx: ToolContext, given: int | None) -> int:
-    resolved = given if given is not None else ctx.set_id
-    if resolved is None:
+    """Which Set this call is about, and a refusal when it is not this one.
+
+    In a Set conversation the answer is fixed: the Set the conversation is
+    about, whatever was passed. A different id is refused in words that say so
+    and **say nothing else** — not whether that Set exists, not how many there
+    are. "There is no Set 7" and "Set 7 is somebody else's coffee" are two
+    different things to learn, and a conversation limited to one Set gets to
+    learn neither.
+    """
+    if ctx.scope.kind == "set" and ctx.scope.set_id is not None:
+        if given is not None and given != ctx.scope.set_id:
+            raise ValueError(
+                f"This conversation is about Set {ctx.scope.set_id} and can see no other. "
+                "Leave set_id out, or pass this one."
+            )
+        return ctx.scope.set_id
+    if given is None:
         raise ValueError(
             "No set_id was given and this conversation is not scoped to a Set. "
             "Call list_sets and pass one."
         )
-    return resolved
+    return given
+
+
+def _shot_of_scope(ctx: ToolContext, shot_id: int, data: dict[str, Any] | None) -> None:
+    """Refuse a shot this conversation is not entitled to, without saying why.
+
+    One message for both "there is no such shot" and "that shot belongs to
+    another Set", because two messages are an existence oracle: a model told
+    them apart could walk the archive from inside one Set's conversation, which
+    is the whole thing the scope is for.
+    """
+    if ctx.scope.kind != "set":
+        if data is None:
+            raise ValueError(f"No shot {shot_id} in the archive.")
+        return
+    if data is None or data.get("set_id") != ctx.scope.set_id:
+        raise ValueError(
+            f"Shot {shot_id} is not a shot of this Set. This conversation can see this Set's "
+            "shots only — list_set_shots is how to find them."
+        )
 
 
 @tool(
@@ -447,6 +487,108 @@ async def _set_insights(ctx: ToolContext, row: Any) -> list[Any]:
         grinder_id=row.grinder_id,
     )
     return await InsightsRepository(ctx.db).select(attributes)
+
+
+class ListSetShotsInput(_Model):
+    version_no: int | None = Field(
+        default=None,
+        gt=0,
+        description="Only the shots pulled under this version of the Set.",
+    )
+    label: Literal["keep", "improve", "discard"] | None = Field(
+        default=None,
+        description=(
+            "Only the shots labelled this way. Keep is the gold standard, Improve is what "
+            "you are working on, and Discard says the shot went wrong rather than the recipe."
+        ),
+    )
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class SetShotLine(_Model):
+    """One shot, with the numbers a prediction is graded on beside the verdict."""
+
+    shot_id: int
+    version_no: int
+    started_at: str | None = None
+    shot_time_s: float | None = None
+    first_drip_s: float | None = None
+    yield_g: float | None = None
+    peak_pressure_bar: float | None = None
+    brew_flow_ml_s: float | None = None
+    rating: int | None = None
+    balance: str | None = None
+    decision: str | None = None
+    taste_notes: list[str] = Field(default_factory=list)
+    aroma_notes: list[str] = Field(default_factory=list)
+    notes: str = ""
+    #: True when the shot's own numbers are not evidence: it never parsed, it
+    #: stopped early, or it was labelled Discard. Said on the row rather than
+    #: left out of the list, because "when did it go wrong" is a question these
+    #: shots are part of the answer to.
+    counts: bool = True
+
+
+class ListSetShotsOutput(_Model):
+    shots: list[SetShotLine] = Field(default_factory=list)
+    count: int = 0
+    #: True when the limit cut the list short, so a model can ask for more
+    #: rather than conclude the Set has that many shots.
+    truncated: bool = False
+
+
+@tool(
+    "list_set_shots",
+    permission="read",
+    description=(
+        "This Set's shots, newest first: the six measures a prediction is graded on, the "
+        "rating, the balance, the flavour notes, the label and the note. Filter by version "
+        "number or by label — 'every Keep shot' and 'everything on v5' are the two questions "
+        "it exists for. A shot marked counts=false is quarantined, incomplete or Discard: "
+        "read it, but do not average it."
+    ),
+)
+async def list_set_shots(ctx: ToolContext, args: ListSetShotsInput) -> ListSetShotsOutput:
+    """No ``set_id``: the Set is the conversation's, which is the whole point.
+
+    A Set conversation reads its own shots and cannot be pointed at anybody
+    else's, so there is no argument here to point wrongly.
+    """
+    set_id = _resolve_set(ctx, None)
+    # One more than asked for, and then trimmed: "did the limit cut this list
+    # short" and "does the Set have exactly this many" are different answers,
+    # and a count equal to the limit cannot tell them apart.
+    found = await SetsRepository(ctx.db).set_shots(
+        set_id,
+        version_no=args.version_no,
+        decision=args.label,
+        limit=args.limit + 1,
+    )
+    rows = found[: args.limit]
+    return ListSetShotsOutput(
+        shots=[
+            SetShotLine(
+                shot_id=row.shot_id,
+                version_no=row.version_no,
+                started_at=row.started_at,
+                shot_time_s=row.shot_time_s,
+                first_drip_s=row.first_drip_s,
+                yield_g=row.yield_g,
+                peak_pressure_bar=row.peak_pressure_bar,
+                brew_flow_ml_s=row.brew_flow_ml_s,
+                rating=row.rating,
+                balance=row.balance,
+                decision=row.decision,
+                taste_notes=row.taste_notes,
+                aroma_notes=row.aroma_notes,
+                notes=row.notes,
+                counts=not (row.quarantined or row.incomplete or row.decision == "discard"),
+            )
+            for row in rows
+        ],
+        count=len(rows),
+        truncated=len(found) > args.limit,
+    )
 
 
 class ListSetsInput(_Model):
@@ -509,6 +651,13 @@ async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput
         (args.limit,),
     )
     items = [dict(zip(row.keys(), tuple(row), strict=True)) for row in rows]
+    if ctx.scope.kind == "set":
+        # `shot_count` counts the whole archive's shots on that profile, which
+        # is how busy the *other* Sets have been — a fact this conversation is
+        # not entitled to. The profiles themselves are archive-wide on purpose:
+        # a draft is made from one, and they belong to no Set.
+        for item in items:
+            item.pop("shot_count", None)
     return ListOutput(items=items, count=len(items))
 
 
@@ -662,7 +811,9 @@ class GetInsightsInput(_Model):
         default=False,
         description=(
             "Unconfirmed insights are proposals waiting for the user. They are never "
-            "evidence — do not reason from one without saying it is unconfirmed."
+            "evidence — do not reason from one without saying it is unconfirmed. "
+            "Refused in a conversation about one Set: there, only what the person has "
+            "confirmed is evidence."
         ),
     )
 
@@ -685,11 +836,40 @@ class GetInsightsOutput(_Model):
     permission="read",
     description=(
         "What this archive has learned about this kitchen: confirmed insights, scoped to "
-        "a bean, a grinder, a roast level or their combination."
+        "a bean, a grinder, a roast level or their combination. In a conversation about "
+        "one Set it answers with the confirmed insights that apply to that Set — the same "
+        "ones the opening context lists — and nothing else."
     ),
 )
 async def get_insights(ctx: ToolContext, args: GetInsightsInput) -> GetInsightsOutput:
+    """Scoped in a Set conversation, and in three ways rather than one.
+
+    The Set, obviously. But also **confirmed only**: an unconfirmed insight is a
+    proposal waiting for the person, it is not evidence, and a list of every
+    proposal in the archive would be a list of what has been noticed about every
+    other coffee. And the **evidence shot ids are filtered to this Set's shots**:
+    an insight scoped by bean legitimately rests on shots from several Sets, and
+    handing those ids over would give back the existence oracle the shot
+    refusals close — `get_shot` would refuse them, and their bare presence is
+    already the answer.
+    """
     repo = InsightsRepository(ctx.db)
+    if ctx.scope.kind == "set":
+        set_id = _resolve_set(ctx, args.set_id)
+        if args.include_unconfirmed:
+            raise ValueError(
+                "Unconfirmed insights are proposals waiting for the person, and in a "
+                "conversation about one Set nothing unconfirmed is evidence. Ask for the "
+                "confirmed ones (leave include_unconfirmed out)."
+            )
+        row = await SetsRepository(ctx.db).get(set_id)
+        if row is None:
+            raise ValueError(f"No Set {set_id}.")
+        mine = await SetsRepository(ctx.db).shot_ids(set_id)
+        return GetInsightsOutput(
+            insights=[_insight_out(insight, only=mine) for insight in await _set_insights(ctx, row)]
+        )
+
     scope_id = args.set_id if args.set_id is not None else ctx.set_id
     if scope_id is not None and not args.include_unconfirmed:
         row = await SetsRepository(ctx.db).get(scope_id)
@@ -698,18 +878,21 @@ async def get_insights(ctx: ToolContext, args: GetInsightsInput) -> GetInsightsO
         rows = await _set_insights(ctx, row)
     else:
         rows = await repo.list_insights(confirmed=None if args.include_unconfirmed else True)
-    return GetInsightsOutput(
-        insights=[
-            InsightOut(
-                id=insight.id,
-                scope=insight.scope_label,
-                text=insight.text,
-                evidence_shot_ids=list(insight.evidence_shot_ids or []),
-                source=insight.source,
-                confirmed=insight.confirmed,
-            )
-            for insight in rows
-        ]
+    return GetInsightsOutput(insights=[_insight_out(insight) for insight in rows])
+
+
+def _insight_out(insight: Any, only: set[int] | None = None) -> InsightOut:
+    """One insight as the model is shown it, with its evidence narrowed or not."""
+    evidence = list(insight.evidence_shot_ids or [])
+    return InsightOut(
+        id=insight.id,
+        scope=insight.scope_label,
+        text=insight.text,
+        evidence_shot_ids=(
+            evidence if only is None else [shot_id for shot_id in evidence if shot_id in only]
+        ),
+        source=insight.source,
+        confirmed=insight.confirmed,
     )
 
 
@@ -936,16 +1119,67 @@ class RecordInsightOutput(_Model):
     confirmed: bool = False
 
 
+#: What an insight may be scoped by in a Set's conversation, and where each
+#: value has to come from. The Set's own attributes and no others: an insight
+#: written here is about this coffee on this grinder, and one scoped by
+#: somebody else's bean would be a statement about a Set this conversation
+#: cannot see.
+_SET_SCOPE_FIELDS = ("bean_id", "grinder_id", "roast_level", "process", "origin")
+
+
+async def _check_set_scope(ctx: ToolContext, set_id: int, args: RecordInsightInput) -> None:
+    """Refuse an insight scoped by anything that is not this Set's own.
+
+    The evidence ids go through the same check the shot tools use, in the same
+    words: naming another Set's shot as evidence would be a way of asking
+    whether it exists.
+    """
+    sets = SetsRepository(ctx.db)
+    row = await sets.get(set_id)
+    if row is None:  # pragma: no cover - the scope's Set exists by construction
+        raise ValueError(f"No Set {set_id}.")
+    if args.evidence_shot_ids:
+        mine = await sets.shot_ids(set_id)
+        for shot_id in args.evidence_shot_ids:
+            if shot_id not in mine:
+                raise ValueError(
+                    f"Shot {shot_id} is not a shot of this Set. This conversation can see "
+                    "this Set's shots only — list_set_shots is how to find them."
+                )
+    bean = await BeansRepository(ctx.db).get(row.bean_id) if row.bean_id else None
+    expected: dict[str, Any] = {
+        "bean_id": row.bean_id,
+        "grinder_id": row.grinder_id,
+        "roast_level": getattr(bean, "roast_level", None),
+        "process": getattr(bean, "process", None),
+        "origin": getattr(bean, "origin", None),
+    }
+    for key in ("bean_id", "roast_level", "process", "origin", "grinder_id", "profile_style"):
+        given = getattr(args, key)
+        if given is None:
+            continue
+        if key not in _SET_SCOPE_FIELDS or given != expected[key]:
+            raise ValueError(
+                f"An insight from this conversation is about this Set: its bean, its "
+                f"grinder, its roast level and its process. {key} is not one of them. "
+                "Leave the scope out and it is recorded against this Set's own."
+            )
+
+
 @tool(
     "record_insight",
     permission="propose",
     description=(
         "Record something learned about THIS kitchen, scoped to whatever it is about. "
         "It is stored unconfirmed and reaches no future prompt until the user confirms "
-        "it, so propose one only when a shot or two actually supports it."
+        "it, so propose one only when a shot or two actually supports it. In a "
+        "conversation about one Set it is about that Set: its own bean, grinder, roast "
+        "level and process, and its own shots as evidence."
     ),
 )
 async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordInsightOutput:
+    if ctx.scope.kind == "set":
+        await _check_set_scope(ctx, _resolve_set(ctx, None), args)
     scope = InsightScope.model_validate(
         {
             key: getattr(args, key)

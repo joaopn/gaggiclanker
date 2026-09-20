@@ -21,6 +21,7 @@ from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.types import Usage
+from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
 from tests.analyzer.conftest import Fixture
 from tests.llm.conftest import FakeProvider
 
@@ -134,7 +135,9 @@ async def test_a_failing_tool_is_shown_to_the_model_rather_than_ending_the_run(
     assert run is not None and run.status == "ok"
     result = chat_provider.chat_calls[1].messages[-1].tool_results[0]
     assert result.ok is False
-    assert "No shot" in result.content
+    # A Set conversation refuses a shot that is not its own in the same words
+    # whether or not it exists, which is what the model is shown here.
+    assert "not a shot of this Set" in result.content
 
 
 # -- the bounds ------------------------------------------------------------
@@ -439,6 +442,21 @@ async def test_an_unscoped_thread_gets_no_scope_block(
 # -- the tool surface handed to the provider -------------------------------
 
 
+async def test_a_general_thread_is_given_the_archive_s_tools(
+    runner: ChatRunner, tasks: TaskRegistry, archive: Fixture, chat_provider: FakeProvider
+) -> None:
+    from gaggiclanker.db.repos.chat import ChatThreadWrite
+
+    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    assert created.thread is not None
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+
+    await send(runner, tasks, created.thread.id, "what is a 1:2 ratio?")
+
+    names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
+    assert names == GENERAL_TOOLS
+
+
 async def test_the_provider_is_given_the_chat_tool_set(
     runner: ChatRunner, tasks: TaskRegistry, thread: int, chat_provider: FakeProvider
 ) -> None:
@@ -447,7 +465,9 @@ async def test_the_provider_is_given_the_chat_tool_set(
     await send(runner, tasks, thread)
 
     names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
-    assert {"query_shots", "get_shot", "propose_set_version"} <= names
+    # The Set conversation's surface, because that is what this thread is: the
+    # archive-wide tools are not merely refused, they are never described.
+    assert names == SET_TOOLS
     assert not any(name.startswith("push_") for name in names)
 
 
@@ -483,6 +503,7 @@ async def test_the_scope_is_on_the_request_so_the_cli_can_carry_it(
     await send(runner, tasks, thread)
 
     assert chat_provider.chat_calls[0].set_id == archive.set_id
+    assert chat_provider.chat_calls[0].set_version_id == archive.version_id
 
 
 async def test_an_unscoped_thread_sends_no_scope(
