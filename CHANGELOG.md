@@ -10,6 +10,37 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A Set version has no temperature of its own
+
+- **The brew temperature comes from the profile, everywhere.** A Set version
+  used to carry a temperature somebody typed, and the machine never read it:
+  it heats to what the profile says. "94 °C" on a Set could be a change that
+  never happened — and, with version predictions, a prediction graded against
+  shots brewed exactly as before. The field is gone from both recipe forms,
+  which now show what the picked profile brews at, read-only, with a line on
+  how to change it: edit the profile on the machine and record the new version,
+  or draft one on the Profiles page.
+- **The experiment log shows a temperature change as part of a profile
+  change** — "Temperature 93 → 94 °C" beside the new profile, marked as coming
+  from it. A version can no longer differ from its parent in temperature alone.
+- **A temperature suggestion** from an analysis is now treated like one about
+  the pressure or the flow: the card offers no "Record it as a new version"
+  button and explains that this is a change to the brew profile, pointing at
+  drafting one from the analysis. The model may still advise a degree either
+  way; it is the profile that carries it. Which variables a card offers to
+  record now comes from `GET /api/vocab` rather than from a list in the front
+  end, so it cannot drift from what the server will accept.
+- **The chat's propose-a-version tool** no longer takes a temperature, and its
+  description sends a temperature change to the profile-draft tool. The views
+  it reads SQL over carry `profile_temperature_c` — the profile's own number —
+  in place of the Set's.
+- **Taking a starting point stages a draft when it has to.** An option still
+  suggests a temperature, and if it points at a profile you already have that
+  brews at a different one, taking it stages a draft of that profile at the
+  suggested temperature and the new Set's first version points at the draft.
+  The card says so beforehand. Nothing is sent to the machine: you approve and
+  push it on the Profiles page, as with any other draft.
+
 ### The chat's conversations, in a folder per Set
 
 - **A folder per Set** replaces the chronological list: General first, then
@@ -31,8 +62,9 @@ first (`POST /api/backup`), because there is no down-migration.
   switching profiles — or editing one on the machine — is something you can
   record. Without it those shots landed in "needs a Set", because a shot joins
   its Set by the profile it was pulled with. Picking one carries its target
-  yield and temperature across, never over a number you typed. It sends
-  nothing to the machine: putting a profile there is still the Profiles page.
+  yield across, never over a number you typed, and shows what it brews at. It
+  sends nothing to the machine: putting a profile there is still the Profiles
+  page.
 
 - **A version prediction.** A Set version can say what you expect it to do
   differently and which earlier version that is against — the parent by

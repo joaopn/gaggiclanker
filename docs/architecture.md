@@ -105,8 +105,24 @@ SQL. Repositories are the only code that writes SQL, services hold the logic,
 routes parse and delegate.
 
 **A Set version's recipe is immutable; its prediction and its outcome are not,
-and each is writable at a different time.** The recipe is written once and
-changed only by appending another version. The prediction — what the version was
+and each is writable at a different time.** The recipe is five fields — the
+profile version, the grind (text and number), the dose and the target yield —
+written once and changed only by appending another version. There is no brew
+temperature among them: the machine heats to what the profile states, so it is
+read from the version's profile document wherever it is shown, and changing it
+means drafting or editing the profile.
+
+**`domain/profile_recipe.py` is the rule for reading it** — the profile's own
+`temperature` when it is a number above 0, because the firmware writes 0 for
+"not set" — and Python reads it there and nowhere else. SQL cannot call Python,
+so four queries repeat that one sentence: the version select in
+`db/repos/sets.py`, the similar-Sets query in `starting/similar.py`, and the
+`profile_temperature_c` column of `v_set_versions` and `v_shots` (defined in
+`0013`, rebuilt in `0014` and `0016`). Repetition of a rule is drift waiting to
+happen, so `tests/sets/test_profile_temperature.py` pins every copy to the
+Python one: it stores a table of profile documents — the field missing, null,
+0, negative, an integer, a float, and shapes only a hand-edited row could hold
+— and asserts each query answers exactly what `profile_recipe` answers. The prediction — what the version was
 expected to do, against which earlier version — can be written and re-written
 only while the version has no shots and no grade, because one typed afterwards
 would grade itself. The outcome, somebody's grade of that prediction, needs a

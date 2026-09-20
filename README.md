@@ -120,13 +120,22 @@ redirect to the Sync page.
 
 ### The experiment log
 
-A Set page is a record of experiments, one per version. A version records a
-change of **profile** as well as of grind, dose, target yield or temperature:
-by hand from **Change something** on the Set page, or on its own when a staged
-profile is pushed for that Set. Recording one there sends nothing to the
-machine — that is still the Profiles page, and still you — but it is what keeps
-the next shots landing in the Set, because a shot joins its Set by the profile
-it was pulled with.
+A Set page is a record of experiments, one per version. A version's recipe is
+five things: the **profile** version, the grind as text and as a number, the
+dose and the target yield. A change of profile is recorded by hand from **Change something** on the Set page, or on
+its own when a staged profile is pushed for that Set. Recording one there sends
+nothing to the machine — that is still the Profiles page, and still you — but it
+is what keeps the next shots landing in the Set, because a shot joins its Set by
+the profile it was pulled with.
+
+**The brew temperature is not one of the five**, and there is nowhere to type
+one: the machine heats to what the profile says, so a number written on a Set
+would have been a claim about a document it does not control. Both recipe forms
+show what the picked profile brews at, read-only, and changing it means changing
+the profile — edit it on the machine and record the new version here, or draft
+one on the Profiles page. When a version switches to a profile that brews at a
+different temperature, the log shows "Temperature 93 → 94 °C" beside the profile
+change, marked as coming from it.
 
 Each version says what changed against the version before it, what you were
 trying, and — optionally —
@@ -508,7 +517,11 @@ Set with your verdict on each and the advice that followed them, your verdict on
 this one — marked as ground truth for taste — and the knowledge rules that match.
 It answers with a diagnosis and prioritised suggestions, and accepting one
 records a new Set version with that single field changed, so "did following the
-advice help" is a question the trend chart answers.
+advice help" is a question the trend chart answers. Three of them can be
+accepted that way — grind, dose and yield, the numbers a Set version records.
+Advice about the temperature, the pressure, the flow or the pre-infusion is
+about the profile: the refusal says so and points at drafting one from the
+analysis, which you then review and push yourself.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
@@ -556,10 +569,11 @@ typed, and the first question lands in that Set.
 
 Nineteen tools, and fourteen of them only read. The other five are `propose`:
 they either write something you still have to decide about — a new Set version
-with `origin=chat`, a profile draft that goes through the same schema,
-safety-policy and clamp checks as one typed by hand, an insight stored
-**unconfirmed** that reaches no future prompt until you confirm it — or they
-queue work that spends provider tokens, which is why `run_analysis` and
+with `origin=chat` (the grind, the dose, the yield or the profile: a
+temperature change is a profile change, and the tool says so), a profile draft
+that goes through the same schema, safety-policy and clamp checks as one typed
+by hand, an insight stored **unconfirmed** that reaches no future prompt until
+you confirm it — or they queue work that spends provider tokens, which is why `run_analysis` and
 `starting_point` are in that class rather than filed as reads. Both are rate
 limited on the same bucket as the routes they shortcut. Nothing in the chat can
 touch the machine — pushing a profile and deleting a shot off the display stay
@@ -575,9 +589,10 @@ held in the tab.
 ### A starting point for a new coffee
 
 **New Set** is one form: the bean, a name, the grinder, the profile version, the
-recipe and an optional intent. Picking a profile fills the target yield and the
-temperature from it when the profile states them — the temperature it brews at,
-and its largest volumetric stop — and never replaces a number you typed.
+recipe and an optional intent. Picking a profile fills the target yield from its
+largest volumetric stop, never over a number you typed, and shows the
+temperature it brews at beside the recipe — that one is the profile's to state,
+not yours to type.
 
 Open a coffee nobody has brewed and **Suggest a starting point instead**, folded
 under that form, answers the question you actually have. It reads the bean and
@@ -592,6 +607,14 @@ Press **Ask for suggestions** and the model turns that plus the rule tier into
 three complete first recipes — conservative, recommended, adventurous — each
 with a grind, a dose, a yield, a temperature, a profile and a rationale citing
 what it leaned on.
+
+An option's temperature has to be true once you take it, and only a profile can
+make it so. When an option points at a profile you already have and suggests a
+temperature that profile does not brew at, the card says that taking it will
+**stage a draft** of that profile at the suggested temperature, and the new
+Set's first version points at the draft. Nothing is sent to the machine: you
+approve and push it on the Profiles page, exactly as you would any other
+draft.
 
 It will not invent a grind number. A grinder's scale is arbitrary and there is
 no conversion between two of them, so a figure on your dial is offered only when
