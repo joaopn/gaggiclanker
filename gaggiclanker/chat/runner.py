@@ -67,7 +67,14 @@ if TYPE_CHECKING:
     from gaggiclanker.drafts.proposals import DraftProposals
     from gaggiclanker.starting.service import StartingPointService
 
-__all__ = ["CHAT_EVENT", "CHAT_PROMPT", "ChatRunner", "run_task_name"]
+__all__ = [
+    "CHAT_EVENT",
+    "GENERAL_CHAT_PROMPT",
+    "SET_CHAT_PROMPT",
+    "ChatRunner",
+    "prompt_for",
+    "run_task_name",
+]
 
 log = structlog.get_logger(__name__)
 
@@ -77,7 +84,18 @@ log = structlog.get_logger(__name__)
 #: parsed the name.
 CHAT_EVENT = "chat.event"
 
-CHAT_PROMPT = "chat"
+#: The two prompts, one per kind of conversation. Two files rather than one
+#: with a conditional paragraph: they now say different things about what the
+#: agent is for — grading an experiment, against answering about the archive —
+#: and a single prompt would have to be read with half of it crossed out.
+SET_CHAT_PROMPT = "chat-set"
+GENERAL_CHAT_PROMPT = "chat-general"
+
+
+def prompt_for(scope: ToolScope) -> str:
+    """Which prompt this conversation is answered with. From the same scope."""
+    return SET_CHAT_PROMPT if scope.kind == "set" else GENERAL_CHAT_PROMPT
+
 
 #: Roughly four characters to a token. Deliberately crude: the budget exists to
 #: stop a year-long thread from being re-sent in full, and a tokeniser per
@@ -279,6 +297,7 @@ class ChatRunner:
                 state,
                 config.provider,
                 model,
+                prompt=prompt_for(scope),
                 status=status,
                 error=error,
                 duration_ms=int((time.monotonic() - started) * 1000),
@@ -286,9 +305,14 @@ class ChatRunner:
 
     async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
-        rendered = await self.prompts.load(
-            CHAT_PROMPT, {"scope": await opening_context(self.db, scope)}
+        # The Set prompt is handed the experiment; the general one has no
+        # variables at all, and passing it one it does not use would be
+        # harmless but misleading to read.
+        prompt = prompt_for(scope)
+        variables = (
+            {"scope": await opening_context(self.db, scope)} if prompt == SET_CHAT_PROMPT else {}
         )
+        rendered = await self.prompts.load(prompt, variables)
         history = await self._history(state.thread_id, budget.history_tokens)
         provider = await self.llm.provider_for(await self.llm.config())
         schemas = self._schemas(provider, scope)
@@ -594,6 +618,7 @@ class ChatRunner:
         provider: str,
         model: str,
         *,
+        prompt: str,
         status: str,
         error: str | None,
         duration_ms: int,
@@ -610,7 +635,7 @@ class ChatRunner:
                     subject=f"thread {state.thread_id}",
                     provider=provider,
                     model=model or None,
-                    prompt_name=CHAT_PROMPT,
+                    prompt_name=prompt,
                     input_tokens=state.usage.prompt_tokens,
                     output_tokens=state.usage.completion_tokens,
                     duration_ms=duration_ms,

@@ -473,6 +473,36 @@ async def test_the_provider_is_given_the_chat_tool_set(
     assert not any(name.startswith("push_") for name in names)
 
 
+async def test_the_usage_row_records_which_prompt_answered_the_turn(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    archive: Fixture,
+    chat_provider: FakeProvider,
+) -> None:
+    """A turn has to be traceable to the instructions that produced it.
+
+    The two kinds of conversation are answered by two different prompts, and
+    the ledger row is where that is written down — an analysis of what the
+    agent said six weeks ago is explainable only if the row names the prompt.
+    """
+    from gaggiclanker.db.repos.chat import ChatThreadWrite
+    from gaggiclanker.db.repos.llm import LlmCallsRepository
+
+    repo = LlmCallsRepository(archive.db)
+    runner.llm.calls_repo = repo
+    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    assert created.thread is not None
+    chat_provider.chat_script = [ChatTurn(text="ok"), ChatTurn(text="ok")]
+
+    scoped_run = await send(runner, tasks, thread)
+    general_run = await send(runner, tasks, created.thread.id, "what is a 1:2 ratio?")
+
+    rows = {row.call_id: row.prompt_name for row in await repo.recent(limit=10)}
+    assert rows[f"chat-{scoped_run}"] == "chat-set"
+    assert rows[f"chat-{general_run}"] == "chat-general"
+
+
 async def test_an_empty_message_is_refused_before_a_run_is_opened(
     runner: ChatRunner, tasks: TaskRegistry, thread: int
 ) -> None:
