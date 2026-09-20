@@ -275,6 +275,49 @@ web bundle outside it. A test enumerates the application's own OpenAPI document
 and asserts each route answers 401, so a router added later is covered the day
 it is mounted.
 
+**A change an agent proposes is a row, and only a person turns it into a
+version.** `propose_set_version` used to append a `set_versions` row the moment
+a model asked for one: the next shot was filed under a recipe nobody had agreed
+to, with no prediction on it. It now writes a `set_version_proposals` row that
+changes nothing, and the version appears when somebody presses **Accept** —
+`POST /api/sets/{id}/proposals/{pid}/accept`, in one transaction that re-checks
+everything the moment it runs (the proposal is still waiting, the Set has not
+moved on, the current version's prediction has been graded) and then appends the
+version through `SetsRepository.append_version`, which exists so that append can
+be part of somebody else's transaction rather than opening its own.
+
+**A proposal stops waiting when the Set moves on.** Every path that appends a
+version — the Add a version form, a roll back, a pushed profile draft, an
+accepted analysis suggestion, and accepting a proposal itself — goes through
+`SetsRepository._insert_version`, and that is where a waiting proposal of the
+same Set is marked `stale`, in the same transaction, with the proposal being
+accepted as the one exception. The alternative was describing that state rather
+than removing it: a row still saying `proposed` tells the next conversation's
+opening context that the Set is somewhere it is not, and leaves the person an
+Accept button whose only possible answer is a 409. The staleness check inside
+`accept` stays as the defence for the race the retirement cannot see.
+
+**Whatever `create` accepted, `accept` can apply.** Every reference a proposal
+names — the profile version, the compared-to version, the conversation it was
+argued in — is checked when the proposal is made, not when somebody presses the
+button. A dangling id discovered at Accept is a 500 on a person's click, and a
+proposal that then sits there blocking every other one until it is declined.
+
+A separate table rather than a status column on `set_versions`, for two reasons.
+A version is a thing that was brewed and it must not have a lifecycle in which
+it did not exist yet: every query that averages, groups or charts versions would
+then owe a filter, and the one that forgot it would quietly count a suggestion
+nobody accepted. And the proposal carries what only a proposal has — the chat it
+came from, the version it was made against, whether two changes had to move
+together, the note a decline left — none of which belongs on the recipe.
+
+The two decisions are routes and nothing else. No tool in the registry reaches
+them, in the chat or over the stdio MCP server, and
+`tests/tools/test_no_proposal_is_accepted_by_a_tool.py` asserts it twice: no
+registered tool is named for either, and no bytecode in the tool package refers
+to either method. An agent that could accept its own proposal would have exactly
+the power the proposal was invented to take away.
+
 **What a conversation can reach is one function, and three things read it.**
 A chat is either about one version of one Set or about the archive, and
 `tools/scope.py` maps that kind to the tools that exist and what each may

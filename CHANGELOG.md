@@ -10,6 +10,40 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### An agent's change to a Set is a proposal you accept, and it needs a prediction
+
+- **The chat can no longer change a Set on its own.** `propose_set_version`
+  used to record the next version the moment the model asked for one: your next
+  shot was filed under a recipe you had never agreed to. It now writes down one
+  change, with what it expects that change to do, and leaves it waiting for you.
+  The Set stays where it is until you press **Accept**.
+- **Accept and Decline are on the card, wherever you read it** — in the
+  conversation it was argued in, and above the experiment log on the Set page.
+  The card says what would move, why, and what is predicted, *compared to v4*.
+  Accepting records the change as the Set's next version with that prediction on
+  it, and sends nothing to the machine. Declining creates nothing, and the note
+  you leave is what the next conversation is told about what you did not want.
+  Accepting is refused, in words, if the Set has moved on since the change was
+  proposed, or if the current version's own prediction has not been graded yet.
+- **A proposal without a prediction is refused**, and so is one that moves two
+  things at once unless the agent says why they cannot be separated — and then
+  it has to tell you that the prediction cannot say which of them did anything.
+  While the current version's prediction is ungraded the agent cannot propose
+  anything new: it grades that one with you, or asks for another shot on the
+  same recipe, which needs no version. Only one proposal waits per Set.
+- **A profile drafted inside a Set's conversation carries a prediction too**,
+  because the temperature and the pressure curve are as much of the recipe as
+  the grind is. The draft still lands on the Profiles page as an ordinary draft,
+  with the same schema, safety-policy and clamp checks and the same approve and
+  push it always had; the prediction is recorded on the Set when you push that
+  draft for that Set, and nowhere else. Every card that shows a draft says what
+  it predicts and where that prediction will land.
+- **Accepting and declining are yours alone.** There is no tool, in the chat or
+  over MCP, that reaches either, and there is no new kind of permission: the
+  machine is still written only through this app's own routes, by a person.
+- A version that came from an accepted proposal links back, from the experiment
+  log, to the conversation it was argued in.
+
 ### A chat is about one experiment, and can see only that
 
 - **A conversation in a Set's folder is about one version of that Set** — the

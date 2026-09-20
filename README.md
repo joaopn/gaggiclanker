@@ -250,6 +250,11 @@ Nothing, until **Device writes enabled** is on under Settings → Machine access
 on: **profiles may be pushed by the app** (see below); **everything else written
 to or deleted from the machine happens only from the Sync page, by a person.**
 
+Nothing an agent does is on that list. A proposed change to a Set is a row in
+this archive waiting for you, and accepting it records a version — it sends
+nothing. A profile a conversation drafts is a draft on the Profiles page, which
+you approve and push yourself.
+
 * **Send notes to the machine** lists the judgements the machine's notes cards
   do not have yet. Tick the ones to send and confirm; nothing is ticked for you.
   Saving a judgement never sends it. A card edited on the machine more recently
@@ -629,6 +634,41 @@ whether or not it exists. What it *can* do is propose the next version of this
 Set and record what has been learned about it — both waiting for you to accept
 them.
 
+**A proposed change is a question, not a change.** The agent writes down one
+change and what it expects that change to do; the Set stays exactly where it is
+until you press **Accept**, and your next shot is still filed under the recipe
+in the hopper. The card appears in the conversation and again above the
+experiment log, with **Accept** and **Decline** on it, and it says what would
+move, why, and what is predicted — *compared to v4, expect 3 to 5 s longer and
+less sour*. Accepting records the change as the Set's next version, with that
+prediction on it, and sends nothing to the machine. Declining creates nothing,
+and the note you leave is what the next conversation is told.
+
+The agent cannot dodge any of that. A change with no prediction is refused, and
+so is one that moves two things at once unless it says why they cannot be
+separated — and then it has to tell you the prediction cannot say which of them
+did anything. While the current version's own prediction is still ungraded it
+cannot propose the next change at all: it grades that one with you, or asks for
+another shot on the same recipe, which needs no version. Only one proposal waits
+at a time.
+
+**A proposal stops waiting the moment you change the Set another way.** Record a
+version on the form, roll back, push a profile draft for the Set, accept an
+analysis's suggestion — whichever it is, a change that was argued against the
+recipe you have just left is retired unanswered rather than sitting there with
+an Accept button that could only refuse. The log says so, and the next
+conversation is told, so the agent can propose afresh against what you are
+brewing now. **Accept and Decline are yours**: there is no tool, in the chat or
+over MCP, that reaches either, and a test walks the registry and the tool
+package's own bytecode to keep it that way.
+
+A profile change is a change to the recipe too — the temperature and the
+pressure curve are as much of it as the grind — so a draft proposed inside a
+Set's conversation carries a prediction and obeys the same rules. It still lands
+on the Profiles page as an ordinary draft: you read the diff, approve it and
+push it, and the prediction is recorded on the Set when you push that draft for
+that Set.
+
 A conversation in **General** is the other way round: the whole archive,
 read-only. It runs SQL over the curated views, compares shots across Sets, works
 out a starting point for a bag with no Set yet and drafts a profile — and it
@@ -655,11 +695,12 @@ turn is about the coffee rather than about learning what Set 3 is. Beside the
 composer, the page lists exactly what the agent can do in *this* conversation.
 
 **Twelve tools in a Set's conversation** — nine reads and three that propose:
-the next version of this Set with `origin=chat` (the grind, the dose, the yield
-or the profile: a temperature change is a profile change, and the tool says so),
-an insight about this Set stored **unconfirmed** that reaches no future prompt
-until you confirm it, and a profile draft that goes through the same schema,
-safety-policy and clamp checks as one typed by hand. **Sixteen in General** —
+one change to this Set, waiting for you, with the prediction that makes it
+gradable (the grind, the dose, the yield or the profile: a temperature change is
+a profile change, and the tool says so); an insight about this Set stored
+**unconfirmed** that reaches no future prompt until you confirm it; and a
+profile draft that goes through the same schema, safety-policy and clamp checks
+as one typed by hand. **Sixteen in General** —
 fourteen reads and two proposals, the profile draft and a starting point;
 `starting_point` is `propose` rather than a read because it spends provider
 tokens, and it is rate limited on the same bucket as the route it shortcuts.
