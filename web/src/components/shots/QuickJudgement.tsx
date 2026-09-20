@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { JudgementWrite, ShotJudgement } from "@/api/types";
+import type { JudgementWrite, SetVersionRow, ShotJudgement } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import {
   Field,
   FlavorNoteRows,
@@ -85,9 +86,12 @@ const SAVED_FOR_MS = 2_000;
 export function QuickJudgement({
   shotId,
   judgement,
+  setVersion,
 }: {
   shotId: number;
   judgement: ShotJudgement | null | undefined;
+  /** The version this shot was pulled with, for the prediction row. */
+  setVersion?: SetVersionRow | null;
 }) {
   const vocab = useVocabulary();
   const picks = useFlavorPicks();
@@ -182,6 +186,14 @@ export function QuickJudgement({
       }
     >
       <div data-testid="quick-judgement" className="space-y-3">
+        {/* Above the controls, and mute until the decision is in: what the
+            version predicted must not be what you read before tasting. */}
+        <VersionPrediction
+          shotId={shotId}
+          version={setVersion}
+          decision={judgement?.decision ?? null}
+        />
+
         <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           <Field label="Rating">
             <RatingInput value={quick.rating} onChange={(rating) => void write({ rating })} />

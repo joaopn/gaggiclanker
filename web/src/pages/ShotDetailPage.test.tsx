@@ -1,11 +1,12 @@
+import { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes } from "react-router-dom";
+import { Link, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
 import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { vocabulary } from "@/test/setsFixtures";
+import { version, vocabulary } from "@/test/setsFixtures";
 import {
   SHOT_129_SAMPLE_COUNT,
   shot129,
@@ -65,6 +66,94 @@ beforeEach(() => {
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   runAnalysis.mockResolvedValue(analysis());
+});
+
+describe("ShotDetailPage version prediction", () => {
+  const predicted = version({
+    version_no: 2,
+    prediction: "less bitter, a shorter shot",
+    compares_to_version_no: 1,
+  });
+
+  it("keeps the prediction out of the page until the shot has been decided about", async () => {
+    const user = setupUser();
+    getShot.mockResolvedValue({ ...shot129, set_version: predicted, judgement: null });
+    renderShot();
+
+    await screen.findByTestId("version-prediction-row");
+    expect(screen.queryByText("less bitter, a shorter shot")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show prediction" }));
+    expect(screen.getByText("less bitter, a shorter shot")).toBeInTheDocument();
+  });
+
+  it("does not carry a reveal from one shot to another the cache already holds", async () => {
+    const user = setupUser();
+    // The production cache, not the test one: `gcTime: 0` makes every
+    // navigation remount through the loading branch, which hides the bug this
+    // test exists for. With a warm cache the route element is reused and a
+    // reveal that lived in component state would survive the change of shot.
+    const caching = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 30_000, gcTime: 600_000 },
+        mutations: { retry: false },
+      },
+    });
+    getShot.mockImplementation(async (id: number) => ({
+      ...shot129,
+      shot: { ...shot129.shot, id, device_id: String(id) },
+      judgement: null,
+      set_version: version({
+        id: id * 10,
+        version_no: 2,
+        prediction: `what ${id} was expected to do`,
+        compares_to_version_no: 1,
+      }),
+    }));
+    renderWithQueryClient(
+      <Routes>
+        <Route
+          path="/shots/:shotId"
+          element={
+            <>
+              <Link to="/shots/130">the next shot</Link>
+              <Link to="/shots/129">the first shot</Link>
+              <ShotDetailPage />
+            </>
+          }
+        />
+      </Routes>,
+      { initialEntries: ["/shots/129"], queryClient: caching },
+    );
+
+    // Visit both, so each is in the cache and fresh.
+    await screen.findByTestId("version-prediction-row");
+    await user.click(screen.getByRole("link", { name: "the next shot" }));
+    await waitFor(() => expect(screen.getByTestId("version-prediction-row")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Show prediction" }));
+    expect(await screen.findByText("what 130 was expected to do")).toBeInTheDocument();
+
+    // Back to a shot the cache can answer at once: no loading branch, the same
+    // route element — and still nothing revealed.
+    await user.click(screen.getByRole("link", { name: "the first shot" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("version-prediction-row")).toHaveAttribute("data-shown", "no"),
+    );
+    expect(screen.queryByText("what 129 was expected to do")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show prediction" })).toBeInTheDocument();
+  });
+
+  it("shows it straight away once there is a decision", async () => {
+    getShot.mockResolvedValue({
+      ...shot129,
+      set_version: predicted,
+      judgement: { ...shot129.judgement, decision: "improve" },
+    });
+    renderShot();
+
+    expect(await screen.findByText("less bitter, a shorter shot")).toBeInTheDocument();
+  });
 });
 
 describe("ShotDetailPage header", () => {

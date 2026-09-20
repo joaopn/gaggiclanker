@@ -9,6 +9,7 @@ import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { AssignToSet } from "@/components/shots/AssignToSet";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
 import {
@@ -204,6 +205,14 @@ export function ShotDetailPage() {
           of the two together. The analysis comes last of the three because it
           reads both — advice given before you have said how it tasted is worth
           markedly less, and the order says so. */}
+      {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
+          a revealed prediction must not survive the change of subject. */}
+      <VersionPrediction
+        key={row.id}
+        shotId={row.id}
+        version={shot.data.set_version}
+        decision={shot.data.judgement?.decision ?? null}
+      />
       <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
       <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
         <AssignToSet

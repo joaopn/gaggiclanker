@@ -180,7 +180,11 @@ export function ShotRowPanel({
               Could not load this shot: {detail.error.message}
             </p>
           ) : (
-            <QuickJudgement shotId={shot.id} judgement={detail.data.judgement} />
+            <QuickJudgement
+              shotId={shot.id}
+              judgement={detail.data.judgement}
+              setVersion={detail.data.set_version}
+            />
           )}
         </div>
       </div>

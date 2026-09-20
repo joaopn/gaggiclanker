@@ -5,7 +5,7 @@ import type { ShotJudgement } from "@/api/types";
 import { QuickJudgement } from "@/components/shots/QuickJudgement";
 import { usePatchJudgement } from "@/hooks/useSets";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { flavorPicks, judgement, vocabulary } from "@/test/setsFixtures";
+import { flavorPicks, judgement, version, vocabulary } from "@/test/setsFixtures";
 import { shot129 } from "@/test/shotFixture";
 
 vi.mock("sonner", () => ({
@@ -53,6 +53,39 @@ function row(kind: "taste" | "aroma") {
     screen.getByRole("group", { name: `${kind === "taste" ? "Taste" : "Aroma"} notes` }),
   );
 }
+
+describe("QuickJudgement version prediction", () => {
+  const predicted = version({
+    version_no: 2,
+    prediction: "less bitter, a shorter shot",
+    compares_to_version_no: 1,
+  });
+
+  it("hides the text until the shot carries a decision, and reveals it on request", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <QuickJudgement
+        shotId={1}
+        judgement={judgement({ decision: null })}
+        setVersion={predicted}
+      />,
+    );
+    await screen.findByTestId("taste-chips");
+
+    expect(screen.queryByText("less bitter, a shorter shot")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show prediction" }));
+    expect(screen.getByText("less bitter, a shorter shot")).toBeInTheDocument();
+  });
+
+  it("shows nothing when the version predicted nothing", async () => {
+    renderWithQueryClient(
+      <QuickJudgement shotId={1} judgement={judgement()} setVersion={version()} />,
+    );
+    await screen.findByTestId("taste-chips");
+
+    expect(screen.queryByTestId("version-prediction-row")).not.toBeInTheDocument();
+  });
+});
 
 describe("QuickJudgement", () => {
   it("offers the picks for each row, plus what the shot already has, in wheel order", async () => {
