@@ -15,6 +15,7 @@ import {
   getChatThread,
   getChatThreads,
   getChatTools,
+  openChatThread,
   renameChatThread,
   sendChatMessage,
 } from "@/api/client";
@@ -111,16 +112,21 @@ export function useChatThread(id: number | null): UseQueryResult<ChatThreadDetai
 }
 
 /**
- * The tool list, fetched once for the session.
+ * The tool list for a kind of conversation, fetched once per kind per session.
  *
- * It changes with a redeploy and nothing else, and the panel needs it to say
- * whether a call was a read or a *proposal* — which is the one thing a reader
- * has to be able to see at a glance.
+ * It changes with a redeploy and nothing else. The panel needs it twice over:
+ * to say whether a call was a read or a *proposal*, and to say what the agent
+ * can do here at all — and "here" differs, which is why the kind is part of
+ * the key rather than something the page filters afterwards.
  */
-export function useChatTools(): UseQueryResult<ChatToolList, Error> {
+export function useChatTools(kind: "general" | "set" | null): UseQueryResult<ChatToolList, Error> {
   return useQuery({
-    queryKey: queryKeys.chat.tools(),
-    queryFn: getChatTools,
+    // `null` is "the page does not know yet" — a conversation is selected and
+    // its row has not arrived. Asking for a kind then would mean guessing, and
+    // the guess is visible: the general list would flash beside a Set's chat.
+    queryKey: queryKeys.chat.tools(kind ?? "unknown"),
+    queryFn: () => getChatTools(kind ?? "general"),
+    enabled: kind !== null,
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
@@ -134,6 +140,25 @@ export function useCreateChatThread(): UseMutationResult<
   return useMutation({
     mutationFn: ({ title, setId }) =>
       createChatThread({ title: title ?? "", set_id: setId ?? null }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.chat.all }),
+    onError: (error) => toast.error(error.message),
+  });
+}
+
+/**
+ * Open or continue the conversation about one version of a Set.
+ *
+ * Unlike `useCreateChatThread` this is idempotent: the room already exists most
+ * of the time, and Discuss means "take me to it" rather than "make another".
+ */
+export function useOpenChatThread(): UseMutationResult<
+  ChatThread,
+  Error,
+  { setId: number; setVersionId?: number | null }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, setVersionId }) => openChatThread(setId, setVersionId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.chat.all }),
     onError: (error) => toast.error(error.message),
   });

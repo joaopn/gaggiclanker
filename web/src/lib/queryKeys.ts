@@ -144,7 +144,7 @@ export const queryKeys = {
     threads: () => ["chat", "threads"] as const,
     thread: (id: string) => ["chat", "thread", id] as const,
     run: (id: string) => ["chat", "run", id] as const,
-    tools: () => ["chat", "tools"] as const,
+    tools: (kind: string) => ["chat", "tools", kind] as const,
   },
   analyses: {
     all: ["analyses"] as const,

@@ -150,11 +150,12 @@ export function SetDetailPage() {
           <div className="flex items-center gap-2">
             {row.active ? <Badge data-testid="set-active">active</Badge> : null}
             {row.status === "archived" ? <Badge variant="outline">archived</Badge> : null}
-            {/* The scoped conversation this feature is for: the Set's recipe,
-                its recent shots and the insights that apply are already in the
-                prompt before the first word is typed. */}
+            {/* The conversation about the change being argued right now: the
+                ledger, the spread and the evidence are in the prompt before the
+                first word is typed, and a second press lands in the same room. */}
             <DiscussButton
               setId={row.id}
+              versionId={current?.id ?? null}
               question={`How is ${row.name} going, and what should I change next?`}
             />
             {!row.active && row.status === "active" ? (

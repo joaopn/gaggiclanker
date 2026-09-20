@@ -19,6 +19,7 @@ const {
   getChatThread,
   getChatTools,
   createChatThread,
+  openChatThread,
   deleteChatThread,
   sendChatMessage,
   cancelChatRun,
@@ -28,6 +29,7 @@ const {
   getChatThread: vi.fn(),
   getChatTools: vi.fn(),
   createChatThread: vi.fn(),
+  openChatThread: vi.fn(),
   deleteChatThread: vi.fn(),
   sendChatMessage: vi.fn(),
   cancelChatRun: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getChatThread,
   getChatTools,
   createChatThread,
+  openChatThread,
   deleteChatThread,
   sendChatMessage,
   cancelChatRun,
@@ -50,6 +53,9 @@ const THREAD = {
   title: "Why is Guji sour?",
   set_id: 3,
   set_name: "Guji on the Niche",
+  set_version_id: 30,
+  set_version_no: 4,
+  dead_end: false,
   message_count: 2,
   created_at: "2026-03-01T10:00:00.000Z",
   updated_at: "2026-03-01T10:01:00.000Z",
@@ -62,8 +68,8 @@ function thread(over: Partial<typeof THREAD> & { id: number }) {
 
 /** The two Sets the Sets list serves: the active one first, as the API sorts. */
 const SETS = [
-  { id: 3, name: "Guji on the Niche" },
-  { id: 4, name: "Kenya AA on the Niche" },
+  { id: 3, name: "Guji on the Niche", current_version_id: 30, current_version_no: 4 },
+  { id: 4, name: "Kenya AA on the Niche", current_version_id: 40, current_version_no: 1 },
 ];
 
 /**
@@ -153,6 +159,7 @@ beforeEach(() => {
     ],
   });
   createChatThread.mockResolvedValue({ ...THREAD, id: 2, title: "", message_count: 0 });
+  openChatThread.mockResolvedValue({ ...THREAD, id: 5, title: "v4, argued" });
   deleteChatThread.mockResolvedValue({ deleted: true });
   sendChatMessage.mockResolvedValue({
     run: { ...DETAIL.runs[0], id: 9, status: "running" },
@@ -163,6 +170,25 @@ beforeEach(() => {
 });
 
 describe("ChatPage folders", () => {
+  it("labels a conversation with the version it is about, and mutes a dead end", async () => {
+    getChatThreads.mockResolvedValue([
+      thread({ id: 1, title: "the live one", set_version_no: 4 }),
+      thread({ id: 2, title: "the abandoned one", set_version_no: 2, dead_end: true }),
+    ]);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    const rows = within(region("Guji on the Niche")).getAllByTestId("thread-row");
+
+    expect(rows[0]).toHaveTextContent("v4");
+    expect(rows[0]).toHaveTextContent("the live one");
+    expect(rows[0]).toHaveAttribute("data-dead-end", "no");
+    // In words as well as in grey: what was argued there is not the line being
+    // brewed any more.
+    expect(rows[1]).toHaveAttribute("data-dead-end", "yes");
+    expect(rows[1]).toHaveTextContent("dead end");
+  });
+
   it("draws General and a folder per Set, including a Set nobody has asked about", async () => {
     renderWithQueryClient(<ChatPage />);
 
@@ -371,10 +397,12 @@ describe("ChatPage", () => {
 
     expect(await screen.findByLabelText("Message")).toHaveValue("How is Guji going?");
     // The folder the question will land in is open, and the composer's card
-    // says so rather than leaving it to be discovered afterwards.
+    // says so — with the version it would land on, which is the Set's current.
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
     expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("A new conversation in Guji on the Niche")).toBeInTheDocument();
+    expect(screen.getByText("A new conversation about Guji on the Niche v4")).toBeInTheDocument();
+    // A Set link on its own creates nothing until something is sent.
+    expect(openChatThread).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: /send/i }));
 
@@ -382,11 +410,66 @@ describe("ChatPage", () => {
     await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 3 }));
   });
 
-  it("says a first question with no scope becomes a general conversation", async () => {
+  it("says a first question with no scope is a general conversation", async () => {
     getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />);
 
-    expect(await screen.findByText("A new general conversation")).toBeInTheDocument();
+    expect(await screen.findByText("General")).toBeInTheDocument();
+  });
+
+  it("opens or continues a version's conversation from a Discuss link", async () => {
+    getChatThreads.mockResolvedValue([]);
+    renderWithQueryClient(<ChatPage />, {
+      initialEntries: ["/chat?set=3&version=30&ask=What%20now%3F"],
+    });
+
+    await waitFor(() => expect(openChatThread).toHaveBeenCalledWith(3, 30));
+    // The room it opened is the one on screen, and the typed question survived
+    // the round trip.
+    await waitFor(() => expect(getChatThread).toHaveBeenCalledWith(5));
+    expect(screen.getByLabelText("Message")).toHaveValue("What now?");
+  });
+
+  it("says which version the open conversation is about", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    expect(await screen.findByText("About Guji on the Niche v4")).toBeInTheDocument();
+  });
+
+  it("asks for the tool list of the kind of conversation it is showing", async () => {
+    getChatTools.mockResolvedValue({
+      tools: [
+        { name: "list_set_shots", permission: "read", description: "this Set's shots" },
+        { name: "propose_set_version", permission: "propose", description: "a version" },
+      ],
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    await screen.findByTestId("chat-transcript");
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set"));
+    expect(screen.getByTestId("chat-tools")).toHaveTextContent("list_set_shots");
+    expect(screen.getByTestId("chat-tools")).toHaveTextContent("It can see this Set only");
+  });
+
+  it("shows no tool list until it knows what kind of conversation it is", async () => {
+    // The thread never arrives: the page is selecting one and does not yet
+    // know whether it is a Set's or a general one.
+    getChatThread.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    await screen.findByRole("button", { name: /^General/ });
+
+    expect(screen.queryByTestId("chat-tools")).not.toBeInTheDocument();
+    // And it did not guess: no list was asked for at all.
+    expect(getChatTools).not.toHaveBeenCalled();
+  });
+
+  it("asks for the general tool list when nothing is selected", async () => {
+    getChatThreads.mockResolvedValue([]);
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("general"));
   });
 
   it("deletes a conversation from inside its folder", async () => {

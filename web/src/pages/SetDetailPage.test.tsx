@@ -146,6 +146,19 @@ describe("SetDetailPage", () => {
     expect(screen.getAllByTestId("version-entry")).toHaveLength(2);
   });
 
+  it("discusses the current version, not the Set in general", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByText("Now brewing: v2");
+
+    // The version is what makes it open or continue one conversation rather
+    // than pointing vaguely at a folder.
+    expect(screen.getByTestId("discuss-in-chat")).toHaveAttribute(
+      "href",
+      expect.stringContaining("version="),
+    );
+  });
+
   it("sends only the fields that changed when a version is recorded", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);

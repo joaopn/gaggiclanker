@@ -131,10 +131,12 @@ export function ShotDetailPage() {
             <RatingStars
               rating={shot.data.judgement?.rating ?? row.rating ?? row.index_rating ?? null}
             />
-            {/* Scoped to the shot's own Set, so the chat starts knowing what
-                this shot was an attempt at rather than asking. */}
+            {/* The conversation about the version this shot was pulled under,
+                so the chat starts on the change this shot is evidence for
+                rather than asking what it was an attempt at. */}
             <DiscussButton
               setId={row.set_badge?.set_id ?? null}
+              versionId={row.set_version_id ?? null}
               question={`What do you make of shot ${row.id}?`}
             />
           </div>

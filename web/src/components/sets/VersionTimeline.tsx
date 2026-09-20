@@ -225,6 +225,18 @@ export function VersionTimeline({
               </p>
             ) : null}
 
+            {/* The room where this change was argued, one click from the log.
+                Through the Chat page's open-or-continue link, so it is the
+                same conversation Discuss opens and not a second one. */}
+            <p className="text-xs" data-testid="version-chat">
+              <Link
+                to={`/chat?set=${setId}&version=${entry.version.id}`}
+                className="text-muted-foreground underline underline-offset-2"
+              >
+                Chat about v{entry.version.version_no}
+              </Link>
+            </p>
+
             <p className="text-muted-foreground text-xs" data-testid="version-labels">
               {/* This version's shots, not the whole Set's: the count beside
                   the link is this version's, and a link that widened to the

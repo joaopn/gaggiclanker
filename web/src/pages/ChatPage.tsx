@@ -16,6 +16,7 @@ import {
   useChatTools,
   useCreateChatThread,
   useDeleteChatThread,
+  useOpenChatThread,
   useSendChatMessage,
 } from "@/hooks/useChat";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
@@ -24,14 +25,21 @@ import { useSets } from "@/hooks/useSets";
 /**
  * The chat, as a page.
  *
- * Three query parameters, and each is a link somebody else's page makes:
- * `?thread=` selects a conversation, `?set=` scopes a *new* one, and `?ask=`
- * prefills the composer. That is what the "Discuss in chat" buttons on a shot
- * and a Set produce — a thread already pointed at the right archive with the
- * question typed, because the alternative is the person retyping "how is Set 3
- * going" into a box that has no idea what Set 3 is.
+ * Four query parameters, and each is a link somebody else's page makes:
+ * `?thread=` selects a conversation, `?set=` scopes a *new* one, `?set=&version=`
+ * opens or continues the conversation about that version, and `?ask=` prefills
+ * the composer. That is what the Discuss buttons produce — a conversation
+ * already pointed at the right experiment with the question typed, because the
+ * alternative is the person retyping "how is Set 3 going" into a box that has
+ * no idea what Set 3 is.
  *
- * Which Set a conversation is about is now the shape of the list rather than a
+ * `?set=` alone creates nothing: it says where a first question would land, and
+ * a mis-click leaves no empty conversation behind. `?set=&version=` is the
+ * other intent — "take me to the room where this change is being argued" — and
+ * that room is a thing that exists, so it is opened through the server's own
+ * open-or-continue route rather than made afresh.
+ *
+ * Which Set a conversation is about is the shape of the list rather than a
  * control beside it: a folder per Set, and New inside the folder. `scope` is
  * what a *first question* would be filed under when no conversation is
  * selected — set by the last New pressed or by a `?set=` link — and the
@@ -47,10 +55,10 @@ export function ChatPage() {
   const [params, setParams] = useSearchParams();
   const threadParam = params.get("thread");
   const setParam = params.get("set");
+  const versionParam = params.get("version");
   const askParam = params.get("ask");
 
   const threads = useChatThreads();
-  const tools = useChatTools();
   const sets = useSets();
   useQueryErrorToast(threads.error, "conversations");
 
@@ -61,16 +69,62 @@ export function ChatPage() {
 
   const thread = useChatThread(selected);
   const createThread = useCreateChatThread();
+  const openThread = useOpenChatThread();
   const deleteThread = useDeleteChatThread();
   const send = useSendChatMessage();
   const cancel = useCancelChatRun();
   const live = useChatRun(runId, selected);
+
+  // Which surface this conversation has: the selected thread's, or — with
+  // nothing selected — the one a first question would be filed under. Asked of
+  // the server per kind; the page never filters a list of its own.
+  //
+  // NULL while a selected conversation is still loading. Falling back to
+  // "general" there would be a guess, and the guess is on screen: the archive's
+  // tool list would flash beside a Set's chat and then be replaced.
+  const kind: "general" | "set" | null =
+    selected === null
+      ? scope === null
+        ? "general"
+        : "set"
+      : thread.data === undefined
+        ? null
+        : thread.data.thread.set_id === null
+          ? "general"
+          : "set";
+  const tools = useChatTools(kind);
 
   const permissions = useMemo(() => {
     const map: Record<string, string> = {};
     for (const tool of tools.data?.tools ?? []) map[tool.name] = tool.permission;
     return map;
   }, [tools.data]);
+
+  // `?set=&version=` is Discuss: open or continue that version's conversation,
+  // once. The guard is a ref written inside the effect rather than state: two
+  // passes of an effect that has already fired would be two rooms about one
+  // change, and the answer is not a render's worth of state.
+  const openedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!setParam || !versionParam) return;
+    const key = `${setParam}:${versionParam}`;
+    if (openedFor.current === key) return;
+    openedFor.current = key;
+    void openThread
+      .mutateAsync({ setId: Number(setParam), setVersionId: Number(versionParam) })
+      .then((row) => {
+        setSelected(row.id);
+        setRunId(null);
+        const next = new URLSearchParams(params);
+        next.set("thread", String(row.id));
+        next.delete("set");
+        next.delete("version");
+        next.delete("ask");
+        setParams(next, { replace: true });
+      });
+    // The draft is state by now, so dropping `ask` from the URL keeps the
+    // typed question on screen.
+  }, [setParam, versionParam, openThread, params, setParams]);
 
   // A thread that is still running when the page loads — another tab, or a
   // reload mid-answer. Following it is what makes a refresh harmless.
@@ -118,8 +172,9 @@ export function ChatPage() {
     select(created.id);
   };
 
-  //: The Set a first question would be filed under, for the composer to say so.
-  const scopeName = (sets.data?.items ?? []).find((row) => row.id === scope)?.name ?? null;
+  //: The Set a first question would be filed under, for the composer to say so
+  //: — with the version it would land on, which is the Set's current one.
+  const scopeSet = (sets.data?.items ?? []).find((row) => row.id === scope) ?? null;
 
   const submit = async () => {
     const message = draft.trim();
@@ -184,13 +239,14 @@ export function ChatPage() {
           description={
             selected !== null
               ? thread.data?.thread.set_name
-                ? `Scoped to ${thread.data.thread.set_name}`
-                : "Not scoped to a Set"
+                ? `About ${thread.data.thread.set_name} v${thread.data.thread.set_version_no}` +
+                  (thread.data.thread.dead_end ? " — a dead end a later roll back went past" : "")
+                : "General"
               : // Nothing selected: the first question creates the conversation,
                 // and this is the only place that says where it will land.
-                scopeName
-                ? `A new conversation in ${scopeName}`
-                : "A new general conversation"
+                scopeSet
+                ? `A new conversation about ${scopeSet.name} v${scopeSet.current_version_no}`
+                : "General"
           }
         >
           <div className="max-h-[60vh] min-h-40 overflow-y-auto pr-1">
@@ -253,10 +309,32 @@ export function ChatPage() {
             )}
           </form>
 
+          <ToolsHere tools={(tools.data?.tools ?? []).map((tool) => tool.name)} kind={kind} />
           <UsageFooter runs={thread.data?.runs ?? []} />
         </SectionCard>
       </div>
     </div>
+  );
+}
+
+/**
+ * What the agent can do in this conversation, in its own words.
+ *
+ * The list comes from the server, per kind, and is not filtered here: a Set's
+ * conversation cannot query the archive and a general one cannot change a Set,
+ * and the page promising otherwise would be the page lying.
+ */
+function ToolsHere({ tools, kind }: { tools: string[]; kind: "general" | "set" | null }) {
+  // Nothing at all until the kind is known: a list that says the wrong thing
+  // for a moment is worse than a line that arrives a moment later.
+  if (kind === null || tools.length === 0) return null;
+  return (
+    <p className="mt-2 text-muted-foreground text-xs" data-testid="chat-tools">
+      {kind === "set"
+        ? "It can see this Set only. Tools here: "
+        : "It can read the whole archive and change no Set. Tools here: "}
+      {tools.join(", ")}
+    </p>
   );
 }
 

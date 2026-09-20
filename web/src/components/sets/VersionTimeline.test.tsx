@@ -366,6 +366,21 @@ describe("VersionTimeline", () => {
     );
   });
 
+  it("links each version at the conversation where that change is argued", () => {
+    const detail = setDetail();
+    detail.versions[0].version = version({ id: 22, version_no: 2 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // The version, not the Set: there is one conversation per change, and the
+    // Chat page opens or continues that one.
+    expect(screen.getByRole("link", { name: "Chat about v2" })).toHaveAttribute(
+      "href",
+      "/chat?set=3&version=22",
+    );
+  });
+
   it("mutes a version a later roll back stepped over, and still shows it", () => {
     const detail = setDetail();
     detail.versions[0].dead_end = true;

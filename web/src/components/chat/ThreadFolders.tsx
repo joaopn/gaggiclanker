@@ -24,6 +24,12 @@ import { cn } from "@/lib/utils";
  * A folder is a disclosure in the house style (`AppShell`'s `NavGroup`): the
  * list is always rendered and toggled with `hidden`, so `aria-controls`
  * resolves to something a reader can reach.
+ *
+ * A row is one conversation about one version, labelled with it. A version a
+ * later roll back stepped over is muted and says "dead end" in words: what was
+ * argued there is still readable and is no longer the line being brewed. The
+ * server decides that — it is a fact about a Set's whole line — and the page
+ * renders what it is told.
  */
 
 /** Where a conversation with no Set lives, and where a first question goes. */
@@ -240,6 +246,7 @@ function Folder({
                   className={cn(
                     "group flex min-w-0 items-center gap-1 rounded-md border border-transparent px-2 py-1 text-left hover:bg-accent",
                     thread.id === selectedId ? "border-border bg-accent" : "",
+                    thread.dead_end && "opacity-60",
                   )}
                 >
                   <button
@@ -247,13 +254,31 @@ function Folder({
                     onClick={() => onSelect(thread.id)}
                     className="min-w-0 flex-1 text-left"
                     aria-current={thread.id === selectedId ? "true" : undefined}
+                    data-testid="thread-row"
+                    data-dead-end={thread.dead_end ? "yes" : "no"}
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <MessageSquare
                         className="size-3.5 shrink-0 text-muted-foreground"
                         aria-hidden="true"
                       />
-                      <span className="truncate text-sm">{thread.title || "New conversation"}</span>
+                      {/* The version leads the row: a folder holds one
+                          conversation per change, and "v6" is what tells two of
+                          them apart. Not truncated with the title, because it is
+                          the half that never gets long. */}
+                      {thread.set_version_no ? (
+                        <span className="shrink-0 font-medium text-sm tabular-nums">
+                          v{thread.set_version_no}
+                        </span>
+                      ) : null}
+                      <span
+                        className={cn(
+                          "truncate text-sm",
+                          thread.dead_end && "text-muted-foreground line-through decoration-1",
+                        )}
+                      >
+                        {thread.title || "New conversation"}
+                      </span>
                     </span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 pl-5 text-muted-foreground text-xs">
                       {/* The Set badge is gone: the folder this row is in says
@@ -263,6 +288,10 @@ function Folder({
                       {folder.key === ARCHIVED && thread.set_name ? (
                         <span className="truncate">{thread.set_name} · </span>
                       ) : null}
+                      {/* In words, not only in grey: a later roll back went back
+                          past this version, so what was argued here is not the
+                          line being brewed any more. */}
+                      {thread.dead_end ? <span className="shrink-0">dead end · </span> : null}
                       <span className="shrink-0">{thread.message_count} messages</span>
                     </span>
                   </button>

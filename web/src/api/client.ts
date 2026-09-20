@@ -1007,6 +1007,23 @@ export async function createChatThread(body: ChatThreadWrite): Promise<ChatThrea
   });
 }
 
+/**
+ * The conversation about one version of a Set, started if there is none.
+ *
+ * What Discuss presses: a second press lands in the same room rather than
+ * leaving a trail of empty conversations about one change. Omitting the version
+ * means the Set's current one.
+ */
+export async function openChatThread(
+  setId: number,
+  setVersionId?: number | null,
+): Promise<ChatThread> {
+  return fetchApi<ChatThread>("/chat/threads/open", {
+    method: "POST",
+    body: JSON.stringify({ set_id: setId, set_version_id: setVersionId ?? null }),
+  });
+}
+
 export async function getChatThread(id: number): Promise<ChatThreadDetail> {
   return fetchApi<ChatThreadDetail>(`/chat/threads/${id}`);
 }
@@ -1033,8 +1050,16 @@ export async function cancelChatRun(id: number): Promise<ChatRun> {
   return fetchApi<ChatRun>(`/chat/runs/${id}/cancel`, { method: "POST" });
 }
 
-export async function getChatTools(): Promise<ChatToolList> {
-  return fetchApi<ChatToolList>("/chat/tools");
+/**
+ * What the agent can do in a conversation of this kind.
+ *
+ * The kind is a parameter because the two surfaces differ: a Set's chat cannot
+ * query the archive and a general one cannot change a Set. The page never
+ * filters this itself — the scope is the server's, and a second copy of the
+ * rule in the browser is a copy that can disagree.
+ */
+export async function getChatTools(kind: "general" | "set" = "general"): Promise<ChatToolList> {
+  return fetchApi<ChatToolList>(`/chat/tools${queryString({ kind })}`);
 }
 
 /**
