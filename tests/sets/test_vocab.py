@@ -19,6 +19,7 @@ import pytest
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.models import BalanceTaste
+from gaggiclanker.domain.spread import MEASURE_FLOORS
 from gaggiclanker.domain.vocab import (
     ACTIONABLE_VARIABLES,
     BALANCES,
@@ -28,10 +29,13 @@ from gaggiclanker.domain.vocab import (
     FLAVOR_NOTES,
     FLAVOR_PICK_KINDS,
     FLAVOR_WHEEL,
+    MEASURE_DECIMALS,
+    MEASURE_DIFFERENCE_DECIMALS,
     OUTCOME_STATES,
     PROCESSES,
     ROAST_LEVELS,
     SET_VERSION_ORIGINS,
+    SPREAD_MEASURES,
     STEP_UNITS,
     VERSION_OUTCOMES,
     SuggestionVariable,
@@ -166,6 +170,53 @@ def test_the_served_vocabulary_says_which_variables_can_be_accepted() -> None:
     # Every one of them is a variable a suggestion can be about.
     variables = {term.value for term in vocabulary().suggestion_variables}
     assert set(vocabulary().actionable_variables) <= variables
+
+
+def test_every_spread_measure_is_served_with_its_words_and_its_unit() -> None:
+    """The Set page writes "Shot time ±1.8 s" out of these three fields.
+
+    Served rather than typed in the front end for the same reason as every
+    other vocabulary here, and with the unit as its own field: a label of
+    "Shot time (s)" would put the unit in the wrong half of that sentence and
+    of "held against 2.4 s".
+    """
+    served = vocabulary().spread_measures
+
+    assert [term.value for term in served] == list(SPREAD_MEASURES)
+    assert [term.label for term in served][:2] == ["Shot time", "Time to first drip"]
+    assert {term.value: term.unit for term in served}["peak_pressure_bar"] == "bar"
+    # The rating is a number of stars, not a quantity.
+    assert {term.value: term.unit for term in served}["rating"] == ""
+    # Every measure the arithmetic knows a floor for is served, and no other.
+    assert {term.value for term in served} == set(MEASURE_FLOORS)
+
+
+def test_a_measure_says_how_a_mean_and_a_difference_are_written() -> None:
+    """One decimal for seconds and grams, two for bar and ml/s — and one more
+    for a difference and a yardstick.
+
+    Served rather than decided in the front end: the server rounds what it
+    serves, and a page formatting to its own precision would either invent
+    digits or hide the one that decided a verdict. The extra decimal is what
+    keeps "+2.04 s, beyond 2.00 s" from reading as "+2.0 s, beyond 2.0 s".
+    """
+    served = {term.value: term for term in vocabulary().spread_measures}
+
+    assert (served["shot_time_s"].decimals, served["shot_time_s"].difference_decimals) == (1, 2)
+    assert (
+        served["peak_pressure_bar"].decimals,
+        served["peak_pressure_bar"].difference_decimals,
+    ) == (
+        2,
+        3,
+    )
+    assert all(
+        term.difference_decimals == term.decimals + 1 for term in vocabulary().spread_measures
+    )
+    assert {value: term.decimals for value, term in served.items()} == MEASURE_DECIMALS
+    assert MEASURE_DIFFERENCE_DECIMALS == {
+        measure: decimals + 1 for measure, decimals in MEASURE_DECIMALS.items()
+    }
 
 
 def test_the_served_vocabulary_carries_every_term() -> None:

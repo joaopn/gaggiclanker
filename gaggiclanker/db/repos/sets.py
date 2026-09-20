@@ -53,6 +53,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_f
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
     OutcomeState,
@@ -1190,6 +1191,97 @@ class SetsRepository(Repository):
             (version.id, utc_now(), shot_id),
         )
         return version.id if cursor.rowcount > 0 else None
+
+    # ── the spread ───────────────────────────────────────────────────
+
+    async def counted_shots(self, set_id: int) -> list[CountedShot]:
+        """Every shot of this Set that counts towards its spread, with its measures.
+
+        "Counts" is three exclusions and no more. A **quarantined** shot never
+        parsed, so its numbers are whatever the header happened to hold; an
+        **incomplete** one stopped early, and its shot time measures the
+        interruption rather than the recipe; a **Discard** says the shot went
+        wrong, not that the recipe did, and grading a prediction on one reads
+        the wrong signal. A shot nobody labelled counts: it is plain data, and
+        excluding it would make the spread depend on how diligent somebody had
+        been with the buttons.
+
+        Each measure is read where it already lives and nothing is derived a
+        second time. Three of them need a rule, and each rule is one this
+        archive already applies somewhere else:
+
+        * **"not recorded" is written as zero in several places**, so zero is
+          read as absent where the engine cannot mean it literally. A
+          ``duration_ms`` of 0 is a header that never got a time. The
+          diagnostics engine writes ``0.0`` for an average over no samples
+          (``_safe_mean([])``) and for ``max(pressures)`` over an empty list, so
+          an average brew flow or a peak pressure of exactly zero is "nothing to
+          average", not a shot that ran at no pressure. The **time to first
+          drip** is the exception and is left alone: it is already nullable —
+          the engine writes NULL when the flow never rose — so a 0.0 there is a
+          real reading, the drip landing on the first sample.
+        * **the JSON paths are guarded by type**, the same way a profile's
+          temperature is read in `_VERSION_SELECT`: ``json_type(...) IN
+          ('integer','real')``. A hand-edited row, an older document or a future
+          shape could hold a string or an object at one of these paths, and a
+          Set page that answered 500 because of one odd blob would be a bad
+          trade for a number that is only ever an average.
+        * **the yield follows the rule `starting/similar.py` already uses** —
+          the judgement's typed dose out first, then the machine's final weight,
+          then the device index's volume. A machine with no scale records
+          nothing, so the only yield that exists is the one the person wrote
+          down; and where both exist the typed one is the person correcting the
+          scale, which is the number they would compare against.
+
+        The version's recipe rides along on each shot, because grouping repeats
+        is then a pass over one list rather than a second query.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT sh.id AS shot_id,
+                   sh.set_version_id AS version_id,
+                   v.version_no,
+                   v.profile_version_id,
+                   v.grind_setting,
+                   v.grind_value,
+                   v.dose_g,
+                   v.target_yield_g,
+                   CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END AS shot_time_s,
+                   CASE WHEN json_type(sh.diagnostics_json,
+                                       '$.summary.flow.time_to_first_drip_s')
+                             IN ('integer', 'real')
+                        THEN json_extract(sh.diagnostics_json,
+                                          '$.summary.flow.time_to_first_drip_s')
+                        END AS first_drip_s,
+                   COALESCE(j.dose_out_g, sh.final_weight_g, sh.index_volume_g) AS yield_g,
+                   CASE WHEN json_type(sh.diagnostics_json, '$.summary.pressure.max_bar')
+                             IN ('integer', 'real')
+                         AND json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar') > 0
+                        THEN json_extract(sh.diagnostics_json, '$.summary.pressure.max_bar')
+                        END AS peak_pressure_bar,
+                   CASE WHEN json_type(sh.diagnostics_json,
+                                       '$.diagnostics.extraction.flow_avg_brew_ml_s')
+                             IN ('integer', 'real')
+                         AND json_extract(sh.diagnostics_json,
+                                          '$.diagnostics.extraction.flow_avg_brew_ml_s') > 0
+                        THEN json_extract(sh.diagnostics_json,
+                                          '$.diagnostics.extraction.flow_avg_brew_ml_s')
+                        END AS brew_flow_ml_s,
+                   j.rating,
+                   j.balance,
+                   j.decision
+            FROM shots sh
+            JOIN set_versions v ON v.id = sh.set_version_id
+            LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            WHERE v.set_id = ?
+              AND sh.quarantined = 0
+              AND sh.incomplete = 0
+              AND (j.decision IS NULL OR j.decision != 'discard')
+            ORDER BY sh.id
+            """,
+            (set_id,),
+        )
+        return self.to_models(CountedShot, rows)
 
     # ── trends ───────────────────────────────────────────────────────
 

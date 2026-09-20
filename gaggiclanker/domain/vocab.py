@@ -57,6 +57,7 @@ __all__ = [
     "Decision",
     "FlavorNode",
     "FlavorPickKind",
+    "MeasureTerm",
     "OutcomeState",
     "Process",
     "RoastLevel",
@@ -517,6 +518,32 @@ class Term(BaseModel):
     label: str
 
 
+class MeasureTerm(BaseModel):
+    """One measure the spread is worked out over: its slug, its words, its unit.
+
+    A :class:`Term` with a unit, rather than a label that already contains one:
+    the Set page writes "Shot time ±1.8 s" and the evidence table writes
+    "held against 2.4 s", and a label of "Shot time (s)" would put the unit in
+    the wrong half of both sentences.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: SpreadMeasure
+    label: str
+    #: Empty for the rating: it is a number of stars, not a quantity.
+    unit: str
+    #: How many decimals a mean or a spread of this measure is written with.
+    #: Served rather than decided in the front end: the server rounds what it
+    #: serves, and a page formatting to its own precision would either invent
+    #: digits or hide the one that decided a verdict.
+    decimals: int
+    #: How many a difference or a yardstick is written with — one finer, for
+    #: the reason `MEASURE_DIFFERENCE_DECIMALS` gives. The floor on the spread
+    #: line is a yardstick too, and is written the same way.
+    difference_decimals: int
+
+
 class Vocabulary(BaseModel):
     """Everything `GET /api/vocab` answers with.
 
@@ -540,6 +567,11 @@ class Vocabulary(BaseModel):
     #: The six states the experiment log renders, the four above plus the two
     #: that are not a grade: `no_prediction` and `open`.
     outcome_states: list[Term]
+    #: The measures a Set's spread and a version's evidence are reported per,
+    #: with the words and the unit each one is read in. Served for the same
+    #: reason as the rest: the Set page renders these labels, and a component
+    #: with its own copy would drift from what the server computes.
+    spread_measures: list[MeasureTerm]
     #: The flavour wheel, as a tree: nine categories, their groups, their notes.
     flavor_wheel: list[FlavorNode]
     #: The analyzer's own closed sets, served for the same reason as the
@@ -589,6 +621,24 @@ _OUTCOME_LABELS = {
     "inconclusive": "Inconclusive",
     "open": "Open",
     "no_prediction": "No prediction",
+}
+#: How each spread measure reads, and what it is in. Short: they sit at the
+#: start of a line the reader finishes with a number.
+_MEASURE_LABELS = {
+    "shot_time_s": "Shot time",
+    "first_drip_s": "Time to first drip",
+    "yield_g": "Yield",
+    "peak_pressure_bar": "Peak pressure",
+    "brew_flow_ml_s": "Average brew flow",
+    "rating": "Rating",
+}
+_MEASURE_UNITS = {
+    "shot_time_s": "s",
+    "first_drip_s": "s",
+    "yield_g": "g",
+    "peak_pressure_bar": "bar",
+    "brew_flow_ml_s": "ml/s",
+    "rating": "",
 }
 _ORIGIN_LABELS = {
     "manual": "You changed it",
@@ -651,6 +701,16 @@ def vocabulary() -> Vocabulary:
         origins=_terms(SET_VERSION_ORIGINS, _ORIGIN_LABELS),
         version_outcomes=_terms(VERSION_OUTCOMES, _OUTCOME_LABELS),
         outcome_states=_terms(OUTCOME_STATES, _OUTCOME_LABELS),
+        spread_measures=[
+            MeasureTerm(
+                value=measure,
+                label=_MEASURE_LABELS[measure],
+                unit=_MEASURE_UNITS[measure],
+                decimals=MEASURE_DECIMALS[measure],
+                difference_decimals=MEASURE_DIFFERENCE_DECIMALS[measure],
+            )
+            for measure in SPREAD_MEASURES
+        ],
         flavor_wheel=[node.model_copy(deep=True) for node in FLAVOR_WHEEL],
         shot_styles=_terms(SHOT_STYLES, _STYLE_LABELS),
         suggestion_variables=_terms(SUGGESTION_VARIABLES, _VARIABLE_LABELS),

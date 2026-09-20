@@ -2,6 +2,7 @@ import type {
   BeanRow,
   FlavorPicks,
   GrinderRow,
+  MeasureSpread,
   SetDetailData,
   SetRow,
   SetTrends,
@@ -9,8 +10,10 @@ import type {
   SetVersionRow,
   ShotJudgement,
   SimilarSet,
+  SpreadMeasure,
   StartingPointOption,
   StartingPointRun,
+  VersionEvidence,
   Vocabulary,
 } from "@/api/types";
 
@@ -71,6 +74,34 @@ export const vocabulary: Vocabulary = {
     { value: "partly_held", label: "Partly held" },
     { value: "failed", label: "Failed" },
     { value: "inconclusive", label: "Inconclusive" },
+  ],
+  // The six measures the spread and the evidence are reported per, with the
+  // unit each one is read in — the server's list, not a copy typed here.
+  spread_measures: [
+    { value: "shot_time_s", label: "Shot time", unit: "s", decimals: 1, difference_decimals: 2 },
+    {
+      value: "first_drip_s",
+      label: "Time to first drip",
+      unit: "s",
+      decimals: 1,
+      difference_decimals: 2,
+    },
+    { value: "yield_g", label: "Yield", unit: "g", decimals: 1, difference_decimals: 2 },
+    {
+      value: "peak_pressure_bar",
+      label: "Peak pressure",
+      unit: "bar",
+      decimals: 2,
+      difference_decimals: 3,
+    },
+    {
+      value: "brew_flow_ml_s",
+      label: "Average brew flow",
+      unit: "ml/s",
+      decimals: 2,
+      difference_decimals: 3,
+    },
+    { value: "rating", label: "Rating", unit: "", decimals: 1, difference_decimals: 2 },
   ],
   outcome_states: [
     { value: "no_prediction", label: "No prediction" },
@@ -356,6 +387,7 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
     ],
     judgements: {},
     track_record: trackRecord(),
+    spread: spreadReport(),
     rollback_target_version_id: null,
     ...overrides,
   };
@@ -378,6 +410,133 @@ export function trackRecord(
     failed: 0,
     inconclusive: 0,
     graded: 0,
+    ...overrides,
+  };
+}
+
+/** One line of the Spread block. Nothing recorded and nothing repeated by default. */
+export function measureSpread(
+  measure: SpreadMeasure,
+  floor: number,
+  overrides: Partial<MeasureSpread> = {},
+): MeasureSpread {
+  return {
+    measure,
+    value: null,
+    measured: false,
+    shots: 0,
+    degrees_of_freedom: 0,
+    recorded: 0,
+    floor,
+    ...overrides,
+  };
+}
+
+/**
+ * A Set's spread: shot time measured, first drip recorded but never repeated,
+ * and the three the archive holds nothing for.
+ *
+ * The three states a line can be in, in one fixture, because the page's job is
+ * to tell them apart: a measured number with its basis, "not measured yet" with
+ * the floor that stands in for it, and a measure that is left out entirely.
+ */
+export function spreadReport(
+  overrides: Partial<Record<SpreadMeasure, Partial<MeasureSpread>>> = {},
+) {
+  const base: Array<[SpreadMeasure, number, Partial<MeasureSpread>]> = [
+    [
+      "shot_time_s",
+      2,
+      { value: 1.8, measured: true, shots: 9, degrees_of_freedom: 5, recorded: 9 },
+    ],
+    ["first_drip_s", 1, { recorded: 4 }],
+    ["yield_g", 1, { value: 0.4, shots: 4, degrees_of_freedom: 2, recorded: 4 }],
+    ["peak_pressure_bar", 0.3, {}],
+    ["brew_flow_ml_s", 0.2, {}],
+    ["rating", 0.5, { value: 0.5, measured: true, shots: 9, degrees_of_freedom: 5, recorded: 9 }],
+  ];
+  return base.map(([measure, floor, preset]) =>
+    measureSpread(measure, floor, { ...preset, ...(overrides[measure] ?? {}) }),
+  );
+}
+
+/** A version's evidence: this version's shots against the compared version's. */
+export function evidence(overrides: Partial<VersionEvidence> = {}): VersionEvidence {
+  return {
+    version_id: 22,
+    compares_to_version_id: 21,
+    measures: [
+      {
+        measure: "shot_time_s",
+        this: { mean: 34.2, n: 3 },
+        other: { mean: 29.1, n: 4 },
+        difference: 5.13,
+        verdict: "beyond",
+        yardstick: 2.41,
+      },
+      {
+        measure: "first_drip_s",
+        this: { mean: 6.4, n: 3 },
+        other: { mean: 6.1, n: 4 },
+        difference: 0.28,
+        verdict: "inside",
+        yardstick: 1,
+      },
+      {
+        measure: "yield_g",
+        this: { mean: 36.2, n: 3 },
+        other: { mean: 36, n: 4 },
+        difference: 0.17,
+        verdict: "inside",
+        yardstick: 1,
+      },
+      {
+        measure: "peak_pressure_bar",
+        this: { mean: null, n: 0 },
+        other: { mean: null, n: 0 },
+        difference: null,
+        verdict: "no_data",
+        yardstick: null,
+      },
+      {
+        measure: "brew_flow_ml_s",
+        this: { mean: null, n: 0 },
+        other: { mean: null, n: 0 },
+        difference: null,
+        verdict: "no_data",
+        yardstick: null,
+      },
+      {
+        measure: "rating",
+        this: { mean: 4.3, n: 3 },
+        other: { mean: 3, n: 4 },
+        difference: 1.33,
+        verdict: "beyond",
+        yardstick: 0.5,
+      },
+    ],
+    this: {
+      version_id: 22,
+      version_no: 2,
+      shots: 3,
+      sour: 0,
+      balanced: 2,
+      bitter: 1,
+      keep: 2,
+      improve: 1,
+      unlabelled: 0,
+    },
+    other: {
+      version_id: 21,
+      version_no: 1,
+      shots: 4,
+      sour: 3,
+      balanced: 1,
+      bitter: 0,
+      keep: 0,
+      improve: 3,
+      unlabelled: 1,
+    },
     ...overrides,
   };
 }

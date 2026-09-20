@@ -225,8 +225,16 @@ class MeasureSpread(BaseModel):
     #: Whether it is worth holding a difference against. False is "not measured
     #: yet", and then the floor is the yardstick.
     measured: bool = False
+    #: The shots in the groups that contributed.
     shots: int = 0
+    #: What ``measured`` is decided on. The Spread block reads it too, as the
+    #: other half of the basis: subtracted from ``shots`` it is the number of
+    #: repeat groups that contributed — one degree goes on each group's own
+    #: average — so the line can say "from 9 repeat shots of 3 recipes", which
+    #: is a different piece of evidence from 9 shots of one.
     degrees_of_freedom: int = 0
+    #: Counted shots holding a value for this measure at all, repeats or not.
+    #: Zero is what makes the page leave the measure out altogether.
     recorded: int = 0
     floor: float
 

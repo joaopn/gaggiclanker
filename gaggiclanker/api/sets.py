@@ -62,6 +62,13 @@ from gaggiclanker.db.repos.sets import (
     version_changes,
 )
 from gaggiclanker.db.repos.shots import ShotListRow
+from gaggiclanker.domain.spread import (
+    MeasureSpread,
+    VersionEvidence,
+    pooled_spreads,
+    spread_report,
+    version_evidence,
+)
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import AppError, Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
@@ -126,6 +133,11 @@ class SetVersionDetail(BaseModel):
     #: How this version's shots were labelled. Counted over the Set's shots
     #: rather than over `shots` above, which is capped at `SHOTS_PER_SET`.
     labels: VersionLabelCounts = VersionLabelCounts()
+    #: This version's shots against the compared version's, measure by measure,
+    #: with each difference marked as beyond the Set's spread or inside it.
+    #: NULL on a version with no prediction: there is nothing it is evidence
+    #: for, and a table answering no question is noise in a log people read.
+    evidence: VersionEvidence | None = None
 
 
 class SuggestionListData(BaseModel):
@@ -154,6 +166,10 @@ class SetDetailData(BaseModel):
     judgements: dict[str, ShotJudgementRow]
     #: How often this Set's predictions held. The page's one headline number.
     track_record: SetTrackRecord = SetTrackRecord()
+    #: How much this Set's shots vary when nothing in the recipe changed, per
+    #: measure, with the basis under each one. Worked out by the app and not by
+    #: a model, so the same shots always give the same figure.
+    spread: list[MeasureSpread] = []
     #: The version the page offers to go back to: the newest one other than the
     #: current that has a Keep shot. NULL when there is nowhere to go back to.
     rollback_target_version_id: int | None = None
@@ -347,6 +363,12 @@ async def get_set(
 
     dead_ends = dead_end_ids(versions)
     counts = await sets.label_counts(set_id)
+    # One pass over the Set's counted shots feeds both the spread and every
+    # version's evidence: the evidence is held against the spread, and two
+    # queries could answer with two different sets of shots if one landed
+    # between them.
+    counted = await sets.counted_shots(set_id)
+    spreads = pooled_spreads(counted)
     details = [
         SetVersionDetail(
             version=version,
@@ -354,6 +376,18 @@ async def get_set(
             shots=grouped[version.id],
             dead_end=version.id in dead_ends,
             labels=counts.get(version.id, VersionLabelCounts()),
+            evidence=(
+                version_evidence(
+                    counted,
+                    spreads,
+                    version_id=version.id,
+                    version_no=version.version_no,
+                    compares_to_version_id=version.compares_to_version_id,
+                    compares_to_version_no=version.compares_to_version_no,
+                )
+                if version.prediction
+                else None
+            ),
         )
         for version in versions
     ]
@@ -364,6 +398,7 @@ async def get_set(
             versions=details,
             judgements={str(shot_id): verdict for shot_id, verdict in verdicts.items()},
             track_record=track_record(versions),
+            spread=spread_report(spreads),
             rollback_target_version_id=await sets.rollback_target(set_id),
         ).model_dump(mode="json")
     )

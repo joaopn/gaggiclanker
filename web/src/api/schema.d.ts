@@ -3699,6 +3699,55 @@ export interface components {
             notes: string;
         };
         /**
+         * EvidenceCounts
+         * @description One side's plain facts: how the cup went, and how it was labelled.
+         *
+         *     No verdict on any of them. There is no Discard count because a discarded
+         *     shot is not a counted shot — it says the shot went wrong, not that the
+         *     recipe did.
+         */
+        EvidenceCounts: {
+            /**
+             * Balanced
+             * @default 0
+             */
+            balanced: number;
+            /**
+             * Bitter
+             * @default 0
+             */
+            bitter: number;
+            /**
+             * Improve
+             * @default 0
+             */
+            improve: number;
+            /**
+             * Keep
+             * @default 0
+             */
+            keep: number;
+            /**
+             * Shots
+             * @default 0
+             */
+            shots: number;
+            /**
+             * Sour
+             * @default 0
+             */
+            sour: number;
+            /**
+             * Unlabelled
+             * @default 0
+             */
+            unlabelled: number;
+            /** Version Id */
+            version_id: number;
+            /** Version No */
+            version_no: number;
+        };
+        /**
          * FieldChange
          * @description One difference between a version and its parent.
          */
@@ -4205,6 +4254,85 @@ export interface components {
             settings?: components["schemas"]["JsonObject"];
             /** Temperature Offset C */
             temperature_offset_c?: number | null;
+        };
+        /**
+         * MeasureEvidence
+         * @description One row of a version's evidence table.
+         */
+        MeasureEvidence: {
+            /** Difference */
+            difference?: number | null;
+            measure: components["schemas"]["SpreadMeasure"];
+            other?: components["schemas"]["MeasureSide"] | null;
+            this: components["schemas"]["MeasureSide"];
+            /** @default no_data */
+            verdict: components["schemas"]["Verdict"];
+            /** Yardstick */
+            yardstick?: number | null;
+        };
+        /**
+         * MeasureSide
+         * @description One version's shots, for one measure: what they averaged and how many.
+         */
+        MeasureSide: {
+            /** Mean */
+            mean?: number | null;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+        };
+        /**
+         * MeasureSpread
+         * @description One line of the Set page's Spread block: the number and its basis.
+         */
+        MeasureSpread: {
+            /**
+             * Degrees Of Freedom
+             * @default 0
+             */
+            degrees_of_freedom: number;
+            /** Floor */
+            floor: number;
+            measure: components["schemas"]["SpreadMeasure"];
+            /**
+             * Measured
+             * @default false
+             */
+            measured: boolean;
+            /**
+             * Recorded
+             * @default 0
+             */
+            recorded: number;
+            /**
+             * Shots
+             * @default 0
+             */
+            shots: number;
+            /** Value */
+            value?: number | null;
+        };
+        /**
+         * MeasureTerm
+         * @description One measure the spread is worked out over: its slug, its words, its unit.
+         *
+         *     A :class:`Term` with a unit, rather than a label that already contains one:
+         *     the Set page writes "Shot time ±1.8 s" and the evidence table writes
+         *     "held against 2.4 s", and a label of "Shot time (s)" would put the unit in
+         *     the wrong half of both sentences.
+         */
+        MeasureTerm: {
+            /** Decimals */
+            decimals: number;
+            /** Difference Decimals */
+            difference_decimals: number;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            value: components["schemas"]["SpreadMeasure"];
         };
         /** ModelsData */
         ModelsData: {
@@ -4792,6 +4920,11 @@ export interface components {
             rollback_target_version_id?: number | null;
             set: components["schemas"]["SetRow"];
             /**
+             * Spread
+             * @default []
+             */
+            spread: components["schemas"]["MeasureSpread"][];
+            /**
              * @default {
              *       "no_prediction": 0,
              *       "open": 0,
@@ -5018,6 +5151,7 @@ export interface components {
              * @default false
              */
             dead_end: boolean;
+            evidence?: components["schemas"]["VersionEvidence"] | null;
             /**
              * @default {
              *       "keep": 0,
@@ -5771,6 +5905,8 @@ export interface components {
         };
         /** @enum {string} */
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
+        /** @enum {string} */
+        SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
         /**
          * StartingPointAccepted
          * @description What an accept produced.
@@ -6218,6 +6354,26 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** @enum {string} */
+        Verdict: "beyond" | "inside" | "no_data";
+        /**
+         * VersionEvidence
+         * @description This version's shots against the compared version's, measure by measure.
+         *
+         *     Served on a version that carries a prediction and on no other: it is the
+         *     numbers that prediction is graded on, and hanging it off a version nobody
+         *     predicted anything about would be a table answering no question.
+         */
+        VersionEvidence: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Measures */
+            measures: components["schemas"]["MeasureEvidence"][];
+            other?: components["schemas"]["EvidenceCounts"] | null;
+            this: components["schemas"]["EvidenceCounts"];
+            /** Version Id */
+            version_id: number;
+        };
         /**
          * VersionLabelCounts
          * @description How the shots on one version were labelled, for the log's one line.
@@ -6323,6 +6479,8 @@ export interface components {
             rule_confidences: components["schemas"]["Term"][];
             /** Shot Styles */
             shot_styles: components["schemas"]["Term"][];
+            /** Spread Measures */
+            spread_measures: components["schemas"]["MeasureTerm"][];
             /** Step Units */
             step_units: components["schemas"]["Term"][];
             /** Suggestion Directions */
