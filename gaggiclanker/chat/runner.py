@@ -329,6 +329,7 @@ class ChatRunner:
                     timeout_s=(await self.llm.config()).timeout_s,
                     set_id=scope.set_id,
                     set_version_id=scope.set_version_id,
+                    thread_id=state.thread_id,
                     cancel=state.cancel,
                 ),
             )
@@ -404,6 +405,7 @@ class ChatRunner:
                 timeout_s=(await self.llm.config()).timeout_s,
                 set_id=scope.set_id,
                 set_version_id=scope.set_version_id,
+                thread_id=state.thread_id,
                 cancel=state.cancel,
             ),
         )
@@ -431,7 +433,9 @@ class ChatRunner:
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
 
-    def tool_context(self, *, scope: ToolScope, run_id: int | None) -> ToolContext:
+    def tool_context(
+        self, *, scope: ToolScope, run_id: int | None, thread_id: int | None = None
+    ) -> ToolContext:
         """What one run's tools are handed. Nothing in it reaches the machine."""
         return ToolContext(
             db=self.db,
@@ -444,6 +448,7 @@ class ChatRunner:
             rate_limits=self.rate_limits,
             scope=scope,
             run_id=run_id,
+            thread_id=thread_id,
             caller="chat",
             # The one permission set every model-driven caller gets; MCP is handed
             # the same one. No tool can write to the machine.
@@ -453,7 +458,7 @@ class ChatRunner:
     async def _dispatch(
         self, state: _RunState, calls: list[ChatToolCall], scope: ToolScope
     ) -> list[ChatToolResult]:
-        ctx = self.tool_context(scope=scope, run_id=state.run_id)
+        ctx = self.tool_context(scope=scope, run_id=state.run_id, thread_id=state.thread_id)
         results: list[ChatToolResult] = []
         for call in calls:
             if state.cancel.is_set():

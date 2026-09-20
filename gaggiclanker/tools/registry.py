@@ -148,6 +148,11 @@ class ToolContext:
     #: against — so "how is it going?" has an answer, and "how is Set 7 going?"
     #: asked inside Set 3's conversation has a refusal.
     scope: ToolScope = field(default_factory=ToolScope)
+    #: Which conversation this is, when there is one. Not a limit — the scope
+    #: above is — but a proposed change records the room it was argued in, so
+    #: the experiment log can offer a way back to the reasoning. ``None`` is an
+    #: ordinary answer: a proposal outlives its chat and works without one.
+    thread_id: int | None = None
     user: str = ""
     #: Bookkeeping for the audit row: which run, and whether this came from the
     #: chat's own dispatch or through its stdio MCP server.

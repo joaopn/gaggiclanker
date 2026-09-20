@@ -563,7 +563,13 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert response.status_code == 200
 
     versioned = await registry.dispatch(
-        ctx, "propose_set_version", {"reason": "Half a gram more.", "dose_g": 18.5}
+        ctx,
+        "propose_set_version",
+        {
+            "reason": "Half a gram more.",
+            "dose_g": 18.5,
+            "prediction": "Compared to v1: a gram more in the cup and a slightly longer shot.",
+        },
     )
     assert versioned.ok, versioned.data
 
@@ -602,7 +608,15 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
         )
         assert drafted.ok, drafted.data
         assert (
-            await registry.dispatch(ctx, "propose_set_version", {"reason": "More.", "dose_g": 19})
+            await registry.dispatch(
+                ctx,
+                "propose_set_version",
+                {
+                    "reason": "More.",
+                    "dose_g": 19,
+                    "prediction": "Compared to v1: about a gram more in the cup.",
+                },
+            )
         ).ok
         assert (await registry.dispatch(ctx, "record_insight", {"text": "Noted."})).ok
 

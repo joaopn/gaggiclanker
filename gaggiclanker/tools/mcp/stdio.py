@@ -7,7 +7,9 @@ child process for the length of one chat turn.
 **The conversation's scope arrives in the environment**, because the CLI runs
 the tool loop itself: `GAGGICLANKER_MCP_SET_ID` (and the version beside it)
 makes this server a Set conversation, offering the Set's tools and refusing any
-other Set, and its absence makes it a general one. The mapping from those two
+other Set, and its absence makes it a general one. `GAGGICLANKER_MCP_THREAD_ID`
+is not a scope: it is which conversation this is, so a change proposed here
+records the room it was argued in. The mapping from those two
 ids to a surface is :mod:`gaggiclanker.tools.scope`, the same one the dispatcher
 and the provider schemas use — the CLI's loop is out of the dispatcher's reach,
 so the surface is narrowed where it is built instead.
@@ -50,6 +52,7 @@ __all__ = [
     "scope_from",
     "serve_stdio",
     "stdio_tool_context",
+    "thread_from",
 ]
 
 log = structlog.get_logger(__name__)
@@ -90,6 +93,17 @@ def add_mcp_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParse
         help=(
             "Which version of that Set is being argued. Defaults to "
             "$GAGGICLANKER_MCP_SET_VERSION_ID. Ignored without --set-id."
+        ),
+    )
+    parser.add_argument(
+        "--thread-id",
+        type=int,
+        default=None,
+        help=(
+            "Which conversation this is. Not a limit — it narrows nothing — but a "
+            "change proposed here records the room it was argued in, so the "
+            "experiment log can offer a way back to the reasoning. Defaults to "
+            "$GAGGICLANKER_MCP_THREAD_ID."
         ),
     )
 
@@ -161,8 +175,25 @@ def scope_from(args: argparse.Namespace) -> ToolScope:
     return ToolScope.for_thread(set_id, version_id)
 
 
+def thread_from(args: argparse.Namespace) -> int | None:
+    """Which conversation this server is serving, when it was told.
+
+    Read with the same rule as the scope ids — anything present must parse, and
+    :func:`_check_scope_exists` then requires it to be a conversation of the
+    scope's Set. It narrows nothing, so its *absence* is ordinary rather than a
+    fallback to something wider: a proposal made without it simply names no
+    chat. What is not ordinary is a thread that is not this Set's, because the
+    column is the record of where a change was argued.
+    """
+    return _identifier(getattr(args, "thread_id", None), "GAGGICLANKER_MCP_THREAD_ID")
+
+
 def stdio_tool_context(
-    db: Database, settings: SettingsService, *, scope: ToolScope | None = None
+    db: Database,
+    settings: SettingsService,
+    *,
+    scope: ToolScope | None = None,
+    thread_id: int | None = None,
 ) -> ToolContext:
     """What one tool call over stdio is handed: the archive, and no machine.
 
@@ -175,12 +206,15 @@ def stdio_tool_context(
         knowledge=KnowledgeService(db),
         drafts=DraftProposals(db, settings),
         scope=scope or ToolScope(),
+        thread_id=thread_id,
         caller="mcp-stdio",
         permissions=CHAT_PERMISSIONS,
     )
 
 
-async def serve_stdio(data_dir: Path, *, scope: ToolScope | None = None) -> int:
+async def serve_stdio(
+    data_dir: Path, *, scope: ToolScope | None = None, thread_id: int | None = None
+) -> int:
     """Open the archive and run the protocol on stdio until the client hangs up."""
     path = data_dir / "gaggiclanker.db"
     if not path.exists():
@@ -201,10 +235,10 @@ async def serve_stdio(data_dir: Path, *, scope: ToolScope | None = None) -> int:
             )
         settings = SettingsService(SettingsRepository(db))
         conversation = scope or ToolScope()
-        await _check_scope_exists(db, conversation)
+        await _check_scope_exists(db, conversation, thread_id)
 
         async def context() -> ToolContext:
-            return stdio_tool_context(db, settings, scope=conversation)
+            return stdio_tool_context(db, settings, scope=conversation, thread_id=thread_id)
 
         server = build_mcp_server(
             context,
@@ -219,15 +253,28 @@ async def serve_stdio(data_dir: Path, *, scope: ToolScope | None = None) -> int:
     return 0
 
 
-async def _check_scope_exists(db: Database, scope: ToolScope) -> None:
-    """The scope has to name rows that exist, or the server does not start.
+async def _check_scope_exists(db: Database, scope: ToolScope, thread_id: int | None = None) -> None:
+    """Every id this server was handed has to be real, or it does not start.
 
     Checked here rather than in :func:`scope_from` because it needs the archive.
     A Set id nobody recognises would serve a conversation about nothing with a
     Set's tools, and a version of *another* Set would put this conversation's
     opening context and its tools on two different experiments.
+
+    The thread is checked the same way and for a sharper reason: it is written
+    onto every change proposed here as the room the change was argued in, and
+    one belonging to another Set would file this Set's reasoning under somebody
+    else's transcript. A server that cannot record that truthfully serves
+    nothing at all — the same answer the scope variables get, rather than
+    starting and refusing every proposal later.
     """
     if scope.kind != "set" or scope.set_id is None:
+        if thread_id is not None:
+            raise SystemExit(
+                "GAGGICLANKER_MCP_THREAD_ID is set without GAGGICLANKER_MCP_SET_ID: a "
+                "conversation about the whole archive changes no Set, so there is nothing "
+                "for it to be the room of."
+            )
         return
     sets = SetsRepository(db)
     if await sets.get(scope.set_id) is None:
@@ -237,10 +284,20 @@ async def _check_scope_exists(db: Database, scope: ToolScope) -> None:
             raise SystemExit(
                 f"Version {scope.set_version_id} is not a version of Set {scope.set_id}."
             )
+    if thread_id is not None:
+        found = await db.fetch_value(
+            "SELECT 1 FROM chat_threads WHERE id = ? AND set_id = ?", (thread_id, scope.set_id)
+        )
+        if found is None:
+            raise SystemExit(
+                f"Conversation {thread_id} is not a conversation of Set {scope.set_id}."
+            )
 
 
 def mcp_command(args: argparse.Namespace) -> int:
     """The argparse entry point. Synchronous, because ``main`` is."""
     import asyncio
 
-    return asyncio.run(serve_stdio(_data_dir(args.data_dir), scope=scope_from(args)))
+    return asyncio.run(
+        serve_stdio(_data_dir(args.data_dir), scope=scope_from(args), thread_id=thread_from(args))
+    )

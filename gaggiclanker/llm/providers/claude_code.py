@@ -456,6 +456,7 @@ def build_mcp_config(
     executable: str,
     set_id: int | None = None,
     set_version_id: int | None = None,
+    thread_id: int | None = None,
 ) -> str:
     """The `--mcp-config` document: our stdio MCP server, and only it.
 
@@ -478,6 +479,11 @@ def build_mcp_config(
         env["GAGGICLANKER_MCP_SET_ID"] = str(set_id)
         if set_version_id is not None:
             env["GAGGICLANKER_MCP_SET_VERSION_ID"] = str(set_version_id)
+    # Which conversation, not what it may touch. The child records it on a
+    # change it proposes so the experiment log can lead back to the room the
+    # change was argued in; it narrows nothing, so it travels on its own.
+    if thread_id is not None:
+        env["GAGGICLANKER_MCP_THREAD_ID"] = str(thread_id)
     return json.dumps(
         {
             "mcpServers": {
@@ -729,6 +735,7 @@ class ClaudeCodeProvider:
                         # does on every other provider.
                         set_id=request.set_id,
                         set_version_id=request.set_version_id,
+                        thread_id=request.thread_id,
                     )
                     if self.data_dir
                     else ""

@@ -13,7 +13,13 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
+from gaggiclanker.db.repos.sets import (
+    SetsRepository,
+    SetVersionPatch,
+    SetVersionWrite,
+    SetWrite,
+)
 from gaggiclanker.tools.registry import READ_ONLY, ToolContext, registry
 from gaggiclanker.tools.sql import ALLOWED_VIEWS
 from tests.analyzer.conftest import Fixture
@@ -171,10 +177,17 @@ async def test_get_insights_returns_only_confirmed_ones_by_default(
 # -- proposing -------------------------------------------------------------
 
 
-async def test_propose_set_version_creates_a_chat_version(
+#: A prediction long enough to be one. The tool refuses the absence of a
+#: prediction, not a bad one, so every happy-path call here carries a real
+#: sentence rather than twenty characters of filler.
+PREDICTION = "Compared to v1: two to four seconds longer and less sour."
+
+
+async def test_propose_set_version_creates_a_proposal_and_no_version(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
-    before = await SetsRepository(archive.db).current_version(archive.set_id)
+    sets = SetsRepository(archive.db)
+    before = await sets.current_version(archive.set_id)
     assert before is not None
 
     data = await call(
@@ -182,20 +195,282 @@ async def test_propose_set_version_creates_a_chat_version(
         "propose_set_version",
         reason="Two clicks finer, to chase the sour finish.",
         grind_setting="20",
+        prediction=PREDICTION,
     )
 
-    assert data["version"]["origin"] == "chat"
-    assert data["version"]["version_no"] == before.version_no + 1
-    assert data["changed"] == ["grind_setting"]
-    # Everything not named is inherited, which is what makes a version a delta.
-    assert data["version"]["dose_g"] == before.dose_g
+    assert data["status"] == "proposed"
+    assert data["changed"] == ["the grind"]
+    assert data["change_summary"].startswith("Grind ")
+    assert data["prediction"] == PREDICTION
+    assert data["compares_to_version_no"] == before.version_no
+    # The whole point: the Set is where it was, and the answer says so.
+    assert "Nothing has changed yet" in data["note"]
+    after = await sets.current_version(archive.set_id)
+    assert after is not None and after.id == before.id
+
+    waiting = await SetProposalsRepository(archive.db).waiting(archive.set_id)
+    assert waiting is not None and waiting.id == data["proposal_id"]
+    assert waiting.thread_id is None, "this context names no conversation"
 
 
-async def test_propose_set_version_refuses_a_version_that_changes_nothing(
+async def test_a_proposal_records_the_conversation_it_came_from(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """So the experiment log can lead back to where the change was argued."""
+    cursor = await archive.db.execute(
+        "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("About v1", archive.set_id)
+    )
+    set_ctx.thread_id = int(cursor.lastrowid or 0)
+
+    data = await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Half a gram more.",
+        dose_g=18.5,
+        prediction=PREDICTION,
+    )
+
+    waiting = await SetProposalsRepository(archive.db).waiting(archive.set_id)
+    assert waiting is not None
+    assert waiting.id == data["proposal_id"]
+    assert waiting.thread_id == set_ctx.thread_id
+
+
+async def test_propose_set_version_refuses_a_proposal_with_no_prediction(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await refuse(
+        set_ctx, "propose_set_version", reason="Two clicks finer.", grind_setting="20"
+    )
+    assert "without a prediction" in data["detail"]
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def test_a_prediction_too_short_to_be_one_is_the_same_refusal(
     set_ctx: ToolContext,
 ) -> None:
-    data = await refuse(set_ctx, "propose_set_version", reason="because")
-    assert "change something" in data["detail"]
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer.",
+        grind_setting="20",
+        prediction="   better   ",
+    )
+    assert "without a prediction" in data["detail"]
+
+
+async def test_propose_set_version_refuses_a_proposal_that_changes_nothing(
+    set_ctx: ToolContext,
+) -> None:
+    """Another shot on the same recipe is an answer in words, not a version."""
+    data = await refuse(set_ctx, "propose_set_version", reason="because", prediction=PREDICTION)
+    assert "has to change something" in data["detail"]
+    assert "another shot on the same recipe" in data["detail"]
+
+
+async def test_the_grind_text_and_its_number_are_one_change(set_ctx: ToolContext) -> None:
+    data = await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer.",
+        grind_setting="20",
+        grind_value=20,
+        prediction=PREDICTION,
+    )
+    assert data["changed"] == ["the grind"]
+
+
+async def test_two_changes_are_refused_without_a_combined_reason(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Finer and a bit more coffee.",
+        grind_setting="20",
+        dose_g=18.5,
+        prediction=PREDICTION,
+    )
+    assert "the dose and the grind at once" in data["detail"]
+    assert "combined_reason" in data["detail"]
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def test_two_changes_with_a_combined_reason_are_accepted_with_a_warning(
+    set_ctx: ToolContext,
+) -> None:
+    data = await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Finer and a bit more coffee.",
+        grind_setting="20",
+        dose_g=18.5,
+        prediction=PREDICTION,
+        combined_reason="A finer grind on this basket chokes at the old dose, so both move.",
+    )
+    assert data["changed"] == ["the dose", "the grind"]
+    assert "cannot separate them" in data["note"]
+
+
+async def test_a_second_proposal_is_refused_and_told_about_the_first(
+    set_ctx: ToolContext,
+) -> None:
+    await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer, to chase the sour finish.",
+        grind_setting="20",
+        prediction=PREDICTION,
+    )
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Or half a gram more.",
+        dose_g=18.5,
+        prediction=PREDICTION,
+    )
+    assert "already waiting" in data["detail"]
+    assert "the grind" in data["detail"]
+    assert "chase the sour finish" in data["detail"]
+
+
+async def test_an_ungraded_prediction_blocks_the_next_proposal(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    sets = SetsRepository(archive.db)
+    # A version somebody predicted something about and nobody has graded: the
+    # state the whole rule is about.
+    current = await sets.add_version(
+        archive.set_id,
+        SetVersionPatch.model_validate(
+            {
+                "intent": "one click finer",
+                "grind_setting": "21",
+                "prediction": "Expect two seconds longer and less sour.",
+                "compares_to_version_id": None,
+            }
+        ),
+    )
+    assert current is not None and current.outcome_state == "open"
+
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer.",
+        grind_setting="20",
+        prediction=PREDICTION,
+    )
+    assert f"v{current.version_no}'s prediction has not been graded" in data["detail"]
+    assert "another shot on the same recipe" in data["detail"]
+
+
+async def test_a_profile_nobody_has_is_refused_where_the_change_is_made(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """Refused at propose time, not discovered when the person presses Accept."""
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Switch to the hotter profile.",
+        profile_version_id=987_654,
+        prediction=PREDICTION,
+    )
+    assert "not one this archive knows" in data["detail"]
+    assert "list_profiles" in data["detail"]
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def test_a_combined_reason_too_short_to_be_one_does_not_buy_two_changes(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """Twenty characters, the same floor a prediction has."""
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Finer and a bit more coffee.",
+        grind_setting="20",
+        dose_g=18.5,
+        prediction=PREDICTION,
+        combined_reason="both",
+    )
+    assert "the dose and the grind at once" in data["detail"]
+    assert "at least 20 characters" in data["detail"]
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+    # Nineteen is still not enough, and twenty is.
+    assert not (
+        await registry.dispatch(
+            set_ctx,
+            "propose_set_version",
+            {
+                "reason": "Finer and a bit more coffee.",
+                "grind_setting": "20",
+                "dose_g": 18.5,
+                "prediction": PREDICTION,
+                "combined_reason": "x" * 19,
+            },
+        )
+    ).ok
+    assert (
+        await registry.dispatch(
+            set_ctx,
+            "propose_set_version",
+            {
+                "reason": "Finer and a bit more coffee.",
+                "grind_setting": "20",
+                "dose_g": 18.5,
+                "prediction": PREDICTION,
+                "combined_reason": "y" * 20,
+            },
+        )
+    ).ok
+
+
+async def test_a_conversation_of_another_set_cannot_be_named_as_the_room(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """The thread comes from the runner, not the model, and is still checked."""
+    other = await SetsRepository(archive.db).create(
+        SetWrite(name="Another coffee", bean_id=archive.bean_id), SetVersionWrite(dose_g=18)
+    )
+    cursor = await archive.db.execute(
+        "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("Elsewhere", other.id)
+    )
+    set_ctx.thread_id = int(cursor.lastrowid or 0)
+
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer.",
+        grind_setting="20",
+        prediction=PREDICTION,
+    )
+    assert "not one of this Set's" in data["detail"]
+    assert "Another coffee" not in data["detail"]
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def test_a_comparison_outside_this_set_is_refused(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    other = await SetsRepository(archive.db).create(
+        SetWrite(name="Another coffee", bean_id=archive.bean_id),
+        SetVersionWrite(dose_g=18),
+    )
+    theirs = await SetsRepository(archive.db).current_version(other.id)
+    assert theirs is not None
+
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer.",
+        grind_setting="20",
+        prediction=PREDICTION,
+        compares_to_version_id=theirs.id,
+    )
+    assert "not a version of this Set" in data["detail"]
+    # It says nothing about whether that version exists anywhere else.
+    assert "Another coffee" not in data["detail"]
 
 
 async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(

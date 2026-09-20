@@ -137,6 +137,11 @@ class ChatRequest:
     #: The version being argued, beside it. Carried for the same reason and
     #: forwarded to the same place; the two travel together everywhere.
     set_version_id: int | None = None
+    #: Which conversation this turn belongs to. Not a scope — it narrows
+    #: nothing — but a change proposed inside the CLI's own tool loop records
+    #: the room it was argued in, and the child can only know that if it is
+    #: told. Read by ``claude_code`` for the same reason as the two above.
+    thread_id: int | None = None
     #: Set by the caller to stop the turn. Checked between streamed chunks and
     #: passed to the subprocess providers as the signal to kill the child; it is
     #: an ``Event`` rather than task cancellation so a cancelled run can still

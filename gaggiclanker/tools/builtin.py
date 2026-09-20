@@ -38,7 +38,13 @@ from gaggiclanker.db.repos.knowledge_insights import (
     set_attributes,
 )
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+from gaggiclanker.db.repos.set_proposals import (
+    ProposalWrite,
+    ProposalWriteResult,
+    SetProposalsRepository,
+    change_groups,
+)
+from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_changes
 from gaggiclanker.infra.errors import TooManyRequests
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, ANALYSIS_WINDOW_SECONDS
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -965,12 +971,49 @@ async def run_analysis(ctx: ToolContext, args: RunAnalysisInput) -> RunAnalysisO
 # ── propose ──────────────────────────────────────────────────────────
 
 
+#: The shortest thing this tool will accept as a prediction. Not a measure of
+#: quality — twenty characters of nonsense is still nonsense — but it is the
+#: difference between a sentence somebody wrote and a field somebody filled in
+#: to get past a check. What a *good* prediction says (direction, rough size,
+#: which recorded measure, which version) is the prompt's business; the tool
+#: only refuses the absence.
+PREDICTION_MIN_CHARS = 20
+
+
 class ProposeVersionInput(_Model):
     set_id: int | None = None
     reason: str = Field(
         min_length=1,
         max_length=500,
-        description="One sentence: what this version is trying to find out.",
+        description=(
+            "One sentence: what this change is trying to find out. It becomes the "
+            "version's 'What are you trying?' if the person accepts it."
+        ),
+    )
+    prediction: str = Field(
+        default="",
+        max_length=1000,
+        description=(
+            "Required. What should differ if this change does what you think, by roughly "
+            "how much, on which measure the archive records, compared with which version: "
+            "'compared to v4, expect 3 to 5 s longer and less sour'. This is what the next "
+            "conversation grades you on, so it has to be able to turn out wrong."
+        ),
+    )
+    compares_to_version_id: int | None = Field(
+        default=None,
+        description=(
+            "Which version of this Set the prediction is measured against. Defaults to the "
+            "version this change is a change to, which is almost always right."
+        ),
+    )
+    combined_reason: str = Field(
+        default="",
+        max_length=500,
+        description=(
+            "Only when two things really have to move together: why they cannot be "
+            "separated. Without it, a proposal that moves two things is refused."
+        ),
     )
     grind_setting: str | None = Field(default=None, max_length=100)
     grind_value: float | None = Field(default=None, ge=0, le=10000)
@@ -980,27 +1023,59 @@ class ProposeVersionInput(_Model):
 
 
 class ProposeVersionOutput(_Model):
-    version: dict[str, Any]
+    """What is now waiting, and the plain statement that nothing has changed."""
+
+    proposal_id: int
+    set_id: int
+    status: str = "proposed"
+    #: What it would move, named as a person names it: "the grind", "the dose".
     changed: list[str] = Field(default_factory=list)
+    #: The same change with its numbers: "Grind 22 → 21".
+    change_summary: str = ""
+    prediction: str = ""
+    compares_to_version_no: int | None = None
+    #: What the model should tell the person, in the tool's own words, because
+    #: "I have created v6" is exactly the sentence this whole change exists to
+    #: stop being true.
+    note: str = ""
 
 
 @tool(
     "propose_set_version",
     permission="propose",
     description=(
-        "Create the next version of a Set with the fields you name changed and the rest "
-        "inherited. Change one variable at a time. The version is recorded with "
-        "origin='chat' and is immediately live for new shots, so say what you created. "
-        "There is no temperature here: the machine brews at the temperature the profile "
-        "states, so a temperature change is a profile change — use draft_profile on the "
-        "Set's current profile version, and the person approves and pushes it."
+        "Propose ONE change to this Set, with a prediction, for the person to accept or "
+        "decline. It creates no version and changes nothing: until they press Accept, the "
+        "next shot is still filed under the recipe they are brewing. A prediction is "
+        "required — say what should differ, by roughly how much, on which recorded "
+        "measure, compared with which version. One change at a time; two need "
+        "combined_reason. It is refused while this version's own prediction has not been "
+        "graded, and while another proposal is already waiting. There is no temperature "
+        "here: the machine brews at the temperature the profile states, so a temperature "
+        "change is a profile change — use draft_profile, and the person approves and "
+        "pushes it."
     ),
 )
 async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> ProposeVersionOutput:
+    """Write down a change and a prediction; the person decides.
+
+    Every refusal below is an error *value* with a sentence of its own, because
+    a model that is told "refused" and nothing else calls again with the same
+    arguments. None of them says anything about another Set.
+    """
     set_id = _resolve_set(ctx, args.set_id)
     sets = SetsRepository(ctx.db)
     if await sets.get(set_id) is None:
         raise ValueError(f"No Set {set_id}.")
+
+    prediction = args.prediction.strip()
+    if len(prediction) < PREDICTION_MIN_CHARS:
+        raise ValueError(
+            "A change to a Set cannot be proposed without a prediction, because a change "
+            "nobody committed to a guess about cannot turn out to be wrong. Say what should "
+            "differ, by roughly how much, on which measure the archive records, and compared "
+            "with which version — then call this again."
+        )
 
     fields = {
         name: getattr(args, name)
@@ -1013,16 +1088,128 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         )
         if getattr(args, name) is not None
     }
-    if not fields:
+    patch = SetVersionPatch.model_validate(fields)
+    groups = change_groups(patch)
+    if not groups:
         raise ValueError(
-            "A new version has to change something. Name at least one of: grind_setting, "
-            "grind_value, dose_g, target_yield_g, profile_version_id."
+            "A proposal has to change something. If the right next step is another shot on "
+            "the same recipe, say so to the person in words — that is a legitimate answer "
+            "and it needs no version. Otherwise name one of: profile_version_id, "
+            "grind_setting, grind_value, dose_g, target_yield_g."
         )
-    patch = SetVersionPatch(intent=args.reason, origin="chat", **fields)
-    version = await sets.add_version(set_id, patch)
-    if version is None:  # pragma: no cover - get() above proved the Set exists
-        raise ValueError(f"Set {set_id} has no current version to build on.")
-    return ProposeVersionOutput(version=version.model_dump(mode="json"), changed=sorted(fields))
+    combined = args.combined_reason.strip()
+    if len(groups) > 1 and len(combined) < PREDICTION_MIN_CHARS:
+        raise ValueError(
+            f"This would change {_and(groups)} at once, and then no prediction can say which "
+            "of them did anything. Propose one of them. If they truly have to move together, "
+            "call this again with combined_reason saying why, in at least "
+            f"{PREDICTION_MIN_CHARS} characters."
+        )
+
+    proposals = SetProposalsRepository(ctx.db)
+    spec: dict[str, Any] = {
+        "thread_id": ctx.thread_id,
+        "patch": patch,
+        "reason": args.reason,
+        "prediction": prediction,
+        "combined_reason": combined,
+    }
+    # Omitted means "against the version this is a change to", which is what the
+    # repository defaults to; passing None through would mean "against nothing".
+    if args.compares_to_version_id is not None:
+        spec["compares_to_version_id"] = args.compares_to_version_id
+    result = await proposals.create(set_id, ProposalWrite.model_validate(spec))
+    if result.refused is not None:
+        raise ValueError(await _proposal_refusal(sets, set_id, result))
+    stored = result.proposal
+    assert stored is not None  # a result with no refusal carries the row
+
+    preview = await proposals.preview(stored)
+    base = await sets.get_version(stored.base_version_id)
+    summary = (
+        "; ".join(
+            f"{change.label} {change.before or 'not set'} → {change.after or 'cleared'}"
+            for change in version_changes(preview, base)
+        )
+        if preview is not None and base is not None
+        else ""
+    )
+    note = (
+        "Nothing has changed yet. This is waiting for the person: the next shot is still "
+        f"filed under v{stored.base_version_no}, and it becomes a version only if they "
+        "accept it. Tell them what you are proposing and why, and say what you expect it to "
+        "do. If they decline it, that is information about what they want — not a reason to "
+        "propose it again."
+    )
+    if len(groups) > 1:
+        note += (
+            f" You have proposed {_and(groups)} together, so say plainly that the prediction "
+            "cannot separate them: whatever happens, it will not say which one did it."
+        )
+    return ProposeVersionOutput(
+        proposal_id=stored.id,
+        set_id=set_id,
+        status=stored.status,
+        changed=stored.changed,
+        change_summary=summary,
+        prediction=stored.prediction,
+        compares_to_version_no=stored.compares_to_version_no,
+        note=note,
+    )
+
+
+def _and(parts: list[str]) -> str:
+    """ "the dose and the grind", "the dose, the grind and the profile"."""
+    if len(parts) < 2:
+        return "".join(parts)
+    return f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
+async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalWriteResult) -> str:
+    """The sentence a refused proposal comes back as.
+
+    Each refusal names the rule and the way out, and none of them reveals
+    anything outside this Set — a proposal is refused for what this experiment
+    is doing, never for what another one is.
+    """
+    if result.refused == "already_waiting" and result.waiting is not None:
+        waiting = result.waiting
+        return (
+            f"A proposal is already waiting for the person on this Set: it changes "
+            f"{_and(waiting.changed)} — “{waiting.reason}” — predicting "
+            f"“{waiting.prediction}”. Talk about that one instead of stacking "
+            "another beside it. They accept or decline it on the Set page."
+        )
+    if result.refused == "outcome_open":
+        current = await sets.current_version(set_id)
+        number = f"v{current.version_no}" if current is not None else "this version"
+        return (
+            f"{number}'s prediction has not been graded yet, so there is nothing settled to "
+            "build the next change on. Grade it with the person on the Set page first, or "
+            "ask for another shot on the same recipe and say what you expect from it."
+        )
+    if result.refused == "bad_compare":
+        return (
+            "compares_to_version_id is not a version of this Set. Name one of this Set's own "
+            "versions, or leave it out to compare against the version this change is a "
+            "change to."
+        )
+    if result.refused == "bad_profile":
+        return (
+            "That profile version is not one this archive knows, so there is nothing for the "
+            "Set to be switched to. list_profiles lists the ones it has; to change how a "
+            "profile brews rather than which one is used, draft_profile is the tool."
+        )
+    if result.refused == "bad_thread":
+        # Not something a model can cause by choosing arguments: the
+        # conversation is the runner's to supply. Said plainly anyway, because
+        # a refusal a model cannot act on must at least not read as its fault.
+        return (
+            "This conversation is not one of this Set's, so a change argued here cannot be "
+            "recorded against it. Nothing was written; tell the person, and open the Set's own "
+            "conversation from its page."
+        )
+    return f"Set {set_id} has no current version to build a change on."
 
 
 class DraftProfileInput(_Model):

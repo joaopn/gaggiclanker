@@ -24,6 +24,8 @@ from mcp.shared.exceptions import MCPError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.tools.mcp.server import SERVER_NAME
 from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
@@ -310,6 +312,41 @@ def test_a_version_of_another_set_refuses_to_start(
     assert result.stdout == ""
 
 
+def test_a_conversation_of_another_set_refuses_to_start(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The thread is written onto every change proposed here as its room.
+
+    One belonging to another Set would file this Set's reasoning under somebody
+    else's transcript, so it gets the scope variables' answer: serve nothing,
+    rather than start and refuse every proposal afterwards.
+    """
+    data_dir, fixture = archive_dir
+
+    result = run_server(
+        data_dir,
+        GAGGICLANKER_MCP_SET_ID=str(fixture.set_id),
+        GAGGICLANKER_MCP_THREAD_ID="987654",
+    )
+
+    assert result.returncode != 0
+    assert "not a conversation of Set" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_conversation_without_a_set_refuses_to_start(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """A general conversation changes no Set, so it is the room of nothing."""
+    data_dir, _ = archive_dir
+
+    result = run_server(data_dir, GAGGICLANKER_MCP_THREAD_ID="1")
+
+    assert result.returncode != 0
+    assert "changes no Set" in result.stderr
+    assert result.stdout == ""
+
+
 def test_a_set_that_is_not_in_the_archive_refuses_to_start(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
@@ -401,6 +438,104 @@ async def test_a_profile_draft_can_be_proposed_over_stdio(
     assert result.is_error is False, result.content
     assert result.structured_content is not None
     assert result.structured_content["status"] == "draft"
+
+
+async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The CLI's own tool loop obeys the same rule the dispatcher does.
+
+    The child is a second dispatcher, so "a proposal changes nothing" has to be
+    true here as well — and, because the loop runs inside the CLI, it can only
+    be true by the tool behaving that way rather than by anything this process
+    checks afterwards.
+    """
+    data_dir, fixture = archive_dir
+    thread_id = await _make_thread(data_dir, fixture)
+    async with AsyncExitStack() as stack:
+        session = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_SET_ID=str(fixture.set_id),
+            GAGGICLANKER_MCP_THREAD_ID=str(thread_id),
+        )
+
+        refused = await session.call_tool(
+            "propose_set_version", {"reason": "Two clicks finer.", "grind_setting": "20"}
+        )
+        result = await session.call_tool(
+            "propose_set_version",
+            {
+                "reason": "Two clicks finer.",
+                "grind_setting": "20",
+                "prediction": "Compared to v1: two to four seconds longer and less sour.",
+            },
+        )
+
+    assert refused.is_error is True
+    assert "without a prediction" in str(refused.content)
+
+    assert result.is_error is False, result.content
+    assert result.structured_content is not None
+    assert result.structured_content["status"] == "proposed"
+    assert "Nothing has changed yet" in result.structured_content["note"]
+
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        # Still one version, and the proposal names the conversation it came from.
+        versions = await SetsRepository(db).versions(fixture.set_id)
+        assert [version.version_no for version in versions] == [1]
+        waiting = await SetProposalsRepository(db).waiting(fixture.set_id)
+        assert waiting is not None
+        assert waiting.thread_id == thread_id
+    finally:
+        await db.close()
+
+
+async def _make_thread(data_dir: Path, fixture: Fixture) -> int:
+    """A conversation in the archive the child will open, to be named on the proposal."""
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        cursor = await db.execute(
+            "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)", ("About v1", fixture.set_id)
+        )
+        return int(cursor.lastrowid or 0)
+    finally:
+        await db.close()
+
+
+async def test_the_child_is_never_offered_a_way_to_accept_a_proposal(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """Accept and decline are routes a person presses, on both dispatchers."""
+    data_dir, fixture = archive_dir
+    async with AsyncExitStack() as stack:
+        session = await session_for(stack, data_dir, GAGGICLANKER_MCP_SET_ID=str(fixture.set_id))
+        tools = {tool.name for tool in (await session.list_tools()).tools}
+
+    assert not [name for name in tools if "accept" in name or "decline" in name]
+
+
+async def test_the_generated_config_forwards_the_conversation(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The thread travels beside the scope, and only when there is one."""
+    data_dir, _ = archive_dir
+    env = server_env(
+        json.loads(
+            build_mcp_config(
+                data_dir=str(data_dir), executable=sys.executable, set_id=3, thread_id=9
+            )
+        )
+    )
+    assert env["GAGGICLANKER_MCP_THREAD_ID"] == "9"
+
+    plain = server_env(
+        json.loads(build_mcp_config(data_dir=str(data_dir), executable=sys.executable))
+    )
+    assert "GAGGICLANKER_MCP_THREAD_ID" not in plain
 
 
 async def test_the_claude_code_provider_s_generated_config_starts_this_server(
