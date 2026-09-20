@@ -199,6 +199,33 @@ async def test_propose_set_version_refuses_a_version_that_changes_nothing(
     assert "change something" in data["detail"]
 
 
+async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """A temperature argument is a refusal, not a silently dropped field.
+
+    The machine brews at the profile's temperature, so there is nothing on a Set
+    version for this to write. The schema refuses it (every tool model forbids
+    extras) and the description sends the model to the tool that can actually
+    change a temperature — a profile draft somebody approves.
+    """
+    data = await refuse(
+        ctx,
+        "propose_set_version",
+        reason="a degree hotter",
+        target_temperature_c=94,
+    )
+    assert "target_temperature_c" in str(data)
+
+    spec = next(item for item in registry.specs() if item.name == "propose_set_version")
+    assert "temperature" not in str(spec.input_schema()["properties"])
+    assert "draft_profile" in spec.description
+
+    # And the archive is untouched: a refused call writes nothing.
+    current = await SetsRepository(archive.db).current_version(archive.set_id)
+    assert current is not None and current.version_no == 1
+
+
 async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
     ctx: ToolContext, archive: Fixture
 ) -> None:

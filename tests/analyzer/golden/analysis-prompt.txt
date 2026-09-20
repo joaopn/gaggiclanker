@@ -258,7 +258,7 @@ grind setting: 22 numbers
 grind value: 22
 dose: 18 g
 target yield: 36 g
-target temperature: 93 °C
+profile temperature: 93 °C
 ratio: 1:2.00
 
 PROFILE (Medium 18g 1:2)

@@ -162,7 +162,11 @@ class SetFacts(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
-    target_temperature_c: float | None = None
+    #: The brew temperature the profile states, not a number typed on the Set:
+    #: a Set version records none, because the machine heats to what the
+    #: document says. Named for where it comes from, so the model reads it as a
+    #: property of the profile below rather than as something to change here.
+    profile_temperature_c: float | None = None
     profile_label: str = ""
     profile: dict[str, Any] | None = None
 
@@ -634,7 +638,7 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             grind_value=version.grind_value,
             dose_g=version.dose_g,
             target_yield_g=version.target_yield_g,
-            target_temperature_c=version.target_temperature_c,
+            profile_temperature_c=version.profile_temperature_c,
             profile_label=version.profile_label or "",
             profile=profile,
         ),
@@ -974,7 +978,7 @@ def _render_set(facts: SetFacts) -> str:
             _line("grind value", facts.grind_value),
             _line("dose", facts.dose_g, " g"),
             _line("target yield", facts.target_yield_g, " g"),
-            _line("target temperature", facts.target_temperature_c, " °C"),
+            _line("profile temperature", facts.profile_temperature_c, " °C"),
             _line(
                 "ratio",
                 None

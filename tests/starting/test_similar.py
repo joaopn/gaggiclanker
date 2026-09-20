@@ -49,6 +49,48 @@ async def test_the_best_match_is_the_one_that_matches_on_everything(fixture: Fix
     assert best.attribute_score == 6.0
 
 
+async def test_the_temperature_reported_is_the_profiles(fixture: Fixture) -> None:
+    """What that Set actually brewed at, not what somebody wrote on it.
+
+    The card is read to copy numbers off, so this one has to be true: it is the
+    temperature in the profile the Set names. A Set naming no profile reports
+    none rather than a plausible default.
+    """
+    from gaggiclanker.db.repos.profiles import ProfilesRepository
+    from gaggiclanker.domain.models import Profile
+
+    version = await ProfilesRepository(fixture.db).get_version(fixture.profile_version_id)
+    assert version is not None and version.profile is not None
+    hotter, _ = await ProfilesRepository(fixture.db).ensure_version(
+        Profile.model_validate({**version.profile, "temperature": 96.0})
+    )
+    await fixture.db.execute(
+        "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
+        (hotter.id, fixture.versions["kenya"]),
+    )
+    await fixture.db.execute(
+        "UPDATE set_versions SET profile_version_id = NULL WHERE id = ?",
+        (fixture.versions["guji"],),
+    )
+
+    # The firmware writes 0 for "not set": that is no temperature, not a 0 °C
+    # shot, and a card offering 0 °C would be advice to freeze the group.
+    unset, _ = await ProfilesRepository(fixture.db).ensure_version(
+        Profile.model_validate({**version.profile, "temperature": 0})
+    )
+    await fixture.db.execute(
+        "UPDATE set_versions SET profile_version_id = ? WHERE id = ?",
+        (unset.id, fixture.versions["sumatra"]),
+    )
+
+    rows = {row.set_version_id: row for row in await _for_the_new_bag(fixture, grinder_id=None)}
+    assert rows[fixture.versions["kenya"]].profile_temperature_c == 96.0
+    assert rows[fixture.versions["guji"]].profile_temperature_c is None
+    assert rows[fixture.versions["sumatra"]].profile_temperature_c is None
+    # Everything still on the untouched profile reports its 93 °C.
+    assert rows[fixture.versions["brazil"]].profile_temperature_c == 93.0
+
+
 async def test_an_adjacent_roast_scores_one_and_two_steps_away_scores_nothing(
     fixture: Fixture,
 ) -> None:
@@ -166,10 +208,10 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     await fixture.db.execute(
         """
         INSERT INTO set_versions (set_id, version_no, profile_version_id, grind_setting,
-                                  grind_value, dose_g, target_yield_g, target_temperature_c,
+                                  grind_value, dose_g, target_yield_g,
                                   intent, origin, created_at)
         SELECT ?, 1, profile_version_id, grind_setting, grind_value, dose_g, target_yield_g,
-               target_temperature_c, intent, origin, created_at
+               intent, origin, created_at
           FROM set_versions WHERE id = ?
         """,
         (copy_id, fixture.versions["kenya"]),

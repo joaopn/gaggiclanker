@@ -138,7 +138,6 @@ describe("NewSetDialog", () => {
       "Grind",
       "Dose (g)",
       "Target yield (g)",
-      "Temperature (°C)",
       "What are you trying? (optional)",
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument();
@@ -175,7 +174,6 @@ describe("NewSetDialog", () => {
           grind_setting: "22",
           dose_g: 18,
           target_yield_g: 36,
-          target_temperature_c: 93,
           intent: "baseline",
           origin: "manual",
         }),
@@ -281,26 +279,24 @@ describe("NewSetDialog", () => {
   });
 
   describe("the recipe fills in from the profile", () => {
-    it("fills target yield and temperature when a profile is picked", async () => {
+    it("fills the target yield when a profile is picked", async () => {
       renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 
       await pickProfile("7");
 
       expect(screen.getByLabelText("Target yield (g)")).toHaveValue("36");
-      expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("93");
       expect(screen.getByTestId("recipe-from-profile")).toHaveTextContent(
-        "Target yield 36 g and temperature 93 °C from 9 Bar Espresso.",
+        "Target yield 36 g from 9 Bar Espresso.",
       );
     });
 
-    it("replaces the numbers a previous profile filled when the profile changes", async () => {
+    it("replaces the number a previous profile filled when the profile changes", async () => {
       renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 
       await pickProfile("7");
       await pickProfile("8");
 
       expect(screen.getByLabelText("Target yield (g)")).toHaveValue("38");
-      expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("94");
       expect(screen.getByTestId("recipe-from-profile")).toHaveTextContent("from Adaptive v2");
     });
 
@@ -314,24 +310,19 @@ describe("NewSetDialog", () => {
       await user.type(yieldField, "40");
       await pickProfile("8");
 
-      // The typed yield stays; the untouched temperature follows the profile.
+      // The typed yield stays, and the hint stops claiming it came from a profile.
       expect(screen.getByLabelText("Target yield (g)")).toHaveValue("40");
-      expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("94");
-      // And the hint no longer claims the yield came from a profile.
-      expect(screen.getByTestId("recipe-from-profile")).toHaveTextContent(
-        "Temperature 94 °C from Adaptive v2.",
-      );
+      expect(screen.queryByTestId("recipe-from-profile")).not.toBeInTheDocument();
     });
 
     it("never overwrites a value typed before any profile was picked", async () => {
       const user = setupUser();
       renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 
-      await user.type(await screen.findByLabelText("Temperature (°C)"), "91");
+      await user.type(await screen.findByLabelText("Target yield (g)"), "50");
       await pickProfile("7");
 
-      expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("91");
-      expect(screen.getByLabelText("Target yield (g)")).toHaveValue("36");
+      expect(screen.getByLabelText("Target yield (g)")).toHaveValue("50");
     });
 
     it("leaves the yield alone when the profile states none", async () => {
@@ -340,49 +331,35 @@ describe("NewSetDialog", () => {
       await pickProfile("7");
       await pickProfile("9");
 
-      // No volumetric stop: the yield from the previous pick stays, and says
-      // where it came from; the temperature follows the new profile.
+      // No volumetric stop: the yield from the previous pick stays, and still
+      // says where it came from.
       expect(screen.getByLabelText("Target yield (g)")).toHaveValue("36");
-      expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("90");
       expect(screen.getByTestId("recipe-from-profile")).toHaveTextContent(
-        "Target yield 36 g from 9 Bar Espresso; temperature 90 °C from Turbo by time.",
+        "Target yield 36 g from 9 Bar Espresso.",
       );
-    });
-
-    it("leaves the fields as they are when the profile is cleared", async () => {
-      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
-
-      await pickProfile("7");
-      await pickProfile("");
-
-      expect(screen.getByLabelText("Target yield (g)")).toHaveValue("36");
-      expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("93");
     });
   });
 });
 
 describe("fillFromProfile", () => {
-  const empty = { targetYieldG: "", targetTemperatureC: "" };
-  const none = { targetYieldG: null, targetTemperatureC: null };
-  const nineBar = { label: "9 Bar", target_yield_g: 36, temperature_c: 93 };
+  const empty = { targetYieldG: "" };
+  const none = { targetYieldG: null };
+  const nineBar = { label: "9 Bar", target_yield_g: 36 };
 
-  it("fills empty fields and remembers what it filled", () => {
+  it("fills an empty field and remembers what it filled", () => {
     expect(fillFromProfile(empty, none, nineBar)).toEqual({
-      values: { targetYieldG: "36", targetTemperatureC: "93" },
-      filled: {
-        targetYieldG: { value: "36", from: "9 Bar" },
-        targetTemperatureC: { value: "93", from: "9 Bar" },
-      },
+      values: { targetYieldG: "36" },
+      filled: { targetYieldG: { value: "36", from: "9 Bar" } },
     });
   });
 
   it("changes nothing for Any profile", () => {
-    const draft = { targetYieldG: "36", targetTemperatureC: "" };
+    const draft = { targetYieldG: "36" };
     expect(fillFromProfile(draft, none, undefined)).toEqual({ values: draft, filled: none });
   });
 
   it("gives a decimal back as the profile wrote it", () => {
-    const lever = { label: "Lever", target_yield_g: 36, temperature_c: 86.5 };
-    expect(fillFromProfile(empty, none, lever).values.targetTemperatureC).toBe("86.5");
+    const lever = { label: "Lever", target_yield_g: 36.5 };
+    expect(fillFromProfile(empty, none, lever).values.targetYieldG).toBe("36.5");
   });
 });

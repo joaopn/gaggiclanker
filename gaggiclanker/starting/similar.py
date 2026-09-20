@@ -130,7 +130,10 @@ class SimilarSet(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
-    target_temperature_c: float | None = None
+    #: The brew temperature that Set's profile states. Not a number anybody
+    #: typed: a Set version records none, because the machine heats to what the
+    #: profile says.
+    profile_temperature_c: float | None = None
     ratio: float | None = None
     profile_version_id: int | None = None
     profile_label: str | None = None
@@ -189,7 +192,11 @@ SELECT v.id                                         AS set_version_id,
        v.grind_value,
        v.dose_g,
        v.target_yield_g,
-       v.target_temperature_c,
+       -- Out of the profile's own document, with the firmware's 0 ("not set")
+       -- nulled out, which is how `profile_recipe` reads the same field.
+       CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
+             AND json_extract(pv.json, '$.temperature') > 0
+            THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
        v.profile_version_id,
        pv.label                                     AS profile_label,
        s.name                                       AS set_name,
@@ -318,7 +325,7 @@ def _to_model(row: dict[str, Any]) -> SimilarSet:
         grind_value=row["grind_value"],
         dose_g=dose,
         target_yield_g=yield_g,
-        target_temperature_c=row["target_temperature_c"],
+        profile_temperature_c=row["profile_temperature_c"],
         ratio=round(float(yield_g) / float(dose), 2) if dose and yield_g else None,
         profile_version_id=row["profile_version_id"],
         profile_label=row["profile_label"],

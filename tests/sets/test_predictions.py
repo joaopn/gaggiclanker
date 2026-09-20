@@ -37,7 +37,6 @@ INHERITED = (
     "grind_value",
     "dose_g",
     "target_yield_g",
-    "target_temperature_c",
 )
 
 
@@ -410,7 +409,6 @@ class TestRollback:
                 grind_value=22,
                 dose_g=18,
                 target_yield_g=36,
-                target_temperature_c=93,
             ),
         )
         first = await wired.sets.current_version(row.id)
@@ -425,7 +423,6 @@ class TestRollback:
                 grind_value=19,
                 dose_g=20,
                 target_yield_g=50,
-                target_temperature_c=90,
                 intent="a turbo",
                 pushed_device_profile_id="7",
             ),

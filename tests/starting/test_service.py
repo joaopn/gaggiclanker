@@ -147,7 +147,10 @@ async def test_accepting_creates_the_set_with_origin_starting_point(
     assert version.origin == "starting_point"
     assert version.dose_g == 18.0
     assert version.target_yield_g == 45.0
-    assert version.target_temperature_c == 94.0
+    # This option named no profile, so the version has no temperature to show:
+    # a Set records none of its own.
+    assert version.profile_version_id is None
+    assert version.profile_temperature_c is None
     assert version.grind_setting == "20"
     # The numeric half is only filled in for a setting the model called
     # absolute — plotting "two clicks finer" as 2 would draw a meaningless line.

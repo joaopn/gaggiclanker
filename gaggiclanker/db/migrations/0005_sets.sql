@@ -118,7 +118,7 @@ CREATE INDEX idx_sets_bean ON sets(bean_id);
 -- apart is what makes the record trustworthy:
 --
 --   * **the recipe is immutable.** `profile_version_id` through
---     `target_temperature_c`, plus `intent`: written once, never updated.
+--     `target_yield_g`, plus `intent`: written once, never updated.
 --     Changing anything appends a new version instead, because the product's
 --     question is "what did changing this do" and an edited row answers it with
 --     today's value for every shot ever attached.
@@ -154,6 +154,13 @@ CREATE INDEX idx_sets_bean ON sets(bean_id);
 -- Niche says "22", an EK43 says "7.5", a Mazzer says "between 3 and 4". The
 -- text is what the user reads back and what the analyzer is shown; the number
 -- is what a chart can plot, when there is one.
+--
+-- There is deliberately no brew temperature here. The machine brews at the
+-- temperature the *profile* states, so a number typed on a Set version could
+-- only ever be a claim about a document it does not control: "one degree
+-- hotter" recorded here changed nothing in the cup. The temperature is read
+-- from `profile_version_id`'s document wherever it is shown, and changing it
+-- means changing the profile.
 CREATE TABLE set_versions (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     set_id               INTEGER NOT NULL REFERENCES sets(id) ON DELETE CASCADE,
@@ -164,7 +171,6 @@ CREATE TABLE set_versions (
     grind_value          REAL,
     dose_g               REAL,
     target_yield_g       REAL,
-    target_temperature_c REAL,
     -- One sentence: what this version is trying to find out. Empty is allowed
     -- (the first version of a Set is not trying anything yet), but the UI asks
     -- for it on every subsequent version, because a change with no stated

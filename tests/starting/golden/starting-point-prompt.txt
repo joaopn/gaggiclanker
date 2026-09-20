@@ -357,7 +357,7 @@ bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medi
   dose: 18 g
   target yield: 45 g
   ratio: 1:2.50
-  temperature: 94 °C
+  profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 5 shots, rating 4.4/5, execution 8.92/10, ratio 1:2.5, 28 s
 
@@ -368,7 +368,7 @@ bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medi
   dose: 18 g
   target yield: 40 g
   ratio: 1:2.22
-  temperature: 93.5 °C
+  profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 3 shots, rating 3/5, execution 8/10, ratio 1:2.22, 28 s
 
@@ -379,6 +379,6 @@ bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medi
   dose: 18 g
   target yield: 32 g
   ratio: 1:1.78
-  temperature: 90 °C
+  profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 2 shots, rating 4/5, execution 8.5/10, ratio 1:1.78, 28 s

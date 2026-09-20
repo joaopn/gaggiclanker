@@ -232,7 +232,7 @@ function SimilarSets({
               item.dose_g ? `${item.dose_g} g in` : null,
               item.target_yield_g ? `${item.target_yield_g} g out` : null,
               item.ratio ? `1:${item.ratio}` : null,
-              item.target_temperature_c ? `${item.target_temperature_c} °C` : null,
+              item.profile_temperature_c ? `${item.profile_temperature_c} °C` : null,
             ]
               .filter(Boolean)
               .join(" · ") || "nothing recorded"}

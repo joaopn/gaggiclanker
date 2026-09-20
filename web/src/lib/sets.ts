@@ -22,7 +22,9 @@ export function versionSummary(version: SetVersionRow): string {
   if (version.dose_g) parts.push(`${version.dose_g} g in`);
   if (version.target_yield_g) parts.push(`${version.target_yield_g} g out`);
   if (version.grind_setting) parts.push(`grind ${version.grind_setting}`);
-  if (version.target_temperature_c) parts.push(`${version.target_temperature_c} °C`);
+  // The profile's temperature, not the Set's: a version records none of its
+  // own, so this line follows whichever profile the version names.
+  if (version.profile_temperature_c) parts.push(`${version.profile_temperature_c} °C`);
   return parts.join(" · ") || "nothing recorded yet";
 }
 

@@ -259,20 +259,25 @@ describe("SetDetailPage", () => {
     expect(createProfileDraft).not.toHaveBeenCalled();
   });
 
-  it("carries the new profile's targets across, without overwriting a typed one", async () => {
+  it("carries the new profile's target yield across, without overwriting a typed one", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);
 
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
     await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
-    // Typed by hand first: the profile must not take it back.
-    await user.type(screen.getByLabelText("Temperature (°C)"), "95");
 
     await user.selectOptions(screen.getByLabelText("Profile"), "8");
-
     expect(screen.getByLabelText("Target yield (g)")).toHaveValue("45");
-    expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("95");
     expect(screen.getByTestId("version-from-profile")).toHaveTextContent("from Turbo");
+
+    // Typed by hand: the next profile must not take it back.
+    const yieldField = screen.getByLabelText("Target yield (g)");
+    await user.clear(yieldField);
+    await user.type(yieldField, "50");
+    await user.selectOptions(screen.getByLabelText("Profile"), "7");
+
+    expect(screen.getByLabelText("Target yield (g)")).toHaveValue("50");
+    expect(screen.queryByTestId("version-from-profile")).not.toBeInTheDocument();
   });
 
   it("can take the profile off a version entirely", async () => {

@@ -51,12 +51,10 @@ async def test_accepting_a_grind_suggestion_changes_only_the_grind(
     assert version.grind_value == 20.0
     # The words are kept: "22 numbers" becomes "20 numbers", not "20".
     assert version.grind_setting == "20 numbers"
-    # And everything else is inherited untouched.
-    assert (version.dose_g, version.target_yield_g, version.target_temperature_c) == (
-        18.0,
-        36.0,
-        93.0,
-    )
+    # And everything else is inherited untouched — including the profile, which
+    # is where the brew temperature comes from.
+    assert (version.dose_g, version.target_yield_g) == (18.0, 36.0)
+    assert version.profile_temperature_c == parent.profile_temperature_c
 
     # The intent says what moved and why, so the timeline reads as a conversation.
     assert version.intent.startswith("grind finer 2 grinder_steps (22 -> 20):")
@@ -139,6 +137,47 @@ async def test_a_non_actionable_variable_is_refused_with_a_reason(
     assert "/api/profile-drafts" in str(caught.value.details)
 
 
+async def test_a_temperature_suggestion_is_a_profile_change_now(
+    analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    """Good advice with nowhere on the Set to put it.
+
+    The model may still say "a degree hotter" and it may well be right — the
+    machine brews at the profile's temperature, so the way to act on it is a
+    profile draft, and the refusal says so rather than writing a number that
+    would change nothing in the cup.
+    """
+    provider.script = [
+        json.dumps(
+            dict(
+                GOOD_OUTPUT,
+                suggestions=[
+                    {
+                        "variable": "temperature",
+                        "direction": "increase",
+                        "magnitude": 1,
+                        "unit": "c",
+                        "reason": "sour on the sweet spot",
+                        "confidence": "medium",
+                        "priority": 1,
+                    }
+                ],
+            )
+        )
+    ]
+    row = await analyzer.run_analysis(fixture.shots[-1])
+
+    with pytest.raises(Conflict) as caught:
+        await accept_suggestion(fixture.db, row.suggestions[0].id)
+
+    assert "temperature suggestion cannot be applied" in caught.value.message
+    details = str(caught.value.details)
+    assert "the machine brews at the temperature the profile states" in details
+    assert "/api/profile-drafts" in details
+    # Refused means nothing written: the Set is still on its first version.
+    assert len(await SetsRepository(fixture.db).versions(fixture.set_id)) == 1
+
+
 async def test_a_suggestion_about_a_stale_version_is_refused(
     analyzer: AnalyzerService, fixture: Fixture
 ) -> None:
@@ -162,10 +201,10 @@ async def test_a_suggestion_about_a_stale_version_is_refused(
 async def test_a_version_with_no_number_to_change_is_refused(
     analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider
 ) -> None:
-    # A Set version that never recorded a temperature.
+    # A Set version that records no dose at all.
     await SetsRepository(fixture.db).add_version(
         fixture.set_id,
-        SetVersionPatch(target_temperature_c=None, intent="stopped tracking the temperature"),
+        SetVersionPatch.model_validate({"dose_g": None, "intent": "stopped weighing the dose"}),
     )
     from gaggiclanker.db.repos.sets import SetsRepository as Repo
 
@@ -179,11 +218,11 @@ async def test_a_version_with_no_number_to_change_is_refused(
                 GOOD_OUTPUT,
                 suggestions=[
                     {
-                        "variable": "temperature",
+                        "variable": "dose",
                         "direction": "increase",
                         "magnitude": 1,
-                        "unit": "c",
-                        "reason": "sour on the sweet spot",
+                        "unit": "g",
+                        "reason": "thin in the cup",
                         "confidence": "medium",
                         "priority": 1,
                     }
@@ -193,7 +232,7 @@ async def test_a_version_with_no_number_to_change_is_refused(
     ]
     row = await analyzer.run_analysis(fixture.shots[-1])
 
-    with pytest.raises(Conflict, match="no target temperature"):
+    with pytest.raises(Conflict, match="no dose"):
         await accept_suggestion(fixture.db, row.suggestions[0].id)
 
 
@@ -262,10 +301,10 @@ async def test_a_change_outside_the_bounds_is_refused_not_clamped(
                 GOOD_OUTPUT,
                 suggestions=[
                     {
-                        "variable": "temperature",
+                        "variable": "dose",
                         "direction": "decrease",
                         "magnitude": 80,
-                        "unit": "c",
+                        "unit": "g",
                         "reason": "wildly wrong",
                         "confidence": "low",
                         "priority": 1,

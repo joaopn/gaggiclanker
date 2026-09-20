@@ -94,6 +94,9 @@ export const vocabulary: Vocabulary = {
     { value: "temperature", label: "Temperature" },
     { value: "pressure", label: "Pressure" },
   ],
+  // The three a Set version records. The server refuses an accept for anything
+  // else, which is why the card reads this list rather than one of its own.
+  actionable_variables: ["grind", "dose", "yield"],
   suggestion_directions: [
     { value: "finer", label: "finer" },
     { value: "coarser", label: "coarser" },
@@ -283,7 +286,7 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
     grind_value: 22,
     dose_g: 18,
     target_yield_g: 36,
-    target_temperature_c: 93,
+    profile_temperature_c: 93,
     intent: "",
     origin: "manual",
     origin_analysis_id: null,
@@ -336,7 +339,15 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
           grind_value: 21,
           intent: "one click finer, chasing the sourness out",
         }),
-        changes: [{ field: "grind_setting", label: "Grind", before: "22", after: "21" }],
+        changes: [
+          {
+            field: "grind_setting",
+            label: "Grind",
+            before: "22",
+            after: "21",
+            from_profile: false,
+          },
+        ],
         shots: [],
         dead_end: false,
         labels: labelCounts(),
@@ -458,7 +469,7 @@ export function similarSet(overrides: Partial<SimilarSet> = {}): SimilarSet {
     grind_value: 21,
     dose_g: 18,
     target_yield_g: 45,
-    target_temperature_c: 94,
+    profile_temperature_c: 94,
     ratio: 2.5,
     profile_version_id: 7,
     profile_label: "9 Bar Espresso",

@@ -2,8 +2,10 @@
 
 A **Set** is a stable identity: this bean, on the machine, through this
 grinder. A **set version** is one concrete recipe that was actually brewed with
-— a profile version, a grind, a dose, a target yield, a temperature — plus the
-one sentence saying why it differs from the version before it.
+— a profile version, a grind, a dose, a target yield — plus the one sentence
+saying why it differs from the version before it. The brew temperature is not
+among them: the machine heats to what the profile says, so it is read from the
+profile this version names and changing it means changing the profile.
 
 Four properties follow from that split, and every method here exists to keep
 one of them true:
@@ -119,7 +121,6 @@ class SetVersionWrite(BaseModel):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
-    target_temperature_c: float | None = Field(default=None, ge=25, le=150)
     intent: str = Field(default="", max_length=500)
     #: What this version is expected to do differently. On a Set's first version
     #: there is nothing earlier to compare against, so there is no
@@ -147,7 +148,6 @@ class SetVersionPatch(BaseModel):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
-    target_temperature_c: float | None = Field(default=None, ge=25, le=150)
     #: Not inherited, and asked for on every new version: a change with no
     #: stated intent is indistinguishable from a typo three weeks later.
     intent: str = Field(default="", max_length=500)
@@ -186,7 +186,13 @@ class SetVersionRow(BaseModel):
     grind_value: float | None = None
     dose_g: float | None = None
     target_yield_g: float | None = None
-    target_temperature_c: float | None = None
+    #: The brew temperature, read from the profile this version names rather
+    #: than typed on the Set: the machine heats to what the document says, so a
+    #: number stored here could only ever disagree with the cup. NULL when the
+    #: version names no profile, or when the profile states none (the firmware
+    #: writes 0 for "not set"). Read-only — changing it means changing the
+    #: profile.
+    profile_temperature_c: float | None = None
     intent: str = ""
     origin: SetVersionOrigin = "manual"
     origin_analysis_id: int | None = None
@@ -369,6 +375,10 @@ class FieldChange(BaseModel):
     label: str
     before: str | None = None
     after: str | None = None
+    #: True for a change nobody typed on the Set: it came with the profile this
+    #: version switched to. The log says so, because "Temperature 93 → 94 °C"
+    #: with no such field on the form reads as a bug otherwise.
+    from_profile: bool = False
 
 
 class SetTrendPoint(BaseModel):
@@ -426,7 +436,6 @@ VERSION_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("grind_value", "Grind value", "number"),
     ("dose_g", "Dose", "g"),
     ("target_yield_g", "Target yield", "g"),
-    ("target_temperature_c", "Temperature", "c"),
 )
 
 
@@ -453,12 +462,20 @@ def version_changes(
     """What this version changed, against the one it came from.
 
     Computed rather than stored. A stored diff is a third copy of two values
-    that can disagree with either, and this one is cheap: six fields compared in
-    memory on a list the page already holds.
+    that can disagree with either, and this one is cheap: five fields compared
+    in memory on a list the page already holds.
 
     The first version of a Set has no parent and therefore no changes — it is
-    the baseline, not a change to anything, and rendering it as "six fields set"
-    would bury the one version the reader actually wants to compare against.
+    the baseline, not a change to anything, and rendering it as "five fields
+    set" would bury the one version the reader actually wants to compare
+    against.
+
+    The temperature is the sixth line the log can show and the one nobody typed:
+    it rides along with the profile. A version that switched profiles changed
+    the brew temperature too whenever the two documents state different ones,
+    and that is the change the reader is looking for — "one degree hotter" is
+    the profile's doing, so it is only ever reported beside the profile change
+    that caused it.
     """
     if parent is None:
         return []
@@ -474,6 +491,19 @@ def version_changes(
                 label=label,
                 before=_render(before, kind, profile_labels),
                 after=_render(after, kind, profile_labels),
+            )
+        )
+    if (
+        version.profile_version_id != parent.profile_version_id
+        and version.profile_temperature_c != parent.profile_temperature_c
+    ):
+        changes.append(
+            FieldChange(
+                field="profile_temperature_c",
+                label="Temperature",
+                before=_render(parent.profile_temperature_c, "c"),
+                after=_render(version.profile_temperature_c, "c"),
+                from_profile=True,
             )
         )
     return changes
@@ -568,7 +598,6 @@ _INHERITED = (
     "grind_value",
     "dose_g",
     "target_yield_g",
-    "target_temperature_c",
 )
 
 _SET_SELECT = """
@@ -601,6 +630,14 @@ _SET_SELECT = """
 #: one version and has no list to resolve it against.
 _VERSION_SELECT = """
     SELECT v.*, pv.label AS profile_label,
+           -- The brew temperature, out of the profile's own document: the
+           -- firmware's 0 means "not set", which is the same rule
+           -- `profile_recipe` applies to the same field. Read here rather than
+           -- by loading every profile document into the process, because a Set
+           -- page shows a dozen versions and only ever wants this one number.
+           CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
+                 AND json_extract(pv.json, '$.temperature') > 0
+                THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
            cmp.version_no AS compares_to_version_no,
            res.version_no AS restores_version_no,
            (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count

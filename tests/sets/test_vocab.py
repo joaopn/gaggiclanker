@@ -13,12 +13,14 @@ confusing afternoon.
 from __future__ import annotations
 
 import re
+from typing import get_args
 
 import pytest
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.models import BalanceTaste
 from gaggiclanker.domain.vocab import (
+    ACTIONABLE_VARIABLES,
     BALANCES,
     BURR_TYPES,
     DECISIONS,
@@ -32,6 +34,7 @@ from gaggiclanker.domain.vocab import (
     SET_VERSION_ORIGINS,
     STEP_UNITS,
     VERSION_OUTCOMES,
+    SuggestionVariable,
     flavor_ancestors,
     flavor_path,
     in_wheel_order,
@@ -72,6 +75,26 @@ async def test_the_check_constraint_matches_the_module(
     assert match, f"no CHECK on {table}.{column} in:\n{schema}"
     in_schema = set(re.findall(r"'([^']+)'", match.group(1)))
     assert in_schema == set(expected), f"{table}.{column} disagrees with domain/vocab.py"
+
+
+async def test_a_set_version_has_no_temperature_and_the_vocabulary_agrees(
+    db: Database,
+) -> None:
+    """The three actionable variables are the three columns there are.
+
+    Two halves of one fact, and they are checked together because drifting apart
+    is what would hurt: `ACTIONABLE_VARIABLES` is what `accept` consults before
+    writing, so a variable listed here with no column behind it would be an
+    accept that raises instead of refusing politely. The temperature has no
+    column because the machine brews at the profile's.
+    """
+    schema = await _schema(db, "set_versions")
+    assert "target_temperature_c" not in schema
+
+    columns = {str(row["name"]) for row in await db.fetch_all("PRAGMA table_info(set_versions)")}
+    assert {"grind_value", "dose_g", "target_yield_g"} <= columns
+    assert ACTIONABLE_VARIABLES == ("grind", "dose", "yield")
+    assert set(ACTIONABLE_VARIABLES) < set(get_args(SuggestionVariable.__value__))
 
 
 async def test_balance_is_the_same_three_words_the_firmware_uses() -> None:
@@ -128,6 +151,21 @@ def test_wheel_order_is_centre_first_and_clockwise() -> None:
         "floral.floral.rose",
         "sweet",
     ]
+
+
+def test_the_served_vocabulary_says_which_variables_can_be_accepted() -> None:
+    """The suggestion card offers Accept for exactly these, and nothing else.
+
+    Served rather than typed in the front end, because the server refuses an
+    accept for anything outside the list and a card working from its own copy
+    turns good advice into a 409 — which is what happened when the temperature
+    became a profile change.
+    """
+    assert vocabulary().actionable_variables == list(ACTIONABLE_VARIABLES)
+    assert "temperature" not in vocabulary().actionable_variables
+    # Every one of them is a variable a suggestion can be about.
+    variables = {term.value for term in vocabulary().suggestion_variables}
+    assert set(vocabulary().actionable_variables) <= variables
 
 
 def test_the_served_vocabulary_carries_every_term() -> None:

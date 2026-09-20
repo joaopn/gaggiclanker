@@ -51,7 +51,6 @@ type Draft = {
   grindSetting: string;
   doseG: string;
   targetYieldG: string;
-  targetTemperatureC: string;
   intent: string;
   /**
    * What they normally grind espresso at. Never sent to `POST /api/sets` — it
@@ -75,10 +74,9 @@ const EMPTY: Draft = {
   grindSetting: "",
   doseG: "",
   targetYieldG: "",
-  targetTemperatureC: "",
   intent: "",
   usualGrind: "",
-  filled: { targetYieldG: null, targetTemperatureC: null },
+  filled: { targetYieldG: null },
 };
 
 function toNumber(value: string): number | null {
@@ -98,7 +96,6 @@ export function toCreateBody(draft: Draft): SetCreate {
       grind_value: toNumber(draft.grindSetting),
       dose_g: toNumber(draft.doseG),
       target_yield_g: toNumber(draft.targetYieldG),
-      target_temperature_c: toNumber(draft.targetTemperatureC),
       intent: draft.intent,
       // The starting point is not an experiment against anything, so it
       // states no prediction; one is added from the Set page when it is.
@@ -109,8 +106,13 @@ export function toCreateBody(draft: Draft): SetCreate {
   };
 }
 
-/** The recipe fields a profile can fill, and what each was last filled with, by which profile. */
-type RecipeKey = "targetYieldG" | "targetTemperatureC";
+/** The recipe fields a profile can fill, and what each was last filled with, by which profile.
+ *
+ * One field, and it used to be two: a profile also states a brew temperature,
+ * but there is nowhere on a Set to put it any more — the machine brews at the
+ * profile's, so it is shown rather than copied.
+ */
+type RecipeKey = "targetYieldG";
 export type AutoFilled = Record<RecipeKey, { value: string; from: string } | null>;
 
 /**
@@ -130,16 +132,15 @@ export type AutoFilled = Record<RecipeKey, { value: string; from: string } | nul
 export function fillFromProfile(
   draft: Pick<Draft, RecipeKey>,
   filled: AutoFilled,
-  version: Pick<ProfileVersionSummary, "label" | "target_yield_g" | "temperature_c"> | undefined,
+  version: Pick<ProfileVersionSummary, "label" | "target_yield_g"> | undefined,
 ): { values: Pick<Draft, RecipeKey>; filled: AutoFilled } {
-  const values = { targetYieldG: draft.targetYieldG, targetTemperatureC: draft.targetTemperatureC };
+  const values = { targetYieldG: draft.targetYieldG };
   const next = { ...filled };
   if (!version) return { values, filled: next };
   const offered: Record<RecipeKey, number | null | undefined> = {
     targetYieldG: version.target_yield_g,
-    targetTemperatureC: version.temperature_c,
   };
-  for (const key of ["targetYieldG", "targetTemperatureC"] as const) {
+  for (const key of ["targetYieldG"] as const) {
     const number = offered[key];
     if (number === null || number === undefined) continue;
     const current = values[key];
@@ -203,7 +204,6 @@ export function NewSetDialog({
     grind: useId(),
     dose: useId(),
     yield: useId(),
-    temperature: useId(),
     intent: useId(),
   };
 
@@ -342,7 +342,7 @@ export function NewSetDialog({
             the machine pulls.
           </p>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Labelled id={ids.grind} label="Grind">
               <input
                 id={ids.grind}
@@ -368,15 +368,6 @@ export function NewSetDialog({
                 inputMode="decimal"
                 value={draft.targetYieldG}
                 onChange={(event) => set("targetYieldG", event.target.value)}
-              />
-            </Labelled>
-            <Labelled id={ids.temperature} label="Temperature (°C)">
-              <input
-                id={ids.temperature}
-                className={FIELD}
-                inputMode="decimal"
-                value={draft.targetTemperatureC}
-                onChange={(event) => set("targetTemperatureC", event.target.value)}
               />
             </Labelled>
           </div>
@@ -477,29 +468,15 @@ function SuggestStartingPoint({
 }
 
 /**
- * "Target yield 36 g and temperature 93 °C from 9 Bar Espresso."
+ * "Target yield 36 g from 9 Bar Espresso."
  *
- * Only the fields still holding a profile's number are named: once a person has
- * typed over one, saying it came from the profile would be false. Each number
- * names its own profile, because a yield from one pick can outlive a later pick
- * that only stated a temperature.
+ * Only a field still holding the profile's number is named: once a person has
+ * typed over it, saying it came from the profile would be false.
  */
 export function recipeHint(draft: Pick<Draft, RecipeKey>, filled: AutoFilled): string {
-  const parts: { text: string; from: string }[] = [];
   const yieldG = filled.targetYieldG;
-  if (yieldG && draft.targetYieldG === yieldG.value) {
-    parts.push({ text: `target yield ${yieldG.value} g`, from: yieldG.from });
-  }
-  const temperature = filled.targetTemperatureC;
-  if (temperature && draft.targetTemperatureC === temperature.value) {
-    parts.push({ text: `temperature ${temperature.value} °C`, from: temperature.from });
-  }
-  if (parts.length === 0) return "";
-  const sentence =
-    parts.length === 2 && parts[0].from === parts[1].from
-      ? `${parts[0].text} and ${parts[1].text} from ${parts[0].from}`
-      : parts.map((part) => `${part.text} from ${part.from}`).join("; ");
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.`;
+  if (!yieldG || draft.targetYieldG !== yieldG.value) return "";
+  return `Target yield ${yieldG.value} g from ${yieldG.from}.`;
 }
 
 function Labelled({

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
@@ -129,15 +130,13 @@ class TestSets:
         assert second.intent == "chasing the sourness out"
 
     async def test_sending_null_clears_where_omitting_inherits(self, wired: Fixtures) -> None:
-        row = await _new_set(wired, dose_g=18.0, target_temperature_c=93.0)
+        row = await _new_set(wired, dose_g=18.0, target_yield_g=36.0)
         cleared = await wired.sets.add_version(
             row.id,
-            SetVersionPatch.model_validate(
-                {"target_temperature_c": None, "intent": "back to default"}
-            ),
+            SetVersionPatch.model_validate({"target_yield_g": None, "intent": "back to default"}),
         )
         assert cleared is not None
-        assert cleared.target_temperature_c is None
+        assert cleared.target_yield_g is None
         assert cleared.dose_g == 18.0
 
     async def test_the_diff_is_computed_against_the_parent(self, wired: Fixtures) -> None:
@@ -157,6 +156,86 @@ class TestSets:
 
         # Version 1 is a baseline, not a change to anything.
         assert version_changes(versions[-1], None) == []
+
+    async def test_a_versions_temperature_is_read_from_its_profile(self, wired: Fixtures) -> None:
+        """The number follows the profile, and there is nowhere to type one.
+
+        Three cases, because "no temperature" has two honest causes: a version
+        that names no profile at all, and one whose profile states none (the
+        firmware writes 0 for "not set", which is not a 0 °C shot).
+        """
+        hot = await make_profile_version(wired.db, "9 Bar Espresso", temperature=94)
+        silent = await make_profile_version(wired.db, "Says nothing", temperature=0)
+
+        with pytest.raises(ValidationError):
+            SetVersionWrite.model_validate({"target_temperature_c": 93})
+
+        row = await _new_set(wired, profile_version_id=hot, dose_g=18.0)
+        first = await wired.sets.current_version(row.id)
+        assert first is not None and first.profile_temperature_c == 94
+
+        quiet = await wired.sets.add_version(
+            row.id, SetVersionPatch(profile_version_id=silent, intent="a profile with no target")
+        )
+        assert quiet is not None and quiet.profile_temperature_c is None
+
+        none_at_all = await wired.sets.add_version(
+            row.id,
+            SetVersionPatch.model_validate({"profile_version_id": None, "intent": "any profile"}),
+        )
+        assert none_at_all is not None and none_at_all.profile_temperature_c is None
+
+    async def test_a_temperature_change_is_reported_with_the_profile_change(
+        self, wired: Fixtures
+    ) -> None:
+        """ "93 → 94 °C" is the profile's doing, and only ever shown as such.
+
+        A version can no longer differ from its parent in temperature alone, so
+        the change is attached to the profile change that carried it — and a
+        profile switch between two documents that agree on the temperature adds
+        no line at all.
+        """
+        cool = await make_profile_version(wired.db, "9 Bar Espresso", temperature=93)
+        hot = await make_profile_version(wired.db, "9 Bar Espresso hotter", temperature=94)
+        same_heat = await make_profile_version(wired.db, "A different shape", temperature=94)
+
+        row = await _new_set(wired, profile_version_id=cool, dose_g=18.0)
+        await wired.sets.add_version(
+            row.id, SetVersionPatch(profile_version_id=hot, intent="a degree hotter")
+        )
+        versions = await wired.sets.versions(row.id)
+        by_id = {version.id: version for version in versions}
+        changes = version_changes(versions[0], by_id[versions[0].parent_version_id or 0])
+        assert {change.field for change in changes} == {
+            "profile_version_id",
+            "profile_temperature_c",
+        }
+        temperature = next(c for c in changes if c.field == "profile_temperature_c")
+        assert (temperature.before, temperature.after) == ("93 °C", "94 °C")
+        assert temperature.label == "Temperature"
+        # Marked, because there is no Temperature field on the form any more and
+        # a line nobody can explain reads as a bug.
+        assert temperature.from_profile is True
+
+        # A profile change that keeps the temperature says nothing about it.
+        await wired.sets.add_version(
+            row.id, SetVersionPatch(profile_version_id=same_heat, intent="another shape")
+        )
+        versions = await wired.sets.versions(row.id)
+        by_id = {version.id: version for version in versions}
+        assert {
+            change.field
+            for change in version_changes(versions[0], by_id[versions[0].parent_version_id or 0])
+        } == {"profile_version_id"}
+
+        # And neither does a change that leaves the profile alone.
+        await wired.sets.add_version(row.id, SetVersionPatch(grind_setting="21", intent="finer"))
+        versions = await wired.sets.versions(row.id)
+        by_id = {version.id: version for version in versions}
+        assert {
+            change.field
+            for change in version_changes(versions[0], by_id[versions[0].parent_version_id or 0])
+        } == {"grind_setting"}
 
     async def test_version_numbers_are_unique_per_set(self, wired: Fixtures) -> None:
         first = await _new_set(wired, dose_g=18.0)

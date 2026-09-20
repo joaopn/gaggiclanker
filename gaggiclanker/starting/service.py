@@ -614,7 +614,6 @@ class StartingPointService:
                 grind_value=_grind_value(option),
                 dose_g=option.dose_g,
                 target_yield_g=option.yield_g,
-                target_temperature_c=option.temperature_c,
                 intent=intent,
                 origin="starting_point",
             ),

@@ -207,6 +207,37 @@ async def test_the_version_view_carries_the_experiment_log(archive: Fixture) -> 
     } <= set(result.columns)
 
 
+async def test_the_views_read_the_temperature_off_the_profile(archive: Fixture) -> None:
+    """Named for where it comes from, because that is what makes it usable.
+
+    A model that reads `target_temperature_c` on a Set version writes SQL about
+    a number somebody typed; there is no such number. `profile_temperature_c`
+    says the brew temperature belongs to the profile, which is also the only way
+    to answer "did the hotter profile help".
+    """
+    versions = await run_query(archive.db.path, "SELECT * FROM v_set_versions LIMIT 1")
+    shots = await run_query(archive.db.path, "SELECT * FROM v_shots LIMIT 1")
+
+    for result in (versions, shots):
+        assert "profile_temperature_c" in result.columns
+        assert "target_temperature_c" not in result.columns
+
+    # And it is the profile's own number, not a stored copy: the seeded archive
+    # brews `docs-medium-18g`, which states 93 °C.
+    assert versions.rows[0][versions.columns.index("profile_temperature_c")] == 93
+    assert shots.rows[0][shots.columns.index("profile_temperature_c")] == 93
+
+    # The firmware writes 0 for "not set", and a model reading 0 °C off this
+    # view would diagnose a cold brew that never happened.
+    await archive.db.execute(
+        "UPDATE profile_versions SET json = json_set(json, '$.temperature', 0)"
+    )
+    unset_versions = await run_query(archive.db.path, "SELECT * FROM v_set_versions LIMIT 1")
+    unset_shots = await run_query(archive.db.path, "SELECT * FROM v_shots LIMIT 1")
+    assert unset_versions.rows[0][unset_versions.columns.index("profile_temperature_c")] is None
+    assert unset_shots.rows[0][unset_shots.columns.index("profile_temperature_c")] is None
+
+
 # -- the bounds ------------------------------------------------------------
 
 

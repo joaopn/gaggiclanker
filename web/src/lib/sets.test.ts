@@ -21,7 +21,7 @@ describe("recipes", () => {
           dose_g: null,
           target_yield_g: null,
           grind_setting: null,
-          target_temperature_c: null,
+          profile_temperature_c: null,
         }),
       ),
     ).toBe("nothing recorded yet");

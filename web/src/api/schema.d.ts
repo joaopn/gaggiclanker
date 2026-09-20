@@ -3709,6 +3709,11 @@ export interface components {
             before?: string | null;
             /** Field */
             field: string;
+            /**
+             * From Profile
+             * @default false
+             */
+            from_profile: boolean;
             /** Label */
             label: string;
         };
@@ -5064,8 +5069,6 @@ export interface components {
             profile_version_id?: number | null;
             /** Pushed Device Profile Id */
             pushed_device_profile_id?: string | null;
-            /** Target Temperature C */
-            target_temperature_c?: number | null;
             /** Target Yield G */
             target_yield_g?: number | null;
         };
@@ -5126,6 +5129,8 @@ export interface components {
             prediction_at?: string | null;
             /** Profile Label */
             profile_label?: string | null;
+            /** Profile Temperature C */
+            profile_temperature_c?: number | null;
             /** Profile Version Id */
             profile_version_id?: number | null;
             /** Pushed Device Profile Id */
@@ -5141,8 +5146,6 @@ export interface components {
              * @default 0
              */
             shot_count: number;
-            /** Target Temperature C */
-            target_temperature_c?: number | null;
             /** Target Yield G */
             target_yield_g?: number | null;
             /** Version No */
@@ -5175,8 +5178,6 @@ export interface components {
             prediction: string;
             /** Profile Version Id */
             profile_version_id?: number | null;
-            /** Target Temperature C */
-            target_temperature_c?: number | null;
             /** Target Yield G */
             target_yield_g?: number | null;
         };
@@ -5718,6 +5719,8 @@ export interface components {
             process_match: boolean;
             /** Profile Label */
             profile_label?: string | null;
+            /** Profile Temperature C */
+            profile_temperature_c?: number | null;
             /** Profile Version Id */
             profile_version_id?: number | null;
             /** Ratio */
@@ -5737,8 +5740,6 @@ export interface components {
             set_name: string;
             /** Set Version Id */
             set_version_id: number;
-            /** Target Temperature C */
-            target_temperature_c?: number | null;
             /** Target Yield G */
             target_yield_g?: number | null;
             /** Version No */
@@ -6298,6 +6299,8 @@ export interface components {
          *     and the symptom is a 422 on a value the user picked from a dropdown.
          */
         Vocabulary: {
+            /** Actionable Variables */
+            actionable_variables: string[];
             /** Balances */
             balances: components["schemas"]["Term"][];
             /** Burr Types */

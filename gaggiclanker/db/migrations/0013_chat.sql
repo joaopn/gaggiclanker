@@ -156,7 +156,13 @@ SELECT s.id                                        AS shot_id,
        sv.grind_setting,
        sv.dose_g                                   AS set_dose_g,
        sv.target_yield_g,
-       sv.target_temperature_c,
+       -- The brew temperature is the profile's, never the Set's: the machine
+       -- heats to what the document says. Read out of the profile this shot was
+       -- pulled with, with the firmware's 0 ("not set") nulled out, which is how
+       -- `profile_recipe` reads the same field.
+       CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
+             AND json_extract(pv.json, '$.temperature') > 0
+            THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
        b.id                                        AS bean_id,
        b.name                                      AS bean_name,
        b.roast_level,
@@ -240,7 +246,13 @@ SELECT v.id AS set_version_id,
        v.grind_value,
        v.dose_g,
        v.target_yield_g,
-       v.target_temperature_c,
+       -- The brew temperature this version is brewed at: the profile's own,
+       -- nulled out at the firmware's 0 ("not set"), exactly as
+       -- `profile_recipe` reads it. A Set version states no temperature of its
+       -- own — changing it means changing the profile.
+       CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
+             AND json_extract(pv.json, '$.temperature') > 0
+            THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
        v.intent,
        v.origin,
        -- The experiment half of a version: what it was expected to do, against

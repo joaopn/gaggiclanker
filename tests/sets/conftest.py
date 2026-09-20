@@ -69,13 +69,17 @@ async def wired(db: Database) -> Fixtures:
     )
 
 
-async def make_profile_version(db: Database, label: str) -> int:
+async def make_profile_version(db: Database, label: str, temperature: float | None = None) -> int:
     """A stored profile version with this label, through the real repository.
 
     Built from a shipped fixture rather than hand-written JSON so that the row
     is one the parser and the content hash both accept — two versions here
     differ by their label, which is enough to make them two versions
     (`ProfilesRepository.ensure_version` explains why a rename counts).
+
+    ``temperature`` is what the document brews at, which is where a Set
+    version's temperature comes from: 0 is the firmware's "not set", so passing
+    it is how a test makes a profile that states none.
     """
     document = json.loads(
         (
@@ -83,6 +87,8 @@ async def make_profile_version(db: Database, label: str) -> int:
         ).read_text()
     )
     document["label"] = label
+    if temperature is not None:
+        document["temperature"] = temperature
     profile = Profile.model_validate(document)
     version, _ = await ProfilesRepository(db).ensure_version(profile)
     return version.id

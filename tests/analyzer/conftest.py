@@ -419,7 +419,6 @@ async def build_fixture(db: Database) -> Fixture:
             grind_value=22.0,
             dose_g=18.0,
             target_yield_g=36.0,
-            target_temperature_c=93.0,
             intent="Baseline for this bag.",
         ),
     )

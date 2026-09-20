@@ -151,10 +151,11 @@ type ShotStyle = Literal[
     "classic", "turbo", "bloom", "lever", "allonge", "dark", "utility", "unknown"
 ]
 
-#: What a suggestion is *about*. The first four are actionable in the prototype
-#: — accepting one writes a new Set version — and the rest are recorded and
-#: shown but have nowhere to be applied yet: pressure, flow and preinfusion are
-#: profile edits, and gaggiclanker writes nothing to the device.
+#: What a suggestion is *about*. The first three are actionable — accepting one
+#: writes a new Set version — and the rest are recorded and shown but have
+#: nowhere to be applied directly: temperature, pressure, flow and preinfusion
+#: are all profile edits, which go through a draft somebody approves, and
+#: gaggiclanker writes nothing to the device.
 type SuggestionVariable = Literal[
     "grind",
     "dose",
@@ -167,8 +168,11 @@ type SuggestionVariable = Literal[
     "profile",
 ]
 
-#: The variables `POST /api/suggestions/{id}/accept` can actually apply.
-ACTIONABLE_VARIABLES: tuple[str, ...] = ("grind", "dose", "yield", "temperature")
+#: The variables `POST /api/suggestions/{id}/accept` can actually apply: the
+#: three a Set version records. Temperature left this list when it left
+#: `set_versions` — the machine brews at the profile's temperature, so applying
+#: a temperature suggestion is drafting a profile, not writing a number.
+ACTIONABLE_VARIABLES: tuple[str, ...] = ("grind", "dose", "yield")
 
 #: Which way to move. `finer`/`coarser` are the grinder's words and
 #: `increase`/`decrease` everything else's; keeping both rather than one signed
@@ -490,6 +494,12 @@ class Vocabulary(BaseModel):
     #: them.
     shot_styles: list[Term]
     suggestion_variables: list[Term]
+    #: Which of those variables `POST /api/suggestions/{id}/accept` can apply.
+    #: Served because the suggestion card decides whether to offer Accept at
+    #: all, and a card that offered it for a variable the server refuses would
+    #: turn good advice into a 409. Values rather than terms: the words come
+    #: from `suggestion_variables` above, this is only the subset.
+    actionable_variables: list[str]
     suggestion_directions: list[Term]
     suggestion_units: list[Term]
     suggestion_statuses: list[Term]
@@ -590,6 +600,7 @@ def vocabulary() -> Vocabulary:
         flavor_wheel=[node.model_copy(deep=True) for node in FLAVOR_WHEEL],
         shot_styles=_terms(SHOT_STYLES, _STYLE_LABELS),
         suggestion_variables=_terms(SUGGESTION_VARIABLES, _VARIABLE_LABELS),
+        actionable_variables=list(ACTIONABLE_VARIABLES),
         suggestion_directions=_terms(SUGGESTION_DIRECTIONS),
         suggestion_units=_terms(SUGGESTION_UNITS, _UNIT_LABELS),
         suggestion_statuses=_terms(SUGGESTION_STATUSES),

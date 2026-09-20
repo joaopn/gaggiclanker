@@ -81,8 +81,14 @@ describe("VersionTimeline", () => {
   it("says a field was cleared rather than drawing an em dash", async () => {
     const detail = setDetail();
     detail.versions[0].changes = [
-      { field: "target_temperature_c", label: "Temperature", before: "93 °C", after: null },
-      { field: "dose_g", label: "Dose", before: null, after: "18 g" },
+      {
+        field: "profile_temperature_c",
+        label: "Temperature",
+        before: "93 °C",
+        after: null,
+        from_profile: true,
+      },
+      { field: "dose_g", label: "Dose", before: null, after: "18 g", from_profile: false },
     ];
     renderWithQueryClient(
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
@@ -188,7 +194,13 @@ describe("VersionTimeline", () => {
     // The diff the server computed for a version whose only difference is the
     // profile it was brewed with.
     detail.versions[0].changes = [
-      { field: "profile_version_id", label: "Profile", before: "9 Bar Espresso", after: "Turbo" },
+      {
+        field: "profile_version_id",
+        label: "Profile",
+        before: "9 Bar Espresso",
+        after: "Turbo",
+        from_profile: false,
+      },
     ];
     renderWithQueryClient(
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,

@@ -105,8 +105,11 @@ def _recipe(version: Any) -> str:
         parts.append(f"{version.dose_g:g} g in")
     if version.target_yield_g is not None:
         parts.append(f"{version.target_yield_g:g} g out")
-    if version.target_temperature_c is not None:
-        parts.append(f"{version.target_temperature_c:g} °C")
+    # Attributed, because it is the one number here nobody typed on the Set: the
+    # machine brews at the profile's temperature, and a model that reads it as a
+    # Set field would propose changing a field that does not exist.
+    if version.profile_temperature_c is not None:
+        parts.append(f"{version.profile_temperature_c:g} °C from its profile")
     if version.profile_label:
         parts.append(f"profile {version.profile_label}")
     return ", ".join(parts) if parts else "(nothing recorded)"

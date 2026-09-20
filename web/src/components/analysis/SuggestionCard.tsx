@@ -6,18 +6,23 @@ import { useAcceptSuggestion, useRejectSuggestion } from "@/hooks/useAnalysis";
 import { useVocabulary } from "@/hooks/useCatalog";
 import { cn } from "@/lib/utils";
 
-/** The four a Set version can record. Everything else is a profile edit. */
-const ACTIONABLE = new Set(["grind", "dose", "yield", "temperature"]);
-
 /**
  * One suggestion, with the two buttons that resolve it.
  *
- * Accept is only offered for the four variables a Set version can record, and
- * the rest say why rather than showing a button that answers 409 — the advice
- * is still worth reading, and "make this change on the machine yourself" is a
- * useful instruction, while a greyed-out button with no explanation is not.
+ * Accept is only offered for the variables a Set version can record, and the
+ * rest say why rather than showing a button that answers 409 — the advice is
+ * still worth reading, and "draft a profile for it" is a useful instruction,
+ * while a greyed-out button with no explanation is not.
  *
- * The words come from `GET /api/vocab` like every other closed vocabulary on
+ * **Which variables those are comes from `GET /api/vocab`**, not from a list
+ * typed here. The server refuses an accept for anything outside it, so a copy
+ * in this file is a copy that can disagree with the refusal — which is exactly
+ * what happened when the temperature became a profile change: the card went on
+ * offering a button the server had started answering 409 to. Until the list
+ * arrives neither the button nor the explanation is shown: both are claims
+ * about a set of words this component does not have yet.
+ *
+ * The words come from the same place, like every other closed vocabulary on
  * these pages: nothing in `src/` types a coffee word (web/README.md).
  */
 export function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
@@ -28,7 +33,7 @@ export function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
   const label = (list: "suggestion_variables" | "suggestion_units", value: string) =>
     vocab.data?.[list].find((term) => term.value === value)?.label ?? value;
 
-  const actionable = ACTIONABLE.has(suggestion.variable);
+  const actionable = vocab.data?.actionable_variables.includes(suggestion.variable);
   const open = suggestion.status === "open";
   const busy = accept.isPending || reject.isPending;
 
@@ -68,7 +73,7 @@ export function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
 
       {open ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {actionable ? (
+          {actionable === true ? (
             <Button
               size="sm"
               disabled={busy}
@@ -78,14 +83,15 @@ export function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
               <Check className="size-3.5" aria-hidden="true" />
               Record it as a new version
             </Button>
-          ) : (
-            <p className="text-muted-foreground text-xs">
+          ) : actionable === false ? (
+            <p className="text-muted-foreground text-xs" data-testid="not-actionable">
               This is a change to the brew profile rather than to the recipe, so there is no Set
-              field to record it in. Use "Draft profile" above: it turns the advice into a new
-              profile you can review, and pushes it as a new file on the machine rather than over
-              the one you are brewing with.
+              field to record it in — the machine brews at the temperature, pressure and flow the
+              profile states. Use "Draft profile" above: it turns the advice into a new profile you
+              can review, and pushes it as a new file on the machine rather than over the one you
+              are brewing with.
             </p>
-          )}
+          ) : null}
           <Button
             size="sm"
             variant="ghost"

@@ -540,7 +540,7 @@ def _render_similar(similar: list[SimilarSet]) -> str:
                     _line("  dose", entry.dose_g, " g"),
                     _line("  target yield", entry.target_yield_g, " g"),
                     _line("  ratio", None if entry.ratio is None else f"1:{entry.ratio:.2f}"),
-                    _line("  temperature", entry.target_temperature_c, " °C"),
+                    _line("  profile temperature", entry.profile_temperature_c, " °C"),
                     _line(
                         "  profile",
                         None

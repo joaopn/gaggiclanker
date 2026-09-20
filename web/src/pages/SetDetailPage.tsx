@@ -373,7 +373,7 @@ function BackLink() {
  * Every field starts empty rather than prefilled with the current recipe, and
  * that is the whole design of the endpoint showing through: an omitted field
  * inherits the parent's value, so a form prefilled with the current values
- * would record all six as changed and the timeline's diff would say nothing.
+ * would record all five as changed and the timeline's diff would say nothing.
  */
 function NewVersionForm({
   setId,
@@ -389,7 +389,6 @@ function NewVersionForm({
   const [grind, setGrind] = useState("");
   const [dose, setDose] = useState("");
   const [target, setTarget] = useState("");
-  const [temperature, setTemperature] = useState("");
   const [intent, setIntent] = useState("");
   const [prediction, setPrediction] = useState("");
   // The current version, which is what "compared to" means unless somebody says
@@ -401,16 +400,12 @@ function NewVersionForm({
   // four are numbers, where blank reads as "unchanged" on its own.
   const inheritedProfile = current?.profile_version_id ? String(current.profile_version_id) : "";
   const [profile, setProfile] = useState(inheritedProfile);
-  const [filled, setFilled] = useState<AutoFilled>({
-    targetYieldG: null,
-    targetTemperatureC: null,
-  });
+  const [filled, setFilled] = useState<AutoFilled>({ targetYieldG: null });
   const ids = {
     profile: useId(),
     grind: useId(),
     dose: useId(),
     target: useId(),
-    temperature: useId(),
     intent: useId(),
     prediction: useId(),
     compare: useId(),
@@ -424,18 +419,13 @@ function NewVersionForm({
   /** The same rule the New Set form uses, through the same helper. */
   function pickProfile(versionId: string) {
     const version = (profiles.data?.items ?? []).find((row) => String(row.id) === versionId);
-    const result = fillFromProfile(
-      { targetYieldG: target, targetTemperatureC: temperature },
-      filled,
-      version,
-    );
+    const result = fillFromProfile({ targetYieldG: target }, filled, version);
     setTarget(result.values.targetYieldG);
-    setTemperature(result.values.targetTemperatureC);
     setFilled(result.filled);
     setProfile(versionId);
   }
 
-  const fromProfile = recipeHint({ targetYieldG: target, targetTemperatureC: temperature }, filled);
+  const fromProfile = recipeHint({ targetYieldG: target }, filled);
 
   return (
     <form
@@ -466,7 +456,6 @@ function NewVersionForm({
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
               ...(number(target) ? { target_yield_g: number(target) } : {}),
-              ...(number(temperature) ? { target_temperature_c: number(temperature) } : {}),
             },
           }),
         );
@@ -500,7 +489,7 @@ function NewVersionForm({
         was brewed with, so shots pulled with it join the Set on their own. Putting a profile on the
         machine is done from the Profiles page, by you.
       </p>
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Labelled id={ids.grind} label="Grind">
           <input
             id={ids.grind}
@@ -525,15 +514,6 @@ function NewVersionForm({
             inputMode="decimal"
             value={target}
             onChange={(event) => setTarget(event.target.value)}
-          />
-        </Labelled>
-        <Labelled id={ids.temperature} label="Temperature (°C)">
-          <input
-            id={ids.temperature}
-            className={FIELD}
-            inputMode="decimal"
-            value={temperature}
-            onChange={(event) => setTemperature(event.target.value)}
           />
         </Labelled>
       </div>

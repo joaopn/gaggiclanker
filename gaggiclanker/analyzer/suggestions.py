@@ -8,13 +8,15 @@ is.
 
 Three rules govern what can be accepted at all:
 
-* **Only four variables are actionable.** grind, dose, yield and temperature are
-  columns of `set_versions`; pressure, flow, pre-infusion and profile are edits
-  to a profile, which now have a path of their own — a draft, four
-  validation layers, and a push that never overwrites. Accepting one *here*
-  would have to guess a number and write it to the machine in one step, which
-  is precisely what the draft flow exists to prevent, so it is still refused
-  with a message naming the route that does it properly.
+* **Only three variables are actionable.** grind, dose and yield are columns of
+  `set_versions`; temperature, pressure, flow, pre-infusion and profile are
+  edits to a profile, which have a path of their own — a draft, four validation
+  layers, and a push that never overwrites. Accepting one *here* would have to
+  guess a number and write it to the machine in one step, which is precisely
+  what the draft flow exists to prevent, so it is refused with a message naming
+  the route that does it properly. Temperature is the newest member of that
+  list: the machine heats to what the profile states, so writing "94 °C" on a
+  Set version would have promised a change nothing made.
 
 * **The Set must not have moved on.** A suggestion made about version 3 is a
   delta from version 3's numbers; applying it to version 5 is exactly the
@@ -50,7 +52,6 @@ _COLUMN: dict[str, str] = {
     "grind": "grind_value",
     "dose": "dose_g",
     "yield": "target_yield_g",
-    "temperature": "target_temperature_c",
 }
 
 #: How a direction becomes a sign.
@@ -74,7 +75,6 @@ _ALLOWED_DIRECTIONS: dict[str, tuple[str, ...]] = {
     "grind": ("finer", "coarser"),
     "dose": ("increase", "decrease"),
     "yield": ("increase", "decrease"),
-    "temperature": ("increase", "decrease"),
 }
 
 #: What the version's field is called when we have to name it in a refusal.
@@ -82,7 +82,6 @@ _FIELD_LABEL: dict[str, str] = {
     "grind": "grind value",
     "dose": "dose",
     "yield": "target yield",
-    "temperature": "target temperature",
 }
 
 
@@ -110,11 +109,12 @@ async def accept_suggestion(
             details={
                 "field": "variable",
                 "message": (
-                    "Only grind, dose, yield and temperature are recorded on a Set version. "
-                    "Pressure, flow, pre-infusion and profile changes are edits to a brew "
-                    "profile: draft one from this analysis (POST /api/profile-drafts), review "
-                    "the diff, and push it as a new profile. Puck prep is neither — it is "
-                    "something to do differently at the machine."
+                    "Only grind, dose and yield are recorded on a Set version. Temperature, "
+                    "pressure, flow, pre-infusion and profile changes are edits to a brew "
+                    "profile — the machine brews at the temperature the profile states: draft "
+                    "one from this analysis (POST /api/profile-drafts), review the diff, and "
+                    "push it as a new profile. Puck prep is neither — it is something to do "
+                    "differently at the machine."
                 ),
             },
         )

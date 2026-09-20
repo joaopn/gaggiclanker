@@ -110,7 +110,9 @@ SCHEMA_NOTES = (
     "the judgement, so most questions need no join at all. v_judgements.taste_notes_json and "
     "aroma_notes_json are JSON arrays of SCA flavour-wheel notes, each the path from the "
     "centre joined by dots (fruity.berry.blackberry), so json_each with LIKE "
-    "'sour_fermented.sour%' finds every sour note."
+    "'sour_fermented.sour%' finds every sour note. profile_temperature_c is the brew "
+    "temperature the profile states — a Set version records none of its own, so two "
+    "versions differ in temperature only when they name different profiles."
 )
 
 
@@ -337,7 +339,7 @@ _COMPARE_FIELDS: tuple[str, ...] = (
     "grind_setting",
     "set_dose_g",
     "target_yield_g",
-    "target_temperature_c",
+    "profile_temperature_c",
     "duration_s",
     "volume_g",
     "avg_temp_c",
@@ -791,7 +793,6 @@ class ProposeVersionInput(_Model):
     grind_value: float | None = Field(default=None, ge=0, le=10000)
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
-    target_temperature_c: float | None = Field(default=None, ge=25, le=150)
     profile_version_id: int | None = None
 
 
@@ -806,7 +807,10 @@ class ProposeVersionOutput(_Model):
     description=(
         "Create the next version of a Set with the fields you name changed and the rest "
         "inherited. Change one variable at a time. The version is recorded with "
-        "origin='chat' and is immediately live for new shots, so say what you created."
+        "origin='chat' and is immediately live for new shots, so say what you created. "
+        "There is no temperature here: the machine brews at the temperature the profile "
+        "states, so a temperature change is a profile change — use draft_profile on the "
+        "Set's current profile version, and the person approves and pushes it."
     ),
 )
 async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> ProposeVersionOutput:
@@ -822,7 +826,6 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
             "grind_value",
             "dose_g",
             "target_yield_g",
-            "target_temperature_c",
             "profile_version_id",
         )
         if getattr(args, name) is not None
@@ -830,7 +833,7 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
     if not fields:
         raise ValueError(
             "A new version has to change something. Name at least one of: grind_setting, "
-            "grind_value, dose_g, target_yield_g, target_temperature_c, profile_version_id."
+            "grind_value, dose_g, target_yield_g, profile_version_id."
         )
     patch = SetVersionPatch(intent=args.reason, origin="chat", **fields)
     version = await sets.add_version(set_id, patch)

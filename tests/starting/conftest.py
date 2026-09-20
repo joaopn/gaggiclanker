@@ -253,7 +253,6 @@ _ARCHIVE: tuple[dict[str, Any], ...] = (
         "grind": "21",
         "dose": 18.0,
         "yield": 45.0,
-        "temperature": 94.0,
         # Five shots is the confidence ceiling, so this version's outcome term
         # is at full weight — which is what makes it beat Guji on more than
         # attributes alone.
@@ -271,7 +270,6 @@ _ARCHIVE: tuple[dict[str, Any], ...] = (
         "grind": "23",
         "dose": 18.0,
         "yield": 40.0,
-        "temperature": 93.5,
         "shots": [(3, 8.0), (3, 7.8), (3, 8.2)],
     },
     {
@@ -286,7 +284,6 @@ _ARCHIVE: tuple[dict[str, Any], ...] = (
         "grind": "26",
         "dose": 18.0,
         "yield": 32.0,
-        "temperature": 90.0,
         "shots": [(4, 8.6), (4, 8.4)],
     },
     {
@@ -304,7 +301,6 @@ _ARCHIVE: tuple[dict[str, Any], ...] = (
         "grind": "7.5",
         "dose": 20.0,
         "yield": 40.0,
-        "temperature": 92.0,
         "shots": [(5, 9.5), (5, 9.4), (5, 9.6), (5, 9.5)],
     },
     {
@@ -319,7 +315,6 @@ _ARCHIVE: tuple[dict[str, Any], ...] = (
         "grind": "22",
         "dose": 18.0,
         "yield": 36.0,
-        "temperature": 93.0,
         # No shots at all. A recipe somebody wrote down and never brewed is an
         # intention, not a result, and must not be offered as evidence.
         "shots": [],
@@ -420,7 +415,6 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 grind_value=float(entry["grind"]),
                 dose_g=float(entry["dose"]),
                 target_yield_g=float(entry["yield"]),
-                target_temperature_c=float(entry["temperature"]),
                 intent="Baseline for this bag.",
             ),
             # Only one Set may be active and the flag is not what
