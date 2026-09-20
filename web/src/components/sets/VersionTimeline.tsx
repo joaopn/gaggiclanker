@@ -66,6 +66,19 @@ function PredictionEditorButton({
   );
 }
 
+/**
+ * What a missing side of a change reads as.
+ *
+ * "cleared" is a person's doing: they emptied a field on the form. A change
+ * that rode in with a profile has no form and nobody to do it — the profile
+ * that arrived simply states no temperature, and saying "cleared" would accuse
+ * somebody of an edit they did not make.
+ */
+function absent(fromProfile: boolean, side: "before" | "after"): string {
+  if (fromProfile) return "no temperature stated";
+  return side === "before" ? "not set" : "cleared";
+}
+
 export function VersionTimeline({
   setId,
   versions,
@@ -130,17 +143,30 @@ export function VersionTimeline({
                 {entry.changes.map((change) => (
                   <li
                     key={change.field}
+                    data-testid={change.from_profile ? "change-from-profile" : "change"}
+                    data-field={change.field}
                     className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
                   >
                     <span className="text-muted-foreground">{change.label}</span>
                     {/* "93 °C → —" reads as a rendering bug. A field that was
                         set and is now unset is a deliberate change, and the
-                        word is what makes it one. */}
+                        word is what makes it one — except for a change that
+                        came with the profile, where nobody cleared anything:
+                        the new profile simply does not state the number. */}
                     <span className="tabular-nums line-through opacity-60">
-                      {change.before ?? "not set"}
+                      {change.before ?? absent(change.from_profile, "before")}
                     </span>
                     <ArrowRight className="size-3" aria-hidden="true" />
-                    <span className="font-medium tabular-nums">{change.after ?? "cleared"}</span>
+                    <span className="font-medium tabular-nums">
+                      {change.after ?? absent(change.from_profile, "after")}
+                    </span>
+                    {/* Said in words rather than shown in a colour: this is the
+                        one line in the log with no field behind it on the form,
+                        and a reader who cannot see why it is there reads it as
+                        a bug. */}
+                    {change.from_profile ? (
+                      <span className="text-muted-foreground">· from the profile</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>

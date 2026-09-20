@@ -17,7 +17,13 @@ import { InsightCard } from "@/components/knowledge/InsightCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { type AutoFilled, fillFromProfile, recipeHint } from "@/components/sets/NewSetDialog";
+import {
+  type AutoFilled,
+  fillFromProfile,
+  ProfileTemperature,
+  recipeHint,
+  temperatureNote,
+} from "@/components/sets/NewSetDialog";
 import { RollbackButton } from "@/components/sets/RollbackButton";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
@@ -426,6 +432,7 @@ function NewVersionForm({
   }
 
   const fromProfile = recipeHint({ targetYieldG: target }, filled);
+  const chosenProfile = (profiles.data?.items ?? []).find((row) => String(row.id) === profile);
 
   return (
     <form
@@ -489,7 +496,7 @@ function NewVersionForm({
         was brewed with, so shots pulled with it join the Set on their own. Putting a profile on the
         machine is done from the Profiles page, by you.
       </p>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <Labelled id={ids.grind} label="Grind">
           <input
             id={ids.grind}
@@ -516,7 +523,11 @@ function NewVersionForm({
             onChange={(event) => setTarget(event.target.value)}
           />
         </Labelled>
+        <ProfileTemperature version={chosenProfile} />
       </div>
+      <p className="text-muted-foreground text-xs" data-testid="temperature-from-profile">
+        {temperatureNote(chosenProfile)}
+      </p>
       {fromProfile ? (
         <p className="text-muted-foreground text-xs" data-testid="version-from-profile">
           {fromProfile} Change it and it stays yours.

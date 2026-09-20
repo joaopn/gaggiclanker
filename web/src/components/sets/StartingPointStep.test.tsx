@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProfileVersionSummary } from "@/api/types";
 import { StartingPointStep } from "@/components/sets/StartingPointStep";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { setRow, similarSet, startingPointOption, startingPointRun } from "@/test/setsFixtures";
@@ -9,21 +10,44 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getSimilarSets, createStartingPoint, getStartingPoint, acceptStartingPoint } = vi.hoisted(
-  () => ({
-    getSimilarSets: vi.fn(),
-    createStartingPoint: vi.fn(),
-    getStartingPoint: vi.fn(),
-    acceptStartingPoint: vi.fn(),
-  }),
-);
+const {
+  getSimilarSets,
+  createStartingPoint,
+  getStartingPoint,
+  acceptStartingPoint,
+  getProfileVersions,
+} = vi.hoisted(() => ({
+  getSimilarSets: vi.fn(),
+  createStartingPoint: vi.fn(),
+  getStartingPoint: vi.fn(),
+  acceptStartingPoint: vi.fn(),
+  getProfileVersions: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSimilarSets,
   createStartingPoint,
   getStartingPoint,
   acceptStartingPoint,
+  getProfileVersions,
 }));
+
+function profileVersion(overrides: Partial<ProfileVersionSummary>): ProfileVersionSummary {
+  return {
+    id: 7,
+    content_hash: "abc",
+    label: "9 Bar Espresso",
+    type: "standard",
+    utility: false,
+    source: "device",
+    created_at: "2026-03-01T00:00:00.000Z",
+    mirrored: true,
+    shot_count: 12,
+    temperature_c: 93,
+    target_yield_g: 36,
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -34,6 +58,12 @@ beforeEach(() => {
   });
   createStartingPoint.mockResolvedValue(startingPointRun({ status: "running", output: null }));
   getStartingPoint.mockResolvedValue(startingPointRun());
+  getProfileVersions.mockResolvedValue({
+    items: [profileVersion({ id: 7, label: "9 Bar Espresso", temperature_c: 93 })],
+    total: 1,
+    limit: 200,
+    offset: 0,
+  });
   acceptStartingPoint.mockResolvedValue({
     run: startingPointRun({ accepted_option: "recommended", accepted_set_id: 3 }),
     set: setRow(),
@@ -135,6 +165,68 @@ describe("StartingPointStep", () => {
     expect(await screen.findByTestId("grind-relative")).toHaveTextContent(/relative/i);
   });
 
+  it("says a hotter option will stage a draft of the profile it picked", async () => {
+    // The option brews the library profile one degree hotter than the document
+    // does, and accepting redrafts it — a draft appearing unannounced would
+    // look like the app writing to the machine.
+    getStartingPoint.mockResolvedValue(
+      startingPointRun({
+        output: {
+          options: [
+            startingPointOption({
+              option: "conservative",
+              profile_version_id: 7,
+              temperature_c: 94,
+            }),
+            startingPointOption({ profile_version_id: 7, temperature_c: 93 }),
+            startingPointOption({ option: "adventurous" }),
+          ],
+        },
+      }),
+    );
+    render({ runId: 11 });
+
+    const staged = await screen.findByTestId("option-stages-draft");
+    expect(staged).toHaveTextContent("It brews at 93 °C");
+    expect(staged).toHaveTextContent("stages a draft of it at 94 °C");
+    expect(staged).toHaveTextContent("Nothing is sent to the machine");
+    // Exactly one card says it: the second option agrees with the profile, and
+    // the third names no profile at all.
+    expect(screen.getAllByTestId("option-stages-draft")).toHaveLength(1);
+  });
+
+  it("says a draft is coming when the profile states no temperature at all", async () => {
+    // The firmware's 0 is "not set". Taking the option redrafts the profile at
+    // the suggested temperature, exactly as it would for a profile that states
+    // a different one, so the card has to say so here too.
+    getProfileVersions.mockResolvedValue({
+      items: [profileVersion({ id: 7, label: "Says nothing", temperature_c: null })],
+      total: 1,
+      limit: 200,
+      offset: 0,
+    });
+    getStartingPoint.mockResolvedValue(
+      startingPointRun({
+        output: {
+          options: [
+            startingPointOption({
+              option: "conservative",
+              profile_version_id: 7,
+              temperature_c: 94,
+            }),
+            startingPointOption({ option: "recommended" }),
+            startingPointOption({ option: "adventurous" }),
+          ],
+        },
+      }),
+    );
+    render({ runId: 11 });
+
+    const staged = await screen.findByTestId("option-stages-draft");
+    expect(staged).toHaveTextContent("It states no brew temperature");
+    expect(staged).toHaveTextContent("stages a draft of it at 94 °C");
+  });
+
   it("says when an option would create a draft rather than reuse a profile", async () => {
     getStartingPoint.mockResolvedValue(
       startingPointRun({
@@ -149,7 +241,7 @@ describe("StartingPointStep", () => {
     );
     render({ runId: 11 });
     const notes = await screen.findAllByTestId("option-profile");
-    expect(notes[0]).toHaveTextContent("the one you already have (version 7)");
+    expect(notes[0]).toHaveTextContent("the one you already have (9 Bar Espresso)");
     expect(notes[1]).toHaveTextContent("a new draft");
     expect(notes[2]).toHaveTextContent("whatever is selected on the machine");
   });

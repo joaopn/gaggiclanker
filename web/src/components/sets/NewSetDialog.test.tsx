@@ -325,6 +325,73 @@ describe("NewSetDialog", () => {
       expect(screen.getByLabelText("Target yield (g)")).toHaveValue("50");
     });
 
+    it("shows the picked profile's temperature, read-only, and follows a new pick", async () => {
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      // Nothing to type into: the machine brews at the profile's temperature.
+      expect(screen.queryByRole("textbox", { name: "Temperature (°C)" })).not.toBeInTheDocument();
+      // Read out with its own name, like every field beside it.
+      const cell = () => screen.getByRole("group", { name: "Temperature (°C)" });
+      await waitFor(() => expect(cell()).toHaveTextContent("—"));
+      expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(
+        "The brew temperature comes from the profile.",
+      );
+
+      await pickProfile("7");
+
+      expect(cell()).toHaveTextContent("93 °C");
+      expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(
+        "The machine brews at the temperature 9 Bar Espresso states.",
+      );
+      expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(
+        "edit it on the machine and pick the new version here, or draft one on the Profiles page",
+      );
+
+      // A second pick moves it: this number is the profile's, and switching
+      // profiles is the only way it ever changes.
+      await pickProfile("8");
+      expect(cell()).toHaveTextContent("94 °C");
+      expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent("Adaptive v2");
+    });
+
+    it("sends no temperature when the Set is created", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      await pickBean();
+      await pickProfile("7");
+      await user.click(screen.getByRole("button", { name: "Start the Set" }));
+
+      await waitFor(() => expect(createSet).toHaveBeenCalled());
+      const body = createSet.mock.calls[0][0];
+      // Not "is null": the key is gone from the API, and a body carrying it
+      // would be refused by the model behind `POST /api/sets`.
+      expect(Object.keys(body.version)).not.toContain("target_temperature_c");
+      expect(JSON.stringify(body)).not.toContain("temperature");
+      expect(body.version).toEqual(
+        expect.objectContaining({ profile_version_id: 7, target_yield_g: 36 }),
+      );
+    });
+
+    it("says so when the picked profile states no temperature", async () => {
+      getProfileVersions.mockResolvedValue({
+        items: [profileVersion({ id: 7, label: "Says nothing", temperature_c: null })],
+        total: 1,
+        limit: 200,
+        offset: 0,
+      });
+      const user = setupUser();
+      renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+      await screen.findByRole("option", { name: "Says nothing" });
+      await user.selectOptions(screen.getByLabelText("Profile version"), "7");
+
+      expect(screen.getByTestId("profile-temperature")).toHaveTextContent("—");
+      expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(
+        "Says nothing states no brew temperature",
+      );
+    });
+
     it("leaves the yield alone when the profile states none", async () => {
       renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
 

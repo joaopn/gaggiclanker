@@ -1,7 +1,13 @@
 import { Sparkles } from "lucide-react";
-import type { SimilarSet, StartingPointOption, StartingPointOutput } from "@/api/types";
+import type {
+  ProfileVersionSummary,
+  SimilarSet,
+  StartingPointOption,
+  StartingPointOutput,
+} from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useProfileVersions } from "@/hooks/useArchive";
 import {
   useAcceptStartingPoint,
   useCreateStartingPoint,
@@ -63,6 +69,9 @@ export function StartingPointStep({
   grindUnit: string;
 }) {
   const similar = useSimilarSets(beanId, { grinderId });
+  // The same query the form above already holds, so the card can say what a
+  // profile brews at. Cached under one key: opening this section costs nothing.
+  const profiles = useProfileVersions({ limit: 200 });
   const create = useCreateStartingPoint();
   const run = useStartingPoint(runId);
   const accept = useAcceptStartingPoint();
@@ -156,6 +165,9 @@ export function StartingPointStep({
                 key={option.option}
                 option={option}
                 similar={similar.data?.items ?? []}
+                profile={(profiles.data?.items ?? []).find(
+                  (item) => item.id === option.profile_version_id,
+                )}
                 pending={accept.isPending}
                 onChoose={async () => {
                   if (runId === undefined) return;
@@ -271,6 +283,46 @@ function matchWords(item: SimilarSet): string {
   return parts.length > 0 ? parts.join(", ") : "outcome only";
 }
 
+/**
+ * Whether taking this option will stage a profile draft.
+ *
+ * The same rule the server applies when it accepts: the option picked a profile
+ * from the library and suggests a temperature that profile does not brew at, so
+ * the only way to make the suggestion true is to redraft the profile. Said on
+ * the card because a draft appearing unannounced looks like the app writing to
+ * the machine, which is the one thing it never does on its own.
+ *
+ * Undefined while the profile list is still loading: nothing is claimed until
+ * the number it would be claimed from has arrived.
+ */
+function stagesDraft(
+  option: StartingPointOption,
+  profile: ProfileVersionSummary | undefined,
+): boolean {
+  if (option.profile || !option.profile_version_id || !profile) return false;
+  // The option's own temperature is what the draft would be staged at, so an
+  // option that somehow states none has nothing to stage.
+  const wanted = option.temperature_c;
+  if (wanted === null || wanted === undefined) return false;
+  const stated = profile.temperature_c;
+  if (stated === null || stated === undefined) return true;
+  return Math.abs(stated - wanted) >= 0.05;
+}
+
+/** "It brews at 93 °C, so taking this stages a draft at 96 °C." */
+function draftSentence(
+  option: StartingPointOption,
+  profile: ProfileVersionSummary | undefined,
+): string {
+  const brews = profile?.temperature_c
+    ? `It brews at ${profile.temperature_c} °C`
+    : "It states no brew temperature";
+  return (
+    `${brews}, so taking this stages a draft of it at ${option.temperature_c} °C for you to ` +
+    "approve on the Profiles page. Nothing is sent to the machine."
+  );
+}
+
 const OPTION_LABELS: Record<string, string> = {
   conservative: "Safe",
   recommended: "Recommended",
@@ -280,11 +332,14 @@ const OPTION_LABELS: Record<string, string> = {
 function OptionCard({
   option,
   similar,
+  profile,
   pending,
   onChoose,
 }: {
   option: StartingPointOption;
   similar: SimilarSet[];
+  /** The library profile this option picked, when it picked one. */
+  profile: ProfileVersionSummary | undefined;
   pending: boolean;
   onChoose: () => void;
 }) {
@@ -334,7 +389,13 @@ function OptionCard({
             before it reaches the machine.
           </>
         ) : option.profile_version_id ? (
-          <>Profile: the one you already have (version {option.profile_version_id}).</>
+          <>
+            Profile: the one you already have (
+            {profile?.label ?? `version ${option.profile_version_id}`}).
+            {stagesDraft(option, profile) ? (
+              <span data-testid="option-stages-draft"> {draftSentence(option, profile)}</span>
+            ) : null}
+          </>
         ) : (
           <>Profile: whatever is selected on the machine.</>
         )}

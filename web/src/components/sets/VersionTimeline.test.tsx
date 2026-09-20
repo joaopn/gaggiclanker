@@ -82,11 +82,11 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].changes = [
       {
-        field: "profile_temperature_c",
-        label: "Temperature",
-        before: "93 °C",
+        field: "target_yield_g",
+        label: "Target yield",
+        before: "36 g",
         after: null,
-        from_profile: true,
+        from_profile: false,
       },
       { field: "dose_g", label: "Dose", before: null, after: "18 g", from_profile: false },
     ];
@@ -94,12 +94,67 @@ describe("VersionTimeline", () => {
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
-    // "93 °C → —" reads as a rendering bug; unsetting a field is a deliberate
+    // "36 g → —" reads as a rendering bug; unsetting a field is a deliberate
     // change and the word is what makes it one.
     const changes = await screen.findByTestId("version-changes");
-    expect(changes).toHaveTextContent("93 °C");
+    expect(changes).toHaveTextContent("36 g");
     expect(changes).toHaveTextContent("cleared");
     expect(changes).toHaveTextContent("not set");
+  });
+
+  it("says a temperature change came with the profile", async () => {
+    const detail = setDetail();
+    detail.versions[0].changes = [
+      {
+        field: "profile_version_id",
+        label: "Profile",
+        before: "9 Bar Espresso",
+        after: "9 Bar Espresso hotter",
+        from_profile: false,
+      },
+      {
+        field: "profile_temperature_c",
+        label: "Temperature",
+        before: "93 °C",
+        after: "94 °C",
+        from_profile: true,
+      },
+    ];
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // There is no Temperature field on the form, so a line that did not say
+    // where it came from would read as a bug. In words, not in a colour.
+    const carried = await screen.findByTestId("change-from-profile");
+    expect(carried).toHaveTextContent("Temperature");
+    expect(carried).toHaveTextContent("93 °C");
+    expect(carried).toHaveTextContent("94 °C");
+    expect(carried).toHaveTextContent("from the profile");
+    // The profile change itself is nobody's but the person's.
+    expect(screen.getAllByTestId("change-from-profile")).toHaveLength(1);
+  });
+
+  it("does not call a profile with no temperature a cleared field", async () => {
+    const detail = setDetail();
+    detail.versions[0].changes = [
+      {
+        field: "profile_temperature_c",
+        label: "Temperature",
+        before: "93 °C",
+        after: null,
+        from_profile: true,
+      },
+    ];
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // Nobody cleared anything: the profile this version switched to states no
+    // temperature, and "cleared" would accuse somebody of an edit.
+    const carried = await screen.findByTestId("change-from-profile");
+    expect(carried).toHaveTextContent("no temperature stated");
+    expect(carried).not.toHaveTextContent("cleared");
   });
 
   it("lists the shots under the version they were pulled with", () => {

@@ -155,6 +155,45 @@ export function fillFromProfile(
   return { values, filled: next };
 }
 
+/**
+ * The brew temperature, where the Temperature field used to be.
+ *
+ * Read-only on purpose, and rendered in the recipe grid rather than tucked into
+ * a footnote: the machine heats to what the profile says, so the number belongs
+ * beside the dose and the yield — it just is not one of the things this form
+ * sets. A version that names no profile has no temperature to show, which is a
+ * fact about the recipe rather than a gap in the form.
+ *
+ * Shared by both forms that record a recipe, like `fillFromProfile` beside it,
+ * so the two cannot drift into saying different things about the same number.
+ */
+export function ProfileTemperature({ version }: { version: ProfileVersionSummary | undefined }) {
+  // A `fieldset` and its `legend`, which is how a group of form content carries
+  // a name without a control to hang a `<label>` on: the value is read out as
+  // "Temperature, 93 °C" rather than as a bare number, and "—" on its own says
+  // nothing at all to somebody who cannot see the column it sits in.
+  return (
+    <fieldset data-testid="profile-temperature">
+      <legend className="mb-1 block text-muted-foreground text-xs">Temperature (°C)</legend>
+      <p className="flex h-8 items-center text-sm tabular-nums">
+        {version?.temperature_c ? `${version.temperature_c} °C` : "—"}
+      </p>
+    </fieldset>
+  );
+}
+
+/** How to change a temperature, given what the picked profile says about it. */
+export function temperatureNote(version: ProfileVersionSummary | undefined): string {
+  const change =
+    "Changing it means changing the profile: edit it on the machine and pick the new version " +
+    "here, or draft one on the Profiles page.";
+  if (!version) return `The brew temperature comes from the profile. ${change}`;
+  if (!version.temperature_c) {
+    return `${version.label} states no brew temperature, so there is none to record. ${change}`;
+  }
+  return `The machine brews at the temperature ${version.label} states. ${change}`;
+}
+
 export function NewSetDialog({
   open,
   onOpenChange,
@@ -234,6 +273,9 @@ export function NewSetDialog({
   const name = draft.name || chosenBean?.name || "";
 
   const fromProfile = recipeHint(draft, draft.filled);
+  const chosenProfile = versions.data?.items.find(
+    (item) => String(item.id) === draft.profileVersionId,
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -342,7 +384,7 @@ export function NewSetDialog({
             the machine pulls.
           </p>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Labelled id={ids.grind} label="Grind">
               <input
                 id={ids.grind}
@@ -370,7 +412,11 @@ export function NewSetDialog({
                 onChange={(event) => set("targetYieldG", event.target.value)}
               />
             </Labelled>
+            <ProfileTemperature version={chosenProfile} />
           </div>
+          <p className="text-muted-foreground text-xs" data-testid="temperature-from-profile">
+            {temperatureNote(chosenProfile)}
+          </p>
           {fromProfile ? (
             <p className="text-muted-foreground text-xs" data-testid="recipe-from-profile">
               {fromProfile} Change it and it stays yours.

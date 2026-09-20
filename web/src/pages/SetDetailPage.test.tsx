@@ -280,6 +280,34 @@ describe("SetDetailPage", () => {
     expect(screen.queryByTestId("version-from-profile")).not.toBeInTheDocument();
   });
 
+  it("shows the profile's temperature where the Temperature field used to be", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+
+    // Read-only: it is read out with its own name, and there is no field to
+    // type one into.
+    expect(screen.queryByRole("textbox", { name: "Temperature (°C)" })).not.toBeInTheDocument();
+    const cell = () => screen.getByRole("group", { name: "Temperature (°C)" });
+    expect(cell()).toHaveTextContent("93 °C");
+    expect(screen.getByTestId("temperature-from-profile")).toHaveTextContent(
+      "The machine brews at the temperature 9 Bar Espresso states.",
+    );
+
+    // Switching the profile switches the temperature with it, which is the
+    // only way a version's temperature ever changes.
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+    expect(cell()).toHaveTextContent("90 °C");
+
+    await user.type(screen.getByLabelText("What are you trying?"), "the turbo, cooler");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("target_temperature_c");
+  });
+
   it("can take the profile off a version entirely", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);
