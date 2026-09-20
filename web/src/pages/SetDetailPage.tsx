@@ -25,6 +25,7 @@ import {
   temperatureNote,
 } from "@/components/sets/NewSetDialog";
 import { RollbackButton } from "@/components/sets/RollbackButton";
+import { SetSpread } from "@/components/sets/SetSpread";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -229,6 +230,9 @@ export function SetDetailPage() {
         description="Newest first: what changed, what you were trying, what you predicted it would do, the shots it produced and how the prediction turned out."
       >
         <TrackRecord detail={detail.data} setId={row.id} />
+        {/* Above the log, because it is what every comparison in the log is
+            held against: three seconds is a lot or nothing depending on it. */}
+        <SetSpread spread={detail.data.spread ?? []} />
         <VersionTimeline
           setId={row.id}
           versions={detail.data.versions}

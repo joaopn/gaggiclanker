@@ -334,6 +334,19 @@ describe("SetDetailPage", () => {
     expect(record).toHaveTextContent("1 open");
   });
 
+  it("puts the spread above the log, where the comparisons are", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    // The labels come from /api/vocab, so the line reads its slug until that
+    // query lands and the words afterwards.
+    await screen.findByText("Shot time ±1.8 s · from 9 repeat shots of 4 recipes");
+    const spread = screen.getByTestId("set-spread");
+    expect(spread).toHaveTextContent("Arithmetic, not a model.");
+    // The log follows it: three seconds means nothing until you know this.
+    const log = screen.getByTestId("version-timeline");
+    expect(spread.compareDocumentPosition(log) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("says nothing about a track record before anything is graded", async () => {
     renderWithQueryClient(<SetDetailPage />);
 

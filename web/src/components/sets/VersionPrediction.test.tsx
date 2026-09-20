@@ -177,4 +177,12 @@ describe("VersionPrediction", () => {
     renderWithQueryClient(<VersionPrediction shotId={1} version={null} decision={"keep"} />);
     expect(screen.queryByTestId("version-prediction-row")).not.toBeInTheDocument();
   });
+  it("never carries the evidence: that is the Set page's log, not the shot", () => {
+    // The prediction is hidden here until the shot is labelled, and a table of
+    // what this version's shots have been doing would give it away whole.
+    renderWithQueryClient(<VersionPrediction shotId={1} version={predicted} decision="improve" />);
+
+    expect(screen.queryByRole("button", { name: "Evidence" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/the spread/)).not.toBeInTheDocument();
+  });
 });

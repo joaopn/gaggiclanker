@@ -2,6 +2,7 @@ import { ArrowRight, Undo2 } from "lucide-react";
 import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SetVersionDetail, ShotJudgement } from "@/api/types";
+import { VersionEvidence } from "@/components/sets/VersionEvidence";
 import { VersionOutcomeControl } from "@/components/sets/VersionOutcomeControl";
 import { VersionPredictionEditor } from "@/components/sets/VersionPredictionEditor";
 import { RatingStars } from "@/components/shots/RatingStars";
@@ -264,6 +265,20 @@ export function VersionTimeline({
             ) : (
               <p className="text-muted-foreground text-xs">No shots on this version yet.</p>
             )}
+
+            {/* Only where there is a prediction to be evidence for. Open by
+                default on the one entry that is still a live question: a
+                prediction nobody has graded, on a version with shots to grade
+                it with. */}
+            {entry.evidence ? (
+              <VersionEvidence
+                evidence={entry.evidence}
+                versionNo={entry.version.version_no}
+                defaultOpen={
+                  entry.version.outcome_state === "open" && entry.evidence.this.shots > 0
+                }
+              />
+            ) : null}
 
             <VersionOutcomeControl
               setId={setId}

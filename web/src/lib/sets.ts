@@ -1,4 +1,14 @@
-import type { BeanRow, SetDetailData, SetRow, SetVersionDetail, SetVersionRow } from "@/api/types";
+import type {
+  BeanRow,
+  EvidenceCounts,
+  MeasureEvidence,
+  MeasureSpread,
+  MeasureTerm,
+  SetDetailData,
+  SetRow,
+  SetVersionDetail,
+  SetVersionRow,
+} from "@/api/types";
 
 /**
  * The vocabulary the Set and bean pages share: how a recipe is written down.
@@ -55,6 +65,101 @@ export function trackRecordSentence(record: SetDetailData["track_record"]): stri
   if (record.graded === 0) return null;
   const word = record.graded === 1 ? "prediction" : "predictions";
   return `${record.held} of ${record.graded} ${word} held`;
+}
+
+// ── the spread and the evidence ──────────────────────────────────────
+
+/**
+ * A number at the precision the server says the measure is read in, with its
+ * unit.
+ *
+ * `toFixed` rather than the value as it arrives: the server has already
+ * rounded, and printing "2" where it served 2.0 loses the one digit that says
+ * how precisely the number is meant. The slug-only fallback is what shows in
+ * the moment before `/api/vocab` answers.
+ */
+export function readingOf(value: number, term?: MeasureTerm): string {
+  const text = term ? value.toFixed(term.decimals) : String(value);
+  return term?.unit ? `${text} ${term.unit}` : text;
+}
+
+/**
+ * A difference or a yardstick: one decimal finer than the means it came from.
+ *
+ * Which is the whole point of the extra digit — "+2.04 s, beyond 2.00 s" says
+ * what the arithmetic found, where "+2.0 s, beyond 2.0 s" reads as a
+ * contradiction of its own verdict. The floor on the spread line is a yardstick
+ * too, and is written the same way.
+ */
+export function yardstickOf(value: number, term?: MeasureTerm): string {
+  const text = term ? value.toFixed(term.difference_decimals) : String(value);
+  return term?.unit ? `${text} ${term.unit}` : text;
+}
+
+/**
+ * One line of the Spread block, in one of its two states.
+ *
+ * "Shot time ±1.8 s · from 9 repeat shots of 3 recipes" once there are enough
+ * repeats to trust, and the floor-based sentence until then. The second one
+ * names the floor rather than the unmeasured figure on purpose: the figure is
+ * served and is real, but it is not what a difference is being held against
+ * yet, and a reader shown "±0.4 s" would take it for the answer.
+ *
+ * The recipe count is the basis the reader can judge: nine shots of one recipe
+ * and nine of eight recipes are very different evidence. It is the number of
+ * repeat groups that contributed, which is the shots minus the degrees of
+ * freedom — one degree is spent on each group's own average.
+ */
+export function spreadSentence(entry: MeasureSpread, term?: MeasureTerm): string {
+  const label = term?.label ?? entry.measure;
+  if (entry.measured && entry.value != null) {
+    const recipes = entry.shots - entry.degrees_of_freedom;
+    const shots = `${entry.shots} repeat shot${entry.shots === 1 ? "" : "s"}`;
+    return `${label} ±${readingOf(entry.value, term)} · from ${shots} of ${recipes} recipe${
+      recipes === 1 ? "" : "s"
+    }`;
+  }
+  return `${label}: not measured yet · differences under ${yardstickOf(entry.floor, term)} are not counted`;
+}
+
+/** A side's mean and how many shots it rests on: "34.2 s · 3 shots". */
+export function meanCell(side: MeasureEvidence["this"], term?: MeasureTerm): string {
+  if (side.mean == null) return "not recorded";
+  return `${readingOf(side.mean, term)} · ${side.n} shot${side.n === 1 ? "" : "s"}`;
+}
+
+/** The difference, signed, because the direction is half of what was claimed. */
+export function differenceCell(row: MeasureEvidence, term?: MeasureTerm): string {
+  if (row.difference == null) return "—";
+  const body = yardstickOf(row.difference, term);
+  return row.difference > 0 ? `+${body}` : body;
+}
+
+/**
+ * The verdict in words, with what the difference was held against.
+ *
+ * Words rather than a colour: this is the one cell a reader acts on, and a
+ * green tick is unreadable to a person who cannot tell it from the red one.
+ */
+export function verdictSentence(row: MeasureEvidence, term?: MeasureTerm): string {
+  if (row.verdict === "no_data") return "no data";
+  const held = row.yardstick == null ? "" : ` · held against ${yardstickOf(row.yardstick, term)}`;
+  return `${row.verdict === "beyond" ? "beyond the spread" : "inside the spread"}${held}`;
+}
+
+/**
+ * One side's plain facts, zeros left out: how the cups went and how they were
+ * labelled. No Discard, because a discarded shot is not counted at all.
+ */
+export function evidenceSideSummary(side: EvidenceCounts): string {
+  const parts = [`${side.shots} shot${side.shots === 1 ? "" : "s"}`];
+  if (side.sour) parts.push(`${side.sour} sour`);
+  if (side.balanced) parts.push(`${side.balanced} balanced`);
+  if (side.bitter) parts.push(`${side.bitter} bitter`);
+  if (side.keep) parts.push(`${side.keep} Keep`);
+  if (side.improve) parts.push(`${side.improve} Improve`);
+  if (side.unlabelled) parts.push(`${side.unlabelled} not labelled`);
+  return parts.join(" · ");
 }
 
 /** The Set's identity on one line: bean · grinder · profile vN. */

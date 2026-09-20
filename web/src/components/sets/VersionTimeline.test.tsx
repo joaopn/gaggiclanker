@@ -1,8 +1,16 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SetVersionDetail } from "@/api/types";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { judgement, labelCounts, setDetail, version, vocabulary } from "@/test/setsFixtures";
+import {
+  evidence,
+  judgement,
+  labelCounts,
+  setDetail,
+  version,
+  vocabulary,
+} from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -53,6 +61,82 @@ describe("VersionTimeline", () => {
     expect(changes).toHaveTextContent("21");
     expect(screen.getByTestId("version-intent")).toHaveTextContent(
       "one click finer, chasing the sourness out",
+    );
+  });
+
+  /** The newest entry, as a version that predicted something. */
+  function predicting(overrides: Partial<SetVersionDetail> = {}) {
+    const detail = setDetail();
+    detail.versions[0] = {
+      ...detail.versions[0],
+      version: version({
+        ...detail.versions[0].version,
+        prediction: "less bitter, a shorter shot",
+        outcome_state: "open",
+      }),
+      evidence: evidence(),
+      ...overrides,
+    };
+    return detail;
+  }
+
+  it("offers the evidence only where there is a prediction to be evidence for", () => {
+    const detail = predicting();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    const disclosures = screen.getAllByTestId("version-evidence");
+    expect(disclosures).toHaveLength(1);
+    expect(disclosures[0].dataset.version).toBe("2");
+  });
+
+  it("opens the evidence of a prediction nobody has graded yet", () => {
+    const detail = predicting();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // The one entry in the log that is still a live question.
+    expect(screen.getByRole("button", { name: "Evidence" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByTestId("evidence-table")).toBeInTheDocument();
+  });
+
+  it("leaves the evidence closed once the prediction has been graded", () => {
+    const detail = predicting();
+    detail.versions[0] = {
+      ...detail.versions[0],
+      version: version({
+        ...detail.versions[0].version,
+        outcome: "held",
+        outcome_state: "held",
+      }),
+    };
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Evidence" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("leaves the evidence closed on an open prediction with nothing to grade yet", () => {
+    const counts = evidence();
+    const detail = predicting({
+      evidence: evidence({ this: { ...counts.this, shots: 0 } }),
+    });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Evidence" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
     );
   });
 
