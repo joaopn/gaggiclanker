@@ -26,6 +26,14 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ### The Set page is an experiment log
 
+- **A version can change the profile.** "Change something" now offers a
+  Profile field, first and preselected to the one the Set is brewing with, so
+  switching profiles — or editing one on the machine — is something you can
+  record. Without it those shots landed in "needs a Set", because a shot joins
+  its Set by the profile it was pulled with. Picking one carries its target
+  yield and temperature across, never over a number you typed. It sends
+  nothing to the machine: putting a profile there is still the Profiles page.
+
 - **A version prediction.** A Set version can say what you expect it to do
   differently and which earlier version that is against — the parent by
   default, or nothing at all if you would rather grade it on the numbers the

@@ -183,6 +183,24 @@ describe("VersionTimeline", () => {
     expect(screen.queryByRole("button", { name: "Edit prediction" })).not.toBeInTheDocument();
   });
 
+  it("reads a profile-only version as a change, not as nothing changed", () => {
+    const detail = setDetail();
+    // The diff the server computed for a version whose only difference is the
+    // profile it was brewed with.
+    detail.versions[0].changes = [
+      { field: "profile_version_id", label: "Profile", before: "9 Bar Espresso", after: "Turbo" },
+    ];
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    const changes = screen.getByTestId("version-changes");
+    expect(changes).toHaveTextContent("Profile");
+    expect(changes).toHaveTextContent("9 Bar Espresso");
+    expect(changes).toHaveTextContent("Turbo");
+    expect(screen.queryByText(/Nothing in the recipe changed/)).not.toBeInTheDocument();
+  });
+
   it("links a version's shot count at that version's shots", () => {
     const detail = setDetail();
     detail.versions[0].version = version({ id: 22, version_no: 2, shot_count: 3 });

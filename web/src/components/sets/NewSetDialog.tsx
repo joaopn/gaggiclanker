@@ -484,7 +484,7 @@ function SuggestStartingPoint({
  * names its own profile, because a yield from one pick can outlive a later pick
  * that only stated a temperature.
  */
-function recipeHint(draft: Pick<Draft, RecipeKey>, filled: AutoFilled): string {
+export function recipeHint(draft: Pick<Draft, RecipeKey>, filled: AutoFilled): string {
   const parts: { text: string; from: string }[] = [];
   const yieldG = filled.targetYieldG;
   if (yieldG && draft.targetYieldG === yieldG.value) {

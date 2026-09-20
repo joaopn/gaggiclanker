@@ -59,6 +59,9 @@ const {
   getVocabulary,
   getKnowledgeInsights,
   rollbackSet,
+  getProfileVersions,
+  createProfileDraft,
+  pushProfileDraft,
 } = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
@@ -69,6 +72,15 @@ const {
   getVocabulary: vi.fn(),
   getKnowledgeInsights: vi.fn(),
   rollbackSet: vi.fn(),
+  // Mocked rather than left to the real fetch: the version form's profile
+  // picker asks for them, and an unmocked call is a rejected promise and a
+  // console full of noise that hides a real failure.
+  getProfileVersions: vi.fn(),
+  // Spied only so the tests can assert this path never reaches them: recording
+  // a profile on a version is bookkeeping, and the machine is written from one
+  // place by one person.
+  createProfileDraft: vi.fn(),
+  pushProfileDraft: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -81,6 +93,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getVocabulary,
   getKnowledgeInsights,
   rollbackSet,
+  getProfileVersions,
+  createProfileDraft,
+  pushProfileDraft,
 }));
 
 beforeEach(() => {
@@ -102,6 +117,13 @@ beforeEach(() => {
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
+  getProfileVersions.mockResolvedValue({
+    items: [
+      { id: 7, label: "9 Bar Espresso", target_yield_g: 36, temperature_c: 93 },
+      { id: 8, label: "Turbo", target_yield_g: 45, temperature_c: 90 },
+    ],
+    total: 2,
+  });
 });
 
 describe("SetDetailPage", () => {
@@ -196,6 +218,76 @@ describe("SetDetailPage", () => {
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     const [, patch] = addSetVersion.mock.calls[0];
     expect(patch).not.toHaveProperty("compares_to_version_id");
+  });
+
+  it("preselects the current version's profile and sends nothing when it is untouched", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    // The fixture's current version brews with profile version 7.
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+    await user.type(screen.getByLabelText("What are you trying?"), "one finer");
+    await user.type(screen.getByLabelText("Grind"), "20");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    // Untouched means inherited, like every other recipe field on this form.
+    expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("profile_version_id");
+  });
+
+  it("records a change of profile, and says it changes nothing on the machine", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+
+    // The one rule this help text protects: only a person pushes, and only
+    // from the Profiles page.
+    expect(screen.getByTestId("profile-help")).toHaveTextContent("changes nothing on the machine");
+    expect(screen.getByTestId("profile-help")).toHaveTextContent("Profiles page");
+
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+    await user.type(screen.getByLabelText("What are you trying?"), "switched to the turbo");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 8 });
+    // Nothing on this path goes near a draft or the machine.
+    expect(pushProfileDraft).not.toHaveBeenCalled();
+    expect(createProfileDraft).not.toHaveBeenCalled();
+  });
+
+  it("carries the new profile's targets across, without overwriting a typed one", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+    // Typed by hand first: the profile must not take it back.
+    await user.type(screen.getByLabelText("Temperature (°C)"), "95");
+
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+
+    expect(screen.getByLabelText("Target yield (g)")).toHaveValue("45");
+    expect(screen.getByLabelText("Temperature (°C)")).toHaveValue("95");
+    expect(screen.getByTestId("version-from-profile")).toHaveTextContent("from Turbo");
+  });
+
+  it("can take the profile off a version entirely", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+
+    await user.selectOptions(screen.getByLabelText("Profile"), "");
+    await user.type(screen.getByLabelText("What are you trying?"), "any profile now");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: null });
   });
 
   it("leads with the track record once something has been graded", async () => {

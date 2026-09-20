@@ -17,12 +17,14 @@ import { InsightCard } from "@/components/knowledge/InsightCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { type AutoFilled, fillFromProfile, recipeHint } from "@/components/sets/NewSetDialog";
 import { RollbackButton } from "@/components/sets/RollbackButton";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalyseSet, useSetSuggestions } from "@/hooks/useAnalysis";
+import { useProfileVersions } from "@/hooks/useArchive";
 import { useKnowledgeInsights } from "@/hooks/useKnowledge";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
@@ -383,6 +385,7 @@ function NewVersionForm({
   onDone: () => void;
 }) {
   const add = useAddSetVersion();
+  const profiles = useProfileVersions({ limit: 200 });
   const [grind, setGrind] = useState("");
   const [dose, setDose] = useState("");
   const [target, setTarget] = useState("");
@@ -393,7 +396,17 @@ function NewVersionForm({
   // otherwise: this version is a change to that one.
   const current = versions[0]?.version;
   const [compare, setCompare] = useState(current ? String(current.id) : "");
+  // The profile is the one recipe field that starts *filled*, because leaving a
+  // select blank is not how anybody says "keep the profile I have" — the other
+  // four are numbers, where blank reads as "unchanged" on its own.
+  const inheritedProfile = current?.profile_version_id ? String(current.profile_version_id) : "";
+  const [profile, setProfile] = useState(inheritedProfile);
+  const [filled, setFilled] = useState<AutoFilled>({
+    targetYieldG: null,
+    targetTemperatureC: null,
+  });
   const ids = {
+    profile: useId(),
     grind: useId(),
     dose: useId(),
     target: useId(),
@@ -407,6 +420,22 @@ function NewVersionForm({
     const parsed = Number.parseFloat(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
+
+  /** The same rule the New Set form uses, through the same helper. */
+  function pickProfile(versionId: string) {
+    const version = (profiles.data?.items ?? []).find((row) => String(row.id) === versionId);
+    const result = fillFromProfile(
+      { targetYieldG: target, targetTemperatureC: temperature },
+      filled,
+      version,
+    );
+    setTarget(result.values.targetYieldG);
+    setTemperature(result.values.targetTemperatureC);
+    setFilled(result.filled);
+    setProfile(versionId);
+  }
+
+  const fromProfile = recipeHint({ targetYieldG: target, targetTemperatureC: temperature }, filled);
 
   return (
     <form
@@ -428,6 +457,12 @@ function NewVersionForm({
                 ? { compares_to_version_id: compare ? Number(compare) : null }
                 : {}),
               origin: "manual",
+              // Untouched means inherited, like every other recipe field here;
+              // changed means sent, including to null when somebody picks
+              // "Any profile" on a version that named one.
+              ...(profile !== inheritedProfile
+                ? { profile_version_id: profile ? Number(profile) : null }
+                : {}),
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
               ...(number(target) ? { target_yield_g: number(target) } : {}),
@@ -440,6 +475,30 @@ function NewVersionForm({
     >
       <p className="text-muted-foreground text-xs">
         Fill in only what changed. Anything left blank carries over from the current version.
+      </p>
+      {/* First, because it is the change that goes wrong most quietly: somebody
+          who switched profiles on the machine and did not record it here finds
+          their next shots in "needs a Set", since auto-assignment matches on
+          the profile. */}
+      <Labelled id={ids.profile} label="Profile">
+        <select
+          id={ids.profile}
+          className={FIELD}
+          value={profile}
+          onChange={(event) => pickProfile(event.target.value)}
+        >
+          <option value="">Any profile</option>
+          {(profiles.data?.items ?? []).map((version) => (
+            <option key={version.id} value={String(version.id)}>
+              {version.label}
+            </option>
+          ))}
+        </select>
+      </Labelled>
+      <p className="text-muted-foreground text-xs" data-testid="profile-help">
+        Recording a profile here changes nothing on the machine — it says which profile this version
+        was brewed with, so shots pulled with it join the Set on their own. Putting a profile on the
+        machine is done from the Profiles page, by you.
       </p>
       <div className="grid gap-3 sm:grid-cols-4">
         <Labelled id={ids.grind} label="Grind">
@@ -478,6 +537,11 @@ function NewVersionForm({
           />
         </Labelled>
       </div>
+      {fromProfile ? (
+        <p className="text-muted-foreground text-xs" data-testid="version-from-profile">
+          {fromProfile} Change it and it stays yours.
+        </p>
+      ) : null}
       <Labelled id={ids.intent} label="What are you trying?">
         <input
           id={ids.intent}

@@ -120,8 +120,16 @@ redirect to the Sync page.
 
 ### The experiment log
 
-A Set page is a record of experiments, one per version. Each version says what
-changed against the version before it, what you were trying, and — optionally —
+A Set page is a record of experiments, one per version. A version records a
+change of **profile** as well as of grind, dose, target yield or temperature:
+by hand from **Change something** on the Set page, or on its own when a staged
+profile is pushed for that Set. Recording one there sends nothing to the
+machine — that is still the Profiles page, and still you — but it is what keeps
+the next shots landing in the Set, because a shot joins its Set by the profile
+it was pulled with.
+
+Each version says what changed against the version before it, what you were
+trying, and — optionally —
 what you **predicted** it would do, compared to which version. Once the shots
 are in and you have labelled them Keep or Improve, you record the **outcome**:
 held, partly held, failed or inconclusive, with a line saying why. Above the log
