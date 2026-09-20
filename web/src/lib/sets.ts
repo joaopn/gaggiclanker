@@ -1,4 +1,4 @@
-import type { BeanRow, SetRow, SetVersionRow } from "@/api/types";
+import type { BeanRow, SetDetailData, SetRow, SetVersionDetail, SetVersionRow } from "@/api/types";
 
 /**
  * The vocabulary the Set and bean pages share: how a recipe is written down.
@@ -24,6 +24,35 @@ export function versionSummary(version: SetVersionRow): string {
   if (version.grind_setting) parts.push(`grind ${version.grind_setting}`);
   if (version.target_temperature_c) parts.push(`${version.target_temperature_c} °C`);
   return parts.join(" · ") || "nothing recorded yet";
+}
+
+/**
+ * How a version's shots were labelled, on one line: "2 Keep · 1 Improve".
+ *
+ * Only the counts that are not zero, and the unlabelled ones last and in lower
+ * case: they are the work still to do, not a verdict anybody gave. Empty when
+ * there are no shots, so the caller renders nothing rather than "0 Keep".
+ */
+export function labelSummary(labels: SetVersionDetail["labels"]): string {
+  const parts: string[] = [];
+  if (labels.keep) parts.push(`${labels.keep} Keep`);
+  if (labels.improve) parts.push(`${labels.improve} Improve`);
+  if (labels.discard) parts.push(`${labels.discard} Discard`);
+  if (labels.unlabelled) parts.push(`${labels.unlabelled} not labelled`);
+  return parts.join(" · ");
+}
+
+/**
+ * "6 of 10 predictions held", or nothing at all.
+ *
+ * Nothing until something has been graded: a track record of zero out of zero
+ * is not a modest score, it is an absence, and rendering it as one would make
+ * every new Set look like a failure.
+ */
+export function trackRecordSentence(record: SetDetailData["track_record"]): string | null {
+  if (record.graded === 0) return null;
+  const word = record.graded === 1 ? "prediction" : "predictions";
+  return `${record.held} of ${record.graded} ${word} held`;
 }
 
 /** The Set's identity on one line: bean · grinder · profile vN. */

@@ -1,25 +1,45 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
-import { renderWithQueryClient } from "@/test/renderWithQueryClient";
-import { judgement, setDetail, vocabulary } from "@/test/setsFixtures";
+import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { judgement, labelCounts, setDetail, version, vocabulary } from "@/test/setsFixtures";
 
-const { getVocabulary } = vi.hoisted(() => ({ getVocabulary: vi.fn() }));
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  Toaster: () => null,
+}));
+
+const { getVocabulary, setVersionPrediction, setVersionOutcome, clearVersionOutcome, rollbackSet } =
+  vi.hoisted(() => ({
+    getVocabulary: vi.fn(),
+    setVersionPrediction: vi.fn(),
+    setVersionOutcome: vi.fn(),
+    clearVersionOutcome: vi.fn(),
+    rollbackSet: vi.fn(),
+  }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getVocabulary,
+  setVersionPrediction,
+  setVersionOutcome,
+  clearVersionOutcome,
+  rollbackSet,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   getVocabulary.mockResolvedValue(vocabulary);
+  setVersionPrediction.mockResolvedValue(version());
+  setVersionOutcome.mockResolvedValue(version());
+  clearVersionOutcome.mockResolvedValue(version());
+  rollbackSet.mockResolvedValue(version({ version_no: 3, restores_version_no: 1 }));
 });
 
 describe("VersionTimeline", () => {
   it("reads newest first and shows the diff against the parent", () => {
     const detail = setDetail();
     renderWithQueryClient(
-      <VersionTimeline versions={detail.versions} judgements={detail.judgements} />,
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
     const entries = screen.getAllByTestId("version-entry");
@@ -39,7 +59,7 @@ describe("VersionTimeline", () => {
   it("calls version one a starting point rather than six changes", () => {
     const detail = setDetail();
     renderWithQueryClient(
-      <VersionTimeline versions={detail.versions} judgements={detail.judgements} />,
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
     expect(screen.getByTestId("version-baseline")).toHaveTextContent("The starting point.");
@@ -49,7 +69,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version.origin = "analysis";
     renderWithQueryClient(
-      <VersionTimeline versions={detail.versions} judgements={detail.judgements} />,
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
     // The label comes from /api/vocab like every other closed vocabulary here;
@@ -65,7 +85,7 @@ describe("VersionTimeline", () => {
       { field: "dose_g", label: "Dose", before: null, after: "18 g" },
     ];
     renderWithQueryClient(
-      <VersionTimeline versions={detail.versions} judgements={detail.judgements} />,
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
     // "93 °C → —" reads as a rendering bug; unsetting a field is a deliberate
@@ -118,11 +138,358 @@ describe("VersionTimeline", () => {
     detail.judgements = { "41": judgement({ shot_id: 41, rating: 5 }) };
 
     renderWithQueryClient(
-      <VersionTimeline versions={detail.versions} judgements={detail.judgements} />,
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
     const shots = screen.getByTestId("version-shots");
     expect(shots).toHaveTextContent("9 Bar Espresso");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "5");
+  });
+
+  it("reads as an experiment: prediction, labels, outcome, restores", async () => {
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      parent_version_id: 21,
+      shot_count: 3,
+      prediction: "less bitter, a shorter shot",
+      compares_to_version_id: 21,
+      compares_to_version_no: 1,
+      restores_version_id: 21,
+      restores_version_no: 1,
+      outcome: "partly_held",
+      outcome_note: "shorter, still sharp",
+      outcome_state: "partly_held",
+    });
+    detail.versions[0].labels = labelCounts({ keep: 2, improve: 1 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    const entry = screen.getAllByTestId("version-entry")[0];
+    expect(entry).toHaveTextContent("less bitter, a shorter shot");
+    expect(entry).toHaveTextContent("compared to v1");
+    expect(entry).toHaveTextContent("2 Keep · 1 Improve");
+    expect(entry).toHaveTextContent("Restores v1");
+    expect(screen.getAllByTestId("version-outcome")[0]).toHaveAttribute(
+      "data-state",
+      "partly_held",
+    );
+    // The word comes from the served vocabulary, like every other closed set.
+    expect(await screen.findByText("Partly held")).toBeInTheDocument();
+    expect(entry).toHaveTextContent("shorter, still sharp");
+    // A version with shots offers no prediction editor: the server refuses it.
+    expect(screen.queryByRole("button", { name: "Edit prediction" })).not.toBeInTheDocument();
+  });
+
+  it("mutes a version a later roll back stepped over, and still shows it", () => {
+    const detail = setDetail();
+    detail.versions[0].dead_end = true;
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    const entries = screen.getAllByTestId("version-entry");
+    expect(entries[0]).toHaveAttribute("data-dead-end", "yes");
+    expect(entries[1]).toHaveAttribute("data-dead-end", "no");
+    expect(screen.getByTestId("dead-end")).toBeInTheDocument();
+    // Muted, not hidden: it was a real attempt.
+    expect(entries[0]).toHaveTextContent("one click finer, chasing the sourness out");
+  });
+
+  it("records a prediction while the version has no shots", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      parent_version_id: 21,
+      shot_count: 0,
+    });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Add a prediction" })[0]);
+    await user.type(screen.getByLabelText("Version prediction"), "less sour");
+    await user.selectOptions(screen.getByLabelText("Compared to"), "21");
+    await user.click(screen.getByRole("button", { name: "Save the prediction" }));
+
+    await waitFor(() => expect(setVersionPrediction).toHaveBeenCalled());
+    expect(setVersionPrediction.mock.calls[0]).toEqual([
+      3,
+      22,
+      { prediction: "less sour", compares_to_version_id: 21 },
+    ]);
+  });
+
+  it("will not offer a grade when there is nothing to grade, and says why in text", async () => {
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      prediction: "less bitter",
+      outcome_state: "open",
+    });
+    detail.versions[0].labels = labelCounts({ discard: 1 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    const buttons = screen.getAllByRole("button", { name: "Record the outcome" });
+    expect(buttons[0]).toBeDisabled();
+    // The reason is text on the page tied to the button, not a `title` on a
+    // control nothing can focus.
+    const described = document.getElementById(buttons[0].getAttribute("aria-describedby") ?? "");
+    expect(described).toHaveTextContent("Label a shot Keep or Improve first");
+    // And on the version that predicted nothing, the reason is the other one.
+    const other = document.getElementById(buttons[1].getAttribute("aria-describedby") ?? "");
+    expect(other).toHaveTextContent("states no prediction");
+  });
+
+  it("still lets a grade be cleared once its shots are gone", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      prediction: "less bitter",
+      outcome: "held",
+      outcome_state: "held",
+    });
+    // The shot that was graded has since been unfiled: the server will still
+    // clear the grade, and refuses to change it.
+    detail.versions[0].labels = labelCounts();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // Named for what it offers: "Change" would promise a control the server
+    // refuses on a version with nothing left to grade.
+    const trigger = screen.getAllByRole("button", { name: "Clear the outcome" })[0];
+    expect(trigger).toBeEnabled();
+    await user.click(trigger);
+
+    expect(screen.getByTestId("outcome-clear-only")).toHaveTextContent("can still be taken back");
+    expect(screen.queryByRole("button", { name: "Save the outcome" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+
+    await waitFor(() => expect(clearVersionOutcome).toHaveBeenCalledWith(3, 22));
+  });
+
+  it("names the group the four grades belong to", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      prediction: "less bitter",
+      outcome_state: "open",
+    });
+    detail.versions[0].labels = labelCounts({ keep: 1 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Record the outcome" })[0]);
+
+    expect(
+      await screen.findByRole("group", { name: "How did the prediction turn out?" }),
+    ).toBeInTheDocument();
+  });
+
+  it("defaults an untouched comparison to the parent, not to nothing", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    // v2, no prediction yet: the stored comparison is null because there is no
+    // prediction, and seeding the select from it would save "compared to
+    // nothing" without anybody choosing that.
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      parent_version_id: 21,
+      shot_count: 0,
+    });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Add a prediction" })[0]);
+    expect(screen.getByLabelText("Compared to")).toHaveValue("21");
+    await user.type(screen.getByLabelText("Version prediction"), "less sour");
+    await user.click(screen.getByRole("button", { name: "Save the prediction" }));
+
+    await waitFor(() => expect(setVersionPrediction).toHaveBeenCalled());
+    expect(setVersionPrediction.mock.calls[0][2]).toEqual({
+      prediction: "less sour",
+      compares_to_version_id: 21,
+    });
+  });
+
+  it("has nothing to default to on the first version", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions = [detail.versions[1]];
+    detail.versions[0].version = version({ id: 21, version_no: 1, shot_count: 0 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Add a prediction" }));
+    expect(screen.getByLabelText("Compared to")).toHaveValue("");
+    await user.type(screen.getByLabelText("Version prediction"), "a clean 1:2");
+    await user.click(screen.getByRole("button", { name: "Save the prediction" }));
+
+    await waitFor(() => expect(setVersionPrediction).toHaveBeenCalled());
+    expect(setVersionPrediction.mock.calls[0][2]).toEqual({
+      prediction: "a clean 1:2",
+      compares_to_version_id: null,
+    });
+  });
+
+  it("keeps a stored 'Nothing' when an existing prediction is edited", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      parent_version_id: 21,
+      shot_count: 0,
+      prediction: "a clean 1:2",
+      compares_to_version_id: null,
+    });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Edit prediction" })[0]);
+
+    // Somebody chose "Nothing" for this one; editing the wording must not
+    // quietly move it onto the parent.
+    expect(screen.getByLabelText("Compared to")).toHaveValue("");
+  });
+
+  it("offers no prediction editor while a grade stands, and says why", async () => {
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      shot_count: 0,
+      prediction: "less bitter",
+      outcome: "held",
+      outcome_state: "held",
+    });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // The server answers this write with a conflict, so the button does not
+    // pretend otherwise — and the way out is text a reader can reach.
+    const button = screen.getByRole("button", { name: "Edit prediction" });
+    expect(button).toBeDisabled();
+    const described = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+    expect(described).toHaveTextContent("Clear the outcome first");
+  });
+
+  it("sends an explicit null when the prediction is compared to nothing", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      parent_version_id: 21,
+      shot_count: 0,
+    });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Add a prediction" })[0]);
+    // Opening the editor moves focus into it: the button that opened it is gone.
+    expect(screen.getByLabelText("Version prediction")).toHaveFocus();
+    await user.type(screen.getByLabelText("Version prediction"), "  a clean 1:2  ");
+    await user.selectOptions(screen.getByLabelText("Compared to"), "");
+    await user.click(screen.getByRole("button", { name: "Save the prediction" }));
+
+    await waitFor(() => expect(setVersionPrediction).toHaveBeenCalled());
+    // Null, not omitted: omitted would fall back to the parent, which is the
+    // opposite of what "Nothing" says. And the text arrives trimmed.
+    expect(setVersionPrediction.mock.calls[0][2]).toEqual({
+      prediction: "a clean 1:2",
+      compares_to_version_id: null,
+    });
+  });
+
+  it("records, changes and clears an outcome", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      prediction: "less bitter",
+      outcome_state: "open",
+    });
+    detail.versions[0].labels = labelCounts({ keep: 1 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Record the outcome" })[0]);
+    await user.click(await screen.findByRole("button", { name: "Held" }));
+    await user.type(screen.getByLabelText("Why"), "exactly that");
+    await user.click(screen.getByRole("button", { name: "Save the outcome" }));
+
+    await waitFor(() => expect(setVersionOutcome).toHaveBeenCalled());
+    expect(setVersionOutcome.mock.calls[0]).toEqual([
+      3,
+      22,
+      { outcome: "held", note: "exactly that" },
+    ]);
+  });
+
+  it("clears a grade that was already given", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    detail.versions[0].version = version({
+      id: 22,
+      version_no: 2,
+      prediction: "less bitter",
+      outcome: "held",
+      outcome_state: "held",
+    });
+    detail.versions[0].labels = labelCounts({ keep: 1 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Change the outcome" })[0]);
+    await user.click(await screen.findByRole("button", { name: "Clear" }));
+
+    await waitFor(() => expect(clearVersionOutcome).toHaveBeenCalledWith(3, 22));
+  });
+
+  it("asks before a roll back and says the machine is not written", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // Only on an old version: the newest one is where you already are.
+    const triggers = screen.getAllByRole("button", { name: "Roll back to this version" });
+    expect(triggers).toHaveLength(1);
+
+    await user.click(triggers[0]);
+    expect(screen.getByTestId("rollback-confirm")).toHaveTextContent(
+      "Nothing is sent to the machine",
+    );
+    await user.click(screen.getByRole("button", { name: "Roll back to v1" }));
+
+    await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
+    expect(rollbackSet.mock.calls[0]).toEqual([
+      3,
+      { to_version_id: 21, intent: "", prediction: "" },
+    ]);
   });
 });

@@ -1,7 +1,15 @@
-import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  ArrowLeft,
+  Coffee,
+  GitBranch,
+  Sparkles,
+  Undo2,
+} from "lucide-react";
 import { useId, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { Suggestion } from "@/api/types";
+import type { SetDetailData, Suggestion } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
 import { DiscussButton } from "@/components/chat/DiscussButton";
@@ -9,6 +17,7 @@ import { InsightCard } from "@/components/knowledge/InsightCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { RollbackButton } from "@/components/sets/RollbackButton";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +33,7 @@ import {
   useSetTrends,
 } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
-import { grindPatch, setSummary, versionSummary } from "@/lib/sets";
+import { grindPatch, setSummary, trackRecordSentence, versionSummary } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -176,7 +185,11 @@ export function SetDetailPage() {
         }
       >
         {versioning ? (
-          <NewVersionForm setId={row.id} onDone={() => setVersioning(false)} />
+          <NewVersionForm
+            setId={row.id}
+            versions={detail.data.versions}
+            onDone={() => setVersioning(false)}
+          />
         ) : (
           <p className="text-muted-foreground text-sm">
             {row.shot_count} shot{row.shot_count === 1 ? "" : "s"} across {row.version_count}{" "}
@@ -204,10 +217,15 @@ export function SetDetailPage() {
       <SetInsights setId={row.id} />
 
       <SectionCard
-        title="Versions"
-        description="Newest first, each showing what changed against the version it came from."
+        title="The experiment log"
+        description="Newest first: what changed, what you were trying, what you predicted it would do, the shots it produced and how the prediction turned out."
       >
-        <VersionTimeline versions={detail.data.versions} judgements={detail.data.judgements} />
+        <TrackRecord detail={detail.data} setId={row.id} />
+        <VersionTimeline
+          setId={row.id}
+          versions={detail.data.versions}
+          judgements={detail.data.judgements}
+        />
       </SectionCard>
 
       <SectionCard
@@ -237,6 +255,51 @@ export function SetDetailPage() {
           />
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+/**
+ * How often the predictions held, and the way back when they have stopped.
+ *
+ * The sentence is nothing until something has been graded — zero out of zero is
+ * an absence, not a modest score. The roll-back offer appears only when the
+ * archive can see that the current version is going badly: it has a shot you
+ * said to improve on and none you said to keep, and there is an earlier version
+ * you did keep shots from. Anything less than that and the button would be
+ * nagging.
+ */
+function TrackRecord({ detail, setId }: { detail: SetDetailData; setId: number }) {
+  const sentence = trackRecordSentence(detail.track_record);
+  const record = detail.track_record;
+  const current = detail.versions[0];
+  const target = detail.versions.find(
+    (entry) => entry.version.id === detail.rollback_target_version_id,
+  );
+  const struggling =
+    current !== undefined && current.labels.improve > 0 && current.labels.keep === 0;
+
+  if (!sentence && !(target && struggling)) return null;
+
+  return (
+    <div className="mb-3 space-y-2" data-testid="track-record">
+      {sentence ? (
+        <p className="text-sm">
+          <span className="font-medium">{sentence}</span>
+          <span className="text-muted-foreground">
+            {` · ${record.open} open · ${record.no_prediction} with no prediction`}
+          </span>
+        </p>
+      ) : null}
+      {target && struggling ? (
+        <RollbackButton
+          setId={setId}
+          versionId={target.version.id}
+          versionNo={target.version.version_no}
+          label={`Roll back to v${target.version.version_no}, the last version with Keep shots`}
+          icon={<Undo2 className="size-3.5" aria-hidden="true" />}
+        />
+      ) : null}
     </div>
   );
 }
@@ -310,19 +373,34 @@ function BackLink() {
  * inherits the parent's value, so a form prefilled with the current values
  * would record all six as changed and the timeline's diff would say nothing.
  */
-function NewVersionForm({ setId, onDone }: { setId: number; onDone: () => void }) {
+function NewVersionForm({
+  setId,
+  versions,
+  onDone,
+}: {
+  setId: number;
+  versions: SetDetailData["versions"];
+  onDone: () => void;
+}) {
   const add = useAddSetVersion();
   const [grind, setGrind] = useState("");
   const [dose, setDose] = useState("");
   const [target, setTarget] = useState("");
   const [temperature, setTemperature] = useState("");
   const [intent, setIntent] = useState("");
+  const [prediction, setPrediction] = useState("");
+  // The current version, which is what "compared to" means unless somebody says
+  // otherwise: this version is a change to that one.
+  const current = versions[0]?.version;
+  const [compare, setCompare] = useState(current ? String(current.id) : "");
   const ids = {
     grind: useId(),
     dose: useId(),
     target: useId(),
     temperature: useId(),
     intent: useId(),
+    prediction: useId(),
+    compare: useId(),
   };
 
   function number(value: string): number | undefined {
@@ -341,7 +419,14 @@ function NewVersionForm({ setId, onDone }: { setId: number; onDone: () => void }
             setId,
             patch: {
               intent,
-              prediction: "",
+              prediction: prediction.trim(),
+              // Sent explicitly whenever there is a prediction, including as
+              // null: omitting the key means "against the parent", and an empty
+              // select means "against nothing". With no prediction there is
+              // nothing to compare, so the key is left off entirely.
+              ...(prediction.trim()
+                ? { compares_to_version_id: compare ? Number(compare) : null }
+                : {}),
               origin: "manual",
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
@@ -403,6 +488,37 @@ function NewVersionForm({ setId, onDone }: { setId: number; onDone: () => void }
           onChange={(event) => setIntent(event.target.value)}
         />
       </Labelled>
+      {/* Optional, and deliberately separate from the intent: the intent is
+          what you are attempting, the prediction is what you are claiming will
+          happen. Only the second one can turn out to be wrong. */}
+      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+        <Labelled id={ids.prediction} label="Version prediction">
+          <textarea
+            id={ids.prediction}
+            rows={2}
+            maxLength={1000}
+            className={cn(FIELD, "h-auto py-1.5")}
+            placeholder="Compared to v4: less bitter, a shorter shot"
+            value={prediction}
+            onChange={(event) => setPrediction(event.target.value)}
+          />
+        </Labelled>
+        <Labelled id={ids.compare} label="Compared to">
+          <select
+            id={ids.compare}
+            className={FIELD}
+            value={compare}
+            onChange={(event) => setCompare(event.target.value)}
+          >
+            <option value="">Nothing — grade it on its own numbers</option>
+            {versions.map((entry) => (
+              <option key={entry.version.id} value={String(entry.version.id)}>
+                v{entry.version.version_no}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+      </div>
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={add.isPending}>
           {add.isPending ? "Recording…" : "Record the version"}

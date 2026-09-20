@@ -73,6 +73,7 @@ import type {
   ProfileVersionRow,
   PromptData,
   PromptListData,
+  RollbackWrite,
   SetCreate,
   SetDetailData,
   SetListData,
@@ -95,6 +96,8 @@ import type {
   Suggestion,
   SuggestionListData,
   SyncStatusData,
+  VersionOutcomeWrite,
+  VersionPredictionWrite,
   Vocabulary,
 } from "@/api/types";
 import { redirectToSignIn } from "@/lib/auth-navigation";
@@ -775,6 +778,48 @@ export async function addSetVersion(id: number, patch: SetVersionPatch): Promise
   return fetchApi<SetVersionRow>(`/sets/${id}/versions`, {
     method: "POST",
     body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * What a version is expected to do differently, and against which version.
+ *
+ * Only accepted while the version has no shots; an empty `prediction` takes one
+ * back. The server refuses the rest with a code of its own.
+ */
+export async function setVersionPrediction(
+  id: number,
+  versionId: number,
+  body: VersionPredictionWrite,
+): Promise<SetVersionRow> {
+  return fetchApi<SetVersionRow>(`/sets/${id}/versions/${versionId}/prediction`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function setVersionOutcome(
+  id: number,
+  versionId: number,
+  body: VersionOutcomeWrite,
+): Promise<SetVersionRow> {
+  return fetchApi<SetVersionRow>(`/sets/${id}/versions/${versionId}/outcome`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function clearVersionOutcome(id: number, versionId: number): Promise<SetVersionRow> {
+  return fetchApi<SetVersionRow>(`/sets/${id}/versions/${versionId}/outcome`, {
+    method: "DELETE",
+  });
+}
+
+/** Go back to an earlier recipe. Appends a version; writes nothing to the machine. */
+export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetVersionRow> {
+  return fetchApi<SetVersionRow>(`/sets/${id}/rollback`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

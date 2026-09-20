@@ -1,27 +1,77 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Undo2 } from "lucide-react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SetVersionDetail, ShotJudgement } from "@/api/types";
+import { VersionOutcomeControl } from "@/components/sets/VersionOutcomeControl";
+import { VersionPredictionEditor } from "@/components/sets/VersionPredictionEditor";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
-import { versionRatio, versionSummary } from "@/lib/sets";
+import { labelSummary, versionRatio, versionSummary } from "@/lib/sets";
 import { formatSeconds, formatTime, profileName } from "@/lib/shots";
+import { cn } from "@/lib/utils";
+import { RollbackButton } from "./RollbackButton";
 
 /**
- * A Set's history, newest first, with the shots that were pulled under each
- * version.
+ * A Set's history as an experiment log, newest first.
  *
- * The diff against the parent is the point of the whole page: a version on its
- * own is a list of numbers, and "18 g → 18.5 g, grind 22 → 21" plus one
- * sentence of intent is a record of an experiment. Version 1 shows no diff
- * because it is a baseline rather than a change to anything — rendering it as
- * "six fields set" would bury the versions worth reading.
+ * Each entry is one whole experiment: what changed against the parent, what you
+ * were trying, what you predicted it would do, the shots it produced with how
+ * you labelled them, and how the prediction turned out. The diff was always the
+ * point of this page; the prediction and the outcome are what turn "here is
+ * what I changed" into "here is what I expected and here is what happened".
+ *
+ * Version 1 shows no diff because it is a baseline rather than a change to
+ * anything. A version a later roll back stepped over is muted but fully
+ * readable: it was a real attempt, it is just not the line being brewed.
  */
+/**
+ * "Add a prediction" / "Edit prediction", and the reason when it is closed.
+ *
+ * A recorded grade locks the words it grades: the server answers a write with
+ * `VERSION_HAS_OUTCOME`, so the button is disabled and the way out — clear the
+ * grade first — is a sentence on the page tied to it, not a tooltip on a
+ * control nothing can focus. Its own component so it can own a `useId`: the
+ * timeline renders one of these per version.
+ */
+function PredictionEditorButton({
+  version,
+  onEdit,
+}: {
+  version: SetVersionDetail["version"];
+  onEdit: () => void;
+}) {
+  const lockId = useId();
+  const locked = version.outcome != null;
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={locked}
+        aria-describedby={locked ? lockId : undefined}
+        onClick={onEdit}
+      >
+        {version.prediction ? "Edit prediction" : "Add a prediction"}
+      </Button>
+      {locked ? (
+        <p id={lockId} className="text-muted-foreground text-xs" data-testid="prediction-locked">
+          Clear the outcome first — it grades this prediction as it is written.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function VersionTimeline({
+  setId,
   versions,
   judgements,
 }: {
+  setId: number;
   versions: SetVersionDetail[];
   judgements: Record<string, ShotJudgement>;
 }) {
@@ -31,6 +81,8 @@ export function VersionTimeline({
   const vocab = useVocabulary();
   const originLabel = (origin: string) =>
     vocab.data?.origins.find((term) => term.value === origin)?.label ?? origin;
+  const [editing, setEditing] = useState<number | null>(null);
+  const current = versions[0]?.version.id;
 
   return (
     <ol className="space-y-3" data-testid="version-timeline">
@@ -39,7 +91,8 @@ export function VersionTimeline({
           key={entry.version.id}
           data-testid="version-entry"
           data-version={entry.version.version_no}
-          className="rounded-lg border border-border"
+          data-dead-end={entry.dead_end ? "yes" : "no"}
+          className={cn("rounded-lg border border-border", entry.dead_end && "opacity-60")}
         >
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b px-3 py-2">
             <div className="flex items-baseline gap-2">
@@ -50,6 +103,15 @@ export function VersionTimeline({
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {entry.dead_end ? (
+                <Badge
+                  variant="outline"
+                  data-testid="dead-end"
+                  title="A later roll back went back past this version."
+                >
+                  dead end
+                </Badge>
+              ) : null}
               {entry.version.profile_label ? (
                 <Badge variant="outline">{entry.version.profile_label}</Badge>
               ) : null}
@@ -63,12 +125,6 @@ export function VersionTimeline({
           </div>
 
           <div className="space-y-2 px-3 py-2">
-            {entry.version.intent ? (
-              <p className="text-sm" data-testid="version-intent">
-                {entry.version.intent}
-              </p>
-            ) : null}
-
             {entry.changes.length > 0 ? (
               <ul className="flex flex-wrap gap-2" data-testid="version-changes">
                 {entry.changes.map((change) => (
@@ -95,6 +151,59 @@ export function VersionTimeline({
                   : "The starting point."}
               </p>
             )}
+
+            {entry.version.intent ? (
+              <p className="text-sm" data-testid="version-intent">
+                {entry.version.intent}
+              </p>
+            ) : null}
+
+            <div className="space-y-1" data-testid="version-prediction">
+              {entry.version.prediction ? (
+                <p className="text-sm">
+                  <span className="text-muted-foreground text-xs">
+                    Version prediction
+                    {entry.version.compares_to_version_no
+                      ? ` · compared to v${entry.version.compares_to_version_no}`
+                      : ""}
+                  </span>
+                  <br />
+                  {entry.version.prediction}
+                </p>
+              ) : (
+                <p className="text-muted-foreground text-xs">No prediction.</p>
+              )}
+              {/* Only while the version has no shots: the server refuses the
+                  write afterwards, so offering the field would be a lie. */}
+              {entry.version.shot_count === 0 ? (
+                editing === entry.version.id ? (
+                  <VersionPredictionEditor
+                    setId={setId}
+                    version={entry.version}
+                    versions={versions}
+                    onDone={() => setEditing(null)}
+                  />
+                ) : (
+                  <PredictionEditorButton
+                    version={entry.version}
+                    onEdit={() => setEditing(entry.version.id)}
+                  />
+                )
+              ) : null}
+            </div>
+
+            {entry.version.restores_version_no ? (
+              <p className="text-muted-foreground text-xs" data-testid="version-restores">
+                Restores v{entry.version.restores_version_no}. Nothing was sent to the machine.
+              </p>
+            ) : null}
+
+            <p className="text-muted-foreground text-xs" data-testid="version-labels">
+              <Link to={`/shots?set=${setId}`} className="underline underline-offset-2">
+                {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
+              </Link>
+              {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}
+            </p>
 
             {entry.shots.length > 0 ? (
               <ul className="divide-y divide-border" data-testid="version-shots">
@@ -123,6 +232,22 @@ export function VersionTimeline({
             ) : (
               <p className="text-muted-foreground text-xs">No shots on this version yet.</p>
             )}
+
+            <VersionOutcomeControl
+              setId={setId}
+              version={entry.version}
+              gradable={entry.labels.keep + entry.labels.improve > 0}
+            />
+
+            {entry.version.id !== current ? (
+              <RollbackButton
+                setId={setId}
+                versionId={entry.version.id}
+                versionNo={entry.version.version_no}
+                label="Roll back to this version"
+                icon={<Undo2 className="size-3.5" aria-hidden="true" />}
+              />
+            ) : null}
           </div>
         </li>
       ))}

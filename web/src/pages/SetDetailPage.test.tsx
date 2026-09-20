@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SetDetailPage } from "@/pages/SetDetailPage";
 import { knowledgeInsight, suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { setDetail, trends, vocabulary } from "@/test/setsFixtures";
+import { labelCounts, setDetail, trackRecord, trends, vocabulary } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -58,6 +58,7 @@ const {
   analyseSet,
   getVocabulary,
   getKnowledgeInsights,
+  rollbackSet,
 } = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
@@ -67,6 +68,7 @@ const {
   analyseSet: vi.fn(),
   getVocabulary: vi.fn(),
   getKnowledgeInsights: vi.fn(),
+  rollbackSet: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -78,6 +80,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   analyseSet,
   getVocabulary,
   getKnowledgeInsights,
+  rollbackSet,
 }));
 
 beforeEach(() => {
@@ -98,6 +101,7 @@ beforeEach(() => {
   });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
+  rollbackSet.mockResolvedValue(setDetail().versions[0].version);
 });
 
 describe("SetDetailPage", () => {
@@ -141,6 +145,110 @@ describe("SetDetailPage", () => {
       grind_setting: "20",
       grind_value: 20,
     });
+  });
+
+  it("sends the prediction and what it is compared to with a new version", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await user.type(screen.getByLabelText("What are you trying?"), "one finer");
+    await user.type(screen.getByLabelText("Version prediction"), "less sour");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    const [, patch] = addSetVersion.mock.calls[0];
+    // The comparison defaults to the current version, which is what "less sour"
+    // means when you have just changed something.
+    expect(patch).toMatchObject({
+      intent: "one finer",
+      prediction: "less sour",
+      compares_to_version_id: 22,
+    });
+  });
+
+  it("sends an explicit null when a new version is compared to nothing", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await user.type(screen.getByLabelText("What are you trying?"), "a fresh baseline");
+    await user.type(screen.getByLabelText("Version prediction"), "  a clean 1:2  ");
+    await user.selectOptions(screen.getByLabelText("Compared to"), "");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    const [, patch] = addSetVersion.mock.calls[0];
+    // Null, not omitted: omitted means "against the parent", which is the
+    // opposite of what "Nothing" says. The text arrives trimmed.
+    expect(patch.compares_to_version_id).toBeNull();
+    expect(patch.prediction).toBe("a clean 1:2");
+  });
+
+  it("leaves the comparison off entirely when there is no prediction", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await user.type(screen.getByLabelText("What are you trying?"), "one finer");
+    await user.click(screen.getByRole("button", { name: "Record the version" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    const [, patch] = addSetVersion.mock.calls[0];
+    expect(patch).not.toHaveProperty("compares_to_version_id");
+  });
+
+  it("leads with the track record once something has been graded", async () => {
+    getSet.mockResolvedValue(
+      setDetail({ track_record: trackRecord({ held: 2, failed: 1, graded: 3, open: 1 }) }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const record = await screen.findByTestId("track-record");
+    expect(record).toHaveTextContent("2 of 3 predictions held");
+    expect(record).toHaveTextContent("1 open");
+  });
+
+  it("says nothing about a track record before anything is graded", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("version-timeline");
+    // Zero out of zero is an absence, not a modest score.
+    expect(screen.queryByTestId("track-record")).not.toBeInTheDocument();
+  });
+
+  it("offers the way back when the current version is going badly", async () => {
+    const user = setupUser();
+    const detail = setDetail({ rollback_target_version_id: 21 });
+    detail.versions[0].labels = labelCounts({ improve: 2 });
+    detail.versions[1].labels = labelCounts({ keep: 3 });
+    getSet.mockResolvedValue(detail);
+    renderWithQueryClient(<SetDetailPage />);
+
+    const offer = await screen.findByRole("button", {
+      name: "Roll back to v1, the last version with Keep shots",
+    });
+    await user.click(offer);
+    await user.click(screen.getAllByRole("button", { name: "Roll back to v1" })[0]);
+
+    await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
+    expect(rollbackSet.mock.calls[0][1]).toEqual({
+      to_version_id: 21,
+      intent: "",
+      prediction: "",
+    });
+  });
+
+  it("does not nag when the current version has a Keep shot of its own", async () => {
+    const detail = setDetail({ rollback_target_version_id: 21 });
+    detail.versions[0].labels = labelCounts({ keep: 1, improve: 2 });
+    getSet.mockResolvedValue(detail);
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("version-timeline");
+    expect(
+      screen.queryByRole("button", { name: /the last version with Keep shots/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the ratio off the duration axis so it is not a flat line", async () => {

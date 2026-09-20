@@ -1,0 +1,115 @@
+import type { QueryClient } from "@tanstack/react-query";
+import { waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useRollbackSet, useSetVersionOutcome, useSetVersionPrediction } from "@/hooks/useSets";
+import { queryKeys } from "@/lib/queryKeys";
+import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
+import { version } from "@/test/setsFixtures";
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  Toaster: () => null,
+}));
+
+const { setVersionPrediction, setVersionOutcome, clearVersionOutcome, rollbackSet } = vi.hoisted(
+  () => ({
+    setVersionPrediction: vi.fn(),
+    setVersionOutcome: vi.fn(),
+    clearVersionOutcome: vi.fn(),
+    rollbackSet: vi.fn(),
+  }),
+);
+vi.mock("@/api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/client")>()),
+  setVersionPrediction,
+  setVersionOutcome,
+  clearVersionOutcome,
+  rollbackSet,
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  setVersionPrediction.mockResolvedValue(version());
+  setVersionOutcome.mockResolvedValue(version());
+  clearVersionOutcome.mockResolvedValue(version());
+  rollbackSet.mockResolvedValue(version({ version_no: 3, restores_version_no: 1 }));
+});
+
+/**
+ * What each Set-side write invalidates, and — just as much — what it does not.
+ *
+ * `invalidateQueries` is spied rather than the cache inspected: what is under
+ * test is the *breadth* of each call, and a key that is one level too wide
+ * refetches every open shots list on a page that only needed a badge redrawn.
+ * That is invisible in a passing render test and obvious here.
+ */
+function spyOn(queryClient: QueryClient): readonly unknown[][] {
+  const keys: unknown[][] = [];
+  const original = queryClient.invalidateQueries.bind(queryClient);
+  vi.spyOn(queryClient, "invalidateQueries").mockImplementation((filters) => {
+    keys.push([...((filters?.queryKey ?? []) as readonly unknown[])]);
+    return original(filters);
+  });
+  return keys;
+}
+
+describe("the Set-side writes invalidate no more than they changed", () => {
+  it("an outcome touches the Set detail alone", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetVersionOutcome());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      setId: 3,
+      versionId: 22,
+      body: { outcome: "held", note: "" },
+    });
+
+    await waitFor(() => expect(keys.length).toBeGreaterThan(0));
+    expect(keys).toEqual([queryKeys.sets.detail("3")]);
+    // Nothing about a shot changes when a version is graded.
+    expect(keys.flat()).not.toContain("shots");
+  });
+
+  it("clearing an outcome is the same write and the same breadth", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetVersionOutcome());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ setId: 3, versionId: 22, body: null });
+
+    await waitFor(() => expect(keys.length).toBeGreaterThan(0));
+    expect(keys).toEqual([queryKeys.sets.detail("3")]);
+  });
+
+  it("a prediction touches the Set detail and the shot details, not the lists", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetVersionPrediction());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      setId: 3,
+      versionId: 22,
+      body: { prediction: "less bitter" },
+    });
+
+    await waitFor(() => expect(keys.length).toBe(2));
+    expect(keys).toContainEqual(queryKeys.sets.detail("3"));
+    expect(keys).toContainEqual(["shots", "detail"]);
+    // Not `["shots"]`: that would refetch every open list and its filters.
+    expect(keys).not.toContainEqual(queryKeys.shots.all);
+  });
+
+  it("a roll back sweeps the Sets, and nothing else", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useRollbackSet());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      setId: 3,
+      body: { to_version_id: 21, intent: "", prediction: "" },
+    });
+
+    await waitFor(() => expect(keys.length).toBe(1));
+    // The whole `sets` prefix: the list's current-version row and the trend
+    // chart's version boundaries both moved. No shot did — the version a roll
+    // back appends has none — so no shot query is touched at all.
+    expect(keys).toEqual([queryKeys.sets.all]);
+  });
+});

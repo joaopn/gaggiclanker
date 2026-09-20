@@ -10,6 +10,7 @@ import {
   activateSet,
   addSetVersion,
   archiveSet,
+  clearVersionOutcome,
   createSet,
   deleteJudgement,
   getSet,
@@ -18,9 +19,13 @@ import {
   getShot,
   putJudgement,
   putShotSetVersion,
+  rollbackSet,
+  setVersionOutcome,
+  setVersionPrediction,
 } from "@/api/client";
 import type {
   JudgementWrite,
+  RollbackWrite,
   SetCreate,
   SetDetailData,
   SetListData,
@@ -30,8 +35,15 @@ import type {
   SetVersionRow,
   ShotDetailRow,
   ShotJudgement,
+  VersionOutcomeWrite,
+  VersionPredictionWrite,
 } from "@/api/types";
-import { invalidateSets, invalidateShots } from "@/lib/invalidate";
+import {
+  invalidateSetDetail,
+  invalidateSets,
+  invalidateShotDetails,
+  invalidateShots,
+} from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -95,6 +107,83 @@ export function useAddSetVersion(): UseMutationResult<
     onSuccess: (version) => toast.success(`Version ${version.version_no} recorded`),
     onError: (error) => toast.error(`Could not add the version: ${error.message}`),
     onSettled: () => invalidateSets(queryClient),
+  });
+}
+
+/**
+ * The three writes that are not a new version: the prediction, the outcome and
+ * the roll back.
+ *
+ * Each invalidates the least that can have changed. A prediction is read on a
+ * shot through that shot's own detail, so a prediction write reaches the shot
+ * details and no other shots query — not the lists, not the sync counts. An
+ * outcome is on the Set page alone: no list column and no chart series shows
+ * one. A roll back appends a version, which does move the Sets list's current
+ * version and the trend chart, so that one sweeps the whole `sets` prefix — and
+ * nothing else, because the version it appends carries no shots.
+ */
+export function useSetVersionPrediction(): UseMutationResult<
+  SetVersionRow,
+  Error,
+  { setId: number; versionId: number; body: VersionPredictionWrite }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, versionId, body }) => setVersionPrediction(setId, versionId, body),
+    onSuccess: (version) =>
+      toast.success(
+        version.prediction ? `Prediction recorded on v${version.version_no}` : "Prediction removed",
+      ),
+    onError: (error) => toast.error(`Could not save the prediction: ${error.message}`),
+    onSettled: (_data, _error, variables) => {
+      void invalidateSetDetail(queryClient, String(variables.setId));
+      void invalidateShotDetails(queryClient);
+    },
+  });
+}
+
+export function useSetVersionOutcome(): UseMutationResult<
+  SetVersionRow,
+  Error,
+  { setId: number; versionId: number; body: VersionOutcomeWrite | null }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    // One hook for recording and for clearing: they are the same button's two
+    // answers, and a second hook would need the same invalidations spelled out
+    // again.
+    mutationFn: ({ setId, versionId, body }) =>
+      body === null
+        ? clearVersionOutcome(setId, versionId)
+        : setVersionOutcome(setId, versionId, body),
+    onSuccess: (version) => toast.success(version.outcome ? "Outcome recorded" : "Outcome cleared"),
+    onError: (error) => toast.error(`Could not save the outcome: ${error.message}`),
+    onSettled: (_data, _error, variables) => {
+      void invalidateSetDetail(queryClient, String(variables.setId));
+    },
+  });
+}
+
+export function useRollbackSet(): UseMutationResult<
+  SetVersionRow,
+  Error,
+  { setId: number; body: RollbackWrite }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, body }) => rollbackSet(setId, body),
+    onSuccess: (version) =>
+      toast.success(
+        `Version ${version.version_no} brings v${version.restores_version_no} back. Nothing was sent to the machine.`,
+      ),
+    onError: (error) => toast.error(`Could not roll back: ${error.message}`),
+    onSettled: () => {
+      // The whole prefix, and only it: a new version moves the Sets list's
+      // current-version row and adds a boundary to the trend chart, but it
+      // moves no shot — the version it appends has none — so nothing a shot
+      // detail renders has changed.
+      void invalidateSets(queryClient);
+    },
   });
 }
 

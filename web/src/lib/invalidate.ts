@@ -47,6 +47,37 @@ export function invalidateSets(queryClient: QueryClient): Promise<void> {
 }
 
 /**
+ * One Set's page: its detail, and nothing else under the `sets` prefix.
+ *
+ * For the writes that change what one Set page renders and nothing a list or a
+ * chart shows — recording a prediction, grading one. The Sets list carries a
+ * name, a recipe and a version count; the trend chart carries scores and
+ * ratings. Neither shows a prediction or an outcome, so sweeping the whole
+ * prefix would refetch two queries to redraw a badge.
+ */
+export function invalidateSetDetail(queryClient: QueryClient, setId: string): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: queryKeys.sets.detail(setId) })
+    .then(() => undefined);
+}
+
+/**
+ * Every open shot detail, and no other shots query.
+ *
+ * A version's prediction reaches a shot through that shot's own detail
+ * (`set_version`), and it is the only thing about a shot that a Set-side write
+ * can change. The shots *list* has no prediction column and the sync counts
+ * have nothing to do with it, so `invalidateShots` — which sweeps `["shots"]`
+ * and therefore every open list and its filters — would be a page-wide refetch
+ * to update a strip in one panel.
+ */
+export function invalidateShotDetails(queryClient: QueryClient): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: [...queryKeys.shots.all, "detail"] })
+    .then(() => undefined);
+}
+
+/**
  * Analyses and the suggestions hanging off them.
  *
  * Accepting a suggestion writes a Set version, so the caller invalidates `sets`
