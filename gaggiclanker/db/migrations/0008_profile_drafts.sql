@@ -111,12 +111,29 @@ CREATE INDEX idx_device_writes_provenance ON device_writes(device_id, kind, resu
 -- we sent and what the machine served back. It is the evidence for the one
 -- failure mode nobody can debug from a log line — "the machine says it saved it"
 -- is not the same as "the machine stored what we sent".
+--
+-- `set_id`, `prediction` and `compares_to_version_id` are the experiment half,
+-- and only a draft proposed inside a Set's conversation has them. A profile
+-- change is a Set change: the temperature, the pressure curve and the
+-- pre-infusion are recipe as much as the grind is, so a draft argued in a Set's
+-- room owes the same falsifiable prediction a proposed grind change owes. It
+-- becomes a Set change when the person pushes the draft **for that Set**, and
+-- that is the one moment the prediction is recorded on the version the push
+-- creates. Pushed for a different Set, or typed by hand, or proposed in the
+-- General folder: no prediction, because nobody made one about that Set.
+--
+-- `set_id` has no foreign key on purpose, for the reason `source_analysis_id`
+-- has none: the draft is a record of what was proposed and when, and it must
+-- not vanish because a Set was cleaned up underneath it.
 CREATE TABLE profile_drafts (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
     base_version_id          INTEGER NOT NULL REFERENCES profile_versions(id),
     draft_version_id         INTEGER REFERENCES profile_versions(id),
     source_analysis_id       INTEGER,
     source_suggestion_id     INTEGER,
+    set_id                   INTEGER,
+    prediction               TEXT    NOT NULL DEFAULT '',
+    compares_to_version_id   INTEGER REFERENCES set_versions(id) ON DELETE SET NULL,
     -- The draft this one refines. A refinement supersedes its parent rather
     -- than editing it, so the advice that produced each attempt stays readable.
     parent_draft_id          INTEGER REFERENCES profile_drafts(id),

@@ -222,6 +222,15 @@ class ProfileDraftService:
             analysis_id=analysis_id,
             suggestion_id=suggestion_id,
             parent_draft_id=parent_draft_id,
+            # A refinement is the next attempt at the same idea, so it is an
+            # attempt on the same experiment: the Set it was made for and the
+            # prediction it owes come across from the draft it supersedes.
+            # Dropping them would quietly turn a Set's second attempt into a
+            # draft belonging to nothing, and the push would record no
+            # prediction on the version it creates.
+            set_id=parent.set_id if parent is not None else None,
+            prediction=parent.prediction if parent is not None else "",
+            compares_to_version_id=(parent.compares_to_version_id if parent is not None else None),
         )
         if parent is not None:
             await self.drafts.supersede(parent.id)
@@ -474,20 +483,64 @@ class ProfileDraftService:
         carries both identities — the content-hashed `profile_version_id` and
         the device id the firmware assigned — because "what did this Set brew"
         and "which profile on the machine is that" are different questions.
+
+        **And it carries the prediction, if this is the Set the draft was made
+        for.** A profile change argued in a Set's conversation is a change to
+        that experiment and owes the same falsifiable guess a proposed grind
+        change owes; this is the moment it becomes one, because until the person
+        pushed it nothing about the Set had changed. Pushed for a different Set
+        the prediction is left off — it was about the other experiment and says
+        nothing about this one — and a draft nobody predicted anything about
+        records what it always did.
         """
         if draft.draft_version_id is None:  # pragma: no cover - a pushed draft has one
             return None
-        origin = "analysis" if draft.source_analysis_id is not None else "manual"
+        experiment = await self._experiment(draft, set_id)
+        # Who proposed this recipe, which is what "did following the advice
+        # help" is a GROUP BY on. An analysis stays an analysis. Otherwise it is
+        # `chat` exactly when this push is recording the agent's own prediction
+        # — the draft was argued in this Set's conversation and is being pushed
+        # for that Set — because a profile change the agent proposed filed under
+        # `manual` would credit the person with the model's idea.
+        origin = (
+            "analysis"
+            if draft.source_analysis_id is not None
+            else ("chat" if experiment else "manual")
+        )
         return await self.sets.add_version(
             set_id,
-            SetVersionPatch(
-                profile_version_id=draft.draft_version_id,
-                pushed_device_profile_id=draft.pushed_device_profile_id,
-                origin=origin,  # type: ignore[arg-type]
-                origin_analysis_id=draft.source_analysis_id,
-                intent=draft.change_summary[:500],
+            SetVersionPatch.model_validate(
+                {
+                    "profile_version_id": draft.draft_version_id,
+                    "pushed_device_profile_id": draft.pushed_device_profile_id,
+                    "origin": origin,
+                    "origin_analysis_id": draft.source_analysis_id,
+                    "intent": draft.change_summary[:500],
+                    **experiment,
+                }
             ),
         )
+
+    async def _experiment(self, draft: ProfileDraftRow, set_id: int) -> dict[str, Any]:
+        """The prediction this push records on the Set version, if it records one.
+
+        Nothing unless the draft was made for **this** Set and carries a
+        prediction. When it does, the comparison is the version the prediction
+        named, and the current version when that one is no longer a version of
+        this Set — a comparison against something that is not there would leave
+        the log rendering a dangling reference. Sent explicitly either way, so
+        `add_version` never quietly substitutes its own default.
+        """
+        if draft.set_id != set_id or not draft.prediction:
+            return {}
+        compares_to = draft.compares_to_version_id
+        if compares_to is not None:
+            if await self.sets.version_of_set(set_id, compares_to) is None:
+                compares_to = None
+        if compares_to is None:
+            current = await self.sets.current_version(set_id)
+            compares_to = current.id if current is not None else None
+        return {"prediction": draft.prediction, "compares_to_version_id": compares_to}
 
     # ── reading ──────────────────────────────────────────────────────
 

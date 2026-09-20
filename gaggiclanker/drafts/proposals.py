@@ -108,8 +108,18 @@ class DraftProposals:
         document: dict[str, Any],
         change_summary: str = "",
         notes: str = "",
+        set_id: int | None = None,
+        prediction: str = "",
+        compares_to_version_id: int | None = None,
     ) -> ProfileDraftRow:
-        """A draft somebody typed, or a tool proposed. Same layers, no model involved."""
+        """A draft somebody typed, or a tool proposed. Same layers, no model involved.
+
+        The last three are the experiment half and travel together: a draft
+        proposed inside one Set's conversation says which Set it is for and what
+        it is expected to do differently, and the push records that on the Set
+        version it creates. A draft with none of them — typed by hand, or
+        proposed where there is no experiment — is exactly what it was before.
+        """
         base = await self.base_profile(base_version_id)
         try:
             candidate = Profile.model_validate(document)
@@ -124,6 +134,9 @@ class DraftProposals:
             prepared=prepared,
             change_summary=change_summary or "Edited by hand.",
             notes=notes,
+            set_id=set_id,
+            prediction=prediction,
+            compares_to_version_id=compares_to_version_id,
         )
 
     async def store(
@@ -136,6 +149,9 @@ class DraftProposals:
         analysis_id: int | None = None,
         suggestion_id: int | None = None,
         parent_draft_id: int | None = None,
+        set_id: int | None = None,
+        prediction: str = "",
+        compares_to_version_id: int | None = None,
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document."""
         version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
@@ -153,6 +169,9 @@ class DraftProposals:
                 source_analysis_id=analysis_id,
                 source_suggestion_id=suggestion_id,
                 parent_draft_id=parent_draft_id,
+                set_id=set_id,
+                prediction=prediction,
+                compares_to_version_id=compares_to_version_id,
                 change_summary=change_summary,
                 stop_condition_changes=[
                     change.model_dump(mode="json") for change in prepared.stop_condition_changes

@@ -71,6 +71,17 @@ class ProfileDraftWrite(BaseModel):
     #: Which file on the display the base version was mirrored under when this
     #: draft was made. NULL when it was not on the machine at all.
     base_device_profile_id: str | None = None
+    #: The Set this was proposed for, when it was proposed inside one Set's
+    #: conversation. It is what makes the prediction below mean something: a
+    #: prediction is about one experiment, and pushing this draft for any other
+    #: Set records none.
+    set_id: int | None = None
+    #: What this profile change is expected to do differently. Empty for a draft
+    #: nobody predicted anything about — one typed by hand, or proposed in a
+    #: conversation that is about no Set.
+    prediction: str = ""
+    #: Which version of that Set the prediction is measured against.
+    compares_to_version_id: int | None = None
     change_summary: str = ""
     stop_condition_changes: list[Any] = Field(default_factory=list)
     clamp_changes: list[Any] = Field(default_factory=list)
@@ -89,6 +100,17 @@ class ProfileDraftRow(BaseModel):
     source_suggestion_id: int | None = None
     parent_draft_id: int | None = None
     base_device_profile_id: str | None = None
+    #: The Set this was proposed for, the prediction it carries, and the version
+    #: that prediction is against. All three are empty on a draft nobody
+    #: predicted anything about, which is most of them.
+    set_id: int | None = None
+    #: Joined, so a card can say which experiment this belongs to without a
+    #: second request. NULL when the Set has since been removed.
+    set_name: str | None = None
+    prediction: str = ""
+    compares_to_version_id: int | None = None
+    #: The compared-to version's number, joined in: a reader thinks in "v3".
+    compares_to_version_no: int | None = None
     #: Whether the machine still holds the profile this was drafted from.
     #:
     #: Computed in SQL rather than stored, because it is a fact about *now*: a
@@ -126,6 +148,8 @@ _SELECT = """
     SELECT d.*,
            base.label AS base_label,
            drafted.label AS draft_label,
+           s.name AS set_name,
+           cmp.version_no AS compares_to_version_no,
            CASE
                WHEN d.base_device_profile_id IS NULL THEN 1
                ELSE EXISTS (
@@ -138,6 +162,8 @@ _SELECT = """
     FROM profile_drafts d
     LEFT JOIN profile_versions base ON base.id = d.base_version_id
     LEFT JOIN profile_versions drafted ON drafted.id = d.draft_version_id
+    LEFT JOIN sets s ON s.id = d.set_id
+    LEFT JOIN set_versions cmp ON cmp.id = d.compares_to_version_id
 """
 
 
@@ -150,10 +176,11 @@ class ProfileDraftsRepository(Repository):
             """
             INSERT INTO profile_drafts
                 (base_version_id, draft_version_id, source_analysis_id, source_suggestion_id,
-                 parent_draft_id, base_device_profile_id, change_summary,
+                 parent_draft_id, base_device_profile_id, set_id, prediction,
+                 compares_to_version_id, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
                  created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
             """,
             (
                 write.base_version_id,
@@ -162,6 +189,9 @@ class ProfileDraftsRepository(Repository):
                 write.source_suggestion_id,
                 write.parent_draft_id,
                 write.base_device_profile_id,
+                write.set_id,
+                write.prediction,
+                write.compares_to_version_id,
                 write.change_summary,
                 dumps(write.stop_condition_changes),
                 dumps(write.clamp_changes),

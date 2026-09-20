@@ -22,6 +22,8 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
+from gaggiclanker.db.repos.sets import SetVersionPatch
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
@@ -391,6 +393,214 @@ async def test_a_push_can_record_the_result_as_a_new_set_version(
     assert version["pushed_device_profile_id"] == body["draft"]["pushed_device_profile_id"]
     assert version["origin"] == "manual"
     assert version["profile_label"] == "9 Bar Espresso [AI]"
+    # Nobody predicted anything about this draft, so the version records none.
+    assert version["prediction"] == ""
+    assert version["compares_to_version_id"] is None
+
+
+async def _drafted_for(
+    app: FastAPI,
+    set_id: int | None,
+    *,
+    prediction: str = "Compared to v1: less of the dry finish, and no slower.",
+    compares_to_version_id: int | None = None,
+) -> dict[str, Any]:
+    """A draft as a Set's conversation leaves one: its Set and its prediction.
+
+    Through `DraftProposals`, which is exactly what the chat tool is handed —
+    the archive and the safety bounds, and nothing that could push.
+    """
+    profile = await base_profile(app)
+    row = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document=lower_pressure(profile, 8.0),
+        change_summary="Down to 8 bar.",
+        notes="Proposed in chat.",
+        set_id=set_id,
+        prediction=prediction,
+        compares_to_version_id=compares_to_version_id,
+    )
+    return dict(row.model_dump(mode="json"))
+
+
+async def test_pushing_a_set_s_own_draft_records_its_prediction_on_the_version(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """A profile change argued in a Set's room becomes that Set's next experiment.
+
+    The push itself is unchanged — approve, save, read back, compare, mirror,
+    audit — and what is new is only what the Set version it records carries.
+    """
+    app, client = writes_on
+    versions = data(await client.get(f"/api/sets/{a_set}"))["versions"]
+    current_id = versions[0]["version"]["id"]
+    draft = await _drafted_for(app, a_set, compares_to_version_id=current_id)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    body = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+    )
+
+    assert body["draft"]["status"] == "pushed"
+    version = body["set_version"]
+    assert version["prediction"].startswith("Compared to v1")
+    assert version["compares_to_version_id"] == current_id
+    assert version["compares_to_version_no"] == 1
+    # And the rest of the version is what it always was.
+    assert version["profile_version_id"] == draft["draft_version_id"]
+    assert version["pushed_device_profile_id"] == body["draft"]["pushed_device_profile_id"]
+
+
+async def test_a_prediction_against_a_version_of_another_set_falls_back_to_the_current_one(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """A comparison that is not this Set's would render as a dangling reference."""
+    app, client = writes_on
+    bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
+    other = data(
+        await client.post(
+            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "activate": False}
+        )
+    )
+    theirs = data(await client.get(f"/api/sets/{other['id']}"))["versions"][0]["version"]["id"]
+    draft = await _drafted_for(app, a_set, compares_to_version_id=theirs)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    version = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+    )["set_version"]
+
+    mine = data(await client.get(f"/api/sets/{a_set}"))["versions"]
+    assert version["compares_to_version_id"] != theirs
+    assert version["compares_to_version_id"] in {entry["version"]["id"] for entry in mine}
+
+
+async def test_the_version_a_pushed_set_draft_records_says_the_chat_proposed_it(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """ "Did following the advice help" is a GROUP BY on origin.
+
+    A profile change the agent argued for, filed under `manual`, would credit
+    the person with the model's idea — so the version records `chat` exactly
+    when the push is also recording the agent's prediction.
+    """
+    app, client = writes_on
+    draft = await _drafted_for(app, a_set)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    version = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+    )["set_version"]
+
+    assert version["origin"] == "chat"
+
+
+async def test_a_hand_drafted_push_stays_manual(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
+) -> None:
+    app, client = writes_on
+    draft = await a_draft(app, client, provider)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    version = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+    )["set_version"]
+
+    assert version["origin"] == "manual"
+
+
+async def test_a_draft_from_an_analysis_stays_an_analysis(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int, analysis_id: int
+) -> None:
+    """Even when it also carries a Set and a prediction: provenance first."""
+    app, client = writes_on
+    profile = await base_profile(app)
+    row = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document=lower_pressure(profile, 8.0),
+        change_summary="Down to 8 bar.",
+        set_id=a_set,
+        prediction="Compared to v1: less of the dry finish.",
+    )
+    await app.state.db.execute(
+        "UPDATE profile_drafts SET source_analysis_id = ? WHERE id = ?", (analysis_id, row.id)
+    )
+    await client.post(f"/api/profile-drafts/{row.id}/approve", json={})
+
+    version = data(await client.post(f"/api/profile-drafts/{row.id}/push", json={"set_id": a_set}))[
+        "set_version"
+    ]
+
+    assert version["origin"] == "analysis"
+    assert version["prediction"].startswith("Compared to v1")
+
+
+async def test_a_push_for_a_set_retires_the_change_waiting_on_it(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """The Set moved on, so a proposal argued against the old recipe is not a question."""
+    app, client = writes_on
+    made = await SetProposalsRepository(app.state.db).create(
+        a_set,
+        ProposalWrite(
+            patch=SetVersionPatch(dose_g=18.5),
+            reason="Half a gram more.",
+            prediction="Compared to v1: a touch more body and no slower.",
+        ),
+    )
+    assert made.proposal is not None
+    draft = await _drafted_for(app, a_set)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+
+    assert await SetProposalsRepository(app.state.db).waiting(a_set) is None
+    assert data(await client.get(f"/api/sets/{a_set}"))["proposal"] is None
+
+
+async def test_a_refinement_keeps_the_set_and_the_prediction_it_was_made_for(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
+) -> None:
+    """The next attempt at the same idea is an attempt on the same experiment."""
+    app, client = live
+    first = await _drafted_for(app, a_set)
+    profile = await base_profile(app)
+    provider.script = [
+        json.dumps({"profile": lower_pressure(profile, 7.5), "change_summary": "Down to 7.5 bar."})
+    ]
+
+    refined = data(
+        await client.post(
+            f"/api/profile-drafts/{first['id']}/refine", json={"notes": "softer still"}
+        )
+    )
+
+    assert refined["set_id"] == a_set
+    assert refined["prediction"] == first["prediction"]
+    assert refined["compares_to_version_id"] == first["compares_to_version_id"]
+
+
+async def test_pushing_a_set_s_draft_for_a_different_set_records_no_prediction(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """The guess was about the other experiment and says nothing about this one."""
+    app, client = writes_on
+    bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
+    other = data(
+        await client.post(
+            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "activate": False}
+        )
+    )
+    draft = await _drafted_for(app, a_set)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    version = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": other["id"]})
+    )["set_version"]
+
+    assert version["set_id"] == other["id"]
+    assert version["prediction"] == ""
+    assert version["compares_to_version_id"] is None
 
 
 # ── the manual editor ────────────────────────────────────────────────

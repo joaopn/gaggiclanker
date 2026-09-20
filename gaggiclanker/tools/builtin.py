@@ -1221,6 +1221,24 @@ class DraftProfileInput(_Model):
         )
     )
     reason: str = Field(min_length=1, max_length=500)
+    prediction: str = Field(
+        default="",
+        max_length=1000,
+        description=(
+            "Required in a conversation about one Set, where a profile change IS a change "
+            "to the experiment: what should differ if this works, by roughly how much, on "
+            "which recorded measure, compared with which version. It is recorded on the Set "
+            "when the person pushes this draft for that Set. Not asked for elsewhere — a "
+            "draft that belongs to no experiment has nothing to be graded against."
+        ),
+    )
+    compares_to_version_id: int | None = Field(
+        default=None,
+        description=(
+            "Which version of this Set the prediction is measured against. Defaults to the "
+            "Set's current version, which is what this change would be a change to."
+        ),
+    )
 
 
 class DraftProfileOutput(_Model):
@@ -1229,6 +1247,14 @@ class DraftProfileOutput(_Model):
     change_summary: str = ""
     clamp_changes: list[dict[str, Any]] = Field(default_factory=list)
     stop_condition_changes: list[dict[str, Any]] = Field(default_factory=list)
+    #: What this draft is expected to do, and against which version — empty
+    #: outside a Set's conversation.
+    prediction: str = ""
+    compares_to_version_no: int | None = None
+    #: What the model should tell the person. A draft is further from the
+    #: machine than a proposal is from the Set: somebody has to approve it, push
+    #: it, and say which Set it is for.
+    note: str = ""
 
 
 def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -1253,11 +1279,23 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     description=(
         "Create a profile draft from an existing version plus a patch. The draft goes "
         "through the same schema, safety-policy and clamp checks as one typed by hand, "
-        "and it is NOT pushed to the machine — a person approves and pushes it."
+        "and it is NOT pushed to the machine — a person approves and pushes it. In a "
+        "conversation about one Set a profile change IS a change to the experiment, so a "
+        "prediction is required and the same rules apply as to any other change: not while "
+        "this version's own prediction is ungraded, and not while a proposal is already "
+        "waiting."
     ),
     timeout_s=30.0,
 )
 async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfileOutput:
+    """The safety layers are untouched; what a Set conversation adds is a guess.
+
+    Nothing about how a draft is built, clamped, checked or pushed changes here.
+    What changes is that a draft argued inside one Set's conversation is an
+    experiment on that Set — the temperature and the pressure curve are recipe
+    as much as the grind is — so it owes a prediction and waits its turn like
+    any other change.
+    """
     if ctx.drafts is None:
         raise ValueError(
             "draft_profile needs the running gaggiclanker application; this connection has "
@@ -1266,12 +1304,33 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     version = await ProfilesRepository(ctx.db).get_version(args.base_version_id)
     if version is None:
         raise ValueError(f"No profile version {args.base_version_id}.")
+
+    set_id: int | None = None
+    prediction = args.prediction.strip()
+    compares_to: int | None = None
+    note = (
+        "Nothing has been sent to the machine. This is a draft on the Profiles page: the "
+        "person reads the diff, approves it and pushes it, and only then does the machine "
+        "hold it."
+    )
+    if ctx.scope.kind == "set":
+        set_id = _resolve_set(ctx, None)
+        compares_to = await _draft_experiment(ctx, set_id, args, prediction)
+        note += (
+            " It is also a change to this experiment, so your prediction is recorded on the "
+            "Set as a new version when they push it for this Set — and not before. Say that: "
+            "until they push it, the Set is where it was."
+        )
+
     document = _merge(dict(version.profile or {}), args.patch)
     draft = await ctx.drafts.create_manual(
         base_version_id=args.base_version_id,
         document=document,
         change_summary=args.reason,
         notes="Proposed in chat.",
+        set_id=set_id,
+        prediction=prediction if set_id is not None else "",
+        compares_to_version_id=compares_to,
     )
     return DraftProfileOutput(
         draft_id=draft.id,
@@ -1279,7 +1338,61 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         change_summary=draft.change_summary,
         clamp_changes=[_as_dict(change) for change in draft.clamp_changes or []],
         stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes or []],
+        prediction=draft.prediction,
+        compares_to_version_no=draft.compares_to_version_no,
+        note=note,
     )
+
+
+async def _draft_experiment(
+    ctx: ToolContext, set_id: int, args: DraftProfileInput, prediction: str
+) -> int | None:
+    """The rules a profile change owes inside a Set's conversation.
+
+    The same three the proposal tool applies, in the same words, because they
+    are the same rule and a model that met one of them phrased differently
+    would read them as two: a change needs a prediction, the current version's
+    own prediction has to have been graded first, and one change waits for the
+    person before the next is put in front of them.
+    """
+    if len(prediction) < PREDICTION_MIN_CHARS:
+        raise ValueError(
+            "In a conversation about one Set a profile change is a change to the experiment, "
+            "and it cannot be proposed without a prediction. Say what should differ, by "
+            "roughly how much, on which measure the archive records, and compared with which "
+            "version — then call this again."
+        )
+    sets = SetsRepository(ctx.db)
+    current = await sets.current_version(set_id)
+    if current is not None and current.outcome_state == "open":
+        raise ValueError(
+            f"v{current.version_no}'s prediction has not been graded yet, so there is nothing "
+            "settled to build the next change on. Grade it with the person on the Set page "
+            "first, or ask for another shot on the same recipe and say what you expect from it."
+        )
+    waiting = await SetProposalsRepository(ctx.db).waiting(set_id)
+    if waiting is not None:
+        raise ValueError(
+            f"A proposal is already waiting for the person on this Set: it changes "
+            f"{_and(waiting.changed)} — “{waiting.reason}”. Talk about that one "
+            "instead of putting a second change beside it. They accept or decline it on the "
+            "Set page."
+        )
+    compares_to = args.compares_to_version_id
+    if compares_to is None:
+        # The Set's **current** version, which is the same default
+        # `propose_set_version` takes and for the same reason: a change is a
+        # change to what is being brewed now. Not the version this conversation
+        # is about — a conversation opened on v4 and still going after v6 was
+        # recorded would otherwise predict against a recipe two changes old.
+        return current.id if current is not None else None
+    if await sets.version_of_set(set_id, compares_to) is None:
+        raise ValueError(
+            "compares_to_version_id is not a version of this Set. Name one of this Set's own "
+            "versions, or leave it out to compare against the version this conversation is "
+            "about."
+        )
+    return compares_to
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

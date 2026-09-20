@@ -553,6 +553,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
             "base_version_id": fixture.profile_version_id,
             "patch": {"temperature": 92},
             "reason": "A degree cooler.",
+            "prediction": "Compared to v1: less of the dry finish, and no slower.",
         },
     )
     assert drafted.ok, drafted.data
@@ -604,7 +605,12 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
         drafted = await registry.dispatch(
             ctx,
             "draft_profile",
-            {"base_version_id": fixture.profile_version_id, "patch": {}, "reason": "As it is."},
+            {
+                "base_version_id": fixture.profile_version_id,
+                "patch": {},
+                "reason": "As it is.",
+                "prediction": "Compared to v1: nothing should differ; this is the control.",
+            },
         )
         assert drafted.ok, drafted.data
         assert (

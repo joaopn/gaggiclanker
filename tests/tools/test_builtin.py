@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetsRepository,
@@ -20,6 +21,7 @@ from gaggiclanker.db.repos.sets import (
     SetVersionWrite,
     SetWrite,
 )
+from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.tools.registry import READ_ONLY, ToolContext, registry
 from gaggiclanker.tools.sql import ALLOWED_VIEWS
 from tests.analyzer.conftest import Fixture
@@ -498,6 +500,124 @@ async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
     # And the archive is untouched: a refused call writes nothing.
     current = await SetsRepository(archive.db).current_version(archive.set_id)
     assert current is not None and current.version_no == 1
+
+
+def _with_drafts(ctx: ToolContext) -> ToolContext:
+    """The same context, able to store a draft. No machine anywhere in it.
+
+    ``DraftProposals`` is the half of the draft feature built without the
+    connection — the archive and the safety bounds — which is exactly what the
+    application hands a tool.
+    """
+    ctx.drafts = DraftProposals(ctx.db, ctx.settings)
+    return ctx
+
+
+async def test_a_profile_draft_in_a_set_conversation_needs_a_prediction(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """A profile change is a change to the experiment, so it owes a guess too."""
+    data = await refuse(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+    )
+    assert "cannot be proposed without a prediction" in data["detail"]
+
+
+async def test_a_profile_draft_outside_a_set_needs_none(ctx: ToolContext, archive: Fixture) -> None:
+    """A draft that belongs to no experiment has nothing to be graded against."""
+    data = await call(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+    )
+    assert data["prediction"] == ""
+
+    stored = await ProfileDraftsRepository(archive.db).get(data["draft_id"])
+    assert stored is not None
+    assert stored.set_id is None
+
+
+async def test_a_set_conversation_s_draft_carries_its_set_and_its_prediction(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    current = await SetsRepository(archive.db).current_version(archive.set_id)
+    assert current is not None
+
+    data = await call(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+        prediction="Compared to v1: less of the dry finish, and no slower.",
+    )
+
+    assert data["prediction"].startswith("Compared to v1")
+    assert data["compares_to_version_no"] == current.version_no
+    assert "the Set is where it was" in data["note"]
+
+    stored = await ProfileDraftsRepository(archive.db).get(data["draft_id"])
+    assert stored is not None
+    assert stored.set_id == archive.set_id
+    assert stored.compares_to_version_id == current.id
+    assert stored.status == "draft", "nothing is on the machine"
+
+
+async def test_a_profile_draft_is_blocked_while_a_prediction_is_ungraded(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """The same rule as a proposed grind change, in the same words."""
+    current = await SetsRepository(archive.db).add_version(
+        archive.set_id,
+        SetVersionPatch.model_validate(
+            {
+                "intent": "one click finer",
+                "grind_setting": "21",
+                "prediction": "Expect two seconds longer and less sour.",
+                "compares_to_version_id": None,
+            }
+        ),
+    )
+    assert current is not None
+
+    data = await refuse(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+        prediction="Compared to v2: less of the dry finish.",
+    )
+    assert f"v{current.version_no}'s prediction has not been graded" in data["detail"]
+
+
+async def test_a_profile_draft_is_blocked_while_a_proposal_is_waiting(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer, to chase the sour finish.",
+        grind_setting="20",
+        prediction=PREDICTION,
+    )
+
+    data = await refuse(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+        prediction="Compared to v1: less of the dry finish.",
+    )
+    assert "already waiting" in data["detail"]
+    assert "the grind" in data["detail"]
 
 
 async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(

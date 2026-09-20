@@ -4690,6 +4690,10 @@ export interface components {
              */
             change_summary: string;
             clamp_changes?: components["schemas"]["JsonList"];
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Compares To Version No */
+            compares_to_version_no?: number | null;
             /** Created At */
             created_at: string;
             /** Draft Label */
@@ -4707,8 +4711,17 @@ export interface components {
             notes: string;
             /** Parent Draft Id */
             parent_draft_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
             /** Pushed Device Profile Id */
             pushed_device_profile_id?: string | null;
+            /** Set Id */
+            set_id?: number | null;
+            /** Set Name */
+            set_name?: string | null;
             /** Source Analysis Id */
             source_analysis_id?: number | null;
             /** Source Suggestion Id */
