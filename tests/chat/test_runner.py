@@ -420,8 +420,10 @@ async def test_the_system_prompt_carries_the_set_scope(
     await send(runner, tasks, thread)
 
     system = chat_provider.chat_calls[0].system
-    assert "THIS CONVERSATION IS ABOUT ONE SET" in system
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in system
     assert f"Set {archive.set_id}" in system
+    # Not only the Set: the experiment, which is what a grade is made against.
+    assert "THE EXPERIMENT SO FAR" in system
 
 
 async def test_an_unscoped_thread_gets_no_scope_block(
@@ -436,7 +438,7 @@ async def test_an_unscoped_thread_gets_no_scope_block(
 
     await send(runner, tasks, plain.id, "what is a 1:2 ratio?")
 
-    assert "THIS CONVERSATION IS ABOUT ONE SET" not in chat_provider.chat_calls[0].system
+    assert "THIS CONVERSATION IS ABOUT" not in chat_provider.chat_calls[0].system
 
 
 # -- the tool surface handed to the provider -------------------------------

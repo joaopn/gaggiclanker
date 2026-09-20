@@ -1,0 +1,61 @@
+THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET
+
+Set 1: Guji natural on the Niche. Bean: Ethiopia Guji, light roast, natural process. Grinder: Niche Zero, adjusted in numbers.
+5 versions, 9 shots. Status: active, currently on the machine.
+
+THIS VERSION IS v5 — the current version of this Set
+Recipe: grind 21, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar.
+Changed against v4: Grind 22 → 21.
+What you are trying: One number finer than the Keep recipe, for a little more body.
+Prediction (compared to v4): Shot time up by 2 to 3 s against v4, yield the same, and no more bitterness.
+Outcome: open — nobody has graded it yet.
+
+THE EXPERIMENT SO FAR (oldest first)
+- v1 · grind 22, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar · 2 shots (2 Keep, 0 Improve, 0 Discard) · no prediction
+- v2 (dead end) · Grind 22 → 20 · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1: Shot time up by about 4 s and less sour. → failed — "It went slower and turned bitter rather than sweeter."
+- v3 (dead end) · Dose 18 g → 18.5 g · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v2: Shot time up by 2 s against v2. → inconclusive — "One shot, and the difference is inside the spread."
+- v4 ← what v5 is compared against · Grind 20 → 22; Dose 18.5 g → 18 g · restores v1 · 3 shots (3 Keep, 0 Improve, 0 Discard) · predicted against v3: Back within the usual spread of v1. → held — "Straight back where it was."
+- v5 ← this version · Grind 22 → 21 · 2 shots (0 Keep, 1 Improve, 1 Discard) · predicted against v4: Shot time up by 2 to 3 s against v4, yield the same, and no more bitterness. → open — nobody has graded it yet
+Track record: 1 of 3 graded predictions held (0 partly, 1 failed, 1 inconclusive); 1 open, 1 with no prediction.
+
+HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED
+This is the yardstick. A difference smaller than it is not a result.
+- Shot time: ±0.8 s, from 5 repeat shots of 1 recipe.
+- Time to first drip: ±0.3 s, from 5 repeat shots of 1 recipe.
+- Yield: ±0.2 g, from 5 repeat shots of 1 recipe.
+- Peak pressure: ±0.08 bar, from 5 repeat shots of 1 recipe.
+- Average brew flow: ±0.06 ml/s, from 5 repeat shots of 1 recipe.
+- Rating: ±0.4, from 5 repeat shots of 1 recipe.
+
+THE EVIDENCE FOR v5 AGAINST v4
+Every counted shot of both versions, never a chosen one.
+
+| measure | v5 | v4 | difference | verdict |
+| --- | --- | --- | --- | --- |
+| Shot time | 36.0 s over 1 shot | 33.5 s over 3 shots | +2.50 s | beyond the spread (held against 2.00 s) |
+| Time to first drip | 8.0 s over 1 shot | 7.2 s over 3 shots | +0.77 s | inside the spread (held against 1.00 s) |
+| Yield | 36.3 g over 1 shot | 36.1 g over 3 shots | +0.20 g | inside the spread (held against 1.00 g) |
+| Peak pressure | 9.30 bar over 1 shot | 9.15 bar over 3 shots | +0.150 bar | inside the spread (held against 0.300 bar) |
+| Average brew flow | 1.70 ml/s over 1 shot | 1.88 ml/s over 3 shots | -0.177 ml/s | inside the spread (held against 0.200 ml/s) |
+| Rating | 3.0 over 1 shot | 4.3 over 3 shots | -1.33 | beyond the spread (held against 1.03) |
+
+v5: 1 counted shot — 0 sour, 1 balanced, 0 bitter; 0 Keep, 1 Improve, 0 unlabelled.
+v4: 3 counted shots — 0 sour, 3 balanced, 0 bitter; 3 Keep, 0 Improve, 0 unlabelled.
+
+THE SHOTS OF v5 (newest first)
+- shot 9 · 2026-04-05 08:10 · shot time 12.0 s · time to first drip 6.0 s · yield 9.0 g · peak pressure 9.00 bar · average brew flow 2.40 ml/s · Discard — NOT COUNTED (discarded: the shot went wrong, not the recipe) — "Knocked the cup."
+- shot 8 · 2026-04-05 08:00 · shot time 36.0 s · time to first drip 8.0 s · yield 36.3 g · peak pressure 9.30 bar · average brew flow 1.70 ml/s · rated 3/5 · balanced · Improve · flavours sweet.brown_sugar — "Sweeter, but the finish is drying."
+
+THE SHOTS OF v4, WHICH IT IS COMPARED AGAINST
+- shot 7 · 2026-04-04 09:01 · shot time 34.5 s · time to first drip 7.6 s · yield 36.4 g · peak pressure 9.25 bar · average brew flow 1.80 ml/s · rated 5/5 · balanced · Keep
+- shot 6 · 2026-04-04 09:00 · shot time 32.5 s · time to first drip 6.9 s · yield 35.8 g · peak pressure 9.05 bar · average brew flow 1.95 ml/s · rated 4/5 · balanced · Keep
+- shot 5 · 2026-04-04 08:00 · shot time 33.5 s · time to first drip 7.2 s · yield 36.1 g · peak pressure 9.15 bar · average brew flow 1.88 ml/s · rated 4/5 · balanced · Keep
+
+THE GOLD STANDARD
+5 Keep shots on the line being brewed, on v1, v4. Their averages: shot time 33.5 s, time to first drip 7.2 s, yield 36.1 g, peak pressure 9.15 bar, average brew flow 1.88 ml/s, rating 4.2.
+That is what good has tasted like here. An Improve shot is compared with it.
+
+CONFIRMED INSIGHTS THAT APPLY HERE
+- [bean_id=1] This bag runs fast for the first week after roasting.
+
+Those facts are the record, not the whole archive: use the tools for anything else, and for anything you are about to quote a number from.

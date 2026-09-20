@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from gaggiclanker.chat.context import scope_block, thread_title_from
+from gaggiclanker.chat.context import opening_context, thread_title_from
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.chat import (
     ChatEventsRepository,
@@ -287,7 +287,7 @@ class ChatRunner:
     async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
         rendered = await self.prompts.load(
-            CHAT_PROMPT, {"scope": await scope_block(self.db, scope.set_id)}
+            CHAT_PROMPT, {"scope": await opening_context(self.db, scope)}
         )
         history = await self._history(state.thread_id, budget.history_tokens)
         provider = await self.llm.provider_for(await self.llm.config())
