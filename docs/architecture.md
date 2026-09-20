@@ -73,8 +73,8 @@ several and a grind number only means something on the grinder it was set on.
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `cleanup/` | Device storage: which shots are eligible to delete off the machine, the plan the Sync page shows, and the run of a plan a person confirmed. |
 | `notes/` | Judgements a person sends from the Sync page to the machine's own notes card, and only when ours is newer than its. |
-| `tools/` | The tool registry — one definition per tool, three consumers — and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
-| `chat/` | The tool loop, the Set-scoped context a conversation starts from, and the streamed, resumable run. |
+| `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
+| `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, shots — and the streamed, resumable run. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
@@ -274,6 +274,19 @@ OpenAPI document included — with `/health`, the two public auth routes and the
 web bundle outside it. A test enumerates the application's own OpenAPI document
 and asserts each route answers 401, so a router added later is covered the day
 it is mounted.
+
+**What a conversation can reach is one function, and three things read it.**
+A chat is either about one version of one Set or about the archive, and
+`tools/scope.py` maps that kind to the tools that exist and what each may
+touch. The function-calling schemas the runner sends a provider, the audited
+dispatcher that decides whether a call runs, and the stdio MCP server the
+`claude_code` provider spawns all take their list from it — the last of those
+through its environment, because that provider's tool loop runs inside the CLI,
+out of the dispatcher's reach. A tool outside the scope is not described and is
+refused if called anyway, as an error value the model can read; a refusal about
+another Set's shot says nothing about whether it exists. There is no second list
+anywhere, the web included: the page shows what the server says the
+conversation has.
 
 **What can reach the machine is two closed lists, enforced by a test.** Ten
 reads, and seven writes behind a switch that is off by default: five profile

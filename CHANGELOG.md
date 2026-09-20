@@ -10,6 +10,54 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A chat is about one experiment, and can see only that
+
+- **A conversation in a Set's folder is about one version of that Set** — the
+  change being argued — and the version is fixed when the conversation starts.
+  Press **New** in a folder and you get a fresh session on the Set's current
+  version; it stays on that version afterwards, so the folder reads as a history
+  of what was argued rather than as a pile of rooms all claiming to be about
+  today's recipe. Rows are labelled `v6`, and a conversation about a version a
+  later roll back stepped over is muted and says *dead end*.
+- **It can see that Set and nothing else.** A Set conversation has tools for its
+  own versions, predictions, outcomes and shots — including a new one that lists
+  this Set's shots with the six measures, the rating, the balance, the flavour
+  notes and the label, filtered by version or by label — plus the knowledge
+  tiers, and the three things it can propose: the next version of this Set, an
+  insight about it, and a profile draft. It has no archive-wide SQL,
+  no list of your other coffees and no way to read a shot filed elsewhere: those
+  tools are not offered to it, and a shot of another Set is refused in the same
+  words whether or not it exists, so a refusal cannot be used to find out what
+  else you brew.
+- **General is the other half**: the whole archive, read-only. It queries, it
+  compares across Sets, it works out a starting point for a bag with no Set yet
+  and it drafts profiles — and it cannot change a Set, because a change to a Set
+  is an argument that belongs in that Set's own room. It says which folder to
+  open instead.
+- **The agent is handed the experiment before it says a word**: the Set and the
+  recipe, every version with what changed, what was predicted, against which
+  version and how it turned out, the track record, the spread, the evidence
+  table this version's prediction is graded on, both compared versions' shots
+  one line each with the discards marked, the Keep shots that are the target,
+  and the insights you have confirmed. Long histories are summarised from the
+  oldest end, never dropping this version or the one it is compared against.
+- **The agent's instructions changed from "barista with tools" to "rigorous
+  experimenter's assistant"**: grade the open prediction first, claim by claim,
+  against every counted shot of both versions and against the spread; say
+  *inconclusive* rather than stretch one shot; call a reason that was not in the
+  prediction a new hypothesis, to be tested by the next prediction; compare
+  Improve shots with the Keep shots; propose one change, stated as a direction
+  and a rough size on a measure the archive records, against a named version;
+  when results drift with no recipe change, say the cause is probably outside
+  the record and ask; never decide the Set is finished.
+- **Discuss in chat opens or continues one conversation.** On a Set it is the
+  current version's; on a shot it is the version that shot was pulled under;
+  every entry in the experiment log has a **Chat** link to the same room. Press
+  one twice and you land where you were, with the question still typed. A `?set=`
+  link on its own still creates nothing until you send something.
+- Beside the composer, the page lists exactly what the agent can do in *this*
+  conversation, from the server rather than from a list in the browser.
+
 ### The spread, and the evidence behind a prediction
 
 - **A Set now says how much its shots vary when nothing in the recipe

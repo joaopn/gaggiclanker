@@ -611,35 +611,63 @@ from, because a made-up number in a money column is worse than a blank one.
 
 The **Chat** page (`g c`) is the other half of the LLM layer, and it is the
 opposite shape from the analysis: instead of one call with everything in front
-of it, the model is given a small set of tools and asks the archive its own
-questions. It can run read-only SQL over a curated set of views, read a shot's
-curve, compare shots, walk a Set's versions, search the knowledge base, and read
-what this box has learned about this kitchen.
+of it, the model is given a set of tools and asks the archive its own questions.
 
-A conversation scoped to a Set starts with that Set's recipe, its recent shots
-and the confirmed insights that apply, so "how is it going?" is a question with
-an answer. Which is why the conversation list is a **folder per Set** rather
-than one chronological run: **General** first for questions about nothing in
-particular, then every Set you have not archived — including the ones nobody has
-asked about yet, because an empty folder with a **New** button in it is how you
-start. New inside a folder creates the conversation there and then, already
-pointed at the right archive; a folder opens itself when it holds the
-conversation you are reading. Conversations about a Set you have since archived
-move to a last folder of their own and stay readable. The **Discuss in chat**
-button on a shot and on a Set opens that Set's folder with the question already
-typed, and the first question lands in that Set.
+**A folder is a scope, not a filing cabinet.** The list is **General** first,
+then every Set you have not archived — including the ones nobody has asked about
+yet, because an empty folder with a **New** button in it is how you start.
+Conversations about a Set you have since archived move to a last folder of their
+own and stay readable.
 
-Nineteen tools, and fourteen of them only read. The other five are `propose`:
-they either write something you still have to decide about — a new Set version
-with `origin=chat` (the grind, the dose, the yield or the profile: a
-temperature change is a profile change, and the tool says so), a profile draft
-that goes through the same schema, safety-policy and clamp checks as one typed
-by hand, an insight stored **unconfirmed** that reaches no future prompt until
-you confirm it — or they queue work that spends provider tokens, which is why `run_analysis` and
-`starting_point` are in that class rather than filed as reads. Both are rate
-limited on the same bucket as the routes they shortcut. Nothing in the chat can
-touch the machine — pushing a profile and deleting a shot off the display stay
-buttons you press.
+A conversation in a Set's folder is about **one version of that Set** — the
+change being argued — and it can see that Set and nothing else: its versions
+with their predictions and outcomes, its shots, its spread, the knowledge base
+and the confirmed insights that apply. It cannot run archive-wide SQL, list your
+other coffees, or read a shot filed under another Set; a tool that would is not
+offered to it, and a shot of somebody else's Set is refused in the same words
+whether or not it exists. What it *can* do is propose the next version of this
+Set and record what has been learned about it — both waiting for you to accept
+them.
+
+A conversation in **General** is the other way round: the whole archive,
+read-only. It runs SQL over the curated views, compares shots across Sets, works
+out a starting point for a bag with no Set yet and drafts a profile — and it
+cannot change a Set, because a change to a Set is an argument that belongs in
+that Set's own room, where the ledger and the evidence are in front of the
+model. It will tell you which folder to open.
+
+**One conversation per change.** New inside a folder starts a fresh one on the
+Set's current version and it stays on that version afterwards, so a folder reads
+as a history of what was argued rather than a pile of rooms all claiming to be
+about today's recipe. Rows are labelled `v6`, and a version a later roll back
+stepped over is muted and says *dead end*. **Discuss in chat** on a Set, and the
+**Chat** link on every entry in the experiment log, open or continue that
+version's conversation with the question already typed — press either twice and
+you land in the same room.
+
+**The agent is handed the experiment before it says a word:** the Set and the
+recipe, every version with what changed, what was predicted, against which
+version and how it turned out, the track record, how much this Set's shots vary
+when nothing changed, the evidence table this version's prediction is graded on,
+both compared versions' shots one line each with the discards marked, the Keep
+shots that are the target, and the insights you have confirmed. So the first
+turn is about the coffee rather than about learning what Set 3 is. Beside the
+composer, the page lists exactly what the agent can do in *this* conversation.
+
+**Twelve tools in a Set's conversation** — nine reads and three that propose:
+the next version of this Set with `origin=chat` (the grind, the dose, the yield
+or the profile: a temperature change is a profile change, and the tool says so),
+an insight about this Set stored **unconfirmed** that reaches no future prompt
+until you confirm it, and a profile draft that goes through the same schema,
+safety-policy and clamp checks as one typed by hand. **Sixteen in General** —
+fourteen reads and two proposals, the profile draft and a starting point;
+`starting_point` is `propose` rather than a read because it spends provider
+tokens, and it is rate limited on the same bucket as the route it shortcuts.
+The registry holds twenty in total: nine both kinds have, ten that belong to one
+kind or the other, and `run_analysis`, which no conversation is offered at all —
+the per-shot analysis is the other adviser, and it is on its way out. Nothing in
+the chat can touch the machine — pushing a profile and deleting a shot off the
+display stay buttons you press.
 
 Every answer shows what was called, with the input and the output one click
 away, and citations are links: a shot id goes to the shot, a knowledge passage's
@@ -694,8 +722,9 @@ ask through the `starting_point` tool.
 The `claude_code` provider runs the chat's tool loop inside the Claude Code CLI,
 and the CLI calls tools only through an MCP server. So for each chat turn it
 starts `gaggiclanker mcp` as a child process over stdio, pointed at the same
-`DATA_DIR`, and the model gets exactly the tools the chat has with any other
-provider. That server is internal to the chat: it opens the database and nothing
+`DATA_DIR` and told which conversation it is serving, and the model gets exactly
+the tools the chat has with any other provider — the Set's tools inside a Set's
+folder, the archive's in General. That server is internal to the chat: it opens the database and nothing
 else — no network endpoint, no machine connection, no setting — and like every
 tool it only reads the archive or proposes something a person confirms. The API
 providers call the same tools directly and never start it.
