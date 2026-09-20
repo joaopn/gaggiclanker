@@ -14,7 +14,7 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { flavorPicks, judgement, setRow, vocabulary } from "@/test/setsFixtures";
+import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
 import { shot129, syntheticSamples } from "@/test/shotFixture";
 
 vi.mock("sonner", () => ({
@@ -28,6 +28,7 @@ const {
   getProfileVersions,
   getShotSamples,
   getSets,
+  getSet,
   getShot,
   putJudgement,
   putShotSetVersion,
@@ -42,6 +43,7 @@ const {
   getProfileVersions: vi.fn(),
   getShotSamples: vi.fn(),
   getSets: vi.fn(),
+  getSet: vi.fn(),
   getShot: vi.fn(),
   putJudgement: vi.fn(),
   putShotSetVersion: vi.fn(),
@@ -58,6 +60,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getProfileVersions,
   getShotSamples,
   getSets,
+  getSet,
   getShot,
   putJudgement,
   putShotSetVersion,
@@ -203,6 +206,7 @@ beforeEach(() => {
   getProfileVersions.mockResolvedValue(versions);
   getShotSamples.mockResolvedValue(samplesData);
   getSets.mockResolvedValue({ items: [setRow()] });
+  getSet.mockResolvedValue(setDetail());
   getShot.mockResolvedValue({ ...shot129, judgement: judgement() });
   getVocabulary.mockResolvedValue(vocabulary);
   getFlavorPicks.mockResolvedValue(flavorPicks());
@@ -1172,6 +1176,60 @@ describe("ShotsPage filters", () => {
     // …and the button says how many are on, which is the whole point of
     // hiding them: the page can be scanned for "why am I seeing so few rows".
     expect(screen.getByTestId("filters-count")).toHaveTextContent("3");
+  });
+
+  it("narrows to one Set version from the log's link, and says which", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=3&version=22"] });
+    await listed();
+
+    // The request carries the version, not just the Set.
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ set_id: 3, set_version_id: 22 }),
+      ),
+    );
+
+    await openFilters(user);
+    // The Set's name and the version number, where the Set filter already is.
+    expect(await screen.findByTestId("version-filter")).toHaveTextContent("Guji on the Niche v2");
+  });
+
+  it("drops the version when the filter is removed, and keeps the Set", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=3&version=22"] });
+    await listed();
+    await openFilters(user);
+    await screen.findByTestId("version-filter");
+
+    await user.click(screen.getByRole("button", { name: /Show every version of/ }));
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ set_id: 3, set_version_id: undefined }),
+      ),
+    );
+    expect(screen.queryByTestId("version-filter")).not.toBeInTheDocument();
+  });
+
+  it("drops the version when the Set itself changes", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />, { initialEntries: ["/shots?set=3&version=22"] });
+    await listed();
+    await openFilters(user);
+
+    // A version belongs to one Set; carrying it onto the inbox would filter
+    // the list down to nothing for no visible reason.
+    await user.selectOptions(screen.getByLabelText("Set"), "needs");
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ needs_set: true, set_version_id: undefined }),
+      ),
+    );
   });
 
   it("clears the filters without clearing the sort", async () => {

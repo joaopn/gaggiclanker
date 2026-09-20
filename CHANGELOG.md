@@ -47,7 +47,10 @@ first (`POST /api/backup`), because there is no down-migration.
   shots from. **Nothing is sent to the machine**, even when the restored version
   names a different profile.
 - **Each version shows how its shots were labelled** — "2 Keep · 1 Improve" —
-  beside the shot count.
+  beside the shot count, and that count links into the shots list narrowed to
+  **that version** rather than to the whole Set. The filter panel says which
+  version is on ("Guji on the Niche v5") and removes it in one click; changing
+  or clearing the Set drops it.
 - **The prediction is hidden while you judge a shot.** On the shot page and in
   the shots list's panel, a shot whose version predicted something says so but
   does not show the words until the shot carries a decision. "Show prediction"

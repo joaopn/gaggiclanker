@@ -96,7 +96,7 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, a quick judgement (rating, balance, aroma and taste notes from the flavour wheel, a line of notes; every click saves) and the machine's notes. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The pull button and the import drop zone are both here. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, a quick judgement (rating, balance, aroma and taste notes from the flavour wheel, a line of notes; every click saves) and the machine's notes. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The pull button and the import drop zone are both here. |
 | **Chat** | `g c` | The tool-using conversation, in a folder per Set. New inside a folder starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
@@ -152,6 +152,10 @@ shots you want to improve on and none you kept, the page offers the way back to
 the last version you did keep shots from. **A roll back writes nothing to the
 machine**, even when the restored version names a different profile: putting
 that profile back on the machine stays a separate, deliberate act.
+
+Each version's shot count is a link into the shots list narrowed to **that
+version**, not to the whole Set: the Keep / Improve / Discard counts beside it
+are that version's too.
 
 Versions off the line you are now brewing are marked **dead ends** and muted,
 still fully readable: they were real attempts. The line is read backwards from

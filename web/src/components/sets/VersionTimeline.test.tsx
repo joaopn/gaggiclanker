@@ -183,6 +183,20 @@ describe("VersionTimeline", () => {
     expect(screen.queryByRole("button", { name: "Edit prediction" })).not.toBeInTheDocument();
   });
 
+  it("links a version's shot count at that version's shots", () => {
+    const detail = setDetail();
+    detail.versions[0].version = version({ id: 22, version_no: 2, shot_count: 3 });
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    // The count beside it is this version's, so the link has to be too.
+    expect(screen.getAllByRole("link", { name: /3 shots/ })[0]).toHaveAttribute(
+      "href",
+      "/shots?set=3&version=22",
+    );
+  });
+
   it("mutes a version a later roll back stepped over, and still shows it", () => {
     const detail = setDetail();
     detail.versions[0].dead_end = true;

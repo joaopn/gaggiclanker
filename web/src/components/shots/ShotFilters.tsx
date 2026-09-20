@@ -1,4 +1,4 @@
-import { ListFilter, RotateCcw } from "lucide-react";
+import { ListFilter, RotateCcw, X } from "lucide-react";
 import { useId, useState } from "react";
 import type { ProfileVersionSummary, SetRow } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -39,11 +39,20 @@ export function ShotFilters({
   onChange,
   versions,
   sets = [],
+  versionLabel = null,
 }: {
   value: ShotFilterState;
   onChange: (next: ShotFilterState) => void;
   versions: ProfileVersionSummary[];
   sets?: SetRow[];
+  /**
+   * How the Set-version filter reads, when one is on: "Guji on the Niche v5".
+   *
+   * Passed in rather than looked up here, because the version *number* is not
+   * on the Set row — the page that already holds the Set's detail is the cheap
+   * place to find it.
+   */
+  versionLabel?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const ids = {
@@ -58,7 +67,11 @@ export function ShotFilters({
   };
 
   function set<K extends keyof ShotFilterState>(key: K, next: ShotFilterState[K]) {
-    onChange({ ...value, [key]: next });
+    // Changing or clearing the Set takes its version with it: a version id
+    // belongs to one Set, and carrying it onto another would filter the list
+    // down to nothing for no visible reason.
+    const withSet = key === "set" ? { version: "" } : {};
+    onChange({ ...value, [key]: next, ...withSet });
   }
 
   const active = activeFilterCount(value);
@@ -129,6 +142,28 @@ export function ShotFilters({
               </option>
             ))}
           </select>
+          {/* One version of that Set, arrived at from the Set page's log. There
+              is no control to *pick* a version here — the log is where a
+              version means something — so this is a removable statement of
+              what is on rather than a second select nobody would use. */}
+          {versionLabel ? (
+            <div
+              data-testid="version-filter"
+              className="mt-1 flex min-w-0 items-center gap-1 rounded-md bg-muted px-2 py-1"
+            >
+              <span className="min-w-0 flex-1 truncate text-xs" title={versionLabel}>
+                {versionLabel}
+              </span>
+              <button
+                type="button"
+                aria-label={`Show every version of ${versionLabel.replace(/ v\d+$/, "")}`}
+                onClick={() => set("version", "")}
+                className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          ) : null}
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field id={ids.score} label="Score">

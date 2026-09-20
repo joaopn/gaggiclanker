@@ -97,6 +97,7 @@ describe("the query string", () => {
       to: "2026-03-04",
       profileVersionId: "7",
       set: "3",
+      version: "22",
       scoreBand: "faulted",
       minRating: "3",
       source: "import",
@@ -115,6 +116,45 @@ describe("the query string", () => {
 
     expect(state.profileVersionId).toBe("7");
     expect(toParams(state, 50).profile_version_id).toBe(7);
+  });
+
+  it("reads the link a version's shot count writes", () => {
+    // `/shots?set=3&version=22` is the Set page's log linking at *this*
+    // version's shots, and the count beside the link is that version's.
+    const state = fromSearchParams(new URLSearchParams("set=3&version=22"));
+
+    expect(state.set).toBe("3");
+    expect(state.version).toBe("22");
+    const params = toParams(state, 50);
+    expect(params.set_id).toBe(3);
+    expect(params.set_version_id).toBe(22);
+  });
+
+  it("ignores a version with no Set beside it", () => {
+    // A version id alone would narrow the list to a Set the filter bar is not
+    // showing: an empty archive with no visible reason.
+    const state = fromSearchParams(new URLSearchParams("version=22"));
+
+    expect(state.version).toBe("");
+    expect(toParams(state, 50).set_version_id).toBeUndefined();
+    expect(toSearchParams(state).toString()).toBe("");
+  });
+
+  it("ignores a version on the inbox, which has no versions", () => {
+    const state = fromSearchParams(new URLSearchParams("set=needs&version=22"));
+
+    expect(state.version).toBe("");
+    expect(toParams(state, 50).set_version_id).toBeUndefined();
+  });
+
+  it("never sends a version on its own, even from state built by hand", () => {
+    // `toParams` is called with state the filter bar did not build, so the
+    // rule lives there as well as in the parser.
+    expect(toParams({ ...DEFAULT_FILTERS, version: "22" }, 50).set_version_id).toBeUndefined();
+  });
+
+  it("counts the version as a reason there are few rows", () => {
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, set: "3", version: "22" })).toBe(2);
   });
 
   it("falls back to the default for nonsense rather than failing", () => {

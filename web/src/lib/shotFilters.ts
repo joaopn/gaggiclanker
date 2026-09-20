@@ -26,6 +26,15 @@ export type ShotFilterState = {
    * yet" is one of its answers.
    */
   set: string;
+  /**
+   * One version of the Set in `set`, by id, or "" for all of them.
+   *
+   * Only ever meaningful beside a Set: a version id on its own would narrow
+   * the list to a Set the filter bar is not showing, which reads as an empty
+   * archive with no visible reason. `fromSearchParams` drops it when `set` is
+   * not a Set id, so nothing downstream has to remember the rule.
+   */
+  version: string;
   scoreBand: ScoreBandValue;
   minRating: string;
   source: "" | "device" | "import";
@@ -40,6 +49,7 @@ export const DEFAULT_FILTERS: ShotFilterState = {
   to: "",
   profileVersionId: "",
   set: "",
+  version: "",
   scoreBand: "any",
   minRating: "",
   source: "",
@@ -64,6 +74,9 @@ const FILTER_KEYS: Array<keyof ShotFilterState> = [
   "to",
   "profileVersionId",
   "set",
+  // Counted: it narrows the list, and a reader looking at four rows wants the
+  // badge to account for every reason there are only four.
+  "version",
   "scoreBand",
   "minRating",
   "source",
@@ -115,11 +128,14 @@ export function fromSearchParams(params: URLSearchParams): ShotFilterState {
   const quarantined = params.get("quarantined") ?? "";
   const sort = params.get("sort") ?? "";
   const order = params.get("order") ?? "";
+  const set = params.get("set") ?? "";
   return {
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",
     profileVersionId: params.get("profile_version_id") ?? "",
-    set: params.get("set") ?? "",
+    set,
+    // "needs" is the inbox rather than a Set, so it has no versions either.
+    version: set && set !== "needs" ? (params.get("version") ?? "") : "",
     scoreBand: SCORE_BANDS.some((band) => band.value === scoreBand)
       ? (scoreBand as ScoreBandValue)
       : "any",
@@ -141,6 +157,7 @@ export function toSearchParams(state: ShotFilterState): URLSearchParams {
   if (state.to) params.set("to", state.to);
   if (state.profileVersionId) params.set("profile_version_id", state.profileVersionId);
   if (state.set) params.set("set", state.set);
+  if (state.set && state.set !== "needs" && state.version) params.set("version", state.version);
   if (state.scoreBand !== "any") params.set("score", state.scoreBand);
   if (state.minRating) params.set("min_rating", state.minRating);
   if (state.source) params.set("source", state.source);
@@ -155,6 +172,8 @@ export function toParams(state: ShotFilterState, limit: number): ShotListParams 
   const rating = Number.parseInt(state.minRating, 10);
   const profileVersionId = Number.parseInt(state.profileVersionId, 10);
   const setId = Number.parseInt(state.set, 10);
+  const versionId = Number.parseInt(state.version, 10);
+  const inSet = Number.isFinite(setId);
   return {
     limit,
     from: dayStart(state.from),
@@ -162,7 +181,10 @@ export function toParams(state: ShotFilterState, limit: number): ShotListParams 
     profile_version_id: Number.isFinite(profileVersionId) ? profileVersionId : undefined,
     // "needs" is not a Set id, so the two never travel together.
     needs_set: state.set === "needs" ? true : undefined,
-    set_id: Number.isFinite(setId) ? setId : undefined,
+    set_id: inSet ? setId : undefined,
+    // Never on its own: the same rule `fromSearchParams` applies, repeated here
+    // because `toParams` is also called with state built by hand.
+    set_version_id: inSet && Number.isFinite(versionId) ? versionId : undefined,
     min_score: band && "min" in band ? band.min : undefined,
     max_score: band && "max" in band ? band.max : undefined,
     min_rating: Number.isFinite(rating) ? rating : undefined,

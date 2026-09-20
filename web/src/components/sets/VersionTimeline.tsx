@@ -199,7 +199,13 @@ export function VersionTimeline({
             ) : null}
 
             <p className="text-muted-foreground text-xs" data-testid="version-labels">
-              <Link to={`/shots?set=${setId}`} className="underline underline-offset-2">
+              {/* This version's shots, not the whole Set's: the count beside
+                  the link is this version's, and a link that widened to the
+                  Set would answer a question nobody asked here. */}
+              <Link
+                to={`/shots?set=${setId}&version=${entry.version.id}`}
+                className="underline underline-offset-2"
+              >
                 {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
               </Link>
               {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}

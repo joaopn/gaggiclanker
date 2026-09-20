@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileVersions, useShotsInfinite, useSyncStatus } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { useSets } from "@/hooks/useSets";
+import { useSet, useSets } from "@/hooks/useSets";
 import {
   loadShotColumns,
   loadShotWidths,
@@ -116,6 +116,25 @@ export function ShotsPage() {
   const versions = useProfileVersions({ limit: 200 });
   // The filter popover's Set picker, and the header's "needs a Set" count.
   const sets = useSets();
+  // Only while a version filter is on: the version *number* is not on the Set
+  // row, and the Set's own detail is where it already lives. One request, and
+  // only for the reader who arrived from a version's shot count.
+  const filteredSetId = Number.parseInt(filters.set, 10);
+  const scopedSet = useSet(
+    filters.version && Number.isFinite(filteredSetId) ? filteredSetId : undefined,
+  );
+  const versionLabel = useMemo(() => {
+    if (!filters.version) return null;
+    const entry = (scopedSet.data?.versions ?? []).find(
+      (item) => String(item.version.id) === filters.version,
+    );
+    // The name alone while the detail is in flight, rather than a flash of the
+    // raw id: the Set is what the reader already knows they asked for.
+    const name =
+      scopedSet.data?.set.name ?? sets.data?.items.find((row) => row.id === filteredSetId)?.name;
+    if (!name) return null;
+    return entry ? `${name} v${entry.version.version_no}` : name;
+  }, [filters.version, filteredSetId, scopedSet.data, sets.data]);
   useQueryErrorToast(shots.error, "Could not load shots");
 
   const rows: ShotListRow[] = useMemo(
@@ -164,6 +183,7 @@ export function ShotsPage() {
               onChange={setFilters}
               versions={versions.data?.items ?? []}
               sets={sets.data?.items ?? []}
+              versionLabel={versionLabel}
             />
             <ColumnChooser
               visible={columnIds}
