@@ -39,6 +39,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, set_attributes
+from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
     SetShotRow,
@@ -159,6 +160,7 @@ async def opening_context(db: Database, scope: ToolScope) -> str:
     profile_labels = _profile_labels(versions)
     lines: list[str] = []
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
+    lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, versions[0])]
     lines += ["", *_ledger(versions, dead_ends, labels, version, by_id, profile_labels)]
     lines += ["", *_spread_block(spreads)]
     if evidence is not None:
@@ -293,6 +295,122 @@ def _recipe(version: SetVersionRow) -> str:
     if version.profile_label:
         parts.append(f"profile {version.profile_label}")
     return ", ".join(parts) if parts else "(nothing recorded)"
+
+
+# ── the proposal ─────────────────────────────────────────────────────
+
+
+async def _proposal_block(
+    db: Database, set_id: int, profile_labels: dict[int, str], current: SetVersionRow
+) -> list[str]:
+    """What has been proposed to the person, and what they did about it.
+
+    Right after this version's own block, because it is the other half of "where
+    does this experiment stand": a change waiting for an answer is the reason
+    not to propose another one, and a change the person turned down last week is
+    the reason not to send it again.
+
+    Always rendered, even when there is nothing, for the reason every other
+    block here is: a section that appears and disappears makes two archives that
+    differ in one row read as two different documents.
+    """
+    proposals = SetProposalsRepository(db)
+    waiting = await proposals.waiting(set_id)
+    if waiting is not None:
+        return [
+            "A PROPOSAL IS WAITING FOR THE PERSON",
+            f"It changes {await _proposal_change(proposals, waiting, profile_labels)}. "
+            f"Reason: {_quote(waiting.reason)} {_proposal_prediction(waiting)}",
+            "It has changed nothing: the Set is still on "
+            f"v{waiting.base_version_no} until they accept it. Talk about this one — do not "
+            "propose another change while it waits.",
+        ]
+    last = await proposals.last_decided(set_id)
+    if last is None:
+        return [
+            "PROPOSALS",
+            "Nothing has been proposed to the person on this Set yet.",
+        ]
+    return [
+        "THE LAST PROPOSAL",
+        f"It proposed changing {await _proposal_change(proposals, last, profile_labels)}. "
+        f"Reason: {_quote(last.reason)} {_proposal_prediction(last)}",
+        _decided_line(last, current),
+    ]
+
+
+def _quote(text: str) -> str:
+    """A person's or an agent's own sentence, quoted and punctuated once.
+
+    These are written by somebody and usually end in a full stop already;
+    ``"…finish.".`` is the kind of detail a reader stops on, so the closing
+    punctuation goes inside the quotation and is not added twice.
+    """
+    written = text.strip()
+    return f'"{written}"' if written.endswith((".", "!", "?")) else f'"{written}."'
+
+
+async def _proposal_change(
+    proposals: SetProposalsRepository, row: Any, profile_labels: dict[int, str]
+) -> str:
+    """The proposed change as the log renders a version's own, or the bare names.
+
+    Through the same renderer the experiment log uses, so a change reads the
+    same before and after the person answers. When the version it was made
+    against has gone, the named groups are what is left to say.
+    """
+    base = await proposals.sets.get_version(row.base_version_id)
+    preview = await proposals.preview(row)
+    if base is None or preview is None:  # pragma: no cover - the base is a reference
+        return ", ".join(row.changed) or "nothing"
+    labels = {
+        **profile_labels,
+        **{
+            version.profile_version_id: version.profile_label
+            for version in (base, preview)
+            if version.profile_version_id is not None and version.profile_label
+        },
+    }
+    return _changes(version_changes(preview, base, labels))
+
+
+def _proposal_prediction(row: Any) -> str:
+    against = (
+        f" (compared to v{row.compares_to_version_no})"
+        if row.compares_to_version_no
+        else " (compared to nothing)"
+    )
+    combined = (
+        f" Two things move together because: {_quote(row.combined_reason)} So whatever "
+        "happens, the prediction cannot say which of them did it."
+        if row.combined_reason
+        else ""
+    )
+    return f"Prediction{against}: {_quote(row.prediction)}{combined}"
+
+
+def _decided_line(row: Any, current: SetVersionRow) -> str:
+    """How it was answered, in the words that are useful next time."""
+    if row.status == "accepted":
+        return (
+            f"They accepted it; it is v{row.resulting_version_no}. Its own prediction is in the "
+            "ledger below."
+        )
+    if row.status == "declined":
+        note = (
+            f' They said: "{_cut(row.decline_note.strip(), NOTE_CHARS)}"'
+            if row.decline_note
+            else ""
+        )
+        return (
+            f"They declined it.{note} A declined proposal is information about what they want, "
+            "not something to send again."
+        )
+    return (
+        f"Nobody answered it: the Set moved on to v{current.version_no} before they did, so it "
+        "was never applied and it is not waiting for anything. Propose afresh if the change "
+        "still makes sense against what is being brewed now."
+    )
 
 
 # ── the ledger ───────────────────────────────────────────────────────

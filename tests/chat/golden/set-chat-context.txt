@@ -10,6 +10,9 @@ What you are trying: One number finer than the Keep recipe, for a little more bo
 Prediction (compared to v4): Shot time up by 2 to 3 s against v4, yield the same, and no more bitterness.
 Outcome: open — nobody has graded it yet.
 
+PROPOSALS
+Nothing has been proposed to the person on this Set yet.
+
 THE EXPERIMENT SO FAR (oldest first)
 - v1 · grind 22, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar · 2 shots (2 Keep, 0 Improve, 0 Discard) · no prediction
 - v2 (dead end) · Grind 22 → 20 · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1: Shot time up by about 4 s and less sour. → failed — "It went slower and turned bitter rather than sweeter."

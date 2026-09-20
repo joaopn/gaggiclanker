@@ -40,6 +40,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightsRepository,
     InsightWrite,
 )
+from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     RollbackWrite,
     SetsRepository,
@@ -416,6 +417,126 @@ async def test_it_is_about_the_thread_s_version_not_the_current_one(
     assert "THIS VERSION IS v2" in rendered
     assert "(a dead end" in rendered
     assert "THE EVIDENCE FOR v2 AGAINST v1" in rendered
+
+
+async def _graded(experiment: Experiment) -> SetProposalsRepository:
+    """Grade v5, so a change can be proposed against it at all."""
+    await SetsRepository(experiment.db).set_outcome(
+        experiment.set_id,
+        experiment.v5,
+        VersionOutcomeWrite(outcome="partly_held", note="Slower, but the finish is drying."),
+    )
+    return SetProposalsRepository(experiment.db)
+
+
+async def _propose(experiment: Experiment, proposals: SetProposalsRepository) -> int:
+    result = await proposals.create(
+        experiment.set_id,
+        ProposalWrite(
+            patch=SetVersionPatch(dose_g=18.5),
+            reason="Half a gram more, to carry the finish.",
+            prediction="Compared to v5: a touch more body and no slower.",
+        ),
+    )
+    assert result.proposal is not None, result.refused
+    return result.proposal.id
+
+
+async def test_a_waiting_proposal_is_in_front_of_the_agent_before_it_speaks(
+    experiment: Experiment,
+) -> None:
+    """So a new conversation neither repeats it nor talks past it."""
+    proposals = await _graded(experiment)
+    await _propose(experiment, proposals)
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert "A PROPOSAL IS WAITING FOR THE PERSON" in rendered
+    assert "Dose 18 g → 18.5 g" in rendered
+    assert "Half a gram more, to carry the finish." in rendered
+    assert "Prediction (compared to v5)" in rendered
+    assert "It has changed nothing: the Set is still on v5" in rendered
+    assert "do not propose another change while it waits" in rendered
+
+
+async def test_a_declined_proposal_is_told_with_the_reason_it_was_declined(
+    experiment: Experiment,
+) -> None:
+    proposals = await _graded(experiment)
+    proposal_id = await _propose(experiment, proposals)
+    await proposals.decline(experiment.set_id, proposal_id, "The dose is not the problem.")
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert "THE LAST PROPOSAL" in rendered
+    assert 'They said: "The dose is not the problem."' in rendered
+    assert "not something to send again" in rendered
+
+
+async def test_an_accepted_proposal_names_the_version_it_became(
+    experiment: Experiment,
+) -> None:
+    proposals = await _graded(experiment)
+    proposal_id = await _propose(experiment, proposals)
+    accepted = await proposals.accept(experiment.set_id, proposal_id)
+    assert accepted.version is not None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, accepted.version.id)
+    )
+
+    assert "THE LAST PROPOSAL" in rendered
+    assert f"They accepted it; it is v{accepted.version.version_no}." in rendered
+
+
+async def test_a_proposal_the_set_overtook_says_so_and_frees_the_agent(
+    experiment: Experiment,
+) -> None:
+    """Retired by the version that overtook it, and the context says which one."""
+    proposals = await _graded(experiment)
+    await _propose(experiment, proposals)
+    await SetsRepository(experiment.db).add_version(
+        experiment.set_id,
+        SetVersionPatch(dose_g=19, intent="Changed it by hand instead."),
+    )
+    versions = await SetsRepository(experiment.db).versions(experiment.set_id)
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, versions[0].id)
+    )
+
+    assert "A PROPOSAL IS WAITING" not in rendered
+    assert "THE LAST PROPOSAL" in rendered
+    assert f"the Set moved on to v{versions[0].version_no} before they did" in rendered
+    assert "Propose afresh" in rendered
+
+
+async def test_a_reason_that_ends_in_a_full_stop_is_not_given_a_second_one(
+    experiment: Experiment,
+) -> None:
+    proposals = await _graded(experiment)
+    await _propose(experiment, proposals)
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert 'carry the finish."' in rendered
+    assert '".' not in rendered
+
+
+async def test_a_set_nobody_has_proposed_anything_for_says_so(
+    experiment: Experiment,
+) -> None:
+    """The block is always rendered: a section that comes and goes reads as two documents."""
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    assert "PROPOSALS\nNothing has been proposed to the person on this Set yet." in rendered
 
 
 async def test_the_ledger_carries_the_dead_ends_and_the_track_record(
