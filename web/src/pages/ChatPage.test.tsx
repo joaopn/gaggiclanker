@@ -55,6 +55,49 @@ const THREAD = {
   updated_at: "2026-03-01T10:01:00.000Z",
 };
 
+/** Another conversation, with whatever the test needs changed. */
+function thread(over: Partial<typeof THREAD> & { id: number }) {
+  return { ...THREAD, title: `Conversation ${over.id}`, ...over };
+}
+
+/** The two Sets the Sets list serves: the active one first, as the API sorts. */
+const SETS = [
+  { id: 3, name: "Guji on the Niche" },
+  { id: 4, name: "Kenya AA on the Niche" },
+];
+
+/**
+ * A folder's disclosure button, by the name it shows.
+ *
+ * Matched as a prefix: the button's accessible name carries the conversation
+ * count after the label.
+ */
+function folder(name: string) {
+  return screen.getByRole("button", {
+    name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
+  });
+}
+
+/**
+ * The region a folder's button names, open or closed.
+ *
+ * By id rather than by role: a closed folder's list is `hidden`, which is the
+ * point — out of the accessibility tree and still in the document, so
+ * `aria-controls` resolves to something a reader can reach.
+ */
+function region(name: string) {
+  const id = folder(name).getAttribute("aria-controls") ?? "";
+  const element = document.getElementById(id);
+  if (!element) throw new Error(`aria-controls of "${name}" resolves to nothing`);
+  return element;
+}
+
+/** Open a folder and hand back its region. */
+async function opened(user: ReturnType<typeof setupUser>, name: string) {
+  await user.click(folder(name));
+  return region(name);
+}
+
 const DETAIL = {
   thread: THREAD,
   messages: [
@@ -116,20 +159,160 @@ beforeEach(() => {
     message: DETAIL.messages[0],
   });
   cancelChatRun.mockResolvedValue({ ...DETAIL.runs[0], id: 9, status: "cancelled" });
-  getSets.mockResolvedValue({ items: [{ id: 3, name: "Guji on the Niche" }] });
+  getSets.mockResolvedValue({ items: SETS });
+});
+
+describe("ChatPage folders", () => {
+  it("draws General and a folder per Set, including a Set nobody has asked about", async () => {
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    // Every non-archived Set, in the order the Sets list served them, so the
+    // Set the machine is set up for comes first.
+    const names = screen
+      .getAllByRole("button")
+      .filter((button) => button.hasAttribute("aria-expanded"))
+      .map((button) => (button.textContent ?? "").replace(/\d+$/, ""));
+    expect(names).toEqual(["General", "Guji on the Niche", "Kenya AA on the Niche"]);
+    // Kenya has no conversation yet and is a folder all the same: an empty
+    // folder with a New button is how you start one.
+    expect(region("Kenya AA on the Niche")).toHaveTextContent("New");
+  });
+
+  it("files a conversation under its Set's folder and not under General", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    expect(region("Guji on the Niche")).toHaveTextContent("Why is Guji sour?");
+    expect(region("General")).not.toHaveTextContent("Why is Guji sour?");
+    // Nor under another Set's folder: a folder holds its own Set's questions only.
+    expect(region("Kenya AA on the Niche")).not.toHaveTextContent("Why is Guji sour?");
+  });
+
+  it("orders a folder's conversations newest first", async () => {
+    getChatThreads.mockResolvedValue([
+      thread({ id: 1, title: "the older one", updated_at: "2026-03-01T10:00:00.000Z" }),
+      thread({ id: 2, title: "the newer one", updated_at: "2026-03-02T10:00:00.000Z" }),
+    ]);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    const titles = within(region("Guji on the Niche"))
+      .getAllByRole("listitem")
+      .map((item) => item.textContent ?? "");
+    expect(titles[0]).toContain("the newer one");
+    expect(titles[1]).toContain("the older one");
+  });
+
+  it("puts a conversation whose Set is gone in Archived Sets, with no New", async () => {
+    const user = setupUser();
+    getChatThreads.mockResolvedValue([
+      thread({ id: 7, title: "the finished bag", set_id: 99, set_name: "Finished Ethiopia" }),
+    ]);
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^Archived Sets/ });
+    const inside = await opened(user, "Archived Sets");
+
+    expect(inside).toHaveTextContent("the finished bag");
+    // The folder is named for the state, so the row carries the Set's name.
+    expect(inside).toHaveTextContent("Finished Ethiopia");
+    // The bag is finished; the questions about it are not wrong, but there is
+    // no starting a new one. Asserted with the folder open, so the absence is
+    // about the button and not about `hidden`.
+    expect(within(inside).queryByRole("button", { name: /^New/ })).not.toBeInTheDocument();
+  });
+
+  it("shows no Archived Sets folder when nothing is in it", async () => {
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    expect(screen.queryByRole("button", { name: /^Archived Sets/ })).not.toBeInTheDocument();
+  });
+
+  it("is just General when there are no Sets at all", async () => {
+    getSets.mockResolvedValue({ items: [] });
+    getChatThreads.mockResolvedValue([]);
+    renderWithQueryClient(<ChatPage />);
+
+    expect(await screen.findByRole("button", { name: /^General/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Niche/ })).not.toBeInTheDocument();
+  });
+
+  it("creates in the folder's scope and selects what it made", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
+    const inside = await opened(user, "Kenya AA on the Niche");
+    await user.click(
+      within(inside).getByRole("button", { name: "New conversation in Kenya AA on the Niche" }),
+    );
+
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 4 }));
+    // Selected: the transcript pane is now that conversation's.
+    await waitFor(() => expect(getChatThread).toHaveBeenCalledWith(2));
+  });
+
+  it("creates with no Set from General", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ChatPage />);
+
+    await user.click(await screen.findByRole("button", { name: "New conversation in General" }));
+
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: null }));
+  });
+
+  it("is a disclosure: aria-expanded, a region that resolves, hidden when closed", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ChatPage />);
+
+    const button = await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
+    const inside = region("Kenya AA on the Niche");
+    // Closed by default — nothing selected and no `?set=` — and still rendered,
+    // so `aria-controls` names something a reader can reach.
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(inside).toHaveAttribute("hidden");
+
+    await user.click(button);
+
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(inside).not.toHaveAttribute("hidden");
+  });
+
+  it("opens General when nothing else says otherwise", async () => {
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    expect(folder("General")).toHaveAttribute("aria-expanded", "true");
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens the folder holding the selected conversation", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "true");
+    expect(folder("General")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens the folder a ?set= link names", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=4"] });
+
+    await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("has no scope select any more", async () => {
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    // The control that used to sit under the list, and overflowed the card.
+    expect(screen.queryByLabelText("Scope a new conversation")).toBeNull();
+  });
 });
 
 describe("ChatPage", () => {
-  it("lists conversations with the Set each one is about", async () => {
-    renderWithQueryClient(<ChatPage />);
-
-    const list = await screen.findByRole("list", { name: "Conversations" });
-    expect(await within(list).findByText("Why is Guji sour?")).toBeInTheDocument();
-    // The scope badge: two threads with the same question and different Sets
-    // get different answers, and nothing else on the row says which.
-    expect(within(list).getByText("Guji on the Niche")).toBeInTheDocument();
-  });
-
   it("opens a thread and shows its transcript and usage", async () => {
     const user = setupUser();
     renderWithQueryClient(<ChatPage />);
@@ -180,17 +363,35 @@ describe("ChatPage", () => {
   });
 
   it("prefills the composer and the scope from a Discuss in chat link", async () => {
+    const user = setupUser();
+    getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />, {
       initialEntries: ["/chat?set=3&ask=How%20is%20Guji%20going%3F"],
     });
 
     expect(await screen.findByLabelText("Message")).toHaveValue("How is Guji going?");
-    await waitFor(() => expect(screen.getByLabelText("Scope a new conversation")).toHaveValue("3"));
+    // The folder the question will land in is open, and the composer's card
+    // says so rather than leaving it to be discovered afterwards.
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("A new conversation in Guji on the Niche")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /send/i }));
+
+    // And the first question creates it in that Set, not as a general one.
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 3 }));
   });
 
-  it("deletes a conversation", async () => {
-    const user = setupUser();
+  it("says a first question with no scope becomes a general conversation", async () => {
+    getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />);
+
+    expect(await screen.findByText("A new general conversation")).toBeInTheDocument();
+  });
+
+  it("deletes a conversation from inside its folder", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     await user.click(await screen.findByRole("button", { name: /delete why is guji sour/i }));
 

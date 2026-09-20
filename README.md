@@ -97,7 +97,7 @@ pages, in the order the sidebar lists them:
 | Page | `g` | What it is |
 | --- | --- | --- |
 | **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, a quick judgement (rating, balance, aroma and taste notes from the flavour wheel, a line of notes; every click saves) and the machine's notes. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The pull button and the import drop zone are both here. |
-| **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
+| **Chat** | `g c` | The tool-using conversation, in a folder per Set. New inside a folder starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
@@ -529,10 +529,18 @@ questions. It can run read-only SQL over a curated set of views, read a shot's
 curve, compare shots, walk a Set's versions, search the knowledge base, and read
 what this box has learned about this kitchen.
 
-Scope a conversation to a Set and it starts with that Set's recipe, its recent
-shots and the confirmed insights that apply, so "how is it going?" is a question
-with an answer. The **Discuss in chat** button on a shot and on a Set is the same
-thing with the question already typed.
+A conversation scoped to a Set starts with that Set's recipe, its recent shots
+and the confirmed insights that apply, so "how is it going?" is a question with
+an answer. Which is why the conversation list is a **folder per Set** rather
+than one chronological run: **General** first for questions about nothing in
+particular, then every Set you have not archived — including the ones nobody has
+asked about yet, because an empty folder with a **New** button in it is how you
+start. New inside a folder creates the conversation there and then, already
+pointed at the right archive; a folder opens itself when it holds the
+conversation you are reading. Conversations about a Set you have since archived
+move to a last folder of their own and stay readable. The **Discuss in chat**
+button on a shot and on a Set opens that Set's folder with the question already
+typed, and the first question lands in that Set.
 
 Nineteen tools, and fourteen of them only read. The other five are `propose`:
 they either write something you still have to decide about — a new Set version

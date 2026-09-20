@@ -10,6 +10,20 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The chat's conversations, in a folder per Set
+
+- **A folder per Set** replaces the chronological list: General first, then
+  every Set you have not archived — including ones with no conversation yet —
+  and a last folder for conversations about Sets you have archived. A folder
+  opens itself when it holds the conversation you are reading, or when a
+  **Discuss in chat** link names its Set.
+- **New inside a folder** creates the conversation there and then, already
+  scoped to that Set. The "Scope a new conversation" select under the list is
+  gone: it was the thing that scoped a conversation, and it overflowed the
+  card it lived in.
+- With nothing selected, the composer's card says where a first question will
+  go — "A new conversation in <Set>" or "A new general conversation".
+
 ### The Set page is an experiment log
 
 - **A version prediction.** A Set version can say what you expect it to do

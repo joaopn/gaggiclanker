@@ -2,7 +2,7 @@ import { Send, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
-import { ThreadList } from "@/components/chat/ThreadList";
+import { ThreadFolders } from "@/components/chat/ThreadFolders";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,13 @@ import { useSets } from "@/hooks/useSets";
  * and a Set produce — a thread already pointed at the right archive with the
  * question typed, because the alternative is the person retyping "how is Set 3
  * going" into a box that has no idea what Set 3 is.
+ *
+ * Which Set a conversation is about is now the shape of the list rather than a
+ * control beside it: a folder per Set, and New inside the folder. `scope` is
+ * what a *first question* would be filed under when no conversation is
+ * selected — set by the last New pressed or by a `?set=` link — and the
+ * composer's card says so, because a question that quietly became a general
+ * one is a question answered without the bag in front of it.
  *
  * The live answer comes off the run's own SSE stream rather than from the
  * thread query: tokens arrive several a second, and writing each into the cache
@@ -102,10 +109,17 @@ export function ChatPage() {
     setParams(next, { replace: true });
   };
 
-  const startThread = async () => {
-    const created = await createThread.mutateAsync({ setId: scope });
+  const startThread = async (setId: number | null) => {
+    // The folder decides the scope, and it decides it now rather than at the
+    // first question: pressing New under a Set is somebody saying what they are
+    // about to ask about.
+    setScope(setId);
+    const created = await createThread.mutateAsync({ setId });
     select(created.id);
   };
+
+  //: The Set a first question would be filed under, for the composer to say so.
+  const scopeName = (sets.data?.items ?? []).find((row) => row.id === scope)?.name ?? null;
 
   const submit = async () => {
     const message = draft.trim();
@@ -132,16 +146,26 @@ export function ChatPage() {
         subtitle="Ask about the archive. It reads shots, Sets and the knowledge base itself."
       />
 
+      {/* `min-w-0` on both tracks: the left one is a fixed 260px and the right
+          one is `1fr`, and without it a long Set name or conversation title
+          makes the grid item wider than its track instead of truncating. */}
       <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-        <SectionCard title="Conversations">
-          {threads.isLoading ? (
+        <SectionCard
+          title="Conversations"
+          description="One folder per Set. New starts a conversation about that Set."
+          className="min-w-0"
+          contentClassName="min-w-0"
+        >
+          {threads.isLoading || sets.isLoading ? (
             <Skeleton className="h-24 w-full" />
           ) : (
-            <ThreadList
+            <ThreadFolders
               threads={threads.data ?? []}
+              sets={sets.data?.items ?? []}
               selectedId={selected}
+              scopedSetId={scope}
               onSelect={select}
-              onNew={() => void startThread()}
+              onNew={(setId) => void startThread(setId)}
               onDelete={(id) => {
                 void deleteThread.mutateAsync(id).then(() => {
                   if (id === selected) setSelected(null);
@@ -150,44 +174,23 @@ export function ChatPage() {
               busy={createThread.isPending}
             />
           )}
-
-          <div className="mt-3 border-border border-t pt-3">
-            <label
-              className="mb-1 block font-medium text-muted-foreground text-xs"
-              htmlFor="chat-scope"
-            >
-              Scope a new conversation
-            </label>
-            {/* A plain select: the list is short, and the shadcn one is a
-                portal whose options a component test cannot see. */}
-            <select
-              id="chat-scope"
-              className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-              value={scope === null ? "" : String(scope)}
-              onChange={(event) =>
-                setScope(event.target.value === "" ? null : Number(event.target.value))
-              }
-            >
-              <option value="">No Set — general questions</option>
-              {(sets.data?.items ?? []).map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-muted-foreground text-xs">
-              A scoped conversation starts with that Set's recipe, its recent shots and the insights
-              that apply to it.
-            </p>
-          </div>
         </SectionCard>
 
         <SectionCard
-          title={thread.data?.thread.title || "New conversation"}
+          className="min-w-0"
+          title={
+            selected === null ? "New conversation" : thread.data?.thread.title || "New conversation"
+          }
           description={
-            thread.data?.thread.set_name
-              ? `Scoped to ${thread.data.thread.set_name}`
-              : "Not scoped to a Set"
+            selected !== null
+              ? thread.data?.thread.set_name
+                ? `Scoped to ${thread.data.thread.set_name}`
+                : "Not scoped to a Set"
+              : // Nothing selected: the first question creates the conversation,
+                // and this is the only place that says where it will land.
+                scopeName
+                ? `A new conversation in ${scopeName}`
+                : "A new general conversation"
           }
         >
           <div className="max-h-[60vh] min-h-40 overflow-y-auto pr-1">
