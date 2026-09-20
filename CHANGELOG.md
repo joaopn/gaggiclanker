@@ -10,6 +10,37 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The Set page is an experiment log
+
+- **A version prediction.** A Set version can say what you expect it to do
+  differently and which earlier version that is against — the parent by
+  default, or nothing at all if you would rather grade it on the numbers the
+  version itself states. It is optional, and it can only be written **before
+  the version's first shot** and before its prediction has been graded: one
+  typed after the cup was tasted grades itself, so the app refuses it with a
+  message saying why.
+- **An outcome.** Once a version has a prediction and a shot you labelled Keep
+  or Improve, you grade it: held, partly held, failed or inconclusive, with a
+  line saying why. A grade can be changed or taken back at any time.
+- **The track record.** Above the log: "6 of 10 predictions held", with how
+  many are still open and how many versions predicted nothing.
+- **Roll back to an earlier version.** One click, with a confirm step,
+  appends a new version whose recipe is the old one's. Versions that are no
+  longer on the line you are brewing — read backwards from the current version,
+  through what each roll back restored — are marked dead ends and muted, still
+  fully readable. When the current version has shots you want to improve on and
+  none you kept, the page offers the way back to the last version you did keep
+  shots from. **Nothing is sent to the machine**, even when the restored version
+  names a different profile.
+- **Each version shows how its shots were labelled** — "2 Keep · 1 Improve" —
+  beside the shot count.
+- **The prediction is hidden while you judge a shot.** On the shot page and in
+  the shots list's panel, a shot whose version predicted something says so but
+  does not show the words until the shot carries a decision. "Show prediction"
+  reveals it for that view only; nothing is remembered.
+- **The chat can read the ledger.** `v_set_versions` carries the prediction,
+  what it is compared to, what a version restores and the outcome.
+
 ### A judgement for every shot, on the flavour wheel
 
 - **Quick judgement under a shot row.** The panel that opens under a row is no

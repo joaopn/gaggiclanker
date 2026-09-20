@@ -98,7 +98,7 @@ pages, in the order the sidebar lists them:
 | --- | --- | --- |
 | **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with its curve, a quick judgement (rating, balance, aroma and taste notes from the flavour wheel, a line of notes; every click saves) and the machine's notes. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The pull button and the import drop zone are both here. |
 | **Chat** | `g c` | The tool-using conversation, optionally scoped to a Set. |
-| **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions. |
+| **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
@@ -117,6 +117,49 @@ The old import page is now the drop zone on the Shots page, and the old drafts
 page is the staging section of Profiles; `/import` and `/drafts` still resolve,
 by redirecting. The device page's old storage, notes, sync and writes anchors
 redirect to the Sync page.
+
+### The experiment log
+
+A Set page is a record of experiments, one per version. Each version says what
+changed against the version before it, what you were trying, and — optionally —
+what you **predicted** it would do, compared to which version. Once the shots
+are in and you have labelled them Keep or Improve, you record the **outcome**:
+held, partly held, failed or inconclusive, with a line saying why. Above the log
+sits the only number that matters, "6 of 10 predictions held".
+
+Two rules keep that number honest:
+
+* **A prediction can only be written before the version's first shot**, and
+  before its outcome has been recorded. After either, the app refuses it and
+  says which. A guess typed once the cup has been tasted is a memory, and a
+  track record built from memories measures nothing; a guess rewritten under a
+  grade would leave that grade attached to something nobody ever predicted, so
+  the grade has to be cleared first.
+* **The prediction is hidden while you judge the shot.** On the shot page and in
+  the shots list's panel, a shot whose version predicted something says so but
+  does not show the words until the shot carries a decision. "Show prediction"
+  reveals it for that view if you want it; nothing is remembered. Reading "less
+  bitter" while deciding whether the cup is bitter is how a prediction becomes
+  an instruction.
+
+The outcome is the other way round: it can be changed or taken back whenever you
+like, because a second opinion about a grade is ordinary.
+
+**Roll back to this version** appends a new version whose recipe is the old
+one's, with the version that was current as its parent — so the log shows the
+reversal field by field rather than an empty entry. When the current version has
+shots you want to improve on and none you kept, the page offers the way back to
+the last version you did keep shots from. **A roll back writes nothing to the
+machine**, even when the restored version names a different profile: putting
+that profile back on the machine stays a separate, deliberate act.
+
+Versions off the line you are now brewing are marked **dead ends** and muted,
+still fully readable: they were real attempts. The line is read backwards from
+the current version — from a roll back to the version it restored, from anything
+else to its parent — and everything it does not pass through is a dead end. Roll
+back from v5 to v3 and v4 and v5 are dead ends; roll back again onto a version
+that was itself a roll back, or onto one that had been a dead end, and the muting
+follows: what is live is whatever the current recipe actually came from.
 
 ### What gaggiclanker writes to the machine, and who starts it
 

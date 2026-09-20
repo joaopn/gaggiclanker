@@ -104,6 +104,39 @@ the sync feed a pull reports its progress on is one.
 SQL. Repositories are the only code that writes SQL, services hold the logic,
 routes parse and delegate.
 
+**A Set version's recipe is immutable; its prediction and its outcome are not,
+and each is writable at a different time.** The recipe is written once and
+changed only by appending another version. The prediction — what the version was
+expected to do, against which earlier version — can be written and re-written
+only while the version has no shots and no grade, because one typed afterwards
+would grade itself. The outcome, somebody's grade of that prediction, needs a
+prediction and a shot labelled Keep or Improve before it can be recorded, and
+can be changed or cleared for ever after. `set_versions` carries all three and
+the comment on it in `0005_sets.sql` says which is which.
+
+Both windows are enforced in `SetsRepository`, beside the other rules that
+depend on rows in another table. A trigger could raise on the first one, and
+that is the reason it does not: the rule would then be written twice, in two
+wordings that can drift; the refusal would reach the client as a constraint
+failure rather than as an error code the route turns into a sentence
+(`VERSION_HAS_SHOTS`, `VERSION_HAS_OUTCOME`); and a test of it would have to go
+through SQL instead of through the method every caller uses. The window is
+honest rather than airtight — unfiling every shot and clearing the grade opens
+it again — and it is meant to be: it guards against writing a prediction down
+after the fact, not against somebody setting out to deceive themselves.
+
+**A version is a dead end when it is not on the live line.** The live line is
+walked backwards from the Set's current version: from a version that restores an
+earlier one, the step goes to what it restored; from any other, to its parent.
+Everything the walk does not pass through is a dead end, and the log mutes it.
+Stated as a walk rather than as "the versions between a roll back and its
+target", because the two stop agreeing the moment roll backs overlap — with v5
+restoring v2, v6 restoring v4 and v7 restoring v3, the line is v7, v3, v2, v1
+and v6 is a dead end although nothing later spans it. `dead_end_ids` is a pure
+function over the version list the page already holds, and it terminates on data
+no route can write (a forward or self reference, a parent cycle) because a
+`while` over a linked list is the shape that would otherwise hang the page.
+
 **Settings are one declaration each.** A row in `SETTINGS_REGISTRY` gives you
 the database column, the API field, the validation and the UI control. A setting
 is what the database holds or what the declaration defaults to — nothing else,
