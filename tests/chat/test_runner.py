@@ -426,7 +426,9 @@ async def test_an_unscoped_thread_gets_no_scope_block(
 ) -> None:
     from gaggiclanker.db.repos.chat import ChatThreadWrite
 
-    plain = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    assert created.thread is not None
+    plain = created.thread
     chat_provider.chat_script = [ChatTurn(text="ok")]
 
     await send(runner, tasks, plain.id, "what is a 1:2 ratio?")
@@ -488,7 +490,9 @@ async def test_an_unscoped_thread_sends_no_scope(
 ) -> None:
     from gaggiclanker.db.repos.chat import ChatThreadWrite
 
-    plain = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    assert created.thread is not None
+    plain = created.thread
     chat_provider.chat_script = [ChatTurn(text="ok")]
 
     await send(runner, tasks, plain.id, "what is a 1:2 ratio?")

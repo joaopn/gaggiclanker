@@ -92,7 +92,9 @@ def runner(
 
 @pytest.fixture
 async def thread(archive: Fixture) -> int:
-    row = await ChatRepository(archive.db).create_thread(
+    """A conversation about the fixture Set, on its current version."""
+    result = await ChatRepository(archive.db).create_thread(
         ChatThreadWrite(title="", set_id=archive.set_id)
     )
-    return row.id
+    assert result.thread is not None, result.refused
+    return result.thread.id

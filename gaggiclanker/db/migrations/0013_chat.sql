@@ -19,19 +19,38 @@
 
 -- ── threads ──────────────────────────────────────────────────────────
 --
--- `set_id` is the scope, and it is nullable because "what does a 1:2 ratio
--- mean" is a real question with no Set behind it. When it is set, the runner
--- puts that Set's facts, its confirmed insights and its recent shots in front
--- of the model, and every tool call defaults to it.
+-- A thread is one of two things, and the pair of columns says which. **General**
+-- has both NULL: "what does a 1:2 ratio mean" is a real question with no coffee
+-- behind it, and such a thread reads the whole archive and changes no Set.
+-- **A Set thread** has both set: it is about one version of one Set, it sees
+-- that Set and nothing else, and the version is the change being argued rather
+-- than "the Set in general" — which is why the version is stored rather than
+-- read as "whichever is current now". The pair is kept true by
+-- `ChatRepository`, where the version can be checked against its Set; a CHECK
+-- here could only say "both or neither" and would report the interesting half
+-- (a version of somebody else's Set) as a constraint failure.
+--
+-- Both references CASCADE, and the alternative is why. Nothing deletes a Set
+-- today — they are archived — but `SET NULL` would mean that the day something
+-- does, every conversation about it becomes a **general** conversation: the
+-- scope is these two columns, so the transcript of one coffee's experiments
+-- would come back with the whole archive's tools attached to it. A Set's
+-- conversations are about that Set and go with it.
 CREATE TABLE chat_threads (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    title      TEXT    NOT NULL DEFAULT '',
-    set_id     INTEGER REFERENCES sets(id) ON DELETE SET NULL,
-    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    title          TEXT    NOT NULL DEFAULT '',
+    set_id         INTEGER REFERENCES sets(id) ON DELETE CASCADE,
+    set_version_id INTEGER REFERENCES set_versions(id) ON DELETE CASCADE,
+    created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
 CREATE INDEX idx_chat_threads_updated ON chat_threads(updated_at DESC, id DESC);
+
+-- "The most recently updated conversation about this version", which is what
+-- Review and Discuss continue rather than starting a third room about one
+-- change.
+CREATE INDEX idx_chat_threads_version ON chat_threads(set_version_id, updated_at DESC, id DESC);
 
 -- ── runs ─────────────────────────────────────────────────────────────
 --

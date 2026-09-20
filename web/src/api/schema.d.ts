@@ -292,7 +292,14 @@ export interface paths {
         /** Conversations, most recently used first */
         get: operations["list_threads_api_chat_threads_get"];
         put?: never;
-        /** Start a conversation, optionally scoped to a Set */
+        /**
+         * Start a conversation: general, or about one version of a Set
+         * @description Always creates. New inside a folder is a fresh session on that Set.
+         *
+         *     With a Set and no version it is filed under whatever is current, and it
+         *     stays there: the conversation is the room one change was argued in, not a
+         *     view of the Set that follows it around.
+         */
         post: operations["create_thread_api_chat_threads_post"];
         delete?: never;
         options?: never;
@@ -337,6 +344,30 @@ export interface paths {
          *     kills mid-flight, with the browser still waiting.
          */
         post: operations["send_api_chat_threads__thread_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/threads/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The conversation about a version, started if there is none
+         * @description What Discuss and Review press: continue this version's chat.
+         *
+         *     200 whether it existed or not, because the caller asked for the room rather
+         *     than for a new one — which is also what makes a second press of Discuss
+         *     harmless instead of a second empty conversation.
+         */
+        post: operations["open_thread_api_chat_threads_open_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3078,7 +3109,7 @@ export interface components {
         };
         /**
          * ChatThreadRow
-         * @description One thread as listed.
+         * @description One thread as listed, with what the folder needs to label it.
          */
         ChatThreadRow: {
             /**
@@ -3086,6 +3117,11 @@ export interface components {
              * @default
              */
             created_at: string;
+            /**
+             * Dead End
+             * @default false
+             */
+            dead_end: boolean;
             /** Id */
             id: number;
             /**
@@ -3097,6 +3133,10 @@ export interface components {
             set_id?: number | null;
             /** Set Name */
             set_name?: string | null;
+            /** Set Version Id */
+            set_version_id?: number | null;
+            /** Set Version No */
+            set_version_no?: number | null;
             /**
              * Title
              * @default
@@ -3110,11 +3150,20 @@ export interface components {
         };
         /**
          * ChatThreadWrite
-         * @description A new thread. Both fields optional: "just ask something" is a thread.
+         * @description A new thread.
+         *
+         *     Both fields optional, and what they mean together is the thread's kind.
+         *     Neither is a **general** conversation. ``set_id`` alone is a conversation
+         *     about that Set's **current** version — pressing New in a folder — and
+         *     ``set_version_id`` beside it names the version outright, which is what
+         *     continuing an older experiment looks like. A version without its Set is
+         *     refused rather than guessed at: the two travel together everywhere else.
          */
         ChatThreadWrite: {
             /** Set Id */
             set_id?: number | null;
+            /** Set Version Id */
+            set_version_id?: number | null;
             /**
              * Title
              * @default
@@ -4360,6 +4409,19 @@ export interface components {
         NotesPushRequest: {
             /** Shot Ids */
             shot_ids: number[];
+        };
+        /**
+         * OpenBody
+         * @description `POST /api/chat/threads/open`: the version to carry on talking about.
+         *
+         *     ``set_version_id`` omitted is the Set's current version, which is what a
+         *     Discuss button on the Set itself means.
+         */
+        OpenBody: {
+            /** Set Id */
+            set_id: number;
+            /** Set Version Id */
+            set_version_id?: number | null;
         };
         /** @enum {string} */
         OptionKey: "conservative" | "recommended" | "adventurous";
@@ -7214,6 +7276,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SendResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_thread_api_chat_threads_open_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ChatThreadRow_"];
                 };
             };
             /** @description Validation Error */

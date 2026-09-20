@@ -1,5 +1,12 @@
 """Data access for the chat: threads, messages, runs, the stream, the audit.
 
+A thread is one of two things and the repository is where that stays true: a
+**general** conversation about the archive, or a conversation about **one
+version of one Set** — the room where that one change was argued. Creating one
+with a Set and no version files it under whatever is current at that moment and
+it stays there for good, so a folder's conversations read as a history rather
+than as a pile that all claim to be about the latest recipe.
+
 The one non-obvious table is ``chat_events``. Everything the SSE stream emits is
 written here before it is published, and the stream route replays from it on
 connect. That is what makes closing a laptop mid-answer harmless: the browser
@@ -10,10 +17,13 @@ bubble it can never fill in because the in-memory bus is lossy by design.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -25,30 +35,63 @@ __all__ = [
     "ChatRunRow",
     "ChatThreadRow",
     "ChatThreadWrite",
+    "ThreadRefusal",
+    "ThreadWriteResult",
     "ToolCallRow",
     "ToolCallsRepository",
 ]
 
 type RunStatus = Literal["running", "ok", "failed", "cancelled", "interrupted"]
 
+#: Why a thread could not be created where it was asked for. A slug, as in
+#: :mod:`gaggiclanker.db.repos.sets`: the repository has no opinion about
+#: statuses and the route that does is the one place the mapping is written.
+type ThreadRefusal = Literal["no_set", "no_version", "version_without_set"]
+
 
 class ChatThreadWrite(BaseModel):
-    """A new thread. Both fields optional: "just ask something" is a thread."""
+    """A new thread.
+
+    Both fields optional, and what they mean together is the thread's kind.
+    Neither is a **general** conversation. ``set_id`` alone is a conversation
+    about that Set's **current** version — pressing New in a folder — and
+    ``set_version_id`` beside it names the version outright, which is what
+    continuing an older experiment looks like. A version without its Set is
+    refused rather than guessed at: the two travel together everywhere else.
+    """
 
     title: str = Field(default="", max_length=200)
     set_id: int | None = None
+    set_version_id: int | None = None
 
 
 class ChatThreadRow(BaseModel):
-    """One thread as listed."""
+    """One thread as listed, with what the folder needs to label it."""
 
     id: int
     title: str = ""
     set_id: int | None = None
     set_name: str | None = None
+    #: The version this conversation is about. NULL exactly when ``set_id`` is.
+    set_version_id: int | None = None
+    #: That version's number, joined in: a folder row reads "v6 · title", and a
+    #: reader thinks in "v6" rather than in a row id.
+    set_version_no: int | None = None
+    #: A later roll back stepped over this version. Derived from the Set's line,
+    #: never stored — it is a fact about what came after — and carried here so
+    #: the folder can mute the row without a request per conversation.
+    dead_end: bool = False
     message_count: int = 0
     created_at: str = ""
     updated_at: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ThreadWriteResult:
+    """A created thread, or the reason there is none. Exactly one is set."""
+
+    thread: ChatThreadRow | None = None
+    refused: ThreadRefusal | None = None
 
 
 class ChatMessageWrite(BaseModel):
@@ -129,28 +172,116 @@ class ChatRepository(Repository):
 
     # -- threads ----------------------------------------------------------
 
-    async def create_thread(self, spec: ChatThreadWrite) -> ChatThreadRow:
-        cursor = await self.db.execute(
-            "INSERT INTO chat_threads (title, set_id) VALUES (?, ?)",
-            (spec.title.strip(), spec.set_id),
-        )
-        row = await self.get_thread(int(cursor.lastrowid or 0))
+    async def create_thread(self, spec: ChatThreadWrite) -> ThreadWriteResult:
+        """Start a conversation, on a version it is allowed to be about.
+
+        The version is resolved and checked inside the transaction that writes
+        the row, because "the current version" is a moving answer: a version
+        added while this request was in flight would otherwise file the thread
+        under a recipe nobody had brewed with yet.
+        """
+        async with self.db.transaction():
+            resolved = await self._resolve_version(spec.set_id, spec.set_version_id)
+            if isinstance(resolved, str):
+                return ThreadWriteResult(refused=resolved)
+            cursor = await self.db.execute(
+                "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES (?, ?, ?)",
+                (spec.title.strip(), spec.set_id, resolved),
+            )
+            thread_id = int(cursor.lastrowid or 0)
+        row = await self.get_thread(thread_id)
         assert row is not None  # just inserted
-        return row
+        return ThreadWriteResult(thread=row)
+
+    async def open_thread(
+        self, set_id: int, set_version_id: int | None = None
+    ) -> ThreadWriteResult:
+        """The conversation about this version, or a new one when there is none.
+
+        What Review and Discuss do: a second shot pulled under the same version
+        is argued in the same room as the first. "The conversation" is the most
+        recently updated one, so a version somebody has started several
+        conversations about continues in the one they were last in.
+        """
+        async with self.db.transaction():
+            resolved = await self._resolve_version(set_id, set_version_id)
+            if isinstance(resolved, str):
+                return ThreadWriteResult(refused=resolved)
+            existing = await self.db.fetch_value(
+                "SELECT id FROM chat_threads WHERE set_version_id = ? "
+                "ORDER BY updated_at DESC, id DESC LIMIT 1",
+                (resolved,),
+            )
+            if existing is None:
+                cursor = await self.db.execute(
+                    "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES (?, ?, ?)",
+                    ("", set_id, resolved),
+                )
+                existing = int(cursor.lastrowid or 0)
+        row = await self.get_thread(int(existing))
+        assert row is not None  # either found or just inserted
+        return ThreadWriteResult(thread=row)
+
+    async def _resolve_version(
+        self, set_id: int | None, set_version_id: int | None
+    ) -> int | ThreadRefusal | None:
+        """Which version a thread belongs to: the id, ``None``, or a refusal.
+
+        Through :class:`~gaggiclanker.db.repos.sets.SetsRepository` rather than
+        with SQL of its own — "the current version of a Set" and "a version of
+        this Set" are rules that already exist there, and a second copy here is
+        how a thread would come to be filed under a version the Set page does
+        not think is current.
+        """
+        if set_id is None:
+            return "version_without_set" if set_version_id is not None else None
+        sets = SetsRepository(self.db)
+        if set_version_id is None:
+            current = await sets.current_version(set_id)
+            if current is None:
+                return "no_set"
+            return current.id
+        if await sets.version_of_set(set_id, set_version_id) is None:
+            return "no_version"
+        return set_version_id
 
     async def get_thread(self, thread_id: int) -> ChatThreadRow | None:
         row = await self.db.fetch_one(
             f"{_THREAD_SELECT} WHERE t.id = ?",
             (thread_id,),
         )
-        return self.to_model(ChatThreadRow, row)
+        thread = self.to_model(ChatThreadRow, row)
+        if thread is None:
+            return None
+        return (await self.mark_dead_ends([thread]))[0]
 
     async def list_threads(self, limit: int = 50) -> list[ChatThreadRow]:
         rows = await self.db.fetch_all(
             f"{_THREAD_SELECT} ORDER BY t.updated_at DESC, t.id DESC LIMIT ?",
             (limit,),
         )
-        return self.to_models(ChatThreadRow, rows)
+        return await self.mark_dead_ends(self.to_models(ChatThreadRow, rows))
+
+    async def mark_dead_ends(self, threads: Sequence[ChatThreadRow]) -> list[ChatThreadRow]:
+        """Fill in ``dead_end`` for a page of threads, in one further query.
+
+        A dead end is a fact about a Set's whole line — walk back from its
+        current version and see what you step over — so it cannot be a column
+        on the thread and it cannot be joined in. It is one query for every Set
+        the page mentions, which is what keeps the folder list at two queries
+        rather than one per conversation.
+        """
+        rows = list(threads)
+        set_ids = {row.set_id for row in rows if row.set_id is not None}
+        if not set_ids:
+            return rows
+        dead = await SetsRepository(self.db).dead_end_versions(set_ids)
+        return [
+            row.model_copy(update={"dead_end": row.set_version_id in dead})
+            if row.set_version_id is not None
+            else row
+            for row in rows
+        ]
 
     async def rename_thread(self, thread_id: int, title: str) -> bool:
         cursor = await self.db.execute(
@@ -360,11 +491,13 @@ class ToolCallsRepository(Repository):
 
 _THREAD_SELECT = """
 SELECT t.id, t.title, t.set_id, s.name AS set_name,
+       t.set_version_id, v.version_no AS set_version_no,
        (SELECT COUNT(*) FROM chat_messages m
          WHERE m.thread_id = t.id AND m.role IN ('user', 'assistant')) AS message_count,
        t.created_at, t.updated_at
   FROM chat_threads t
   LEFT JOIN sets s ON s.id = t.set_id
+  LEFT JOIN set_versions v ON v.id = t.set_version_id
 """
 
 _MESSAGE_SELECT = """

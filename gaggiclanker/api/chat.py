@@ -30,9 +30,11 @@ from gaggiclanker.db.repos.chat import (
     ChatRunRow,
     ChatThreadRow,
     ChatThreadWrite,
+    ThreadRefusal,
+    ThreadWriteResult,
 )
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import NotFound
+from gaggiclanker.infra.errors import NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import rate_limit
 from gaggiclanker.infra.sse import SseEvent, SseEventBus, sse_response
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, registry
@@ -55,6 +57,40 @@ class ThreadDetail(BaseModel):
     thread: ChatThreadRow
     messages: list[ChatMessageRow] = Field(default_factory=list)
     runs: list[ChatRunRow] = Field(default_factory=list)
+
+
+class OpenBody(BaseModel):
+    """`POST /api/chat/threads/open`: the version to carry on talking about.
+
+    ``set_version_id`` omitted is the Set's current version, which is what a
+    Discuss button on the Set itself means.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    set_id: int
+    set_version_id: int | None = None
+
+
+#: Each refusal the thread repository can answer with, and what it is called and
+#: blamed on. All 422: every one of them is a body naming something that does
+#: not resolve, and none of them is a state the caller could wait out.
+_THREAD_REFUSALS: dict[ThreadRefusal, tuple[str, str]] = {
+    "no_set": ("set_id", "that Set does not exist"),
+    "no_version": ("set_version_id", "that is not a version of this Set"),
+    "version_without_set": ("set_id", "name the Set the version belongs to"),
+}
+
+
+def _thread(result: ThreadWriteResult, *, status_code: int = 200) -> JSONResponse:
+    """The created thread, or the one error its refusal means."""
+    if result.thread is not None:
+        return envelope_response(result.thread.model_dump(mode="json"), status_code=status_code)
+    field, message = _THREAD_REFUSALS[result.refused or "no_set"]
+    raise Unprocessable(
+        "That conversation cannot be filed there",
+        details={"field": field, "message": message},
+    )
 
 
 class SendBody(BaseModel):
@@ -132,11 +168,32 @@ async def list_threads(
     "/threads",
     response_model=ApiResponse[ChatThreadRow],
     status_code=201,
-    summary="Start a conversation, optionally scoped to a Set",
+    summary="Start a conversation: general, or about one version of a Set",
 )
 async def create_thread(body: ChatThreadWrite, db: DatabaseDep) -> JSONResponse:
-    row = await ChatRepository(db).create_thread(body)
-    return envelope_response(row.model_dump(mode="json"), status_code=201)
+    """Always creates. New inside a folder is a fresh session on that Set.
+
+    With a Set and no version it is filed under whatever is current, and it
+    stays there: the conversation is the room one change was argued in, not a
+    view of the Set that follows it around.
+    """
+    return _thread(await ChatRepository(db).create_thread(body), status_code=201)
+
+
+@router.post(
+    "/threads/open",
+    response_model=ApiResponse[ChatThreadRow],
+    summary="The conversation about a version, started if there is none",
+)
+async def open_thread(body: OpenBody, db: DatabaseDep) -> JSONResponse:
+    """What Discuss and Review press: continue this version's chat.
+
+    200 whether it existed or not, because the caller asked for the room rather
+    than for a new one — which is also what makes a second press of Discuss
+    harmless instead of a second empty conversation.
+    """
+    result = await ChatRepository(db).open_thread(body.set_id, body.set_version_id)
+    return _thread(result)
 
 
 @router.get(

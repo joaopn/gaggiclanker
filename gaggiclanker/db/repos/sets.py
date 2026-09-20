@@ -45,9 +45,9 @@ one of them true:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
 
@@ -74,6 +74,8 @@ __all__ = [
     "SetWrite",
     "SetsRepository",
     "VersionLabelCounts",
+    "VersionLink",
+    "VersionNode",
     "VersionOutcomeWrite",
     "VersionPredictionWrite",
     "VersionRefusal",
@@ -533,7 +535,35 @@ def _prediction_values(prediction: str, compares_to: int | None, *, now: str) ->
     }
 
 
-def live_line(versions: Sequence[SetVersionRow]) -> list[int]:
+class VersionNode(Protocol):
+    """What walking a Set's line needs off a version, and nothing else.
+
+    A structural type rather than :class:`SetVersionRow` because two callers
+    want two different rows: the Set page holds the full version and the Chat
+    page's folders want four columns for several Sets at once. One walk, either
+    row — the alternative is a second copy of the rule, and a dead end the log
+    shows and the folder does not is exactly the disagreement that would follow.
+    """
+
+    id: int
+    version_no: int
+    parent_version_id: int | None
+    restores_version_id: int | None
+
+
+class VersionLink(BaseModel):
+    """One version as the line walk reads it, for many Sets in one query."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    set_id: int
+    version_no: int
+    parent_version_id: int | None = None
+    restores_version_id: int | None = None
+
+
+def live_line(versions: Sequence[VersionNode]) -> list[int]:
     """The versions still on the line being brewed, newest first.
 
     Walked back from the current version rather than filtered: a version is on
@@ -556,7 +586,7 @@ def live_line(versions: Sequence[SetVersionRow]) -> list[int]:
     return line
 
 
-def dead_end_ids(versions: Sequence[SetVersionRow]) -> set[int]:
+def dead_end_ids(versions: Sequence[VersionNode]) -> set[int]:
     """The versions that are not on the live line.
 
     A roll back from v5 to v3 appends v6 whose recipe is v3's and says so in
@@ -1063,6 +1093,29 @@ class SetsRepository(Repository):
     async def get_version(self, version_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))
         return self.to_model(SetVersionRow, row)
+
+    async def dead_end_versions(self, set_ids: Iterable[int]) -> set[int]:
+        """Which of these Sets' versions are off the line still being brewed.
+
+        One query for however many Sets were asked about, then the same walk the
+        Set page uses, per Set. The Chat page's folders need this for a list of
+        conversations spread over every Set there is, and a query per Set would
+        make drawing the list cost as much as opening one.
+        """
+        wanted = sorted({int(set_id) for set_id in set_ids})
+        if not wanted:
+            return set()
+        placeholders = ", ".join("?" * len(wanted))
+        rows = await self.db.fetch_all(
+            "SELECT id, set_id, version_no, parent_version_id, restores_version_id "  # noqa: S608 - placeholders are generated, the ids are bound
+            f"FROM set_versions WHERE set_id IN ({placeholders})",
+            wanted,
+        )
+        links = self.to_models(VersionLink, rows)
+        dead: set[int] = set()
+        for set_id in wanted:
+            dead |= dead_end_ids([link for link in links if link.set_id == set_id])
+        return dead
 
     async def versions(self, set_id: int) -> list[SetVersionRow]:
         """Every version of a Set, newest first — the order the timeline reads in."""
