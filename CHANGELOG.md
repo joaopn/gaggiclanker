@@ -27,8 +27,12 @@ first (`POST /api/backup`), because there is no down-migration.
   made it.
 - **Every column starts at the width that fits it** — the sparkline, five stars,
   the three decision words, or the heading and its sort arrow — rather than at
-  a share of the row, and what is left over sits after the last column, as a
-  spreadsheet does it. Widths you had already dragged are untouched.
+  a share of the row. Widths you had already dragged are untouched.
+- **The table is as wide as its columns, not the window.** The box, its border
+  and the count under it end at the last column, so a few narrow columns no
+  longer sit at the left of a wide band of empty rows; turning a column on or
+  dragging an edge wider grows the table, up to the page, and past that it
+  scrolls sideways.
 
 ### An agent's change to a Set is a proposal you accept, and it needs a prediction
 

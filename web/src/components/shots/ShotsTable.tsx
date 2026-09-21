@@ -175,7 +175,10 @@ export function ShotsTable({
   } as React.CSSProperties;
 
   return (
-    <div style={style}>
+    // `min-w-max`: when the columns are wider than the page, the rows keep
+    // their width and the scroll box scrolls sideways, rather than every row's
+    // border and hover ending at the box's edge with cells running past it.
+    <div style={style} className="min-w-max">
       {/* The same flex-plus-grid the row uses, including a spacer the width of
           the compare checkbox. Laying the header out as a bare grid put every
           heading a checkbox to the left of its column. */}
@@ -187,7 +190,7 @@ export function ShotsTable({
         )}
       >
         <span className="size-3.5 shrink-0" aria-hidden="true" />
-        <div className={cn(GRID, "min-w-0 flex-1")}>
+        <div className={cn(GRID, "shrink-0")}>
           {columns.map((column) => (
             <HeaderCell
               key={column.id}
@@ -573,7 +576,7 @@ function ShotRow({
           onChange={() => onToggleSelected(shot.id)}
           aria-label={`Compare shot ${shot.device_id}`}
         />
-        <div className={cn(GRID, "min-w-0 flex-1 py-1")}>
+        <div className={cn(GRID, "shrink-0 py-1")}>
           {/* Cells are divs, not spans: the Set cell can hold an anchored
               panel, which is block content. */}
           {columns.map((column) => (

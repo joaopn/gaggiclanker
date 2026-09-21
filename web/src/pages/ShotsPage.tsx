@@ -221,13 +221,16 @@ export function ShotsPage() {
           ))}
         </div>
       ) : rows.length > 0 ? (
-        <div className="space-y-3">
+        // As wide as the columns the reader chose and no wider, up to the page:
+        // the box, its border and the count under it end where the last column
+        // does, and a row of columns wider than the page scrolls sideways.
+        <div className="w-fit max-w-full space-y-3">
           {/* The scroll container is the window `useVirtualRows` measures, so
               it owns a height rather than growing with its content. */}
           <div
             ref={scrollRef}
             data-testid="shots-scroll"
-            className="max-h-[70vh] overflow-y-auto rounded-lg border border-border"
+            className="max-h-[70vh] overflow-auto rounded-lg border border-border"
           >
             <ShotsTable
               shots={rows}

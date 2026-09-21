@@ -70,11 +70,11 @@ export type ColumnSize = { rem: number; min: number; max: number };
  * measurements below are Helvetica's, which is wider than the UI faces a
  * browser actually uses — a default that fits there fits everywhere.
  *
- * What the fixed tracks leave over goes to an empty track after the last
- * column (see `gridTemplates`), the way a spreadsheet does it, rather than
- * being shared out among columns that did not ask for it. A reader who wants
- * the room in a particular column drags that column's edge, and the width is
- * kept.
+ * The table is as wide as its columns and no wider (see `gridTemplates`):
+ * room the columns do not use is left to the page rather than shared out
+ * among columns that did not ask for it, or drawn as an empty band at the end
+ * of every row. A reader who wants the room in a particular column drags that
+ * column's edge, the table grows with it, and the width is kept.
  */
 export const SHOT_COLUMNS: ShotColumn[] = [
   // A Set badge says a name and a version; both truncate, and the whole name
@@ -324,21 +324,18 @@ export function saveShotWidths(
  * with a hidden child still takes its width, so a phone would carry six empty
  * columns' worth of gutter.
  *
- * Every column is a fixed track, so a trailing empty `1fr` track takes
- * whatever the row has left. Without it the fixed tracks would still be
- * start-aligned, but the grid would end short of the row and nothing would say
- * why; with it the space is visibly "after the last column", which is where a
- * spreadsheet puts it, and a dragged edge stays under the pointer.
+ * Every column is a fixed track and there is nothing after the last one: the
+ * grid is exactly as wide as its tracks, and the table around it shrinks to
+ * that width (`w-fit` on the shots page). A trailing `1fr` track used to take
+ * whatever the row had left, which on a wide window was a band of empty
+ * bordered row wider than the columns themselves.
  */
 export function gridTemplates(
   columns: ShotColumn[],
   widths: ShotWidths = {},
 ): { narrow: string; wide: string } {
-  const template = (list: ShotColumn[]) => {
-    const tracks = list.map((column) => `${columnWidth(column.size, widths[column.id])}rem`);
-    tracks.push("minmax(0,1fr)");
-    return tracks.join(" ");
-  };
+  const template = (list: ShotColumn[]) =>
+    list.map((column) => `${columnWidth(column.size, widths[column.id])}rem`).join(" ");
   const narrowColumns = columns.filter((column) => !column.narrowHidden);
   return {
     narrow: template(narrowColumns.length > 0 ? narrowColumns : columns),

@@ -580,9 +580,8 @@ describe("ShotsPage column widths", () => {
 
     const handle = await screen.findByRole("separator", { name: "Resize the Profile column" });
     expect(handle).toHaveAttribute("aria-valuenow", "9");
-    // Third track: Set, Time, Profile — and the spare room after the last one.
+    // Third track: Set, Time, Profile.
     expect(template().split(" ")[2]).toBe("9rem");
-    expect(template().split(" ").at(-1)).toBe("minmax(0,1fr)");
 
     pointer(handle, "pointerdown", 100);
     pointer(handle, "pointermove", 180);
@@ -591,9 +590,9 @@ describe("ShotsPage column widths", () => {
     expect(template().split(" ")[2]).toBe("14rem");
   });
 
-  it("starts every visible column at what fits it, with the rest of the row after it", async () => {
+  it("starts every visible column at what fits it, with nothing after the last", async () => {
     // The defaults are measurements rather than shares of the row, so a table
-    // on a wide screen is columns at their own width and one empty track.
+    // on a wide screen is columns at their own width and ends with the last.
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
@@ -608,8 +607,23 @@ describe("ShotsPage column widths", () => {
       "4rem",
       "5.5rem",
       "9.75rem",
-      "minmax(0,1fr)",
     ]);
+  });
+
+  it("keeps the table as wide as its columns rather than the window", async () => {
+    // jsdom does no layout, so this pins the three pieces that make the box end
+    // at the last column: no flexible track, a box that shrinks to its content
+    // (and scrolls sideways past the page), and rows as wide as their columns.
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(template()).not.toContain("fr");
+    const box = screen.getByTestId("shots-scroll");
+    expect(box).toHaveClass("overflow-auto");
+    expect(box.parentElement).toHaveClass("w-fit", "max-w-full");
+    expect(screen.getByTestId("header-time").closest("[style]")).toHaveClass("min-w-max");
   });
 
   it("lets the Set column be narrowed, within its bounds, where it used to take the spare room", async () => {

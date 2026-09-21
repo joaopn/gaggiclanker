@@ -165,27 +165,27 @@ describe("gridTemplates", () => {
   it("gives the narrow breakpoint one track per column that survives it", () => {
     const columns = visibleColumns(["time", "curve", "score"]);
     const { narrow, wide } = gridTemplates(columns);
-    // Three tracks and the empty one that takes the rest of the row.
-    expect(wide.split(" ")).toEqual(["7.5rem", "6rem", "4rem", "minmax(0,1fr)"]);
+    // Three tracks and nothing after them: the table is as wide as its columns.
+    expect(wide.split(" ")).toEqual(["7.5rem", "6rem", "4rem"]);
     // Curve is hidden on a phone, and a hidden grid item still takes its track:
     // the narrow template has to be short, not the cells hidden.
-    expect(narrow.split(" ")).toEqual(["7.5rem", "4rem", "minmax(0,1fr)"]);
+    expect(narrow.split(" ")).toEqual(["7.5rem", "4rem"]);
   });
 
-  it("sizes the text columns too, and leaves the spare room after the last one", () => {
+  it("sizes the text columns too, and leaves no spare track after the last one", () => {
     // Profile used to be `minmax(8rem,1fr)` and swallowed whatever the row had
-    // left, which is also why it had no edge to drag. Every column is a width
-    // now, and the leftover is a track of its own at the end.
+    // left, which is also why it had no edge to drag. Then an empty `1fr` track
+    // at the end took the leftover and drew it as a band of blank row. Every
+    // column is a width now, and the room they do not use belongs to the page.
     const { wide } = gridTemplates(visibleColumns(["time", "profile"]));
-    expect(wide).toBe("7.5rem 9rem minmax(0,1fr)");
+    expect(wide).toBe("7.5rem 9rem");
+    expect(wide).not.toContain("fr");
   });
 
   it("makes the Set a column that can be dragged narrower than it was", () => {
     const set = SHOT_COLUMNS.find((column) => column.id === "set");
     expect(set?.size).toEqual({ rem: 8, min: 4, max: 20 });
-    expect(gridTemplates(visibleColumns(["set", "time"]), { set: 2 }).wide).toBe(
-      "4rem 7.5rem minmax(0,1fr)",
-    );
+    expect(gridTemplates(visibleColumns(["set", "time"]), { set: 2 }).wide).toBe("4rem 7.5rem");
   });
 
   it("sizes Decision for its three words and no wider", () => {
@@ -193,18 +193,16 @@ describe("gridTemplates", () => {
     expect(decision?.size).toEqual({ rem: 9.75, min: 9.75, max: 14 });
   });
 
-  it("covers every column the chooser offers, plus the leftover track", () => {
+  it("covers every column the chooser offers, and nothing else", () => {
     const all = SHOT_COLUMNS.map((column) => column.id);
-    expect(gridTemplates(visibleColumns(all)).wide.split(" ")).toHaveLength(all.length + 1);
+    expect(gridTemplates(visibleColumns(all)).wide.split(" ")).toHaveLength(all.length);
   });
 
   it("draws a column at the reader's width, clamped to its bounds", () => {
     const columns = visibleColumns(["profile", "time", "score"]);
-    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem 9rem 4rem minmax(0,1fr)");
+    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem 9rem 4rem");
     // A stored width from a looser release is still drawn inside today's bounds.
-    expect(gridTemplates(columns, { time: 1, score: 99 }).wide).toBe(
-      "4.5rem 9rem 6rem minmax(0,1fr)",
-    );
+    expect(gridTemplates(columns, { time: 1, score: 99 }).wide).toBe("4.5rem 9rem 6rem");
   });
 
   it("sizes Time for the compact format, not the long one it used to show", () => {

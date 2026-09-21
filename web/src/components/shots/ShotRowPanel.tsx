@@ -95,7 +95,9 @@ export function ShotRowPanel({
       aria-label={`Shot ${shot.device_id}`}
       data-testid="shot-panel"
       data-shot={shot.id}
-      className="border-border border-b bg-muted/20 px-3 py-3"
+      // Width 0 stretched to the row: the table is as wide as its columns, and
+      // the panel's text at its widest (a note on one line) must not widen it.
+      className="w-0 min-w-full border-border border-b bg-muted/20 px-3 py-3"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="min-w-0 truncate text-muted-foreground text-xs">

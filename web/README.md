@@ -134,8 +134,12 @@ and Notes with no edge to take hold of, and an `auto` track sized by one row's
 content put that row out of line with the header, because each row is its own
 grid. A default width is what fits that column — a measurement where the
 content has one shape (the sparkline's 96 px, five stars, three words), the
-heading plus its sort arrow otherwise — and whatever the row has left goes to
-an empty track after the last column. The default row is Set, Time, Profile,
+heading plus its sort arrow otherwise — and there is no track after the last
+column: the grids are exactly their tracks' width, the table (`min-w-max`) is
+as wide as its rows, and the page wraps it in `w-fit max-w-full`, so the box
+ends where the last column does and a row wider than the page scrolls
+sideways. An open row's panel is `w-0 min-w-full` so its text
+cannot widen the table. The default row is Set, Time, Profile,
 Duration, Yield, Score, Rating, Decision; Curve, Notes and Flags wait to be
 asked for. A stored column choice that is exactly one of the previous defaults
 (`PREVIOUS_DEFAULT_SHOT_COLUMNS`, one entry per generation, newest first) reads
