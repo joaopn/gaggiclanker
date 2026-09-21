@@ -449,6 +449,13 @@ uv run python scripts/build_web_shot_fixture.py
 4. Extend `tests/test_static.py::test_every_client_route_deep_links_to_index`
    with the new path, so a hard refresh on it stays covered.
 
+**How wide a page gets.** `contentMaxWidth(pathname)` in `src/lib/navigation.ts`
+answers it and `AppShell` puts the class on `<main>`: `max-w-5xl` — a reading
+measure — for every page that is prose, a form or a chart, and `WIDE_MAX_WIDTH`
+for the routes listed as a dataset, which today is the shots list alone (`/shots`
+exactly; `/shots/:id` is a page to read). A wide page's own drawers use the same
+constant so they line up with it (`CompareDrawer`).
+
 `AppShell` renders that table twice over: the desktop rail and the mobile sheet.
 The rail has two widths and `NAV_LINKS` drives both — collapsed, the label and
 the chord go `sr-only` and the entry gains a radix `Tooltip`, so an entry added

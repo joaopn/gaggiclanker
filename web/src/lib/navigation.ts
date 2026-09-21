@@ -191,3 +191,35 @@ export function isGroupActive(group: NavGroup, pathname: string): boolean {
   if (group.to && isNavActive({ to: group.to }, pathname)) return true;
   return group.children.some((child) => isNavActive(child, pathname));
 }
+
+/**
+ * How wide the page under the shell is allowed to get.
+ *
+ * Two answers, because the application holds two kinds of page. Most of them
+ * are things to read — a Set's log, a shot's analysis, a settings form — and a
+ * line of prose that runs the width of a wide monitor is a line nobody
+ * finishes; `max-w-5xl` is the reading column those are laid out in.
+ *
+ * The archive is not one of those. It is a dataset with up to eleven columns,
+ * and the columns it cannot show are the ones a reader turned on: a profile
+ * name, a sparkline, a note. So the list takes the window, less the shell's
+ * own gutters, up to a cap — far past any reading column, but still a margin
+ * rather than a table that runs into the edge of a very wide screen.
+ *
+ * Exact paths, not prefixes: `/shots` is the list and `/shots/:id` is a shot,
+ * which is a page to read like any other.
+ */
+const WIDE_ROUTES: readonly string[] = ["/shots"];
+
+/** The widest the content column gets: the reading measure, or the dataset one. */
+export function contentMaxWidth(pathname: string): string {
+  // A trailing slash is the same route; react-router matches either.
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return WIDE_ROUTES.includes(path) ? WIDE_MAX_WIDTH : "max-w-5xl";
+}
+
+/**
+ * The cap on a dataset page, as a class so the drawers a wide page opens line
+ * up with the page itself rather than with the reading column.
+ */
+export const WIDE_MAX_WIDTH = "max-w-[112rem]";

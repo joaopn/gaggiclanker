@@ -5,7 +5,9 @@ import type { ShotListRow } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShotSamples } from "@/hooks/useArchive";
+import { WIDE_MAX_WIDTH } from "@/lib/navigation";
 import { formatGrams, formatSeconds, formatTime, profileName } from "@/lib/shots";
+import { cn } from "@/lib/utils";
 
 /**
  * Two or three shots, overlaid.
@@ -53,7 +55,9 @@ export function CompareDrawer({
       data-testid="compare-drawer"
       className="fixed inset-x-0 bottom-0 z-30 border-border border-t bg-background/98 shadow-lg backdrop-blur"
     >
-      <div className="mx-auto w-full max-w-5xl px-4 py-3">
+      {/* The same measure as the list it belongs to, so the drawer's chart
+          lines up with the table above it rather than with a reading column. */}
+      <div className={cn("mx-auto w-full px-4 py-3", WIDE_MAX_WIDTH)}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="font-medium text-sm">Comparing {shots.length} shots</h2>

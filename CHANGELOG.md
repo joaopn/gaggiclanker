@@ -10,6 +10,15 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The shot list uses the whole window
+
+- **The list is as wide as your window** instead of the reading column the rest
+  of the application is laid out in, up to a cap and with a margin either side.
+  The archive is a table with eleven columns to offer, and the columns worth
+  turning on — the profile, the curve, your notes — were the ones there was no
+  room for. The compare drawer widened with it, so its chart lines up with the
+  table above it.
+
 ### An agent's change to a Set is a proposal you accept, and it needs a prediction
 
 - **The chat can no longer change a Set on its own.** `propose_set_version`

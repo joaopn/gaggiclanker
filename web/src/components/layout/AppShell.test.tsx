@@ -328,6 +328,20 @@ describe("AppShell", () => {
     expect(await screen.findByRole("heading", { name: "Profiles" })).toBeInTheDocument();
   });
 
+  it("lays the archive out as a dataset and everything else as a reading column", async () => {
+    // The shots table has eleven columns and the ones a reader turns on —
+    // a profile name, a sparkline, a note — are the ones that need the room,
+    // so the list takes the window rather than the reading measure.
+    const list = renderApp("/shots");
+    expect(document.querySelector("main")).toHaveClass("max-w-[112rem]");
+    expect(document.querySelector("main")).not.toHaveClass("max-w-5xl");
+    list.unmount();
+
+    renderApp("/nope");
+    expect(await screen.findByText("No such page")).toBeInTheDocument();
+    expect(document.querySelector("main")).toHaveClass("max-w-5xl");
+  });
+
   it("shows a 404 page inside the shell for an unknown route", async () => {
     renderApp("/nope");
     expect(await screen.findByText("No such page")).toBeInTheDocument();

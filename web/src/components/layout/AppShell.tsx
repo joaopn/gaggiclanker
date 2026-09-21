@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHotkeys } from "@/hooks/useHotkeys";
 import {
+  contentMaxWidth,
   isGroupActive,
   isNavActive,
   isNavGroup,
@@ -293,6 +294,7 @@ function NavGroup({
  */
 export function AppShell() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   // Read once, at mount. A lazy initialiser rather than an effect, so the first
@@ -412,10 +414,13 @@ export function AppShell() {
           </div>
         </header>
 
-        {/* `max-w-5xl` centred, collapsed or not: the rail's 10.5rem goes to the
-            margins until the content can use it, and a reading column that
-            changes width when you fold a sidebar is worse than a wide margin. */}
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+        {/* Centred, collapsed or not: the rail's 10.5rem goes to the margins
+            until the content can use it, and a column that changes width when
+            you fold a sidebar is worse than a wide margin. How wide the column
+            is allowed to get depends on the route — a reading measure for the
+            pages that are prose, the window for the ones that are a dataset
+            (`contentMaxWidth`). */}
+        <main className={cn("mx-auto w-full flex-1 px-4 py-6", contentMaxWidth(pathname))}>
           <Outlet />
         </main>
       </div>
