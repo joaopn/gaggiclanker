@@ -135,9 +135,12 @@ content put that row out of line with the header, because each row is its own
 grid. A default width is what fits that column — a measurement where the
 content has one shape (the sparkline's 96 px, five stars, three words), the
 heading plus its sort arrow otherwise — and whatever the row has left goes to
-an empty track after the last column. A stored column choice that is exactly
-the previous default reads as the current default, a stored Analyse column
-reads as Decision, and any other stored choice is kept.
+an empty track after the last column. The default row is Set, Time, Profile,
+Duration, Yield, Score, Rating, Decision; Curve, Notes and Flags wait to be
+asked for. A stored column choice that is exactly one of the previous defaults
+(`PREVIOUS_DEFAULT_SHOT_COLUMNS`, one entry per generation, newest first) reads
+as the current default, a stored Analyse column reads as Decision, and any
+other stored choice is kept.
 
 **Every write to a verdict merges and queues.** The stars, the Decision column,
 the row editor and the quick judgement all go through `usePatchJudgement(shotId)`:

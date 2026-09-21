@@ -14,14 +14,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **The list is as wide as your window** instead of the reading column the rest
   of the application is laid out in, up to a cap and with a margin either side.
-  The archive is a table with eleven columns to offer, and the columns worth
-  turning on — the profile, the curve, your notes — were the ones there was no
+  The archive is a table with eleven columns to offer, and the ones worth
+  having — the profile, the curve, your notes — were the ones there was no
   room for. The compare drawer widened with it, so its chart lines up with the
   table above it.
-- **Profile can be resized like every other column.** It and Notes used to take
-  whatever the row had left over, which also meant their edges could not be
-  dragged; they are ordinary columns now, with a width you set and a browser
-  that remembers it.
+- **Profile is on the row from the first visit**, and can be resized like every
+  other column. It and Notes used to take whatever the row had left over, which
+  also meant their edges could not be dragged; they are ordinary columns now,
+  with a width you set and a browser that remembers it. If you had never
+  touched the column chooser — or had ticked your way back to exactly what it
+  gave you — Profile simply appears; any other choice you made is kept as you
+  made it.
 - **Every column starts at the width that fits it** — the sparkline, five stars,
   the three decision words, or the heading and its sort arrow — rather than at
   a share of the row, and what is left over sits after the last column, as a

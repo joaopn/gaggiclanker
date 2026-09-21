@@ -46,11 +46,12 @@ beforeEach(() => {
 });
 
 describe("loadShotColumns", () => {
-  it("starts with Profile, Curve and Notes off", () => {
-    // The change worth pinning: a sparkline is a request and a canvas per row,
-    // and the profile name is the same string on nearly every row.
+  it("shows Profile from the first visit, and leaves Curve and Notes to the chooser", () => {
+    // What was brewed belongs on the row that is scanned. The two left off are
+    // the expensive one (a sparkline is a request and a canvas per row) and
+    // the long one (a note is for reading a session back, not for scanning).
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
-    expect(DEFAULT_SHOT_COLUMNS).not.toContain("profile");
+    expect(DEFAULT_SHOT_COLUMNS).toContain("profile");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("curve");
     expect(DEFAULT_SHOT_COLUMNS).not.toContain("notes");
   });
@@ -67,7 +68,8 @@ describe("loadShotColumns", () => {
       JSON.stringify(["time", "rating", "analyze", "flags"]),
     );
     expect(loadShotColumns()).toEqual(["time", "rating", "decision", "flags"]);
-    // The old default, Analyse included, is the new default.
+    // Mapped first, so a stored generation that named Analyse is still read as
+    // the generation it is, and upgraded whole.
     window.localStorage.setItem(
       SHOT_COLUMNS_KEY,
       JSON.stringify(["set", "time", "duration", "yield", "score", "rating", "analyze"]),
@@ -75,17 +77,26 @@ describe("loadShotColumns", () => {
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
 
-  it("reads a stored copy of the previous default as the new default", () => {
-    // Stored by somebody who toggled a column and put it back: what they had
-    // was what they were given, so they get what is given now.
-    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(PREVIOUS_DEFAULT_SHOT_COLUMNS));
-    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
-    // In whatever order it was stored: the order of a stored list means nothing.
-    window.localStorage.setItem(
-      SHOT_COLUMNS_KEY,
-      JSON.stringify([...PREVIOUS_DEFAULT_SHOT_COLUMNS].reverse()),
-    );
-    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+  it.each(PREVIOUS_DEFAULT_SHOT_COLUMNS.map((generation, index) => [index, generation]))(
+    "reads a stored copy of default generation %i as the current default",
+    (_index, generation) => {
+      // Stored by somebody who toggled a column and put it back: what they had
+      // was what they were given, so they get what is given now. Every
+      // generation is kept, because a browser that has not been opened since
+      // an older one was current is exactly the browser this is for.
+      window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(generation));
+      expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+      // In whatever order it was stored: the order of a stored list means nothing.
+      window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify([...generation].reverse()));
+      expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    },
+  );
+
+  it("does not read a generation as the default once it is the default again", () => {
+    // The current default is not in the list of previous ones, so a reader who
+    // ticks their way back to exactly today's columns has made a choice and it
+    // is kept as a choice — there is nothing to upgrade it to.
+    expect(PREVIOUS_DEFAULT_SHOT_COLUMNS).not.toContainEqual(DEFAULT_SHOT_COLUMNS);
   });
 
   it.each([

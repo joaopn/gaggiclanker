@@ -319,24 +319,22 @@ describe("ShotsPage", () => {
     }
   });
 
-  it("leaves Profile and Curve out until somebody asks for them", async () => {
-    // A sparkline per row is a request and a canvas per row, and the profile
-    // name is the same string on almost every row of an archive built around
-    // three profiles. Both cost a lot and say little, so neither is the
-    // default; what a reader does want — which Set, and whether it was any
-    // good — is.
+  it("shows the profile from the first visit and leaves Curve out until somebody asks", async () => {
+    // What was brewed belongs on the row that is scanned. A sparkline per row
+    // is a request and a canvas per row, wanted by somebody comparing shapes
+    // rather than by somebody scanning, so that one waits to be asked for.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    expect(screen.queryByText("9 Bar Espresso")).not.toBeInTheDocument();
+    expect(screen.getByText("9 Bar Espresso")).toBeInTheDocument();
     expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
     expect(getShotSamples).not.toHaveBeenCalled();
 
-    await showColumn(user, "Profile");
-    expect(await screen.findByText("9 Bar Espresso")).toBeInTheDocument();
+    await showColumn(user, "Curve");
+    expect(await screen.findByTestId("shot-sparkline")).toBeInTheDocument();
   });
 
   it("remembers the chosen columns in this browser", async () => {
@@ -345,12 +343,13 @@ describe("ShotsPage", () => {
 
     const first = renderWithQueryClient(<ShotsPage />);
     await listed();
-    await showColumn(user, "Profile");
-    await screen.findByText("9 Bar Espresso");
+    await showColumn(user, "Notes");
+    await screen.findByTestId("notes-cell");
     first.unmount();
 
     renderWithQueryClient(<ShotsPage />);
-    expect(await screen.findByText("9 Bar Espresso")).toBeInTheDocument();
+    await listed();
+    expect(screen.getByTestId("notes-cell")).toBeInTheDocument();
   });
 
   it("colours the score by band rather than linearly", async () => {
@@ -572,13 +571,12 @@ describe("ShotsPage column widths", () => {
 
   it("gives Profile an edge to drag, like every other column", async () => {
     // Profile was a flexible track: it took whatever the row had left and was
-    // the one column of text whose width a reader could not set.
-    const user = setupUser();
+    // the one column of text whose width a reader could not set. It is on the
+    // default row now, so the handle is there on a first visit.
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
     await listed();
-    await showColumn(user, "Profile");
 
     const handle = await screen.findByRole("separator", { name: "Resize the Profile column" });
     expect(handle).toHaveAttribute("aria-valuenow", "9");
@@ -604,6 +602,7 @@ describe("ShotsPage column widths", () => {
     expect(template().split(" ")).toEqual([
       "8rem",
       "7.5rem",
+      "9rem",
       "5.25rem",
       "3rem",
       "4rem",

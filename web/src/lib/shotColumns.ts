@@ -119,9 +119,28 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   { id: "flags", label: "Flags", size: { rem: 9, min: 4, max: 24 }, narrowHidden: true },
 ];
 
+/**
+ * What a first visit shows.
+ *
+ * Set, Time and Profile say what was brewed and when; Duration, Yield and
+ * Score say what the machine did; Rating and Decision say what you made of it.
+ * That is the row a reader scans, and it is the row they get without touching
+ * the chooser.
+ *
+ * Curve and Notes are the two left off. A sparkline is a request and a canvas
+ * per row, wanted by somebody comparing shapes rather than by somebody
+ * scanning; Notes is long, and it is there for reading a session back. Flags
+ * is off because the flags are mostly absences (imported, gone from the
+ * machine, incomplete) that matter on a handful of rows — Decision, "keep this
+ * recipe, improve on it, or bin the shot", is the question every shot ends on,
+ * and a column that answers it with a click is worth more than a badge. An
+ * analysis is started from the shot page; its state is in Flags, which stays
+ * in the chooser.
+ */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",
   "time",
+  "profile",
   "duration",
   "yield",
   "score",
@@ -130,37 +149,38 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
 ];
 
 /**
- * The default before the column after Rating replaced Flags, as a v1 value
- * could hold it.
+ * The defaults of earlier releases, newest first, as a v1 value could hold
+ * them.
  *
  * A stored value only exists once somebody has used the chooser, so a stored
- * copy of the old default means "I looked, and this is what I wanted" only in
+ * copy of an old default means "I looked, and this is what I wanted" only in
  * the sense that it was what they were given — they toggled something and put
- * it back. That exact value is read as the new default. Anything else is a
- * choice somebody made and is kept as they made it, Flags included: an upgrade
- * that rewrote chosen columns would be the release deciding for them.
+ * it back. Any of those exact values is read as the current default. Anything
+ * else is a choice somebody made and is kept as they made it, Flags included:
+ * an upgrade that rewrote chosen columns would be the release deciding for
+ * them.
+ *
+ * A generation is kept, not replaced, when the default changes again: a
+ * browser that has not been opened since the older one was current is exactly
+ * the browser this is for.
  */
-export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly ShotColumnId[] = [
-  "time",
-  "duration",
-  "yield",
-  "score",
-  "rating",
-  "set",
-  "flags",
+export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
+  // Before Profile joined the default row.
+  ["set", "time", "duration", "yield", "score", "rating", "decision"],
+  // Before the column after Rating (Decision) replaced Flags.
+  ["time", "duration", "yield", "score", "rating", "set", "flags"],
 ];
 
 /**
- * Whether a stored choice is the previous default. Compared as a set, because
- * the order a list was stored in carries nothing: the table draws columns in
- * the canonical order whatever the list says.
+ * Whether a stored choice is one of the defaults that came before. Compared as
+ * a set, because the order a list was stored in carries nothing: the table
+ * draws columns in the canonical order whatever the list says.
  */
 function isPreviousDefault(ids: ShotColumnId[]): boolean {
   const stored = new Set(ids);
-  return (
-    stored.size === ids.length &&
-    stored.size === PREVIOUS_DEFAULT_SHOT_COLUMNS.length &&
-    PREVIOUS_DEFAULT_SHOT_COLUMNS.every((id) => stored.has(id))
+  if (stored.size !== ids.length) return false;
+  return PREVIOUS_DEFAULT_SHOT_COLUMNS.some(
+    (generation) => generation.length === stored.size && generation.every((id) => stored.has(id)),
   );
 }
 
