@@ -30,18 +30,14 @@ export type ShotColumn = {
   id: ShotColumnId;
   /** What the header says, and what the column chooser lists. */
   label: string;
-  /**
-   * How wide the column is: either a fixed width in rem, which the reader can
-   * drag between `min` and `max`, or a flexible track that shares whatever
-   * the fixed columns leave.
-   */
-  size: FixedSize | { track: string };
+  /** How wide the column is drawn, and the bounds a drag is clamped to. */
+  size: ColumnSize;
   /** Hidden below `md`, whatever the chooser says: a phone has five columns of room. */
   narrowHidden?: boolean;
 };
 
-/** A fixed track, in rem, with the bounds a drag is clamped to. */
-export type FixedSize = { rem: number; min: number; max: number };
+/** A track in rem: the width it starts at, and the bounds a drag is clamped to. */
+export type ColumnSize = { rem: number; min: number; max: number };
 
 /**
  * Every column, in the order they are drawn. Reordering is not offered: the
@@ -54,68 +50,75 @@ export type FixedSize = { rem: number; min: number; max: number };
  * down its first column; the time beside it then says where in that bag a shot
  * fell.
  *
- * Only Profile and Notes are flexible, and the rest are fixed rather than
- * `auto`. Every row is a grid of its own (see `ShotsTable`), and an `auto`
- * track is sized by the content of *that* row: a long Set name in one row
- * pushed every later column of that row sideways, out of line with the header.
- * A `fr` track resolves identically in every row, because the fixed tracks
- * beside it are the same everywhere.
+ * **Every column is a fixed track in rem, and every column can be dragged.**
+ * There are no flexible tracks: Profile and Notes used to be `fr` and were the
+ * two columns whose edge could not be taken hold of, which is the one thing a
+ * reader expects of a column of text. Nor is any track `auto` — every row is a
+ * grid of its own (see `ShotsTable`), and an `auto` track is sized by the
+ * content of *that* row, so a long Set name in one row pushed every later
+ * column of that row sideways, out of line with the header.
  *
- * Set was flexible too, and took a share of every spare pixel for a badge that
- * says a name and a version — the widest column on the row, with no way to
- * make it narrower. It is fixed and resizable now, with a smaller default; the
- * badge truncates to whatever width it is given and says the whole name on
- * hover.
+ * **A default width is what fits that column, and nothing more.** For a column
+ * with one shape of content it is a measurement: the sparkline's 96 px, five
+ * 16 px stars, three words side by side. For a column of free text (the Set, a
+ * profile name, a note) there is no such width, so the default is the width
+ * that shows a usual value and the rest truncates with the whole string on
+ * hover. Either way the heading counts as content: a column narrower than its
+ * own word is a column with an ellipsis for a title, so each default is at
+ * least the label at `text-xs` uppercase with `tracking-wide`, plus the 1rem
+ * the sort arrow takes while that column is the one being sorted by. The
+ * measurements below are Helvetica's, which is wider than the UI faces a
+ * browser actually uses — a default that fits there fits everywhere.
  *
- * Time is sized for the list's own compact format (`formatListTime`), measured
- * rather than guessed: the widest current-year form of the locales checked is
- * US English ("Dec 24, 11:59 PM"), 7.7rem at text-sm in DejaVu Sans, which is
- * wider than the system UI faces a browser actually uses. The day-first
- * locales need about 6.5rem. An older shot's date-with-year is narrower than
- * either.
+ * What the fixed tracks leave over goes to an empty track after the last
+ * column (see `gridTemplates`), the way a spreadsheet does it, rather than
+ * being shared out among columns that did not ask for it. A reader who wants
+ * the room in a particular column drags that column's edge, and the width is
+ * kept.
  */
 export const SHOT_COLUMNS: ShotColumn[] = [
+  // A Set badge says a name and a version; both truncate, and the whole name
+  // is on hover. 8rem holds a usual one ("Guji washed v2").
   { id: "set", label: "Set", size: { rem: 8, min: 4, max: 20 }, narrowHidden: true },
+  // The list's own compact format (`formatListTime`), measured rather than
+  // guessed: the widest current-year form of the locales checked is US English
+  // ("Dec 24, 11:59 PM"), 7.7rem at text-sm in DejaVu Sans. The day-first
+  // locales need about 6.5rem, and an older shot's date-with-year is narrower
+  // than either.
   { id: "time", label: "Time", size: { rem: 7.5, min: 4.5, max: 16 } },
-  { id: "profile", label: "Profile", size: { track: "minmax(8rem,1fr)" } },
+  // Profile names run from "Default" to "Blooming espresso 9 bar"; 9rem shows
+  // the ones this archive is built around and truncates the rest.
+  { id: "profile", label: "Profile", size: { rem: 9, min: 4, max: 24 } },
   // The sparkline is drawn at a fixed 96 px; narrower than that clips it.
-  { id: "curve", label: "Curve", size: { rem: 6.5, min: 6, max: 12 }, narrowHidden: true },
-  { id: "duration", label: "Duration", size: { rem: 4.5, min: 3.5, max: 8 } },
-  { id: "yield", label: "Yield", size: { rem: 4.5, min: 3.5, max: 8 }, narrowHidden: true },
-  { id: "score", label: "Score", size: { rem: 3.25, min: 2.75, max: 6 } },
-  // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit.
+  { id: "curve", label: "Curve", size: { rem: 6, min: 6, max: 12 }, narrowHidden: true },
+  // "28.5 s" needs 2.6rem; the heading with its sort arrow needs 5.1rem, and
+  // Duration is a column people sort by.
+  { id: "duration", label: "Duration", size: { rem: 5.25, min: 3.5, max: 8 } },
+  // "36.0 g" is 2.5rem, the heading 2.3rem — and Yield does not sort, so no
+  // arrow ever appears beside it.
+  { id: "yield", label: "Yield", size: { rem: 3, min: 2.75, max: 8 }, narrowHidden: true },
+  // The badge is two characters wide; the sorted heading is 3.8rem.
+  { id: "score", label: "Score", size: { rem: 4, min: 2.75, max: 6 } },
+  // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
+  // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
-  { id: "notes", label: "Notes", size: { track: "minmax(8rem,1.2fr)" }, narrowHidden: true },
-  // Keep, Improve and Discard side by side at text-xs: 9.6rem in DejaVu Sans,
+  // A note is a sentence and will truncate at any width; 14rem is a phrase,
+  // which is what the column is for — the whole note is on hover, and reading
+  // a session back is what the drag is for.
+  { id: "notes", label: "Notes", size: { rem: 14, min: 6, max: 32 }, narrowHidden: true },
+  // Keep, Improve and Discard side by side at text-xs: 9.75rem in DejaVu Sans,
   // which is wider than the system faces a browser actually uses, so the
-  // minimum still shows all three words.
+  // default still shows all three words.
   {
     id: "decision",
     label: "Decision",
-    size: { rem: 10.5, min: 9.75, max: 14 },
+    size: { rem: 9.75, min: 9.75, max: 14 },
     narrowHidden: true,
   },
+  // Badges that wrap: "gone from machine" is the widest single one.
   { id: "flags", label: "Flags", size: { rem: 9, min: 4, max: 24 }, narrowHidden: true },
 ];
 
-/**
- * What a first visit shows.
- *
- * Profile and Curve are off, which is the change worth explaining. A sparkline
- * per row is a request per row and a canvas per row, and the profile name is
- * the same string on almost every row of an archive built around a handful of
- * profiles — so both cost a lot and say little, while Set and Rating (what you
- * were brewing, and whether it worked) say everything and were the two hardest
- * things to see. Notes is off because it is long: it is there for somebody who
- * wants to read a session back, not for scanning.
- *
- * Decision is where Flags was. The flags are mostly absences (imported, gone
- * from the machine, incomplete) that matter on a handful of rows, while "keep
- * this recipe, improve on it, or bin the shot" is the question every shot
- * ends on — and a column that answers it with a click is worth more than a
- * badge. An analysis is started from the shot page; its state is in Flags,
- * which stays in the chooser.
- */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",
   "time",
@@ -244,19 +247,14 @@ export type ShotWidths = Partial<Record<ShotColumnId, number>>;
 /** Bump the suffix when the meaning of a stored value changes. */
 export const SHOT_WIDTHS_KEY = "shots.widths.v1";
 
-/** A fixed column's bounds, or `null` for a flexible one. */
-export function fixedSize(column: ShotColumn): FixedSize | null {
-  return "rem" in column.size ? column.size : null;
-}
-
 /** A width inside the column's bounds, to the nearest hundredth of a rem. */
-export function clampWidth(size: FixedSize, rem: number): number {
+export function clampWidth(size: ColumnSize, rem: number): number {
   const bounded = Math.min(size.max, Math.max(size.min, rem));
   return Math.round(bounded * 100) / 100;
 }
 
-/** The width a fixed column is drawn at: the reader's, clamped, or its default. */
-export function columnWidth(size: FixedSize, stored: number | undefined): number {
+/** The width a column is drawn at: the reader's, clamped, or its default. */
+export function columnWidth(size: ColumnSize, stored: number | undefined): number {
   return stored === undefined ? size.rem : clampWidth(size, stored);
 }
 
@@ -264,9 +262,9 @@ export function columnWidth(size: FixedSize, stored: number | undefined): number
  * The stored widths, keeping only what still makes sense.
  *
  * The same failure-tolerant reading as the column choice: storage that throws,
- * a value that is not an object, an id that is no longer a column or no longer
- * a fixed one, a width that is not a number — each of those falls away on its
- * own and leaves the rest of the reader's widths standing.
+ * a value that is not an object, an id that is no longer a column, a width
+ * that is not a number — each of those falls away on its own and leaves the
+ * rest of the reader's widths standing.
  */
 export function loadShotWidths(storage: Storage | undefined = safeStorage()): ShotWidths {
   try {
@@ -276,10 +274,9 @@ export function loadShotWidths(storage: Storage | undefined = safeStorage()): Sh
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const widths: ShotWidths = {};
     for (const column of SHOT_COLUMNS) {
-      const size = fixedSize(column);
       const value = (parsed as Record<string, unknown>)[column.id];
-      if (size === null || typeof value !== "number" || !Number.isFinite(value)) continue;
-      widths[column.id] = clampWidth(size, value);
+      if (typeof value !== "number" || !Number.isFinite(value)) continue;
+      widths[column.id] = clampWidth(column.size, value);
     }
     return widths;
   } catch {
@@ -307,24 +304,19 @@ export function saveShotWidths(
  * with a hidden child still takes its width, so a phone would carry six empty
  * columns' worth of gutter.
  *
- * When no flexible column is visible, a trailing empty `1fr` track takes the
- * rest of the row. Without it the fixed tracks would still be start-aligned,
- * but the grid would end short of the row and nothing would say why; with it
- * the space is visibly "after the last column", which is where a spreadsheet
- * puts it, and a dragged edge stays under the pointer.
+ * Every column is a fixed track, so a trailing empty `1fr` track takes
+ * whatever the row has left. Without it the fixed tracks would still be
+ * start-aligned, but the grid would end short of the row and nothing would say
+ * why; with it the space is visibly "after the last column", which is where a
+ * spreadsheet puts it, and a dragged edge stays under the pointer.
  */
 export function gridTemplates(
   columns: ShotColumn[],
   widths: ShotWidths = {},
 ): { narrow: string; wide: string } {
   const template = (list: ShotColumn[]) => {
-    const tracks = list.map((column) => {
-      const size = fixedSize(column);
-      return size === null
-        ? (column.size as { track: string }).track
-        : `${columnWidth(size, widths[column.id])}rem`;
-    });
-    if (list.every((column) => fixedSize(column) !== null)) tracks.push("minmax(0,1fr)");
+    const tracks = list.map((column) => `${columnWidth(column.size, widths[column.id])}rem`);
+    tracks.push("minmax(0,1fr)");
     return tracks.join(" ");
   };
   const narrowColumns = columns.filter((column) => !column.narrowHidden);

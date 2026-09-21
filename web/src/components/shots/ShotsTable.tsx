@@ -22,10 +22,9 @@ import { usePatchJudgement } from "@/hooks/useSets";
 import { useVirtualRows } from "@/hooks/useVirtualRows";
 import { attempt } from "@/lib/mutations";
 import {
+  type ColumnSize,
   clampWidth,
   columnWidth,
-  type FixedSize,
-  fixedSize,
   gridTemplates,
   type ShotColumn,
   type ShotColumnId,
@@ -250,22 +249,22 @@ function HeaderCell({
 }) {
   const key = SORTABLE[column.id];
   const active = key !== undefined && key === sort;
-  const size = fixedSize(column);
   // Centred, titles and content alike: the columns are narrow and mostly a
   // badge, a star row or a short figure, and a centred heading over a centred
   // value reads as one column where a right-aligned number under a left-aligned
   // badge read as two. `relative` and no `overflow-hidden` here, because the
   // resize handle straddles the cell's right edge; the label truncates inside.
   const className = cn(column.narrowHidden && "hidden md:block", "relative min-w-0 text-center");
-  const handle =
-    size === null ? null : (
-      <ResizeHandle
-        column={column}
-        size={size}
-        width={columnWidth(size, width)}
-        onResize={onResize}
-      />
-    );
+  // Every column has one: a column of text whose edge cannot be taken hold of
+  // is the one thing a reader tries first.
+  const handle = (
+    <ResizeHandle
+      column={column}
+      size={column.size}
+      width={columnWidth(column.size, width)}
+      onResize={onResize}
+    />
+  );
 
   if (key === undefined) {
     return (
@@ -349,7 +348,7 @@ function ResizeHandle({
   onResize,
 }: {
   column: ShotColumn;
-  size: FixedSize;
+  size: ColumnSize;
   width: number;
   onResize: (id: ShotColumnId, rem: number | null) => void;
 }) {

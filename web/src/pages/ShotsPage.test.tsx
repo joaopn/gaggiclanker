@@ -570,6 +570,49 @@ describe("ShotsPage column widths", () => {
     expect(screen.getByTestId("reset-widths")).toBeDisabled();
   });
 
+  it("gives Profile an edge to drag, like every other column", async () => {
+    // Profile was a flexible track: it took whatever the row had left and was
+    // the one column of text whose width a reader could not set.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await showColumn(user, "Profile");
+
+    const handle = await screen.findByRole("separator", { name: "Resize the Profile column" });
+    expect(handle).toHaveAttribute("aria-valuenow", "9");
+    // Third track: Set, Time, Profile — and the spare room after the last one.
+    expect(template().split(" ")[2]).toBe("9rem");
+    expect(template().split(" ").at(-1)).toBe("minmax(0,1fr)");
+
+    pointer(handle, "pointerdown", 100);
+    pointer(handle, "pointermove", 180);
+    pointer(handle, "pointerup", 180);
+    expect(handle).toHaveAttribute("aria-valuenow", "14");
+    expect(template().split(" ")[2]).toBe("14rem");
+  });
+
+  it("starts every visible column at what fits it, with the rest of the row after it", async () => {
+    // The defaults are measurements rather than shares of the row, so a table
+    // on a wide screen is columns at their own width and one empty track.
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(template().split(" ")).toEqual([
+      "8rem",
+      "7.5rem",
+      "5.25rem",
+      "3rem",
+      "4rem",
+      "5.5rem",
+      "9.75rem",
+      "minmax(0,1fr)",
+    ]);
+  });
+
   it("lets the Set column be narrowed, within its bounds, where it used to take the spare room", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(

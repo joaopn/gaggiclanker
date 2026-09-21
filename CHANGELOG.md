@@ -10,7 +10,7 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
-### The shot list uses the whole window
+### The shot list uses the whole window, and every column can be sized
 
 - **The list is as wide as your window** instead of the reading column the rest
   of the application is laid out in, up to a cap and with a margin either side.
@@ -18,6 +18,14 @@ first (`POST /api/backup`), because there is no down-migration.
   turning on — the profile, the curve, your notes — were the ones there was no
   room for. The compare drawer widened with it, so its chart lines up with the
   table above it.
+- **Profile can be resized like every other column.** It and Notes used to take
+  whatever the row had left over, which also meant their edges could not be
+  dragged; they are ordinary columns now, with a width you set and a browser
+  that remembers it.
+- **Every column starts at the width that fits it** — the sparkline, five stars,
+  the three decision words, or the heading and its sort arrow — rather than at
+  a share of the row, and what is left over sits after the last column, as a
+  spreadsheet does it. Widths you had already dragged are untouched.
 
 ### An agent's change to a Set is a proposal you accept, and it needs a prediction
 

@@ -126,14 +126,18 @@ open row's index and the panel's measured height; the arithmetic is the pure
 `virtualWindow`, tested on numbers because jsdom has no layout. Two open rows
 would need a measured list, which is why opening one closes the other.
 
-**Widths are rem, per column, per browser.** Fixed columns have a drag handle
-(a focusable `separator`: arrows, Home/End, double-click resets) and store under
-`shots.widths.v1`, apart from the column choice under `shots.columns.v1`. Only
-Profile and Notes are flexible tracks; nothing is `auto`, because each row is
-its own grid and an `auto` track sized by one row's content put that row out of
-line. A stored column choice that is exactly the previous default reads as the
-current default, a stored Analyse column reads as Decision, and any other stored
-choice is kept.
+**Widths are rem, per column, per browser.** Every column is a fixed track with
+a drag handle (a focusable `separator`: arrows, Home/End, double-click resets),
+stored under `shots.widths.v1`, apart from the column choice under
+`shots.columns.v1`. No track is flexible and none is `auto`: `fr` left Profile
+and Notes with no edge to take hold of, and an `auto` track sized by one row's
+content put that row out of line with the header, because each row is its own
+grid. A default width is what fits that column — a measurement where the
+content has one shape (the sparkline's 96 px, five stars, three words), the
+heading plus its sort arrow otherwise — and whatever the row has left goes to
+an empty track after the last column. A stored column choice that is exactly
+the previous default reads as the current default, a stored Analyse column
+reads as Decision, and any other stored choice is kept.
 
 **Every write to a verdict merges and queues.** The stars, the Decision column,
 the row editor and the quick judgement all go through `usePatchJudgement(shotId)`:

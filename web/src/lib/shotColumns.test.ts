@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   clampWidth,
   DEFAULT_SHOT_COLUMNS,
-  fixedSize,
   gridTemplates,
   loadShotColumns,
   loadShotWidths,
@@ -155,49 +154,85 @@ describe("gridTemplates", () => {
   it("gives the narrow breakpoint one track per column that survives it", () => {
     const columns = visibleColumns(["time", "curve", "score"]);
     const { narrow, wide } = gridTemplates(columns);
-    // Three fixed tracks and the empty one that takes the rest of the row.
-    expect(wide.split(" ")).toEqual(["7.5rem", "6.5rem", "3.25rem", "minmax(0,1fr)"]);
+    // Three tracks and the empty one that takes the rest of the row.
+    expect(wide.split(" ")).toEqual(["7.5rem", "6rem", "4rem", "minmax(0,1fr)"]);
     // Curve is hidden on a phone, and a hidden grid item still takes its track:
     // the narrow template has to be short, not the cells hidden.
-    expect(narrow.split(" ")).toEqual(["7.5rem", "3.25rem", "minmax(0,1fr)"]);
+    expect(narrow.split(" ")).toEqual(["7.5rem", "4rem", "minmax(0,1fr)"]);
   });
 
-  it("adds no filler track when a flexible column already takes the rest", () => {
+  it("sizes the text columns too, and leaves the spare room after the last one", () => {
+    // Profile used to be `minmax(8rem,1fr)` and swallowed whatever the row had
+    // left, which is also why it had no edge to drag. Every column is a width
+    // now, and the leftover is a track of its own at the end.
     const { wide } = gridTemplates(visibleColumns(["time", "profile"]));
-    expect(wide).toBe("7.5rem minmax(8rem,1fr)");
+    expect(wide).toBe("7.5rem 9rem minmax(0,1fr)");
   });
 
-  it("makes the Set a fixed column that can be dragged narrower than it was", () => {
+  it("makes the Set a column that can be dragged narrower than it was", () => {
     const set = SHOT_COLUMNS.find((column) => column.id === "set");
-    const size = set ? fixedSize(set) : null;
-    expect(size).toEqual({ rem: 8, min: 4, max: 20 });
+    expect(set?.size).toEqual({ rem: 8, min: 4, max: 20 });
     expect(gridTemplates(visibleColumns(["set", "time"]), { set: 2 }).wide).toBe(
       "4rem 7.5rem minmax(0,1fr)",
     );
   });
 
-  it("sizes Decision for its three words", () => {
+  it("sizes Decision for its three words and no wider", () => {
     const decision = SHOT_COLUMNS.find((column) => column.id === "decision");
-    expect(decision && fixedSize(decision)).toEqual({ rem: 10.5, min: 9.75, max: 14 });
+    expect(decision?.size).toEqual({ rem: 9.75, min: 9.75, max: 14 });
   });
 
-  it("covers every column the chooser offers", () => {
+  it("covers every column the chooser offers, plus the leftover track", () => {
     const all = SHOT_COLUMNS.map((column) => column.id);
-    expect(gridTemplates(visibleColumns(all)).wide.split(" ")).toHaveLength(all.length);
+    expect(gridTemplates(visibleColumns(all)).wide.split(" ")).toHaveLength(all.length + 1);
   });
 
-  it("draws a fixed column at the reader's width, clamped to its bounds", () => {
+  it("draws a column at the reader's width, clamped to its bounds", () => {
     const columns = visibleColumns(["profile", "time", "score"]);
-    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem minmax(8rem,1fr) 3.25rem");
+    expect(gridTemplates(columns, { time: 9.25 }).wide).toBe("9.25rem 9rem 4rem minmax(0,1fr)");
     // A stored width from a looser release is still drawn inside today's bounds.
     expect(gridTemplates(columns, { time: 1, score: 99 }).wide).toBe(
-      "4.5rem minmax(8rem,1fr) 6rem",
+      "4.5rem 9rem 6rem minmax(0,1fr)",
     );
   });
 
   it("sizes Time for the compact format, not the long one it used to show", () => {
     const time = SHOT_COLUMNS.find((column) => column.id === "time");
-    expect(time && fixedSize(time)?.rem).toBe(7.5);
+    expect(time?.size.rem).toBe(7.5);
+  });
+});
+
+describe("column sizes", () => {
+  it("gives every column a width, so every column has an edge to drag", () => {
+    // Profile and Notes were flexible tracks, and were the only two columns a
+    // reader could not resize — the two columns of text, where a width is
+    // wanted most.
+    for (const column of SHOT_COLUMNS) {
+      expect(column.size.rem, column.id).toBeGreaterThan(0);
+      expect(column.size.min, column.id).toBeLessThanOrEqual(column.size.rem);
+      expect(column.size.max, column.id).toBeGreaterThan(column.size.rem);
+    }
+  });
+
+  it("starts each column at what fits it, not at a share of the row", () => {
+    // The defaults are measurements, and the reasoning for each is beside it
+    // in `shotColumns.ts`: the sparkline's 96 px, five 16 px stars, three
+    // words side by side, a heading plus the sort arrow it grows when it is
+    // the column being sorted by.
+    const widths = Object.fromEntries(SHOT_COLUMNS.map((column) => [column.id, column.size.rem]));
+    expect(widths).toEqual({
+      set: 8,
+      time: 7.5,
+      profile: 9,
+      curve: 6,
+      duration: 5.25,
+      yield: 3,
+      score: 4,
+      rating: 5.5,
+      notes: 14,
+      decision: 9.75,
+      flags: 9,
+    });
   });
 });
 
@@ -215,7 +250,7 @@ describe("column widths", () => {
       SHOT_WIDTHS_KEY,
       JSON.stringify({
         time: 8,
-        // A flexible column has no width to store.
+        // Profile is a column with a width like any other now.
         profile: 12,
         // Not a column any more.
         vibes: 5,
@@ -225,7 +260,7 @@ describe("column widths", () => {
         flags: 400,
       }),
     );
-    expect(loadShotWidths()).toEqual({ time: 8, flags: 24 });
+    expect(loadShotWidths()).toEqual({ time: 8, profile: 12, flags: 24 });
   });
 
   it.each([
