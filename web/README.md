@@ -136,8 +136,8 @@ grid. A default width is what fits that column — a measurement where the
 content has one shape (the sparkline's 96 px, five stars, three words), the
 heading plus its sort arrow otherwise — and there is no track after the last
 column: the grids are exactly their tracks' width, the table (`min-w-max`) is
-as wide as its rows, and the page wraps it in `w-fit max-w-full`, so the box
-ends where the last column does and a row wider than the page scrolls
+as wide as its rows, and the page wraps it in `mx-auto w-fit max-w-full`, so
+the box is centred, ends where the last column does and a row wider than the page scrolls
 sideways. An open row's panel is `w-0 min-w-full` so its text
 cannot widen the table. The default row is Set, Time, Profile,
 Duration, Yield, Score, Rating, Decision; Curve, Notes and Flags wait to be

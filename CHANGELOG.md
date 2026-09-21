@@ -29,8 +29,9 @@ first (`POST /api/backup`), because there is no down-migration.
   the three decision words, or the heading and its sort arrow — rather than at
   a share of the row. Widths you had already dragged are untouched.
 - **The table is as wide as its columns, not the window.** The box, its border
-  and the count under it end at the last column, so a few narrow columns no
-  longer sit at the left of a wide band of empty rows; turning a column on or
+  and the count under it end at the last column, and the table is centred in
+  the page, so a few narrow columns no longer sit at the left of a wide band of
+  empty rows; turning a column on or
   dragging an edge wider grows the table, up to the page, and past that it
   scrolls sideways.
 

@@ -610,7 +610,7 @@ describe("ShotsPage column widths", () => {
     ]);
   });
 
-  it("keeps the table as wide as its columns rather than the window", async () => {
+  it("keeps the table as wide as its columns rather than the window, centred", async () => {
     // jsdom does no layout, so this pins the three pieces that make the box end
     // at the last column: no flexible track, a box that shrinks to its content
     // (and scrolls sideways past the page), and rows as wide as their columns.
@@ -622,7 +622,7 @@ describe("ShotsPage column widths", () => {
     expect(template()).not.toContain("fr");
     const box = screen.getByTestId("shots-scroll");
     expect(box).toHaveClass("overflow-auto");
-    expect(box.parentElement).toHaveClass("w-fit", "max-w-full");
+    expect(box.parentElement).toHaveClass("mx-auto", "w-fit", "max-w-full");
     expect(screen.getByTestId("header-time").closest("[style]")).toHaveClass("min-w-max");
   });
 

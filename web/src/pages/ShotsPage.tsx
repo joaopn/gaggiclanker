@@ -224,7 +224,9 @@ export function ShotsPage() {
         // As wide as the columns the reader chose and no wider, up to the page:
         // the box, its border and the count under it end where the last column
         // does, and a row of columns wider than the page scrolls sideways.
-        <div className="w-fit max-w-full space-y-3">
+        // Centred in the page, so the room the columns leave is shared out on
+        // both sides rather than left as a gap on the right.
+        <div className="mx-auto w-fit max-w-full space-y-3">
           {/* The scroll container is the window `useVirtualRows` measures, so
               it owns a height rather than growing with its content. */}
           <div
