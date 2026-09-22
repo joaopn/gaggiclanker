@@ -1023,7 +1023,7 @@ export interface paths {
         put?: never;
         /**
          * Check that a provider's credentials work
-         * @description The cheapest call each provider offers — a model list, or `claude auth status`.
+         * @description The cheapest call each provider offers — a model list, or a one-word `claude -p`.
          *
          *     Never an actual completion: a validate button that costs tokens is one
          *     people stop pressing. Unsaved ``settings`` are tried, never stored.

@@ -15,6 +15,8 @@ token that had been typed but not saved was invisible to it: a fresh box
 answered "No Claude Code OAuth token is configured" for a token sitting in the
 box right above the button. Switching the provider picker and validating had
 the same problem the other way round: it tested the provider that was saved.
+And the check itself was ``claude auth status``, which reports logged in for
+any token string, so a mistyped or revoked token validated green.
 
 This script posts the typed values the way the settings page now does, with a
 stand-in ``claude`` that answers ``auth status`` as logged in only when a token
@@ -26,6 +28,7 @@ different provider must not send the saved provider's key to it.
 from __future__ import annotations
 
 import asyncio
+import json
 import stat
 import sys
 import tempfile
@@ -36,13 +39,29 @@ import httpx
 from gaggiclanker.main import create_app
 from gaggiclanker.settings import EnvSettings
 
-#: Logged in exactly when the child got a token, which is the whole question.
-FAKE_CLAUDE = """#!/bin/sh
+#: The real CLI's two answers, faithfully: ``auth status`` says logged in for
+#: any token at all, and only a call (``-p``) finds out whether Anthropic
+#: accepts it — here, exactly the one good token, the rest get the CLI's 401
+#: envelope (exit 0, ``is_error`` true).
+GOOD_TOKEN = "sk-ant-oat01-typed-not-saved"  # noqa: S105 - a stand-in, accepted by the fake only
+REFUSED = json.dumps(
+    {"type": "result", "is_error": True, "api_error_status": 401, "result": "Invalid bearer token"}
+)
+FAKE_CLAUDE = f"""#!/bin/sh
 if [ "$1 $2" = "auth status" ]; then
   if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-    echo '{"loggedIn": true, "email": "repro@example.test", "subscriptionType": "max"}'
+    echo '{{"loggedIn": true, "authMethod": "oauth_token"}}'
   else
-    echo '{"loggedIn": false}'
+    echo '{{"loggedIn": false}}'
+  fi
+  exit 0
+fi
+if [ "$1" = "-p" ]; then
+  cat > /dev/null
+  if [ "$CLAUDE_CODE_OAUTH_TOKEN" = "{GOOD_TOKEN}" ]; then
+    echo '{{"type": "result", "is_error": false, "result": "OK"}}'
+  else
+    echo '{REFUSED}'
   fi
   exit 0
 fi
@@ -70,7 +89,7 @@ async def main() -> int:
                     json={
                         "settings": {
                             "llmProvider": "claude_code",
-                            "claudeCodeOauthToken": "sk-ant-oat01-typed-not-saved",
+                            "claudeCodeOauthToken": GOOD_TOKEN,
                             "claudeCodeBin": str(fake),
                         }
                     },
@@ -82,6 +101,20 @@ async def main() -> int:
                         f"a typed, unsaved token was not validated: {response.status_code} "
                         f"{check.get('detail') or payload.get('error')}"
                     )
+
+                # A token Anthropic refuses must not validate: `auth status`
+                # alone says logged in for any string at all.
+                refused = await client.post(
+                    "/api/llm/validate",
+                    json={
+                        "settings": {
+                            "claudeCodeOauthToken": "sk-ant-oat01-mistyped",
+                            "claudeCodeBin": str(fake),
+                        }
+                    },
+                )
+                if (refused.json().get("data") or {}).get("ok") is not False:
+                    failures.append("a token the API refuses validated as working")
 
                 stored = (await client.get("/api/settings")).json()["data"]
                 if stored["claudeCodeOauthToken"]["source"] != "default":
@@ -112,7 +145,9 @@ async def main() -> int:
         for failure in failures:
             print(f"FAIL: {failure}")
         return 1
-    print("PASS: validate tests the typed values, stores nothing, and lends no key")
+    print(
+        "PASS: validate tests the typed values with a real call, stores nothing, and lends no key"
+    )
     return 0
 
 

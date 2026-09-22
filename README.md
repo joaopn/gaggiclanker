@@ -566,7 +566,9 @@ stored token, so nothing on the box leaks into the prompt, and that hides
 `~/.claude` too. The Docker image ships the CLI; a source checkout needs it
 installed (`npm install -g @anthropic-ai/claude-code`) or `claudeCodeBin`
 pointed at it. **Validate credentials** tries what the form holds, so a pasted
-token can be checked before it is saved.
+token can be checked before it is saved, and for `claude_code` it makes one
+one-word call to haiku: presence alone (`claude auth status`) cannot tell a
+working token from a revoked one.
 
 `GAGGICLANKER_MODEL` is the default model; `..._MODEL_ANALYSIS`, `..._MODEL_DRAFT`
 and `..._MODEL_CHAT` override it per kind of call, and an empty value lets the

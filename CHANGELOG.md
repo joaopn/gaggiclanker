@@ -23,7 +23,14 @@ first (`POST /api/backup`), because there is no down-migration.
   was stored, so a token pasted into Settings → LLM and validated straight away
   came back "No Claude Code OAuth token is configured", and switching the
   provider picker validated the provider you were leaving. It now tries what
-  the form holds and stores nothing. A saved API key is not sent along to a
+  the form holds and stores nothing.
+- **Validate proves a Claude Code token works, not only that one is set.** It
+  used to ask `claude auth status`, which says "logged in" for any string at
+  all, so a mistyped or revoked token validated green and the first analysis
+  failed. It now also makes one tiny real call (a one-word answer from haiku,
+  a few dozen tokens of your subscription, only when you press the button);
+  a token Anthropic refuses says so and how to mint a new one. The status
+  panel's badge still uses the free check, so opening Settings costs nothing. A saved API key is not sent along to a
   different provider or address you picked but have not saved: type that
   provider's key to validate it.
 

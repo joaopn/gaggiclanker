@@ -156,6 +156,16 @@ STDERR_LIMIT = 4000
 #: file; if it has not answered in this long, the binary is wrong.
 AUTH_TIMEOUT_S = 15.0
 
+#: The validate probe: one real ``claude -p`` round trip on the smallest model
+#: with a one-word answer. ``auth status`` only proves a token is *present* — a
+#: mistyped or revoked one reads as logged in — so without a call that reaches
+#: Anthropic, Validate said yes to a token the first analysis would fail on.
+#: The cost is a few dozen tokens against the subscription, paid only when
+#: somebody presses the button.
+PROBE_MODEL = "haiku"
+PROBE_PROMPT = "Reply with the single word OK."
+PROBE_TIMEOUT_S = 60.0
+
 
 @dataclass(slots=True)
 class SpawnResult:
@@ -780,10 +790,58 @@ class ClaudeCodeProvider:
         return reader.finish(model=request.model)
 
     async def validate_credentials(self) -> CredentialCheck:
-        """``claude auth status --json`` — local, free, and conclusive.
+        """``auth status``, then one tiny real call: is the token accepted?
 
-        Refused before the spawn when there is no token at all: the answer is
-        already known, and it names the fix instead of the symptom.
+        The Validate button's question. ``auth status`` first, because it is
+        free and its failures (no token, wrong binary) name their fix; then the
+        probe, because only a call that reaches Anthropic can tell a working
+        token from a revoked or mistyped one.
+        """
+        status = await self.auth_status()
+        if not status.ok:
+            return status
+        argv = [self.binary, *build_call_argv(model=PROBE_MODEL)]
+        try:
+            result = await self._run(argv, stdin=PROBE_PROMPT, timeout_s=PROBE_TIMEOUT_S)
+        except LlmApiError as exc:
+            return CredentialCheck(provider=self.id, ok=False, detail=str(exc))
+        if result.timed_out:
+            return CredentialCheck(
+                provider=self.id,
+                ok=False,
+                detail=f"A test call to {PROBE_MODEL} did not answer in {PROBE_TIMEOUT_S:g}s.",
+            )
+        try:
+            parse_cli_json_output(result.stdout)
+        except LlmApiError as exc:
+            if exc.status in (401, 403):
+                detail = (
+                    f"Anthropic refused the Claude Code token (HTTP {exc.status}). Mint a new "
+                    "one with `claude setup-token` and paste it into the Claude Code OAuth "
+                    "token setting."
+                )
+            else:
+                # No envelope at all usually means the CLI died early and said
+                # why on stderr, which is the more useful half to show.
+                reason = str(exc)
+                if not result.stdout.strip():
+                    reason = _non_empty(result.stderr) or f"exit code {result.returncode}"
+                detail = f"The token is set, but a test call failed: {reason}"
+            return CredentialCheck(provider=self.id, ok=False, detail=detail[:300])
+        return CredentialCheck(
+            provider=self.id,
+            ok=True,
+            detail=f"{status.detail} - a test call to {PROBE_MODEL} answered",
+            models=status.models,
+        )
+
+    async def auth_status(self) -> CredentialCheck:
+        """``claude auth status --json`` — local and free, but only proves presence.
+
+        What the settings page's status panel shows on every load, where a
+        paid call would be spent for nothing. Refused before the spawn when
+        there is no token at all: the answer is already known, and it names the
+        fix instead of the symptom.
         """
         missing = self.missing_credential()
         if missing is not None:

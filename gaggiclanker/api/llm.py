@@ -116,7 +116,7 @@ def _observer(request: Request) -> LlmCallObserver:
 async def validate_provider(
     body: ProviderBody, service: LlmServiceDep, request: Request
 ) -> JSONResponse:
-    """The cheapest call each provider offers — a model list, or `claude auth status`.
+    """The cheapest call each provider offers — a model list, or a one-word `claude -p`.
 
     Never an actual completion: a validate button that costs tokens is one
     people stop pressing. Unsaved ``settings`` are tried, never stored.
@@ -247,7 +247,9 @@ async def get_status(service: LlmServiceDep, settings: SettingsServiceDep) -> JS
             oauth_token=config.claude_code_oauth_token,
             effort=config.claude_code_effort,
         )
-        check = await provider.validate_credentials()
+        # `auth status` alone: this runs on every settings page load, and the
+        # paid probe belongs to the Validate button.
+        check = await provider.auth_status()
         claude_code |= {
             "version": await provider.version(),
             "authenticated": check.ok,

@@ -22,6 +22,9 @@ import pytest
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall
 from gaggiclanker.llm.providers.claude_code import (
+    PROBE_MODEL,
+    PROBE_PROMPT,
+    PROBE_TIMEOUT_S,
     ClaudeCodeProvider,
     SpawnResult,
     build_call_argv,
@@ -337,18 +340,105 @@ async def test_a_missing_binary_says_how_to_fix_it() -> None:
 # -- auth and models ------------------------------------------------------
 
 
-async def test_auth_status_is_the_credential_check() -> None:
-    spawn = RecordedSpawn(
-        ok(json.dumps({"loggedIn": True, "email": "user@example.test", "subscriptionType": "max"}))
-    )
+@dataclass
+class SpawnSequence:
+    """One scripted child per spawn, in order, each invocation remembered."""
+
+    results: list[SpawnResult]
+    calls: list[tuple[list[str], str | None, float]] = field(default_factory=list)
+
+    async def __call__(
+        self,
+        argv: Sequence[str],
+        env: Mapping[str, str],
+        cwd: str,
+        stdin: str | None,
+        timeout_s: float,
+    ) -> SpawnResult:
+        self.calls.append((list(argv), stdin, timeout_s))
+        return self.results[len(self.calls) - 1]
+
+
+LOGGED_IN = ok(
+    json.dumps({"loggedIn": True, "email": "user@example.test", "subscriptionType": "max"})
+)
+
+
+async def test_auth_status_is_the_free_presence_check() -> None:
+    spawn = RecordedSpawn(LOGGED_IN)
     provider = ClaudeCodeProvider(oauth_token="tok", spawn=spawn)
 
-    check = await provider.validate_credentials()
+    check = await provider.auth_status()
 
     assert spawn.argv[1:] == ["auth", "status", "--json"]
     assert spawn.stdin is None
     assert check.ok
     assert "user@example.test" in check.detail
+
+
+async def test_validate_makes_one_tiny_real_call_after_auth_status() -> None:
+    """`auth status` says logged in for any token; only a call can tell."""
+    spawn = SpawnSequence([LOGGED_IN, ok(envelope(result="OK"))])
+    provider = ClaudeCodeProvider(oauth_token="tok", effort="max", spawn=spawn)
+
+    check = await provider.validate_credentials()
+
+    assert check.ok
+    assert "user@example.test" in check.detail
+    assert PROBE_MODEL in check.detail
+    (status_argv, _, _), (probe_argv, stdin, timeout_s) = spawn.calls
+    assert status_argv[1:] == ["auth", "status", "--json"]
+    assert probe_argv[1] == "-p"
+    assert probe_argv[probe_argv.index("--model") + 1] == PROBE_MODEL
+    # The cheapest call: no effort setting, no tools, the one-word prompt.
+    assert "--effort" not in probe_argv
+    assert probe_argv[probe_argv.index("--tools") + 1] == ""
+    assert stdin == PROBE_PROMPT
+    assert timeout_s == PROBE_TIMEOUT_S
+
+
+async def test_a_token_the_api_refuses_does_not_validate() -> None:
+    refused = envelope(is_error=True, api_error_status=401, result="Invalid bearer token")
+    spawn = SpawnSequence([LOGGED_IN, ok(refused)])
+    provider = ClaudeCodeProvider(oauth_token="revoked", spawn=spawn)
+
+    check = await provider.validate_credentials()
+
+    assert check.ok is False
+    assert "401" in check.detail
+    assert "setup-token" in check.detail
+
+
+async def test_a_probe_that_dies_says_why_from_stderr() -> None:
+    died = SpawnResult(returncode=1, stdout="", stderr="unknown option --model")
+    spawn = SpawnSequence([LOGGED_IN, died])
+    provider = ClaudeCodeProvider(oauth_token="tok", spawn=spawn)
+
+    check = await provider.validate_credentials()
+
+    assert check.ok is False
+    assert "unknown option --model" in check.detail
+
+
+async def test_a_probe_that_hangs_is_reported_not_waited_on() -> None:
+    hung = SpawnResult(returncode=-9, stdout="", stderr="", timed_out=True)
+    spawn = SpawnSequence([LOGGED_IN, hung])
+    provider = ClaudeCodeProvider(oauth_token="tok", spawn=spawn)
+
+    check = await provider.validate_credentials()
+
+    assert check.ok is False
+    assert "did not answer" in check.detail
+
+
+async def test_no_probe_is_spent_when_auth_status_already_failed() -> None:
+    spawn = SpawnSequence([ok(json.dumps({"loggedIn": False}))])
+    provider = ClaudeCodeProvider(oauth_token="tok", spawn=spawn)
+
+    check = await provider.validate_credentials()
+
+    assert check.ok is False
+    assert len(spawn.calls) == 1
 
 
 async def test_a_logged_out_cli_says_how_to_log_in() -> None:

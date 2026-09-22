@@ -165,8 +165,9 @@ export function LlmProviderGroup({ entries, control, errors, disabled }: GroupPr
           Validate credentials
         </Button>
         <p className="text-muted-foreground text-xs">
-          Asks the provider the cheapest question it answers - a model list, or{" "}
-          <code>claude auth status</code>. It tests what is typed here, without saving it.
+          Asks the provider the cheapest question it answers - a model list, or for Claude Code a
+          one-word test call to haiku (a few tokens). It tests what is typed here, without saving
+          it.
         </p>
       </div>
 
