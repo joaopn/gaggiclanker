@@ -10,6 +10,18 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Shots find their Set by profile
+
+- **Match by profile.** A button on the Shots page files every shot waiting
+  for a Set under the one Set that brews its profile: exactly one non-archived
+  Set whose current version names the shot's profile. When two Sets brew the
+  same profile, or none does, the shot keeps waiting and the message says which
+  it was. A shot's own page has the same button for that shot. A shot you
+  filed by hand is never moved.
+- **Automatch new shots.** A tickbox beside it (also under Settings → Machine
+  access → New shots, off by default) runs the same rule on every shot a pull
+  or an import brings in, after the active Set has had its turn.
+
 ### An update never asks you to delete your database
 
 - **Your archive keeps starting across updates.** A database refused to start

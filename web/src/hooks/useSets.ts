@@ -20,6 +20,7 @@ import {
   getSets,
   getSetTrends,
   getShot,
+  matchShotsByProfile,
   putJudgement,
   putShotSetVersion,
   rollbackSet,
@@ -28,6 +29,7 @@ import {
 } from "@/api/client";
 import type {
   JudgementWrite,
+  ProfileMatchSummary,
   RollbackWrite,
   SetCreate,
   SetDetailData,
@@ -372,6 +374,47 @@ export function useDeleteJudgement(): UseMutationResult<{ deleted: boolean }, Er
       void invalidateSets(queryClient);
     },
   });
+}
+
+/**
+ * "Match by profile": file waiting shots under the one Set that brews their
+ * profile. The toast says what happened to each kind, because a press that
+ * filed nothing should say why (two Sets on the profile, or none).
+ */
+export function useMatchShotsByProfile(): UseMutationResult<
+  ProfileMatchSummary,
+  Error,
+  number[] | undefined
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (shotIds) => matchShotsByProfile(shotIds),
+    onSuccess: (summary) => {
+      const message = profileMatchMessage(summary);
+      if (summary.matched > 0) toast.success(message);
+      else toast.info(message);
+    },
+    onError: (error) => toast.error(`Could not match: ${error.message}`),
+    onSettled: (_data, _error, shotIds) => {
+      for (const shotId of shotIds ?? []) void invalidateShots(queryClient, String(shotId));
+      void invalidateShots(queryClient);
+      void invalidateSets(queryClient);
+      // The "N need a Set" count comes from the sync status (see useAssignShot).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
+    },
+  });
+}
+
+/** One sentence for what a match did, leaving out the outcomes that did not happen. */
+export function profileMatchMessage(summary: ProfileMatchSummary): string {
+  const { matched, ambiguous, unmatched } = summary;
+  if (matched + ambiguous + unmatched === 0) return "No shots were waiting for a Set";
+  const parts = [
+    matched > 0 ? `Filed ${matched} ${matched === 1 ? "shot" : "shots"}` : "Nothing filed",
+  ];
+  if (ambiguous > 0) parts.push(`${ambiguous} left: more than one Set brews the profile`);
+  if (unmatched > 0) parts.push(`${unmatched} left: no Set brews the profile`);
+  return parts.join(" · ");
 }
 
 export function useAssignShot(): UseMutationResult<

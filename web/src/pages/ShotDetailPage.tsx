@@ -21,6 +21,7 @@ import {
   WeightCard,
 } from "@/components/shots/DiagnosticsCards";
 import { JudgementForm } from "@/components/shots/JudgementForm";
+import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { Button } from "@/components/ui/button";
@@ -139,6 +140,7 @@ export function ShotDetailPage() {
               versionId={row.set_version_id ?? null}
               question={`What do you make of shot ${row.id}?`}
             />
+            <ProfileAutomatch shotId={row.id} filed={row.set_version_id != null} />
           </div>
         }
       />

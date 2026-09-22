@@ -68,6 +68,7 @@ import type {
   ProfileDraftDetail,
   ProfileDraftListData,
   ProfileListData,
+  ProfileMatchSummary,
   ProfileVersionListData,
   ProfileVersionParams,
   ProfileVersionRow,
@@ -901,6 +902,17 @@ export async function putShotSetVersion(
   return fetchApi<ShotDetailRow>(`/shots/${shotId}/set-version`, {
     method: "PUT",
     body: JSON.stringify({ set_version_id: setVersionId }),
+  });
+}
+
+/**
+ * File shots that need a Set under the one Set that brews their profile. No ids
+ * means every shot waiting for a Set; a shot that already has one is never moved.
+ */
+export async function matchShotsByProfile(shotIds?: number[]): Promise<ProfileMatchSummary> {
+  return fetchApi<ProfileMatchSummary>("/shots/profile-match", {
+    method: "POST",
+    body: JSON.stringify(shotIds ? { shot_ids: shotIds } : {}),
   });
 }
 

@@ -53,6 +53,7 @@ export type SetCreate = components["schemas"]["SetCreate"];
 export type SetListData = components["schemas"]["SetListData"];
 export type SetDetailData = components["schemas"]["SetDetailData"];
 export type SetVersionRow = components["schemas"]["SetVersionRow"];
+export type ProfileMatchSummary = components["schemas"]["ProfileMatchSummary"];
 export type SetVersionDetail = components["schemas"]["SetVersionDetail"];
 export type SetProposal = components["schemas"]["SetProposalDetail"];
 export type SetProposalListData = components["schemas"]["SetProposalListData"];

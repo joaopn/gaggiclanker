@@ -129,6 +129,8 @@ describe("labels and sections", () => {
   it("routes a key to a page by prefix, defaulting to the LLM page", () => {
     expect(sectionFor("gaggimateHost")).toBe("machine");
     expect(sectionFor("deviceSyncEnabled")).toBe("machine");
+    // What a pull does with a shot as it lands is decided beside the pull.
+    expect(sectionFor("shotsProfileAutomatch")).toBe("machine");
     expect(sectionFor("llmProvider")).toBe("llm");
     // The LLM keys are named after what they configure rather than sharing one
     // prefix, so the section covers three of them.

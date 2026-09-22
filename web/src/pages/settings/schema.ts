@@ -176,7 +176,14 @@ export function sectionFor(key: string): RegistryPageId {
   // machine, but it is a device write behind the same master switch — so it
   // belongs beside `deviceWritesEnabled`, where a person turning writes on
   // will find it.
-  if (key.startsWith("device") || key.startsWith("gaggimate") || key.startsWith("notesWriteback"))
+  // `shots*` is what happens to a shot as it arrives from the machine (or an
+  // export of it), which is where somebody deciding how pulls behave looks.
+  if (
+    key.startsWith("device") ||
+    key.startsWith("gaggimate") ||
+    key.startsWith("notesWriteback") ||
+    key.startsWith("shots")
+  )
     return "machine";
   if (key.startsWith("auth")) return "auth";
   return "llm";
@@ -206,6 +213,12 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       title: "Connection",
       description: "Where the display board is, and whether gaggiclanker keeps a connection open.",
       keys: ["gaggimateHost", "gaggimateProtocol", "gaggimateTimeoutSeconds", "deviceSyncEnabled"],
+    },
+    {
+      id: "new-shots",
+      title: "New shots",
+      description: "What the archive does with a shot as it arrives from a pull or an import.",
+      keys: ["shotsProfileAutomatch"],
     },
     {
       id: "writes",

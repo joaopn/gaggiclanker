@@ -1498,7 +1498,7 @@ describe("ShotsPage compare drawer", () => {
     renderWithQueryClient(<ShotsPage />);
     await screen.findByText("Showing 4 of 4");
 
-    const checkboxes = screen.getAllByRole("checkbox");
+    const checkboxes = screen.getAllByRole("checkbox", { name: /^Compare shot/ });
     for (const checkbox of checkboxes.slice(0, 3)) await user.click(checkbox);
 
     expect(checkboxes[3]).toBeDisabled();

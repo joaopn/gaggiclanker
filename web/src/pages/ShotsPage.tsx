@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { ColumnChooser } from "@/components/shots/ColumnChooser";
 import { CompareDrawer, MAX_COMPARE } from "@/components/shots/CompareDrawer";
 import { ImportDropZone } from "@/components/shots/ImportDropZone";
+import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { PullButton } from "@/components/shots/PullButton";
 import { ShotFilters } from "@/components/shots/ShotFilters";
 import { ShotsTable } from "@/components/shots/ShotsTable";
@@ -202,6 +203,7 @@ export function ShotsPage() {
                 {needsSet} need a Set
               </Button>
             ) : null}
+            <ProfileAutomatch />
             {selected.length > 0 ? (
               <Button variant="outline" size="sm" onClick={() => setCompareOpen(true)}>
                 <GitCompare className="size-3.5" aria-hidden="true" />

@@ -65,7 +65,7 @@ export function AssignToSet({
   return (
     <SectionCard
       title="Set"
-      description="What you were brewing. The archive files a shot under the machine's active Set when the profile matches; anything else waits here for an answer."
+      description="What you were brewing. The archive files a shot under the machine's active Set when the profile matches, or, with Automatch on, under the one Set that brews its profile; anything else waits here for an answer."
       actions={
         setVersion ? (
           <Link
