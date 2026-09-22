@@ -765,6 +765,19 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         ),
     ),
     SettingDefinition(
+        key="shotsProfileAutomatch",
+        type="bool",
+        default=False,
+        description=(
+            "File a newly pulled or imported shot under the one Set that brews its profile, "
+            "when the active Set did not take it: exactly one non-archived Set's current "
+            "version names the shot's profile. Two or more such Sets is ambiguous and the "
+            "shot waits in the inbox, as does a shot whose profile no Set names. A shot that "
+            "already has a Set is never moved. The Shots page's Match by profile button does "
+            "the same for the shots already waiting."
+        ),
+    ),
+    SettingDefinition(
         key="deviceWritesEnabled",
         type="bool",
         default=False,

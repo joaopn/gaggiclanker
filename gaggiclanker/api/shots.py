@@ -35,7 +35,7 @@ from gaggiclanker.api.deps import (
 from gaggiclanker.db.repos.analyses import AnalysisRow
 from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
-from gaggiclanker.db.repos.sets import SetVersionRow
+from gaggiclanker.db.repos.sets import ProfileMatchSummary, SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListRow, ShotSampleRow
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
 from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
@@ -390,6 +390,39 @@ async def put_set_version(
     if row is None:  # pragma: no cover - checked above, inside the same request
         raise NotFound(f"No shot {shot_id}")
     return envelope_response(row.model_dump(mode="json"))
+
+
+class ProfileMatchRequest(BaseModel):
+    """`POST /api/shots/profile-match`: which shots to offer the profile match.
+
+    No `shot_ids` means every shot that needs a Set (the Shots page's button);
+    a list is the one-shot button on a shot's own page.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_ids: list[int] | None = Field(default=None, max_length=1000)
+
+
+@router.post(
+    "/profile-match",
+    response_model=ApiResponse[ProfileMatchSummary],
+    summary="File shots that need a Set under the one Set that brews their profile",
+)
+async def post_profile_match(
+    body: ProfileMatchRequest, shots: ShotsRepoDep, sets: SetsRepoDep
+) -> JSONResponse:
+    """The button beside the `shotsProfileAutomatch` switch: the same rule, on demand.
+
+    Only ever fills a NULL, like auto-assignment, so pressing it twice or over
+    a shot somebody filed by hand changes nothing it should not.
+    """
+    if body.shot_ids is not None:
+        for shot_id in body.shot_ids:
+            if await shots.get(shot_id) is None:
+                raise NotFound(f"No shot {shot_id}")
+    summary = await sets.match_unfiled(body.shot_ids)
+    return envelope_response(summary.model_dump(mode="json"))
 
 
 class AnalysisRequest(BaseModel):

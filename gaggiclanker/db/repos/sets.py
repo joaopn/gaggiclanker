@@ -74,6 +74,8 @@ __all__ = [
     "RECIPE_FIELDS",
     "VERSION_FIELDS",
     "FieldChange",
+    "ProfileMatch",
+    "ProfileMatchSummary",
     "RollbackWrite",
     "SetRow",
     "SetShotRow",
@@ -354,6 +356,29 @@ class VersionWriteResult:
 
     version: SetVersionRow | None = None
     refused: VersionRefusal | None = None
+
+
+class ProfileMatch(BaseModel):
+    """What :meth:`SetsRepository.profile_match` did with one shot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["matched", "ambiguous", "unmatched"]
+    #: The version the shot was filed under; only set when ``matched``.
+    set_version_id: int | None = None
+
+
+class ProfileMatchSummary(BaseModel):
+    """What one press of "Match by profile" did, counted by outcome."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Filed under the one Set that brews their profile.
+    matched: int = 0
+    #: Two or more Sets brew their profile, so nothing was guessed.
+    ambiguous: int = 0
+    #: No Set brews their profile, or the archive does not know which it was.
+    unmatched: int = 0
 
 
 class SetRow(BaseModel):
@@ -1339,6 +1364,7 @@ class SetsRepository(Repository):
         *,
         profile_version_id: int | None,
         device_profile_id: str,
+        profile_automatch: bool = False,
     ) -> int | None:
         """Attach a freshly stored shot to the active Set, if it fits.
 
@@ -1360,6 +1386,12 @@ class SetsRepository(Repository):
         selected, and leaving every shot unassigned would make that Set look
         broken rather than permissive.
 
+        ``profile_automatch`` (the `shotsProfileAutomatch` setting, read by the
+        caller) adds a second chance for a shot the active Set turned down:
+        :meth:`profile_match`, which files it under the one non-archived Set
+        that brews its profile. The active Set goes first because it is the
+        person's own "this is what I am brewing now".
+
         Anything else is left NULL, which is the `needs_set` state. Guessing
         wrong here is worse than not guessing: a mis-assigned shot pollutes the
         trend chart of a Set it was never part of, and nobody goes looking for
@@ -1368,33 +1400,140 @@ class SetsRepository(Repository):
         Never touches a shot that already has a version — the `IS NULL` in the
         UPDATE — so a hand correction survives every later pass.
         """
+        resolved = await self._resolved_profile_version(profile_version_id, device_profile_id)
         version = await self.active_version()
-        if version is None:
+        if version is not None and (
+            version.profile_version_id is None or version.profile_version_id == resolved
+        ):
+            return version.id if await self._fill(shot_id, version.id) else None
+        if not profile_automatch:
             return None
-        if version.profile_version_id is not None:
-            if profile_version_id is not None:
-                if profile_version_id != version.profile_version_id:
-                    return None
-            elif device_profile_id:
-                mapped = await self.db.fetch_value(
-                    """
-                    SELECT current_version_id FROM device_profiles
-                    WHERE device_id = ? AND deleted_at IS NULL
-                    """,
-                    (device_profile_id,),
-                )
-                if mapped is None or int(mapped) != version.profile_version_id:
-                    return None
-            else:
-                return None
+        match = await self.profile_match(
+            shot_id, profile_version_id=profile_version_id, device_profile_id=device_profile_id
+        )
+        return match.set_version_id
+
+    async def _resolved_profile_version(
+        self, profile_version_id: int | None, device_profile_id: str
+    ) -> int | None:
+        """The profile version a shot was brewed with, as far as the archive knows.
+
+        Its own link when it has one; otherwise what its device profile id maps
+        to right now, ignoring a tombstoned mapping (the id was freed on the
+        machine and may already name a different profile).
+        """
+        if profile_version_id is not None:
+            return profile_version_id
+        if not device_profile_id:
+            return None
+        mapped = await self.db.fetch_value(
+            """
+            SELECT current_version_id FROM device_profiles
+            WHERE device_id = ? AND deleted_at IS NULL
+            """,
+            (device_profile_id,),
+        )
+        return None if mapped is None else int(mapped)
+
+    async def _fill(self, shot_id: int, version_id: int) -> bool:
+        """File a shot that has no Set yet. Never moves one that has."""
         cursor = await self.db.execute(
             """
             UPDATE shots SET set_version_id = ?, updated_at = ?
             WHERE id = ? AND set_version_id IS NULL
             """,
-            (version.id, utc_now(), shot_id),
+            (version_id, utc_now(), shot_id),
         )
-        return version.id if cursor.rowcount > 0 else None
+        return cursor.rowcount > 0
+
+    async def versions_naming_profile(self, profile_version_id: int) -> list[int]:
+        """The current version of every non-archived Set that brews this profile.
+
+        Only a Set's **current** version counts: an older one that named the
+        profile describes what the Set used to be, and filing today's shot there
+        would be filing it under a recipe the Set has moved on from. A Set that
+        names no profile is not configured for this one, so it is not here
+        either. Two rows are enough to know the answer is ambiguous.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT v.id FROM set_versions v
+            JOIN sets s ON s.id = v.set_id
+            WHERE s.status = 'active'
+              AND v.profile_version_id = ?
+              AND v.version_no = (
+                  SELECT MAX(latest.version_no) FROM set_versions latest
+                  WHERE latest.set_id = v.set_id
+              )
+            ORDER BY v.id
+            LIMIT 2
+            """,
+            (profile_version_id,),
+        )
+        return [int(row["id"]) for row in rows]
+
+    async def profile_match(
+        self,
+        shot_id: int,
+        *,
+        profile_version_id: int | None,
+        device_profile_id: str,
+    ) -> ProfileMatch:
+        """File a shot under the one non-archived Set that brews its profile.
+
+        Only when the answer is not a guess: exactly one Set's current version
+        names the shot's profile version. None is ``unmatched``, two or more is
+        ``ambiguous``, and both leave the shot in the inbox, for the same reason
+        :meth:`auto_assign` leaves it there: a wrong Set is worse than none.
+
+        A shot that already has a Set is never moved (the `IS NULL` guard), and
+        comes back as ``unmatched`` with no version, since nothing was filed.
+        """
+        resolved = await self._resolved_profile_version(profile_version_id, device_profile_id)
+        if resolved is None:
+            return ProfileMatch(outcome="unmatched")
+        candidates = await self.versions_naming_profile(resolved)
+        if len(candidates) > 1:
+            return ProfileMatch(outcome="ambiguous")
+        if not candidates or not await self._fill(shot_id, candidates[0]):
+            return ProfileMatch(outcome="unmatched")
+        return ProfileMatch(outcome="matched", set_version_id=candidates[0])
+
+    async def match_unfiled(self, shot_ids: Sequence[int] | None = None) -> ProfileMatchSummary:
+        """Run :meth:`profile_match` over every shot that needs a Set.
+
+        ``shot_ids`` narrows it to those shots (the one-shot button); a shot in
+        it that already has a Set, or is quarantined, is skipped rather than
+        counted, since nothing was asked of it. Quarantined shots are never
+        offered: they are not in the "need a Set" inbox either, and their header
+        is whatever the broken file happened to hold.
+        """
+        sql = """
+            SELECT id, profile_version_id, profile_id_on_device FROM shots
+            WHERE set_version_id IS NULL AND quarantined = 0
+        """
+        params: list[Any] = []
+        if shot_ids is not None:
+            if not shot_ids:
+                return ProfileMatchSummary()
+            sql += f" AND id IN ({', '.join('?' for _ in shot_ids)})"
+            params.extend(shot_ids)
+        rows = await self.db.fetch_all(sql + " ORDER BY id", params)
+        summary = ProfileMatchSummary()
+        async with self.db.transaction():
+            for row in rows:
+                match = await self.profile_match(
+                    int(row["id"]),
+                    profile_version_id=row["profile_version_id"],
+                    device_profile_id=row["profile_id_on_device"] or "",
+                )
+                if match.outcome == "matched":
+                    summary.matched += 1
+                elif match.outcome == "ambiguous":
+                    summary.ambiguous += 1
+                else:
+                    summary.unmatched += 1
+        return summary
 
     # ── the spread ───────────────────────────────────────────────────
 

@@ -53,6 +53,7 @@ from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository, ShotState
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunRow, SyncRunUpdate
+from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient, SlogFetch
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.device.events import (
@@ -67,6 +68,7 @@ from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry, LiveStatus
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.derive import derive_shot, index_fields
 
 __all__ = [
@@ -188,6 +190,9 @@ class SyncEngine:
         self.runs = SyncRepository(db)
         self.sets = SetsRepository(db)
         self.judgements = JudgementsRepository(db)
+        # Only `shotsProfileAutomatch` is read, once per ingested shot, so a
+        # switch flipped on the Shots page applies to the very next shot.
+        self.settings = SettingsService(SettingsRepository(db))
 
         self._machine: MachineRow | None = None
         self._shot_poke = _Poke()
@@ -739,6 +744,7 @@ class SyncEngine:
             shot_id,
             profile_version_id=shot.profile_version_id,
             device_profile_id=shot.profile_id_on_device,
+            profile_automatch=await self.settings.get("shotsProfileAutomatch"),
         )
         update.shots_inserted += 1
         await self.runs.add_event(

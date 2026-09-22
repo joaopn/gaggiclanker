@@ -44,6 +44,7 @@ from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.exports import (
     ShotExport,
     export_device_id,
@@ -173,7 +174,9 @@ class ImportService:
 
     def __init__(self, db: Database, settings: SettingsService | None = None) -> None:
         self.db = db
-        self.settings = settings
+        # Read for `shotsProfileAutomatch` on every created shot. A service built
+        # without one (the CLI, a test) still reads the same stored settings.
+        self.settings = settings or SettingsService(SettingsRepository(db))
         self.shots = ShotsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.notes = NotesRepository(db)
@@ -409,6 +412,7 @@ class ImportService:
                 shot_id,
                 profile_version_id=shot.profile_version_id,
                 device_profile_id=shot.profile_id_on_device,
+                profile_automatch=await self.settings.get("shotsProfileAutomatch"),
             )
 
         if export.notes is not None:

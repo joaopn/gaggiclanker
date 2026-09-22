@@ -1969,6 +1969,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shots/profile-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File shots that need a Set under the one Set that brews their profile
+         * @description The button beside the `shotsProfileAutomatch` switch: the same rule, on demand.
+         *
+         *     Only ever fills a NULL, like auto-assignment, so pressing it twice or over
+         *     a shot somebody filed by hand changes nothing it should not.
+         */
+        post: operations["post_profile_match_api_shots_profile_match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/starting-points": {
         parameters: {
             query?: never;
@@ -2664,6 +2687,14 @@ export interface components {
         /** ApiResponse[ProfileListData] */
         ApiResponse_ProfileListData_: {
             data?: components["schemas"]["ProfileListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ProfileMatchSummary] */
+        ApiResponse_ProfileMatchSummary_: {
+            data?: components["schemas"]["ProfileMatchSummary"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4743,6 +4774,38 @@ export interface components {
         ProfileListData: {
             /** Items */
             items: components["schemas"]["DeviceProfileSummary"][];
+        };
+        /**
+         * ProfileMatchRequest
+         * @description `POST /api/shots/profile-match`: which shots to offer the profile match.
+         *
+         *     No `shot_ids` means every shot that needs a Set (the Shots page's button);
+         *     a list is the one-shot button on a shot's own page.
+         */
+        ProfileMatchRequest: {
+            /** Shot Ids */
+            shot_ids?: number[] | null;
+        };
+        /**
+         * ProfileMatchSummary
+         * @description What one press of "Match by profile" did, counted by outcome.
+         */
+        ProfileMatchSummary: {
+            /**
+             * Ambiguous
+             * @default 0
+             */
+            ambiguous: number;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /**
+             * Unmatched
+             * @default 0
+             */
+            unmatched: number;
         };
         /**
          * ProfileVersionListData
@@ -10070,6 +10133,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotDetailRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_profile_match_api_shots_profile_match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileMatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileMatchSummary_"];
                 };
             };
             /** @description Validation Error */
