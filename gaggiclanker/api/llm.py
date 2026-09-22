@@ -42,9 +42,15 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 
 
 class ProviderBody(BaseModel):
-    """``{"provider": "openrouter"}``, or an empty body for the configured one."""
+    """``{"provider": "openrouter"}``, or an empty body for the configured one.
+
+    ``settings`` is the settings form's unsaved provider values, shaped like a
+    ``PATCH /api/settings`` body (secrets only when typed): validate then tests
+    what is on the screen rather than what was last saved.
+    """
 
     provider: str | None = None
+    settings: dict[str, Any] | None = None
 
 
 class CredentialCheckData(BaseModel):
@@ -113,9 +119,9 @@ async def validate_provider(
     """The cheapest call each provider offers — a model list, or `claude auth status`.
 
     Never an actual completion: a validate button that costs tokens is one
-    people stop pressing.
+    people stop pressing. Unsaved ``settings`` are tried, never stored.
     """
-    check = await service.validate_credentials(_provider_id(body.provider))
+    check = await service.validate_credentials(_provider_id(body.provider), body.settings)
     return envelope_response(
         CredentialCheckData(
             provider=check.provider, ok=check.ok, detail=check.detail, models=check.models

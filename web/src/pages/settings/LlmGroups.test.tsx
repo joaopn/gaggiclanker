@@ -153,7 +153,7 @@ describe("LLM groups", () => {
     expect(screen.queryByTestId("claude-code-panel")).not.toBeInTheDocument();
   });
 
-  it("validates the stored credentials on demand, never on render", async () => {
+  it("validates on demand, never on render", async () => {
     validateLlm.mockResolvedValue({ provider: "claude_code", ok: true, detail: "all good" });
     const user = setupUser();
     renderWithQueryClient(<Harness />);
@@ -164,6 +164,36 @@ describe("LLM groups", () => {
     await user.click(screen.getByRole("button", { name: /validate credentials/i }));
 
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("all good"));
+    // Nothing typed: an empty draft, so the server tests what is stored.
+    expect(validateLlm).toHaveBeenCalledWith({ settings: {} });
+  });
+
+  it("validates the token as typed, without a save first", async () => {
+    validateLlm.mockResolvedValue({ provider: "claude_code", ok: true, detail: "all good" });
+    const user = setupUser();
+    renderWithQueryClient(<Harness />);
+
+    await user.type(await screen.findByLabelText("Claude code oauth token"), "sk-ant-oat01-typed");
+    await user.click(screen.getByRole("button", { name: /validate credentials/i }));
+
+    await waitFor(() =>
+      expect(validateLlm).toHaveBeenCalledWith({
+        settings: { claudeCodeOauthToken: "sk-ant-oat01-typed" },
+      }),
+    );
+  });
+
+  it("validates the provider picked in the form, not the saved one", async () => {
+    validateLlm.mockResolvedValue({ provider: "openrouter", ok: false, detail: "no key" });
+    const user = setupUser();
+    // Saved as claude_code (see ENTRIES); the form has moved to OpenRouter.
+    renderWithQueryClient(<Harness provider="openrouter" />);
+
+    await user.click(await screen.findByRole("button", { name: /validate credentials/i }));
+
+    await waitFor(() =>
+      expect(validateLlm).toHaveBeenCalledWith({ settings: { llmProvider: "openrouter" } }),
+    );
   });
 
   it("reports a refused credential as an error rather than a success", async () => {

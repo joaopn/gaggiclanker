@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from gaggiclanker.api.llm import _call_stream
 from gaggiclanker.db.repos.llm import LlmCallRow, LlmCallsRepository
 from gaggiclanker.infra.sse import SseEvent
+from gaggiclanker.llm.config import LlmConfig
 from gaggiclanker.llm.types import CredentialCheck, LlmMessage, LlmRequest, Usage
 from gaggiclanker.settings import EnvSettings
 
@@ -59,6 +60,102 @@ async def test_validate_accepts_a_named_provider(app: FastAPI, client: httpx.Asy
     data = await body(await client.post("/api/llm/validate", json={"provider": "anthropic"}))
 
     assert data["ok"] is False
+
+
+def capture_configs(app: FastAPI, provider: FakeProvider) -> list[tuple[LlmConfig, str]]:
+    """Like :func:`use_fake`, recording the configuration each build was given."""
+    seen: list[tuple[LlmConfig, str]] = []
+
+    def build(config: LlmConfig, name: str | None) -> FakeProvider:
+        seen.append((config, name or config.provider))
+        return provider
+
+    app.state.llm._build_provider = build
+    app.state.llm._provider = None
+    app.state.llm._provider_key = None
+    return seen
+
+
+async def test_validate_tries_typed_values_without_saving_them(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    seen = capture_configs(
+        app, FakeProvider(credentials=CredentialCheck(provider="claude_code", ok=True))
+    )
+
+    data = await body(
+        await client.post(
+            "/api/llm/validate",
+            json={
+                "settings": {
+                    "llmProvider": "claude_code",
+                    "claudeCodeOauthToken": "sk-ant-oat01-typed",
+                    "claudeCodeBin": "/opt/claude",
+                }
+            },
+        )
+    )
+
+    assert data["ok"] is True
+    config, target = seen[-1]
+    assert target == "claude_code"
+    assert config.claude_code_oauth_token == "sk-ant-oat01-typed"
+    assert config.claude_code_bin == "/opt/claude"
+    stored = await body(await client.get("/api/settings"))
+    for key in ("claudeCodeOauthToken", "claudeCodeBin"):
+        assert stored[key]["source"] == "default"
+
+
+async def test_validate_keeps_stored_values_the_draft_leaves_alone(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    await client.patch("/api/settings", json={"claudeCodeOauthToken": "sk-ant-oat01-saved"})
+    seen = capture_configs(app, FakeProvider(credentials=CredentialCheck(provider="x", ok=True)))
+
+    await client.post("/api/llm/validate", json={"settings": {"claudeCodeBin": "/opt/claude"}})
+
+    config, _ = seen[-1]
+    assert config.claude_code_oauth_token == "sk-ant-oat01-saved"
+    assert config.claude_code_bin == "/opt/claude"
+
+
+async def test_a_draft_that_moves_the_provider_does_not_carry_the_stored_key(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    await client.patch("/api/settings", json={"llmProvider": "openrouter", "llmApiKey": "sk-or-1"})
+    seen = capture_configs(app, FakeProvider(credentials=CredentialCheck(provider="x", ok=False)))
+
+    await client.post("/api/llm/validate", json={"settings": {"llmProvider": "openai"}})
+    moved, target = seen[-1]
+    await client.post(
+        "/api/llm/validate",
+        json={"settings": {"llmProvider": "ollama", "llmBaseUrl": "http://elsewhere.test/v1"}},
+    )
+    redirected, _ = seen[-1]
+    await client.post(
+        "/api/llm/validate", json={"settings": {"llmProvider": "openai", "llmApiKey": "sk-oa-2"}}
+    )
+    typed, _ = seen[-1]
+
+    assert target == "openai"
+    assert moved.credential_for("openai") == ""
+    assert redirected.credential_for("ollama") == ""
+    assert typed.credential_for("openai") == "sk-oa-2"
+
+
+async def test_a_draft_is_validated_like_a_patch_and_limited_to_the_provider_keys(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    use_fake(app, FakeProvider(credentials=CredentialCheck(provider="x", ok=True)))
+
+    foreign = await client.post("/api/llm/validate", json={"settings": {"llmTimeoutSeconds": 5}})
+    bad = await client.post(
+        "/api/llm/validate", json={"settings": {"llmProvider": "claude_code", "nope": 1}}
+    )
+
+    assert foreign.status_code == 400
+    assert "llmProvider" in foreign.json()["error"]["details"]["allowed"]
+    assert bad.status_code == 400
 
 
 async def test_an_unknown_provider_is_a_400_naming_the_valid_ones(

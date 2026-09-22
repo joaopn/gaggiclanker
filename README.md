@@ -563,7 +563,10 @@ them is read from the environment. For `claude_code` the token comes from
 `claude setup-token` — an interactive `claude login` is not enough, because every
 call runs the CLI with a scratch `HOME` and an environment that carries only the
 stored token, so nothing on the box leaks into the prompt, and that hides
-`~/.claude` too.
+`~/.claude` too. The Docker image ships the CLI; a source checkout needs it
+installed (`npm install -g @anthropic-ai/claude-code`) or `claudeCodeBin`
+pointed at it. **Validate credentials** tries what the form holds, so a pasted
+token can be checked before it is saved.
 
 `GAGGICLANKER_MODEL` is the default model; `..._MODEL_ANALYSIS`, `..._MODEL_DRAFT`
 and `..._MODEL_CHAT` override it per kind of call, and an empty value lets the

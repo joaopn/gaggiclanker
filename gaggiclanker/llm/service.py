@@ -31,13 +31,15 @@ import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from typing import Any
 
 import structlog
 from pydantic import BaseModel, ValidationError
 
 from gaggiclanker.db.repos.llm import LlmCallRow, LlmCallsRepository
+from gaggiclanker.infra.errors import BadRequest
 from gaggiclanker.llm.budget import RateLimitBudget, get_rate_limit_budget
-from gaggiclanker.llm.config import LlmConfig, build_provider, load_llm_config
+from gaggiclanker.llm.config import DRAFT_KEYS, LlmConfig, build_provider, load_llm_config
 from gaggiclanker.llm.errors import (
     LlmApiError,
     classify_llm_error,
@@ -457,9 +459,18 @@ class LlmService:
 
     # -- diagnostics ------------------------------------------------------
 
-    async def validate_credentials(self, provider: ProviderId | None = None) -> CredentialCheck:
-        """Does this provider work at all? The cheapest call each one offers."""
-        config = await self.config()
+    async def validate_credentials(
+        self, provider: ProviderId | None = None, draft: dict[str, Any] | None = None
+    ) -> CredentialCheck:
+        """Does this provider work at all? The cheapest call each one offers.
+
+        ``draft`` is what the settings form holds and has not saved, keyed like
+        a ``PATCH /api/settings`` body: the question people ask with the button
+        is "does what I just typed work", and answering it about the stored
+        values made a pasted token look missing until it was saved. The draft is
+        validated exactly as a PATCH would be and written nowhere.
+        """
+        config = await self.draft_config(draft) if draft else await self.config()
         target = provider or config.provider
         built = self._build_provider(config, target)
         try:
@@ -467,6 +478,29 @@ class LlmService:
         finally:
             if built is not self._provider:
                 await built.aclose()
+
+    async def draft_config(self, draft: dict[str, Any]) -> LlmConfig:
+        """The configuration as it would be once ``draft`` is saved. Writes nothing.
+
+        One rule is stricter than saving: the stored ``llmApiKey`` belongs to
+        the stored provider at the stored address, so a draft that moves either
+        without typing a key of its own validates with no key at all. Otherwise
+        moving the picker from OpenRouter to OpenAI and pressing Validate would
+        send the OpenRouter key to OpenAI before anyone chose to save that.
+        """
+        if any(key not in DRAFT_KEYS for key in draft):
+            raise BadRequest(
+                "Only the provider settings can be validated unsaved",
+                details={"allowed": list(DRAFT_KEYS)},
+            )
+        validated = await self.settings.validate(draft)
+        effective = await self.settings.effective_after(validated, tuple(validated))
+        stored = await self.config()
+        config = await load_llm_config(self.settings, data_dir=self.data_dir, draft=effective)
+        moved = config.provider != stored.provider or config.base_url != stored.base_url
+        if moved and "llmApiKey" not in validated:
+            config = replace(config, api_key="")
+        return config
 
     async def list_models(self, provider: ProviderId | None = None) -> list[str]:
         config = await self.config()

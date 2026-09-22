@@ -10,6 +10,23 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The Claude Code provider works out of the box, and Validate tests what you typed
+
+- **The image carries the Claude Code CLI.** `claude_code` is the default
+  provider, and it runs the `claude` command — which the image did not have, so
+  on a fresh install every Validate and every analysis answered "the Claude
+  Code CLI (claude) was not found on PATH" however the token was set. The CLI's
+  native binary is now in the image (pinned, 2.1.267; about 220 MB), on the
+  path the `claudeCodeBin` setting already defaults to. Rebuild the image to
+  pick it up.
+- **Validate credentials no longer needs a save first.** It used to test what
+  was stored, so a token pasted into Settings → LLM and validated straight away
+  came back "No Claude Code OAuth token is configured", and switching the
+  provider picker validated the provider you were leaving. It now tries what
+  the form holds and stores nothing. A saved API key is not sent along to a
+  different provider or address you picked but have not saved: type that
+  provider's key to validate it.
+
 ### The shot list uses the whole window, and every column can be sized
 
 - **The list is as wide as your window** instead of the reading column the rest

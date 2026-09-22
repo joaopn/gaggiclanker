@@ -623,11 +623,21 @@ export async function getLlmStatus(): Promise<LlmStatusData> {
   return fetchApi<LlmStatusData>("/llm/status");
 }
 
+/**
+ * What to validate: a named provider, and the settings form's unsaved provider
+ * values shaped like a settings PATCH. The server tries them and stores nothing.
+ */
+export type LlmValidateRequest = { provider?: string; settings?: SettingsPatch };
+
 /** The cheapest call each provider offers. Never a completion. */
-export async function validateLlm(provider?: string): Promise<LlmCredentialCheck> {
+export async function validateLlm(request: LlmValidateRequest = {}): Promise<LlmCredentialCheck> {
+  const settings = request.settings && Object.keys(request.settings).length > 0;
   return fetchApi<LlmCredentialCheck>("/llm/validate", {
     method: "POST",
-    body: JSON.stringify({ provider: provider ?? null }),
+    body: JSON.stringify({
+      provider: request.provider ?? null,
+      settings: settings ? request.settings : null,
+    }),
   });
 }
 

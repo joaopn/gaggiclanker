@@ -1026,7 +1026,7 @@ export interface paths {
          * @description The cheapest call each provider offers — a model list, or `claude auth status`.
          *
          *     Never an actual completion: a validate button that costs tokens is one
-         *     people stop pressing.
+         *     people stop pressing. Unsaved ``settings`` are tried, never stored.
          */
         post: operations["validate_provider_api_llm_validate_post"];
         delete?: never;
@@ -4898,10 +4898,18 @@ export interface components {
         /**
          * ProviderBody
          * @description ``{"provider": "openrouter"}``, or an empty body for the configured one.
+         *
+         *     ``settings`` is the settings form's unsaved provider values, shaped like a
+         *     ``PATCH /api/settings`` body (secrets only when typed): validate then tests
+         *     what is on the screen rather than what was last saved.
          */
         ProviderBody: {
             /** Provider */
             provider?: string | null;
+            /** Settings */
+            settings?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * PushedData

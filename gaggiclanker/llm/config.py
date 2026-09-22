@@ -21,7 +21,9 @@ as "you choose").
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from gaggiclanker.llm.providers.anthropic import AnthropicProvider
 from gaggiclanker.llm.providers.base import Provider
@@ -30,7 +32,7 @@ from gaggiclanker.llm.providers.openai_compatible import PRESETS, OpenAiCompatib
 from gaggiclanker.llm.types import ModelPurpose, ProviderId
 from gaggiclanker.settings_service import SettingsService
 
-__all__ = ["LlmConfig", "build_provider", "load_llm_config"]
+__all__ = ["DRAFT_KEYS", "LlmConfig", "build_provider", "load_llm_config"]
 
 #: Every provider the settings page offers, in the order it offers them.
 PROVIDER_IDS: tuple[ProviderId, ...] = (
@@ -41,6 +43,20 @@ PROVIDER_IDS: tuple[ProviderId, ...] = (
     "openai_compatible",
     "anthropic",
     "claude_code",
+)
+
+#: The settings a "Validate credentials" may try before they are saved: exactly
+#: what decides who answers and with which credential. Nothing else — a draft
+#: that could move the timeout or the models would be testing a different call
+#: from the one the button describes.
+DRAFT_KEYS: tuple[str, ...] = (
+    "llmProvider",
+    "llmBaseUrl",
+    "llmApiKey",
+    "anthropicApiKey",
+    "claudeCodeOauthToken",
+    "claudeCodeBin",
+    "claudeCodeEffort",
 )
 
 #: Which settings key holds the per-purpose model. ``default`` is the fallback
@@ -97,16 +113,23 @@ class LlmConfig:
         return ""
 
 
-async def load_llm_config(settings: SettingsService, *, data_dir: str = "") -> LlmConfig:
+async def load_llm_config(
+    settings: SettingsService, *, data_dir: str = "", draft: Mapping[str, Any] | None = None
+) -> LlmConfig:
     """Read the registry once and hand back a frozen snapshot.
 
     A snapshot rather than a live reader because a single call must not see the
     provider change halfway through its retries — the mode it remembered and
     the key it authenticated with would then belong to different endpoints.
+
+    ``draft`` is effective values (already validated) laid over the stored
+    ones, for a configuration that is being typed but has not been saved.
     """
+    overlay = draft or {}
 
     async def text(key: str) -> str:
-        return str(await settings.get(key) or "").strip()
+        value = overlay[key] if key in overlay else await settings.get(key)
+        return str(value or "").strip()
 
     provider = await text("llmProvider")
     if provider not in PROVIDER_IDS:

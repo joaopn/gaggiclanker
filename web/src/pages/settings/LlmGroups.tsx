@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useLlmModels, useLlmStatus, useResetRateLimit, useValidateLlm } from "@/hooks/useLlm";
 import { SettingField } from "@/pages/settings/SettingField";
-import { humanizeKey, type SettingsFormValues } from "@/pages/settings/schema";
+import { humanizeKey, type SettingsFormValues, toPatch } from "@/pages/settings/schema";
 
 /**
  * Providers whose endpoint the user may point somewhere else.
@@ -85,6 +85,17 @@ export function LlmProviderGroup({ entries, control, errors, disabled }: GroupPr
   const provider = useFormProvider(control);
 
   const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+  // Validate tests what is on the screen, not what was last saved: the
+  // group's own fields, reduced to what changed exactly as Save would send
+  // them (a blank secret keeps the stored one). The server tries the values
+  // and stores nothing.
+  const keys = entries.map((entry) => entry.key);
+  const typed = useWatch({ control, name: keys });
+  const draft = () =>
+    toPatch(
+      Object.fromEntries(entries.map((entry) => [entry.key, entry])),
+      Object.fromEntries(keys.map((key, index) => [key, typed[index]])),
+    );
   const providerField = byKey.get("llmProvider");
   const rest = entries.filter(
     (entry) =>
@@ -143,7 +154,7 @@ export function LlmProviderGroup({ entries, control, errors, disabled }: GroupPr
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => validate.mutate(undefined)}
+          onClick={() => validate.mutate({ settings: draft() })}
           disabled={validate.isPending}
         >
           {validate.isPending ? (
@@ -155,7 +166,7 @@ export function LlmProviderGroup({ entries, control, errors, disabled }: GroupPr
         </Button>
         <p className="text-muted-foreground text-xs">
           Asks the provider the cheapest question it answers - a model list, or{" "}
-          <code>claude auth status</code>. Save first: it tests what is stored, not what is typed.
+          <code>claude auth status</code>. It tests what is typed here, without saving it.
         </p>
       </div>
 

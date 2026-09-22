@@ -12,6 +12,7 @@ import {
   getLlmModels,
   getLlmStatus,
   getLlmUsage,
+  type LlmValidateRequest,
   resetLlmRateLimit,
   validateLlm,
 } from "@/api/client";
@@ -38,9 +39,13 @@ export function useLlmStatus(): UseQueryResult<LlmStatusData, Error> {
  * it costs a round trip to somebody else's server, so it happens when the
  * button is pressed and never on render.
  */
-export function useValidateLlm(): UseMutationResult<LlmCredentialCheck, Error, string | undefined> {
+export function useValidateLlm(): UseMutationResult<
+  LlmCredentialCheck,
+  Error,
+  LlmValidateRequest | undefined
+> {
   return useMutation({
-    mutationFn: (provider?: string) => validateLlm(provider),
+    mutationFn: (request?: LlmValidateRequest) => validateLlm(request),
     onSuccess: (check) => {
       if (check.ok) toast.success(check.detail || "Credentials look good");
       else toast.error(check.detail || "The provider refused those credentials");
