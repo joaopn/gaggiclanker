@@ -250,9 +250,15 @@ tries again.
 
 **Migrations are forward-only and immutable once shipped.** Each file is applied
 inside a transaction that also carries its `schema_migrations` row and its
-sha256, so a failure half-way leaves nothing behind. Editing a shipped migration
-is a hard error at boot, because otherwise two installs quietly end up with
-different schemas and nobody finds out until a query returns the wrong answer.
+sha256, so a failure half-way leaves nothing behind. Changing the SQL a shipped
+migration runs is a hard error at boot, because otherwise two installs quietly
+end up with different schemas and nobody finds out until a query returns the
+wrong answer. The sha256 is of the statements, not the bytes: comments and
+whitespace are left out, so documenting a shipped file never stops an archive
+from starting. And the refusal is never meant to be met: a test pins every
+shipped file's statement checksum, so a real edit fails the test suite instead
+of somebody's boot. An archive is only ever lost to a migration that needs to
+drop data, and that migration says so.
 
 **The LLM call does not run inside the HTTP request.** The route opens a
 `running` row, hands the work to the app's `TaskRegistry` and answers 202; the

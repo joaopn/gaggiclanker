@@ -10,6 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### An update never asks you to delete your database
+
+- **Your archive keeps starting across updates.** A database refused to start
+  whenever an update had touched any migration file, even when only a comment
+  changed, and the only way past it was deleting the database. The check now
+  looks only at the SQL a migration runs, so documentation edits can no longer
+  stop an archive from starting, and a test now fails any update that would
+  change what a shipped migration does. Your current database is upgraded in
+  place on its next start (only its migration records are rewritten); nothing
+  else about it changes.
+
 ### The Claude Code provider works out of the box, and Validate tests what you typed
 
 - **The image carries the Claude Code CLI.** `claude_code` is the default

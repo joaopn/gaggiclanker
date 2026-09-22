@@ -83,6 +83,51 @@ async def test_editing_an_applied_migration_is_refused(db: Database, tmp_path: P
         await run_migrations(db, directory)
 
 
+async def test_a_comment_edited_after_it_was_applied_still_boots(
+    db: Database, tmp_path: Path
+) -> None:
+    """Only what runs is frozen: a refusal costs the database, a comment must not."""
+    directory = tmp_path / "migrations"
+    directory.mkdir()
+    migration = directory / "0001_first.sql"
+    migration.write_text("CREATE TABLE a (id INTEGER);", encoding="utf-8")
+    await run_migrations(db, directory)
+
+    migration.write_text(
+        "-- Why a exists.\nCREATE TABLE a (\n    id INTEGER\n);\n", encoding="utf-8"
+    )
+    assert await run_migrations(db, directory) == []
+
+
+async def test_a_byte_checksum_ledger_is_accepted_and_rewritten(
+    db: Database, tmp_path: Path
+) -> None:
+    """A database made before the statement checksum keeps booting, and is upgraded once."""
+    directory = tmp_path / "migrations"
+    directory.mkdir()
+    migration = directory / "0001_first.sql"
+    migration.write_text("CREATE TABLE a (id INTEGER);", encoding="utf-8")
+    await run_migrations(db, directory)
+    [loaded] = load_migrations(directory)
+    await db.execute("UPDATE schema_migrations SET checksum = ?", (loaded.byte_checksum,))
+
+    assert await run_migrations(db, directory) == []
+    assert await db.fetch_value("SELECT checksum FROM schema_migrations") == loaded.checksum
+
+
+async def test_every_shipped_file_recognises_its_byte_checksum_ledger(db: Database) -> None:
+    """The archive a person runs today has byte checksums; the next boot must accept them all."""
+    await run_migrations(db)
+    for migration in load_migrations():
+        await db.execute(
+            "UPDATE schema_migrations SET checksum = ? WHERE version = ?",
+            (migration.byte_checksum, migration.version),
+        )
+    assert await run_migrations(db) == []
+    rows = await db.fetch_all("SELECT version, checksum FROM schema_migrations ORDER BY 1")
+    assert [str(row["checksum"]) for row in rows] == [m.checksum for m in load_migrations()]
+
+
 async def test_missing_applied_migration_is_refused(db: Database, tmp_path: Path) -> None:
     """A database from a newer build must not be silently downgraded."""
     directory = tmp_path / "migrations"
