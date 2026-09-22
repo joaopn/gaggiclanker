@@ -1,7 +1,8 @@
 # gaggiclanker — one image, one process: uvicorn serving the API and the SPA.
 #
-# Three stages. The front-end build is separate so a Python-only change does not
-# reinstall npm, and the runtime stage carries neither node nor a compiler.
+# Four stages. The front-end build is separate so a Python-only change does not
+# reinstall npm, and the runtime stage carries neither node nor a compiler: the
+# Claude Code CLI arrives as the single native binary its npm package ships.
 
 # --------------------------------------------------------------------------
 # Stage 1: the React bundle.
@@ -66,7 +67,31 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # --------------------------------------------------------------------------
-# Stage 3: the runtime. No uv, no node, no compiler — just Python and the venv.
+# Stage 3: the Claude Code CLI, for the default LLM provider.
+#
+# `claude_code` is the default provider and it runs `claude` as a subprocess,
+# so an image without the CLI cannot answer a single analysis: every call and
+# every Validate said "not found on PATH". The npm package is a thin wrapper
+# whose postinstall picks the platform's native binary (glibc x64 or arm64
+# here, matching the bookworm runtime), so npm does the platform choice and
+# only that one self-contained binary is copied on — no node in the runtime.
+#
+# Pinned like uv: the CLI's flags and its JSON envelope are what the provider
+# parses, so an upgrade is a deliberate bump of this line, not a rebuild's
+# surprise. The provider disables the CLI's own auto-updater.
+# --------------------------------------------------------------------------
+FROM node:22-bookworm-slim AS claude-cli
+
+ARG CLAUDE_CODE_VERSION=2.1.267
+
+RUN npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+    && cp "$(readlink -f "$(npm prefix -g)/bin/claude")" /claude \
+    && /claude --version
+
+
+# --------------------------------------------------------------------------
+# Stage 4: the runtime. No uv, no node, no compiler — Python, the venv and
+# the Claude Code binary.
 # --------------------------------------------------------------------------
 FROM python:3.13-slim-bookworm AS runtime
 
@@ -89,6 +114,11 @@ WORKDIR /app
 # only the venv and the front-end bundle are copied here.
 COPY --from=python-build --chown=app:app /app/.venv /app/.venv
 COPY --from=web-build --chown=app:app /build/dist/ ./web/dist/
+
+# On PATH under the name the claudeCodeBin setting defaults to, so a fresh
+# install needs no setting to find it. Owned by root: the app runs it, never
+# rewrites it.
+COPY --from=claude-cli /claude /usr/local/bin/claude
 
 # The venv's bin first, so `python` and `gaggiclanker` are the installed ones.
 # WEB_DIST is explicit because the installed package sits in site-packages and

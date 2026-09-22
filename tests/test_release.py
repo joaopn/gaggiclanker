@@ -165,6 +165,23 @@ def test_the_bind_port_default_is_the_same_number_everywhere() -> None:
     assert f'"${{HOST_PORT:-{DEFAULT_PORT}}}:{DEFAULT_PORT}"' in compose_text
 
 
+def test_the_image_puts_the_default_providers_cli_on_path() -> None:
+    """The default provider runs `claude`; the runtime stage must carry it.
+
+    Without it a fresh install answered every Validate and every analysis with
+    "the Claude Code CLI (claude) was not found on PATH". The binary lands under
+    the name `claudeCodeBin` defaults to, in a directory on the image's PATH.
+    `scripts/repro_image_has_claude_cli.py` builds the image and runs it; this
+    is the cheap guard that the line is still there.
+    """
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    runtime = dockerfile.split("AS runtime", 1)[1]
+
+    assert SETTINGS_REGISTRY["claudeCodeBin"].default == "claude"
+    assert "COPY --from=claude-cli /claude /usr/local/bin/claude" in runtime
+    assert re.search(r"ARG CLAUDE_CODE_VERSION=\d+\.\d+\.\d+\n", dockerfile)
+
+
 def test_compose_configures_no_setting_anywhere_in_the_file() -> None:
     """A former setting variable assigned here would do nothing, which is worse than absent.
 
