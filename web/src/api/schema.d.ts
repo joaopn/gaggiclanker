@@ -1389,7 +1389,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The Sets, active one first */
+        /** The Sets, the ones collecting shots first */
         get: operations["list_sets_api_sets_get"];
         put?: never;
         /**
@@ -1421,30 +1421,6 @@ export interface paths {
         get: operations["get_set_api_sets__set_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Make this the Set the machine is set up for
-         * @description Switches the flag off the previous active Set. Archives nothing.
-         *
-         *     An archived Set is a 409 rather than a silent no-op: activating one would
-         *     clear the flag from the live Set and leave the machine with no usable active
-         *     Set at all, after which every shot lands in the inbox for no visible reason.
-         */
-        post: operations["activate_set_api_sets__set_id__activate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1496,6 +1472,35 @@ export interface paths {
         put?: never;
         /** Retire a Set */
         post: operations["archive_set_api_sets__set_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/automatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Offer this Set to the matcher, or take it out of the running
+         * @description Any number of Sets may be offered. Nothing is taken from another Set.
+         *
+         *     One route both ways rather than two: this is one flag with two values, and
+         *     the page that reads it as a switch would otherwise have to know two paths to
+         *     write it.
+         *
+         *     Turning it **on** for an archived Set is a 409 rather than a silent no-op:
+         *     an archived Set receives no shots whatever the flag says, so the page would
+         *     show a badge promising something that will never happen. Turning it off is
+         *     allowed on any Set — archiving does that itself.
+         */
+        put: operations["set_automatch_api_sets__set_id__automatch_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2983,6 +2988,14 @@ export interface components {
             authenticated: boolean;
             /** User */
             user?: string | null;
+        };
+        /**
+         * AutomatchWrite
+         * @description `PUT /api/sets/{id}/automatch`: whether the matcher may file shots here.
+         */
+        AutomatchWrite: {
+            /** Automatch */
+            automatch: boolean;
         };
         /**
          * BackupData
@@ -5148,10 +5161,10 @@ export interface components {
          */
         SetCreate: {
             /**
-             * Activate
+             * Automatch
              * @default true
              */
-            activate: boolean;
+            automatch: boolean;
             /** Bean Id */
             bean_id: number;
             /** Grinder Id */
@@ -5304,10 +5317,15 @@ export interface components {
          */
         SetRow: {
             /**
-             * Active
+             * Archived
              * @default false
              */
-            active: boolean;
+            archived: boolean;
+            /**
+             * Automatch
+             * @default false
+             */
+            automatch: boolean;
             /** Bean Id */
             bean_id: number;
             /** Bean Name */
@@ -5338,11 +5356,6 @@ export interface components {
              * @default 0
              */
             shot_count: number;
-            /**
-             * Status
-             * @default active
-             */
-            status: string;
             /**
              * Version Count
              * @default 0
@@ -9317,37 +9330,6 @@ export interface operations {
             };
         };
     };
-    activate_set_api_sets__set_id__activate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     analyse_set_api_sets__set_id__analyse_post: {
         parameters: {
             query?: {
@@ -9395,6 +9377,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_automatch_api_sets__set_id__automatch_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutomatchWrite"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

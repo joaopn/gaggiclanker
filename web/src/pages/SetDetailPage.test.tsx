@@ -114,7 +114,7 @@ beforeEach(() => {
   getSet.mockResolvedValue(setDetail());
   getSetTrends.mockResolvedValue(trends());
   addSetVersion.mockResolvedValue(setDetail().versions[0].version);
-  archiveSet.mockResolvedValue({ ...setDetail().set, status: "archived", active: false });
+  archiveSet.mockResolvedValue({ ...setDetail().set, archived: true, automatch: false });
   getSetSuggestions.mockResolvedValue({ items: [] });
   analyseSet.mockResolvedValue({
     set_id: 3,

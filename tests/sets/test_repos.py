@@ -1,7 +1,7 @@
 """Beans, grinders, Sets and versions at the repository level.
 
 The properties here are the ones the schema is supposed to guarantee — version
-numbering, parent linkage, one active Set — so every one of them is
+numbering, parent linkage, what the matcher is offered — so every one of them is
 asserted against the real file rather than against a mock that would agree with
 whatever the code did.
 """
@@ -98,11 +98,13 @@ class TestGrinders:
 
 
 class TestSets:
-    async def test_create_makes_version_one_and_activates(self, wired: Fixtures) -> None:
+    async def test_create_makes_version_one_and_offers_it_to_the_matcher(
+        self, wired: Fixtures
+    ) -> None:
         row = await _new_set(wired, dose_g=18.0, target_yield_g=36.0, grind_setting="22")
         assert row.current_version_no == 1
-        assert row.active is True
-        assert row.status == "active"
+        assert row.automatch is True
+        assert row.archived is False
         assert row.bean_name == "Ethiopia Guji"
 
         versions = await wired.sets.versions(row.id)
@@ -245,30 +247,31 @@ class TestSets:
         assert [v.version_no for v in await wired.sets.versions(first.id)] == [2, 1]
         assert [v.version_no for v in await wired.sets.versions(second.id)] == [2, 1]
 
-    async def test_only_one_set_is_active(self, wired: Fixtures) -> None:
+    async def test_any_number_of_sets_collect_shots(self, wired: Fixtures) -> None:
+        """Several grinders, several bags loaded, and no flag to fight over."""
         first = await _new_set(wired, name="Bag one")
         second = await _new_set(wired, name="Bag two")
-        # Creating the second switched the flag rather than colliding on the
-        # partial unique index.
-        assert (await wired.sets.get(first.id)).active is False  # type: ignore[union-attr]
-        assert (await wired.sets.get(second.id)).active is True  # type: ignore[union-attr]
+        assert (await wired.sets.get(first.id)).automatch is True  # type: ignore[union-attr]
+        assert (await wired.sets.get(second.id)).automatch is True  # type: ignore[union-attr]
 
-        back = await wired.sets.activate(first.id)
-        assert back is not None and back.active is True
-        # Switching back archives nothing: the other Set is inactive, not gone.
+        out = await wired.sets.set_automatch(first.id, False)
+        assert out is not None and out.automatch is False
+        # Taking one out of the running leaves the other exactly as it was.
         other = await wired.sets.get(second.id)
         assert other is not None
-        assert (other.active, other.status) == (False, "active")
+        assert (other.automatch, other.archived) == (True, False)
 
-    async def test_archiving_clears_active(self, wired: Fixtures) -> None:
+        back = await wired.sets.set_automatch(first.id, True)
+        assert back is not None and back.automatch is True
+        assert (await wired.sets.get(second.id)).automatch is True  # type: ignore[union-attr]
+
+    async def test_archiving_clears_automatch(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
         archived = await wired.sets.archive(row.id)
         assert archived is not None
-        assert (archived.status, archived.active) == ("archived", False)
+        assert (archived.archived, archived.automatch) == (True, False)
         assert await wired.sets.list_sets() == []
         assert len(await wired.sets.list_sets(include_archived=True)) == 1
-        # And it no longer collects shots.
-        assert await wired.sets.active_version() is None
 
     async def test_shot_counts_roll_up_from_the_versions(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
@@ -389,23 +392,21 @@ class TestConcurrency:
         assert row.current_version_no == 1
 
 
-class TestActivationRefusals:
-    async def test_an_archived_set_cannot_be_made_active(self, wired: Fixtures) -> None:
-        """Otherwise the machine ends up with no usable active Set at all.
+class TestAutomatchRefusals:
+    async def test_an_archived_set_cannot_be_offered_to_the_matcher(self, wired: Fixtures) -> None:
+        """The flag would promise something the matcher will never do.
 
-        `active_version` requires `status = 'active'`, so flipping
-        the flag onto an archived Set clears it from the live one and leaves
-        every later shot landing in the inbox for no visible reason.
+        `versions_naming_profile` filters on `archived` as well, so a shot
+        would never be filed there whatever the flag said.
         """
         live = await _new_set(wired, name="The live one")
         old = await _new_set(wired, name="Last month's bag")
         await wired.sets.archive(old.id)
-        await wired.sets.activate(live.id)
 
-        assert await wired.sets.activate(old.id) is None
+        assert await wired.sets.set_automatch(old.id, True) is None
 
-        assert (await wired.sets.get(live.id)).active is True  # type: ignore[union-attr]
-        assert await wired.sets.active_version() is not None
+        assert (await wired.sets.get(old.id)).automatch is False  # type: ignore[union-attr]
+        assert (await wired.sets.get(live.id)).automatch is True  # type: ignore[union-attr]
 
     async def test_a_shot_cannot_be_filed_under_an_archived_set(self, wired: Fixtures) -> None:
         row = await _new_set(wired)
@@ -429,10 +430,9 @@ class TestActivationRefusals:
 
         shot_id = await make_shot(wired.db, "000501")
         assert (
-            await wired.sets.auto_assign(
+            await wired.sets.profile_match(
                 shot_id,
                 profile_version_id=None,
                 device_profile_id="adapt",
             )
-            is None
-        )
+        ).outcome == "unmatched"

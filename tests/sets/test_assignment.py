@@ -1,4 +1,4 @@
-"""Auto-assignment, against the fake machine and against the importer.
+"""Matching on ingest, against the fake machine and against the importer.
 
 The chunk's first acceptance criterion: *creating a Set and pulling a shot with
 the matching profile assigns it automatically; a shot with another profile lands
@@ -24,7 +24,7 @@ from gaggiclanker.device.fake import FakeDevice, default_notes
 from gaggiclanker.domain.models import SHOT_FLAG_HAS_NOTES, Profile
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.imports.service import ImportService
-from tests.sets.conftest import Fixtures, make_shot
+from tests.sets.conftest import Fixtures
 from tests.sync.conftest import Archive, archive_for, fixture_slogs
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -97,7 +97,7 @@ async def _set_naming(archive: Archive, version_id: int) -> int:
     return row.id
 
 
-class TestSyncAutoAssignment:
+class TestSyncMatching:
     async def test_a_matching_profile_is_assigned_and_another_is_not(self, tmp_path: Path) -> None:
         matching, other = _device_profile_ids()
         device = _device_with_two_shots()
@@ -129,7 +129,7 @@ class TestSyncAutoAssignment:
         finally:
             await device.stop()
 
-    async def test_with_no_active_set_every_shot_needs_one(self, tmp_path: Path) -> None:
+    async def test_with_no_set_at_all_every_shot_needs_one(self, tmp_path: Path) -> None:
         device = _device_with_two_shots()
         await device.start()
         try:
@@ -178,8 +178,8 @@ class TestSyncAutoAssignment:
             await device.stop()
 
 
-class TestImporterAutoAssignment:
-    async def test_an_imported_shot_joins_the_active_set(self, wired: Fixtures) -> None:
+class TestImporterMatching:
+    async def test_an_imported_shot_joins_the_set_on_its_profile(self, wired: Fixtures) -> None:
         version_id = await _profile_version(wired.db, "Gratus 16:32 trad")
         # shot-129's header names this profile id; the mirror is what maps it.
         await ProfilesRepository(wired.db).upsert_device_profile(
@@ -218,75 +218,6 @@ class TestImporterAutoAssignment:
         assert result.shot_id is not None
         shot = await wired.shots.get(result.shot_id)
         assert shot is not None and shot.set_version_id is None
-
-
-class TestAutoAssignmentRules:
-    async def test_a_shot_that_already_has_a_set_is_never_moved(self, wired: Fixtures) -> None:
-        """The rule that makes a hand correction stick.
-
-        Auto-assignment runs on ingest, but a re-derive or a second pass must
-        not undo a decision somebody made in the UI, so the UPDATE only ever
-        fills a NULL.
-        """
-        first = await wired.sets.create(
-            SetWrite(name="One", bean_id=wired.bean_id),
-            SetVersionWrite(),
-        )
-        version = await wired.sets.current_version(first.id)
-        assert version is not None
-        shot_id = await make_shot(wired.db, "000400")
-        await wired.sets.assign_shot(shot_id, version.id)
-
-        second = await wired.sets.create(
-            SetWrite(name="Two", bean_id=wired.bean_id),
-            SetVersionWrite(),
-        )
-        assert second.active is True
-        assert (
-            await wired.sets.auto_assign(
-                shot_id,
-                profile_version_id=None,
-                device_profile_id="",
-            )
-            is None
-        )
-        shot = await wired.shots.get(shot_id)
-        assert shot is not None and shot.set_version_id == version.id
-
-    async def test_a_set_that_names_no_profile_takes_everything(self, wired: Fixtures) -> None:
-        """A Set with no profile is not filtering on one.
-
-        Leaving every shot unassigned under such a Set would make it look broken
-        rather than permissive, and the wizard makes naming a profile the easy
-        path anyway.
-        """
-        await wired.sets.create(
-            SetWrite(name="Whatever is loaded", bean_id=wired.bean_id),
-            SetVersionWrite(),
-        )
-        shot_id = await make_shot(wired.db, "000401")
-        assigned = await wired.sets.auto_assign(
-            shot_id,
-            profile_version_id=None,
-            device_profile_id="anything",
-        )
-        assert assigned is not None
-
-    async def test_an_archived_set_collects_nothing(self, wired: Fixtures) -> None:
-        created = await wired.sets.create(
-            SetWrite(name="Finished bag", bean_id=wired.bean_id),
-            SetVersionWrite(),
-        )
-        await wired.sets.archive(created.id)
-        shot_id = await make_shot(wired.db, "000402")
-        assert (
-            await wired.sets.auto_assign(
-                shot_id,
-                profile_version_id=None,
-                device_profile_id="",
-            )
-            is None
-        )
 
 
 #: The four shapes a real machine will serve that our own bounds refuse.

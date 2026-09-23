@@ -198,8 +198,8 @@ async def test_a_new_address_moves_the_machine_rather_than_forking_the_archive(
     """A display board that changed IP used to become a second machine.
 
     Everything it had pulled stayed behind on the old row: its shots, its
-    profiles, its Sets, and the active Set that stopped auto-assigning. The host
-    is a setting now, so a new address is an update.
+    profiles and its Sets, none of which collected another shot. The host is a
+    setting now, so a new address is an update.
     """
     repo = MachineRepository(db)
     await repo.update_identity(MachineUpsert(host="192.168.1.40", name="Kitchen"))

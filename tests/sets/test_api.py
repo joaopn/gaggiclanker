@@ -284,7 +284,7 @@ class TestSets:
     async def test_create_get_and_version(self, client: httpx.AsyncClient, bean_id: int) -> None:
         created = await _make_set(client, bean_id)
         assert created["current_version_no"] == 1
-        assert created["active"] is True
+        assert created["automatch"] is True
 
         added = data(
             await client.post(
@@ -310,23 +310,30 @@ class TestSets:
         assert response.status_code == 422
         assert error(response)["details"]["field"] == "bean_id"
 
-    async def test_activation_switches_and_archives_nothing(
+    async def test_the_matcher_flag_toggles_one_set_and_leaves_the_others(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         first = await _make_set(client, bean_id)
         second = await _make_set(client, bean_id, name="A different bag")
+        # Both collect, which is the point: two bags, two grinders, one morning.
+        assert data(await client.get(f"/api/sets/{first['id']}"))["set"]["automatch"] is True
 
-        assert data(await client.get(f"/api/sets/{first['id']}"))["set"]["active"] is False
-        back = data(await client.post(f"/api/sets/{first['id']}/activate"))
-        assert back["active"] is True
+        off = data(
+            await client.put(f"/api/sets/{first['id']}/automatch", json={"automatch": False})
+        )
+        assert off["automatch"] is False
         other = data(await client.get(f"/api/sets/{second['id']}"))["set"]
-        assert (other["active"], other["status"]) == (False, "active")
+        assert (other["automatch"], other["archived"]) == (True, False)
+
+        on = data(await client.put(f"/api/sets/{first['id']}/automatch", json={"automatch": True}))
+        assert on["automatch"] is True
 
     async def test_archive_hides_it_from_the_list(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
         created = await _make_set(client, bean_id)
-        assert data(await client.post(f"/api/sets/{created['id']}/archive"))["status"] == "archived"
+        archived = data(await client.post(f"/api/sets/{created['id']}/archive"))
+        assert (archived["archived"], archived["automatch"]) == (True, False)
         assert data(await client.get("/api/sets"))["items"] == []
         assert len(data(await client.get("/api/sets?include_archived=true"))["items"]) == 1
 
@@ -335,7 +342,9 @@ class TestSets:
     ) -> None:
         assert (await client.get("/api/sets/404")).status_code == 404
         assert (await client.post("/api/sets/404/versions", json={})).status_code == 404
-        assert (await client.post("/api/sets/404/activate")).status_code == 404
+        assert (
+            await client.put("/api/sets/404/automatch", json={"automatch": True})
+        ).status_code == 404
         assert (await client.post("/api/sets/404/archive")).status_code == 404
         assert (await client.get("/api/sets/404/trends")).status_code == 404
 
@@ -884,21 +893,23 @@ class TestSetReferencesAndRefusals:
         )
         assert response.status_code == 201
 
-    async def test_activating_an_archived_set_is_a_conflict(
+    async def test_offering_an_archived_set_to_the_matcher_is_a_conflict(
         self, client: httpx.AsyncClient, bean_id: int
     ) -> None:
-        live = await _make_set(client, bean_id, name="The live one")
         old = await _make_set(client, bean_id, name="Last month's bag")
         await client.post(f"/api/sets/{old['id']}/archive")
-        await client.post(f"/api/sets/{live['id']}/activate")
 
-        response = await client.post(f"/api/sets/{old['id']}/activate")
+        response = await client.put(f"/api/sets/{old['id']}/automatch", json={"automatch": True})
 
         assert response.status_code == 409
         assert error(response)["code"] == "CONFLICT"
-        # And the live Set kept the flag: the whole point is that the machine is
-        # not left with no usable active Set.
-        assert data(await client.get(f"/api/sets/{live['id']}"))["set"]["active"] is True
+        assert error(response)["details"]["field"] == "archived"
+        assert data(await client.get(f"/api/sets/{old['id']}"))["set"]["automatch"] is False
+
+        # Turning it *off* is allowed on anything: archiving does it itself, and
+        # a refusal there would be a no-op dressed up as an error.
+        off = await client.put(f"/api/sets/{old['id']}/automatch", json={"automatch": False})
+        assert off.status_code == 200, off.text
 
     async def test_filing_a_shot_under_an_archived_set_is_refused(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int

@@ -215,12 +215,6 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       keys: ["gaggimateHost", "gaggimateProtocol", "gaggimateTimeoutSeconds", "deviceSyncEnabled"],
     },
     {
-      id: "new-shots",
-      title: "New shots",
-      description: "What the archive does with a shot as it arrives from a pull or an import.",
-      keys: ["shotsProfileAutomatch"],
-    },
-    {
       id: "writes",
       title: "Writes",
       description: "What this box may change on the machine, and what a notes send writes.",

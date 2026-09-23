@@ -23,9 +23,7 @@ from typing import TYPE_CHECKING
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
-from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.settings import EnvSettings
-from gaggiclanker.settings_service import SettingsService
 
 if TYPE_CHECKING:
     from gaggiclanker.imports.service import ImportFile, ImportResult, ImportSummary
@@ -118,7 +116,7 @@ async def run_import(
     await db.connect()
     try:
         await run_migrations(db)
-        service = ImportService(db, SettingsService(SettingsRepository(db)))
+        service = ImportService(db)
         summary = await service.import_files(payloads, replace=replace)
     finally:
         await db.close()

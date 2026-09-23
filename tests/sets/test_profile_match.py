@@ -1,9 +1,11 @@
-"""Profile automatch: a shot goes to the one non-archived Set that brews its profile.
+"""The matcher: a shot goes to the one Set offered to it that brews its profile.
 
-The rule is "only when it is not a guess". Each test below pins one way it could
-become a guess — two Sets on the profile, an archived Set, a Set that names no
-profile, a Set that has moved on to another profile — or one way it could undo
-somebody's decision (a shot already filed).
+This is the only path into a Set that nobody chose by hand, for a pull, an
+import and the button alike. The rule is "only when it is not a guess". Each
+test below pins one way it could become a guess — two Sets on the profile, a
+Set that names no profile, a Set that has moved on to another profile — or one
+way a Set is not a candidate at all (archived, or `automatch` off), or one way
+it could undo somebody's decision (a shot already filed).
 """
 
 from __future__ import annotations
@@ -17,9 +19,7 @@ from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
-from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.imports.service import ImportService
-from gaggiclanker.settings_service import SettingsService
 from tests.sets.conftest import Fixtures, make_profile_version, make_shot
 from tests.sets.test_assignment import (
     _device_profile_ids,
@@ -33,13 +33,13 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
 
 async def _set_on(
-    wired: Fixtures, name: str, profile_version_id: int | None, *, activate: bool = False
+    wired: Fixtures, name: str, profile_version_id: int | None, *, automatch: bool = True
 ) -> int:
-    """A Set whose current version names this profile; not active unless asked."""
+    """A Set whose current version names this profile, offered to the matcher."""
     row = await wired.sets.create(
         SetWrite(name=name, bean_id=wired.bean_id),
         SetVersionWrite(profile_version_id=profile_version_id, dose_g=18.0),
-        activate=activate,
+        automatch=automatch,
     )
     return row.id
 
@@ -54,10 +54,6 @@ async def _filed(wired: Fixtures, shot_id: int) -> int | None:
     shot = await wired.shots.get(shot_id)
     assert shot is not None
     return shot.set_version_id
-
-
-async def _automatch_on(wired: Fixtures) -> None:
-    await SettingsService(SettingsRepository(wired.db)).apply({"shotsProfileAutomatch": True})
 
 
 class TestProfileMatch:
@@ -110,6 +106,40 @@ class TestProfileMatch:
         )
         assert after.outcome == "unmatched"
         assert await _filed(wired, second) is None
+
+    async def test_a_set_the_matcher_is_not_offered_neither_matches_nor_blocks(
+        self, wired: Fixtures
+    ) -> None:
+        """`automatch` off means "not mine to file", not "file it here last".
+
+        It has to be both: a Set out of the running that still made its profile
+        ambiguous would stop the Set that *is* in the running from collecting
+        anything.
+        """
+        profile = await make_profile_version(wired.db, "Adaptive v2")
+        resting = await _set_on(wired, "Bag in the cupboard", profile, automatch=False)
+        shot_id = await make_shot(wired.db, "000510", profile_version_id=profile)
+
+        match = await wired.sets.profile_match(
+            shot_id, profile_version_id=profile, device_profile_id=""
+        )
+        assert match.outcome == "unmatched"
+        assert await _filed(wired, shot_id) is None
+
+        live = await _set_on(wired, "Bag in the hopper", profile)
+        second = await make_shot(wired.db, "000511", profile_version_id=profile)
+        after = await wired.sets.profile_match(
+            second, profile_version_id=profile, device_profile_id=""
+        )
+        assert after.set_version_id == await _current(wired, live)
+
+        # And it comes back into the running when the flag goes on, which is
+        # what makes the two Sets ambiguous from then on.
+        await wired.sets.set_automatch(resting, True)
+        third = await make_shot(wired.db, "000512", profile_version_id=profile)
+        assert (
+            await wired.sets.profile_match(third, profile_version_id=profile, device_profile_id="")
+        ).outcome == "ambiguous"
 
     async def test_a_set_that_names_no_profile_is_not_configured_for_this_one(
         self, wired: Fixtures
@@ -251,47 +281,14 @@ class TestMatchUnfiled:
         assert await _filed(wired, left) is None
 
 
-class TestAutoAssignWithAutomatch:
-    async def test_off_by_default_so_nothing_changes(self, wired: Fixtures) -> None:
-        profile = await make_profile_version(wired.db, "Adaptive v2")
-        await _set_on(wired, "Guji", profile)
-        shot_id = await make_shot(wired.db, "000900", profile_version_id=profile)
-        assert (
-            await wired.sets.auto_assign(shot_id, profile_version_id=profile, device_profile_id="")
-            is None
-        )
-
-    async def test_the_active_set_goes_first(self, wired: Fixtures) -> None:
-        profile = await make_profile_version(wired.db, "Adaptive v2")
-        await _set_on(wired, "Guji", profile)
-        active = await _set_on(wired, "Loaded now", None, activate=True)
-        shot_id = await make_shot(wired.db, "000901", profile_version_id=profile)
-
-        assigned = await wired.sets.auto_assign(
-            shot_id, profile_version_id=profile, device_profile_id="", profile_automatch=True
-        )
-        assert assigned == await _current(wired, active)
-
-    async def test_a_shot_the_active_set_turns_down_is_matched(self, wired: Fixtures) -> None:
-        profile = await make_profile_version(wired.db, "Adaptive v2")
-        other = await make_profile_version(wired.db, "9 Bar Espresso")
-        mine = await _set_on(wired, "Guji", profile)
-        await _set_on(wired, "Loaded now", other, activate=True)
-        shot_id = await make_shot(wired.db, "000902", profile_version_id=profile)
-
-        assigned = await wired.sets.auto_assign(
-            shot_id, profile_version_id=profile, device_profile_id="", profile_automatch=True
-        )
-        assert assigned == await _current(wired, mine)
-
-    async def test_an_import_is_matched_when_the_switch_is_on(self, wired: Fixtures) -> None:
+class TestIngest:
+    async def test_an_import_is_matched_with_no_switch_to_turn_on(self, wired: Fixtures) -> None:
         version_id = await make_profile_version(wired.db, "Gratus 16:32 trad")
         # shot-129's header names this profile id; the mirror is what maps it.
         await ProfilesRepository(wired.db).upsert_device_profile(
             device_id="rV4GhUcSZc", version_id=version_id
         )
         mine = await _set_on(wired, "Imported archive", version_id)
-        await _automatch_on(wired)
 
         result = await ImportService(wired.db).import_shot(
             (FIXTURES / "exports" / "shot-129.json").read_bytes(), filename="shot-129.json"
@@ -300,12 +297,13 @@ class TestAutoAssignWithAutomatch:
         assert result.shot_id is not None
         assert await _filed(wired, result.shot_id) == await _current(wired, mine)
 
-    async def test_an_import_waits_when_the_switch_is_off(self, wired: Fixtures) -> None:
+    async def test_an_import_waits_when_two_sets_brew_the_profile(self, wired: Fixtures) -> None:
         version_id = await make_profile_version(wired.db, "Gratus 16:32 trad")
         await ProfilesRepository(wired.db).upsert_device_profile(
             device_id="rV4GhUcSZc", version_id=version_id
         )
         await _set_on(wired, "Imported archive", version_id)
+        await _set_on(wired, "Same profile, other bag", version_id)
 
         result = await ImportService(wired.db).import_shot(
             (FIXTURES / "exports" / "shot-129.json").read_bytes(), filename="shot-129.json"
@@ -315,10 +313,16 @@ class TestAutoAssignWithAutomatch:
         assert await _filed(wired, result.shot_id) is None
 
 
-class TestSyncWithAutomatch:
-    async def test_a_pulled_shot_goes_to_the_set_on_its_profile(self, tmp_path: Path) -> None:
-        """Through the real engine: the active Set takes its own profile's shot,
-        and the switch files the other one under the Set that brews it."""
+class TestSync:
+    async def test_each_pulled_shot_goes_to_the_set_that_brews_its_profile(
+        self, tmp_path: Path
+    ) -> None:
+        """Through the real engine, with two Sets collecting at the same time.
+
+        The two-grinder morning this rule exists for: each Set names its own
+        profile, both are offered to the matcher, and each shot lands where its
+        profile says it belongs.
+        """
         matching, other = _device_profile_ids()
         device = _device_with_two_shots()
         await device.start()
@@ -327,25 +331,23 @@ class TestSyncWithAutomatch:
                 await archive.engine.sync_identity()
                 wanted = await _mirror(archive, matching, "Adaptive v2")
                 second = await _mirror(archive, other, "9 Bar Espresso")
-                # Created first, so the Set made by `_set_naming` is the active one.
                 bean = await BeansRepository(archive.db).create(BeanWrite(name="Kenya AA"))
                 sets = archive.engine.sets
                 on_other = await sets.create(
                     SetWrite(name="Kenya", bean_id=bean.id),
                     SetVersionWrite(profile_version_id=second),
                 )
-                active = await _set_naming(archive, wanted)
-                await archive.engine.settings.apply({"shotsProfileAutomatch": True})
+                on_wanted = await _set_naming(archive, wanted)
 
                 await archive.engine.sync_shots()
 
                 first = await archive.engine.shots.get_by_device_id("000300")
                 later = await archive.engine.shots.get_by_device_id("000301")
                 assert first is not None and later is not None
-                active_version = await sets.current_version(active)
+                wanted_version = await sets.current_version(on_wanted)
                 other_version = await sets.current_version(on_other.id)
-                assert active_version is not None and other_version is not None
-                assert first.set_version_id == active_version.id
+                assert wanted_version is not None and other_version is not None
+                assert first.set_version_id == wanted_version.id
                 assert later.set_version_id == other_version.id
         finally:
             await device.stop()
@@ -383,9 +385,9 @@ class TestApi:
         assert response.status_code == 404
         assert response.json()["ok"] is False
 
-    async def test_the_switch_is_a_setting_off_by_default(self, client: httpx.AsyncClient) -> None:
+    async def test_there_is_no_switch_to_turn_matching_on(self, client: httpx.AsyncClient) -> None:
+        """The flag on the Set replaced it; a stored value must not linger."""
         settings = (await client.get("/api/settings")).json()["data"]
-        assert settings["shotsProfileAutomatch"]["value"] is False
-        patched = await client.patch("/api/settings", json={"shotsProfileAutomatch": True})
-        assert patched.status_code == 200, patched.text
-        assert patched.json()["data"]["shotsProfileAutomatch"]["value"] is True
+        assert "shotsProfileAutomatch" not in settings
+        refused = await client.patch("/api/settings", json={"shotsProfileAutomatch": True})
+        assert refused.status_code == 400, refused.text

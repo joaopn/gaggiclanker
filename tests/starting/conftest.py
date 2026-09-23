@@ -417,10 +417,10 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
                 target_yield_g=float(entry["yield"]),
                 intent="Baseline for this bag.",
             ),
-            # Only one Set may be active and the flag is not what
-            # this suite is about; leaving them all inactive keeps the inserts
-            # independent of their order.
-            activate=False,
+            # Matching is not what this suite is about; leaving every Set out
+            # of the matcher's reach keeps the inserts independent of their
+            # order.
+            automatch=False,
         )
         version_id = stored.current_version_id
         assert version_id is not None

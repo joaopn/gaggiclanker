@@ -89,7 +89,7 @@ async def test_a_named_version_has_to_belong_to_the_set(archive: Fixture) -> Non
     sets = SetsRepository(archive.db)
     other = await sets.create(
         *_other_set(archive),
-        activate=False,
+        automatch=False,
     )
     other_version = await sets.current_version(other.id)
     assert other_version is not None

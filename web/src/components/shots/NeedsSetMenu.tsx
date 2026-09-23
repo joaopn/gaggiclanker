@@ -20,9 +20,10 @@ import { cn } from "@/lib/utils";
  */
 
 /**
- * How many Sets the menu offers. The server lists the active Set first and then
- * the newest, so three covers "what is in the hopper" and the couple of bags
- * before it; a longer list is a select box, and the shot page already has one.
+ * How many Sets the menu offers. The server lists the ones collecting shots
+ * first and then the newest, so three covers the bags in the hoppers and the
+ * couple before them; a longer list is a select box, and the shot page already
+ * has one.
  */
 export const MENU_SETS = 3;
 
@@ -100,10 +101,12 @@ function MenuBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
   }
 
   // Only a Set with a version can take a shot — the assignment names a version,
-  // not a Set — and `useSets()` already leaves archived ones out; the status
-  // check is belt and braces for a list that was fetched with them in.
+  // not a Set — and `useSets()` already leaves archived ones out; the archived
+  // check is belt and braces for a list that was fetched with them in. A Set
+  // the matcher is not offered is still offered here: picking one by hand is
+  // exactly what the flag being off leaves to the person.
   const candidates = sets.data.items.filter(
-    (row) => row.status !== "archived" && row.current_version_id != null,
+    (row) => !row.archived && row.current_version_id != null,
   );
   const offered = candidates.slice(0, MENU_SETS);
 
@@ -157,9 +160,9 @@ function MenuBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
             <span className="flex items-center gap-1.5 text-sm">
               <span className="min-w-0 truncate font-medium">{row.name}</span>
               <span className="text-muted-foreground tabular-nums">v{row.current_version_no}</span>
-              {row.active ? (
+              {row.automatch ? (
                 <Badge variant="secondary" className="ml-auto">
-                  active
+                  automatch
                 </Badge>
               ) : null}
             </span>

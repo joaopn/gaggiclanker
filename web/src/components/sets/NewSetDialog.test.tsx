@@ -168,7 +168,7 @@ describe("NewSetDialog", () => {
         grinder_id: 1,
         // A new Set is what the machine is set up for now, or it would collect
         // nothing and look broken.
-        activate: true,
+        automatch: true,
         version: expect.objectContaining({
           profile_version_id: 7,
           grind_setting: "22",

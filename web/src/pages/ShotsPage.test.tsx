@@ -1596,22 +1596,22 @@ describe("ShotsPage and Sets", () => {
 
 describe("ShotsPage needs-a-Set menu", () => {
   /**
-   * Five Sets in the order `GET /api/sets` returns them: the active one first,
-   * then newest first. Each at a different latest version, so a menu that
+   * Five Sets in the order `GET /api/sets` returns them: the ones collecting
+   * shots first, then newest first. Each at a different latest version, so a menu that
    * showed a version number it did not get from `current_version_no` shows up.
    */
   const fiveSets = [
     setRow({
       id: 5,
       name: "Guji on the Niche",
-      active: true,
+      automatch: true,
       current_version_id: 51,
       current_version_no: 4,
     }),
     setRow({
       id: 4,
       name: "Kenya AA",
-      active: false,
+      automatch: false,
       current_version_id: 41,
       current_version_no: 2,
       grinder_name: null,
@@ -1619,21 +1619,21 @@ describe("ShotsPage needs-a-Set menu", () => {
     setRow({
       id: 3,
       name: "Colombia decaf",
-      active: false,
+      automatch: false,
       current_version_id: 31,
       current_version_no: 7,
     }),
     setRow({
       id: 2,
       name: "House blend",
-      active: false,
+      automatch: false,
       current_version_id: 21,
       current_version_no: 1,
     }),
     setRow({
       id: 1,
       name: "The first bag",
-      active: false,
+      automatch: false,
       current_version_id: 11,
       current_version_no: 3,
     }),
@@ -1654,7 +1654,7 @@ describe("ShotsPage needs-a-Set menu", () => {
     return screen.getByRole("button", { name: /^needs a Set: choose one for shot 000101/ });
   }
 
-  it("opens the Sets from the badge, three of five, active first, at their latest version", async () => {
+  it("opens the Sets from the badge, three of five, collecting first, at their latest version", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
     getSets.mockResolvedValue({ items: fiveSets });
@@ -1676,10 +1676,10 @@ describe("ShotsPage needs-a-Set menu", () => {
     expect(options.map((option) => option.getAttribute("data-set"))).toEqual(["5", "4", "3"]);
     expect(options[0]).toHaveTextContent("Guji on the Niche");
     expect(options[0]).toHaveTextContent("v4");
-    expect(options[0]).toHaveTextContent("active");
+    expect(options[0]).toHaveTextContent("automatch");
     expect(options[1]).toHaveTextContent("Kenya AA");
     expect(options[1]).toHaveTextContent("v2");
-    expect(options[1]).not.toHaveTextContent("active");
+    expect(options[1]).not.toHaveTextContent("automatch");
     expect(options[2]).toHaveTextContent("v7");
     // The one-line summary comes from the list row; nothing is fetched per Set.
     expect(options[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso");

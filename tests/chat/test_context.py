@@ -603,7 +603,7 @@ async def test_a_set_with_no_shots_says_the_spread_is_not_measured_and_names_the
     empty = await SetsRepository(experiment.db).create(
         SetWrite(name="Nothing pulled yet", bean_id=1),
         SetVersionWrite(grind_setting="20"),
-        activate=False,
+        automatch=False,
     )
 
     rendered = await opening_context(experiment.db, ToolScope.for_thread(empty.id))

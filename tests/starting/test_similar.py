@@ -198,8 +198,8 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     # would change the first one's shot count — so copy the *Set* instead.
     await fixture.db.execute(
         """
-        INSERT INTO sets (name, bean_id, grinder_id, status, active, created_at)
-        SELECT name || ' (copy)', bean_id, grinder_id, status, 0, created_at
+        INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at)
+        SELECT name || ' (copy)', bean_id, grinder_id, archived, 0, created_at
           FROM sets WHERE id = ?
         """,
         (fixture.sets["kenya"],),

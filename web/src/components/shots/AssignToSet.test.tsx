@@ -29,13 +29,14 @@ beforeEach(() => {
 });
 
 describe("AssignToSet", () => {
-  it("says plainly when a shot is in no Set, and preselects the active one", async () => {
+  it("says plainly when a shot is in no Set, and preselects nothing", async () => {
     renderWithQueryClient(<AssignToSet shotId={9} setVersion={null} judgement={null} />);
 
     expect(await screen.findByTestId("assign-current")).toHaveTextContent("Not in a Set yet");
-    // An unassigned shot was almost certainly pulled with the bag in the hopper
-    // right now, so that is the offer.
-    await waitFor(() => expect(screen.getByLabelText("Assign to")).toHaveValue("22"));
+    // The matcher already filed everything it could tell apart, so a shot that
+    // reached this form is one the archive had no answer for. Offering a Set
+    // anyway would be a guess with somebody else's hand on it.
+    await waitFor(() => expect(screen.getByLabelText("Assign to")).toHaveValue(""));
   });
 
   it("assigns only once the choice differs from what is already there", async () => {

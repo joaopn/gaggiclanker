@@ -59,9 +59,11 @@ header whether the machine is there at all.
 1)` — describing whatever host is configured now, and nothing else in the schema
 carries a machine id. The host is a setting rather than an identity, so pointing
 the container at a new address updates that row and every shot, profile and Set
-stays attached; a shot is unique by the id the device gave it, and one Set is
-active at a time. Grinders stay plural, because a kitchen really does have
-several and a grind number only means something on the grinder it was set on.
+stays attached; a shot is unique by the id the device gave it. Grinders stay
+plural, because a kitchen really does have several and a grind number only
+means something on the grinder it was set on — which is also why any number of
+Sets may collect shots at once: several grinders means several bags loaded, and
+the archive tells them apart by the profile a shot was brewed with.
 
 ## The layers
 
@@ -129,6 +131,15 @@ would grade itself. The outcome, somebody's grade of that prediction, needs a
 prediction and a shot labelled Keep or Improve before it can be recorded, and
 can be changed or cleared for ever after. `set_versions` carries all three and
 the comment on it in `0005_sets.sql` says which is which.
+
+A Set itself carries two booleans, and `0022_set_automatch_and_archived.sql`
+says why they are two: `archived` is the lifecycle — the bag is finished with,
+and an archived Set receives no shots — while `automatch` is whether the
+matcher may file a shot under this Set. Any number of Sets carry it. A shot is
+filed when exactly one of them names the profile it was brewed with; none or
+several leaves it in the "needs a Set" inbox, because a mis-filed shot pollutes
+a trend chart nobody re-reads while an unfiled one is on a list with a button
+next to it.
 
 Both windows are enforced in `SetsRepository`, beside the other rules that
 depend on rows in another table. A trigger could raise on the first one, and

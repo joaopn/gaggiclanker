@@ -12,12 +12,12 @@ import { cn } from "@/lib/utils";
 /**
  * Which Set this shot belongs to, and the shortcut for "that was a new recipe".
  *
- * The archive attaches a shot to the machine's active Set on its own when the
- * profile matches, so most of the time this panel is a confirmation. It exists
- * for the times it is not: a shot pulled on the wrong profile, a bag swapped
- * mid-session, a backfill from before any Set existed. Assigning by hand
- * overwrites, and auto-assignment never touches a shot that already has a
- * version — that asymmetry is what makes a correction stick.
+ * The archive files a shot on its own when exactly one Set collecting shots
+ * brews its profile, so most of the time this panel is a confirmation. It
+ * exists for the times it is not: two bags on one profile, a shot pulled on
+ * the wrong profile, a backfill from before any Set existed. Assigning by hand
+ * overwrites, and the matcher never touches a shot that already has a version
+ * — that asymmetry is what makes a correction stick.
  */
 
 const FIELD = cn(
@@ -43,18 +43,14 @@ export function AssignToSet({
   const ids = { set: useId(), intent: useId() };
 
   const rows = sets.data?.items ?? [];
-  // The active Set is preselected when this shot has none, because that is
-  // overwhelmingly the answer: an unassigned shot is usually one whose profile
-  // did not match, pulled with the bag that is in the hopper right now.
-  const active = rows.find((row) => row.active);
-  const preselected = setVersion
-    ? String(setVersion.id)
-    : active?.current_version_id
-      ? String(active.current_version_id)
-      : "";
+  // Nothing is preselected for a shot with no Set. The matcher already files
+  // every shot whose profile names one Set, so what is left here is the case
+  // where the archive could not tell — several bags are loaded at once and only
+  // the person knows which one this was.
+  const preselected = setVersion ? String(setVersion.id) : "";
 
   // The preselection is derived state, so it re-runs when the derivation moves:
-  // a shot that was just assigned, or the active Set changing under the page.
+  // a shot that was just assigned under this page.
   useEffect(() => setChoice(preselected), [preselected]);
 
   const assignedSet = rows.find((row) => row.id === setVersion?.set_id);
@@ -65,7 +61,7 @@ export function AssignToSet({
   return (
     <SectionCard
       title="Set"
-      description="What you were brewing. The archive files a shot under the machine's active Set when the profile matches, or, with Automatch on, under the one Set that brews its profile; anything else waits here for an answer."
+      description="What you were brewing. The archive files a shot under the one Set that brews its profile; anything else — two Sets on that profile, or none — waits here for an answer."
       actions={
         setVersion ? (
           <Link
@@ -215,7 +211,7 @@ function SetOption({ row }: { row: SetRow }) {
   return (
     <option value={row.current_version_id ? String(row.current_version_id) : ""}>
       {row.name} — v{row.current_version_no}
-      {row.active ? " (active)" : ""}
+      {row.automatch ? " (automatch)" : ""}
     </option>
   );
 }

@@ -871,8 +871,11 @@ export async function declineSetProposal(
   });
 }
 
-export async function activateSet(id: number): Promise<SetRow> {
-  return fetchApi<SetRow>(`/sets/${id}/activate`, { method: "POST" });
+export async function setAutomatch(id: number, automatch: boolean): Promise<SetRow> {
+  return fetchApi<SetRow>(`/sets/${id}/automatch`, {
+    method: "PUT",
+    body: JSON.stringify({ automatch }),
+  });
 }
 
 export async function archiveSet(id: number): Promise<SetRow> {

@@ -44,7 +44,6 @@ from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
-from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.domain.exports import (
     ShotExport,
     export_device_id,
@@ -55,7 +54,6 @@ from gaggiclanker.domain.exports import (
     slog_to_raw,
 )
 from gaggiclanker.domain.slog import SlogError
-from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.derive import derive_shot
 
 __all__ = [
@@ -172,11 +170,8 @@ class _Budget:
 class ImportService:
     """Reads export files into `shots`, `shot_samples` and `profile_versions`."""
 
-    def __init__(self, db: Database, settings: SettingsService | None = None) -> None:
+    def __init__(self, db: Database) -> None:
         self.db = db
-        # Read for `shotsProfileAutomatch` on every created shot. A service built
-        # without one (the CLI, a test) still reads the same stored settings.
-        self.settings = settings or SettingsService(SettingsRepository(db))
         self.shots = ShotsRepository(db)
         self.profiles = ProfilesRepository(db)
         self.notes = NotesRepository(db)
@@ -404,15 +399,14 @@ class ImportService:
         else:
             shot_id = await self.shots.insert(shot, derived.samples)
             status = "created"
-            # Only a newly created shot is offered to auto-assignment. A replace
-            # is a better copy of a shot we already hold, and `replace_derived`
-            # deliberately keeps its `set_version_id` — re-guessing at that
+            # Only a newly created shot is offered to the matcher. A replace is
+            # a better copy of a shot we already hold, and `replace_derived`
+            # deliberately keeps its `set_version_id` — re-matching at that
             # point could move a shot the user had already filed by hand.
-            await self.sets.auto_assign(
+            await self.sets.profile_match(
                 shot_id,
                 profile_version_id=shot.profile_version_id,
                 device_profile_id=shot.profile_id_on_device,
-                profile_automatch=await self.settings.get("shotsProfileAutomatch"),
             )
 
         if export.notes is not None:

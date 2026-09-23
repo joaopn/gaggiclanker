@@ -656,12 +656,11 @@ async def test_0016_keeps_the_most_recently_seen_of_two_real_machines(
         ("1", "2026-03-01T00:00:00.000Z")
     ]
 
-    # One active Set overall, and it is the one the machine is set up for now.
-    active = await db.fetch_all("SELECT name FROM sets WHERE active = 1")
-    assert [r["name"] for r in active] == ["new address"]
-    # And the schema is what enforces that from here on.
-    with pytest.raises(Exception, match="UNIQUE"):
-        await db.execute("UPDATE sets SET active = 1 WHERE name = 'old address'")
+    # 0016 left one active Set — the survivor machine's — and 0022 then retired
+    # that idea entirely, so what is asserted here is only that both Sets came
+    # through the collapse: neither was archived and neither was dropped.
+    names = await db.fetch_all("SELECT name FROM sets ORDER BY name")
+    assert [r["name"] for r in names] == ["new address", "old address"]
 
     for table in ("sets", "cleanup_runs", "starting_point_runs", "device_profiles"):
         columns = {str(r["name"]) for r in await db.fetch_all(f"PRAGMA table_info({table})")}
@@ -855,3 +854,57 @@ async def test_0019_deletes_the_retired_mcp_endpoint_switch_and_nothing_else(
         ("chatMaxToolRounds", "5"),
         ("deviceWritesEnabled", "true"),
     ]
+
+
+async def test_0022_maps_status_to_archived_and_offers_every_live_set_to_the_matcher(
+    db: Database, tmp_path: Path
+) -> None:
+    """The upgrade keeps a database matching exactly what it matched before.
+
+    A database on 0021 filed a shot under the one active Set and, when
+    `shotsProfileAutomatch` was on, under any non-archived Set that brewed its
+    profile. The flag now says which Sets the matcher may use, so every
+    non-archived Set carries it: keeping only the old active one would silently
+    stop the others collecting.
+    """
+    await _migrate_below(db, tmp_path, "0022")
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, status, active, created_at) "
+        "VALUES ('was the active one', 1, 'active', 1, '2026-01-01')"
+    )
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, status, active, created_at) "
+        "VALUES ('the other bag', 1, 'active', 0, '2026-02-01')"
+    )
+    await db.execute(
+        "INSERT INTO sets (name, bean_id, status, active, created_at) "
+        "VALUES ('finished with', 1, 'archived', 0, '2026-03-01')"
+    )
+    await db.execute("INSERT INTO settings (key, value) VALUES ('shotsProfileAutomatch', 'true')")
+    await db.execute("INSERT INTO settings (key, value) VALUES ('deviceWritesEnabled', 'true')")
+
+    assert "0022" in await run_migrations(db)
+
+    rows = await db.fetch_all("SELECT name, archived, automatch FROM sets ORDER BY created_at")
+    assert [(r["name"], r["archived"], r["automatch"]) for r in rows] == [
+        ("was the active one", 0, 1),
+        ("the other bag", 0, 1),
+        ("finished with", 1, 0),
+    ]
+
+    # Two candidates at once is the whole point: the index that refused a second
+    # one is gone.
+    await db.execute("UPDATE sets SET automatch = 1 WHERE archived = 0")
+    assert await db.fetch_value("SELECT count(*) FROM sets WHERE automatch = 1") == 2
+
+    # The switch the flag replaced does not linger, and nothing else was touched.
+    keys = await db.fetch_all("SELECT key FROM settings ORDER BY key")
+    assert [str(r["key"]) for r in keys] == ["deviceWritesEnabled"]
+
+    # The view the SQL tool reads serves the two columns by their new names.
+    view = await db.fetch_all("SELECT set_id, name, archived, automatch FROM v_sets")
+    assert len(view) == 3
+    columns = {str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(sets)")}
+    assert "status" not in columns and "active" not in columns
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []

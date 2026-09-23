@@ -10,17 +10,29 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
-### Shots find their Set by profile
+### Several bags at once, and one rule that files a shot
 
-- **Match by profile.** A button on the Shots page files every shot waiting
-  for a Set under the one Set that brews its profile: exactly one non-archived
-  Set whose current version names the shot's profile. When two Sets brew the
-  same profile, or none does, the shot keeps waiting and the message says which
-  it was. A shot's own page has the same button for that shot. A shot you
-  filed by hand is never moved.
-- **Automatch new shots.** A tickbox beside it (also under Settings → Machine
-  access → New shots, off by default) runs the same rule on every shot a pull
-  or an import brings in, after the active Set has had its turn.
+- **Any number of Sets collect shots.** A Set used to be "the active one" or
+  not, one at a time, which assumed one hopper: with two grinders there are two
+  coffees loaded and no answer to "which Set is the current one". Each Set now
+  says for itself whether new shots on its profile are filed under it, and as
+  many as you like can. The Sets list and a Set's page carry the switch and an
+  **automatch** badge where the **active** badge used to be.
+- **One rule for every shot.** A shot — pulled, imported, or waiting from
+  before — is filed under the one Set that brews its profile: exactly one Set
+  set to collect, whose current version names that profile. Two such Sets, or
+  none, and it waits in the inbox saying which it was. The **Match by profile**
+  button on the Shots page and on a shot's page runs the rule over the shots
+  already waiting. A shot you filed by hand is never moved.
+- **The Automatch new shots tickbox is gone**, from both pages and from
+  Settings → Machine access, and so is the stored setting behind it. Every new
+  shot goes through the rule; the switch on the Set is what says where. A Set
+  that names no profile still collects nothing on its own — it is offered in
+  the pickers, to choose by hand.
+- **A Set's `status` is now an `archived` boolean.** It only ever held "active"
+  or "archived", and its "active" was not the other flag's "active". Your
+  database is upgraded in place on its next start: every Set you have not
+  archived is set to collect shots, so what matched before still matches.
 
 ### An update never asks you to delete your database
 

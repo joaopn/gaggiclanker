@@ -124,10 +124,19 @@ class SetCreate(BaseModel):
     #: Version 1. Everything on it is optional — a Set can start as "this bean,
     #: this grinder, we will see" — and the wizard fills it in.
     version: SetVersionWrite = SetVersionWrite()
-    #: Whether this becomes the active Set. True by default: a Set is
-    #: created by somebody who has just put that bag in the hopper, and one that
-    #: did not start collecting shots would look broken.
-    activate: bool = True
+    #: Whether the matcher may file shots under this Set. True by default: a
+    #: Set is created by somebody who has just put that bag in a hopper, and one
+    #: that did not collect the shots pulled on its profile would look broken.
+    #: It takes nothing away from any other Set.
+    automatch: bool = True
+
+
+class AutomatchWrite(BaseModel):
+    """`PUT /api/sets/{id}/automatch`: whether the matcher may file shots here."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    automatch: bool
 
 
 class SetListData(BaseModel):
@@ -493,7 +502,11 @@ async def _decided(
     )
 
 
-@router.get("", response_model=ApiResponse[SetListData], summary="The Sets, active one first")
+@router.get(
+    "",
+    response_model=ApiResponse[SetListData],
+    summary="The Sets, the ones collecting shots first",
+)
 async def list_sets(
     sets: SetsRepoDep,
     include_archived: Annotated[bool, Query()] = False,
@@ -541,7 +554,7 @@ async def create_set(
             grinder_id=body.grinder_id,
         ),
         body.version,
-        activate=body.activate,
+        automatch=body.automatch,
     )
     return envelope_response(row.model_dump(mode="json"), status_code=201)
 
@@ -785,27 +798,35 @@ async def rollback(set_id: int, body: RollbackWrite, sets: SetsRepoDep) -> JSONR
     return envelope_response(result.version.model_dump(mode="json"), status_code=201)
 
 
-@router.post(
-    "/{set_id}/activate",
+@router.put(
+    "/{set_id}/automatch",
     response_model=ApiResponse[SetRow],
-    summary="Make this the Set the machine is set up for",
+    summary="Offer this Set to the matcher, or take it out of the running",
 )
-async def activate_set(set_id: int, sets: SetsRepoDep) -> JSONResponse:
-    """Switches the flag off the previous active Set. Archives nothing.
+async def set_automatch(set_id: int, body: AutomatchWrite, sets: SetsRepoDep) -> JSONResponse:
+    """Any number of Sets may be offered. Nothing is taken from another Set.
 
-    An archived Set is a 409 rather than a silent no-op: activating one would
-    clear the flag from the live Set and leave the machine with no usable active
-    Set at all, after which every shot lands in the inbox for no visible reason.
+    One route both ways rather than two: this is one flag with two values, and
+    the page that reads it as a switch would otherwise have to know two paths to
+    write it.
+
+    Turning it **on** for an archived Set is a 409 rather than a silent no-op:
+    an archived Set receives no shots whatever the flag says, so the page would
+    show a badge promising something that will never happen. Turning it off is
+    allowed on any Set — archiving does that itself.
     """
     existing = await sets.get(set_id)
     if existing is None:
         raise NotFound(f"No Set {set_id}")
-    if existing.status != "active":
+    if body.automatch and existing.archived:
         raise Conflict(
             f"Set {set_id} is archived",
-            details={"field": "status", "message": "un-archive it before making it the active Set"},
+            details={
+                "field": "archived",
+                "message": "un-archive it before the matcher can file shots under it",
+            },
         )
-    row = await sets.activate(set_id)
+    row = await sets.set_automatch(set_id, body.automatch)
     if row is None:  # pragma: no cover - checked above, inside the same request
         raise NotFound(f"No Set {set_id}")
     return envelope_response(row.model_dump(mode="json"))

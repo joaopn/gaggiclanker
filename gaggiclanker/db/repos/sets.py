@@ -36,11 +36,13 @@ one of them true:
   version and clears its grade can write a fresh prediction on it. That is
   accepted. The rule guards against the habit of writing a prediction down after
   the fact, not against somebody setting out to deceive themselves.
-* **one Set is active at a time**, enforced by a partial unique index rather
-  than by whoever remembers to clear the old flag. It is what auto-assignment
-  consults when a shot lands.
-* **a shot's Set is never guessed twice.** Auto-assignment only ever writes over
-  a NULL, so a correction made by hand survives every later sync pass.
+* **a Set says whether shots may be filed under it** (`automatch`), and any
+  number of them may say yes: a kitchen with several grinders has several
+  coffees loaded at once, and the matcher tells them apart by the profile they
+  were brewed with. Exactly one candidate naming the shot's profile files it;
+  none or several leaves it in the inbox.
+* **a shot's Set is never guessed twice.** The matcher only ever writes over a
+  NULL, so a correction made by hand survives every later sync pass.
 """
 
 from __future__ import annotations
@@ -127,8 +129,8 @@ class SetVersionWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     #: Which profile this Set brews with. NULL means the Set names no profile,
-    #: and then auto-assignment does not filter on one — see
-    #: :meth:`SetsRepository.auto_assign`.
+    #: and then no shot is ever filed here on its own — the Set is picked by
+    #: hand. See :meth:`SetsRepository.versions_naming_profile`.
     profile_version_id: int | None = None
     #: The grinder's own reading, as text: a Niche says "22", a Mazzer says
     #: "between 3 and 4". `grind_value` is the same thing as a number when there
@@ -392,10 +394,11 @@ class SetRow(BaseModel):
     bean_name: str | None = None
     grinder_id: int | None = None
     grinder_name: str | None = None
-    status: str = "active"
-    #: "This is what the machine is set up for right now". At most one Set holds
-    #: it; archiving clears it.
-    active: bool = False
+    #: Finished with — the bag is gone. An archived Set receives no shots.
+    archived: bool = False
+    #: Whether the matcher may file a shot under this Set. Any number of Sets
+    #: hold it; archiving clears it.
+    automatch: bool = False
     created_at: str
     current_version_id: int | None = None
     current_version_no: int = 0
@@ -805,7 +808,7 @@ class SetsRepository(Repository):
     # ── sets ─────────────────────────────────────────────────────────
 
     async def create(
-        self, spec: SetWrite, version: SetVersionWrite, *, activate: bool = True
+        self, spec: SetWrite, version: SetVersionWrite, *, automatch: bool = True
     ) -> SetRow:
         """Create a Set and its first version, atomically.
 
@@ -814,26 +817,24 @@ class SetsRepository(Repository):
         invisible in the list and impossible to add a version to without special
         cases.
 
-        ``activate`` defaults to true: a Set is created by somebody who has just
-        put that bag in the hopper, and a new Set that did not start collecting
-        shots would look broken. It switches the flag on the previous active Set
-        off (the partial unique index would otherwise refuse the insert) and
-        archives nothing.
+        ``automatch`` defaults to true: a Set is created by somebody who has
+        just put that bag in a hopper, and a new Set that did not collect the
+        shots pulled on its profile would look broken. It takes nothing away
+        from any other Set — several coffees are loaded at once and the matcher
+        tells them apart by profile.
         """
         now = utc_now()
         async with self.db.transaction():
-            if activate:
-                await self._clear_active()
             cursor = await self.db.execute(
                 """
-                INSERT INTO sets (name, bean_id, grinder_id, status, active, created_at)
-                VALUES (:name, :bean_id, :grinder_id, 'active', :active, :created_at)
+                INSERT INTO sets (name, bean_id, grinder_id, archived, automatch, created_at)
+                VALUES (:name, :bean_id, :grinder_id, 0, :automatch, :created_at)
                 """,
                 {
                     "name": spec.name,
                     "bean_id": spec.bean_id,
                     "grinder_id": spec.grinder_id,
-                    "active": int(activate),
+                    "automatch": int(automatch),
                     "created_at": now,
                 },
             )
@@ -853,51 +854,42 @@ class SetsRepository(Repository):
         return self.to_model(SetRow, row)
 
     async def list_sets(self, *, include_archived: bool = False) -> list[SetRow]:
-        """Every Set, the active one first and the newest after it."""
+        """Every Set, the ones that collect shots first and the newest after."""
         where: list[str] = []
         params: list[Any] = []
         if not include_archived:
-            where.append("s.status = 'active'")
+            where.append("s.archived = 0")
         clause = f" WHERE {' AND '.join(where)}" if where else ""
         rows = await self.db.fetch_all(
-            f"{_SET_SELECT}{clause} ORDER BY s.active DESC, s.created_at DESC, s.id DESC",
+            f"{_SET_SELECT}{clause} ORDER BY s.automatch DESC, s.created_at DESC, s.id DESC",
             params,
         )
         return self.to_models(SetRow, rows)
 
-    async def activate(self, set_id: int) -> SetRow | None:
-        """Make this the Set the machine is currently set up for.
+    async def set_automatch(self, set_id: int, wanted: bool) -> SetRow | None:
+        """Offer this Set to the matcher, or take it out of the running.
 
-        Switches; archives nothing. Swapping between two bags over a week is an
-        ordinary morning, and an activate that retired the other Set would make
-        going back a new Set with no history.
+        Any number of Sets may be offered: several grinders means several
+        coffees loaded at once, and the matcher tells them apart by profile
+        rather than by which one somebody flagged last.
 
-        An **archived** Set is refused, and the refusal matters more than it
-        looks: `active_version` requires `status = 'active'`, so
-        flipping the flag onto an archived Set would clear it from the live one
-        and leave the machine with no usable active Set at all — every shot from
-        then on landing in the inbox for no visible reason. The route turns the
-        ``False`` into a 409.
+        An **archived** Set cannot be offered. It receives no shots either way
+        (`versions_naming_profile` filters on `archived`), so the flag on one
+        would be a badge that promises something the archive will not do. The
+        route turns the ``None`` into a 409.
         """
         row = await self.get(set_id)
-        if row is None or row.status != "active":
+        if row is None or (wanted and row.archived):
             return None
-        async with self.db.transaction():
-            await self._clear_active()
-            await self.db.execute(
-                "UPDATE sets SET active = 1 WHERE id = ? AND status = 'active'", (set_id,)
-            )
+        await self.db.execute("UPDATE sets SET automatch = ? WHERE id = ?", (int(wanted), set_id))
         return await self.get(set_id)
 
     async def archive(self, set_id: int) -> SetRow | None:
-        """Retire a Set. Clears `active` too — an archived Set collects no shots."""
+        """Retire a Set. Clears `automatch` too — an archived Set collects no shots."""
         cursor = await self.db.execute(
-            "UPDATE sets SET status = 'archived', active = 0 WHERE id = ?", (set_id,)
+            "UPDATE sets SET archived = 1, automatch = 0 WHERE id = ?", (set_id,)
         )
         return None if cursor.rowcount == 0 else await self.get(set_id)
-
-    async def _clear_active(self) -> None:
-        await self.db.execute("UPDATE sets SET active = 0 WHERE active = 1")
 
     # ── versions ─────────────────────────────────────────────────────
 
@@ -1310,29 +1302,13 @@ class SetsRepository(Repository):
         """The version a shot pulled right now would be attached to."""
         return await self._current_version_row(set_id)
 
-    async def active_version(self) -> SetVersionRow | None:
-        """The current version of the active Set, if there is one.
-
-        The one query auto-assignment runs per ingested shot: an index seek on
-        `idx_sets_one_active` and one more on the version.
-        """
-        row = await self.db.fetch_one(
-            f"""
-            {_VERSION_SELECT}
-            JOIN sets s ON s.id = v.set_id
-            WHERE s.active = 1 AND s.status = 'active'
-            ORDER BY v.version_no DESC LIMIT 1
-            """
-        )
-        return self.to_model(SetVersionRow, row)
-
     # ── assignment ───────────────────────────────────────────────────
 
     async def assign_shot(self, shot_id: int, version_id: int | None) -> bool:
         """Attach a shot to a Set version, or detach it. A person's decision.
 
-        Unlike :meth:`auto_assign` this overwrites whatever was there: it is the
-        correction path, and the whole point of it is to fix a wrong guess.
+        Unlike :meth:`profile_match` this overwrites whatever was there: it is
+        the correction path, and the whole point of it is to fix a wrong guess.
         Returns False when the shot or the version does not exist — `shots`
         carries no foreign key on this column (see migration 0005), so this
         method is where the reference is checked.
@@ -1346,7 +1322,7 @@ class SetsRepository(Repository):
                 """
                 SELECT 1 FROM set_versions v
                 JOIN sets s ON s.id = v.set_id
-                WHERE v.id = ? AND s.status = 'active'
+                WHERE v.id = ? AND s.archived = 0
                 """,
                 (version_id,),
             )
@@ -1357,61 +1333,6 @@ class SetsRepository(Repository):
             (version_id, utc_now(), shot_id),
         )
         return cursor.rowcount > 0
-
-    async def auto_assign(
-        self,
-        shot_id: int,
-        *,
-        profile_version_id: int | None,
-        device_profile_id: str,
-        profile_automatch: bool = False,
-    ) -> int | None:
-        """Attach a freshly stored shot to the active Set, if it fits.
-
-        Returns the version id it was attached to, or ``None`` for "needs a Set".
-
-        The match is on the **profile**, because that is the only thing the
-        machine records that the Set also states. Two ways it can succeed:
-
-        * the shot resolved to a profile version and the Set version names the
-          same one; or
-        * the shot has no linked version yet — the profile mirror has not caught
-          up, which is ordinary on a first boot — and the device profile id it
-          was brewed with currently maps to the version the Set names. A
-          tombstoned mapping (`deleted_at`) does not count: the id has been
-          freed on the machine and may already point at a different profile.
-
-        A Set version that names **no** profile does not filter on one: a Set
-        created without picking a profile is a Set that does not care which was
-        selected, and leaving every shot unassigned would make that Set look
-        broken rather than permissive.
-
-        ``profile_automatch`` (the `shotsProfileAutomatch` setting, read by the
-        caller) adds a second chance for a shot the active Set turned down:
-        :meth:`profile_match`, which files it under the one non-archived Set
-        that brews its profile. The active Set goes first because it is the
-        person's own "this is what I am brewing now".
-
-        Anything else is left NULL, which is the `needs_set` state. Guessing
-        wrong here is worse than not guessing: a mis-assigned shot pollutes the
-        trend chart of a Set it was never part of, and nobody goes looking for
-        it, whereas an unassigned shot is on a list with a button next to it.
-
-        Never touches a shot that already has a version — the `IS NULL` in the
-        UPDATE — so a hand correction survives every later pass.
-        """
-        resolved = await self._resolved_profile_version(profile_version_id, device_profile_id)
-        version = await self.active_version()
-        if version is not None and (
-            version.profile_version_id is None or version.profile_version_id == resolved
-        ):
-            return version.id if await self._fill(shot_id, version.id) else None
-        if not profile_automatch:
-            return None
-        match = await self.profile_match(
-            shot_id, profile_version_id=profile_version_id, device_profile_id=device_profile_id
-        )
-        return match.set_version_id
 
     async def _resolved_profile_version(
         self, profile_version_id: int | None, device_profile_id: str
@@ -1447,19 +1368,28 @@ class SetsRepository(Repository):
         return cursor.rowcount > 0
 
     async def versions_naming_profile(self, profile_version_id: int) -> list[int]:
-        """The current version of every non-archived Set that brews this profile.
+        """The current version of every Set offered to the matcher for this profile.
 
-        Only a Set's **current** version counts: an older one that named the
-        profile describes what the Set used to be, and filing today's shot there
-        would be filing it under a recipe the Set has moved on from. A Set that
-        names no profile is not configured for this one, so it is not here
-        either. Two rows are enough to know the answer is ambiguous.
+        Three filters, and each one is a rule stated elsewhere:
+
+        * **`automatch`** is the Set's own answer to "file shots here". It is
+          the only thing the flag means, and a Set with it off is not a
+          candidate — it does not match and it does not make another Set's
+          match ambiguous.
+        * **`archived = 0`**, because a finished bag receives no shots.
+        * only a Set's **current** version counts: an older one that named the
+          profile describes what the Set used to be, and filing today's shot
+          there would be filing it under a recipe the Set has moved on from.
+
+        A Set that names no profile is not configured for this one, so it is
+        not here either — it collects nothing on its own and waits to be picked
+        by hand. Two rows are enough to know the answer is ambiguous.
         """
         rows = await self.db.fetch_all(
             """
             SELECT v.id FROM set_versions v
             JOIN sets s ON s.id = v.set_id
-            WHERE s.status = 'active'
+            WHERE s.automatch = 1 AND s.archived = 0
               AND v.profile_version_id = ?
               AND v.version_no = (
                   SELECT MAX(latest.version_no) FROM set_versions latest
@@ -1479,12 +1409,19 @@ class SetsRepository(Repository):
         profile_version_id: int | None,
         device_profile_id: str,
     ) -> ProfileMatch:
-        """File a shot under the one non-archived Set that brews its profile.
+        """File a shot under the one Set offered to the matcher that brews its profile.
 
-        Only when the answer is not a guess: exactly one Set's current version
-        names the shot's profile version. None is ``unmatched``, two or more is
-        ``ambiguous``, and both leave the shot in the inbox, for the same reason
-        :meth:`auto_assign` leaves it there: a wrong Set is worse than none.
+        The only path into a Set that is not a person's own decision, for every
+        shot alike: one a pull brought in, one an import did, one the button
+        was pressed on.
+
+        Only when the answer is not a guess: exactly one candidate Set's
+        current version names the shot's profile version. None is
+        ``unmatched``, two or more is ``ambiguous``, and both leave the shot in
+        the inbox. Guessing wrong is worse than not guessing: a mis-filed shot
+        pollutes the trend chart of a Set it was never part of and nobody goes
+        looking for it, whereas an unfiled shot is on a list with a button next
+        to it.
 
         A shot that already has a Set is never moved (the `IS NULL` guard), and
         comes back as ``unmatched`` with no version, since nothing was filed.

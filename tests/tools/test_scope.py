@@ -462,7 +462,7 @@ async def other_set_shot(archive: Fixture) -> int:
     other = await sets.create(
         SetWrite(name="Another bag", bean_id=archive.bean_id),
         SetVersionWrite(grind_setting="20"),
-        activate=False,
+        automatch=False,
     )
     version = await sets.current_version(other.id)
     assert version is not None

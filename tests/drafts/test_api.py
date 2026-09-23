@@ -459,7 +459,7 @@ async def test_a_prediction_against_a_version_of_another_set_falls_back_to_the_c
     bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
     other = data(
         await client.post(
-            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "activate": False}
+            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False}
         )
     )
     theirs = data(await client.get(f"/api/sets/{other['id']}"))["versions"][0]["version"]["id"]
@@ -588,7 +588,7 @@ async def test_pushing_a_set_s_draft_for_a_different_set_records_no_prediction(
     bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
     other = data(
         await client.post(
-            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "activate": False}
+            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False}
         )
     )
     draft = await _drafted_for(app, a_set)

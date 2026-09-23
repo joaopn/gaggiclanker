@@ -10,16 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { useActivateSet, useSets } from "@/hooks/useSets";
+import { useSetAutomatch, useSets } from "@/hooks/useSets";
 import { setSummary } from "@/lib/sets";
 
 /**
- * Every Set, the active one first.
+ * Every Set, the ones collecting shots first.
  *
  * A card is the identity plus the two facts you act on: how many shots it has
- * collected, and whether it is the one the machine is set up for right now.
- * That flag is what auto-assignment consults, so it is the difference between
- * "the next shot files itself" and "the next shot waits in the inbox".
+ * collected, and whether new shots on its profile are filed under it. Any
+ * number of Sets may be — several grinders means several bags loaded at once —
+ * and the matcher tells them apart by the profile a shot was brewed with.
  */
 export function SetsPage() {
   const [showArchived, setShowArchived] = useState(false);
@@ -93,7 +93,7 @@ export function SetsPage() {
 }
 
 function SetCard({ row }: { row: SetRow }) {
-  const activate = useActivateSet();
+  const automatch = useSetAutomatch();
 
   return (
     <Card data-testid="set-card" data-set={row.id} className="gap-3">
@@ -105,12 +105,12 @@ function SetCard({ row }: { row: SetRow }) {
             </Link>
           </CardTitle>
           <div className="flex items-center gap-1">
-            {row.active ? (
-              <Badge data-testid="set-active" className="gap-1">
-                active
+            {row.automatch ? (
+              <Badge data-testid="set-automatch" className="gap-1">
+                automatch
               </Badge>
             ) : null}
-            {row.status === "archived" ? <Badge variant="outline">archived</Badge> : null}
+            {row.archived ? <Badge variant="outline">archived</Badge> : null}
           </div>
         </div>
         <p className="text-muted-foreground text-sm">{setSummary(row)}</p>
@@ -128,17 +128,17 @@ function SetCard({ row }: { row: SetRow }) {
           <Button asChild variant="outline" size="sm">
             <Link to={`/sets/${row.id}`}>Open</Link>
           </Button>
-          {!row.active && row.status === "active" ? (
+          {row.archived ? null : (
             <Button
               variant="ghost"
               size="sm"
-              disabled={activate.isPending}
-              onClick={() => activate.mutate(row.id)}
+              disabled={automatch.isPending}
+              onClick={() => automatch.mutate({ id: row.id, automatch: !row.automatch })}
             >
               <Coffee className="size-3.5" aria-hidden="true" />
-              This is what is loaded
+              {row.automatch ? "Stop filing shots here" : "File matching shots here"}
             </Button>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </Card>

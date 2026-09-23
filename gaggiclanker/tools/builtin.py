@@ -606,7 +606,11 @@ class ListOutput(_Model):
     count: int = 0
 
 
-@tool("list_sets", permission="read", description="Every Set, the active one first.")
+@tool(
+    "list_sets",
+    permission="read",
+    description="Every Set, the ones new shots are filed under first.",
+)
 async def list_sets(ctx: ToolContext, args: ListSetsInput) -> ListOutput:
     rows = await SetsRepository(ctx.db).list_sets(include_archived=args.include_archived)
     items = [row.model_dump(mode="json") for row in rows]

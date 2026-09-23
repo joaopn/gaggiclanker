@@ -66,7 +66,7 @@ function thread(over: Partial<typeof THREAD> & { id: number }) {
   return { ...THREAD, title: `Conversation ${over.id}`, ...over };
 }
 
-/** The two Sets the Sets list serves: the active one first, as the API sorts. */
+/** The two Sets the Sets list serves, in the order the API sorts them. */
 const SETS = [
   { id: 3, name: "Guji on the Niche", current_version_id: 30, current_version_no: 4 },
   { id: 4, name: "Kenya AA on the Niche", current_version_id: 40, current_version_no: 1 },

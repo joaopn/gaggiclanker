@@ -36,10 +36,10 @@ import { useProfileVersions } from "@/hooks/useArchive";
 import { useKnowledgeInsights } from "@/hooks/useKnowledge";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
-  useActivateSet,
   useAddSetVersion,
   useArchiveSet,
   useSet,
+  useSetAutomatch,
   useSetTrends,
 } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
@@ -107,7 +107,7 @@ export function SetDetailPage() {
   const trends = useSetTrends(valid ? setId : undefined);
   const suggestions = useSetSuggestions(valid ? setId : undefined);
   const analyse = useAnalyseSet();
-  const activate = useActivateSet();
+  const automatch = useSetAutomatch();
   const archive = useArchiveSet();
   const [versioning, setVersioning] = useState(false);
   useQueryErrorToast(detail.error, "Could not load this Set");
@@ -149,8 +149,8 @@ export function SetDetailPage() {
         subtitle={setSummary(row)}
         actions={
           <div className="flex items-center gap-2">
-            {row.active ? <Badge data-testid="set-active">active</Badge> : null}
-            {row.status === "archived" ? <Badge variant="outline">archived</Badge> : null}
+            {row.automatch ? <Badge data-testid="set-automatch">automatch</Badge> : null}
+            {row.archived ? <Badge variant="outline">archived</Badge> : null}
             {/* The conversation about the change being argued right now: the
                 ledger, the spread and the evidence are in the prompt before the
                 first word is typed, and a second press lands in the same room. */}
@@ -159,18 +159,18 @@ export function SetDetailPage() {
               versionId={current?.id ?? null}
               question={`How is ${row.name} going, and what should I change next?`}
             />
-            {!row.active && row.status === "active" ? (
+            {row.archived ? null : (
               <Button
                 variant="outline"
                 size="sm"
-                disabled={activate.isPending}
-                onClick={() => activate.mutate(row.id)}
+                disabled={automatch.isPending}
+                onClick={() => automatch.mutate({ id: row.id, automatch: !row.automatch })}
               >
                 <Coffee className="size-3.5" aria-hidden="true" />
-                This is what is loaded
+                {row.automatch ? "Stop filing shots here" : "File matching shots here"}
               </Button>
-            ) : null}
-            {row.status === "active" ? (
+            )}
+            {row.archived ? null : (
               <Button
                 variant="ghost"
                 size="sm"
@@ -180,7 +180,7 @@ export function SetDetailPage() {
                 <Archive className="size-3.5" aria-hidden="true" />
                 Archive
               </Button>
-            ) : null}
+            )}
           </div>
         }
       />

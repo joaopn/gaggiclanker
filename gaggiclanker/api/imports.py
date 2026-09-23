@@ -18,7 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 
-from gaggiclanker.api.deps import DatabaseDep, EventBusDep, SettingsServiceDep
+from gaggiclanker.api.deps import DatabaseDep, EventBusDep
 from gaggiclanker.imports.service import (
     MAX_EXPANDED_BYTES,
     ImportFile,
@@ -52,7 +52,6 @@ MAX_REQUEST_BYTES = MAX_EXPANDED_BYTES
 )
 async def import_files(
     db: DatabaseDep,
-    settings: SettingsServiceDep,
     events: EventBusDep,
     files: Annotated[
         list[UploadFile],
@@ -90,7 +89,7 @@ async def import_files(
             )
         payloads.append(ImportFile(filename=upload.filename or "upload", data=data))
 
-    service = ImportService(db, settings)
+    service = ImportService(db)
     summary = await service.import_files(payloads, replace=replace)
 
     # One event per kind, not one per file: the bus is lossy and an event only

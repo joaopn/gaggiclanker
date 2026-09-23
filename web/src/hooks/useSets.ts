@@ -8,7 +8,6 @@ import {
 import { toast } from "sonner";
 import {
   acceptSetProposal,
-  activateSet,
   addSetVersion,
   archiveSet,
   clearVersionOutcome,
@@ -24,6 +23,7 @@ import {
   putJudgement,
   putShotSetVersion,
   rollbackSet,
+  setAutomatch,
   setVersionOutcome,
   setVersionPrediction,
 } from "@/api/client";
@@ -258,11 +258,20 @@ export function useRollbackSet(): UseMutationResult<
   });
 }
 
-export function useActivateSet(): UseMutationResult<SetRow, Error, number> {
+export function useSetAutomatch(): UseMutationResult<
+  SetRow,
+  Error,
+  { id: number; automatch: boolean }
+> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: activateSet,
-    onSuccess: (row) => toast.success(`"${row.name}" is what the machine is set up for`),
+    mutationFn: ({ id, automatch }) => setAutomatch(id, automatch),
+    onSuccess: (row) =>
+      toast.success(
+        row.automatch
+          ? `New shots on "${row.name}"'s profile are filed under it`
+          : `"${row.name}" no longer collects new shots on its own`,
+      ),
     onError: (error) => toast.error(error.message),
     onSettled: () => invalidateSets(queryClient),
   });

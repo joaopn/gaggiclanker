@@ -2,8 +2,8 @@
 
 Same rule as the rest of the suite: a real SQLite file, real migrations, no
 mocked repositories. Half of what these tests assert is a constraint —
-``UNIQUE(set_id, version_no)``, the partial "one active Set" index, the CHECK on
-every vocabulary column — and none of those exist in a mock.
+``UNIQUE(set_id, version_no)``, the foreign keys, the CHECK on every vocabulary
+column — and none of those exist in a mock.
 """
 
 from __future__ import annotations

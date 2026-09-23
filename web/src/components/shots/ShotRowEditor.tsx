@@ -167,7 +167,7 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
               value={row.current_version_id ? String(row.current_version_id) : ""}
             >
               {row.name} — v{row.current_version_no}
-              {row.active ? " (active)" : ""}
+              {row.automatch ? " (automatch)" : ""}
             </option>
           ))}
           {/* A shot filed under an older version: the list above offers each

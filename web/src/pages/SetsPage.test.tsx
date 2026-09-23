@@ -9,20 +9,19 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getSets, activateSet, getBeans, getGrinders, getMachines, getProfileVersions } = vi.hoisted(
-  () => ({
+const { getSets, setAutomatch, getBeans, getGrinders, getMachines, getProfileVersions } =
+  vi.hoisted(() => ({
     getSets: vi.fn(),
-    activateSet: vi.fn(),
+    setAutomatch: vi.fn(),
     getBeans: vi.fn(),
     getGrinders: vi.fn(),
     getMachines: vi.fn(),
     getProfileVersions: vi.fn(),
-  }),
-);
+  }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSets,
-  activateSet,
+  setAutomatch,
   getBeans,
   getGrinders,
   getMachines,
@@ -37,13 +36,13 @@ beforeEach(() => {
       setRow({
         id: 4,
         name: "Kenya on the DF64",
-        active: false,
+        automatch: false,
         shot_count: 0,
         bean_name: "Kenya",
       }),
     ],
   });
-  activateSet.mockResolvedValue(setRow({ id: 4, active: true }));
+  setAutomatch.mockResolvedValue(setRow({ id: 4, automatch: true }));
   getBeans.mockResolvedValue({ items: [] });
   getGrinders.mockResolvedValue({ items: [] });
   getMachines.mockResolvedValue({ items: [] });
@@ -51,7 +50,7 @@ beforeEach(() => {
 });
 
 describe("SetsPage", () => {
-  it("cards the identity, the counts and which one the machine is set up for", async () => {
+  it("cards the identity, the counts and which ones collect new shots", async () => {
     renderWithQueryClient(<SetsPage />);
 
     const cards = await screen.findAllByTestId("set-card");
@@ -59,23 +58,25 @@ describe("SetsPage", () => {
     // bean · grinder · profile vN, which is what identifies a Set at a glance.
     expect(cards[0]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso v2");
     expect(cards[0]).toHaveTextContent("4 shots");
-    expect(within(cards[0]).getByTestId("set-active")).toBeInTheDocument();
-    expect(within(cards[1]).queryByTestId("set-active")).not.toBeInTheDocument();
+    expect(within(cards[0]).getByTestId("set-automatch")).toBeInTheDocument();
+    expect(within(cards[1]).queryByTestId("set-automatch")).not.toBeInTheDocument();
   });
 
-  it("switches which Set is loaded without archiving the other", async () => {
+  it("turns matching on for one Set and off for another, touching nothing else", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetsPage />);
 
     const cards = await screen.findAllByTestId("set-card");
-    await user.click(within(cards[1]).getByRole("button", { name: /This is what is loaded/ }));
+    await user.click(within(cards[1]).getByRole("button", { name: /File matching shots here/ }));
 
-    await waitFor(() => expect(activateSet).toHaveBeenCalled());
-    expect(activateSet.mock.calls[0][0]).toBe(4);
-    // The active Set has no such button: it is already the answer.
-    expect(
-      within(cards[0]).queryByRole("button", { name: /This is what is loaded/ }),
-    ).not.toBeInTheDocument();
+    await waitFor(() => expect(setAutomatch).toHaveBeenCalled());
+    expect(setAutomatch.mock.calls[0]).toEqual([4, true]);
+
+    // The Set already collecting offers the other direction, and no Set is
+    // switched off by another being switched on.
+    await user.click(within(cards[0]).getByRole("button", { name: /Stop filing shots here/ }));
+    await waitFor(() => expect(setAutomatch).toHaveBeenCalledTimes(2));
+    expect(setAutomatch.mock.calls[1]).toEqual([3, false]);
   });
 
   it("explains what a shot with no Set costs when there are none", async () => {

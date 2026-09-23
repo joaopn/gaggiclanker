@@ -225,7 +225,8 @@ async def _heading(
         + (f" Bean: {bean_line}." if bean_line else "")
         + (f" Grinder: {grinder_line}." if grinder_line else ""),
         f"{_plural(row.version_count, 'version')}, {_plural(row.shot_count, 'shot')}. "
-        f"Status: {row.status}{', currently on the machine' if row.active else ''}.",
+        + ("Archived." if row.archived else "In use.")
+        + (" New shots on its profile are filed here." if row.automatch else ""),
         "",
         f"THIS VERSION IS v{version.version_no}"
         + (" (a dead end: a later roll back went back past it)" if version.id in dead_ends else "")
