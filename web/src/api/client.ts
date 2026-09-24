@@ -25,6 +25,7 @@ import type {
   ChatThreadDetail,
   ChatThreadWrite,
   ChatToolList,
+  ClaudeCliStatus,
   CleanupPlan,
   CleanupRunAccepted,
   CleanupRunsData,
@@ -644,6 +645,24 @@ export async function validateLlm(request: LlmValidateRequest = {}): Promise<Llm
 
 export async function getLlmModels(provider?: string): Promise<LlmModelsData> {
   return fetchApi<LlmModelsData>(`/llm/models${queryString({ provider })}`);
+}
+
+/** The Claude Code updater: the image's binary, the installed one, npm's channels. */
+export async function getClaudeCli(): Promise<ClaudeCliStatus> {
+  return fetchApi<ClaudeCliStatus>("/llm/claude-cli");
+}
+
+/** Starts an install (a channel or an exact version); poll `getClaudeCli` for the end. */
+export async function installClaudeCli(version: string): Promise<ClaudeCliStatus> {
+  return fetchApi<ClaudeCliStatus>("/llm/claude-cli/install", {
+    method: "POST",
+    body: JSON.stringify({ version }),
+  });
+}
+
+/** Removes the installed release, so the image's own binary runs again. */
+export async function removeClaudeCli(): Promise<ClaudeCliStatus> {
+  return fetchApi<ClaudeCliStatus>("/llm/claude-cli", { method: "DELETE" });
 }
 
 export async function resetLlmRateLimit(): Promise<LlmRateLimit> {

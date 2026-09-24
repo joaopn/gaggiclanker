@@ -8,15 +8,19 @@ import {
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import {
+  getClaudeCli,
   getLlmCalls,
   getLlmModels,
   getLlmStatus,
   getLlmUsage,
+  installClaudeCli,
   type LlmValidateRequest,
+  removeClaudeCli,
   resetLlmRateLimit,
   validateLlm,
 } from "@/api/client";
 import type {
+  ClaudeCliStatus,
   LlmCall,
   LlmCallEvent,
   LlmCallsData,
@@ -74,6 +78,41 @@ export function useResetRateLimit(): UseMutationResult<LlmRateLimit, Error, void
     onSuccess: () => {
       toast.success("The LLM is running again");
       void queryClient.invalidateQueries({ queryKey: queryKeys.llm.status() });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+}
+
+/**
+ * The Claude Code updater's state. Polled only while an install runs: the
+ * download takes seconds to minutes, and the page has nothing else to follow.
+ */
+export function useClaudeCli(enabled = true): UseQueryResult<ClaudeCliStatus, Error> {
+  return useQuery({
+    queryKey: queryKeys.llm.claudeCli(),
+    queryFn: getClaudeCli,
+    enabled,
+    refetchInterval: (query) => (query.state.data?.job.state === "running" ? 1000 : false),
+  });
+}
+
+export function useInstallClaudeCli(): UseMutationResult<ClaudeCliStatus, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (version: string) => installClaudeCli(version),
+    onSuccess: (status) => queryClient.setQueryData(queryKeys.llm.claudeCli(), status),
+    onError: (error) => toast.error(error.message),
+  });
+}
+
+export function useRemoveClaudeCli(): UseMutationResult<ClaudeCliStatus, Error, void> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => removeClaudeCli(),
+    onSuccess: (status) => {
+      queryClient.setQueryData(queryKeys.llm.claudeCli(), status);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.llm.status() });
+      toast.success(`Back to the image's Claude Code ${status.bundled.version ?? ""}`.trim());
     },
     onError: (error) => toast.error(error.message),
   });

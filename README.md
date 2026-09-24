@@ -565,7 +565,14 @@ call runs the CLI with a scratch `HOME` and an environment that carries only the
 stored token, so nothing on the box leaks into the prompt, and that hides
 `~/.claude` too. The Docker image ships the CLI; a source checkout needs it
 installed (`npm install -g @anthropic-ai/claude-code`) or `claudeCodeBin`
-pointed at it. **Validate credentials** tries what the form holds, so a pasted
+pointed at it. The image's CLI is pinned; to take a newer (or older) release
+without rebuilding, the Claude Code panel under **Settings → LLM** installs the
+`stable` or `latest` channel, or an exact version, straight from npm into the
+data directory. The release is checked against the registry's sha512 and run
+once before the app switches to it, it survives restarts, and it steps aside
+once a newer image carries that release or a later one. It is used while
+`claudeCodeBin` is left at `claude`; **Use the image's version** removes it.
+Nothing updates on its own. **Validate credentials** tries what the form holds, so a pasted
 token can be checked before it is saved, and for `claude_code` it makes one
 one-word call to haiku: presence alone (`claude auth status`) cannot tell a
 working token from a revoked one.

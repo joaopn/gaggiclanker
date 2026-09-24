@@ -222,6 +222,7 @@ export type AnalysisState = "none" | "running" | "ok" | "failed";
 // rather than retyped; only the live-call record below is hand-written,
 // because the observer's ring is a plain dict on the server side.
 export type LlmStatusData = components["schemas"]["LlmStatusData"];
+export type ClaudeCliStatus = components["schemas"]["ClaudeCliStatusData"];
 export type LlmCredentialCheck = components["schemas"]["CredentialCheckData"];
 export type LlmModelsData = components["schemas"]["ModelsData"];
 export type LlmRateLimit = components["schemas"]["RateLimitData"];

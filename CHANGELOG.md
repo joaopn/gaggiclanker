@@ -10,6 +10,18 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Update Claude Code from the settings page
+
+- **The Claude Code panel under Settings → LLM can install a newer CLI**
+  without rebuilding the image, as cvclanker's does: the `stable` or `latest`
+  channel, or an exact version. The release comes from npm, is checked against
+  the registry's sha512 and run once before the app switches to it, and lives
+  in the data directory (`claude-code/`, about 230 MB), so it survives
+  restarts. **Use the image's version** goes back. A newer image that carries
+  the same release or a later one takes over again at boot; a downgrade made
+  on purpose is kept until the image changes. A custom `claudeCodeBin` still
+  wins over both. Nothing updates on its own.
+
 ### The open shot row is the shot page's judgement and curves
 
 - **A row in the shots list opens onto the shot page's own two boxes**, laid

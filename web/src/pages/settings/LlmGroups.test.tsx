@@ -15,11 +15,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getLlmStatus, validateLlm, getLlmModels, resetLlmRateLimit } = vi.hoisted(() => ({
+const {
+  getLlmStatus,
+  validateLlm,
+  getLlmModels,
+  resetLlmRateLimit,
+  getClaudeCli,
+  installClaudeCli,
+  removeClaudeCli,
+} = vi.hoisted(() => ({
   getLlmStatus: vi.fn(),
   validateLlm: vi.fn(),
   getLlmModels: vi.fn(),
   resetLlmRateLimit: vi.fn(),
+  getClaudeCli: vi.fn(),
+  installClaudeCli: vi.fn(),
+  removeClaudeCli: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -27,7 +38,37 @@ vi.mock("@/api/client", async (importOriginal) => ({
   validateLlm,
   getLlmModels,
   resetLlmRateLimit,
+  getClaudeCli,
+  installClaudeCli,
+  removeClaudeCli,
 }));
+
+type Job = { state: string; target: string; version: string; message: string };
+
+function cliStatus(overrides: {
+  managed?: string | null;
+  job?: Partial<Job>;
+  overridden?: boolean;
+}) {
+  const managed = overrides.managed ?? null;
+  return {
+    platform_package: "@anthropic-ai/claude-code-linux-x64",
+    bundled: { path: "/usr/local/bin/claude", version: "2.1.267" },
+    managed: { path: managed ? `/app/data/claude-code/${managed}/claude` : null, version: managed },
+    overridden: overrides.overridden ?? false,
+    active_binary: managed ? `/app/data/claude-code/${managed}/claude` : "claude",
+    channels: { stable: "2.1.273", latest: "2.1.281" },
+    job: {
+      state: "idle",
+      target: "",
+      version: "",
+      message: "",
+      started_at: null,
+      finished_at: null,
+      ...overrides.job,
+    },
+  };
+}
 
 function plain(key: string, value: string): ResolvedSetting {
   return {
@@ -113,6 +154,7 @@ describe("LLM groups", () => {
       rate_limit: { stopped: false, retries: 2, remaining: 2 },
       claude_code: { version: "2.1.268", authenticated: true, detail: "user@example.test (max)" },
     });
+    getClaudeCli.mockResolvedValue(cliStatus({}));
   });
 
   it("shows only the credential the chosen provider actually uses", async () => {
@@ -241,5 +283,77 @@ describe("LLM groups", () => {
     await user.click(screen.getByRole("button", { name: /clear the rate-limit stop/i }));
 
     await waitFor(() => expect(resetLlmRateLimit).toHaveBeenCalled());
+  });
+
+  it("installs a Claude Code channel and follows the install to its end", async () => {
+    installClaudeCli.mockResolvedValue(
+      cliStatus({ job: { state: "running", target: "latest", version: "2.1.281" } }),
+    );
+    const user = setupUser();
+    renderWithQueryClient(<Harness />);
+
+    const button = await screen.findByRole("button", { name: /install latest \(2\.1\.281\)/i });
+    getClaudeCli.mockResolvedValue(
+      cliStatus({
+        managed: "2.1.281",
+        job: {
+          state: "done",
+          target: "latest",
+          version: "2.1.281",
+          message: "Claude Code 2.1.281 installed",
+        },
+      }),
+    );
+    await user.click(button);
+
+    expect(installClaudeCli).toHaveBeenCalledWith("latest");
+    await waitFor(
+      () => expect(screen.getByTestId("claude-cli-managed")).toHaveTextContent("2.1.281"),
+      { timeout: 3000 },
+    );
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Claude Code 2.1.281 installed"));
+  });
+
+  it("installs an exact version only once it looks like one", async () => {
+    installClaudeCli.mockResolvedValue(cliStatus({}));
+    const user = setupUser();
+    renderWithQueryClient(<Harness />);
+
+    const field = await screen.findByLabelText(/exact claude code version/i);
+    const button = screen.getByRole("button", { name: /install version/i });
+    await user.type(field, "2.1");
+    expect(button).toBeDisabled();
+    await user.type(field, ".250");
+    expect(button).toBeEnabled();
+    await user.click(button);
+
+    expect(installClaudeCli).toHaveBeenCalledWith("2.1.250");
+  });
+
+  it("goes back to the image's binary on request", async () => {
+    getClaudeCli.mockResolvedValue(cliStatus({ managed: "2.1.281" }));
+    removeClaudeCli.mockResolvedValue(cliStatus({}));
+    const user = setupUser();
+    renderWithQueryClient(<Harness />);
+
+    await user.click(await screen.findByRole("button", { name: /use the image's version/i }));
+
+    await waitFor(() => expect(removeClaudeCli).toHaveBeenCalled());
+  });
+
+  it("says a custom binary setting wins over an installed release", async () => {
+    getClaudeCli.mockResolvedValue(cliStatus({ overridden: true }));
+    renderWithQueryClient(<Harness />);
+
+    expect(await screen.findByTestId("claude-cli-overridden")).toBeInTheDocument();
+  });
+
+  it("shows why an install failed", async () => {
+    getClaudeCli.mockResolvedValue(
+      cliStatus({ job: { state: "failed", target: "latest", message: "npm did not answer" } }),
+    );
+    renderWithQueryClient(<Harness />);
+
+    expect(await screen.findByTestId("claude-cli-job")).toHaveTextContent("npm did not answer");
   });
 });

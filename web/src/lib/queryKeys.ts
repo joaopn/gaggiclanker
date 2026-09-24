@@ -178,6 +178,7 @@ export const queryKeys = {
   llm: {
     all: ["llm"] as const,
     status: () => ["llm", "status"] as const,
+    claudeCli: () => ["llm", "claude-cli"] as const,
     models: (provider?: string) => ["llm", "models", provider ?? "configured"] as const,
     calls: () => ["llm", "calls"] as const,
     usage: (since?: string) => ["llm", "usage", since ?? "all"] as const,

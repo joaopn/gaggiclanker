@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLlmModels, useLlmStatus, useResetRateLimit, useValidateLlm } from "@/hooks/useLlm";
+import { ClaudeCliUpdater } from "@/pages/settings/ClaudeCliUpdater";
 import { SettingField } from "@/pages/settings/SettingField";
 import { humanizeKey, type SettingsFormValues, toPatch } from "@/pages/settings/schema";
 
@@ -189,6 +190,7 @@ export function LlmProviderGroup({ entries, control, errors, disabled }: GroupPr
           {claudeCode?.detail ? (
             <p className="text-muted-foreground text-xs">{claudeCode.detail}</p>
           ) : null}
+          <ClaudeCliUpdater />
           {["claudeCodeBin", "claudeCodeEffort"].map((key) => {
             const setting = byKey.get(key);
             if (!setting) return null;
