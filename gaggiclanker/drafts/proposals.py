@@ -18,6 +18,7 @@ point or drafted from an analysis all go through the same offline layers.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,7 +31,7 @@ from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftWrite,
 )
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.domain.models import Profile, with_app_suffix
+from gaggiclanker.domain.models import Profile, profile_content_hash, with_app_suffix
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
     PolicyChange,
@@ -42,7 +43,7 @@ from gaggiclanker.domain.profile_policy import (
     clamp,
     diff_stop_conditions,
 )
-from gaggiclanker.infra.errors import NotFound, Unprocessable
+from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
 
 __all__ = [
@@ -111,14 +112,27 @@ class DraftProposals:
         set_id: int | None = None,
         prediction: str = "",
         compares_to_version_id: int | None = None,
+        new_profile_only: bool = False,
+        reusable_version_ids: Collection[int] = (),
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
 
-        The last three are the experiment half and travel together: a draft
-        proposed inside one Set's conversation says which Set it is for and what
-        it is expected to do differently, and the push records that on the Set
-        version it creates. A draft with none of them — typed by hand, or
-        proposed where there is no experiment — is exactly what it was before.
+        ``set_id``, ``prediction`` and ``compares_to_version_id`` are the
+        experiment half and travel together: a draft proposed inside one Set's
+        conversation says which Set it is for and what it is expected to do
+        differently, and the push records that on the Set version it creates. A
+        draft with none of them — typed by hand, or proposed where there is no
+        experiment — is exactly what it was before.
+
+        ``new_profile_only`` refuses a document that, **as it would be stored**
+        — clamped, suffixed — is a profile version the archive already has. A
+        new Set's recipe carries a profile of its own, because two Sets naming
+        one profile version make the matcher ambiguous and nothing is filed.
+        Checked on the prepared document's content hash, before anything is
+        stored, rather than inferred afterwards from whether the store inserted.
+        ``reusable_version_ids`` are the exceptions the caller vouches for: a
+        design conversation revising its own card may land on the profile it
+        proposed a moment ago.
         """
         base = await self.base_profile(base_version_id)
         try:
@@ -129,6 +143,17 @@ class DraftProposals:
                 details={"schema_errors": schema_errors(exc)},
             ) from None
         prepared = await self.prepare(base, candidate)
+        if new_profile_only:
+            existing = await self.profiles.get_version_by_hash(
+                profile_content_hash(prepared.profile)
+            )
+            if existing is not None and existing.id not in reusable_version_ids:
+                raise Conflict(
+                    f"This profile is identical to one already in the library "
+                    f"({existing.label!r}, profile version {existing.id}). A new recipe carries "
+                    "a profile of its own: give it its own label or change something in it.",
+                    details={"field": "profile", "message": "the profile is not new"},
+                )
         return await self.store(
             base_version_id=base_version_id,
             prepared=prepared,

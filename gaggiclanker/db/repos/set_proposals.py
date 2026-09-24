@@ -410,6 +410,41 @@ class SetProposalsRepository(Repository):
         )
         return {int(row["version_id"]): int(row["thread_id"]) for row in rows}
 
+    async def design_profile_versions(self, set_id: int) -> set[int]:
+        """The profile versions this Set's initial recipes have drafted, in any state.
+
+        What a design conversation may land on again when it revises its own
+        card: the profile it proposed a moment ago is this design's, not the
+        library's, so proposing it a second time is not a copy of somebody
+        else's profile.
+
+        **Unless another Set has taken it up since.** A version that the
+        current version of another Set still in use names is somebody else's
+        recipe now, whoever drafted it first: letting the design keep it would
+        put two Sets on one profile, and the matcher files nothing under
+        either.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT d.draft_version_id AS version_id
+              FROM set_version_proposals p
+              JOIN profile_drafts d ON d.id = p.draft_id
+             WHERE p.set_id = :set_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
+               AND NOT EXISTS (
+                   SELECT 1 FROM sets other
+                     JOIN set_versions cur
+                       ON cur.set_id = other.id
+                      AND cur.version_no = (SELECT MAX(v.version_no) FROM set_versions v
+                                             WHERE v.set_id = other.id)
+                    WHERE other.id != :set_id
+                      AND other.archived = 0
+                      AND cur.profile_version_id = d.draft_version_id
+               )
+            """,
+            {"set_id": set_id},
+        )
+        return {int(row["version_id"]) for row in rows}
+
     async def preview(self, proposal: SetProposalRow) -> SetVersionRow | None:
         """The version this proposal would create, as a row nobody stored.
 

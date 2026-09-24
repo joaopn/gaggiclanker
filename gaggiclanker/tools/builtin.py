@@ -1,12 +1,12 @@
 """The tools themselves. One module, because the set is small and domain-bound.
 
-Twenty tools in two permission classes, and the third is empty on purpose.
+Twenty-two tools in two permission classes, and the third is empty on purpose.
 The read tools answer questions about the archive; the propose tools turn a
 conclusion into a row somebody still has to confirm, or queue work that costs
 money; there are no device-write tools here at all, and that is the feature —
 pushing a profile and deleting a shot off the machine stay buttons in the UI.
 
-Which of the twenty a conversation *has* is not decided here:
+Which of the twenty-two a conversation *has* is not decided here:
 :mod:`gaggiclanker.tools.scope` decides it from the conversation's kind. What
 is decided here is what a tool does when it is called inside a Set's
 conversation — the Set is the conversation's and another one is refused, and a
@@ -37,6 +37,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
     set_attributes,
 )
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.set_proposals import (
     ProposalWrite,
@@ -45,6 +46,9 @@ from gaggiclanker.db.repos.set_proposals import (
     change_groups,
 )
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_changes
+from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.profile_recipe import profile_recipe
+from gaggiclanker.domain.sets import grind_value
 from gaggiclanker.infra.errors import TooManyRequests
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, ANALYSIS_WINDOW_SECONDS
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -672,6 +676,86 @@ async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput
     return ListOutput(items=items, count=len(items))
 
 
+class GetProfileInput(_Model):
+    profile_version_id: int = Field(gt=0, description="The profile version to read.")
+
+
+class ProfileRecipeFacts(_Model):
+    """What the document itself says about the recipe, read by the one rule."""
+
+    #: The brew temperature the profile states; ``None`` when it states none
+    #: (the firmware writes 0 for "not set").
+    temperature_c: float | None = None
+    #: The largest volumetric stop across the phases: the weight in the cup.
+    target_yield_g: float | None = None
+
+
+class GetProfileOutput(_Model):
+    profile_version_id: int
+    label: str
+    type: str
+    utility: bool = False
+    #: `device`, `import` or `draft`: where this version came from.
+    source: str = ""
+    created_at: str
+    #: The whole document, in the shape the machine stores it.
+    document: dict[str, Any]
+    recipe: ProfileRecipeFacts
+    #: How many of the archive's shots were pulled with it. Only in a general
+    #: conversation: see :func:`list_profiles` for why a Set's does not get it.
+    shot_count: int | None = None
+
+
+@tool(
+    "get_profile",
+    permission="read",
+    description=(
+        "One profile version in full: its label, type and whole document — every phase, pump "
+        "target and stop condition — plus the temperature and yield the document states. Read "
+        "the profile you are about to change or fork before you change it."
+    ),
+)
+async def get_profile(ctx: ToolContext, args: GetProfileInput) -> GetProfileOutput:
+    """The document, because nothing else hands a model one.
+
+    `list_profiles` gives labels and metadata; an agent asked to fork or adjust
+    a profile has to read what it is changing, or it writes a patch against a
+    document it imagined. Profiles belong to no Set, so every conversation may
+    read any of them; what a Set's conversation does not get is the
+    archive-wide shot count, for the reason `list_profiles` gives.
+    """
+    version = await ProfilesRepository(ctx.db).get_version(args.profile_version_id)
+    if version is None or not version.profile:
+        raise ValueError(
+            f"No profile version {args.profile_version_id}. list_profiles lists the ones "
+            "this archive has."
+        )
+    document = Profile.model_validate(version.profile).to_device()
+    facts = profile_recipe(document)
+    shot_count: int | None = None
+    if ctx.scope.kind != "set":
+        shot_count = int(
+            await ctx.db.fetch_value(
+                "SELECT shot_count FROM v_profiles WHERE profile_version_id = ?",
+                (version.id,),
+            )
+            or 0
+        )
+    return GetProfileOutput(
+        profile_version_id=version.id,
+        label=version.label,
+        type=version.type,
+        utility=version.utility,
+        source=version.source,
+        created_at=version.created_at,
+        document=document,
+        recipe=ProfileRecipeFacts(
+            temperature_c=facts.temperature_c, target_yield_g=facts.target_yield_g
+        ),
+        shot_count=shot_count,
+    )
+
+
 # ── knowledge ────────────────────────────────────────────────────────
 
 
@@ -1068,6 +1152,10 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
     a model that is told "refused" and nothing else calls again with the same
     arguments. None of them says anything about another Set.
     """
+    if ctx.scope.designing:
+        # The dispatcher refuses this tool in a design conversation before it
+        # gets here; this is the same sentence for a caller that did not ask it.
+        raise ValueError(DESIGN_RULE)
     set_id = _resolve_set(ctx, args.set_id)
     sets = SetsRepository(ctx.db)
     if await sets.get(set_id) is None:
@@ -1207,6 +1295,16 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
         )
     if result.refused == "designing":
         return DESIGN_RULE
+    if result.refused == "not_designing":
+        return (
+            "This Set already has a recipe, so there is no initial recipe to propose. Changes "
+            "to it are propose_set_version, one at a time and with a prediction."
+        )
+    if result.refused == "bad_draft":
+        return (
+            "The profile draft for this recipe could not be attached to it. Nothing was "
+            "proposed; call propose_initial_recipe again."
+        )
     if result.refused == "bad_thread":
         # Not something a model can cause by choosing arguments: the
         # conversation is the runner's to supply. Said plainly anyway, because
@@ -1303,6 +1401,10 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     as much as the grind is — so it owes a prediction and waits its turn like
     any other change.
     """
+    if ctx.scope.designing:
+        # A profile of a Set being designed is part of its initial recipe, and
+        # proposed whole with it: see `propose_initial_recipe`.
+        raise ValueError(DESIGN_RULE)
     if ctx.drafts is None:
         raise ValueError(
             "draft_profile needs the running gaggiclanker application; this connection has "
@@ -1400,6 +1502,219 @@ async def _draft_experiment(
             "about."
         )
     return compares_to
+
+
+class InitialProfileInput(_Model):
+    base_version_id: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "The profile version the new profile starts from. Leave it out to start from the "
+            "profile the person asked to fork, or, when they named none, from the library's "
+            "most-used profile."
+        ),
+    )
+    patch: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "A partial profile document merged into the base, key by key. Phases are replaced "
+            "wholesale when 'phases' is present — send the full list. Read the base with "
+            "get_profile first."
+        ),
+    )
+    label: str = Field(
+        min_length=1,
+        max_length=80,
+        description=(
+            "The new profile's own name. It is a new profile, not a version of the one it "
+            "started from, so it gets a name of its own."
+        ),
+    )
+
+
+class ProposeInitialRecipeInput(_Model):
+    profile: InitialProfileInput
+    grind_setting: str = Field(
+        min_length=1,
+        max_length=100,
+        description=(
+            "In this grinder's own units. A number only when the person's usual setting or a "
+            "Set on this same grinder anchors it; otherwise words relative to their usual "
+            "espresso setting."
+        ),
+    )
+    grind_is_absolute: bool = Field(
+        description=(
+            "True only when grind_setting is a number on this grinder's dial that one of those "
+            "anchors supports."
+        ),
+    )
+    dose_g: float = Field(gt=0, le=100)
+    target_yield_g: float = Field(gt=0, le=500)
+    reason: str = Field(
+        min_length=1,
+        max_length=500,
+        description=(
+            "What this recipe is for, in a sentence or two. It becomes version 1's "
+            "'What are you trying?' if the person accepts it."
+        ),
+    )
+
+
+class InitialRecipe(_Model):
+    """The recipe as version 1 would state it."""
+
+    profile_version_id: int
+    profile_label: str | None = None
+    grind_setting: str
+    grind_value: float | None = None
+    dose_g: float
+    target_yield_g: float
+    #: What the new profile brews at, read from its own document.
+    profile_temperature_c: float | None = None
+
+
+class ProposeInitialRecipeOutput(_Model):
+    """What is now waiting, and the plain statement that nothing exists yet."""
+
+    proposal_id: int
+    set_id: int
+    draft_id: int
+    kind: Literal["design"] = "design"
+    status: str = "proposed"
+    recipe: InitialRecipe
+    reason: str = ""
+    #: Every number the safety policy moved on the way in.
+    clamp_changes: list[dict[str, Any]] = Field(default_factory=list)
+    stop_condition_changes: list[dict[str, Any]] = Field(default_factory=list)
+    note: str = ""
+
+
+@tool(
+    "propose_initial_recipe",
+    permission="propose",
+    description=(
+        "Propose the whole first recipe of this Set, which is being designed: a new profile of "
+        "its own (a base plus a patch, with its own label) and the grind, dose and target "
+        "yield, as ONE card the person accepts or declines. It creates the profile as a draft "
+        "that goes through the same schema, safety-policy and clamp checks as one typed by "
+        "hand, and nothing else: until the person accepts, the Set has no recipe, and the "
+        "machine never receives anything from here. A profile identical to one already in the "
+        "library is refused — give it its own label or change something. A newer proposal "
+        "replaces the one waiting. No prediction: a version 1 is a baseline."
+    ),
+    timeout_s=30.0,
+)
+async def propose_initial_recipe(
+    ctx: ToolContext, args: ProposeInitialRecipeInput
+) -> ProposeInitialRecipeOutput:
+    """Draft the profile, then put the whole recipe on one card for the person.
+
+    The draft is made **now**, not when the card is accepted: a document the
+    safety policy refuses comes back to the model as this tool's error, which
+    it can fix in the same conversation, instead of as a refusal on the
+    person's Accept button. It belongs to no Set on the draft side — no
+    `set_id`, no prediction — because a draft that names a Set is that Set's
+    profile *change*, which a push for the Set records as a new version; this
+    one is the profile version 1 already names once the card is accepted.
+
+    Nothing is left behind by a refusal: the policy and the not-new check run
+    before anything is stored, and a proposal the repository refuses has its
+    draft discarded.
+    """
+    set_id = _resolve_set(ctx, None)
+    sets = SetsRepository(ctx.db)
+    row = await sets.get(set_id)
+    if row is None:  # pragma: no cover - the scope's Set exists by construction
+        raise ValueError(f"No Set {set_id}.")
+    if not ctx.scope.designing or not row.designing:
+        raise ValueError(
+            "This Set already has a recipe, so there is no initial recipe to propose. Changes "
+            "to it are propose_set_version, one at a time and with a prediction."
+        )
+    if ctx.drafts is None:
+        raise ValueError(
+            "propose_initial_recipe needs the running gaggiclanker application; this "
+            "connection has database access only."
+        )
+
+    profiles = ProfilesRepository(ctx.db)
+    base_id = (
+        args.profile.base_version_id
+        or row.design_brief.fork_profile_version_id
+        or await profiles.default_draft_base()
+    )
+    base = await profiles.get_version(base_id)
+    if base is None or not base.profile:
+        raise ValueError(
+            f"No profile version {base_id}. list_profiles lists the ones this archive has."
+        )
+    document = _merge(dict(base.profile), args.profile.patch)
+    document["label"] = args.profile.label
+
+    proposals = SetProposalsRepository(ctx.db)
+    draft = await ctx.drafts.create_manual(
+        base_version_id=base_id,
+        document=document,
+        change_summary=args.reason,
+        notes=f"Designed in chat for Set “{row.name}”.",
+        new_profile_only=True,
+        reusable_version_ids=await proposals.design_profile_versions(set_id),
+    )
+    assert draft.draft_version_id is not None  # a stored draft names its version
+
+    fields: dict[str, Any] = {
+        "profile_version_id": draft.draft_version_id,
+        "grind_setting": args.grind_setting,
+        "dose_g": args.dose_g,
+        "target_yield_g": args.target_yield_g,
+    }
+    value = grind_value(args.grind_setting, absolute=args.grind_is_absolute)
+    if value is not None:
+        fields["grind_value"] = value
+    result = await proposals.create(
+        set_id,
+        ProposalWrite(
+            kind="design",
+            draft_id=draft.id,
+            thread_id=ctx.thread_id,
+            reason=args.reason,
+            patch=SetVersionPatch.model_validate(fields),
+        ),
+    )
+    if result.refused is not None or result.proposal is None:
+        # The card was not stored, so the draft it would have carried is
+        # nobody's: discarded rather than left open on the Profiles page.
+        await ProfileDraftsRepository(ctx.db).discard_unsent([draft.id])
+        raise ValueError(await _proposal_refusal(sets, set_id, result))
+    stored = result.proposal
+
+    preview = await proposals.preview(stored)
+    assert preview is not None  # just stored, readable, on a version that exists
+    return ProposeInitialRecipeOutput(
+        proposal_id=stored.id,
+        set_id=set_id,
+        draft_id=draft.id,
+        status=stored.status,
+        recipe=InitialRecipe(
+            profile_version_id=draft.draft_version_id,
+            profile_label=preview.profile_label,
+            grind_setting=args.grind_setting,
+            grind_value=value,
+            dose_g=args.dose_g,
+            target_yield_g=args.target_yield_g,
+            profile_temperature_c=preview.profile_temperature_c,
+        ),
+        reason=stored.reason,
+        clamp_changes=[_as_dict(change) for change in draft.clamp_changes or []],
+        stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes or []],
+        note=(
+            "Nothing exists yet. This is a card waiting for the person: if they accept it, it "
+            "becomes this Set's version 1, and the profile is then a draft on the Profiles page "
+            "for them to approve and push — nothing brews it until they do. If they would "
+            "rather change something, propose again: a newer card replaces this one."
+        ),
+    )
 
 
 def _as_dict(value: Any) -> dict[str, Any]:

@@ -7,7 +7,9 @@ child process for the length of one chat turn.
 **The conversation's scope arrives in the environment**, because the CLI runs
 the tool loop itself: `GAGGICLANKER_MCP_SET_ID` (and the version beside it)
 makes this server a Set conversation, offering the Set's tools and refusing any
-other Set, and its absence makes it a general one. `GAGGICLANKER_MCP_THREAD_ID`
+other Set, and its absence makes it a general one. Whether that Set is being
+designed is not in the environment: the server opens the archive anyway, and
+reads the flag from the Set itself with the same rule the runner uses. `GAGGICLANKER_MCP_THREAD_ID`
 is not a scope: it is which conversation this is, so a change proposed here
 records the room it was argued in. The mapping from those two
 ids to a surface is :mod:`gaggiclanker.tools.scope`, the same one the dispatcher
@@ -234,8 +236,14 @@ async def serve_stdio(
                 "apply its migrations, then try again."
             )
         settings = SettingsService(SettingsRepository(db))
-        conversation = scope or ToolScope()
-        await _check_scope_exists(db, conversation, thread_id)
+        requested = scope or ToolScope()
+        await _check_scope_exists(db, requested, thread_id)
+        # Whether the Set is being designed is the archive's to say, read here
+        # as the runner reads it for every other provider: the same rule, so
+        # the CLI's own tool loop sees the surface the dispatcher would allow.
+        # This process lives for one turn, so reading it once is reading it
+        # every turn.
+        conversation = await ToolScope.resolve(db, requested.set_id, requested.set_version_id)
 
         async def context() -> ToolContext:
             return stdio_tool_context(db, settings, scope=conversation, thread_id=thread_id)

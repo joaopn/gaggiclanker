@@ -211,10 +211,12 @@ class ChatRunner:
 
         state = _RunState(run_id=run.id, thread_id=thread_id)
         self._running[run.id] = state
-        # The thread's two columns decide what this turn is: one experiment, or
-        # the archive. Read once, here, and carried through the run — every
-        # later decision about tools is this one value.
-        scope = ToolScope.for_thread(thread.set_id, thread.set_version_id)
+        # The thread's two columns and its Set's design flag decide what this
+        # turn is: one experiment, a Set being designed, or the archive. Read
+        # once per turn, here, and carried through the run — every later
+        # decision about tools is this one value — so the turn after an
+        # initial recipe is accepted is already an ordinary Set conversation.
+        scope = await ToolScope.resolve(self.db, thread.set_id, thread.set_version_id)
         registry.spawn(run_task_name(run.id), self._background(state, scope))
         return run, stored
 

@@ -16,12 +16,13 @@ import pytest
 
 from gaggiclanker.chat.runner import ChatRunner, _to_chat_message, run_task_name
 from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository
+from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.types import Usage
-from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.analyzer.conftest import Fixture
 from tests.llm.conftest import FakeProvider
 
@@ -471,6 +472,42 @@ async def test_the_provider_is_given_the_chat_tool_set(
     # archive-wide tools are not merely refused, they are never described.
     assert names == SET_TOOLS
     assert not any(name.startswith("push_") for name in names)
+
+
+async def test_a_set_being_designed_is_given_the_design_tools_and_a_dispatcher_to_match(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    archive: Fixture,
+    chat_provider: FakeProvider,
+) -> None:
+    """The schemas sent, and the calls allowed, are the design scope — from the Set's flag."""
+    designed = await SetsRepository(archive.db).create_design(
+        SetWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+        DesignBrief(),
+    )
+    opened = await ChatRepository(archive.db).open_thread(designed.id)
+    assert opened.thread is not None
+    chat_provider.chat_script = [
+        ChatTurn(
+            tool_calls=[
+                ChatToolCall(
+                    id="c1",
+                    name="propose_set_version",
+                    arguments={"reason": "Finer.", "grind_setting": "18"},
+                )
+            ],
+            stop_reason="tool_use",
+        ),
+        ChatTurn(text="Let us talk about what you want first."),
+    ]
+
+    await send(runner, tasks, opened.thread.id, "Help me design this Set")
+
+    names = {schema["function"]["name"] for schema in chat_provider.chat_calls[0].tools}
+    assert names == DESIGN_TOOLS
+    refused = chat_provider.chat_calls[1].messages[-1].tool_results[0]
+    assert refused.ok is False
+    assert "propose_initial_recipe" in refused.content
 
 
 async def test_the_usage_row_records_which_prompt_answered_the_turn(

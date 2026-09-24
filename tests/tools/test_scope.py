@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 
 from gaggiclanker.tools.registry import ToolContext, registry
-from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS, ToolScope
+from gaggiclanker.tools.scope import DESIGN_RULE, DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS, ToolScope
 from tests.analyzer.conftest import Fixture
 
 #: Registered, offered nowhere, and deliberately so: the per-shot analysis is a
@@ -32,6 +32,7 @@ def test_a_set_conversation_has_exactly_these_tools() -> None:
             "draft_profile",
             "get_insights",
             "get_knowledge_chunk",
+            "get_profile",
             "get_rules",
             "get_set",
             "get_shot",
@@ -52,6 +53,7 @@ def test_a_general_conversation_has_exactly_these_tools() -> None:
             "draft_profile",
             "get_insights",
             "get_knowledge_chunk",
+            "get_profile",
             "get_rules",
             "get_set",
             "get_shot",
@@ -67,12 +69,46 @@ def test_a_general_conversation_has_exactly_these_tools() -> None:
     )
 
 
-def test_neither_scope_names_a_tool_that_does_not_exist() -> None:
+def test_a_conversation_designing_a_set_has_exactly_these_tools() -> None:
+    assert ToolScope.for_thread(3, designing=True).tools == frozenset(
+        {
+            "get_insights",
+            "get_knowledge_chunk",
+            "get_profile",
+            "get_rules",
+            "get_set",
+            "list_profiles",
+            "propose_initial_recipe",
+            "search_knowledge",
+        }
+    )
+
+
+def test_no_scope_names_a_tool_that_does_not_exist() -> None:
     registered = set(registry.names())
 
     assert SET_TOOLS <= registered
     assert GENERAL_TOOLS <= registered
-    assert registered - SET_TOOLS - GENERAL_TOOLS == OFFERED_NOWHERE
+    assert DESIGN_TOOLS <= registered
+    assert registered - SET_TOOLS - GENERAL_TOOLS - DESIGN_TOOLS == OFFERED_NOWHERE
+
+
+def test_the_design_flag_means_nothing_outside_a_set() -> None:
+    assert ToolScope.for_thread(None, designing=True) == ToolScope()
+    assert ToolScope(designing=True).tools != DESIGN_TOOLS
+
+
+async def test_the_scope_is_resolved_from_the_set_s_own_flag(archive: Fixture) -> None:
+    """The one way a turn's scope is built: the thread's columns and the Set's flag."""
+    from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+
+    designed = await SetsRepository(archive.db).create_design(
+        SetWrite(name="Designed", bean_id=archive.bean_id), DesignBrief()
+    )
+
+    assert (await ToolScope.resolve(archive.db, designed.id)).tools == DESIGN_TOOLS
+    assert (await ToolScope.resolve(archive.db, archive.set_id)).tools == SET_TOOLS
+    assert await ToolScope.resolve(archive.db, None) == ToolScope()
 
 
 def test_a_set_conversation_cannot_reach_the_archive() -> None:
@@ -322,6 +358,86 @@ async def test_the_refusal_names_what_the_tool_is_rather_than_the_wrong_rule(
     assert "per-shot analysis" in in_a_set.error
 
 
+# -- a Set being designed --------------------------------------------------
+
+
+@pytest.fixture
+async def design_ctx(archive: Fixture, settings: object) -> ToolContext:
+    """A conversation about a Set of the fixture's bean that is being designed."""
+    from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+    from gaggiclanker.knowledge.service import KnowledgeService
+    from gaggiclanker.tools.registry import CHAT_PERMISSIONS
+
+    designed = await SetsRepository(archive.db).create_design(
+        SetWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+        DesignBrief(),
+    )
+    return ToolContext(
+        db=archive.db,
+        settings=settings,  # type: ignore[arg-type]
+        knowledge=KnowledgeService(archive.db),
+        scope=await ToolScope.resolve(archive.db, designed.id),
+        caller="test",
+        permissions=CHAT_PERMISSIONS,
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments"),
+    [
+        ("propose_set_version", {"reason": "Finer.", "grind_setting": "18"}),
+        (
+            "draft_profile",
+            {"base_version_id": 1, "patch": {"temperature": 92}, "reason": "Cooler."},
+        ),
+        ("list_set_shots", {}),
+        ("get_shot", {"shot_id": 1}),
+        ("compare_shots", {"shot_ids": [1, 2]}),
+        ("record_insight", {"text": "Something."}),
+        ("query_shots", {"sql": "SELECT 1"}),
+    ],
+)
+async def test_a_design_conversation_refuses_what_needs_a_recipe_and_points_the_way(
+    design_ctx: ToolContext, name: str, arguments: dict[str, object]
+) -> None:
+    outcome = await registry.dispatch(design_ctx, name, arguments)
+
+    assert outcome.status == "refused"
+    assert DESIGN_RULE in outcome.error
+    assert "propose_initial_recipe" in outcome.error
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments"),
+    [
+        ("propose_set_version", {"reason": "Finer.", "grind_setting": "18"}),
+        (
+            "draft_profile",
+            {"base_version_id": 1, "patch": {"temperature": 92}, "reason": "Cooler."},
+        ),
+    ],
+)
+async def test_the_two_change_tools_refuse_a_design_even_when_called_directly(
+    design_ctx: ToolContext, name: str, arguments: dict[str, object]
+) -> None:
+    """Past the dispatcher — a caller that did not ask it — the rule still holds."""
+    spec = registry.get(name)
+    assert spec is not None
+
+    with pytest.raises(ValueError, match="propose_initial_recipe is how the recipe is proposed"):
+        await spec.fn(design_ctx, spec.input_model.model_validate(arguments))
+
+
+async def test_the_schemas_sent_while_designing_are_the_design_scope_s(
+    design_ctx: ToolContext,
+) -> None:
+    names = {
+        schema["function"]["name"] for schema in registry.openai_schemas(scope=design_ctx.scope)
+    }
+
+    assert names == DESIGN_TOOLS
+
+
 # -- list_set_shots --------------------------------------------------------
 
 
@@ -469,3 +585,14 @@ async def other_set_shot(archive: Fixture) -> int:
     moved = archive.shots[-1]
     assert await sets.assign_shot(moved, version.id)
     return moved
+
+
+def test_the_mcp_client_is_told_what_a_design_connection_has() -> None:
+    """The first line a CLI reads must not send it to a tool this connection lacks."""
+    from gaggiclanker.tools.mcp.server import instructions_for
+
+    told = instructions_for(ToolScope.for_thread(3, designing=True))
+
+    assert "propose_initial_recipe" in told
+    assert "list_set_shots" not in told
+    assert instructions_for(ToolScope.for_thread(3)) != told

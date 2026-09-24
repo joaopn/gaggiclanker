@@ -93,9 +93,24 @@ SET_INSTRUCTIONS = (
 )
 
 
+#: The same, for a Set being designed: no shots to start from, and one tool that
+#: proposes the whole first recipe.
+DESIGN_INSTRUCTIONS = (
+    "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
+    "about one Set that is being designed: it has a bean and a grinder, and no recipe yet. "
+    "There are no shots to read.\n\n"
+    "Start with get_set for the Set and what the person asked for, list_profiles and "
+    "get_profile for the profiles a recipe can start from, and get_rules and search_knowledge "
+    "for the knowledge base. propose_initial_recipe proposes the whole first recipe for the "
+    "person to accept; nothing here writes to the espresso machine."
+)
+
+
 def instructions_for(scope: ToolScope | None) -> str:
     """What the client is told this connection is, from the same scope."""
-    return SET_INSTRUCTIONS if scope is not None and scope.kind == "set" else MCP_INSTRUCTIONS
+    if scope is None or scope.kind != "set":
+        return MCP_INSTRUCTIONS
+    return DESIGN_INSTRUCTIONS if scope.designing else SET_INSTRUCTIONS
 
 
 #: Produces the context one call runs with. Async so building one may read the

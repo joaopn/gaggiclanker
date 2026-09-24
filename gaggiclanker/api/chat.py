@@ -140,6 +140,10 @@ async def list_tools(
     kind: Annotated[ChatKind, Query(description="Which kind of conversation to answer for.")] = (
         "general"
     ),
+    designing: Annotated[
+        bool,
+        Query(description="For a Set conversation: whether its Set is being designed."),
+    ] = False,
 ) -> JSONResponse:
     """Read-only, and the same list the runner sends the provider.
 
@@ -153,9 +157,9 @@ async def list_tools(
     "propose_set_version" without saying that is a *proposal* would be hiding
     the one thing a reader has to know.
     """
-    # Only the kind matters here, so the ids are left out: which Set a
-    # conversation is about never changes which tools it has.
-    scope = ToolScope(kind=kind)
+    # Only the kind and the design flag matter here, so the ids are left out:
+    # which Set a conversation is about never changes which tools it has.
+    scope = ToolScope(kind=kind, designing=kind == "set" and designing)
     return envelope_response(
         ToolList(
             tools=[

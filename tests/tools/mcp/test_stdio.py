@@ -28,7 +28,7 @@ from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.tools.mcp.server import SERVER_NAME
-from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.analyzer.conftest import Fixture, build_fixture
 
 #: The subprocess has to import gaggiclanker, and a test run is not necessarily
@@ -593,3 +593,71 @@ async def test_an_archive_that_has_never_been_migrated_is_refused_with_the_fix(
         await serve_stdio(empty)
 
     assert "Start gaggiclanker once" in str(caught.value)
+
+
+async def _designed_set(data_dir: Path, fixture: Fixture) -> tuple[int, int]:
+    """A Set of the fixture's bean being designed, and its conversation."""
+    from gaggiclanker.db.repos.chat import ChatRepository
+    from gaggiclanker.db.repos.sets import DesignBrief, SetWrite
+
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        row = await SetsRepository(db).create_design(
+            SetWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
+            DesignBrief(fork_profile_version_id=fixture.profile_version_id),
+        )
+        opened = await ChatRepository(db).open_thread(row.id)
+        assert opened.thread is not None
+        return row.id, opened.thread.id
+    finally:
+        await db.close()
+
+
+async def test_a_child_for_a_set_being_designed_serves_the_design_tools_only(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The flag is read from the archive by the child, with the runner's own rule."""
+    data_dir, fixture = archive_dir
+    set_id, thread_id = await _designed_set(data_dir, fixture)
+    async with AsyncExitStack() as stack:
+        session = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_SET_ID=str(set_id),
+            GAGGICLANKER_MCP_THREAD_ID=str(thread_id),
+        )
+
+        tools = {tool.name for tool in (await session.list_tools()).tools}
+        changed = await session.call_tool(
+            "propose_set_version", {"reason": "Finer.", "grind_setting": "18"}
+        )
+        drafted = await session.call_tool(
+            "draft_profile",
+            {"base_version_id": fixture.profile_version_id, "patch": {}, "reason": "x"},
+        )
+        proposed = await session.call_tool(
+            "propose_initial_recipe",
+            {
+                "profile": {"label": "Designed over stdio", "patch": {"temperature": 92}},
+                "grind_setting": "20",
+                "grind_is_absolute": True,
+                "dose_g": 18,
+                "target_yield_g": 40,
+                "reason": "A cooler, longer shot.",
+            },
+        )
+
+    assert tools == DESIGN_TOOLS
+    assert changed.is_error is True
+    assert drafted.is_error is True
+    assert proposed.is_error is False, proposed.content
+    assert proposed.structured_content is not None
+    assert proposed.structured_content["kind"] == "design"
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        waiting = await SetProposalsRepository(db).waiting(set_id)
+    finally:
+        await db.close()
+    assert waiting is not None and waiting.thread_id == thread_id

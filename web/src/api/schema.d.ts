@@ -7774,6 +7774,8 @@ export interface operations {
     list_tools_api_chat_tools_get: {
         parameters: {
             query?: {
+                /** @description For a Set conversation: whether its Set is being designed. */
+                designing?: boolean;
                 /** @description Which kind of conversation to answer for. */
                 kind?: components["schemas"]["ChatKind"];
             };

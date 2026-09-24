@@ -48,6 +48,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
@@ -540,6 +541,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     proposers = {spec.name for spec in registry.specs(frozenset({"propose"}))}
     assert proposers == {
         "draft_profile",
+        "propose_initial_recipe",
         "propose_set_version",
         "record_insight",
         "run_analysis",
@@ -587,6 +589,28 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     )
     assert started.ok, started.data
     await _await_named(app, starting_point_task_name(fixture.bean_id, fixture.grinder_id))
+
+    # And the initial recipe, in the conversation of a Set being designed.
+    designed = await SetsRepository(app.state.db).create_design(
+        SetWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
+        DesignBrief(fork_profile_version_id=fixture.profile_version_id),
+    )
+    designing = app.state.chat.tool_context(
+        scope=await ToolScope.resolve(app.state.db, designed.id), run_id=None
+    )
+    recipe = await registry.dispatch(
+        designing,
+        "propose_initial_recipe",
+        {
+            "profile": {"label": "Designed in chat", "patch": {"temperature": 92}},
+            "grind_setting": "a little finer than usual",
+            "grind_is_absolute": False,
+            "dose_g": 18,
+            "target_yield_g": 40,
+            "reason": "A cooler, longer shot for this bag.",
+        },
+    )
+    assert recipe.ok, recipe.data
 
 
 async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(

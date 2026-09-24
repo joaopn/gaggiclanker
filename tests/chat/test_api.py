@@ -23,7 +23,7 @@ from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings
-from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
+from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.analyzer.conftest import Fixture, build_fixture
 from tests.llm.conftest import FakeProvider
 
@@ -264,8 +264,20 @@ async def test_the_tool_list_is_the_scope_s_list_for_the_kind_asked_about(
     general = {tool["name"] for tool in data(await client.get("/api/chat/tools"))["tools"]}
     scoped = {tool["name"] for tool in data(await client.get("/api/chat/tools?kind=set"))["tools"]}
 
+    designing = {
+        tool["name"]
+        for tool in data(await client.get("/api/chat/tools?kind=set&designing=true"))["tools"]
+    }
+    # The flag only means something for a Set's conversation.
+    general_anyway = {
+        tool["name"]
+        for tool in data(await client.get("/api/chat/tools?kind=general&designing=true"))["tools"]
+    }
+
     assert general == GENERAL_TOOLS
     assert scoped == SET_TOOLS
+    assert designing == DESIGN_TOOLS
+    assert general_anyway == GENERAL_TOOLS
     assert "query_shots" not in scoped
     assert "propose_set_version" not in general
 
