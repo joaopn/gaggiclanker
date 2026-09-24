@@ -14,11 +14,13 @@ import { cn } from "@/lib/utils";
  * An open row in the shots list: what somebody needs to judge a shot without
  * leaving the list.
  *
- * The shot page's own two boxes, side by side: the judgement on the left and
- * the curves on the right. The same components as the page (`JudgementForm`,
- * `ShotCurvesCard`), so a verdict is given the same way in both places and
- * saved with the same button. The version's prediction sits above the
- * judgement as it does on the page, hidden until the shot has a decision.
+ * The shot page's own two boxes, stacked as they are on the page: the
+ * judgement across the full width (its own two columns, the notes on the
+ * right), and the curves on a row of their own below it, never beside it. The
+ * same components as the page (`JudgementForm`, `ShotCurvesCard`), so a
+ * verdict is given the same way in both places and saved with the same button.
+ * The version's prediction sits above the judgement as it does on the page,
+ * hidden until the shot has a decision.
  * "Open shot page" is the way to everything else the page has.
  *
  * The detail and the full curve are fetched when the panel mounts, with the
@@ -97,7 +99,7 @@ export function ShotRowPanel({
         </Link>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2" data-testid="panel-columns">
+      <div className="space-y-3" data-testid="panel-rows">
         <div className="min-w-0 space-y-3">
           {detail.isPending ? (
             <Skeleton className="h-64 w-full" />

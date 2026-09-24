@@ -826,7 +826,7 @@ describe("ShotsPage open rows", () => {
       shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
     ]);
 
-  it("opens the shot page's judgement and curves boxes side by side under the row", async () => {
+  it("opens the shot page's judgement, and the curves on their own row below it", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
@@ -848,14 +848,21 @@ describe("ShotsPage open rows", () => {
     expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
     const form = within(panel).getByTestId("judgement-form");
 
-    // Two columns: the judgement on the left, the curves on the right, and
-    // nothing else — the machine's notes card is the shot page's.
-    const columns = within(panel).getByTestId("panel-columns");
-    const [left, right] = Array.from(columns.children);
-    expect(columns.children).toHaveLength(2);
-    expect(left).toContainElement(form);
-    expect(right).toContainElement(series);
-    expect(within(right as HTMLElement).getByText("Curves")).toBeInTheDocument();
+    // Two rows, never side by side: the judgement across the top, the curves
+    // below it, and nothing else — the machine's notes card is the shot page's.
+    const stack = within(panel).getByTestId("panel-rows");
+    expect(stack).not.toHaveClass("grid");
+    const [top, below] = Array.from(stack.children);
+    expect(stack.children).toHaveLength(2);
+    expect(top).toContainElement(form);
+    expect(below).toContainElement(series);
+    expect(
+      (top as Element).compareDocumentPosition(below as Element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The judgement keeps its own two columns: the notes are the right one.
+    const [, notesColumn] = Array.from(within(form).getByTestId("judgement-columns").children);
+    expect(notesColumn).toContainElement(within(form).getByLabelText("Notes"));
+    expect(within(below as HTMLElement).getByText("Curves")).toBeInTheDocument();
     expect(within(panel).queryByTestId("device-notes")).not.toBeInTheDocument();
 
     // The shot page's full form: doses, grind, the notes column, and Save.
@@ -864,8 +871,8 @@ describe("ShotsPage open rows", () => {
     expect(within(form).getByLabelText("Notes")).toBeInTheDocument();
     expect(within(form).getByRole("button", { name: "Save judgement" })).toBeInTheDocument();
     // And the curve's own controls: the series toggles and the downloads.
-    expect(within(right as HTMLElement).getByTestId("series-toggles")).toBeInTheDocument();
-    expect(within(right as HTMLElement).getByRole("button", { name: /JSON/ })).toBeInTheDocument();
+    expect(within(below as HTMLElement).getByTestId("series-toggles")).toBeInTheDocument();
+    expect(within(below as HTMLElement).getByRole("button", { name: /JSON/ })).toBeInTheDocument();
 
     expect(within(panel).getByRole("link", { name: /Open shot page/ })).toHaveAttribute(
       "href",

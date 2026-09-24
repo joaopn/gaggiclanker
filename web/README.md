@@ -113,9 +113,9 @@ Four things about the shots table are worth knowing before editing it.
 `<button>` with `aria-expanded`, and the controls in the row (compare box, stars,
 Set badge or menu, the decision, the row editor) are lifted above it with `z-[1]`,
 the same arrangement the link used — a button wrapping them would be invalid HTML.
-The open panel (`ShotRowPanel`) is the shot page's own two boxes side by side:
-`JudgementForm` on the left, saved with its button, and `ShotCurvesCard` on the
-right, whose chart is lazy so the list with nothing open never downloads
+The open panel (`ShotRowPanel`) is the shot page's own two boxes, stacked as on
+the page: `JudgementForm` across the width, saved with its button, and
+`ShotCurvesCard` on its own row below it, whose chart is lazy so the list with nothing open never downloads
 Chart.js. It reads the shot with `useShot` and `useShotSamples`, the page's keys, so
 the stars in the row and the panel invalidate each other through `shots`. Escape
 closes the panel unless a popover inside the row owns the key.
