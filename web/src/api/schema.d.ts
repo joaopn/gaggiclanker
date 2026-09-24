@@ -924,6 +924,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm/claude-cli": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Claude Code CLI in use, the image's own, and the releases npm offers
+         * @description Asks npm for its dist-tags (cached for ten minutes); never installs anything.
+         */
+        get: operations["get_claude_cli_api_llm_claude_cli_get"];
+        put?: never;
+        post?: never;
+        /** Remove the installed Claude Code release and go back to the image's */
+        delete: operations["remove_claude_cli_api_llm_claude_cli_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/claude-cli/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install a Claude Code release into the data directory
+         * @description Starts the download and answers at once; the page polls ``GET`` for the outcome.
+         *
+         *     The release is verified against npm's sha512 and run once before it is
+         *     switched to, so a failed install leaves the binary in use untouched.
+         */
+        post: operations["install_claude_cli_api_llm_claude_cli_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/llm/models": {
         parameters: {
             query?: never;
@@ -2421,6 +2465,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ClaudeCliStatusData] */
+        ApiResponse_ClaudeCliStatusData_: {
+            data?: components["schemas"]["ClaudeCliStatusData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[CleanupPlan] */
         ApiResponse_CleanupPlan_: {
             data?: components["schemas"]["CleanupPlan"] | null;
@@ -3363,6 +3415,61 @@ export interface components {
              * @default 0
              */
             tokens_estimate: number;
+        };
+        /** ClaudeCliBinary */
+        ClaudeCliBinary: {
+            /** Path */
+            path: string | null;
+            /** Version */
+            version: string | null;
+        };
+        /**
+         * ClaudeCliInstallBody
+         * @description ``{"version": "stable"}``: a channel (stable, latest) or an exact version.
+         */
+        ClaudeCliInstallBody: {
+            /**
+             * Version
+             * @default stable
+             */
+            version: string;
+        };
+        /**
+         * ClaudeCliJob
+         * @description The last install this process ran; ``idle`` when there has been none.
+         */
+        ClaudeCliJob: {
+            /** Finished At */
+            finished_at: string | null;
+            /** Message */
+            message: string;
+            /** Started At */
+            started_at: string | null;
+            /** State */
+            state: string;
+            /** Target */
+            target: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * ClaudeCliStatusData
+         * @description The Claude Code updater: which binary runs, what npm offers, the last install.
+         */
+        ClaudeCliStatusData: {
+            /** Active Binary */
+            active_binary: string;
+            bundled: components["schemas"]["ClaudeCliBinary"];
+            /** Channels */
+            channels: {
+                [key: string]: string;
+            };
+            job: components["schemas"]["ClaudeCliJob"];
+            managed: components["schemas"]["ClaudeCliBinary"];
+            /** Overridden */
+            overridden: boolean;
+            /** Platform Package */
+            platform_package: string | null;
         };
         /**
          * CleanupPlan
@@ -8462,6 +8569,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_claude_cli_api_llm_claude_cli_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ClaudeCliStatusData_"];
+                };
+            };
+        };
+    };
+    remove_claude_cli_api_llm_claude_cli_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ClaudeCliStatusData_"];
+                };
+            };
+        };
+    };
+    install_claude_cli_api_llm_claude_cli_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeCliInstallBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ClaudeCliStatusData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

@@ -58,6 +58,7 @@ from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.knowledge.rules import seed_rules
 from gaggiclanker.knowledge.service import KnowledgeService
+from gaggiclanker.llm.claude_cli import ClaudeCliManager
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
@@ -379,6 +380,14 @@ async def _start(app: FastAPI, db: Database) -> None:
         # tool loop inside Claude Code reads this database.
         data_dir=str(env.data_dir),
     )
+    # The Claude Code updater. Reconciled here, before any request, so a
+    # half-finished install is gone and an image that caught up with a hand
+    # install takes over again; neither is worth refusing to boot over.
+    app.state.claude_cli = ClaudeCliManager(data_dir=str(env.data_dir))
+    try:
+        await app.state.claude_cli.reconcile()
+    except OSError as exc:
+        log.warning("claude_cli_reconcile_failed", reason=str(exc))
 
     # App-scoped, not per request: it holds the "being opened right now" map
     # that makes one analysis per shot an invariant across concurrent requests.

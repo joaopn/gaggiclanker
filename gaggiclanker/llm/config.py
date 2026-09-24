@@ -25,6 +25,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from gaggiclanker.llm.claude_cli import resolve_binary
 from gaggiclanker.llm.providers.anthropic import AnthropicProvider
 from gaggiclanker.llm.providers.base import Provider
 from gaggiclanker.llm.providers.claude_code import ClaudeCodeProvider
@@ -141,7 +142,9 @@ async def load_llm_config(
         api_key=await text("llmApiKey"),
         anthropic_api_key=await text("anthropicApiKey"),
         claude_code_oauth_token=await text("claudeCodeOauthToken"),
-        claude_code_bin=await text("claudeCodeBin") or "claude",
+        # The binary installed from Settings → LLM stands in for the image's
+        # own while the setting is left at its default (see ``claude_cli``).
+        claude_code_bin=resolve_binary(await text("claudeCodeBin"), data_dir),
         claude_code_effort=await text("claudeCodeEffort"),
         timeout_s=float(await settings.get("llmTimeoutSeconds")),
         rate_limit_retries=int(await settings.get("llmRateLimitRetries")),

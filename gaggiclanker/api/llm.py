@@ -26,8 +26,10 @@ from gaggiclanker.analyzer.service import ANALYSIS_EVENTS
 from gaggiclanker.api.deps import LlmServiceDep, SettingsServiceDep
 from gaggiclanker.db.repos.llm import LlmCallsRepository, UsageTotals
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import BadRequest
+from gaggiclanker.infra.errors import BadRequest, Conflict
 from gaggiclanker.infra.sse import SseEvent, sse_response
+from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.llm.claude_cli import CHANNELS, ClaudeCliManager, valid_target
 from gaggiclanker.llm.config import PROVIDER_IDS
 from gaggiclanker.llm.observer import LLM_CALL_EVENT, LlmCallObserver
 from gaggiclanker.llm.providers.claude_code import (
@@ -89,6 +91,40 @@ class LlmStatusData(BaseModel):
     timeout_s: float
     rate_limit: RateLimitData
     claude_code: dict[str, Any]
+
+
+class ClaudeCliBinary(BaseModel):
+    path: str | None
+    version: str | None
+
+
+class ClaudeCliJob(BaseModel):
+    """The last install this process ran; ``idle`` when there has been none."""
+
+    state: str
+    target: str
+    version: str
+    message: str
+    started_at: str | None
+    finished_at: str | None
+
+
+class ClaudeCliStatusData(BaseModel):
+    """The Claude Code updater: which binary runs, what npm offers, the last install."""
+
+    platform_package: str | None
+    bundled: ClaudeCliBinary
+    managed: ClaudeCliBinary
+    overridden: bool
+    active_binary: str
+    channels: dict[str, str]
+    job: ClaudeCliJob
+
+
+class ClaudeCliInstallBody(BaseModel):
+    """``{"version": "stable"}``: a channel (stable, latest) or an exact version."""
+
+    version: str = "stable"
 
 
 def _provider_id(raw: str | None) -> ProviderId | None:
@@ -268,3 +304,72 @@ async def get_status(service: LlmServiceDep, settings: SettingsServiceDep) -> JS
             claude_code=claude_code,
         ).model_dump(mode="json")
     )
+
+
+# -- the Claude Code CLI updater --------------------------------------------
+
+#: One install at a time, process-wide; the name is the idempotency rule.
+CLAUDE_CLI_TASK = "claude-cli-install"
+
+
+def _claude_cli(request: Request) -> ClaudeCliManager:
+    manager: ClaudeCliManager = request.app.state.claude_cli
+    return manager
+
+
+async def _claude_cli_status(request: Request, settings: SettingsServiceDep) -> dict[str, Any]:
+    manager = _claude_cli(request)
+    data = await manager.status(configured_bin=str(await settings.get("claudeCodeBin") or ""))
+    return ClaudeCliStatusData.model_validate(data).model_dump(mode="json")
+
+
+@router.get(
+    "/claude-cli",
+    response_model=ApiResponse[ClaudeCliStatusData],
+    summary="The Claude Code CLI in use, the image's own, and the releases npm offers",
+)
+async def get_claude_cli(request: Request, settings: SettingsServiceDep) -> JSONResponse:
+    """Asks npm for its dist-tags (cached for ten minutes); never installs anything."""
+    return envelope_response(await _claude_cli_status(request, settings))
+
+
+@router.post(
+    "/claude-cli/install",
+    response_model=ApiResponse[ClaudeCliStatusData],
+    status_code=202,
+    summary="Install a Claude Code release into the data directory",
+)
+async def install_claude_cli(
+    body: ClaudeCliInstallBody, request: Request, settings: SettingsServiceDep
+) -> JSONResponse:
+    """Starts the download and answers at once; the page polls ``GET`` for the outcome.
+
+    The release is verified against npm's sha512 and run once before it is
+    switched to, so a failed install leaves the binary in use untouched.
+    """
+    target = body.version.strip()
+    if not valid_target(target):
+        raise BadRequest(
+            "version must be a channel or an exact version like 2.1.267",
+            details={"field": "version", "channels": list(CHANNELS)},
+        )
+    manager = _claude_cli(request)
+    tasks: TaskRegistry = request.app.state.tasks
+    if manager.running or tasks.get(CLAUDE_CLI_TASK) is not None:
+        raise Conflict("A Claude Code install is already running")
+    manager.begin(target)
+    tasks.spawn(CLAUDE_CLI_TASK, manager.install(target))
+    return envelope_response(await _claude_cli_status(request, settings), status_code=202)
+
+
+@router.delete(
+    "/claude-cli",
+    response_model=ApiResponse[ClaudeCliStatusData],
+    summary="Remove the installed Claude Code release and go back to the image's",
+)
+async def remove_claude_cli(request: Request, settings: SettingsServiceDep) -> JSONResponse:
+    manager = _claude_cli(request)
+    if manager.running:
+        raise Conflict("A Claude Code install is running; wait for it to finish")
+    manager.remove()
+    return envelope_response(await _claude_cli_status(request, settings))
