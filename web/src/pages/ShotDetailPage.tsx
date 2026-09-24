@@ -45,11 +45,12 @@ import { cn } from "@/lib/utils";
 /**
  * One shot, in full.
  *
- * Composed top to bottom in the order somebody reads a shot: what it was, what
- * the curves did, how cleanly it was executed, what each diagnostic says, which
- * phase it happened in, what the machine's own notes recorded, and finally the
- * raw header for anybody checking the archive against the device. The judgement,
- * the Set and the analysis sit after the score card — see the comment there.
+ * Composed top to bottom in the order somebody works through a shot: what it
+ * was, what you thought of it, what the curves did, how cleanly it was
+ * executed, which Set it belongs to and what the model made of it, what each
+ * diagnostic says, which phase it happened in, what the machine's own notes
+ * recorded, and finally the raw header for anybody checking the archive
+ * against the device.
  *
  * Code-split (`App.tsx` lazy-loads it) because this is the only route that
  * needs Chart.js, and a visit that only lists shots should not download it.
@@ -162,6 +163,22 @@ export function ShotDetailPage() {
 
       {row.quarantined ? <QuarantineNotice reason={row.quarantine_reason} id={row.id} /> : null}
 
+      {/* What you thought comes first, straight under the facts: recording it
+          is what a shot page is opened for, and it should not wait below a
+          chart. The Set and the analysis come after the curves and the score,
+          and the analysis last because it reads both — advice given before you
+          have said how it tasted is worth markedly less, and the order says so. */}
+      {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
+          a revealed prediction must not survive the change of subject. */}
+      <VersionPrediction
+        key={row.id}
+        shotId={row.id}
+        version={shot.data.set_version}
+        decision={shot.data.judgement?.decision ?? null}
+      />
+      <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
+      {/* The curves on a row of their own below the judgement, never beside
+          it: the chart needs the page's full width to be read. */}
       {!row.quarantined ? (
         <SectionCard
           title="Curves"
@@ -203,21 +220,6 @@ export function ShotDetailPage() {
       ) : null}
 
       <ExecutionScoreCard row={row} diagnostics={diagnostics} />
-
-      {/* Between the machine's own verdict on the shot and the numbers behind
-          it: what you thought, which Set it belongs to, and what the model made
-          of the two together. The analysis comes last of the three because it
-          reads both — advice given before you have said how it tasted is worth
-          markedly less, and the order says so. */}
-      {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
-          a revealed prediction must not survive the change of subject. */}
-      <VersionPrediction
-        key={row.id}
-        shotId={row.id}
-        version={shot.data.set_version}
-        decision={shot.data.judgement?.decision ?? null}
-      />
-      <JudgementForm shotId={row.id} judgement={shot.data.judgement} />
       <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
         <AssignToSet
           shotId={row.id}

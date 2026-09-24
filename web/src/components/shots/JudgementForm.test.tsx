@@ -65,6 +65,20 @@ describe("JudgementForm", () => {
     expect(screen.getByTestId("notes-counter")).toHaveTextContent("5/200");
   });
 
+  it("puts the notes in a column of their own, to the right of the verdict", async () => {
+    renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);
+
+    const notes = await screen.findByLabelText("Notes");
+    const columns = screen.getByTestId("judgement-columns");
+    const [left, right] = Array.from(columns.children);
+    expect(columns.children).toHaveLength(2);
+    expect(right).toContainElement(notes);
+    expect(right).toContainElement(screen.getByTestId("notes-counter"));
+    expect(left).not.toContainElement(notes);
+    expect(left).toContainElement(screen.getByLabelText("Dose in (g)"));
+    expect(left).toHaveTextContent("Rating");
+  });
+
   it("sends what was picked, and clears a value when it is picked again", async () => {
     const user = setupUser();
     renderWithQueryClient(<JudgementForm shotId={1} judgement={null} />);

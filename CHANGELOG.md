@@ -10,6 +10,16 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A shot's page opens on your judgement
+
+- **The judgement comes first, the curves below it.** A shot's page now shows
+  your judgement straight under the shot's facts, and the curves on a row of
+  their own after it, at the page's full width. The execution score, the Set
+  and the analysis follow in the order they did before.
+- **The judgement is two columns**: rating, balance, decision, flavour notes,
+  doses and grind on the left, the notes on the right at the full height of
+  the card. Only a phone-sized window keeps the single column.
+
 ### Several bags at once, and one rule that files a shot
 
 - **Any number of Sets collect shots.** A Set used to be "the active one" or

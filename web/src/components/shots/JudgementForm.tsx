@@ -161,102 +161,119 @@ export function JudgementForm({
           save.mutate({ shotId, body: toBody(state) });
         }}
       >
-        <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
-          <Field label="Rating">
-            <RatingInput value={state.rating} onChange={(next) => set("rating", next)} />
-          </Field>
-          <Field label="Balance">
-            <Segmented
-              name="balance"
-              options={(vocab.data?.balances ?? []).map((term) => ({
-                value: term.value,
-                label: term.label,
-              }))}
-              value={state.balance}
-              onChange={(next) => set("balance", next)}
-            />
-          </Field>
-          <Field label="Decision">
-            <Segmented
-              name="decision"
-              options={(vocab.data?.decisions ?? []).map((term) => ({
-                value: term.value,
-                label: term.label,
-              }))}
-              value={state.decision}
-              onChange={(next) => set("decision", next)}
-            />
-          </Field>
-        </div>
+        {/* Two columns: the verdict's controls on the left, the notes on the
+            right at the full height of the controls, so a longer note has room
+            without pushing the curves further down the page. One column only
+            on a phone-sized window. */}
+        <div
+          className="grid gap-x-8 gap-y-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+          data-testid="judgement-columns"
+        >
+          <div className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+              <Field label="Rating">
+                <RatingInput value={state.rating} onChange={(next) => set("rating", next)} />
+              </Field>
+              <Field label="Balance">
+                <Segmented
+                  name="balance"
+                  options={(vocab.data?.balances ?? []).map((term) => ({
+                    value: term.value,
+                    label: term.label,
+                  }))}
+                  value={state.balance}
+                  onChange={(next) => set("balance", next)}
+                />
+              </Field>
+              <Field label="Decision">
+                <Segmented
+                  name="decision"
+                  options={(vocab.data?.decisions ?? []).map((term) => ({
+                    value: term.value,
+                    label: term.label,
+                  }))}
+                  value={state.decision}
+                  onChange={(next) => set("decision", next)}
+                />
+              </Field>
+            </div>
 
-        {vocab.data ? (
-          <FlavorNoteRows
-            picks={{ taste: picks.data?.taste ?? [], aroma: picks.data?.aroma ?? [] }}
-            taste={state.tasteNotes}
-            aroma={state.aromaNotes}
-            wheel={wheel}
-            onToggle={(kind, note) => {
-              const key = kind === "taste" ? "tasteNotes" : "aromaNotes";
-              const current = state[key];
-              set(
-                key,
-                current.includes(note)
-                  ? current.filter((value) => value !== note)
-                  : [...current, note],
-              );
-            }}
-          />
-        ) : null}
+            {vocab.data ? (
+              <FlavorNoteRows
+                picks={{ taste: picks.data?.taste ?? [], aroma: picks.data?.aroma ?? [] }}
+                taste={state.tasteNotes}
+                aroma={state.aromaNotes}
+                wheel={wheel}
+                onToggle={(kind, note) => {
+                  const key = kind === "taste" ? "tasteNotes" : "aromaNotes";
+                  const current = state[key];
+                  set(
+                    key,
+                    current.includes(note)
+                      ? current.filter((value) => value !== note)
+                      : [...current, note],
+                  );
+                }}
+              />
+            ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Field label="Dose in (g)" htmlFor={ids.doseIn}>
-            <input
-              id={ids.doseIn}
-              className={FIELD}
-              inputMode="decimal"
-              value={state.doseIn}
-              onChange={(event) => set("doseIn", event.target.value)}
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <Field label="Dose in (g)" htmlFor={ids.doseIn}>
+                <input
+                  id={ids.doseIn}
+                  className={FIELD}
+                  inputMode="decimal"
+                  value={state.doseIn}
+                  onChange={(event) => set("doseIn", event.target.value)}
+                />
+              </Field>
+              <Field label="Dose out (g)" htmlFor={ids.doseOut}>
+                <input
+                  id={ids.doseOut}
+                  className={FIELD}
+                  inputMode="decimal"
+                  value={state.doseOut}
+                  onChange={(event) => set("doseOut", event.target.value)}
+                />
+              </Field>
+              <Field label="Ratio">
+                <p
+                  className="flex h-8 items-center text-sm tabular-nums"
+                  data-testid="judgement-ratio"
+                >
+                  {ratio ?? <span className="text-muted-foreground">needs both doses</span>}
+                </p>
+              </Field>
+              <Field label="Grind" htmlFor={ids.grind}>
+                <input
+                  id={ids.grind}
+                  className={FIELD}
+                  value={state.grind}
+                  placeholder="22, or 3.5"
+                  onChange={(event) => set("grind", event.target.value)}
+                />
+              </Field>
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-col">
+            <label htmlFor={ids.notes} className="mb-1 block text-muted-foreground text-xs">
+              Notes
+            </label>
+            <textarea
+              id={ids.notes}
+              rows={4}
+              maxLength={NOTES_MAX}
+              className={cn(FIELD, "h-auto flex-1 py-1.5 tabular-nums-none")}
+              value={state.notes}
+              onChange={(event) => set("notes", event.target.value)}
             />
-          </Field>
-          <Field label="Dose out (g)" htmlFor={ids.doseOut}>
-            <input
-              id={ids.doseOut}
-              className={FIELD}
-              inputMode="decimal"
-              value={state.doseOut}
-              onChange={(event) => set("doseOut", event.target.value)}
-            />
-          </Field>
-          <Field label="Ratio">
-            <p className="flex h-8 items-center text-sm tabular-nums" data-testid="judgement-ratio">
-              {ratio ?? <span className="text-muted-foreground">needs both doses</span>}
+            <p className="mt-1 text-muted-foreground text-xs" data-testid="notes-counter">
+              {state.notes.length}/{NOTES_MAX} — the machine's own limit, so this stays writable
+              back to it.
             </p>
-          </Field>
-          <Field label="Grind" htmlFor={ids.grind}>
-            <input
-              id={ids.grind}
-              className={FIELD}
-              value={state.grind}
-              placeholder="22, or 3.5"
-              onChange={(event) => set("grind", event.target.value)}
-            />
-          </Field>
+          </div>
         </div>
-
-        <Field label="Notes" htmlFor={ids.notes}>
-          <textarea
-            id={ids.notes}
-            rows={2}
-            maxLength={NOTES_MAX}
-            className={cn(FIELD, "h-auto py-1.5 tabular-nums-none")}
-            value={state.notes}
-            onChange={(event) => set("notes", event.target.value)}
-          />
-          <p className="mt-1 text-muted-foreground text-xs" data-testid="notes-counter">
-            {state.notes.length}/{NOTES_MAX} — the machine's own limit, so this stays writable back
-            to it.
-          </p>
-        </Field>
 
         <div className="flex items-center gap-2">
           <Button type="submit" size="sm" disabled={save.isPending}>

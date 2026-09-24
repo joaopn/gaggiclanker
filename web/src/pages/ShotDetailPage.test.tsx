@@ -182,6 +182,25 @@ describe("ShotDetailPage header", () => {
   });
 });
 
+describe("ShotDetailPage layout", () => {
+  it("puts the curves on their own row, below the judgement", async () => {
+    renderShot();
+
+    const form = await screen.findByTestId("judgement-form");
+    const curves = (await screen.findByText("Curves")).closest('[data-slot="card"]');
+    const judgement = form.closest('[data-slot="card"]');
+    expect(curves).not.toBeNull();
+    expect(judgement).not.toBeNull();
+    // Siblings in the page's single column: nothing sits beside the chart.
+    expect(curves?.parentElement).toBe(judgement?.parentElement);
+    expect(
+      (judgement as Element).compareDocumentPosition(curves as Element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(curves).not.toContainElement(form);
+  });
+});
+
 describe("ShotDetailPage chart", () => {
   it("draws every signal the file carries, with the machine's phase bands", async () => {
     renderShot();
