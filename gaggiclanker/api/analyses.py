@@ -21,8 +21,9 @@ from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.analyzer.suggestions import accept_suggestion, reject_suggestion
 from gaggiclanker.api.deps import AnalysesRepoDep, DatabaseDep
+from gaggiclanker.api.sets import version_refused
 from gaggiclanker.db.repos.analyses import AnalysisRow, SuggestionRow
-from gaggiclanker.db.repos.sets import SetVersionRow
+from gaggiclanker.db.repos.sets import SetVersionRow, VersionRefused
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import NotFound
 
@@ -70,7 +71,12 @@ async def accept(suggestion_id: int, db: DatabaseDep) -> JSONResponse:
     names what would have to be different; see
     :mod:`gaggiclanker.analyzer.suggestions`.
     """
-    suggestion, version = await accept_suggestion(db, suggestion_id)
+    try:
+        suggestion, version = await accept_suggestion(db, suggestion_id)
+    except VersionRefused as exc:
+        # The shot is filed on a Set still being designed, so the change would
+        # have to fill its version 1 — which the shot itself now forbids.
+        raise version_refused(exc) from None
     return envelope_response(
         AcceptedData(suggestion=suggestion, version=version).model_dump(mode="json"),
         status_code=201,

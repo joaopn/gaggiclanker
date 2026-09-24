@@ -73,6 +73,7 @@ log = structlog.get_logger(__name__)
 
 __all__ = [
     "PROPOSAL_STATUSES",
+    "ProposalKind",
     "ProposalRefusal",
     "ProposalStatus",
     "ProposalWrite",
@@ -88,6 +89,13 @@ __all__ = [
 type ProposalStatus = Literal["proposed", "accepted", "declined", "stale"]
 
 PROPOSAL_STATUSES: tuple[str, ...] = ("proposed", "accepted", "declined", "stale")
+
+#: What a proposal is. A **change** moves one thing on a Set that has a recipe,
+#: and owes a prediction. A **design** is the whole first recipe of a Set being
+#: designed — a profile draft of its own plus grind, dose and yield — and owes
+#: none, because a version 1 is a baseline and not a change to anything. Checked
+#: here rather than by a CHECK on the column: see migration 0023.
+type ProposalKind = Literal["change", "design"]
 
 #: What counts as **one change**, by the group a recipe field belongs to. The
 #: grind's text and its number are one change because they are one movement of
@@ -176,6 +184,11 @@ class SetProposalRow(BaseModel):
 
     id: int
     set_id: int
+    #: `change` for the ordinary one-change proposal, `design` for the initial
+    #: recipe of a Set being designed.
+    kind: ProposalKind = "change"
+    #: The profile draft an initial recipe carries. Empty on a change.
+    draft_id: int | None = None
     thread_id: int | None = None
     base_version_id: int
     base_version_no: int | None = None

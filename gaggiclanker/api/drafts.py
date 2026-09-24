@@ -30,9 +30,10 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.api.deps import DraftServiceDep
+from gaggiclanker.api.deps import DraftServiceDep, SetsRepoDep
+from gaggiclanker.api.sets import version_refused
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
-from gaggiclanker.db.repos.sets import SetVersionRow
+from gaggiclanker.db.repos.sets import SetVersionRow, VersionRefused
 from gaggiclanker.drafts.models import DraftPreview, ProfileDraftDetail
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import BadRequest
@@ -241,7 +242,9 @@ async def approve_draft(draft_id: int, body: DraftApprove, drafts: DraftServiceD
     response_model=ApiResponse[PushedData],
     summary="Save the draft to the machine as a new profile, and read it back",
 )
-async def push_draft(draft_id: int, body: DraftPush, drafts: DraftServiceDep) -> JSONResponse:
+async def push_draft(
+    draft_id: int, body: DraftPush, drafts: DraftServiceDep, sets: SetsRepoDep
+) -> JSONResponse:
     """A 200 does **not** mean the push verified — read `draft.status`.
 
     `pushed` means the machine served back what we sent. `failed` means it did
@@ -249,7 +252,16 @@ async def push_draft(draft_id: int, body: DraftPush, drafts: DraftServiceDep) ->
     route can delete. Both are outcomes of a completed request; only a refusal
     (writes disabled, no machine, the draft not approved, a stale base) is an
     error status.
+
+    A push **for a Set** that would be refused a version is refused before the
+    machine is touched: a Set being designed whose version 1 can no longer be
+    filled would otherwise leave a profile on the display and no version
+    recording it.
     """
+    if body.set_id is not None:
+        refusal = await sets.design_refusal(body.set_id)
+        if refusal is not None:
+            raise version_refused(VersionRefused(refusal))
     row, version = await drafts.push(
         draft_id, set_id=body.set_id, allow_stale_base=body.allow_stale_base
     )

@@ -1201,6 +1201,11 @@ export interface paths {
          *     route can delete. Both are outcomes of a completed request; only a refusal
          *     (writes disabled, no machine, the draft not approved, a stale base) is an
          *     error status.
+         *
+         *     A push **for a Set** that would be refused a version is refused before the
+         *     machine is touched: a Set being designed whose version 1 can no longer be
+         *     filled would otherwise leave a profile on the display and no version
+         *     recording it.
          */
         post: operations["push_draft_api_profile_drafts__draft_id__push_post"];
         delete?: never;
@@ -3615,6 +3620,30 @@ export interface components {
         /** @enum {string} */
         Decision: "keep" | "improve" | "discard";
         /**
+         * DesignBrief
+         * @description What the person asked for when they set out to design a Set in chat.
+         *
+         *     Stored on the Set (`sets.design_brief`) rather than only sent as the first
+         *     message, because the conversation reads it on every turn: a long design
+         *     discussion trims its oldest messages, and the profile to fork from and the
+         *     goal must not go with them. It stays after the design is done, as the
+         *     record of what was asked for.
+         */
+        DesignBrief: {
+            /** Fork Profile Version Id */
+            fork_profile_version_id?: number | null;
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
+            /**
+             * Usual Grind
+             * @default
+             */
+            usual_grind: string;
+        };
+        /**
          * DeviceProfileSummary
          * @description A device profile joined to its current version — what `GET /api/profiles` returns.
          */
@@ -5446,6 +5475,12 @@ export interface components {
              * @default 0
              */
             current_version_no: number;
+            design_brief?: components["schemas"]["DesignBrief"];
+            /**
+             * Designing
+             * @default false
+             */
+            designing: boolean;
             /** Grinder Id */
             grinder_id?: number | null;
             /** Grinder Name */

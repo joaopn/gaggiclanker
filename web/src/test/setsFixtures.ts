@@ -295,6 +295,7 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
     grinder_name: "Niche Zero",
     archived: false,
     automatch: true,
+    designing: false,
     created_at: "2026-04-02T00:00:00.000Z",
     current_version_id: 22,
     current_version_no: 2,

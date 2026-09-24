@@ -70,6 +70,7 @@ from gaggiclanker.db.repos.sets import (
     VersionOutcomeWrite,
     VersionPredictionWrite,
     VersionRefusal,
+    VersionRefused,
     VersionWriteResult,
     dead_end_ids,
     track_record,
@@ -383,6 +384,22 @@ def _refusal_current_version(set_id: int, version_id: int | None) -> AppError:
     )
 
 
+def version_refused(exc: VersionRefused) -> AppError:
+    """A version write the repository refused mid-transaction, as its 409.
+
+    Today every such refusal is about a Set being designed whose version 1 can
+    no longer be filled, and each carries its own code
+    (`DESIGN_HAS_SHOTS`, `DESIGN_HAS_VERSIONS`) so a page can say which.
+    Public because the other paths that write a version — a push for a Set,
+    an accepted suggestion — answer with the same error.
+    """
+    return Conflict(
+        exc.message,
+        code=exc.code,
+        details={"field": "set_id", "message": "version 1 of this Set can no longer be filled"},
+    )
+
+
 def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> AppError:
     """A proposal refusal as the one error it means.
 
@@ -670,7 +687,10 @@ async def add_version(set_id: int, body: SetVersionPatch, sets: SetsRepoDep) -> 
     if body.prediction and compare is not None:
         if await sets.version_of_set(set_id, compare) is None:
             raise _refusal_bad_compare(set_id, None)
-    version = await sets.add_version(set_id, body)
+    try:
+        version = await sets.add_version(set_id, body)
+    except VersionRefused as exc:
+        raise version_refused(exc) from None
     if version is None:  # pragma: no cover - the Set was checked above
         raise NotFound(f"No Set {set_id}")
     return envelope_response(version.model_dump(mode="json"), status_code=201)

@@ -52,16 +52,19 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Protocol
 
+import structlog
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     StringConstraints,
+    ValidationError,
     computed_field,
     field_validator,
 )
 
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
@@ -72,9 +75,13 @@ from gaggiclanker.domain.vocab import (
     VersionOutcome,
 )
 
+log = structlog.get_logger(__name__)
+
 __all__ = [
     "RECIPE_FIELDS",
     "VERSION_FIELDS",
+    "DesignBrief",
+    "DesignRefusal",
     "FieldChange",
     "ProfileMatch",
     "ProfileMatchSummary",
@@ -94,6 +101,7 @@ __all__ = [
     "VersionOutcomeWrite",
     "VersionPredictionWrite",
     "VersionRefusal",
+    "VersionRefused",
     "VersionWriteResult",
     "dead_end_ids",
     "track_record",
@@ -121,6 +129,29 @@ class SetWrite(BaseModel):
     #: Nullable: pre-ground coffee and a grinder nobody has got round to
     #: recording are both real, and refusing the Set over it helps nobody.
     grinder_id: int | None = None
+
+
+class DesignBrief(BaseModel):
+    """What the person asked for when they set out to design a Set in chat.
+
+    Stored on the Set (`sets.design_brief`) rather than only sent as the first
+    message, because the conversation reads it on every turn: a long design
+    discussion trims its oldest messages, and the profile to fork from and the
+    goal must not go with them. It stays after the design is done, as the
+    record of what was asked for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The profile version the new profile is derived from. Never the Set's
+    #: own profile: forking means a new profile, and the source and every Set
+    #: that brews it are left as they are.
+    fork_profile_version_id: int | None = None
+    #: Where they grind espresso on this grinder, in its own units. The one
+    #: anchor that lets a proposed grind be a number on the dial.
+    usual_grind: Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)] = ""
+    #: "What do you want from it?", in their words.
+    goal: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
 
 
 class SetVersionWrite(BaseModel):
@@ -343,7 +374,63 @@ type VersionRefusal = Literal[
     "nothing_to_grade",
     "no_target",
     "current_version",
+    "design_has_versions",
+    "design_has_shots",
 ]
+
+#: Why a Set being designed cannot take the write asked of it. The last two
+#: are shared with :data:`VersionRefusal`, because a version written to a Set
+#: being designed is refused for exactly the reasons discarding it would be.
+type DesignRefusal = Literal[
+    "no_set",
+    "not_designing",
+    "design_has_versions",
+    "design_has_shots",
+]
+
+#: What each design refusal says, once, for every caller that has to say it:
+#: the Add a version route, a push for a Set, an accepted suggestion, an
+#: accepted initial recipe and the discard route all meet the same two.
+_DESIGN_REFUSALS: dict[str, str] = {
+    "design_has_versions": (
+        "This Set is being designed but already has more than one version, so there is no "
+        "empty version 1 left to fill"
+    ),
+    "design_has_shots": (
+        "This Set is being designed and a shot is already filed on it, so its version 1 is no "
+        "longer an empty recipe; unfile the shot first"
+    ),
+    "not_designing": "This Set is not being designed",
+    "no_set": "There is no such Set",
+}
+
+
+class VersionRefused(Exception):
+    """A version write refused from **inside** the caller's transaction.
+
+    :meth:`SetsRepository.append_version` runs in a transaction somebody else
+    opened, alongside their own reads and writes (accepting a proposal marks
+    the proposal in the same one). A refusal returned as a value there would
+    leave the caller to remember to roll its own writes back; raised, it rolls
+    the whole transaction back by construction. The slug is the same kind of
+    answer the version writes give as values — one code, one sentence — and
+    the caller turns it into its status.
+    """
+
+    def __init__(self, refused: VersionRefusal) -> None:
+        self.refused: VersionRefusal = refused
+        self.message = _DESIGN_REFUSALS.get(refused, refused)
+        super().__init__(self.message)
+
+    @property
+    def code(self) -> str:
+        """The error code a route answers with: the slug, shouted."""
+        return self.refused.upper()
+
+
+def design_refusal_message(refused: DesignRefusal) -> str:
+    """The sentence a design refusal is said in, for callers answering with a value."""
+    return _DESIGN_REFUSALS[refused]
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +486,13 @@ class SetRow(BaseModel):
     #: Whether the matcher may file a shot under this Set. Any number of Sets
     #: hold it; archiving clears it.
     automatch: bool = False
+    #: Created by the design path and waiting for its first recipe: version 1
+    #: states nothing yet and its conversation is answered with the design
+    #: prompt. Cleared by the first version written to the Set.
+    designing: bool = False
+    #: What the person asked for when the design started. Empty on every Set
+    #: made any other way.
+    design_brief: DesignBrief = Field(default_factory=DesignBrief)
     created_at: str
     current_version_id: int | None = None
     current_version_no: int = 0
@@ -406,6 +500,24 @@ class SetRow(BaseModel):
     shot_count: int = 0
     profile_version_id: int | None = None
     profile_label: str | None = None
+
+    @field_validator("design_brief", mode="before")
+    @classmethod
+    def _decode_brief(cls, value: Any) -> Any:
+        """The stored JSON, back as the brief model — or an empty brief and a log line.
+
+        Not a validation error, for the reason a damaged proposal is not one:
+        this row is read by the Sets list, and one hand-edited brief must not
+        be a page that will not load. What it costs is the brief itself, and
+        the log line is how somebody finds out it happened.
+        """
+        if not isinstance(value, str):
+            return value
+        try:
+            return DesignBrief.model_validate_json(value)
+        except ValidationError:
+            log.warning("set_design_brief_unreadable")
+            return DesignBrief()
 
 
 class FieldChange(BaseModel):
@@ -849,6 +961,116 @@ class SetsRepository(Repository):
             raise RuntimeError("the set vanished between write and read")
         return stored
 
+    async def create_design(self, spec: SetWrite, brief: DesignBrief) -> SetRow:
+        """Create a Set to be designed in its conversation, atomically.
+
+        The Set exists from the start, with a version 1 that states nothing —
+        no profile, no grind, no dose, no yield, no intent, no prediction —
+        because a conversation lives in a Set's folder and on one of its
+        versions, and this is the conversation where the recipe is worked out.
+        The version is filled in place later (see :meth:`append_version`), so
+        the Set's history starts with the recipe that was brewed rather than
+        with an empty v1 and a v2 after it.
+
+        ``automatch`` is on, as for any new Set. It is harmless while version 1
+        names no profile — the matcher only files a shot under a Set whose
+        current version names the shot's profile — and once the recipe is
+        accepted and its profile pushed, the shots brewed on it land here with
+        no further step.
+        """
+        now = utc_now()
+        async with self.db.transaction():
+            cursor = await self.db.execute(
+                """
+                INSERT INTO sets (name, bean_id, grinder_id, archived, automatch,
+                                  designing, design_brief, created_at)
+                VALUES (:name, :bean_id, :grinder_id, 0, 1, 1, :design_brief, :created_at)
+                """,
+                {
+                    "name": spec.name,
+                    "bean_id": spec.bean_id,
+                    "grinder_id": spec.grinder_id,
+                    "design_brief": brief.model_dump_json(),
+                    "created_at": now,
+                },
+            )
+            set_id = int(cursor.lastrowid or 0)
+            await self._insert_version(set_id, 1, None, {"origin": "manual"}, now)
+        stored = await self.get(set_id)
+        if stored is None:  # pragma: no cover - the insert above guarantees it
+            raise RuntimeError("the set vanished between write and read")
+        return stored
+
+    async def design_refusal(
+        self, set_id: int
+    ) -> Literal["design_has_versions", "design_has_shots"] | None:
+        """Why a version written to this Set now would be refused, if it would.
+
+        ``None`` for every Set that is not being designed, and for one whose
+        version 1 is still empty and alone. Public because a push for a Set asks
+        before it writes to the machine: finding out afterwards would leave a
+        pushed profile and a Set that refused to record it.
+        """
+        row = await self.db.fetch_one(
+            """
+            SELECT s.designing,
+                   (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = s.id) AS versions,
+                   (SELECT COUNT(*) FROM shots sh
+                      JOIN set_versions v2 ON v2.id = sh.set_version_id
+                     WHERE v2.set_id = s.id) AS shots
+              FROM sets s WHERE s.id = ?
+            """,
+            (set_id,),
+        )
+        if row is None or not row["designing"]:
+            return None
+        if int(row["versions"]) != 1:
+            return "design_has_versions"
+        if int(row["shots"]) > 0:
+            return "design_has_shots"
+        return None
+
+    async def discard_design(self, set_id: int) -> DesignRefusal | None:
+        """Delete a Set that is still being designed. ``None`` when it was deleted.
+
+        Allowed only while the Set is being designed and nothing is filed on
+        it: that is a Set nobody has brewed anything under, abandoned before
+        its recipe existed. Anything else is refused and left alone — a Set
+        with history is archived, never deleted.
+
+        What goes with it is what `ON DELETE CASCADE` takes: its version, its
+        conversations and their messages, its proposals. The profile drafts its
+        proposals carried are not deleted but **discarded**, in the same
+        transaction: a draft is a row on the Profiles page with its own history,
+        and one proposed for a Set that no longer exists is a draft nobody is
+        going to approve. A draft already on the machine is left as it is,
+        because a row saying `discarded` about a profile the display holds would
+        be the archive lying about the machine.
+        """
+        now = utc_now()
+        async with self.db.transaction():
+            designing = await self.db.fetch_value(
+                "SELECT designing FROM sets WHERE id = ?", (set_id,)
+            )
+            if designing is None:
+                return "no_set"
+            if not designing:
+                return "not_designing"
+            refusal = await self.design_refusal(set_id)
+            if refusal is not None:
+                return refusal
+            drafts = await self.db.fetch_all(
+                "SELECT draft_id FROM set_version_proposals "
+                "WHERE set_id = ? AND draft_id IS NOT NULL ORDER BY id",
+                (set_id,),
+            )
+            await ProfileDraftsRepository(self.db).discard_unsent(
+                [int(row["draft_id"]) for row in drafts], now=now
+            )
+            await self.db.execute("DELETE FROM sets WHERE id = ?", (set_id,))
+        log.info("set_design_discarded", set_id=set_id)
+        return None
+
     async def get(self, set_id: int) -> SetRow | None:
         row = await self.db.fetch_one(f"{_SET_SELECT} WHERE s.id = ?", (set_id,))
         return self.to_model(SetRow, row)
@@ -920,14 +1142,29 @@ class SetsRepository(Repository):
         waiting proposal this append does **not** make stale. See
         :meth:`_insert_version`.
 
-        Returns the new version's id, or ``None`` when the Set has no current
-        version to build on.
+        **A Set being designed is filled, not appended to.** Its version 1
+        states nothing yet, and whatever writes the first recipe — the Add a
+        version form, a draft pushed for this Set, an accepted initial recipe —
+        writes it onto that version 1 instead of putting a v2 after an empty
+        one (:meth:`_fill_design`). Decided here, where every one of those
+        paths already arrives, so none of them can miss it. When the design
+        cannot be filled any more (a shot was filed on it by hand) the write
+        raises :class:`VersionRefused` and the caller's transaction rolls back.
+
+        Returns the new version's id — version 1's own when it was filled — or
+        ``None`` when the Set has no current version to build on.
         """
         sent = patch.model_dump(exclude_unset=True)
         now = utc_now()
         parent = await self._current_version_row(set_id)
         if parent is None:
             return None
+        designing = await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,))
+        if designing:
+            refusal = await self.design_refusal(set_id)
+            if refusal is not None:
+                raise VersionRefused(refusal)
+            return await self._fill_design(parent, patch, sent, now, keep_proposal=keep_proposal)
         values = {field: getattr(parent, field) for field in RECIPE_FIELDS}
         for field in RECIPE_FIELDS:
             if field in sent:
@@ -1001,6 +1238,94 @@ class SetsRepository(Repository):
             f"INSERT INTO set_versions ({columns}) VALUES ({placeholders})",  # noqa: S608 - keys are the literal payload above
             payload,
         )
+        await self._retire_waiting(set_id, now, keep_proposal=keep_proposal)
+        return int(cursor.lastrowid or 0)
+
+    async def _fill_design(
+        self,
+        current: SetVersionRow,
+        patch: SetVersionPatch,
+        sent: dict[str, Any],
+        now: str,
+        *,
+        keep_proposal: int | None = None,
+    ) -> int:
+        """Write the first recipe onto a designed Set's empty version 1.
+
+        The one place a version row's recipe is updated rather than appended,
+        and it is not an exception to "the recipe is immutable": nothing was
+        ever brewed on this version, which :meth:`design_refusal` checked, so
+        there is no shot whose recipe this rewrites.
+
+        The recipe, the intent and the origin come from the write, exactly as
+        an appended version would take them. The **prediction does not**: a
+        version 1 is a baseline, not a change to anything, so there is nothing
+        for a prediction to be about — the same reason `create` gives version 1
+        no comparison. The flag is cleared in the same transaction, and
+        whatever proposal was waiting is retired as any append retires it.
+        """
+        values = {field: getattr(current, field) for field in RECIPE_FIELDS}
+        for field in RECIPE_FIELDS:
+            if field in sent:
+                values[field] = sent[field]
+        await self.db.execute(
+            """
+            UPDATE set_versions
+               SET profile_version_id = :profile_version_id,
+                   grind_setting = :grind_setting,
+                   grind_value = :grind_value,
+                   dose_g = :dose_g,
+                   target_yield_g = :target_yield_g,
+                   intent = :intent,
+                   origin = :origin,
+                   origin_analysis_id = :origin_analysis_id,
+                   pushed_device_profile_id = :pushed_device_profile_id,
+                   prediction = '',
+                   compares_to_version_id = NULL,
+                   prediction_at = NULL
+             WHERE id = :id
+            """,
+            {
+                **values,
+                "intent": patch.intent,
+                "origin": patch.origin,
+                "origin_analysis_id": patch.origin_analysis_id,
+                "pushed_device_profile_id": patch.pushed_device_profile_id,
+                "id": current.id,
+            },
+        )
+        await self.db.execute("UPDATE sets SET designing = 0 WHERE id = ?", (current.set_id,))
+        await self._retire_waiting(current.set_id, now, keep_proposal=keep_proposal)
+        log.info("set_design_filled", set_id=current.set_id, set_version_id=current.id)
+        return current.id
+
+    async def _retire_waiting(
+        self, set_id: int, now: str, *, keep_proposal: int | None = None
+    ) -> None:
+        """Stale whatever proposal was waiting on this Set, and discard its draft.
+
+        The draft goes with the proposal because the proposal was the only
+        reason for it: an initial recipe's profile draft belongs to no Set on
+        the draft side, and once the card that carried it is retired nobody is
+        going to approve it — left open, the Profiles page would collect one
+        orphan per revision of the design. A draft already sent to the machine
+        is not touched (:meth:`ProfileDraftsRepository.discard_unsent`).
+        """
+        params = {"set_id": set_id, "now": now, "keep": keep_proposal}
+        drafts = await self.db.fetch_all(
+            """
+            SELECT draft_id FROM set_version_proposals
+             WHERE set_id = :set_id
+               AND status = 'proposed'
+               AND draft_id IS NOT NULL
+               AND (:keep IS NULL OR id != :keep)
+             ORDER BY id
+            """,
+            params,
+        )
+        await ProfileDraftsRepository(self.db).discard_unsent(
+            [int(row["draft_id"]) for row in drafts], now=now
+        )
         await self.db.execute(
             """
             UPDATE set_version_proposals
@@ -1009,9 +1334,8 @@ class SetsRepository(Repository):
                AND status = 'proposed'
                AND (:keep IS NULL OR id != :keep)
             """,
-            {"set_id": set_id, "now": now, "keep": keep_proposal},
+            params,
         )
-        return int(cursor.lastrowid or 0)
 
     # ── the prediction, the outcome and the roll back ─────────────────
     #

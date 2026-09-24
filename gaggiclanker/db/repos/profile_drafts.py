@@ -22,6 +22,7 @@ failed — both documents, ours and the machine's.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -277,6 +278,29 @@ class ProfileDraftsRepository(Repository):
             (utc_now(), draft_id),
         )
         return await self.get(draft_id)
+
+    async def discard_unsent(self, draft_ids: Iterable[int], *, now: str | None = None) -> int:
+        """Discard these drafts, unless they have already been sent to the machine.
+
+        For the callers that retire a draft because what it was proposed for
+        went away — its proposal was declined or overtaken, its Set discarded —
+        inside a transaction they already hold. Only `draft` and `approved`
+        move: a `pushed` or `failed` draft names a profile the display holds,
+        and saying `discarded` about it would be the archive lying about the
+        machine (the same rule the discard route enforces with a 409). One that
+        is already superseded or discarded is left with the status it has.
+        Returns how many moved.
+        """
+        wanted = sorted({int(draft_id) for draft_id in draft_ids})
+        if not wanted:
+            return 0
+        placeholders = ", ".join("?" * len(wanted))
+        cursor = await self.db.execute(
+            "UPDATE profile_drafts SET status = 'discarded', updated_at = ? "  # noqa: S608 - placeholders are generated, the ids are bound
+            f"WHERE status IN ('draft', 'approved') AND id IN ({placeholders})",
+            [now or utc_now(), *wanted],
+        )
+        return cursor.rowcount
 
     async def supersede(self, draft_id: int) -> None:
         """Mark a draft overtaken by a refinement of it.
