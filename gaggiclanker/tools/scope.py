@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 __all__ = [
+    "DESIGN_RULE",
     "GENERAL_TOOLS",
     "SET_TOOLS",
     "ChatKind",
@@ -99,6 +100,16 @@ GENERAL_TOOLS: frozenset[str] = frozenset(
     }
 )
 
+
+#: What a conversation about a Set being designed is told when it reaches for a
+#: tool that changes or reads a recipe. One sentence for every such refusal —
+#: the scope's, `propose_set_version`'s and `draft_profile`'s — because they are
+#: one rule, and a model that met it phrased three ways would read three.
+DESIGN_RULE = (
+    "This Set is being designed: its recipe does not exist yet, so there is nothing to "
+    "change and there are no shots to read. propose_initial_recipe is how the recipe is "
+    "proposed."
+)
 
 #: Why one particular tool is not here, where the kind's own rule would say
 #: something untrue. Keyed by name because each of these is refused for the

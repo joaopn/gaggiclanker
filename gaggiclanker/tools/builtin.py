@@ -49,6 +49,7 @@ from gaggiclanker.infra.errors import TooManyRequests
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, ANALYSIS_WINDOW_SECONDS
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.tools.registry import ToolContext, tool
+from gaggiclanker.tools.scope import DESIGN_RULE
 from gaggiclanker.tools.sql import (
     ALLOWED_VIEWS,
     DEFAULT_ROW_LIMIT,
@@ -1204,6 +1205,8 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
             "Set to be switched to. list_profiles lists the ones it has; to change how a "
             "profile brews rather than which one is used, draft_profile is the tool."
         )
+    if result.refused == "designing":
+        return DESIGN_RULE
     if result.refused == "bad_thread":
         # Not something a model can cause by choosing arguments: the
         # conversation is the runner's to supply. Said plainly anyway, because

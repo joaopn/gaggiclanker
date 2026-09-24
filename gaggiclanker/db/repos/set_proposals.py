@@ -56,16 +56,19 @@ from pydantic import (
     StringConstraints,
     ValidationError,
     field_validator,
+    model_validator,
 )
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.sets import (
     RECIPE_FIELDS,
     TEXT_MAX,
     SetsRepository,
     SetVersionPatch,
     SetVersionRow,
+    VersionRefused,
 )
 from gaggiclanker.db.repository import Repository
 
@@ -163,18 +166,42 @@ class ProposalWrite(BaseModel):
     #: What the agent is trying, which becomes the version's "What are you
     #: trying?" when the proposal is accepted.
     reason: str = Field(min_length=1, max_length=500)
-    #: Required and non-empty after stripping: a proposal with no prediction is
-    #: the thing this table exists to make impossible, and a row of three spaces
-    #: would be one. How *good* a prediction has to be — long enough to name a
-    #: direction, a size and a measure — is the tool's rule, because the tool is
-    #: where a model reads the refusal and tries again.
-    prediction: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TEXT_MAX)
-    ]
+    #: Required and non-empty after stripping on a **change**: a change with no
+    #: prediction is the thing this table exists to make impossible, and a row
+    #: of three spaces would be one. How *good* a prediction has to be — long
+    #: enough to name a direction, a size and a measure — is the tool's rule,
+    #: because the tool is where a model reads the refusal and tries again.
+    #: Refused on a **design**, which is a baseline and predicts nothing.
+    prediction: Annotated[str, StringConstraints(strip_whitespace=True, max_length=TEXT_MAX)] = ""
     compares_to_version_id: int | None = None
     #: Why two or more things have to move together. Empty for the ordinary
     #: one-change proposal.
     combined_reason: str = Field(default="", max_length=500)
+    #: A change to a recipe, or a Set's whole first recipe. See
+    #: :data:`ProposalKind`.
+    kind: ProposalKind = "change"
+    #: The profile draft an initial recipe carries — required on a design,
+    #: which always brings a profile of its own, and refused on a change.
+    draft_id: int | None = None
+
+    @model_validator(mode="after")
+    def _kind_decides_what_is_owed(self) -> ProposalWrite:
+        """A change owes a prediction; a design owes a draft and predicts nothing.
+
+        Stated on the model so both halves hold for every caller, not only the
+        tool that happens to build the row today.
+        """
+        if self.kind == "change":
+            if not self.prediction:
+                raise ValueError("a proposed change needs a prediction")
+            if self.draft_id is not None:
+                raise ValueError("a proposed change carries no draft")
+            return self
+        if self.draft_id is None:
+            raise ValueError("an initial recipe carries its profile draft")
+        if self.prediction or self.combined_reason or self.compares_to_version_id is not None:
+            raise ValueError("an initial recipe is a baseline and predicts nothing")
+        return self
 
 
 class SetProposalRow(BaseModel):
@@ -269,6 +296,12 @@ type ProposalRefusal = Literal[
     "bad_thread",
     "unreadable",
     "stale",
+    "designing",
+    "not_designing",
+    "bad_draft",
+    "draft_closed",
+    "design_has_versions",
+    "design_has_shots",
 ]
 
 
@@ -317,6 +350,10 @@ class SetProposalsRepository(Repository):
         #: The versions half. Held rather than constructed per call so that
         #: :meth:`accept` can append a version inside its own transaction.
         self.sets = SetsRepository(db)
+        #: The drafts an initial recipe carries, retired with it — a status
+        #: write, in the caller's transaction, and never through the draft
+        #: service that holds the machine.
+        self.drafts = ProfileDraftsRepository(db)
 
     # ── reading ──────────────────────────────────────────────────────
 
@@ -399,6 +436,11 @@ class SetProposalsRepository(Repository):
             for field in RECIPE_FIELDS
             if field in proposal.patch.model_fields_set
         }
+        if proposal.kind == "design":
+            # Version 1 as accepting would fill it: the recipe, and the reason
+            # as its intent. The version's own row id and number, because
+            # that is the row the fill writes.
+            update |= {"intent": proposal.reason, "origin": "chat"}
         candidate = base.model_copy(update=update)
         if candidate.profile_version_id != base.profile_version_id:
             candidate = candidate.model_copy(update=await self._profile_facts(candidate))
@@ -451,21 +493,39 @@ class SetProposalsRepository(Repository):
         proposal still waiting — a change nobody could accept and nobody could
         get past without declining it. Whatever `create` accepted, `accept`
         must be able to apply.
+
+        **The kind splits on whether the Set is being designed.** A Set being
+        designed has no recipe to change, so a change is refused there
+        (`designing`) and an initial recipe is refused anywhere else
+        (`not_designing`), whichever path asked. An initial recipe owes no
+        prediction and is not held up by an open outcome — version 1 has none
+        — and a newer one **replaces** the one waiting: the design conversation
+        revises its answer, and the last card is the one that counts. The one
+        it replaces goes `stale` and its draft is discarded, in this
+        transaction, before the new row is inserted, so the one-waiting index
+        holds. That is the only place `stale` comes from a newer proposal
+        rather than a new version.
         """
         now = utc_now()
         async with self.db.transaction():
             current = await self.sets.current_version(set_id)
             if current is None:
                 return ProposalWriteResult(refused="no_current_version")
+            designing = bool(
+                await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,))
+            )
+            if designing != (spec.kind == "design"):
+                return ProposalWriteResult(refused="designing" if designing else "not_designing")
             existing = await self.waiting(set_id)
-            if existing is not None:
+            replaced = existing if existing is not None and existing.kind == "design" else None
+            if existing is not None and replaced is None:
                 return ProposalWriteResult(refused="already_waiting", waiting=existing)
-            if current.outcome_state == "open":
+            if spec.kind == "change" and current.outcome_state == "open":
                 return ProposalWriteResult(refused="outcome_open")
             compares_to = (
                 spec.compares_to_version_id
                 if "compares_to_version_id" in spec.model_fields_set
-                else current.id
+                else (current.id if spec.kind == "change" else None)
             )
             if compares_to is not None:
                 # Every existing version is older than the one this proposal
@@ -491,13 +551,29 @@ class SetProposalsRepository(Repository):
                 )
                 if mine is None:
                     return ProposalWriteResult(refused="bad_thread")
+            if spec.draft_id is not None:
+                # The draft is the profile the recipe names: the same version,
+                # and still a draft somebody can approve. A card whose profile
+                # is some other document than the one on the Profiles page
+                # would be accepted as one thing and pushed as another.
+                draft = await self.drafts.get(spec.draft_id)
+                if (
+                    draft is None
+                    or draft.status not in ("draft", "approved")
+                    or draft.draft_version_id != profile_id
+                ):
+                    return ProposalWriteResult(refused="bad_draft")
+            if replaced is not None:
+                await self._retire(replaced, now)
             cursor = await self.db.execute(
                 """
                 INSERT INTO set_version_proposals
                     (set_id, thread_id, base_version_id, patch_json, reason, prediction,
-                     compares_to_version_id, combined_reason, status, created_at)
+                     compares_to_version_id, combined_reason, kind, draft_id, status,
+                     created_at)
                 VALUES (:set_id, :thread_id, :base_version_id, :patch_json, :reason, :prediction,
-                        :compares_to_version_id, :combined_reason, 'proposed', :created_at)
+                        :compares_to_version_id, :combined_reason, :kind, :draft_id, 'proposed',
+                        :created_at)
                 """,
                 {
                     "set_id": set_id,
@@ -508,6 +584,8 @@ class SetProposalsRepository(Repository):
                     "prediction": spec.prediction,
                     "compares_to_version_id": compares_to,
                     "combined_reason": spec.combined_reason,
+                    "kind": spec.kind,
+                    "draft_id": spec.draft_id,
                     "created_at": now,
                 },
             )
@@ -523,44 +601,77 @@ class SetProposalsRepository(Repository):
         row. Anything less and two tabs pressing Accept a second apart would
         append the same change twice.
 
+        An **initial recipe** goes through the same append, which is what fills
+        a designed Set's version 1 in place (see
+        :meth:`~gaggiclanker.db.repos.sets.SetsRepository.append_version`); its
+        `resulting_version_id` is therefore version 1's own. It skips the
+        open-outcome question, which a version 1 with no prediction cannot
+        raise. When version 1 can no longer be filled — a shot was filed on it
+        by hand — the whole transaction is rolled back and the refusal says
+        why.
+
         **Nothing is sent to the machine.** A proposal that names a different
         profile records that the Set now brews with that profile, exactly as the
         Add a version form does; putting a profile on the display is a separate
         act, on the Profiles page, by a person.
         """
         now = utc_now()
-        async with self.db.transaction():
-            proposal = await self.get(set_id, proposal_id)
-            if proposal is None:
-                return ProposalWriteResult(refused="no_proposal")
-            if proposal.status != "proposed":
-                return ProposalWriteResult(refused="not_waiting", proposal=proposal)
-            current = await self.sets.current_version(set_id)
-            if current is None:  # pragma: no cover - the base version proves one exists
-                return ProposalWriteResult(refused="no_current_version")
-            if current.id != proposal.base_version_id:
-                # The Set moved on. The change was argued against a recipe
-                # nobody is brewing any more, and quietly applying it to
-                # whatever is current now would be this box deciding what the
-                # agent meant. Recorded as stale so the log says what happened.
-                await self._decide(proposal_id, "stale", now)
-                return ProposalWriteResult(
-                    refused="stale", proposal=await self.get(set_id, proposal_id)
+        try:
+            async with self.db.transaction():
+                proposal = await self.get(set_id, proposal_id)
+                if proposal is None:
+                    return ProposalWriteResult(refused="no_proposal")
+                if proposal.status != "proposed":
+                    return ProposalWriteResult(refused="not_waiting", proposal=proposal)
+                current = await self.sets.current_version(set_id)
+                if current is None:  # pragma: no cover - the base version proves one exists
+                    return ProposalWriteResult(refused="no_current_version")
+                if current.id != proposal.base_version_id:
+                    # The Set moved on. The change was argued against a recipe
+                    # nobody is brewing any more, and quietly applying it to
+                    # whatever is current now would be this box deciding what the
+                    # agent meant. Recorded as stale so the log says what happened.
+                    await self._retire(proposal, now)
+                    return ProposalWriteResult(
+                        refused="stale", proposal=await self.get(set_id, proposal_id)
+                    )
+                if proposal.kind == "change" and current.outcome_state == "open":
+                    return ProposalWriteResult(refused="outcome_open", proposal=proposal)
+                if proposal.kind == "design" and not await self._draft_still_stands(proposal):
+                    # The twin of `bad_draft` at create: the card's profile was
+                    # discarded or replaced on the Profiles page since, and a
+                    # version 1 naming a profile nobody will ever approve would
+                    # be a recipe that cannot be brewed.
+                    return ProposalWriteResult(refused="draft_closed", proposal=proposal)
+                if proposal.patch is None:
+                    # The stored change cannot be read, so there is nothing to
+                    # apply. Refused rather than applied as "no fields changed",
+                    # which would append a version that claims to be the change
+                    # and is not. Decline still works: getting rid of it needs no
+                    # patch.
+                    return ProposalWriteResult(refused="unreadable", proposal=proposal)
+                version_id = await self.sets.append_version(
+                    set_id, _version_patch(proposal), keep_proposal=proposal_id
                 )
-            if current.outcome_state == "open":
-                return ProposalWriteResult(refused="outcome_open", proposal=proposal)
-            if proposal.patch is None:
-                # The stored change cannot be read, so there is nothing to
-                # apply. Refused rather than applied as "no fields changed",
-                # which would append a version that claims to be the change and
-                # is not. Decline still works: getting rid of it needs no patch.
-                return ProposalWriteResult(refused="unreadable", proposal=proposal)
-            version_id = await self.sets.append_version(
-                set_id, _version_patch(proposal), keep_proposal=proposal_id
+                if version_id is None:  # pragma: no cover - current proved there is a parent
+                    return ProposalWriteResult(refused="no_current_version")
+                await self._decide(proposal_id, "accepted", now, resulting_version_id=version_id)
+        except VersionRefused as exc:
+            # The only refusals an append raises are a design that can no
+            # longer be filled, and the transaction above is already undone.
+            return ProposalWriteResult(
+                refused="design_has_shots"
+                if exc.refused == "design_has_shots"
+                else "design_has_versions",
+                proposal=await self.get(set_id, proposal_id),
             )
-            if version_id is None:  # pragma: no cover - current proved there is a parent
-                return ProposalWriteResult(refused="no_current_version")
-            await self._decide(proposal_id, "accepted", now, resulting_version_id=version_id)
+        log.info(
+            "set_proposal_accepted",
+            proposal_id=proposal_id,
+            set_id=set_id,
+            kind=proposal.kind,
+            set_version_id=version_id,
+        )
         return ProposalWriteResult(
             proposal=await self.get(set_id, proposal_id),
             version=await self.sets.get_version(version_id),
@@ -572,6 +683,11 @@ class SetProposalsRepository(Repository):
         The note is worth asking for: "not that, the last two finer grinds went
         the wrong way" is the sentence that stops the same change being proposed
         again next week, and the next conversation is told it.
+
+        An initial recipe's draft is discarded with it, in the same transaction:
+        the draft existed only to be the profile of that card, and a declined
+        card's profile left open on the Profiles page is an orphan nobody asked
+        for.
         """
         now = utc_now()
         async with self.db.transaction():
@@ -581,7 +697,29 @@ class SetProposalsRepository(Repository):
             if proposal.status != "proposed":
                 return ProposalWriteResult(refused="not_waiting", proposal=proposal)
             await self._decide(proposal_id, "declined", now, note=note)
+            if proposal.draft_id is not None:
+                await self.drafts.discard_unsent([proposal.draft_id], now=now)
         return ProposalWriteResult(proposal=await self.get(set_id, proposal_id))
+
+    async def _draft_still_stands(self, proposal: SetProposalRow) -> bool:
+        """Whether an initial recipe's draft can still become the profile it names.
+
+        Waiting for approval or approved, as at create — or already pushed and
+        verified, which is the same document on the machine: a person who
+        approved and pushed the card's profile before pressing Accept has done
+        the steps in the other order, not undone anything. Discarded,
+        superseded or failed is a profile the card can no longer stand on.
+        """
+        if proposal.draft_id is None:
+            return False
+        draft = await self.drafts.get(proposal.draft_id)
+        return draft is not None and draft.status in ("draft", "approved", "pushed")
+
+    async def _retire(self, proposal: SetProposalRow, now: str) -> None:
+        """Mark a waiting proposal `stale`, and discard the draft it carried."""
+        await self._decide(proposal.id, "stale", now)
+        if proposal.draft_id is not None:
+            await self.drafts.discard_unsent([proposal.draft_id], now=now)
 
     async def _decide(
         self,

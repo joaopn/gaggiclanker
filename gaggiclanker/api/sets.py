@@ -73,6 +73,7 @@ from gaggiclanker.db.repos.sets import (
     VersionRefused,
     VersionWriteResult,
     dead_end_ids,
+    design_refusal_message,
     track_record,
     version_changes,
 )
@@ -437,6 +438,24 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
                 "field": "patch",
                 "message": "the change stored with it is damaged; decline it and ask again",
             },
+        )
+    if refusal == "draft_closed":
+        return Conflict(
+            f"The profile draft proposal {proposal_id} carries is no longer open",
+            code="PROPOSAL_DRAFT_CLOSED",
+            details={
+                "field": "draft_id",
+                "message": (
+                    "its draft was discarded or replaced on the Profiles page; decline this card "
+                    "and ask the agent in the Set's chat for a new one"
+                ),
+            },
+        )
+    if refusal in ("design_has_shots", "design_has_versions"):
+        return Conflict(
+            design_refusal_message(refusal),
+            code=refusal.upper(),
+            details={"field": "set_id", "message": "version 1 of this Set can no longer be filled"},
         )
     if refusal == "not_waiting":
         return Conflict(
