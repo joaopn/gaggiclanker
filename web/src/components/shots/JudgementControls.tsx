@@ -3,9 +3,8 @@ import { inWheelOrder, pathLabel, type WheelNote } from "@/lib/flavorWheel";
 import { cn } from "@/lib/utils";
 
 /**
- * The controls a verdict is made of, shared by the shot page's full form and
- * the quick judgement under a shot row, so the two write the same fields the
- * same way and look alike.
+ * The controls a verdict is made of, used by the judgement form on the shot
+ * page and in the open row of the shots list.
  */
 
 export function Field({

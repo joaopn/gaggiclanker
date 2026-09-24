@@ -29,9 +29,8 @@ import { cn } from "@/lib/utils";
  * changes, and the symptom is a 422 on a value the user picked from a dropdown
  * we shipped.
  *
- * The shot page's form, saved with its own button. The panel under a shot row
- * has a quicker one (`QuickJudgement`) that saves on every click; the two
- * share their controls, so a verdict looks the same in both places.
+ * Saved with its own button. One form in two places, the shot page and the
+ * open row of the shots list, so a verdict is given the same way in both.
  */
 
 /** The firmware's own cap (`ShotNotes.notes`), matched by the server model. */
@@ -155,7 +154,7 @@ export function JudgementForm({
     >
       <form
         data-testid="judgement-form"
-        className="space-y-4"
+        className="@container space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
           save.mutate({ shotId, body: toBody(state) });
@@ -163,10 +162,12 @@ export function JudgementForm({
       >
         {/* Two columns: the verdict's controls on the left, the notes on the
             right at the full height of the controls, so a longer note has room
-            without pushing the curves further down the page. One column only
-            on a phone-sized window. */}
+            without pushing the curves further down the page. Measured on the
+            form's own width, not the window's: the same form sits across the
+            shot page and in half of a shots-list row, and only a form too
+            narrow for both columns falls back to one. */}
         <div
-          className="grid gap-x-8 gap-y-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+          className="grid gap-x-8 gap-y-4 @md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
           data-testid="judgement-columns"
         >
           <div className="min-w-0 space-y-4">
@@ -217,7 +218,7 @@ export function JudgementForm({
               />
             ) : null}
 
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
               <Field label="Dose in (g)" htmlFor={ids.doseIn}>
                 <input
                   id={ids.doseIn}

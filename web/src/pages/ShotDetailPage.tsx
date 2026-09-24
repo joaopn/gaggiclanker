@@ -1,10 +1,9 @@
 import { AlertTriangle, ArrowLeft, Download } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { getShotExport, shotRawUrl } from "@/api/client";
+import { shotRawUrl } from "@/api/client";
 import type { ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
-import { ShotChart } from "@/components/charts/ShotChart";
 import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -24,11 +23,11 @@ import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
+import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { availableSeries, DEFAULT_SERIES, SHOT_SERIES } from "@/lib/shotChart";
 import {
   ANALYSIS_ANCHOR,
   ASSIGN_ANCHOR,
@@ -40,7 +39,6 @@ import {
   humanizeKey,
   profileName,
 } from "@/lib/shots";
-import { cn } from "@/lib/utils";
 
 /**
  * One shot, in full.
@@ -66,7 +64,6 @@ export function ShotDetailPage() {
   const samples = useShotSamples(Number.isFinite(shotId) ? shotId : undefined, {
     enabled: shot.isSuccess && !shot.data.shot.quarantined,
   });
-  const [visible, setVisible] = useState<string[]>(DEFAULT_SERIES);
   const { hash } = useLocation();
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
@@ -82,9 +79,6 @@ export function ShotDetailPage() {
   }, [arrived, hash]);
 
   useQueryErrorToast(shot.error, "Could not load this shot");
-
-  const rows = useMemo(() => samples.data?.samples ?? [], [samples.data]);
-  const present = useMemo(() => availableSeries(rows), [rows]);
 
   if (shot.isPending) {
     return (
@@ -180,43 +174,16 @@ export function ShotDetailPage() {
       {/* The curves on a row of their own below the judgement, never beside
           it: the chart needs the page's full width to be read. */}
       {!row.quarantined ? (
-        <SectionCard
-          title="Curves"
-          description={
-            hasPressure
-              ? "Actual signals solid, the profile's targets dashed, with the machine's own phase boundaries behind them."
-              : undefined
-          }
-          actions={
-            <div className="flex items-center gap-2">
-              <DownloadButtons id={row.id} deviceId={row.device_id} />
-            </div>
-          }
-        >
-          {samples.isPending ? (
-            <Skeleton className="h-72 w-full" />
-          ) : rows.length === 0 ? (
-            <p className="text-muted-foreground text-sm">This shot has no stored samples.</p>
-          ) : (
-            <>
-              {!hasPressure ? <NoPressureNotice /> : null}
-              <SeriesToggles visible={visible} present={present} onChange={setVisible} />
-              <ShotChart
-                samples={rows}
-                phases={phases}
-                visible={visible}
-                finalExitReason={row.final_exit_reason}
-                durationMs={row.duration_ms}
-              />
-              {samples.data?.sample_interval_ms ? (
-                <p className="mt-1 text-muted-foreground text-xs">
-                  {rows.length} samples at {samples.data.sample_interval_ms} ms — the header's own
-                  interval, not the nominal 250 ms.
-                </p>
-              ) : null}
-            </>
-          )}
-        </SectionCard>
+        <ShotCurvesCard
+          shotId={row.id}
+          deviceId={row.device_id}
+          samples={samples.data}
+          pending={samples.isPending}
+          phases={phases}
+          hasPressure={hasPressure}
+          finalExitReason={row.final_exit_reason}
+          durationMs={row.duration_ms}
+        />
       ) : null}
 
       <ExecutionScoreCard row={row} diagnostics={diagnostics} />
@@ -310,97 +277,6 @@ function QuarantineNotice({ reason, id }: { reason?: string | null; id: number }
         {reason ?? "No reason was recorded."}
       </p>
     </SectionCard>
-  );
-}
-
-function NoPressureNotice() {
-  return (
-    <p
-      className="mb-2 rounded-md border border-border bg-muted/50 p-2 text-muted-foreground text-sm"
-      data-testid="no-pressure-notice"
-    >
-      This machine has no pressure sensor — a Standard board reports a hard zero for pressure and
-      flow. The pressure-derived diagnostics did not run rather than reporting confident nonsense.
-    </p>
-  );
-}
-
-function SeriesToggles({
-  visible,
-  present,
-  onChange,
-}: {
-  visible: string[];
-  present: Set<string>;
-  onChange: (next: string[]) => void;
-}) {
-  return (
-    <div className="mb-2 flex flex-wrap gap-1.5" data-testid="series-toggles">
-      {SHOT_SERIES.map((spec) => {
-        const on = visible.includes(spec.key);
-        const available = present.has(spec.key);
-        return (
-          <button
-            key={spec.key}
-            type="button"
-            disabled={!available}
-            aria-pressed={on}
-            onClick={() =>
-              onChange(on ? visible.filter((key) => key !== spec.key) : [...visible, spec.key])
-            }
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-xs transition-colors",
-              on ? "border-foreground/30 bg-muted" : "border-border text-muted-foreground",
-              !available && "cursor-not-allowed opacity-40",
-            )}
-            title={available ? undefined : "The firmware never recorded this signal for this shot"}
-          >
-            <span
-              aria-hidden="true"
-              className="mr-1 inline-block h-0.5 w-3 align-middle"
-              style={{ background: `var(--chart-${spec.color + 1})` }}
-            />
-            {spec.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function DownloadButtons({ id, deviceId }: { id: number; deviceId: string }) {
-  const [busy, setBusy] = useState(false);
-
-  async function downloadJson() {
-    setBusy(true);
-    try {
-      const payload = await getShotExport(id);
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
-      );
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `shot-${deviceId}.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <Button asChild variant="outline" size="sm">
-        <a href={shotRawUrl(id)} download>
-          <Download className="size-3.5" aria-hidden="true" />
-          .slog
-        </a>
-      </Button>
-      <Button variant="outline" size="sm" onClick={downloadJson} disabled={busy}>
-        <Download className="size-3.5" aria-hidden="true" />
-        JSON
-      </Button>
-    </>
   );
 }
 

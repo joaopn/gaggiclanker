@@ -103,8 +103,8 @@ src/
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
     shots/            table, filters, columns, pull button, drop zone, import results, row editor,
-                      ShotRowPanel (an open row), QuickJudgement (its verdict), DecisionCell,
-                      DeviceNotesCard
+                      ShotRowPanel (an open row), ShotCurvesCard (the Curves box, shared with
+                      the shot page), DecisionCell, DeviceNotesCard
 ```
 
 Four things about the shots table are worth knowing before editing it.
@@ -113,11 +113,10 @@ Four things about the shots table are worth knowing before editing it.
 `<button>` with `aria-expanded`, and the controls in the row (compare box, stars,
 Set badge or menu, the decision, the row editor) are lifted above it with `z-[1]`,
 the same arrangement the link used — a button wrapping them would be invalid HTML.
-The open panel (`ShotRowPanel`) is the shot page's own `ShotChart`, lazy, so the
-list with nothing open never downloads Chart.js; `QuickJudgement`, the verdict
-somebody gives every shot (rating, balance, aroma and taste chips, a line of
-notes, each saved on the click); and `DeviceNotesCard`, which the shot page uses
-too. It reads the shot with `useShot` and `useShotSamples`, the page's keys, so
+The open panel (`ShotRowPanel`) is the shot page's own two boxes side by side:
+`JudgementForm` on the left, saved with its button, and `ShotCurvesCard` on the
+right, whose chart is lazy so the list with nothing open never downloads
+Chart.js. It reads the shot with `useShot` and `useShotSamples`, the page's keys, so
 the stars in the row and the panel invalidate each other through `shots`. Escape
 closes the panel unless a popover inside the row owns the key.
 
@@ -147,11 +146,14 @@ as the current default, a stored Analyse column reads as Decision, and any
 other stored choice is kept.
 
 **Every write to a verdict merges and queues.** The stars, the Decision column,
-the row editor and the quick judgement all go through `usePatchJudgement(shotId)`:
+and the row editor all go through `usePatchJudgement(shotId)`:
 it reads the verdict, changes the fields it was given and puts the whole row back
 (`PUT` replaces), and it runs in a mutation scope per shot, so a star and a chip
 clicked a moment apart cannot each read the verdict from before the other. None
 of them writes an empty verdict to clear something on a shot nobody has judged.
+The judgement form in the open panel is the exception, as on the shot page: it
+puts back every field it renders when Save is pressed, and it re-seeds from the
+server whenever the verdict changes underneath it.
 
 The Sync page is where a person starts every exchange with the machine:
 
@@ -207,7 +209,7 @@ src/
     charts/
       SetTrendChart.tsx   score, rating, duration and ratio across a Set's versions
     sets/             SetBadge, VersionTimeline, NewSetDialog
-    shots/            JudgementForm, JudgementControls (shared with the quick judgement),
+    shots/            JudgementForm (the shot page and the open row), JudgementControls,
                       AssignToSet, NeedsSetMenu
   pages/              BeansPage, HardwarePage, SetsPage, SetDetailPage
 ```

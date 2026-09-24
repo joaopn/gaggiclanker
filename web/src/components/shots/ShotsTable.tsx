@@ -40,8 +40,8 @@ import { cn } from "@/lib/utils";
  * whose height browsers treat as advisory, and a row here has to be exactly
  * `ROW_HEIGHT` for the window arithmetic to hold.
  *
- * **A row opens in place** rather than navigating: clicking it shows the curve,
- * the quick judgement and the machine's notes directly below it
+ * **A row opens in place** rather than navigating: clicking it shows the shot
+ * page's judgement and curves boxes side by side directly below it
  * (`ShotRowPanel`), and clicking it again closes them. One row is open at a
  * time — opening another closes the first — because the window arithmetic
  * accounts for exactly one panel, and because two open forms is two places to

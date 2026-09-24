@@ -10,6 +10,18 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The open shot row is the shot page's judgement and curves
+
+- **A row in the shots list opens onto the shot page's own two boxes**, side
+  by side: the judgement on the left, the same form as on the page (doses,
+  grind, decision, the notes column, saved with **Save judgement**), and the
+  Curves box on the right with its series toggles and downloads. The quick
+  judgement that saved on every click and the machine's notes card are gone
+  from the row; the notes card is still on the shot page.
+- **The judgement's two columns follow the width of the card**, not of the
+  window, so the form splits wherever it has room — across the shot page, or
+  in half of an open row on a wide screen — and stacks where it does not.
+
 ### A shot's page opens on your judgement
 
 - **The judgement comes first, the curves below it.** A shot's page now shows

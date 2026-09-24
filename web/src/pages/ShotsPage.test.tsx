@@ -826,7 +826,7 @@ describe("ShotsPage open rows", () => {
       shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
     ]);
 
-  it("opens the curve, the quick judgement and the machine's notes under the row", async () => {
+  it("opens the shot page's judgement and curves boxes side by side under the row", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
@@ -843,13 +843,30 @@ describe("ShotsPage open rows", () => {
     expect(toggle()).toHaveAttribute("aria-expanded", "true");
     expect(toggle()).toHaveAttribute("aria-controls", panel.id);
     // The real chart, lazy, with its text summary; the full curve, not a sparkline.
-    expect(await within(panel).findByTestId("chart-series")).toHaveTextContent(/points/);
+    const series = await within(panel).findByTestId("chart-series");
+    expect(series).toHaveTextContent(/points/);
     expect(getShotSamples).toHaveBeenCalledWith(1, undefined);
-    expect(within(panel).getByTestId("quick-judgement")).toBeInTheDocument();
-    // The quick one: no doses, no grind, no decision, and nothing to press Save on.
-    expect(within(panel).queryByLabelText("Dose in (g)")).not.toBeInTheDocument();
-    expect(within(panel).queryByRole("button", { name: /Save/ })).not.toBeInTheDocument();
-    expect(within(panel).getByTestId("device-notes")).toBeInTheDocument();
+    const form = within(panel).getByTestId("judgement-form");
+
+    // Two columns: the judgement on the left, the curves on the right, and
+    // nothing else — the machine's notes card is the shot page's.
+    const columns = within(panel).getByTestId("panel-columns");
+    const [left, right] = Array.from(columns.children);
+    expect(columns.children).toHaveLength(2);
+    expect(left).toContainElement(form);
+    expect(right).toContainElement(series);
+    expect(within(right as HTMLElement).getByText("Curves")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("device-notes")).not.toBeInTheDocument();
+
+    // The shot page's full form: doses, grind, the notes column, and Save.
+    expect(within(form).getByLabelText("Dose in (g)")).toBeInTheDocument();
+    expect(within(form).getByLabelText("Grind")).toBeInTheDocument();
+    expect(within(form).getByLabelText("Notes")).toBeInTheDocument();
+    expect(within(form).getByRole("button", { name: "Save judgement" })).toBeInTheDocument();
+    // And the curve's own controls: the series toggles and the downloads.
+    expect(within(right as HTMLElement).getByTestId("series-toggles")).toBeInTheDocument();
+    expect(within(right as HTMLElement).getByRole("button", { name: /JSON/ })).toBeInTheDocument();
+
     expect(within(panel).getByRole("link", { name: /Open shot page/ })).toHaveAttribute(
       "href",
       "/shots/1",
@@ -1016,7 +1033,7 @@ describe("ShotsPage open rows", () => {
     });
 
     await user.click(toggle("000101"));
-    await within(await screen.findByTestId("shot-panel")).findByTestId("quick-judgement");
+    await within(await screen.findByTestId("shot-panel")).findByTestId("judgement-form");
     await waitFor(() => expect(writes.length).toBeGreaterThan(0));
     const before = top;
     writes.length = 0;
@@ -1044,26 +1061,6 @@ describe("ShotsPage open rows", () => {
     expect(screen.getByTestId("shot-panel")).toBeInTheDocument();
   });
 
-  it.each([
-    ["the curve", "panel-curve"],
-    ["the machine's notes", "panel-notes"],
-  ])("goes to the shot page when %s is clicked", async (_what, testId) => {
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
-
-    renderList();
-    await listed();
-    await user.click(toggle());
-
-    const target = await screen.findByTestId(testId);
-    // Found once the curve's lazy chunk and the detail have both arrived.
-    if (testId === "panel-curve") await within(target).findByTestId("chart-series");
-    expect(target).toHaveAttribute("href", "/shots/1");
-    await user.click(target);
-
-    expect(await screen.findByText("the shot page")).toBeInTheDocument();
-  });
-
   it("saves a verdict from the panel without navigating, and the row's stars follow", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot({ judgement_rating: 4 })]));
@@ -1073,12 +1070,14 @@ describe("ShotsPage open rows", () => {
     await listed();
     await user.click(toggle());
     const panel = await screen.findByTestId("shot-panel");
-    const form = await within(panel).findByTestId("quick-judgement");
+    const form = await within(panel).findByTestId("judgement-form");
 
     // What the server holds once the PUT lands; the list is re-read after it.
     getShots.mockResolvedValue(listData([shot({ judgement_rating: 2 })]));
-    // The click is the save: there is no button to press after it.
+    // The shot page's form: pick, then save with its button.
     await user.click(within(form).getByRole("button", { name: "2 stars" }));
+    expect(putJudgement).not.toHaveBeenCalled();
+    await user.click(within(form).getByRole("button", { name: "Save judgement" }));
 
     await waitFor(() => expect(putJudgement).toHaveBeenCalledTimes(1));
     expect(putJudgement.mock.calls[0]).toEqual([1, expect.objectContaining({ rating: 2 })]);
@@ -1100,7 +1099,7 @@ describe("ShotsPage open rows", () => {
     renderList();
     await listed();
     await user.click(toggle());
-    const form = await screen.findByTestId("quick-judgement");
+    const form = await screen.findByTestId("judgement-form");
     expect(within(form).getByRole("button", { name: "4 stars" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -1185,7 +1184,7 @@ describe("ShotsPage open rows", () => {
     await user.click(toggle());
 
     expect(await screen.findByTestId("panel-quarantined")).toHaveTextContent("bad magic bytes");
-    expect(screen.queryByTestId("panel-curve")).not.toBeInTheDocument();
+    expect(screen.queryByText("Curves")).not.toBeInTheDocument();
     expect(getShotSamples).not.toHaveBeenCalled();
   });
 
