@@ -9,18 +9,23 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.connection import Database
+from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL, ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.sets import grind_value, set_name
 from gaggiclanker.infra.errors import Conflict, Unprocessable
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.starting.models import StartingPointResult
-from gaggiclanker.starting.service import StartingPointService, _grind_value
+from gaggiclanker.starting.service import StartingPointService
 from tests.llm.conftest import FakeProvider
 from tests.starting.conftest import (
     AS_OF,
@@ -541,28 +546,63 @@ async def test_a_draft_with_no_profile_in_the_library_gets_a_synthetic_base(
     [
         ("20", True, 20.0),
         ("7.5", True, 7.5),
+        ("7,5", True, 7.5),
         # The first number wins: the text is what the user reads back and 3 is
-        # what the chart plots. See `_grind_value` for why not 3.5.
+        # what the chart plots. See `grind_value` for why not 3.5.
         ("between 3 and 4", True, 3.0),
         ("22 numbers", True, 22.0),
         ("two steps finer", True, None),
         ("20", False, None),
+        ("20000", True, None),
     ],
 )
 def test_grind_value_only_parses_a_setting_the_model_called_absolute(
     setting: str, absolute: bool, expected: float | None
 ) -> None:
-    from gaggiclanker.starting.models import StartingPointOption
+    assert grind_value(setting, absolute=absolute) == expected
 
-    option = StartingPointOption(
-        option="recommended",
-        headline="x",
-        grind_setting=setting,
-        grind_is_absolute=absolute,
-        dose_g=18,
-        yield_g=36,
-        ratio=2,
-        temperature_c=93,
-        rationale="x",
+
+async def test_an_accepted_option_s_grind_value_follows_the_shared_rule(
+    fixture: Fixture, starting: StartingPointService
+) -> None:
+    """The service stores what the one rule says, not a rule of its own."""
+    run: Any = await _propose(starting, fixture)
+    accepted = await starting.accept(run.id, "recommended")
+    option = next(item for item in run.output["options"] if item["option"] == "recommended")
+    assert accepted.version.grind_value == grind_value(
+        option["grind_setting"], absolute=option["grind_is_absolute"]
     )
-    assert _grind_value(option) == expected
+    assert accepted.set_row.name == set_name(run.bean_name, run.grinder_name)
+
+
+async def test_the_default_draft_base_is_the_most_used_brew_profile(fixture: Fixture) -> None:
+    profiles = ProfilesRepository(fixture.db)
+    most_used = await fixture.db.fetch_value(
+        "SELECT profile_version_id FROM shots WHERE profile_version_id IS NOT NULL "
+        "GROUP BY profile_version_id ORDER BY COUNT(*) DESC, profile_version_id DESC LIMIT 1"
+    )
+
+    assert await profiles.default_draft_base() == most_used
+
+
+async def test_an_empty_library_gets_a_synthetic_base_once(tmp_path: Path) -> None:
+    db = Database(tmp_path / "empty.db")
+    await db.connect()
+    try:
+        await run_migrations(db)
+        profiles = ProfilesRepository(db)
+        first = await profiles.default_draft_base()
+        again = await profiles.default_draft_base()
+        version = await profiles.get_version(first)
+    finally:
+        await db.close()
+
+    assert first == again
+    assert version is not None and version.label == SYNTHETIC_BASE_LABEL
+
+
+def test_the_default_name_is_the_bag_on_the_grinder() -> None:
+    assert set_name("Ethiopia Guji", "Niche Zero") == "Ethiopia Guji on the Niche Zero"
+    assert set_name(" Kenya ", None) == "Kenya"
+    assert set_name(None, "") == "New bean"
+    assert len(set_name("x" * 300, "Niche")) == 200

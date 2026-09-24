@@ -20,6 +20,7 @@ from gaggiclanker.domain.models import Profile, canonical_profile_json, profile_
 from gaggiclanker.domain.profile_recipe import profile_recipe
 
 __all__ = [
+    "SYNTHETIC_BASE_LABEL",
     "DeviceProfileRow",
     "DeviceProfileSummary",
     "ProfileVersionPage",
@@ -27,6 +28,11 @@ __all__ = [
     "ProfileVersionSummary",
     "ProfilesRepository",
 ]
+
+
+#: The label of the synthetic base a new draft is diffed against when the
+#: archive holds no profile at all. See :meth:`ProfilesRepository.default_draft_base`.
+SYNTHETIC_BASE_LABEL = "Empty baseline"
 
 
 class ProfileVersionRow(BaseModel):
@@ -189,6 +195,57 @@ class ProfilesRepository(Repository):
     async def get_version(self, version_id: int) -> ProfileVersionRow | None:
         row = await self.db.fetch_one("SELECT * FROM profile_versions WHERE id = ?", (version_id,))
         return self.to_model(ProfileVersionRow, row)
+
+    async def default_draft_base(self) -> int:
+        """The version a profile that was authored rather than edited is diffed against.
+
+        A draft is always *derived from* a version, because the diff view is how
+        somebody reads it before approving. A profile a model wrote from scratch
+        — a starting-point option, an initial recipe with no fork source — is
+        derived from nothing, so the base is the closest thing available: the
+        most-used brew profile in the library, which is what "what you brew now"
+        means. Utility profiles never: a backflush is nobody's baseline.
+
+        When the library is empty the base is a synthetic minimal profile,
+        stored as a version like any other. That is a real row rather than a
+        special case in the diff view, and it costs one profile nobody selects.
+        """
+        best = await self.db.fetch_value(
+            """
+            SELECT pv.id FROM profile_versions pv
+             WHERE pv.utility = 0
+             ORDER BY (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) DESC,
+                      pv.id DESC
+             LIMIT 1
+            """
+        )
+        if best is not None:
+            return int(best)
+        version, _ = await self.ensure_version(
+            Profile.model_validate(
+                {
+                    "label": SYNTHETIC_BASE_LABEL,
+                    "type": "pro",
+                    "description": (
+                        "An empty baseline, created because the archive held no profile to "
+                        "diff a new draft against."
+                    ),
+                    "temperature": 93.0,
+                    "phases": [
+                        {
+                            "name": "Extraction",
+                            "phase": "brew",
+                            "valve": 1,
+                            "duration": 30,
+                            "pump": {"target": "pressure", "pressure": 9, "flow": 0},
+                            "targets": [{"type": "volumetric", "operator": "gte", "value": 36}],
+                        }
+                    ],
+                }
+            ),
+            source="draft",
+        )
+        return version.id
 
     async def get_version_by_hash(self, content_hash: str) -> ProfileVersionRow | None:
         row = await self.db.fetch_one(

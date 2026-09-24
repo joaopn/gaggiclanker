@@ -54,6 +54,7 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
+from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
     SetsRepository,
@@ -69,6 +70,7 @@ from gaggiclanker.db.repos.starting import (
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_policy import clamp
 from gaggiclanker.domain.profile_recipe import profile_recipe
+from gaggiclanker.domain.sets import grind_value, set_name
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
@@ -108,10 +110,6 @@ STARTING_POINT_EVENTS = (
 #: Linear backoff between this call's own retries. A real wait in production;
 #: the suite sets it to zero rather than sleeping out every failure path.
 RETRY_DELAY_S = 0.5
-
-#: The label of the synthetic base a draft is built on when the archive has no
-#: profile at all. See :meth:`StartingPointService._base_version_for`.
-SYNTHETIC_BASE_LABEL = "Empty baseline"
 
 
 def starting_point_task_name(bean_id: int, grinder_id: int | None) -> str:
@@ -534,7 +532,10 @@ class StartingPointService:
                     ),
                 },
             )
-        base_version_id = await self._base_version_for(option)
+        # Nothing is genuinely derived from here — the profile was authored,
+        # not edited — so the diff is read against what "what you brew now"
+        # means: the library's own default base.
+        base_version_id = await ProfilesRepository(self.db).default_draft_base()
         draft: ProfileDraftRow = await self.drafts.create_manual(
             base_version_id=base_version_id,
             # `to_device()`, not `model_dump()`: it re-expands the `^_`
@@ -580,8 +581,6 @@ class StartingPointService:
         """
         if option.profile_version_id is None:
             return None
-        from gaggiclanker.db.repos.profiles import ProfilesRepository
-
         version = await ProfilesRepository(self.db).get_version(option.profile_version_id)
         if version is None or not version.profile:
             return None
@@ -629,60 +628,6 @@ class StartingPointService:
             ),
         )
 
-    async def _base_version_for(self, option: StartingPointOption) -> int:
-        """What the new profile is diffed against.
-
-        A draft is always *derived from* a version, because the diff view is
-        how somebody reads it before approving. There is nothing here it is
-        genuinely derived from — this profile was authored, not edited — so the
-        base is the closest thing available: the most-used profile in the
-        library, which is what "what you brew now" means.
-
-        When the library is empty the base is a synthetic minimal profile,
-        stored as a version like any other. That is a real row rather than a
-        special case in the diff view, and it costs one profile nobody selects.
-        """
-        from gaggiclanker.db.repos.profiles import ProfilesRepository
-        from gaggiclanker.domain.models import Profile
-
-        profiles = ProfilesRepository(self.db)
-        best = await self.db.fetch_value(
-            """
-            SELECT pv.id FROM profile_versions pv
-             WHERE pv.utility = 0
-             ORDER BY (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) DESC,
-                      pv.id DESC
-             LIMIT 1
-            """
-        )
-        if best is not None:
-            return int(best)
-        version, _ = await profiles.ensure_version(
-            Profile.model_validate(
-                {
-                    "label": SYNTHETIC_BASE_LABEL,
-                    "type": "pro",
-                    "description": (
-                        "An empty baseline, created because the archive held no profile to "
-                        "diff a starting-point draft against."
-                    ),
-                    "temperature": 93.0,
-                    "phases": [
-                        {
-                            "name": "Extraction",
-                            "phase": "brew",
-                            "valve": 1,
-                            "duration": 30,
-                            "pump": {"target": "pressure", "pressure": 9, "flow": 0},
-                            "targets": [{"type": "volumetric", "operator": "gte", "value": 36}],
-                        }
-                    ],
-                }
-            ),
-            source="draft",
-        )
-        return version.id
-
     async def _create_set(
         self,
         run: StartingPointRunRow,
@@ -703,7 +648,7 @@ class StartingPointService:
             profile_version_id = draft.draft_version_id
 
         intent = _intent(run, option, draft)
-        name = _set_name(run)
+        name = set_name(run.bean_name, run.grinder_name)
         stored = await self.sets.create(
             SetWrite(
                 name=name,
@@ -713,7 +658,7 @@ class StartingPointService:
             SetVersionWrite(
                 profile_version_id=profile_version_id,
                 grind_setting=option.grind_setting[:100],
-                grind_value=_grind_value(option),
+                grind_value=grind_value(option.grind_setting, absolute=option.grind_is_absolute),
                 dose_g=option.dose_g,
                 target_yield_g=option.yield_g,
                 intent=intent,
@@ -770,18 +715,6 @@ def _usage(prompt_tokens: int | None, completion_tokens: int | None) -> dict[str
     }
 
 
-def _set_name(run: StartingPointRunRow) -> str:
-    """ "Ethiopia Guji on the Niche Zero" — the bag and the grinder.
-
-    The bag alone would collide the day somebody runs the same bean on a second
-    grinder, which is exactly the comparison this feature invites.
-    """
-    bean = (run.bean_name or "New bean").strip()
-    grinder = (run.grinder_name or "").strip()
-    name = f"{bean} on the {grinder}" if grinder else bean
-    return name[:200]
-
-
 def _same_temperature(left: float, right: float) -> bool:
     """Whether two brew temperatures are the same number, near enough.
 
@@ -808,35 +741,6 @@ def _intent(
         parts.append(f"Profile draft #{draft.id} is waiting for approval.")
     parts.append(f"From starting-point run #{run.id}.")
     return " ".join(parts)[:500]
-
-
-def _grind_value(option: StartingPointOption) -> float | None:
-    """The numeric half of the grind, when the setting really is a number.
-
-    Only for an absolute setting: parsing "two clicks finer than usual" into 2
-    and plotting it on the Set's grind chart would draw a line that means
-    nothing. `grind_is_absolute` is the model's own claim and the text still has
-    to parse, so both have to hold.
-
-    **The first number wins**, which is a deliberate choice rather than an
-    oversight. `set_versions` keeps the reading as text *and* as a number for
-    exactly this reason (migration 0005): a Mazzer's "between 3 and 4" is what
-    the user reads back, and 3 is what a chart plots. Taking the first number
-    puts the point at the bottom of the stated range every time, which is at
-    least consistent; averaging to 3.5 would invent a precision the dial does
-    not have, and refusing to parse it at all would leave the Set's grind chart
-    with a hole wherever somebody owns that grinder.
-    """
-    if not option.grind_is_absolute:
-        return None
-    text = option.grind_setting.strip().split()
-    for token in text:
-        try:
-            value = float(token.replace(",", "."))
-        except ValueError:
-            continue
-        return value if 0 <= value <= 10000 else None
-    return None
 
 
 def _post_process(
