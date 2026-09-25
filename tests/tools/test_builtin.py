@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -128,6 +129,27 @@ async def test_the_catalogue_tools_list_what_was_seeded(ctx: ToolContext) -> Non
     assert (await call(ctx, "list_beans"))["count"] == 1
     assert (await call(ctx, "list_grinders"))["count"] == 1
     assert (await call(ctx, "list_profiles"))["count"] >= 1
+
+
+async def test_list_beans_leaves_out_what_nobody_filled_in(ctx: ToolContext) -> None:
+    """A null or empty field would read to the model as a fact about the coffee."""
+    beans = BeansRepository(ctx.db)
+    bare = await beans.create(BeanWrite(name="Mystery"))
+    scaled = await beans.create(BeanWrite(name="Scaled", acidity=4, sweetness=2))
+
+    items = {item["id"]: item for item in (await call(ctx, "list_beans"))["items"]}
+
+    assert items[bare.id] == {
+        "id": bare.id,
+        "name": "Mystery",
+        "decaf": False,
+        "archived": False,
+        "created_at": bare.created_at,
+        "set_count": 0,
+    }
+    assert items[scaled.id]["acidity"] == 4
+    assert items[scaled.id]["sweetness"] == 2
+    assert "intensity" not in items[scaled.id]
 
 
 async def test_list_grinders_carries_the_step_unit(ctx: ToolContext) -> None:

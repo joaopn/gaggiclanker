@@ -37,7 +37,7 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, set_attributes
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -110,6 +110,12 @@ _OUTCOMES: dict[str, str] = {
 }
 
 _DECISIONS: dict[str, str] = {"keep": "Keep", "improve": "Improve", "discard": "Discard"}
+
+
+def _taste(bean: BeanRow | None) -> str:
+    """The heading's taste clause ("; taste acidity 4 (1 low to 5 high)"), or ""."""
+    phrase = taste_scales(bean)
+    return f"; taste {phrase}" if phrase else ""
 
 
 def _plural(count: int, noun: str) -> str:
@@ -217,7 +223,7 @@ async def _heading(
             f"{bean.process} process" if bean is not None and bean.process else "",
         )
         if part
-    )
+    ) + _taste(bean)
     grinder_line = (
         f"{row.grinder_name}, adjusted in {grinder.step_unit}"
         if grinder is not None and grinder.step_unit

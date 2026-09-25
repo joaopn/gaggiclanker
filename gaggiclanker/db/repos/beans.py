@@ -20,7 +20,7 @@ is refused while any Set points at it.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,7 +28,48 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.vocab import Process, RoastLevel
 
-__all__ = ["BeanDeletion", "BeanRow", "BeanWrite", "BeansRepository"]
+__all__ = [
+    "BEAN_SCALES",
+    "BeanDeletion",
+    "BeanRow",
+    "BeanScale",
+    "BeanWrite",
+    "BeansRepository",
+    "taste_scales",
+]
+
+#: How the coffee tastes, on a scale of 1 to 5, the way many bags print it: the
+#: person's reading of the coffee, not a measurement. `None` is "not stated".
+type BeanScale = Annotated[int, Field(ge=1, le=5)]
+
+#: The three scales, in the order every screen and prompt lists them.
+BEAN_SCALES: tuple[str, ...] = ("acidity", "intensity", "sweetness")
+
+
+class _HasScales(Protocol):
+    @property
+    def acidity(self) -> int | None: ...
+    @property
+    def intensity(self) -> int | None: ...
+    @property
+    def sweetness(self) -> int | None: ...
+
+
+def taste_scales(bean: _HasScales | None) -> str | None:
+    """The scales the person filled in, as one phrase for a prompt, or ``None``.
+
+    ``"acidity 4, sweetness 3 (1 low to 5 high)"``: one phrase rather than a
+    line per scale, so the direction is said once and every prompt says it the
+    same way. An unstated scale is left out rather than named, and a bean with
+    none gets nothing: "acidity: not stated" reads to a model as something
+    known about the coffee.
+    """
+    if bean is None:
+        return None
+    parts = [
+        f"{name} {value}" for name in BEAN_SCALES if (value := getattr(bean, name)) is not None
+    ]
+    return f"{', '.join(parts)} (1 low to 5 high)" if parts else None
 
 
 class BeanWrite(BaseModel):
@@ -47,6 +88,9 @@ class BeanWrite(BaseModel):
     process: Process | None = None
     roast_level: RoastLevel | None = None
     decaf: bool = False
+    acidity: BeanScale | None = None
+    intensity: BeanScale | None = None
+    sweetness: BeanScale | None = None
     #: A free-form description of the coffee in the person's words: what the
     #: bag or the roaster says, tasting notes, anything worth knowing about the
     #: bean. Both prompts get it as written, under `description`.
@@ -88,6 +132,7 @@ _WRITABLE = (
     "process",
     "roast_level",
     "decaf",
+    *BEAN_SCALES,
     "description",
     "notes",
 )

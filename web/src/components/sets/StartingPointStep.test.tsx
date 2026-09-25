@@ -90,6 +90,18 @@ function render(props: Partial<Parameters<typeof StartingPointStep>[0]> = {}) {
 }
 
 describe("StartingPointStep", () => {
+  it("says nothing about a match neither bean recorded", async () => {
+    getSimilarSets.mockResolvedValue({
+      bean_id: 1,
+      grinder_id: 1,
+      items: [similarSet({ roast_match: "unknown", process_match: null, origin_match: true })],
+    });
+    render();
+    const card = await screen.findByTestId("similar-set-card");
+    expect(card).toHaveTextContent("same origin");
+    expect(card).not.toHaveTextContent(/roast|process/);
+  });
+
   it("shows what the archive already knows before anything is asked", async () => {
     render();
     const card = await screen.findByTestId("similar-set-card");

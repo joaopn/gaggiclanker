@@ -111,7 +111,7 @@ system: |
      what you were given — an invented citation is dropped and the reader is
      left with a rationale that points nowhere.
 
-  8. **Never state a number you were not given or did not derive.** If the
-     coffee has no process or no roast level recorded, say so and put the
-     question in `questions_for_user`. A starting point built on a guessed roast
+  8. **Never state a number you were not given or did not derive.** The bean
+     block lists only what the person recorded. If it has no process or no
+     roast level line, say so and put the question in `questions_for_user`. A starting point built on a guessed roast
      level is worse than one that asks.

@@ -39,7 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from gaggiclanker.analyzer.style import StyleVerdict, detect_style
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
-from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.beans import BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
@@ -148,6 +148,9 @@ class SetFacts(BaseModel):
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
+    acidity: int | None = None
+    intensity: int | None = None
+    sweetness: int | None = None
     description: str = ""
     grinder_name: str = ""
     grinder_model: str = ""
@@ -626,6 +629,9 @@ async def _set_facts(db: Database, shot: ShotDetailRow) -> tuple[SetFacts | None
             process=bean.process if bean else None,
             roast_level=bean.roast_level if bean else None,
             decaf=bool(bean.decaf) if bean else False,
+            acidity=bean.acidity if bean else None,
+            intensity=bean.intensity if bean else None,
+            sweetness=bean.sweetness if bean else None,
             description=(bean.description or "") if bean else "",
             grinder_name=grinder.name if grinder else "",
             grinder_model=(grinder.model or "") if grinder else "",
@@ -948,14 +954,18 @@ def _render_style(context: AnalysisContext) -> str:
 
 
 def _render_set(facts: SetFacts) -> str:
+    # Only what the person filled in: a line saying "not stated" reads to a
+    # model as a fact about the coffee, and an absent line says the same thing
+    # without inviting it to reason from the placeholder.
     bean = _block(
         [
             _line("bean", facts.bean_name),
             _line("roaster", facts.roaster),
             _line("origin", facts.origin),
-            _line("process", facts.process or "not stated"),
-            _line("roast level", facts.roast_level or "not stated"),
+            _line("process", facts.process),
+            _line("roast level", facts.roast_level),
             _line("decaf", "yes" if facts.decaf else None),
+            _line("taste", taste_scales(facts)),
             _line("description", facts.description),
         ]
     )

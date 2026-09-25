@@ -3203,6 +3203,7 @@ export interface components {
          * @description One row of `beans`, as read back.
          */
         BeanRow: {
+            acidity?: components["schemas"]["BeanScale"] | null;
             /**
              * Archived
              * @default false
@@ -3222,6 +3223,7 @@ export interface components {
             description: string;
             /** Id */
             id: number;
+            intensity?: components["schemas"]["BeanScale"] | null;
             /** Name */
             name: string;
             /**
@@ -3240,7 +3242,9 @@ export interface components {
              * @default 0
              */
             set_count: number;
+            sweetness?: components["schemas"]["BeanScale"] | null;
         };
+        BeanScale: number;
         /**
          * BeanWrite
          * @description A bean as the API accepts it. The only way a row reaches `beans`.
@@ -3250,6 +3254,7 @@ export interface components {
          *     stated" where a default would be a claim about the coffee.
          */
         BeanWrite: {
+            acidity?: components["schemas"]["BeanScale"] | null;
             /**
              * Decaf
              * @default false
@@ -3260,6 +3265,7 @@ export interface components {
              * @default
              */
             description: string;
+            intensity?: components["schemas"]["BeanScale"] | null;
             /** Name */
             name: string;
             /**
@@ -3273,6 +3279,7 @@ export interface components {
             roast_level?: components["schemas"]["RoastLevel"] | null;
             /** Roaster */
             roaster?: string | null;
+            sweetness?: components["schemas"]["BeanScale"] | null;
         };
         /** Body_import_files_api_import_post */
         Body_import_files_api_import_post: {
@@ -6471,11 +6478,8 @@ export interface components {
             grinder_name: string;
             /** Origin */
             origin?: string | null;
-            /**
-             * Origin Match
-             * @default false
-             */
-            origin_match: boolean;
+            /** Origin Match */
+            origin_match?: boolean | null;
             /**
              * @default {
              *       "shots": 0
@@ -6486,11 +6490,8 @@ export interface components {
             outcome_score: number;
             /** Process */
             process?: string | null;
-            /**
-             * Process Match
-             * @default false
-             */
-            process_match: boolean;
+            /** Process Match */
+            process_match?: boolean | null;
             /** Profile Label */
             profile_label?: string | null;
             /** Profile Temperature C */
@@ -6503,7 +6504,7 @@ export interface components {
             roast_level?: string | null;
             /**
              * Roast Match
-             * @default none
+             * @default unknown
              */
             roast_match: string;
             /** Score */

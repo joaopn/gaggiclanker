@@ -10,6 +10,23 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Acidity, intensity and sweetness on a bean
+
+- **A bean records its acidity, intensity and sweetness**, each on a scale of
+  1 to 5 or left unstated (a new migration adds the three columns; nothing is
+  rebuilt or lost). The analysis, the starting point, both chats and the SQL
+  tool's `v_beans` see them, as one line that says which way the scale runs:
+  `taste: acidity 4, sweetness 3 (1 low to 5 high)`.
+- **Only what you filled in about a bean reaches the model.** The analysis and
+  the starting point used to write `process: not stated` and `roast level: not
+  stated` (and the same for origin, and for a similar Set's bean), and the
+  `list_beans` tool sent `null` and `""` for every empty field; a model reads a
+  line like that as something known about the coffee. A similar Set's "why it
+  is similar" line also called a field "different" when either bean left it
+  empty; it now names only what both beans state, and the similar-Set API
+  answers `unknown` / `null` for those matches. An empty field is now left out
+  everywhere a bean is described to the model.
+
 ### The General chat no longer asks for starting points
 
 - **The `starting_point` and `get_starting_point` chat tools are gone.** The

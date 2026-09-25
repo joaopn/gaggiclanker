@@ -114,6 +114,24 @@ async def test_the_bean_block_says_nothing_about_a_bag(fixture: Fixture) -> None
     assert "process: natural" in rendered
 
 
+async def test_a_bean_with_only_a_name_gives_the_model_only_its_name(fixture: Fixture) -> None:
+    """An unfilled field is left out of the BEAN block, never named.
+
+    "roast level: not stated" reads to a model as a fact about the coffee; an
+    absent line tells it the same without inviting it to reason from it.
+    """
+    from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+
+    context = await build_context(fixture.db, fixture.shots[-1])
+    assert context.set is not None and context.set.bean_id is not None
+    await BeansRepository(fixture.db).update(context.set.bean_id, BeanWrite(name="Mystery"))
+
+    rendered = (await build_context(fixture.db, fixture.shots[-1])).render()["set_context"]
+    bean = rendered.split("BEAN\n")[1].split("\n\nKIT")[0]
+    assert bean == "bean: Mystery"
+    assert "not stated" not in rendered
+
+
 async def test_a_shot_with_no_set_says_so(fixture: Fixture) -> None:
     """An absent section reads as forgotten; a stated absence does not."""
     from gaggiclanker.db.repos.sets import SetsRepository

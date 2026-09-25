@@ -108,9 +108,12 @@ class SimilarSet(BaseModel):
     score: float
     attribute_score: float
     outcome_score: float
-    roast_match: str = "none"
-    process_match: bool = False
-    origin_match: bool = False
+    #: ``"unknown"`` / ``None`` when either bean leaves the field empty: a
+    #: difference nobody recorded is not a difference, and the prompt must not
+    #: say "different process" about a coffee whose process is not stated.
+    roast_match: str = "unknown"
+    process_match: bool | None = None
+    origin_match: bool | None = None
     #: Whether this Set is on the same side of the decaf line. False costs two
     #: points; the card shows it because "same roast, but decaf" is a sentence a
     #: reader needs before they copy the grind.
@@ -213,12 +216,15 @@ SELECT v.id                                         AS set_version_id,
        o.mean_execution_score,
        o.mean_ratio,
        o.mean_duration_s,
-       CASE WHEN b.roast_level = :roast_level THEN 'same'
+       CASE WHEN :roast_level IS NULL OR b.roast_level IS NULL THEN 'unknown'
+            WHEN b.roast_level = :roast_level THEN 'same'
             WHEN b.roast_level IN (:roast_before, :roast_after) THEN 'adjacent'
             ELSE 'none' END                         AS roast_match,
-       CASE WHEN :process IS NOT NULL AND b.process = :process THEN 1
+       CASE WHEN :process IS NULL OR b.process IS NULL THEN NULL
+            WHEN b.process = :process THEN 1
             ELSE 0 END                              AS process_match,
-       CASE WHEN :origin IS NOT NULL AND b.origin = :origin THEN 1
+       CASE WHEN :origin IS NULL OR b.origin IS NULL THEN NULL
+            WHEN b.origin = :origin THEN 1
             ELSE 0 END                              AS origin_match,
        CASE WHEN b.decaf = :decaf THEN 1 ELSE 0 END AS decaf_match,
        ROUND(
@@ -317,8 +323,8 @@ def _to_model(row: dict[str, Any]) -> SimilarSet:
         attribute_score=attribute,
         outcome_score=outcome,
         roast_match=str(row["roast_match"]),
-        process_match=bool(row["process_match"]),
-        origin_match=bool(row["origin_match"]),
+        process_match=None if row["process_match"] is None else bool(row["process_match"]),
+        origin_match=None if row["origin_match"] is None else bool(row["origin_match"]),
         decaf_match=bool(row["decaf_match"]),
         bean_id=row["bean_id"],
         bean_name=str(row["bean_name"] or ""),

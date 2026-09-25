@@ -250,7 +250,43 @@ async def test_an_unstated_roast_level_scores_nothing_rather_than_everything(
     rows = await _for_the_new_bag(fixture, roast_level=None, process=None, origin=None)
     assert rows, "outcome alone still ranks them"
     assert all(row.attribute_score == 0.0 for row in rows)
-    assert all(row.roast_match == "none" for row in rows)
+    # Not known to match and not known to differ: nothing was recorded to compare.
+    assert all(row.roast_match == "unknown" for row in rows)
+    assert all(row.process_match is None and row.origin_match is None for row in rows)
+
+
+async def test_a_field_the_other_bean_leaves_empty_is_unknown_not_different(
+    fixture: Fixture,
+) -> None:
+    await fixture.db.execute(
+        "UPDATE beans SET process = NULL, roast_level = NULL, origin = NULL"
+        " WHERE id = (SELECT bean_id FROM sets WHERE id = ?)",
+        (fixture.sets["kenya"],),
+    )
+    rows = await _for_the_new_bag(fixture)
+    kenya = next(row for row in rows if row.set_version_id == fixture.versions["kenya"])
+    assert (kenya.roast_match, kenya.process_match, kenya.origin_match) == ("unknown", None, None)
+    # Scoring is untouched: an unknown still earns nothing.
+    assert kenya.attribute_score == 0.0
+    others = [row for row in rows if row is not kenya]
+    assert all(row.roast_match != "unknown" for row in others)
+
+
+async def test_the_prompt_never_calls_an_unrecorded_field_different(fixture: Fixture) -> None:
+    """The "why it is similar" line names only what both beans state."""
+    from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+    from gaggiclanker.starting.context import build_context
+    from tests.starting.conftest import AS_OF
+
+    bare = await BeansRepository(fixture.db).create(BeanWrite(name="Mystery"))
+    rendered = (
+        await build_context(fixture.db, bean_id=bare.id, grinder_id=fixture.grinder_id, as_of=AS_OF)
+    ).render()["similar_sets"]
+
+    assert "[set_version" in rendered, "the archive's Sets are still offered"
+    assert "different" not in rendered
+    assert "same roast" not in rendered
+    assert "why it is similar" not in rendered
 
 
 async def test_a_set_can_be_excluded_from_its_own_suggestions(fixture: Fixture) -> None:

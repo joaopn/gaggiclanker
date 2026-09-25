@@ -467,6 +467,9 @@ async def build_fixture(db: Database, *, seed_knowledge: bool = True) -> Fixture
             origin="Kenya",
             process="washed",
             roast_level="light",
+            # Sweetness left unstated on purpose (see the golden).
+            acidity=5,
+            intensity=3,
             description="blackcurrant, tomato, cane sugar",
         )
     )

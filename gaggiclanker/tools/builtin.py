@@ -626,10 +626,26 @@ class ListBeansInput(_Model):
     include_archived: bool = False
 
 
-@tool("list_beans", permission="read", description="The bean catalogue.")
+@tool(
+    "list_beans",
+    permission="read",
+    description=(
+        "The bean catalogue. Each coffee carries only the fields the person filled in; "
+        "acidity, intensity and sweetness are their reading of the coffee, 1 low to 5 high."
+    ),
+)
 async def list_beans(ctx: ToolContext, args: ListBeansInput) -> ListOutput:
     rows = await BeansRepository(ctx.db).list_all(include_archived=args.include_archived)
-    items = [row.model_dump(mode="json") for row in rows]
+    # A field nobody filled in is left out rather than sent as null or "": the
+    # model reads `"roast_level": null` as something known about the coffee.
+    items = [
+        {
+            key: value
+            for key, value in row.model_dump(mode="json").items()
+            if value not in (None, "")
+        }
+        for row in rows
+    ]
     return ListOutput(items=items, count=len(items))
 
 

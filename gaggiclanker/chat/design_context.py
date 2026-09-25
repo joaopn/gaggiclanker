@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 
 from gaggiclanker.analyzer.style import detect_style
-from gaggiclanker.chat.context import _OUTCOMES, _cut, _plural, _quote, _recipe
+from gaggiclanker.chat.context import _OUTCOMES, _cut, _plural, _quote, _recipe, _taste
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
@@ -162,7 +162,8 @@ def _heading(row: SetRow, bean: BeanRow | None, grinder: GrinderRow | None) -> l
     lines = [
         "THIS CONVERSATION IS DESIGNING A NEW SET",
         "",
-        f"Set {row.id}: {row.name}. Bean: {', '.join(part for part in bean_parts if part)}. "
+        f"Set {row.id}: {row.name}. "
+        f"Bean: {', '.join(part for part in bean_parts if part)}{_taste(bean)}. "
         f"Grinder: {grinder_line}.",
         "Nothing has been brewed on it. Its version 1 has no recipe yet: no profile, no grind, "
         "no dose, no yield. What you propose, once the person accepts it, becomes that "

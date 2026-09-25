@@ -7,6 +7,7 @@ in — a Set is bookkeeping and works with the espresso machine unplugged.
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 import httpx
@@ -159,6 +160,37 @@ class TestBeans:
         # one envelope code (`infra/envelope.py`).
         assert response.status_code == 400
         assert [detail["field"] for detail in error(response)["details"]] == ["body.process"]
+
+    async def test_the_taste_scales_are_one_to_five_or_unstated(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        created = data(
+            await client.post(
+                "/api/beans", json={"name": "x", "acidity": 1, "intensity": 5, "sweetness": 3}
+            )
+        )
+        assert (created["acidity"], created["intensity"], created["sweetness"]) == (1, 5, 3)
+        # A whole-object PUT: a scale not sent is cleared back to unstated.
+        cleared = data(
+            await client.put(f"/api/beans/{created['id']}", json={"name": "x", "acidity": 2})
+        )
+        assert (cleared["acidity"], cleared["intensity"], cleared["sweetness"]) == (2, None, None)
+
+        for field, value in [("acidity", 0), ("intensity", 6), ("sweetness", 2.5)]:
+            response = await client.post("/api/beans", json={"name": "x", field: value})
+            assert response.status_code == 400, (field, value)
+            assert [detail["field"] for detail in error(response)["details"]] == [f"body.{field}"]
+
+    async def test_the_database_refuses_a_scale_outside_one_to_five(self, app: FastAPI) -> None:
+        """The CHECK is the guard for anything that writes around the model."""
+        db = app.state.db
+        await db.execute("INSERT INTO beans (name, created_at) VALUES ('x', 'now')")
+        for column in ("acidity", "intensity", "sweetness"):
+            await db.execute(f"UPDATE beans SET {column} = 5")  # noqa: S608 - fixed names
+            with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+                await db.execute(f"UPDATE beans SET {column} = 6")  # noqa: S608 - fixed names
+        row = await db.fetch_one("SELECT acidity, intensity, sweetness FROM v_beans")
+        assert tuple(row) == (5, 5, 5)
 
     async def test_missing_bean_is_a_404(self, client: httpx.AsyncClient) -> None:
         assert (await client.get("/api/beans/404")).status_code == 404

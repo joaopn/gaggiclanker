@@ -40,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.analyzer.style import detect_style
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
+from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.machines import MachineRepository
@@ -92,6 +92,9 @@ class BeanFacts(BaseModel):
     process: str | None = None
     roast_level: str | None = None
     decaf: bool = False
+    acidity: int | None = None
+    intensity: int | None = None
+    sweetness: int | None = None
     description: str = ""
     notes: str = ""
 
@@ -242,6 +245,9 @@ async def build_context(
         process=inputs.bean.process,
         roast_level=inputs.bean.roast_level,
         decaf=inputs.bean.decaf,
+        acidity=inputs.bean.acidity,
+        intensity=inputs.bean.intensity,
+        sweetness=inputs.bean.sweetness,
         description=inputs.bean.description,
         notes=inputs.bean.notes,
     )
@@ -463,6 +469,12 @@ def _block(lines: list[str | None]) -> str:
     return "\n".join(line for line in lines if line)
 
 
+def _match(field: str, matched: bool | None) -> str:
+    if matched is None:
+        return ""
+    return f"same {field}" if matched else f"different {field}"
+
+
 def _num(value: Any) -> str:
     if isinstance(value, int | float):
         return f"{float(value):g}"
@@ -474,14 +486,18 @@ def _float(value: Any) -> float | None:
 
 
 def _render_bean(bean: BeanFacts, as_of: str) -> str:
+    # Only what the person filled in: a "not stated" line reads to a model as
+    # a fact about the coffee. The prompt says what a missing roast level or
+    # process line means.
     return _block(
         [
             _line("bean", bean.name),
             _line("roaster", bean.roaster),
-            _line("origin", bean.origin or "not stated"),
-            _line("process", bean.process or "not stated"),
-            _line("roast level", bean.roast_level or "not stated"),
+            _line("origin", bean.origin),
+            _line("process", bean.process),
+            _line("roast level", bean.roast_level),
             _line("decaf", "yes" if bean.decaf else None),
+            _line("taste", taste_scales(bean)),
             _line("today", as_of),
             _line("description", bean.description),
             _line("notes", bean.notes),
@@ -526,14 +542,22 @@ def render_similar(similar: list[SimilarSet]) -> str:
         )
     blocks: list[str] = []
     for entry in similar:
+        # Only what both beans state: an empty field on either side is not
+        # known to match or to differ, so it is left out rather than called
+        # "different".
         roast = {
             "same": "same roast level",
             "adjacent": "one roast level away",
+            "unknown": "",
         }.get(entry.roast_match, "different roast level")
         match = [
-            roast,
-            "same process" if entry.process_match else "different process",
-            "same origin" if entry.origin_match else "different origin",
+            part
+            for part in (
+                roast,
+                _match("process", entry.process_match),
+                _match("origin", entry.origin_match),
+            )
+            if part
         ]
         if not entry.decaf_match:
             # Worth saying out loud: decaf is a different coffee hydraulically,
@@ -549,10 +573,16 @@ def render_similar(similar: list[SimilarSet]) -> str:
                     _line("  why it is similar", ", ".join(match)),
                     _line(
                         "  bean",
-                        f"{entry.roast_level or 'roast not stated'}, "
-                        f"{entry.process or 'process not stated'}, "
-                        f"{entry.origin or 'origin not stated'}"
-                        + (", decaf" if entry.decaf else ""),
+                        ", ".join(
+                            part
+                            for part in (
+                                entry.roast_level,
+                                entry.process,
+                                entry.origin,
+                                "decaf" if entry.decaf else None,
+                            )
+                            if part
+                        ),
                     ),
                     _line("  grind", entry.grind_setting or "not recorded"),
                     _line("  dose", entry.dose_g, " g"),

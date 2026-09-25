@@ -592,7 +592,7 @@ next call without a restart.
 ### The analysis
 
 One structured call per shot. It is handed the diagnostics with their band
-labels, the Set (the bean with its roast level and process, the grinder with its
+labels, the Set (the bean with whatever of its roast level, process and taste scales you recorded, the grinder with its
 own step unit, the profile JSON, the grind/dose/yield targets), the previous five shots in the same
 Set with your verdict on each and the advice that followed them, your verdict on
 this one — marked as ground truth for taste — and the knowledge rules that match.

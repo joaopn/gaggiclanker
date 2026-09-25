@@ -397,6 +397,10 @@ async def build_fixture(db: Database) -> Fixture:
             origin="Ethiopia",
             process="natural",
             roast_level="light",
+            # Intensity left unstated on purpose: the golden shows that an
+            # unstated scale is absent, not "not stated".
+            acidity=4,
+            sweetness=3,
             description="peach, jasmine, lemon",
         )
     )

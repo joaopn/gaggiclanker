@@ -245,6 +245,7 @@ roaster: Hasbean
 origin: Ethiopia
 process: natural
 roast level: light
+taste: acidity 4, sweetness 3 (1 low to 5 high)
 description: peach, jasmine, lemon
 
 KIT

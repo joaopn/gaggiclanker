@@ -14,7 +14,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from gaggiclanker.starting.context import DEFAULT_STYLE, build_context
+from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+from gaggiclanker.starting.context import DEFAULT_STYLE, build_context, render_similar
+from gaggiclanker.starting.similar import SimilarSet
 from tests.starting.conftest import AS_OF, Fixture
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "starting-point-prompt.txt"
@@ -72,6 +74,39 @@ async def test_the_bean_block_says_nothing_about_a_bag(fixture: Fixture) -> None
     assert "roast date" not in rendered
     assert "days off roast" not in rendered
     assert "roast level: light" in rendered
+
+
+async def test_a_bean_with_only_a_name_gives_the_model_only_its_name(fixture: Fixture) -> None:
+    """An unfilled field is left out of the bean block, never named "not stated"."""
+    bare = await BeansRepository(fixture.db).create(BeanWrite(name="Mystery"))
+    context = await _build(fixture, bean_id=bare.id)
+    rendered = context.render()["bean_facts"]  # type: ignore[attr-defined]
+    assert rendered == f"bean: Mystery\ntoday: {AS_OF}"
+
+
+def test_a_similar_set_s_bean_line_carries_only_what_its_bean_states() -> None:
+    def entry(**bean: object) -> SimilarSet:
+        return SimilarSet(
+            set_id=1,
+            set_name="Old",
+            set_version_id=1,
+            version_no=1,
+            created_at="2026-01-01T00:00:00Z",
+            score=0.5,
+            attribute_score=0.5,
+            outcome_score=0.5,
+            bean_name="Old bean",
+            **bean,  # type: ignore[arg-type]
+        )
+
+    bare = render_similar([entry()])
+    assert "not stated" not in bare
+    assert "different" not in bare
+    assert "  bean:" not in bare
+    assert "  why it is similar:" not in bare
+    washed = render_similar([entry(process="washed", decaf=True, process_match=True)])
+    assert "  bean: washed, decaf\n" in washed
+    assert "  why it is similar: same process\n" in washed
 
 
 async def test_the_usual_grind_reaches_the_prompt_and_its_absence_is_loud(

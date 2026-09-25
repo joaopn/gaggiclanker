@@ -125,6 +125,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 roast_level="light",
                 process="natural",
                 origin="Ethiopia",
+                acidity=4,
             )
         )
         grinder = await GrindersRepository(db).create(
@@ -400,6 +401,21 @@ async def test_the_same_archive_renders_the_same_text(experiment: Experiment) ->
     second = await opening_context(experiment.db, scope)
 
     assert first == second
+
+
+async def test_a_bean_with_only_a_name_is_named_and_nothing_else(experiment: Experiment) -> None:
+    """The heading names what the person filled in and leaves the rest out.
+
+    The golden covers the filled side (one scale set, two unset and absent).
+    """
+    await BeansRepository(experiment.db).update(1, BeanWrite(name="Mystery"))
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert "Bean: Mystery. Grinder:" in rendered
+    assert "not stated" not in rendered.split("THIS VERSION IS")[0]
 
 
 async def test_a_general_conversation_gets_no_block(experiment: Experiment) -> None:
