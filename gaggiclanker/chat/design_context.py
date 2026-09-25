@@ -8,15 +8,20 @@ brewing this coffee on this kit:
 * **the Set and the brief** — the bean's facts, the grinder and its step unit,
   what the person wants from it and where they usually grind;
 * **the profile they asked to fork**, whole, because "like this but with a
-  bloom" needs the document it is a variation of;
+  bloom" needs the document it is a variation of — or, when they named none,
+  the plain statement that the profile is written from zero;
 * **the card on the table** — the initial recipe waiting for the person, or the
   last one they turned down and why;
 * **this bean's other Sets** — how the same coffee went on this and other
   grinders, version by version, with its shots, labels, ratings and outcomes;
 * **similar Sets on this grinder** — the starting point's own evidence, other
   beans only, since this bean's are in the block above;
-* **the profile library and the matching rules**, in the starting point's own
-  shape and selection.
+* **the matching rules**, in the starting point's own selection.
+
+**The profile library is not listed.** The only profile a design starts from
+is the one the person picked to fork; listing the library invited the model to
+pick one itself, and a design with no fork came out as a copy of whatever was
+brewed most. `get_profile` still reads a profile the person asks about.
 
 **The sibling Sets are a deliberate exception** to "a Set's conversation sees
 only its Set". It holds only while the Set is being designed, it is a read-only
@@ -32,6 +37,7 @@ cut by a stated rule.
 from __future__ import annotations
 
 import json
+from typing import Any, get_args
 
 from gaggiclanker.analyzer.style import detect_style
 from gaggiclanker.chat.context import _OUTCOMES, _cut, _plural, _quote, _recipe, _taste
@@ -41,12 +47,18 @@ from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.set_proposals import SetProposalRow, SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetRow, SetsRepository, SetVersionRow, VersionLabelCounts
-from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.models import (
+    PhaseKind,
+    Profile,
+    ProfileType,
+    PumpTarget,
+    TargetOperator,
+    TargetType,
+    TransitionType,
+)
 from gaggiclanker.knowledge.rules import SetContext, render_rules
 from gaggiclanker.starting.context import (
     planned_style,
-    profile_candidates,
-    render_profiles,
     render_similar,
     starting_rules,
 )
@@ -126,7 +138,6 @@ async def design_context(db: Database, set_id: int) -> str:
     lines += ["", *await _card_block(db, row)]
     lines += ["", *await _siblings_block(db, row)]
     lines += ["", "SIMILAR SETS ON THIS GRINDER (other beans)", render_similar(similar)]
-    lines += ["", "THE PROFILE LIBRARY", render_profiles(await profile_candidates(db))]
     lines += [
         "",
         f"THE RULES THAT MATCH (planned style: {style} — {style_reason})",
@@ -194,7 +205,10 @@ def _fork_block(fork: ProfileVersionRow | None) -> list[str]:
     if fork is None or not fork.profile:
         return [
             "THE PROFILE TO FORK",
-            "They named none. Start from a profile in the library below, or author one.",
+            "They named none, so the profile is written from zero: a whole document of your "
+            "own, built from what they asked for, the bean and the Sets below. Do not start "
+            "from a profile in their library.",
+            *_document_shape(),
         ]
     document = Profile.model_validate(fork.profile).to_device()
     return [
@@ -204,6 +218,31 @@ def _fork_block(fork: ProfileVersionRow | None) -> list[str]:
         "```json",
         json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False),
         "```",
+    ]
+
+
+def _document_shape() -> list[str]:
+    """The keys of a profile document, for a model writing one with nothing to fork.
+
+    Read off the schema's own types, so it cannot drift from what the draft
+    validator accepts. Keys and allowed values only, never an example
+    document: an example is a profile, and a profile to start from is exactly
+    what the person did not name.
+    """
+
+    def one_of(kind: Any) -> str:
+        return "|".join(get_args(kind))
+
+    return [
+        "The document's keys (the schema's, not values to copy):",
+        f"- top level: label, type ({one_of(ProfileType)}), description, temperature (°C), "
+        "phases (1-10, in order)",
+        f"- a phase: name, phase ({one_of(PhaseKind)}), valve (0|1), duration (s), "
+        "temperature (0 = the profile's), pump (an integer percent, or "
+        f"{{target: {one_of(PumpTarget)}, pressure: bar, flow: ml/s}}), "
+        f"targets ([{{type: {one_of(TargetType)}, operator: {one_of(TargetOperator)}, "
+        "value}]: OR-combined stop conditions), optionally transition "
+        f"({{type: {one_of(TransitionType)}, duration: s, adaptive: bool}})",
     ]
 
 

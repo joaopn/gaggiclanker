@@ -49,7 +49,7 @@ from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value
-from gaggiclanker.infra.errors import TooManyRequests
+from gaggiclanker.infra.errors import TooManyRequests, Unprocessable
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, ANALYSIS_WINDOW_SECONDS
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.tools.registry import ToolContext, tool
@@ -1521,21 +1521,24 @@ async def _draft_experiment(
 
 
 class InitialProfileInput(_Model):
-    base_version_id: int | None = Field(
-        default=None,
-        gt=0,
-        description=(
-            "The profile version the new profile starts from. Leave it out to start from the "
-            "profile the person asked to fork, or, when they named none, from the library's "
-            "most-used profile."
-        ),
-    )
+    """The new profile: the person's fork source plus a patch, or a whole document.
+
+    There is deliberately no base to name. The only profile a design starts
+    from is the one the person picked to fork in the New Set dialog; with
+    none, the agent writes the profile from zero. Letting the model pick a
+    base put the library's most-used profile under every unforked design, so
+    whatever that profile carried and the patch left alone — its description,
+    its temperature, its phases — came along into a profile that was meant to
+    be new.
+    """
+
     patch: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "A partial profile document merged into the base, key by key. Phases are replaced "
-            "wholesale when 'phases' is present — send the full list. Read the base with "
-            "get_profile first."
+            "With a profile to fork: a partial profile document merged into it, key by key "
+            "(read it in the context above). With none: the whole profile document, written "
+            "from zero — type, description, temperature and every phase. Either way phases "
+            "are replaced wholesale when 'phases' is present — send the full list."
         ),
     )
     label: str = Field(
@@ -1610,14 +1613,16 @@ class ProposeInitialRecipeOutput(_Model):
     "propose_initial_recipe",
     permission="propose",
     description=(
-        "Propose the whole first recipe of this Set, which is being designed: a new profile of "
-        "its own (a base plus a patch, with its own label) and the grind, dose and target "
-        "yield, as ONE card the person accepts or declines. It creates the profile as a draft "
-        "that goes through the same schema, safety-policy and clamp checks as one typed by "
-        "hand, and nothing else: until the person accepts, the Set has no recipe, and the "
-        "machine never receives anything from here. A profile identical to one already in the "
-        "library is refused — give it its own label or change something. A newer proposal "
-        "replaces the one waiting. No prediction: a version 1 is a baseline."
+        "Propose the whole first recipe of this Set, which is being designed: a new profile "
+        "of its own (the profile the person asked to fork plus a patch, or, when they named "
+        "none, a whole document written from zero; with its own label either way) and the "
+        "grind, dose and target yield, as ONE card the person accepts or declines. It "
+        "creates the profile as a draft that goes through the same schema, safety-policy and "
+        "clamp checks as one typed by hand, and nothing else: until the person accepts, the "
+        "Set has no recipe, and the machine never receives anything from here. A profile "
+        "identical to one already in the library is refused — give it its own label or "
+        "change something. A newer proposal replaces the one waiting. No prediction: a "
+        "version 1 is a baseline."
     ),
     timeout_s=30.0,
 )
@@ -1655,28 +1660,38 @@ async def propose_initial_recipe(
         )
 
     profiles = ProfilesRepository(ctx.db)
-    base_id = (
-        args.profile.base_version_id
-        or row.design_brief.fork_profile_version_id
-        or await profiles.default_draft_base()
-    )
-    base = await profiles.get_version(base_id)
-    if base is None or not base.profile:
-        raise ValueError(
-            f"No profile version {base_id}. list_profiles lists the ones this archive has."
-        )
-    document = _merge(dict(base.profile), args.profile.patch)
+    fork_id = row.design_brief.fork_profile_version_id
+    if fork_id is not None:
+        fork = await profiles.get_version(fork_id)
+        if fork is None or not fork.profile:  # pragma: no cover - checked by the design route
+            raise ValueError(f"The profile to fork, version {fork_id}, is gone.")
+        base_id = fork_id
+        document = _merge(dict(fork.profile), args.profile.patch)
+    else:
+        # Written from zero: the document is the patch and nothing else. The
+        # empty baseline is only the diff's other side on the Profiles page.
+        base_id = await profiles.empty_base()
+        document = dict(args.profile.patch)
     document["label"] = args.profile.label
 
     proposals = SetProposalsRepository(ctx.db)
-    draft = await ctx.drafts.create_manual(
-        base_version_id=base_id,
-        document=document,
-        change_summary=args.reason,
-        notes=f"Designed in chat for Set “{row.name}”.",
-        new_profile_only=True,
-        reusable_version_ids=await proposals.design_profile_versions(set_id),
-    )
+    try:
+        draft = await ctx.drafts.create_manual(
+            base_version_id=base_id,
+            document=document,
+            change_summary=args.reason,
+            notes=f"Designed in chat for Set “{row.name}”.",
+            new_profile_only=True,
+            reusable_version_ids=await proposals.design_profile_versions(set_id),
+        )
+    except Unprocessable as exc:
+        # The schema's per-field lines live in the error's details, which the
+        # dispatcher does not show the model; a profile written from zero is
+        # where they matter, since there is no fork to have filled the gaps.
+        problems = (exc.details or {}).get("schema_errors") or []
+        if not problems:
+            raise
+        raise ValueError(f"{exc}: " + "; ".join(str(problem) for problem in problems)) from None
     assert draft.draft_version_id is not None  # a stored draft names its version
 
     fields: dict[str, Any] = {

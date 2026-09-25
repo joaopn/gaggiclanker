@@ -126,12 +126,6 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 2 shots, rating 4/5, execution 8.5/10, ratio 1:1.78, 28 s
 
-THE PROFILE LIBRARY
-[profile_version 1] Medium 18g 1:2 — 5 phases, 93 °C, used by 14 shots
-  shape: Pre-infusion 3s pressure 5; Bloom 7s pump 0%; Pressurise 10s pressure 9 → volumetric gte 20; Ramp down 8s pressure 5 → volumetric gte 36; Hammer 1s pump 100%
-[profile_version 2] Kenya AA body [AI] — 5 phases, 94 °C, used by 0 shots
-  shape: Pre-infusion 3s pressure 5; Bloom 7s pump 0%; Pressurise 10s pressure 9 → volumetric gte 20; Ramp down 8s pressure 5 → volumetric gte 36; Hammer 1s pump 100%
-
 THE RULES THAT MATCH (planned style: bloom — the profile to fork (Medium 18g 1:2))
 dial_in_order:
   [grind_before_profile] If grind is plausibly the problem, propose no profile change at all. A profile edit made while the grind is wrong hides the grind error and costs two shots to unpick.

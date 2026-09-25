@@ -733,11 +733,13 @@ usual grind on that grinder and what you want from the coffee, and creates a
 Set whose version 1 has no recipe yet, with that version's conversation open.
 While the Set is being designed the agent is told what you asked for, the
 profile to fork in full, how this bean went in your other Sets, similar Sets on
-this grinder, the profile library and the matching rules; it asks what it needs
-and then proposes **the initial recipe** with `propose_initial_recipe`: a
-profile of its own (never a copy of one in the library — two Sets on one
-profile make the shot matcher ambiguous) plus grind, dose and yield, as one card
-you accept or decline. A newer card replaces the waiting one. Accepting fills
+this grinder and the matching rules; it asks what it needs and then proposes
+**the initial recipe** with `propose_initial_recipe`: a profile of its own
+(never a copy of one in the library — two Sets on one profile make the shot
+matcher ambiguous) plus grind, dose and yield, as one card you accept or
+decline. The profile starts from the one you picked to fork, or, when you
+picked none, from nothing: the agent writes it whole, and never builds on a
+profile of yours you did not choose. A newer card replaces the waiting one. Accepting fills
 version 1 in place, and from the next turn the same conversation is the Set's
 ordinary one; the profile waits on the Profiles page for you to approve and
 push. Writing a version by hand, or pushing a draft for the Set, ends the design

@@ -3,7 +3,8 @@
 `get_profile` is the read that lets an agent fork a profile it has actually
 seen, in all three kinds of conversation, with the archive-wide shot count kept
 out of a Set's. `propose_initial_recipe` is the design's one proposal: its base
-falls back in a stated order, its profile must be new, a policy refusal or a
+is the person's fork source or nothing — never a profile the model or the
+library picked — its profile must be new, a policy refusal or a
 not-new refusal leaves nothing behind, a newer card retires the older one and
 its draft, and the grind is a number only when it is absolute and parses.
 """
@@ -41,9 +42,34 @@ from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolOutco
 from gaggiclanker.tools.scope import ToolScope
 from tests.analyzer.conftest import Fixture
 
+#: A whole profile document, as a design with nothing to fork writes one.
+WHOLE_PROFILE: dict[str, Any] = {
+    "type": "pro",
+    "description": "Written from zero for this bag.",
+    "temperature": 92,
+    "phases": [
+        {
+            "name": "Soak",
+            "phase": "preinfusion",
+            "valve": 1,
+            "duration": 8,
+            "pump": {"target": "pressure", "pressure": 3, "flow": 0},
+            "targets": [],
+        },
+        {
+            "name": "Extraction",
+            "phase": "brew",
+            "valve": 1,
+            "duration": 40,
+            "pump": {"target": "pressure", "pressure": 9, "flow": 0},
+            "targets": [{"type": "volumetric", "operator": "gte", "value": 40}],
+        },
+    ],
+}
+
 #: A recipe the tool accepts, for the tests that are about something else.
 RECIPE: dict[str, Any] = {
-    "profile": {"label": "Designed in chat", "patch": {"temperature": 92}},
+    "profile": {"label": "Designed in chat", "patch": WHOLE_PROFILE},
     "grind_setting": "20",
     "grind_is_absolute": True,
     "dose_g": 18,
@@ -233,37 +259,105 @@ async def _base_of(outcome: ToolOutcome, db: Database) -> int:
     return draft.base_version_id
 
 
-async def test_the_base_is_the_given_one_then_the_fork_source_then_the_library(
-    archive: Fixture,
-) -> None:
+async def _document_of(outcome: ToolOutcome, db: Database) -> dict[str, Any]:
+    assert outcome.ok, outcome.data
+    version = await ProfilesRepository(db).get_version(outcome.data["recipe"]["profile_version_id"])
+    assert version is not None and version.profile is not None
+    return dict(version.profile)
+
+
+async def test_a_forked_design_starts_from_the_fork_and_the_patch_only(archive: Fixture) -> None:
     profiles = ProfilesRepository(archive.db)
     stored = await profiles.get_version(archive.profile_version_id)
     assert stored is not None and stored.profile is not None
-    other_doc = {**stored.profile, "label": "Another library profile", "temperature": 90}
-    other, _ = await profiles.ensure_version(Profile.model_validate(other_doc))
-
-    forked = await _designed(
-        archive.db, archive.bean_id, archive.grinder_id, fork_profile_version_id=other.id
+    fork_doc = {**stored.profile, "label": "The one to fork", "temperature": 90}
+    fork, _ = await profiles.ensure_version(Profile.model_validate(fork_doc))
+    row = await _designed(
+        archive.db, archive.bean_id, archive.grinder_id, fork_profile_version_id=fork.id
     )
-    forked_ctx = await _design_ctx(archive.db, forked)
-    given = await _propose(
-        forked_ctx,
+
+    outcome = await _propose(
+        await _design_ctx(archive.db, row),
+        profile={"label": "From the fork", "patch": {"temperature": 91}},
+    )
+
+    assert await _base_of(outcome, archive.db) == fork.id
+    document = await _document_of(outcome, archive.db)
+    assert document["phases"] == fork_doc["phases"]
+    assert document["temperature"] == 91
+
+
+async def test_with_no_fork_the_profile_is_written_from_zero(archive: Fixture) -> None:
+    """Nothing of the library's most-used profile, or of the diff's baseline, comes along.
+
+    The archive's profile is the most-used one, which unforked designs used to
+    be built on: its description and phases carried into a profile that was
+    meant to be new.
+    """
+    profiles = ProfilesRepository(archive.db)
+    most_used = await profiles.default_draft_base()
+    # Words for it to leak: the fixture's profile has no description.
+    await archive.db.execute(
+        "UPDATE profile_versions SET json = json_set(json, '$.description', 'Leaky words')"
+        " WHERE id = ?",
+        (most_used,),
+    )
+    row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
+    written = {key: value for key, value in WHOLE_PROFILE.items() if key != "description"}
+
+    outcome = await _propose(
+        await _design_ctx(archive.db, row), profile={"label": "From zero", "patch": written}
+    )
+
+    document = await _document_of(outcome, archive.db)
+    assert document.get("description", "") == ""
+    written_phases = Profile.model_validate({**WHOLE_PROFILE, "label": "x"}).phases
+    assert Profile.model_validate(document).phases == written_phases
+    assert document["temperature"] == 92
+    # The draft is shown on the Profiles page against the empty baseline, never
+    # against a profile the person brews.
+    base = await profiles.get_version(await _base_of(outcome, archive.db))
+    assert base is not None and base.label == SYNTHETIC_BASE_LABEL
+
+
+async def test_with_no_fork_a_partial_document_is_refused_and_leaves_nothing(
+    archive: Fixture,
+) -> None:
+    row = await _designed(archive.db, archive.bean_id, archive.grinder_id)
+    before = await _draft_count(archive.db)
+
+    outcome = await _propose(
+        await _design_ctx(archive.db, row), profile={"label": "Half", "patch": {"temperature": 92}}
+    )
+
+    assert not outcome.ok
+    # Field by field, so the model can write the missing parts.
+    assert "type: Field required" in outcome.data["detail"]
+    assert "phases: Field required" in outcome.data["detail"]
+    assert await _draft_count(archive.db) == before
+    assert await SetProposalsRepository(archive.db).for_set(row.id) == []
+
+
+@pytest.mark.parametrize("forked", [False, True])
+async def test_the_model_cannot_name_a_base_of_its_own(archive: Fixture, forked: bool) -> None:
+    """Only the person picks what a design starts from, in the New Set dialog."""
+    brief = {"fork_profile_version_id": archive.profile_version_id} if forked else {}
+    row = await _designed(archive.db, archive.bean_id, archive.grinder_id, **brief)
+    before = await _draft_count(archive.db)
+
+    outcome = await _propose(
+        await _design_ctx(archive.db, row),
         profile={
-            "label": "Given base",
+            "label": "On a base of its choosing",
             "base_version_id": archive.profile_version_id,
-            "patch": {},
+            "patch": WHOLE_PROFILE,
         },
     )
-    assert await _base_of(given, archive.db) == archive.profile_version_id
 
-    from_fork = await _propose(forked_ctx, profile={"label": "From the fork", "patch": {}})
-    assert await _base_of(from_fork, archive.db) == other.id
-
-    plain = await _designed(archive.db, archive.bean_id, archive.grinder_id)
-    library = await _propose(
-        await _design_ctx(archive.db, plain), profile={"label": "From the library", "patch": {}}
-    )
-    assert await _base_of(library, archive.db) == await profiles.default_draft_base()
+    assert not outcome.ok
+    assert "base_version_id" in str(outcome.data)
+    assert await _draft_count(archive.db) == before
+    assert await SetProposalsRepository(archive.db).for_set(row.id) == []
 
 
 @pytest.fixture
@@ -286,7 +380,8 @@ async def test_with_an_empty_library_the_base_is_the_synthetic_baseline(
     row = await _designed(empty_archive, bean.id, grinder.id)
 
     outcome = await _propose(
-        await _design_ctx(empty_archive, row), profile={"label": "My first", "patch": {}}
+        await _design_ctx(empty_archive, row),
+        profile={"label": "My first", "patch": WHOLE_PROFILE},
     )
 
     base = await ProfilesRepository(empty_archive).get_version(
@@ -332,7 +427,7 @@ async def test_a_policy_refusal_is_a_tool_error_and_leaves_nothing(archive: Fixt
 
     outcome = await _propose(
         await _design_ctx(archive.db, row),
-        profile={"label": "Too many", "patch": {"phases": too_many}},
+        profile={"label": "Too many", "patch": {**WHOLE_PROFILE, "phases": too_many}},
     )
 
     assert not outcome.ok

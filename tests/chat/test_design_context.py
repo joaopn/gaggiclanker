@@ -159,6 +159,22 @@ async def test_the_bare_design_matches_its_golden(kitchen: Fixture, update_golde
     _check_golden(rendered, "design-chat-context-bare.txt", update_golden)
 
 
+async def test_the_library_is_never_offered_as_somewhere_to_start(kitchen: Fixture) -> None:
+    """The only profile a design starts from is the one the person picked to fork."""
+    forked = await design_context(kitchen.db, (await _forked_design(kitchen)).id)
+    bare = await design_context(kitchen.db, (await _bare_design(kitchen)).id)
+
+    for rendered in (forked, bare):
+        assert "THE PROFILE LIBRARY" not in rendered
+    fork_block = bare.split("THE PROFILE TO FORK")[1].split("THE RECIPE")[0]
+    assert "written from zero" in fork_block
+    assert "Do not start from a profile in their library" in fork_block
+    # The keys a whole document needs, read off the schema, and no document.
+    assert "preinfusion|brew" in fork_block
+    assert "```" not in fork_block
+    assert "written from zero" not in forked
+
+
 async def test_the_same_archive_renders_the_same_text(kitchen: Fixture) -> None:
     designed = await _forked_design(kitchen)
 
@@ -181,7 +197,7 @@ async def test_only_this_bean_s_sets_in_use_are_its_siblings(kitchen: Fixture) -
     # Another bean's Set is never a sibling, and this bean's are never
     # "similar": they are listed once, where they belong.
     assert "Ethiopia Guji" not in siblings
-    similar = rendered.split("SIMILAR SETS ON THIS GRINDER")[1].split("THE PROFILE LIBRARY")[0]
+    similar = rendered.split("SIMILAR SETS ON THIS GRINDER")[1].split("THE RULES THAT MATCH")[0]
     assert "Kenya AA" not in similar
     assert "Ethiopia Guji" in similar
     # And the Set being designed is not its own sibling.

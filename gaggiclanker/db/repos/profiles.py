@@ -30,8 +30,9 @@ __all__ = [
 ]
 
 
-#: The label of the synthetic base a new draft is diffed against when the
-#: archive holds no profile at all. See :meth:`ProfilesRepository.default_draft_base`.
+#: The label of the synthetic base a draft written from zero is diffed against:
+#: a Set designed with no profile to fork, or any authored draft when the
+#: archive holds no profile at all. See :meth:`ProfilesRepository.empty_base`.
 SYNTHETIC_BASE_LABEL = "Empty baseline"
 
 
@@ -200,15 +201,11 @@ class ProfilesRepository(Repository):
         """The version a profile that was authored rather than edited is diffed against.
 
         A draft is always *derived from* a version, because the diff view is how
-        somebody reads it before approving. A profile a model wrote from scratch
-        — a starting-point option, an initial recipe with no fork source — is
-        derived from nothing, so the base is the closest thing available: the
-        most-used brew profile in the library, which is what "what you brew now"
-        means. Utility profiles never: a backflush is nobody's baseline.
-
-        When the library is empty the base is a synthetic minimal profile,
-        stored as a version like any other. That is a real row rather than a
-        special case in the diff view, and it costs one profile nobody selects.
+        somebody reads it before approving. A starting-point option a model wrote
+        from scratch is derived from nothing, so the base is the closest thing
+        available: the most-used brew profile in the library, which is what
+        "what you brew now" means. Utility profiles never: a backflush is
+        nobody's baseline. When the library is empty it is :meth:`empty_base`.
         """
         best = await self.db.fetch_value(
             """
@@ -221,6 +218,19 @@ class ProfilesRepository(Repository):
         )
         if best is not None:
             return int(best)
+        return await self.empty_base()
+
+    async def empty_base(self) -> int:
+        """The synthetic minimal profile a draft written from zero is diffed against.
+
+        Stored as a version like any other: a real row rather than a special
+        case in the diff view, and it costs one profile nobody selects. It is
+        only ever the *diff's* other side — no draft document is built from it,
+        so what it contains never reaches a profile somebody brews. Its
+        description predates designing from zero and is kept word for word: the
+        document is content-hashed, and new words would store a second baseline
+        beside the one an archive may already have.
+        """
         version, _ = await self.ensure_version(
             Profile.model_validate(
                 {

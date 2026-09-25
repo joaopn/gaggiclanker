@@ -9,7 +9,10 @@ Goal: not stated. Ask what they want from this Set before proposing anything.
 Their usual espresso setting on this grinder: NOT GIVEN. Without it, or a Set below on this same grinder, you have no anchor on its scale.
 
 THE PROFILE TO FORK
-They named none. Start from a profile in the library below, or author one.
+They named none, so the profile is written from zero: a whole document of your own, built from what they asked for, the bean and the Sets below. Do not start from a profile in their library.
+The document's keys (the schema's, not values to copy):
+- top level: label, type (standard|pro), description, temperature (°C), phases (1-10, in order)
+- a phase: name, phase (preinfusion|brew), valve (0|1), duration (s), temperature (0 = the profile's), pump (an integer percent, or {target: pressure|flow, pressure: bar, flow: ml/s}), targets ([{type: volumetric|pressure|flow|pumped, operator: gte|lte, value}]: OR-combined stop conditions), optionally transition ({type: instant|linear|ease-in|ease-out|ease-in-out, duration: s, adaptive: bool})
 
 THE RECIPE
 Nothing has been proposed to the person yet.
@@ -50,10 +53,6 @@ SIMILAR SETS ON THIS GRINDER (other beans)
   profile temperature: 93 °C
   profile: Medium 18g 1:2 (profile_version 1)
   how it went: 2 shots, rating 4/5, execution 8.5/10, ratio 1:1.78, 28 s
-
-THE PROFILE LIBRARY
-[profile_version 1] Medium 18g 1:2 — 5 phases, 93 °C, used by 14 shots
-  shape: Pre-infusion 3s pressure 5; Bloom 7s pump 0%; Pressurise 10s pressure 9 → volumetric gte 20; Ramp down 8s pressure 5 → volumetric gte 36; Hammer 1s pump 100%
 
 THE RULES THAT MATCH (planned style: bloom — the profile of the closest similar Set (Kenya AA on the niche v1, Medium 18g 1:2))
 dial_in_order:
