@@ -227,6 +227,50 @@ async def test_the_card_is_served_with_its_kind_and_draft_and_accepts_into_versi
     assert page["versions"][0]["chat_thread_id"] == created["thread_id"]
 
 
+async def test_an_accepted_card_still_shows_the_recipe_it_set(
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+) -> None:
+    created = await _design(client, kit)
+    set_id = created["set"]["id"]
+    proposal_id, _, _ = await _card(app, set_id, created["thread_id"])
+    waiting = data(await client.get(f"/api/sets/{set_id}"))["proposal"]["changes"]
+    assert waiting
+
+    accepted = data(await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept"))
+    listed = data(await client.get(f"/api/sets/{set_id}/proposals"))["items"]
+
+    # Version 1 now holds this very recipe; the card is still drawn against the
+    # empty one it filled, so scrolling back shows what was agreed.
+    assert accepted["proposal"]["changes"] == waiting
+    assert next(item for item in listed if item["id"] == proposal_id)["changes"] == waiting
+
+
+async def test_a_card_overtaken_by_a_hand_written_recipe_still_shows_only_its_own(
+    app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
+) -> None:
+    created = await _design(client, kit)
+    set_id = created["set"]["id"]
+    # A relative grind: the card sets the words and no dial number.
+    proposal_id, _, _ = await _card(app, set_id, created["thread_id"])
+    waiting = data(await client.get(f"/api/sets/{set_id}"))["proposal"]["changes"]
+    assert "grind_value" not in {change["field"] for change in waiting}
+
+    # The person fills version 1 by hand, with a number on the dial.
+    data(
+        await client.post(
+            f"/api/sets/{set_id}/versions",
+            json={"grind_setting": "19", "grind_value": 19, "dose_g": 18},
+        )
+    )
+    listed = data(await client.get(f"/api/sets/{set_id}/proposals"))["items"]
+    stale = next(item for item in listed if item["id"] == proposal_id)
+
+    # Still the card as it was proposed: no dial number borrowed from the
+    # recipe that overtook it.
+    assert stale["status"] == "stale"
+    assert stale["changes"] == waiting
+
+
 async def test_declining_the_card_discards_its_draft(
     app: FastAPI, client: httpx.AsyncClient, kit: dict[str, int]
 ) -> None:

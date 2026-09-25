@@ -457,8 +457,14 @@ class SetProposalsRepository(Repository):
         a real version: when the patch names a different profile, that profile's
         own temperature and label are read, because a proposal that moves the
         temperature by switching profiles must say so on the card.
+
+        Built on :meth:`diff_base`, not on the stored row. A first recipe is
+        previewed on the empty version 1 whatever fills it now: once somebody
+        has filled it another way, a field the card left unset (a relative
+        grind has no dial number) would otherwise inherit that recipe's value
+        and the card would show a number the agent never proposed.
         """
-        base = await self.sets.get_version(proposal.base_version_id)
+        base = await self.diff_base(proposal)
         if base is None:  # pragma: no cover - the column is NOT NULL with a reference
             return None
         if proposal.patch is None:
@@ -480,6 +486,31 @@ class SetProposalsRepository(Repository):
         if candidate.profile_version_id != base.profile_version_id:
             candidate = candidate.model_copy(update=await self._profile_facts(candidate))
         return candidate
+
+    async def diff_base(self, proposal: SetProposalRow) -> SetVersionRow | None:
+        """What a proposal's card is drawn against: the other side of its diff.
+
+        For a change it is the version the change was made to, which stays as
+        it was when the change is accepted: accepting appends a new version.
+
+        For a first recipe it is version 1 **with no recipe**, whatever the
+        card's status. While the card waits, version 1 is exactly that, so
+        nothing changes there. Accepting fills version 1 in place with the
+        card's own recipe, and diffing against the stored row from then on
+        would compare the recipe with itself: the card would lose everything it
+        said the moment the person agreed to it. The empty recipe is what the
+        card was a change to, before and after.
+        """
+        base = await self.sets.get_version(proposal.base_version_id)
+        if base is None or proposal.kind != "design":
+            return base
+        return base.model_copy(
+            update={
+                **dict.fromkeys(RECIPE_FIELDS),
+                "profile_label": None,
+                "profile_temperature_c": None,
+            }
+        )
 
     async def _profile_facts(self, version: SetVersionRow) -> dict[str, Any]:
         """A profile's label and stated brew temperature, read as a version reads them.

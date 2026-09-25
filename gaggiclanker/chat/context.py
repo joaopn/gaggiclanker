@@ -353,9 +353,9 @@ async def _proposal_block(
 async def _design_line(proposals: SetProposalsRepository, row: Any) -> str:
     """The initial recipe this Set was designed with, once the design is over.
 
-    Said as a recipe, not as a change: it was the whole first recipe, and after
-    it was accepted its base *is* that recipe, so a diff against it is empty.
-    It carried no prediction, because a version 1 is a baseline.
+    Said as a recipe, not as a change: it was the whole first recipe, and a
+    list of every field going from nothing to a value says less than the
+    recipe does. It carried no prediction, because a version 1 is a baseline.
     """
     preview = await proposals.preview(row)
     recipe = _recipe(preview) if preview is not None else "(its recipe cannot be read)"

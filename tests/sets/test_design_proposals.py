@@ -133,6 +133,60 @@ async def test_the_preview_is_version_1_as_it_would_be_filled(wired: Fixtures) -
     assert (preview.intent, preview.origin) == ("A longer, gentler shot for more body.", "chat")
 
 
+async def test_a_first_recipe_is_drawn_against_an_empty_one_before_and_after_accept(
+    wired: Fixtures,
+) -> None:
+    row = await designed(wired)
+    draft_id, profile = await a_draft(wired, "Designed")
+    proposals = SetProposalsRepository(wired.db)
+    stored = (await proposals.create(row.id, design(draft_id, profile))).proposal
+    assert stored is not None
+
+    accepted = (await proposals.accept(row.id, stored.id)).proposal
+    assert accepted is not None and accepted.status == "accepted"
+    base = await proposals.diff_base(accepted)
+
+    # Version 1 is filled now, but the card's other side is still no recipe:
+    # the row it was based on, with nothing in it.
+    assert base is not None
+    assert (base.id, base.version_no) == (row.current_version_id, 1)
+    assert (base.profile_version_id, base.profile_label, base.profile_temperature_c) == (
+        None,
+        None,
+        None,
+    )
+    assert (base.grind_setting, base.grind_value, base.dose_g, base.target_yield_g) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+async def test_a_change_is_drawn_against_the_version_it_changes(wired: Fixtures) -> None:
+    row = await wired.sets.create(
+        SetWrite(name="By hand", bean_id=wired.bean_id),
+        SetVersionWrite(grind_setting="18", dose_g=18),
+    )
+    proposals = SetProposalsRepository(wired.db)
+    stored = (
+        await proposals.create(
+            row.id,
+            ProposalWrite(
+                reason="Finer, for a slower shot.",
+                prediction="Compared to v1, 3 to 5 s longer and less sour.",
+                patch=SetVersionPatch(grind_setting="17"),
+            ),
+        )
+    ).proposal
+    assert stored is not None
+
+    base = await proposals.diff_base(stored)
+
+    assert base is not None
+    assert (base.id, base.grind_setting, base.dose_g) == (row.current_version_id, "18", 18)
+
+
 async def test_an_initial_recipe_is_refused_on_a_set_that_is_not_being_designed(
     wired: Fixtures,
 ) -> None:

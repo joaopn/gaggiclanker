@@ -556,11 +556,14 @@ async def _proposal_detail(
 
     The diff is computed against a version that does not exist yet — the base
     with the patch applied — so the card and the log entry it will become are
-    drawn by the same function. Labels are gathered from both sides rather than
-    from the Set's versions, because a proposal may name a profile this Set has
-    never been on, and a bare row id is not a profile anybody recognises.
+    drawn by the same function. What the other side is comes from
+    :meth:`SetProposalsRepository.diff_base`: a first recipe is drawn against an
+    empty one, so it keeps its recipe after it fills version 1. Labels are
+    gathered from both sides rather than from the Set's versions, because a
+    proposal may name a profile this Set has never been on, and a bare row id is
+    not a profile anybody recognises.
     """
-    base = await proposals.sets.get_version(row.base_version_id)
+    base = await proposals.diff_base(row)
     preview = await proposals.preview(row)
     labels = {
         version.profile_version_id: version.profile_label
