@@ -78,6 +78,15 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ### Design a new Set in chat
 
+- **A design with no profile to fork starts from nothing.** Leaving "Fork
+  from" empty used to hand the agent your most-used profile as the base, so
+  the new profile inherited whatever of it the agent did not rewrite. Now the
+  agent writes the whole profile from scratch, the dialog says so, and the
+  draft is compared with the empty baseline on the Profiles page. The agent can
+  no longer choose a base of its own either: the profile you pick to fork is
+  the only one a design builds on. A document it writes incompletely comes back
+  to it field by field to fix.
+
 - **A Set can start with no recipe and be designed in its own conversation.**
   `POST /api/sets/design` takes a bean and a grinder, optionally a profile to
   fork, your usual grind and what you want from the coffee; it creates the Set

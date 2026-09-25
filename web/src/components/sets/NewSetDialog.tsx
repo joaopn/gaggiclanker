@@ -697,8 +697,8 @@ function DesignWithAgent({
             <p className="text-muted-foreground text-xs">
               Opens this Set's own conversation, where the agent works out the first recipe with
               you: it reads your other Sets on this bean, similar Sets on this grinder and the
-              profile you fork, asks what it needs, and proposes a profile of its own with the
-              grind, dose and yield as one card. Nothing exists until you accept it. It uses the
+              profile you fork, if any, asks what it needs, and proposes a profile of its own with
+              the grind, dose and yield as one card. Nothing exists until you accept it. It uses the
               bean, name and grinder above; the grind, dose, yield and intent above are not sent —
               the agent works those out with you.
             </p>
@@ -709,7 +709,7 @@ function DesignWithAgent({
             ) : null}
             <p className="text-sm" data-testid="design-fork">
               <span className="text-muted-foreground">Fork from: </span>
-              {forkLabel ?? "no profile picked above — the agent starts from one in the library"}
+              {forkLabel ?? "no profile picked above — the agent writes a new one from scratch"}
             </p>
             <div>
               <label htmlFor={grindId} className="mb-1 block text-muted-foreground text-xs">

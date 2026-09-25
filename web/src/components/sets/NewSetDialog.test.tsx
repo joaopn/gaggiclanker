@@ -542,6 +542,16 @@ describe("NewSetDialog, designing it with the agent", () => {
     expect(screen.queryByTestId("design-needs-grinder")).not.toBeInTheDocument();
   });
 
+  it("says a design with no profile to fork is written from scratch", async () => {
+    onPage({ initialBeanId: 1 });
+    await screen.findByRole("option", { name: /Ethiopia Guji/ });
+    await openDesign();
+
+    const fork = screen.getByTestId("design-fork");
+    expect(fork).toHaveTextContent("the agent writes a new one from scratch");
+    expect(fork).not.toHaveTextContent("library");
+  });
+
   it("posts the form's own fields, sends the goal to the new thread and goes there", async () => {
     const user = setupUser();
     const onOpenChange = vi.fn();
