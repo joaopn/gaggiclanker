@@ -15,8 +15,14 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.analyzer.service import AnalyzerService, analysis_task_name
+from gaggiclanker.analyzer.service import (
+    BATCH_ACKNOWLEDGE_ABOVE,
+    AnalyzerService,
+    analysis_task_name,
+)
 from gaggiclanker.db.repos.llm import PromptsRepository
+from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import PromptService
@@ -467,6 +473,144 @@ async def test_a_second_batch_while_one_runs_is_a_409(
     assert first.status_code == 202
     assert second.status_code == 409
     await _settle(app, first.json()["data"]["task"])
+
+
+async def _add_unanalysed(app: FastAPI, data: Fixture, count: int) -> None:
+    """File `count` more shots on the fixture Set, none of them analysed."""
+    shots = ShotsRepository(app.state.db)
+    sets = SetsRepository(app.state.db)
+    for n in range(count):
+        shot_id = await shots.insert(
+            ShotInsert(
+                device_id=f"0009{n:02d}",
+                raw_slog=b"fixture",
+                started_at=f"2026-03-04T08:{n:02d}:00.000Z",
+                duration_ms=28_000,
+                profile_version_id=data.profile_version_id,
+                final_weight_g=36.0,
+            )
+        )
+        await sets.assign_shot(shot_id, data.version_id)
+
+
+async def _analysis_count(app: FastAPI) -> int:
+    row = await app.state.db.fetch_one("SELECT COUNT(*) AS n FROM shot_analyses")
+    return int(row["n"])
+
+
+async def test_a_batch_over_the_limit_is_refused_until_acknowledged(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    """Eleven shots is eleven provider calls: the person sees the number first."""
+    app, client, provider = api
+    data = await _build_fixture(app)
+    # The fixture leaves two shots un-analysed; nine more make eleven.
+    await _add_unanalysed(app, data, BATCH_ACKNOWLEDGE_ABOVE - 1)
+    before = await _analysis_count(app)
+
+    refused = await client.post(f"/api/sets/{data.set_id}/analyse", json={})
+
+    assert refused.status_code == 409
+    error = refused.json()["error"]
+    assert error["code"] == "LARGE_BATCH"
+    assert error["details"]["field"] == "acknowledge_large_batch"
+    assert error["details"]["count"] == BATCH_ACKNOWLEDGE_ABOVE + 1
+    assert error["details"]["limit"] == BATCH_ACKNOWLEDGE_ABOVE
+    assert app.state.tasks.get(f"analyse_set:{data.set_id}") is None, "nothing queued"
+    assert await _analysis_count(app) == before
+    assert provider.calls == []
+
+    accepted = await client.post(
+        f"/api/sets/{data.set_id}/analyse?wait=1", json={"acknowledge_large_batch": True}
+    )
+
+    assert accepted.status_code == 202
+    body = accepted.json()["data"]
+    assert body["requested"] == BATCH_ACKNOWLEDGE_ABOVE + 1
+    assert body["succeeded"] == BATCH_ACKNOWLEDGE_ABOVE + 1
+
+
+async def test_a_batch_at_the_limit_needs_no_acknowledgement(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    app, client, _ = api
+    data = await _build_fixture(app)
+    await _add_unanalysed(app, data, BATCH_ACKNOWLEDGE_ABOVE - 2)
+
+    batch = await client.post(f"/api/sets/{data.set_id}/analyse?wait=1", json={})
+
+    assert batch.status_code == 202
+    assert batch.json()["data"]["requested"] == BATCH_ACKNOWLEDGE_ABOVE
+
+
+async def test_the_limit_counts_only_what_would_be_queued(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    """A shot already being analysed is not a call this batch would make."""
+    app, client, provider = api
+    data = await _build_fixture(app)
+    await _add_unanalysed(app, data, BATCH_ACKNOWLEDGE_ABOVE - 1)
+    shot_id = data.shots[-1]
+    provider.delay = 0.3
+
+    await client.post(f"/api/shots/{shot_id}/analyses", json={})
+    batch = await client.post(f"/api/sets/{data.set_id}/analyse?wait=1", json={})
+
+    assert batch.status_code == 202
+    body = batch.json()["data"]
+    assert body["skipped"] == 1
+    assert body["requested"] == BATCH_ACKNOWLEDGE_ABOVE
+    await _settle(app, analysis_task_name(shot_id))
+
+
+async def test_the_refusal_reports_the_queued_count_however_large(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    """The count is what would be queued: not the limit, not the running shot too."""
+    app, client, provider = api
+    data = await _build_fixture(app)
+    # Two un-analysed in the fixture, twenty more; one of them already running.
+    await _add_unanalysed(app, data, 2 * BATCH_ACKNOWLEDGE_ABOVE)
+    shot_id = data.shots[-1]
+    provider.delay = 0.3
+    await client.post(f"/api/shots/{shot_id}/analyses", json={})
+    queued = 2 * BATCH_ACKNOWLEDGE_ABOVE + 1
+
+    refused = await client.post(f"/api/sets/{data.set_id}/analyse", json={})
+
+    assert refused.status_code == 409
+    assert refused.json()["error"]["details"]["count"] == queued
+
+    provider.delay = 0.0
+    accepted = await client.post(
+        f"/api/sets/{data.set_id}/analyse", json={"acknowledge_large_batch": True}
+    )
+
+    assert accepted.status_code == 202
+    body = accepted.json()["data"]
+    assert (body["requested"], body["skipped"]) == (queued, 1)
+    await _settle(app, body["task"])
+    await _settle(app, analysis_task_name(shot_id))
+
+
+async def test_re_running_a_whole_set_is_held_to_the_same_limit(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    """Re-analysing every shot is the bigger batch, and is counted the same way."""
+    app, client, _ = api
+    data = await _build_fixture(app)
+    # Six shots in the fixture, two of them un-analysed; five more makes eleven
+    # in the Set but only seven un-analysed.
+    await _add_unanalysed(app, data, 5)
+
+    refused = await client.post(f"/api/sets/{data.set_id}/analyse", json={"only_unanalysed": False})
+
+    assert refused.status_code == 409
+    assert refused.json()["error"]["details"]["count"] == len(data.shots) + 5
+
+    unanalysed = await client.post(f"/api/sets/{data.set_id}/analyse?wait=1", json={})
+    assert unanalysed.status_code == 202
+    assert unanalysed.json()["data"]["requested"] == 7
 
 
 async def test_shutdown_cancels_a_running_analysis_and_boot_reconciles_it(

@@ -1500,6 +1500,11 @@ export interface paths {
          *     the first batch is already working through exactly the shots the second
          *     would pick.
          *
+         *     More than ten shots is a 409 `LARGE_BATCH` until the body says
+         *     `acknowledge_large_batch`, and nothing is queued. `details.count` is how
+         *     many shots it would queue, so a client can show the person exactly what
+         *     they are agreeing to before sending it again.
+         *
          *     ``?wait=1`` blocks until the batch is done. For tests and `curl`; a browser
          *     follows the LLM stream, which carries an event per shot.
          */
@@ -5361,6 +5366,11 @@ export interface components {
          * @description `POST /api/sets/{id}/analyse`: the batch, and how much of it to do.
          */
         SetAnalyseRequest: {
+            /**
+             * Acknowledge Large Batch
+             * @default false
+             */
+            acknowledge_large_batch: boolean;
             /**
              * Model
              * @default

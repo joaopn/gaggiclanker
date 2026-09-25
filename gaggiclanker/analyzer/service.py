@@ -74,9 +74,11 @@ __all__ = [
     "ANALYSIS_EVENTS",
     "ANALYSIS_PROMPT",
     "ANALYSIS_USER_PROMPT",
+    "BATCH_ACKNOWLEDGE_ABOVE",
     "BATCH_CONCURRENCY",
     "AnalyzerService",
     "BatchResult",
+    "LargeBatch",
     "analysis_task_name",
     "set_task_name",
 ]
@@ -98,6 +100,14 @@ ANALYSIS_EVENTS = ("analysis.started", "analysis.finished", "analysis.failed")
 #: (`gaggiclanker/llm/budget.py`), and a wide pool's only achievement would be
 #: hitting the limit sooner and latching the whole app.
 BATCH_CONCURRENCY = 2
+
+#: A queued batch larger than this is refused until the caller acknowledges
+#: its size. Every shot is a provider call, and a Set that has collected shots
+#: for weeks turns one press of "analyse the un-analysed" into dozens of them:
+#: real money and most of an hour of the rate-limit budget. Ten is roughly five
+#: minutes at the pool's width; past that the person should see the number
+#: before it is spent.
+BATCH_ACKNOWLEDGE_ABOVE = 10
 
 #: Linear backoff between this call's own retries. A real wait in production —
 #: a provider that just 429'd wants a moment — and the one thing in an analysis
@@ -160,6 +170,19 @@ class BatchResult:
     #: test, wait for it.
     task: str = ""
     analysis_ids: list[int] = field(default_factory=list)
+
+
+class LargeBatch(Exception):
+    """A Set batch bigger than :data:`BATCH_ACKNOWLEDGE_ABOVE`, not acknowledged.
+
+    Its own type rather than a ``RuntimeError``: the route already turns that
+    into "a batch is running", and this is a different answer to act on.
+    """
+
+    def __init__(self, set_id: int, count: int) -> None:
+        super().__init__(f"Set {set_id} batch of {count} shots needs acknowledging")
+        self.set_id = set_id
+        self.count = count
 
 
 class AnalyzerService:
@@ -485,6 +508,7 @@ class AnalyzerService:
         tasks: TaskRegistry,
         only_unanalysed: bool = True,
         model: str | None = None,
+        acknowledge_large_batch: bool = False,
     ) -> BatchResult:
         """Queue a Set batch. Returns what it is about to do, not what it did.
 
@@ -495,10 +519,21 @@ class AnalyzerService:
         One batch per Set at a time, by the registry name. A second press while
         one is running is refused rather than doubled: the first batch is
         already working through exactly the shots the second one would pick.
+
+        More than :data:`BATCH_ACKNOWLEDGE_ABOVE` shots raises
+        :class:`LargeBatch` unless ``acknowledge_large_batch`` says the caller
+        has seen the size. The count is what would actually be queued, after
+        the running ones are left out, so the number a person is asked about
+        is the number of calls they are agreeing to. The direct
+        :meth:`analyse_set` is not gated: its callers wait for the result and
+        chose the Set in code, not with a button.
         """
         shot_ids, skipped = await self._batch_shots(set_id, only_unanalysed=only_unanalysed)
         if not shot_ids:
             return BatchResult(set_id=set_id, requested=0, skipped=skipped)
+        if len(shot_ids) > BATCH_ACKNOWLEDGE_ABOVE and not acknowledge_large_batch:
+            log.info("analyse_set_refused_large", set_id=set_id, requested=len(shot_ids))
+            raise LargeBatch(set_id, len(shot_ids))
         name = set_task_name(set_id)
         tasks.spawn(name, self._run_batch(set_id, shot_ids, model))
         return BatchResult(set_id=set_id, requested=len(shot_ids), skipped=skipped, task=name)

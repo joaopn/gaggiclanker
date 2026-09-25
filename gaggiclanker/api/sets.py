@@ -41,7 +41,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.analyzer.service import BatchResult
+from gaggiclanker.analyzer.service import BATCH_ACKNOWLEDGE_ABOVE, BatchResult, LargeBatch
 from gaggiclanker.api.deps import (
     AnalyzerServiceDep,
     BeansRepoDep,
@@ -125,6 +125,10 @@ class SetAnalyseRequest(BaseModel):
     #: limit or a restart dropped is what this default is for.
     only_unanalysed: bool = True
     model: str = ""
+    #: Required — and refused without — when the batch would queue more than
+    #: ten shots. Named for what it acknowledges rather than `confirm`, so a
+    #: client that sets every boolean to true has still said something specific.
+    acknowledge_large_batch: bool = False
 
 
 class SetCreate(BaseModel):
@@ -1100,6 +1104,11 @@ async def analyse_set(
     the first batch is already working through exactly the shots the second
     would pick.
 
+    More than ten shots is a 409 `LARGE_BATCH` until the body says
+    `acknowledge_large_batch`, and nothing is queued. `details.count` is how
+    many shots it would queue, so a client can show the person exactly what
+    they are agreeing to before sending it again.
+
     ``?wait=1`` blocks until the batch is done. For tests and `curl`; a browser
     follows the LLM stream, which carries an event per shot.
     """
@@ -1111,7 +1120,19 @@ async def analyse_set(
             tasks=request.app.state.tasks,
             only_unanalysed=body.only_unanalysed,
             model=body.model or None,
+            acknowledge_large_batch=body.acknowledge_large_batch,
         )
+    except LargeBatch as exc:
+        raise Conflict(
+            f"This would analyse {exc.count} shots, one provider call each",
+            code="LARGE_BATCH",
+            details={
+                "field": "acknowledge_large_batch",
+                "message": f"more than {BATCH_ACKNOWLEDGE_ABOVE} shots must be acknowledged",
+                "count": exc.count,
+                "limit": BATCH_ACKNOWLEDGE_ABOVE,
+            },
+        ) from exc
     except RuntimeError as exc:
         raise Conflict(
             f"Set {set_id} is already being analysed",
