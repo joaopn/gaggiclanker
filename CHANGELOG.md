@@ -21,8 +21,19 @@ first (`POST /api/backup`), because there is no down-migration.
   proposes the whole first recipe — a profile of its own plus grind, dose and
   yield — as one card. Accepting it fills version 1 in place; the profile is a
   draft on the Profiles page to approve and push. A design nobody brewed under
-  can be discarded (`DELETE /api/sets/{id}/design`). The screens for it come
-  next.
+  can be discarded (`DELETE /api/sets/{id}/design`).
+- **New Set → Design it with the agent** is the screen for it. It reuses the
+  form's bean, name and grinder, reads the form's profile as the one to fork,
+  and adds your usual grind and "What do you want from it?"; the grinder is
+  required on this path. **Start designing** opens the new Set's conversation
+  with what you wanted as the first message. The agent's proposal is a card
+  in the conversation and on the Set page showing the profile it drafts (with
+  a link to the draft), the grind, dose, yield and ratio, and the reason;
+  accepting says version 1 is set and the profile waits on the Profiles page.
+  A Set being designed carries a **Designing** badge on the Sets list, its page
+  and its Chat folder, with **Continue designing**, and its page offers
+  **Discard design**; its log reads "being designed — no recipe yet". The
+  Chat page lists the tools a design conversation actually has.
 - **`get_profile`**, a new read in every conversation, returns a profile
   version's whole document.
 - A new migration adds four columns and changes nothing that exists: no reset.

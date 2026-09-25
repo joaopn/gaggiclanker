@@ -790,6 +790,39 @@ staged on the **Profiles** page. Nothing is pushed; you approve it. The Beans
 page has the same shortcut for the coffee you are looking at, and the chat can
 ask through the `starting_point` tool.
 
+### Designing a Set with the agent
+
+The third path in **New Set** is **Design it with the agent**, folded under the
+form like the suggestion. It is for a new profile rather than a first guess: a
+fork of one you have, or a bean you already brew in another Set. It uses the
+bean, name and grinder from the form, reads the form's profile as the one to
+fork from, and asks only what the form does not: your usual grind on that
+grinder and what you want from the coffee. The grinder is required here — a
+grind is only a number on one grinder's dial — so pre-ground coffee keeps the
+plain form and the suggestion. The form's grind, dose, yield and intent are not
+sent: working those out is what the conversation is for.
+
+**Start designing** creates the Set with an empty version 1 and takes you to
+that version's conversation, with what you wanted as the first message (or
+"Help me design this Set." when you left it empty, so the agent starts by
+asking). The agent already has your brief, the profile to fork, this bean's
+other Sets and similar Sets on this grinder; it asks what it needs, then
+proposes the whole first recipe as one card — a profile of its own, the grind
+(said to be relative when nothing anchors a number on your dial), the dose and
+the yield. Nothing exists until you accept it, in the conversation or on the
+Set page. Accepting makes it version 1 and the conversation an ordinary one;
+the profile is then a draft on the Profiles page for you to approve and push,
+and once it is on the machine, shots brewed on it are filed under the new Set.
+
+Until then the Set carries a **Designing** badge on the Sets list, on its page
+and on its folder in the Chat page, with **Continue designing** back into the
+conversation. Recording a version by hand on the Set page ends the design the
+same way. **Discard design** on the Set page deletes a design nobody brewed
+anything under, after asking; one with a shot filed on it is kept.
+
+The conversation needs an LLM provider (Settings → LLM); everything up to it,
+and the card, work without one.
+
 ### The chat's database tool (MCP)
 
 The `claude_code` provider runs the chat's tool loop inside the Claude Code CLI,
