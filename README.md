@@ -706,21 +706,41 @@ shots that are the target, and the insights you have confirmed. So the first
 turn is about the coffee rather than about learning what Set 3 is. Beside the
 composer, the page lists exactly what the agent can do in *this* conversation.
 
-**Twelve tools in a Set's conversation** — nine reads and three that propose:
+**Thirteen tools in a Set's conversation** — ten reads and three that propose:
 one change to this Set, waiting for you, with the prediction that makes it
 gradable (the grind, the dose, the yield or the profile: a temperature change is
 a profile change, and the tool says so); an insight about this Set stored
 **unconfirmed** that reaches no future prompt until you confirm it; and a
 profile draft that goes through the same schema, safety-policy and clamp checks
-as one typed by hand. **Sixteen in General** —
-fourteen reads and two proposals, the profile draft and a starting point;
-`starting_point` is `propose` rather than a read because it spends provider
-tokens, and it is rate limited on the same bucket as the route it shortcuts.
-The registry holds twenty in total: nine both kinds have, ten that belong to one
-kind or the other, and `run_analysis`, which no conversation is offered at all —
-the per-shot analysis is the other adviser, and it is on its way out. Nothing in
-the chat can touch the machine — pushing a profile and deleting a shot off the
-display stay buttons you press.
+as one typed by hand. One of the reads is `get_profile`, a profile version's
+whole document, so the agent reads the profile it is about to change.
+**Seventeen in General** — fifteen reads and two proposals, the profile draft
+and a starting point; `starting_point` is `propose` rather than a read because
+it spends provider tokens, and it is rate limited on the same bucket as the
+route it shortcuts. **Eight while a Set is being designed** (below). The
+registry holds twenty-two in total: ten both kinds have, ten that belong to one
+kind or the other, `propose_initial_recipe`, which only a design has, and
+`run_analysis`, which no conversation is offered at all — the per-shot analysis
+is the other adviser, and it is on its way out. Nothing in the chat can touch
+the machine — pushing a profile and deleting a shot off the display stay
+buttons you press.
+
+**A Set can be designed in its own conversation.** `POST /api/sets/design`
+takes a bean and a grinder (both required), optionally a profile to fork, your
+usual grind on that grinder and what you want from the coffee, and creates a
+Set whose version 1 has no recipe yet, with that version's conversation open.
+While the Set is being designed the agent is told what you asked for, the
+profile to fork in full, how this bean went in your other Sets, similar Sets on
+this grinder, the profile library and the matching rules; it asks what it needs
+and then proposes **the initial recipe** with `propose_initial_recipe`: a
+profile of its own (never a copy of one in the library — two Sets on one
+profile make the shot matcher ambiguous) plus grind, dose and yield, as one card
+you accept or decline. A newer card replaces the waiting one. Accepting fills
+version 1 in place, and from the next turn the same conversation is the Set's
+ordinary one; the profile waits on the Profiles page for you to approve and
+push. Writing a version by hand, or pushing a draft for the Set, ends the design
+the same way. A design nobody brewed anything under can be discarded
+(`DELETE /api/sets/{id}/design`).
 
 Every answer shows what was called, with the input and the output one click
 away, and citations are links: a shot id goes to the shot, a knowledge passage's

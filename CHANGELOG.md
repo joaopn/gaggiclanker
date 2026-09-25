@@ -10,6 +10,23 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Design a new Set in chat
+
+- **A Set can start with no recipe and be designed in its own conversation.**
+  `POST /api/sets/design` takes a bean and a grinder, optionally a profile to
+  fork, your usual grind and what you want from the coffee; it creates the Set
+  with an empty version 1 and opens that version's chat. The agent is given
+  your brief, the profile to fork, how this bean went in your other Sets,
+  similar Sets on this grinder and the matching rules, asks what it needs, and
+  proposes the whole first recipe — a profile of its own plus grind, dose and
+  yield — as one card. Accepting it fills version 1 in place; the profile is a
+  draft on the Profiles page to approve and push. A design nobody brewed under
+  can be discarded (`DELETE /api/sets/{id}/design`). The screens for it come
+  next.
+- **`get_profile`**, a new read in every conversation, returns a profile
+  version's whole document.
+- A new migration adds four columns and changes nothing that exists: no reset.
+
 ### Update Claude Code from the settings page
 
 - **The Claude Code panel under Settings → LLM can install a newer CLI**

@@ -76,7 +76,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | `cleanup/` | Device storage: which shots are eligible to delete off the machine, the plan the Sync page shows, and the run of a plan a person confirmed. |
 | `notes/` | Judgements a person sends from the Sync page to the machine's own notes card, and only when ours is newer than its. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
-| `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, shots — and the streamed, resumable run. |
+| `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
@@ -306,9 +306,10 @@ be part of somebody else's transaction rather than opening its own.
 **A proposal stops waiting when the Set moves on.** Every path that appends a
 version — the Add a version form, a roll back, a pushed profile draft, an
 accepted analysis suggestion, and accepting a proposal itself — goes through
-`SetsRepository._insert_version`, and that is where a waiting proposal of the
-same Set is marked `stale`, in the same transaction, with the proposal being
-accepted as the one exception. The alternative was describing that state rather
+`SetsRepository._insert_version` (or, on a Set being designed, the fill of its
+version 1), and that is where a waiting proposal of the same Set is marked
+`stale`, in the same transaction, with the proposal being accepted as the one
+exception. A retired initial recipe takes its unsent profile draft with it. The alternative was describing that state rather
 than removing it: a row still saying `proposed` tells the next conversation's
 opening context that the Set is somewhere it is not, and leaves the person an
 Accept button whose only possible answer is a 409. The staleness check inside
@@ -347,6 +348,28 @@ refused if called anyway, as an error value the model can read; a refusal about
 another Set's shot says nothing about whether it exists. There is no second list
 anywhere, the web included: the page shows what the server says the
 conversation has.
+
+**A Set being designed is the third surface.** A Set created by the design
+route has a version 1 with no recipe and a `designing` flag, and while the flag
+is up its conversation has neither kind's tools: nothing reads shots (there are
+none) and nothing changes a recipe (there is none). It has the Set, the profile
+library and any profile's whole document, the knowledge tiers, and
+`propose_initial_recipe`, which proposes the whole first recipe as one card.
+`ToolScope.resolve` reads the flag from the Set at the start of every turn, for
+the runner and the stdio server alike, so the turn after the card is accepted is
+an ordinary Set conversation in the same thread. The flag is never inferred: a
+hand-made Set whose version 1 names no profile looks the same and is not being
+designed. Accepting the card, or any other version write to the Set, fills
+version 1 in place rather than appending a v2 — `SetsRepository.append_version`
+decides it, so no path can miss it — and retires a waiting card with its draft.
+
+**Why the design context may show other Sets.** A Set's conversation sees its
+Set and nothing else; the design conversation is the one exception, and a narrow
+one. Designing a recipe for a coffee you have brewed before is exactly when how
+it went elsewhere matters, so the opening context carries this bean's other Sets
+still in use and similar Sets on this grinder, capped and in a fixed order. It
+is a read-only snapshot assembled on the server: no tool in the design scope
+browses another Set, and the block is gone the moment version 1 is filled.
 
 **What can reach the machine is two closed lists, enforced by a test.** Ten
 reads, and seven writes behind a switch that is off by default: five profile
