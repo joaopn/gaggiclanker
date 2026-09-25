@@ -10,6 +10,7 @@ import {
   acceptSuggestion,
   analyseSet,
   getSetSuggestions,
+  largeBatchCount,
   rejectSuggestion,
   runAnalysis,
 } from "@/api/client";
@@ -87,11 +88,12 @@ export function useRunAnalysis(): UseMutationResult<
 export function useAnalyseSet(): UseMutationResult<
   BatchResult,
   Error,
-  { setId: number; onlyUnanalysed?: boolean; model?: string }
+  { setId: number; onlyUnanalysed?: boolean; model?: string; acknowledgeLargeBatch?: boolean }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ setId, onlyUnanalysed, model }) => analyseSet(setId, { onlyUnanalysed, model }),
+    mutationFn: ({ setId, onlyUnanalysed, model, acknowledgeLargeBatch }) =>
+      analyseSet(setId, { onlyUnanalysed, model, acknowledgeLargeBatch }),
     onSuccess: (result) => {
       // The batch is queued, not done: the counts that mean anything at this
       // point are what it will attempt and what it left to somebody else.
@@ -108,7 +110,12 @@ export function useAnalyseSet(): UseMutationResult<
         );
       }
     },
-    onError: (error) => toast.error(`Could not analyse the Set: ${error.message}`),
+    onError: (error) => {
+      // Not a failure: a question the page asks from the mutation's error,
+      // with the size and a button to go ahead.
+      if (largeBatchCount(error) !== null) return;
+      toast.error(`Could not analyse the Set: ${error.message}`);
+    },
     onSettled: () => {
       void invalidateAnalyses(queryClient);
       void invalidateShots(queryClient);

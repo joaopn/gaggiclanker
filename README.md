@@ -620,6 +620,14 @@ stream, so a restart cannot kill an analysis with the browser still waiting on
 it. Pressing it twice, or in two tabs, gets the same run back rather than paying
 for two.
 
+A Set's **Analyse the un-analysed** runs the same call over every shot in the
+Set that has no successful analysis yet, two at a time. More than ten shots is
+dozens of provider calls from one click, so the server refuses such a batch
+until the request acknowledges its size (`acknowledge_large_batch`; the refusal
+is a 409 `LARGE_BATCH` whose `details.count` says how many), and the Set page
+asks first: how many analyses it would run and roughly how long, with a button
+to go ahead. Shots already being analysed are not counted.
+
 A failed analysis is a stored row carrying the provider's error code rather than
 an exception, and a run cut off by a restart is marked `interrupted` at the next
 boot — neither silently disappears. Token usage is recorded per analysis; the

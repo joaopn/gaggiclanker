@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetApiClientAuthForTests,
   ApiClientError,
+  analyseSet,
   createBackup,
   fetchApi,
   getHealth,
   getSettings,
   hasAuthenticatedSession,
+  largeBatchCount,
   login,
   logout,
   patchSettings,
@@ -248,5 +250,52 @@ describe("the auth endpoints", () => {
     await logout();
     expect(hasAuthenticatedSession()).toBe(false);
     expect(window.localStorage.getItem("gaggiclanker.token")).toBeNull();
+  });
+});
+
+describe("the Set batch", () => {
+  beforeEach(() => {
+    __resetApiClientAuthForTests(null);
+  });
+
+  const queued = { set_id: 3, requested: 2, skipped: 0, task: "analyse_set:3" };
+
+  it("does not acknowledge a large batch unless asked to", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(202, success(queued)))
+      .mockResolvedValueOnce(jsonResponse(202, success(queued)));
+
+    await analyseSet(3);
+    await analyseSet(3, { acknowledgeLargeBatch: true });
+
+    const bodies = fetchSpy.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies[0]).toMatchObject({ only_unanalysed: true, acknowledge_large_batch: false });
+    expect(bodies[1]).toMatchObject({ acknowledge_large_batch: true });
+    fetchSpy.mockRestore();
+  });
+
+  it("reads the size off a LARGE_BATCH refusal and nothing else", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(
+        409,
+        failure("LARGE_BATCH", "This would analyse 14 shots, one provider call each", {
+          field: "acknowledge_large_batch",
+          message: "more than 10 shots must be acknowledged",
+          count: 14,
+          limit: 10,
+        }),
+      ),
+    );
+
+    const error = await analyseSet(3).catch((caught: unknown) => caught);
+
+    expect(largeBatchCount(error)).toBe(14);
+    expect(
+      largeBatchCount(new ApiClientError("busy", { code: "CONFLICT", details: { count: 3 } })),
+    ).toBeNull();
+    expect(largeBatchCount(new ApiClientError("odd", { code: "LARGE_BATCH" }))).toBeNull();
+    expect(largeBatchCount(new Error("LARGE_BATCH"))).toBeNull();
+    fetchSpy.mockRestore();
   });
 });

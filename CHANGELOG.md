@@ -10,6 +10,16 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A large Set batch asks before it spends
+
+- **Analyse the un-analysed asks first when it would run more than ten
+  analyses.** The Set page shows how many shots it would analyse (one provider
+  call each) and roughly how long that takes, with a button to go ahead and one
+  to cancel; ten or fewer start at once as before. The guard is on the server:
+  `POST /api/sets/{id}/analyse` refuses a batch of more than ten with a 409
+  `LARGE_BATCH` (`details.count` is the size) until the body says
+  `acknowledge_large_batch: true`. Shots already being analysed are not counted.
+
 ### A shot keeps its yield when the scale drops to zero as it ends
 
 - **A shot whose scale reads zero for its last few samples keeps the yield

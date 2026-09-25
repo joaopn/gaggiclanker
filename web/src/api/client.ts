@@ -995,15 +995,30 @@ export async function getAnalysis(id: number): Promise<Analysis> {
 
 export async function analyseSet(
   setId: number,
-  options: { onlyUnanalysed?: boolean; model?: string } = {},
+  options: { onlyUnanalysed?: boolean; model?: string; acknowledgeLargeBatch?: boolean } = {},
 ): Promise<BatchResult> {
   return fetchApi<BatchResult>(`/sets/${setId}/analyse`, {
     method: "POST",
     body: JSON.stringify({
       only_unanalysed: options.onlyUnanalysed ?? true,
       model: options.model ?? "",
+      acknowledge_large_batch: options.acknowledgeLargeBatch ?? false,
     }),
   });
+}
+
+/**
+ * How many shots a refused Set batch would have analysed, or `null` when the
+ * error is anything else. The server refuses a batch over its limit until the
+ * request acknowledges the size (`LARGE_BATCH`), and says how big it was in
+ * `details.count` so the page can ask about the real number.
+ */
+export function largeBatchCount(error: unknown): number | null {
+  if (!(error instanceof ApiClientError) || error.code !== "LARGE_BATCH") return null;
+  const details = error.details;
+  if (typeof details !== "object" || details === null) return null;
+  const count = (details as { count?: unknown }).count;
+  return typeof count === "number" ? count : null;
 }
 
 export async function getSetSuggestions(setId: number): Promise<SuggestionListData> {
