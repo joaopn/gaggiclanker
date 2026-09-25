@@ -152,6 +152,101 @@ describe("DraftCard", () => {
     );
   });
 
+  describe("pushing a Set's draft", () => {
+    const forGuji = {
+      set_id: 3,
+      set_name: "Guji on the Niche",
+      set_next_version_no: 4,
+      prediction: "Compared to v3: less of the dry finish, and no slower.",
+      compares_to_version_no: 3,
+    };
+
+    it("pushes it for its Set by default, and says which version it records", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
+
+      const button = screen.getByTestId("push-draft-for-set");
+      expect(button).toHaveTextContent(
+        "Push to the machine and record it as v4 of Guji on the Niche",
+      );
+      await user.click(button);
+
+      // The Set in the body is what makes the server record the version and
+      // the prediction; without it the push records nothing on the Set.
+      await waitFor(() =>
+        expect(pushProfileDraft).toHaveBeenCalledWith(1, { setId: 3, allowStaleBase: false }),
+      );
+    });
+
+    it("can still be pushed without recording it on the Set", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
+
+      const plain = screen.getByTestId("push-draft");
+      expect(plain).toHaveTextContent("Push without recording it on the Set");
+      await user.click(plain);
+
+      await waitFor(() =>
+        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
+          setId: undefined,
+          allowStaleBase: false,
+        }),
+      );
+    });
+
+    it("carries the stale-base override on the push for the Set too", async () => {
+      const user = setupUser();
+      renderWithQueryClient(
+        <DraftCard draft={draft({ ...forGuji, status: "approved", base_is_current: false })} />,
+      );
+      expect(screen.getByTestId("push-draft-for-set")).toBeDisabled();
+      expect(screen.getByTestId("push-draft")).toBeDisabled();
+
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByTestId("push-draft-for-set"));
+
+      await waitFor(() =>
+        expect(pushProfileDraft).toHaveBeenCalledWith(1, { setId: 3, allowStaleBase: true }),
+      );
+    });
+
+    it("offers only the plain push once the Set is gone", () => {
+      renderWithQueryClient(
+        <DraftCard draft={draft({ ...forGuji, set_name: null, status: "approved" })} />,
+      );
+      expect(screen.queryByTestId("push-draft-for-set")).not.toBeInTheDocument();
+      expect(screen.getByTestId("push-draft")).toHaveTextContent("Push to the machine");
+    });
+
+    it("says the prediction was recorded only when the push recorded it", () => {
+      const pushed = { ...forGuji, status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" };
+      const { rerender } = renderWithQueryClient(
+        <DraftCard draft={draft({ ...pushed, recorded_version_no: 4 })} />,
+      );
+      expect(screen.getByTestId("draft-prediction-landing")).toHaveTextContent(
+        "Recorded as v4 of Guji on the Niche when this was pushed for it.",
+      );
+
+      rerender(<DraftCard draft={draft({ ...pushed, recorded_version_no: null })} />);
+      const landing = screen.getByTestId("draft-prediction-landing");
+      expect(landing).toHaveTextContent("Pushed without recording it on Guji on the Niche");
+      expect(landing).not.toHaveTextContent("Recorded as");
+    });
+
+    it("says nothing about where it lands once the draft can no longer be pushed", () => {
+      // A failed push recorded nothing, and a discarded draft may have been
+      // recorded before its rollback: neither sentence would be true of both.
+      for (const status of ["failed", "discarded", "superseded"]) {
+        const { unmount } = renderWithQueryClient(
+          <DraftCard draft={draft({ ...forGuji, status, pushed_device_profile_id: null })} />,
+        );
+        expect(screen.getByTestId("draft-prediction")).toBeInTheDocument();
+        expect(screen.queryByTestId("draft-prediction-landing")).not.toBeInTheDocument();
+        unmount();
+      }
+    });
+  });
+
   it("says a pushed draft was not selected", () => {
     renderWithQueryClient(
       <DraftCard draft={draft({ status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" })} />,

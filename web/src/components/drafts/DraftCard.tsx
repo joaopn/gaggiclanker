@@ -69,6 +69,11 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
     discard.isPending ||
     refine.isPending;
   const needsAcknowledgement = stopChanges.length > 0 && !draft.acknowledged_stop_changes;
+  // The generated type leaves these optional; absent and null mean the same.
+  const forSet =
+    draft.set_id != null && draft.set_name != null
+      ? { id: draft.set_id, name: draft.set_name, nextVersionNo: draft.set_next_version_no ?? null }
+      : null;
 
   return (
     <li
@@ -103,11 +108,7 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
             {draft.compares_to_version_no ? ` · compared to v${draft.compares_to_version_no}` : ""}
           </p>
           <p className="text-sm">{draft.prediction}</p>
-          <p className="mt-1 text-muted-foreground text-xs">
-            {draft.status === "pushed"
-              ? "Recorded on the Set when this was pushed for it."
-              : "It is recorded on the Set when you push this draft for that Set, and not before."}
-          </p>
+          <PredictionLanding draft={draft} />
         </div>
       ) : null}
 
@@ -224,7 +225,43 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
           </>
         ) : null}
 
-        {draft.status === "approved" ? (
+        {/* A draft made in a Set's conversation is pushed for that Set unless
+            the person says otherwise: that push is what records the new
+            version and the prediction, and it is the one the prediction
+            block promises. Trying it without touching the Set stays one
+            click away. A draft whose Set has been removed has nowhere to be
+            recorded and gets the plain push. */}
+        {draft.status === "approved" && forSet !== null ? (
+          <>
+            <Button
+              size="sm"
+              disabled={busy || (!draft.base_is_current && !allowStale)}
+              data-testid="push-draft-for-set"
+              // A long Set name wraps inside the button rather than pushing the
+              // card wider than a phone.
+              className="h-auto min-h-8 whitespace-normal text-left"
+              onClick={() =>
+                push.mutate({ id: draft.id, setId: forSet.id, allowStaleBase: allowStale })
+              }
+            >
+              <Upload className="size-3.5" aria-hidden="true" />
+              Push to the machine and record it as{" "}
+              {forSet.nextVersionNo !== null ? `v${forSet.nextVersionNo}` : "a new version"} of{" "}
+              {forSet.name}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || (!draft.base_is_current && !allowStale)}
+              data-testid="push-draft"
+              onClick={() => push.mutate({ id: draft.id, allowStaleBase: allowStale })}
+            >
+              Push without recording it on the Set
+            </Button>
+          </>
+        ) : null}
+
+        {draft.status === "approved" && forSet === null ? (
           <Button
             size="sm"
             disabled={busy || (!draft.base_is_current && !allowStale)}
@@ -318,6 +355,31 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
         </label>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Where the prediction ends up, said from what the archive holds rather than
+ * from the button that was pressed: a draft pushed without recording it on its
+ * Set, or pushed for another one, recorded nothing, and the line must not claim
+ * otherwise. Nothing is said once the draft can no longer be pushed at all.
+ */
+function PredictionLanding({ draft }: { draft: ProfileDraft }) {
+  const where = draft.set_name ?? "the Set";
+  let line: string | null = null;
+  if (draft.status === "pushed") {
+    const recorded = draft.recorded_version_no ?? null;
+    line =
+      recorded !== null
+        ? `Recorded as v${recorded} of ${where} when this was pushed for it.`
+        : `Pushed without recording it on ${where}, so this prediction was not recorded.`;
+  } else if (draft.status === "draft" || draft.status === "approved") {
+    line = "It is recorded on the Set when you push this draft for that Set, and not before.";
+  }
+  return line === null ? null : (
+    <p className="mt-1 text-muted-foreground text-xs" data-testid="draft-prediction-landing">
+      {line}
+    </p>
   );
 }
 

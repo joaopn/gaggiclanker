@@ -253,7 +253,9 @@ to or deleted from the machine happens only from the Sync page, by a person.**
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
 nothing. A profile a conversation drafts is a draft on the Profiles page, which
-you approve and push yourself.
+you approve and push yourself. When it was drafted in a Set's conversation, the
+push button records it as that Set's next version with its prediction; **Push
+without recording it on the Set** tries it without touching the Set.
 
 * **Send notes to the machine** lists the judgements the machine's notes cards
   do not have yet. Tick the ones to send and confirm; nothing is ticked for you.

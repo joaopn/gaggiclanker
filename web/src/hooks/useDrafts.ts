@@ -27,7 +27,12 @@ import {
   type ProfileDraftDetail,
   type ProfileDraftListData,
 } from "@/api/types";
-import { invalidateDeviceWrites, invalidateDrafts, invalidateProfiles } from "@/lib/invalidate";
+import {
+  invalidateDeviceWrites,
+  invalidateDrafts,
+  invalidateProfiles,
+  invalidateSets,
+} from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -168,7 +173,11 @@ export function usePushDraft(): UseMutationResult<
     mutationFn: ({ id, setId, allowStaleBase }) => pushProfileDraft(id, { setId, allowStaleBase }),
     onSuccess: (result) => {
       if (result.draft.status === "pushed") {
-        toast.success(`On the machine as ${result.draft.pushed_device_profile_id}`);
+        toast.success(
+          result.set_version
+            ? `On the machine as ${result.draft.pushed_device_profile_id}, recorded as v${result.set_version.version_no} of ${result.draft.set_name ?? "its Set"}`
+            : `On the machine as ${result.draft.pushed_device_profile_id}`,
+        );
       } else {
         // 200, and the worst outcome this feature has: the machine took the
         // profile and stored something else. Say so, and point at the button
@@ -184,6 +193,10 @@ export function usePushDraft(): UseMutationResult<
       void invalidateDrafts(queryClient);
       void invalidateProfiles(queryClient);
       void invalidateDeviceWrites(queryClient);
+      // A push for a Set records its next version and retires the change
+      // waiting on it; no event says so, and a Set page read before the push
+      // would otherwise keep showing the Set where it was.
+      void invalidateSets(queryClient);
     },
   });
 }
@@ -198,6 +211,8 @@ export function useRollbackDraft(): UseMutationResult<ProfileDraft, Error, numbe
       void invalidateDrafts(queryClient);
       void invalidateProfiles(queryClient);
       void invalidateDeviceWrites(queryClient);
+      // The rollback clears the device id from any Set version that named it.
+      void invalidateSets(queryClient);
     },
   });
 }

@@ -55,6 +55,8 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     prediction: "",
     compares_to_version_id: null,
     compares_to_version_no: null,
+    set_next_version_no: null,
+    recorded_version_no: null,
     change_summary: "Dropped the peak to 8 bar.",
     stop_condition_changes: [],
     clamp_changes: [],

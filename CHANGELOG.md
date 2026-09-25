@@ -10,6 +10,23 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A profile drafted in a Set's conversation is pushed for that Set
+
+- **The draft card can now push a Set's draft for its Set, and does so by
+  default.** A profile the agent drafted in a Set's conversation carries a
+  prediction that was to be recorded "when you push this draft for that Set",
+  but the card's only button pushed it for no Set: the Set never got the new
+  version, the prediction was lost, and shots brewed on the new profile landed
+  in "needs a Set". The button now reads **Push to the machine and record it as
+  v5 of** *the Set*, and records that version with the prediction on it. **Push
+  without recording it on the Set** tries the profile without touching the Set.
+  A draft that belongs to no Set has the one button it always had.
+- **A pushed draft says whether its prediction was recorded**, read from the
+  archive rather than from the button pressed: "Recorded as v5 of …" only when
+  that push recorded a version of the draft's Set, and "Pushed without recording
+  it on …" otherwise. It used to claim the prediction had been recorded
+  whatever the push did.
+
 ### Design a new Set in chat
 
 - **A Set can start with no recipe and be designed in its own conversation.**
