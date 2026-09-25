@@ -451,6 +451,100 @@ async def test_pushing_a_set_s_own_draft_records_its_prediction_on_the_version(
     assert version["pushed_device_profile_id"] == body["draft"]["pushed_device_profile_id"]
 
 
+async def test_a_set_s_draft_says_which_version_a_push_for_it_records(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """The card names the version before the push and after it, from the archive.
+
+    Before: the Set's next number, so the button can say "record it as v2".
+    After: the version the push really recorded, so the card claims the
+    prediction landed only when it did, including after a reload.
+    """
+    app, client = writes_on
+    draft = await _drafted_for(app, a_set)
+    assert draft["set_next_version_no"] == 2
+    assert draft["recorded_version_no"] is None
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    body = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+    )
+
+    assert body["set_version"]["version_no"] == 2
+    assert body["draft"]["recorded_version_no"] == 2
+    reread = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
+    assert reread["recorded_version_no"] == 2
+    assert reread["set_next_version_no"] == 3
+
+
+async def test_two_drafts_of_one_profile_each_find_the_version_their_own_push_recorded(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """Profile versions are content-hashed, so two drafts can name the same one.
+
+    The device id the firmware gave each push is what tells their versions apart.
+    """
+    app, client = writes_on
+    first = await _drafted_for(app, a_set)
+    second = await _drafted_for(app, a_set)
+    assert first["draft_version_id"] == second["draft_version_id"]
+    for draft in (first, second):
+        await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
+
+    reread = [
+        data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
+        for draft in (first, second)
+    ]
+    assert [row["recorded_version_no"] for row in reread] == [2, 3]
+
+
+async def test_a_set_s_draft_pushed_without_its_set_says_it_recorded_nothing(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    app, client = writes_on
+    draft = await _drafted_for(app, a_set)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    body = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))
+
+    assert body["draft"]["status"] == "pushed"
+    assert body["set_version"] is None
+    assert body["draft"]["recorded_version_no"] is None
+    assert len(data(await client.get(f"/api/sets/{a_set}"))["versions"]) == 1
+
+
+async def test_a_set_s_draft_pushed_for_another_set_says_it_recorded_nothing_on_its_own(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """The other Set got a version, but not the one the prediction was about."""
+    app, client = writes_on
+    bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
+    other = data(
+        await client.post(
+            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False}
+        )
+    )
+    draft = await _drafted_for(app, a_set)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    body = data(
+        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": other["id"]})
+    )
+
+    assert body["set_version"]["set_id"] == other["id"]
+    assert body["draft"]["recorded_version_no"] is None
+
+
+async def test_a_draft_without_a_set_has_no_version_to_record(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    app, client = writes_on
+    draft = await a_draft(app, client, provider)
+    assert draft["set_next_version_no"] is None
+    assert draft["recorded_version_no"] is None
+
+
 async def test_a_prediction_against_a_version_of_another_set_falls_back_to_the_current_one(
     writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
 ) -> None:
@@ -533,6 +627,9 @@ async def test_a_draft_from_an_analysis_stays_an_analysis(
 
     assert version["origin"] == "analysis"
     assert version["prediction"].startswith("Compared to v1")
+    # And the card still says where the prediction landed.
+    reread = data(await client.get(f"/api/profile-drafts/{row.id}"))["draft"]
+    assert reread["recorded_version_no"] == version["version_no"]
 
 
 async def test_a_push_for_a_set_retires_the_change_waiting_on_it(

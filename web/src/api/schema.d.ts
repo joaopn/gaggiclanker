@@ -4966,10 +4966,14 @@ export interface components {
             prediction: string;
             /** Pushed Device Profile Id */
             pushed_device_profile_id?: string | null;
+            /** Recorded Version No */
+            recorded_version_no?: number | null;
             /** Set Id */
             set_id?: number | null;
             /** Set Name */
             set_name?: string | null;
+            /** Set Next Version No */
+            set_next_version_no?: number | null;
             /** Source Analysis Id */
             source_analysis_id?: number | null;
             /** Source Suggestion Id */

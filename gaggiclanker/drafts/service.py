@@ -431,6 +431,10 @@ class ProfileDraftService:
             draft_id,
         )
         version = await self.attach_to_set(row, set_id) if set_id is not None else None
+        if version is not None:
+            # Read again so the answer already says which version of its Set the
+            # push recorded, rather than leaving that to the next list read.
+            row = _require_row(await self.drafts.get(draft_id), draft_id)
         log.info("profile_pushed", draft_id=draft_id, device_id=device_id, label=profile.label)
         return row, version
 
