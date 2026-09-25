@@ -29,7 +29,8 @@ first (`POST /api/backup`), because there is no down-migration.
   with what you wanted as the first message. The agent's proposal is a card
   in the conversation and on the Set page showing the profile it drafts (with
   a link to the draft), the grind, dose, yield and ratio, and the reason;
-  accepting says version 1 is set and the profile waits on the Profiles page.
+  accepting says version 1 is set and the profile waits on the Profiles page,
+  and the card keeps showing the recipe it set.
   A Set being designed carries a **Designing** badge on the Sets list, its page
   and its Chat folder, with **Continue designing**, and its page offers
   **Discard design**; its log reads "being designed — no recipe yet". The

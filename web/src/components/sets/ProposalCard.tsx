@@ -56,9 +56,9 @@ const DRAFTS_HREF = "/profiles#staged";
  * The server draws every proposal as a diff against the version it would
  * change, and for a design that version is empty, so each field's `after` side
  * *is* the recipe. Read from there rather than asked for separately, so the
- * card cannot say something the accept would not write. Once accepted, version
- * 1 holds the same values and the diff is empty: the card then says what
- * happened and the Set page shows the recipe.
+ * card cannot say something the accept would not write. The server keeps
+ * drawing a first recipe against the empty version it filled, so an accepted
+ * card still shows the recipe it set.
  */
 export function designRecipe(changes: FieldChange[]) {
   const after = (field: string) => changes.find((change) => change.field === field)?.after ?? null;

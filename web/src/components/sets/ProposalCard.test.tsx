@@ -420,11 +420,11 @@ describe("ProposalCard, a first recipe", () => {
     expect(screen.queryByRole("button", { name: /^Decline$/ })).not.toBeInTheDocument();
   });
 
-  it("keeps saying how it was answered once it has been", () => {
+  it("keeps saying how it was answered once it has been, and the recipe it set", () => {
     renderWithQueryClient(
       <ProposalCard
         setId={6}
-        proposal={designProposal({ status: "accepted", changes: [], resulting_version_no: 1 })}
+        proposal={designProposal({ status: "accepted", resulting_version_no: 1 })}
       />,
     );
 
@@ -432,6 +432,9 @@ describe("ProposalCard, a first recipe", () => {
       "A first recipe that was proposed",
     );
     expect(screen.getByTestId("proposal-decided")).toHaveTextContent("version 1 is set");
+    // The server still draws an accepted first recipe against the empty one it
+    // filled, so scrolling back through the conversation shows what was agreed.
+    expect(screen.getByTestId("proposal-recipe")).toBeInTheDocument();
   });
 
   it("reads the recipe off the diff against the empty version 1", () => {
