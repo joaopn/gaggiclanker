@@ -1,9 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "@/api/client";
 import { SetDetailPage } from "@/pages/SetDetailPage";
 import { knowledgeInsight, suggestion } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import {
+  designingDetail,
+  designingSet,
+  designProposal,
   labelCounts,
   proposal,
   setDetail,
@@ -70,6 +75,7 @@ const {
   createProfileDraft,
   pushProfileDraft,
   acceptSetProposal,
+  discardDesign,
 } = vi.hoisted(() => ({
   getSet: vi.fn(),
   getSetTrends: vi.fn(),
@@ -90,6 +96,7 @@ const {
   createProfileDraft: vi.fn(),
   pushProfileDraft: vi.fn(),
   acceptSetProposal: vi.fn(),
+  discardDesign: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -106,6 +113,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   createProfileDraft,
   pushProfileDraft,
   acceptSetProposal,
+  discardDesign,
 }));
 
 beforeEach(() => {
@@ -475,7 +483,11 @@ describe("SetDetailPage", () => {
     getSetTrends.mockResolvedValue({ set_id: 3, versions: [], shots: [] });
     renderWithQueryClient(<SetDetailPage />);
 
-    expect(await screen.findByText(/No shots yet/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "No shots yet. The next one pulled with this Set's profile files itself here.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("reports a Set that is not there rather than rendering an empty page", async () => {
@@ -556,5 +568,238 @@ describe("SetDetailPage — what this archive has learned", () => {
 
     await screen.findByTestId("set-trend-summary");
     expect(screen.queryByTestId("set-insights")).not.toBeInTheDocument();
+  });
+});
+
+/** Where the page sent the person, for a test to read. */
+function Location() {
+  const location = useLocation();
+  return <p data-testid="location">{location.pathname}</p>;
+}
+
+describe("SetDetailPage, a Set being designed", () => {
+  beforeEach(() => {
+    setId = "6";
+    getSet.mockResolvedValue(designingDetail());
+    getSetTrends.mockResolvedValue(trends({ set_id: 6, versions: [], shots: [] }));
+    discardDesign.mockResolvedValue({ set_id: 6, discarded: true });
+  });
+
+  it("carries the badge, and Continue designing where Discuss was", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByTestId("set-designing")).toHaveTextContent("Designing");
+    // Back into version 1's own conversation, through the open-or-continue
+    // link Discuss uses, with nothing prefilled.
+    expect(screen.getByTestId("continue-designing")).toHaveAttribute(
+      "href",
+      "/chat?set=6&version=60",
+    );
+    expect(screen.queryByTestId("discuss-in-chat")).not.toBeInTheDocument();
+  });
+
+  it("says version 1 is being designed in the log, not a row of empty fields", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    const entry = await screen.findByTestId("version-entry");
+    expect(entry).toHaveAttribute("data-designing", "yes");
+    expect(within(entry).getByTestId("version-being-designed")).toHaveTextContent(
+      "being designed — no recipe yet",
+    );
+    expect(within(entry).queryByText("No prediction.")).not.toBeInTheDocument();
+    expect(within(entry).queryByRole("button", { name: /prediction/ })).not.toBeInTheDocument();
+  });
+
+  it("shows a waiting first recipe above the log, as a waiting change is", async () => {
+    getSet.mockResolvedValue(designingDetail({ proposal: designProposal() }));
+    renderWithQueryClient(<SetDetailPage />);
+
+    const card = await screen.findByTestId("proposal-card");
+    expect(card).toHaveAttribute("data-kind", "design");
+    expect(card).toHaveTextContent("The first recipe is waiting for you");
+    expect(within(card).getByRole("button", { name: /Accept/ })).toBeInTheDocument();
+    const log = screen.getByTestId("version-timeline");
+    expect(card.compareDocumentPosition(log) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the Add a version form, saying it sets the first recipe by hand", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText("No recipe yet: v1 is being designed")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Set the first recipe by hand/ }));
+
+    expect(screen.getByTestId("new-version-designing")).toHaveTextContent(
+      "Set the first recipe by hand",
+    );
+    // Nothing to compare a version 1 against, and the server ignores one there.
+    expect(screen.queryByLabelText("Version prediction")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Dose (g)"), "18");
+    await user.type(screen.getByLabelText("What are you trying?"), "the roaster's card");
+    await user.click(screen.getByRole("button", { name: "Set version 1" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][0]).toBe(6);
+    expect(addSetVersion.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ dose_g: 18, intent: "the roaster's card", prediction: "" }),
+    );
+    expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("compares_to_version_id");
+  });
+
+  it("discards only once confirmed, then goes to the Sets list", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <>
+        <SetDetailPage />
+        <Location />
+      </>,
+      { initialEntries: ["/sets/6"] },
+    );
+
+    const toggle = await screen.findByTestId("discard-design");
+    const confirm = screen.getByTestId("discard-confirm");
+    expect(toggle.getAttribute("aria-controls")).toBe(confirm.id);
+    expect(confirm).toHaveAttribute("hidden");
+
+    await user.click(toggle);
+    expect(confirm).not.toHaveAttribute("hidden");
+    expect(discardDesign).not.toHaveBeenCalled();
+    // Changing one's mind declines nothing.
+    await user.click(within(confirm).getByRole("button", { name: "Keep designing" }));
+    expect(confirm).toHaveAttribute("hidden");
+    expect(discardDesign).not.toHaveBeenCalled();
+
+    await user.click(toggle);
+    await user.click(within(confirm).getByRole("button", { name: "Discard it" }));
+
+    await waitFor(() => expect(discardDesign).toHaveBeenCalled());
+    expect(discardDesign.mock.calls[0][0]).toBe(6);
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(/^\/sets$/));
+  });
+
+  it("says in words why a design with a shot filed on it is kept", async () => {
+    const user = setupUser();
+    discardDesign.mockRejectedValue(
+      new ApiClientError("This Set is being designed and a shot is already filed on it", {
+        status: 409,
+        code: "DESIGN_HAS_SHOTS",
+      }),
+    );
+    renderWithQueryClient(
+      <>
+        <SetDetailPage />
+        <Location />
+      </>,
+      { initialEntries: ["/sets/6"] },
+    );
+
+    await user.click(await screen.findByTestId("discard-design"));
+    await user.click(screen.getByRole("button", { name: "Discard it" }));
+
+    expect(await screen.findByTestId("discard-refused")).toHaveTextContent(
+      "A shot is filed on this Set, so it is kept",
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/sets/6");
+  });
+
+  it("says in words why a Set that has a recipe now is not discarded", async () => {
+    const user = setupUser();
+    discardDesign.mockRejectedValue(
+      new ApiClientError("This Set is not being designed", {
+        status: 409,
+        code: "NOT_DESIGNING",
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByTestId("discard-design"));
+    await user.click(screen.getByRole("button", { name: "Discard it" }));
+
+    expect(await screen.findByTestId("discard-refused")).toHaveTextContent("Archive it instead");
+  });
+
+  it("shows what the design was asked for: the fork, the usual grind and the goal", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    const brief = await screen.findByTestId("design-brief");
+    // The fork by its label, read from the profile versions the page has.
+    await waitFor(() =>
+      expect(within(brief).getByTestId("design-brief-fork")).toHaveTextContent("9 Bar Espresso"),
+    );
+    expect(within(brief).getByTestId("design-brief-grind")).toHaveTextContent("22");
+    const goal = within(brief).getByTestId("design-brief-goal");
+    expect(goal).toHaveTextContent("“more body”");
+    // Clamped to a few lines in the notice, the whole text on hover.
+    expect(goal).toHaveClass("line-clamp-3");
+    expect(goal).toHaveAttribute("title", "more body");
+  });
+
+  it("shows only the parts of the brief that were given", async () => {
+    getSet.mockResolvedValue(
+      designingDetail({
+        set: designingSet({
+          design_brief: { fork_profile_version_id: null, usual_grind: "", goal: "try a bloom" },
+        }),
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    const brief = await screen.findByTestId("design-brief");
+    expect(within(brief).getByTestId("design-brief-goal")).toHaveTextContent("try a bloom");
+    expect(within(brief).queryByTestId("design-brief-fork")).not.toBeInTheDocument();
+    expect(within(brief).queryByTestId("design-brief-grind")).not.toBeInTheDocument();
+  });
+
+  it("shows no brief at all when nothing was asked for", async () => {
+    getSet.mockResolvedValue(
+      designingDetail({
+        set: designingSet({
+          design_brief: { fork_profile_version_id: null, usual_grind: "", goal: "" },
+        }),
+      }),
+    );
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("discard-design");
+    expect(screen.queryByTestId("design-brief")).not.toBeInTheDocument();
+  });
+
+  it("says when shots will arrive, since there is no profile to file them by yet", async () => {
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(
+      await screen.findByText(
+        "No shots yet. Once the first recipe is accepted and its profile pushed, shots brewed on it are filed here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/pulled with this Set's profile/)).not.toBeInTheDocument();
+  });
+
+  it("offers no automatch while there is no profile to match on", async () => {
+    // The fixture Set collects shots, as every new Set does.
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("set-designing");
+    expect(screen.queryByTestId("set-automatch")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Stop filing shots here|File matching shots here/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows none of it on a Set that is not being designed", async () => {
+    setId = "3";
+    getSet.mockResolvedValue(setDetail());
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText("Now brewing: v2")).toBeInTheDocument();
+    expect(screen.queryByTestId("set-designing")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("continue-designing")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("discard-design")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("version-being-designed")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discuss-in-chat")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Change something/ })).toBeInTheDocument();
+    expect(screen.queryByTestId("design-brief")).not.toBeInTheDocument();
+    expect(screen.getByTestId("set-automatch")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Stop filing shots here/ })).toBeInTheDocument();
   });
 });

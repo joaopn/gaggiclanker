@@ -1,6 +1,7 @@
 import { ChevronRight, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import type { ChatThread, SetRow } from "@/api/types";
+import { DesigningBadge } from "@/components/sets/Designing";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,11 @@ import { cn } from "@/lib/utils";
  * argued there is still readable and is no longer the line being brewed. The
  * server decides that — it is a fact about a Set's whole line — and the page
  * renders what it is told.
+ *
+ * A Set still being designed carries the same Designing badge as on the Sets
+ * list: its folder holds the conversation the first recipe is being worked out
+ * in, and a design left half-way is how a folder with no recipe behind it
+ * comes about.
  */
 
 /** Where a conversation with no Set lives, and where a first question goes. */
@@ -45,6 +51,8 @@ export type ThreadFolder = {
   /** What `onNew` is called with. NULL for General; folders with no New omit it. */
   setId: number | null;
   canCreate: boolean;
+  /** The folder's Set is still being designed. */
+  designing: boolean;
   threads: ChatThread[];
 };
 
@@ -74,6 +82,7 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
       label: "General",
       setId: null,
       canCreate: true,
+      designing: false,
       threads: newestFirst.filter((thread) => setOf(thread) === null),
     },
     ...sets.map((row) => ({
@@ -81,6 +90,7 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
       label: row.name,
       setId: row.id,
       canCreate: true,
+      designing: row.designing ?? false,
       threads: newestFirst.filter((thread) => setOf(thread) === row.id),
     })),
   ];
@@ -95,6 +105,7 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
       setId: null,
       // No New: a Set you have finished with is not one to start asking about.
       canCreate: false,
+      designing: false,
       threads: orphaned,
     });
   }
@@ -216,6 +227,7 @@ function Folder({
         <span className="min-w-0 flex-1 truncate font-medium text-sm" title={folder.label}>
           {folder.label}
         </span>
+        {folder.designing ? <DesigningBadge /> : null}
         <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
           {folder.threads.length}
         </span>

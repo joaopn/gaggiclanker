@@ -15,6 +15,7 @@ import {
   declineSetProposal,
   deleteJudgement,
   designSet,
+  discardDesign,
   getSet,
   getSetProposals,
   getSets,
@@ -35,6 +36,7 @@ import type {
   SetCreate,
   SetDesignCreate,
   SetDesignCreated,
+  SetDesignDiscarded,
   SetDetailData,
   SetListData,
   SetProposal,
@@ -225,6 +227,31 @@ export function useStartDesign(): UseMutationResult<SetDesignCreated, Error, Set
     onSettled: () => {
       void invalidateSetList(queryClient);
       void invalidateChatThreads(queryClient);
+    },
+  });
+}
+
+/**
+ * Discard a Set that is still being designed.
+ *
+ * The Set leaves the Sets list and its conversations leave the Chat page, and
+ * the profile draft a waiting card carried is discarded with it, so those three
+ * lists are read again. The Set's own page is left behind by the navigation
+ * that follows, not refetched into a 404.
+ *
+ * The two refusals are answered on the page in words, not only in the toast:
+ * a shot filed on it by hand, or a recipe it already has.
+ */
+export function useDiscardDesign(): UseMutationResult<SetDesignDiscarded, Error, number> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: discardDesign,
+    onSuccess: () => toast.success("Design discarded"),
+    onError: (error) => toast.error(`Could not discard the design: ${error.message}`),
+    onSettled: () => {
+      void invalidateSetList(queryClient);
+      void invalidateChatThreads(queryClient);
+      void invalidateDrafts(queryClient);
     },
   });
 }

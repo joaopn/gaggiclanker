@@ -92,7 +92,20 @@ export function ChatPage() {
         : thread.data.thread.set_id === null
           ? "general"
           : "set";
-  const tools = useChatTools(kind);
+  // Whether that Set is still being designed, which is a third tool list: the
+  // design tools, and none that change a recipe it does not have yet. Read off
+  // the Sets list the folders already need rather than off the thread, so an
+  // accepted first recipe — which invalidates that list — switches the tools
+  // on the next render. NULL until the list has arrived, for the same reason
+  // as the kind: the ordinary Set list flashing beside a design would be a guess.
+  const conversationSet = selected === null ? scope : (thread.data?.thread.set_id ?? null);
+  const designing: boolean | null =
+    kind !== "set"
+      ? false
+      : sets.isPending
+        ? null
+        : Boolean((sets.data?.items ?? []).find((row) => row.id === conversationSet)?.designing);
+  const tools = useChatTools(designing === null ? null : kind, designing ?? false);
 
   const permissions = useMemo(() => {
     const map: Record<string, string> = {};
@@ -309,7 +322,11 @@ export function ChatPage() {
             )}
           </form>
 
-          <ToolsHere tools={(tools.data?.tools ?? []).map((tool) => tool.name)} kind={kind} />
+          <ToolsHere
+            tools={(tools.data?.tools ?? []).map((tool) => tool.name)}
+            kind={designing === null ? null : kind}
+            designing={designing ?? false}
+          />
           <UsageFooter runs={thread.data?.runs ?? []} />
         </SectionCard>
       </div>
@@ -324,14 +341,24 @@ export function ChatPage() {
  * conversation cannot query the archive and a general one cannot change a Set,
  * and the page promising otherwise would be the page lying.
  */
-function ToolsHere({ tools, kind }: { tools: string[]; kind: "general" | "set" | null }) {
+function ToolsHere({
+  tools,
+  kind,
+  designing,
+}: {
+  tools: string[];
+  kind: "general" | "set" | null;
+  designing: boolean;
+}) {
   // Nothing at all until the kind is known: a list that says the wrong thing
   // for a moment is worse than a line that arrives a moment later.
   if (kind === null || tools.length === 0) return null;
   return (
     <p className="mt-2 text-muted-foreground text-xs" data-testid="chat-tools">
       {kind === "set"
-        ? "It can see this Set only. Tools here: "
+        ? designing
+          ? "It is designing this Set's first recipe with you and can propose it as one card. Tools here: "
+          : "It can see this Set only. Tools here: "
         : "It can read the whole archive and change no Set. Tools here: "}
       {tools.join(", ")}
     </p>

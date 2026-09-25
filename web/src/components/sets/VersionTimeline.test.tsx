@@ -4,6 +4,7 @@ import type { SetVersionDetail } from "@/api/types";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import {
+  emptyVersion,
   evidence,
   judgement,
   labelCounts,
@@ -689,5 +690,58 @@ describe("VersionTimeline", () => {
       3,
       { to_version_id: 21, intent: "", prediction: "" },
     ]);
+  });
+});
+
+describe("VersionTimeline, a Set being designed", () => {
+  const empty = [
+    { version: emptyVersion(), changes: [], shots: [], dead_end: false, labels: labelCounts() },
+  ];
+
+  it("reads version 1 as being designed, not as a row of empty fields", () => {
+    renderWithQueryClient(<VersionTimeline setId={6} versions={empty} judgements={{}} designing />);
+
+    const entry = screen.getByTestId("version-entry");
+    expect(entry).toHaveAttribute("data-designing", "yes");
+    expect(screen.getByTestId("version-being-designed")).toHaveTextContent(
+      "being designed — no recipe yet",
+    );
+    // None of an experiment's furniture: there is no recipe to have predicted,
+    // graded or brewed yet.
+    expect(entry).not.toHaveTextContent("nothing recorded yet");
+    expect(entry).not.toHaveTextContent("No prediction.");
+    expect(entry).not.toHaveTextContent("No shots on this version yet.");
+    expect(screen.queryByTestId("version-labels")).not.toBeInTheDocument();
+    expect(screen.getByTestId("version-chat").querySelector("a")).toHaveAttribute(
+      "href",
+      "/chat?set=6&version=60",
+    );
+  });
+
+  it("still counts a shot somebody filed on it by hand", () => {
+    const withShot = [{ ...empty[0], version: emptyVersion({ shot_count: 1 }) }];
+    renderWithQueryClient(
+      <VersionTimeline setId={6} versions={withShot} judgements={{}} designing />,
+    );
+
+    expect(screen.getByTestId("version-labels")).toHaveTextContent("1 shot filed here by hand");
+  });
+
+  it("renders a filled version 1 as any version 1, even before the flag has caught up", () => {
+    const filled = [{ ...empty[0], version: emptyVersion({ dose_g: 18, grind_setting: "20" }) }];
+    renderWithQueryClient(
+      <VersionTimeline setId={6} versions={filled} judgements={{}} designing />,
+    );
+
+    expect(screen.queryByTestId("version-being-designed")).not.toBeInTheDocument();
+    expect(screen.getByTestId("version-entry")).toHaveTextContent("18 g in");
+  });
+
+  it("leaves an empty version 1 alone on a Set that is not being designed", () => {
+    // A hand-made "any profile" Set with nothing typed is a Set, not a design.
+    renderWithQueryClient(<VersionTimeline setId={6} versions={empty} judgements={{}} />);
+
+    expect(screen.queryByTestId("version-being-designed")).not.toBeInTheDocument();
+    expect(screen.getByTestId("version-entry")).toHaveTextContent("nothing recorded yet");
   });
 });

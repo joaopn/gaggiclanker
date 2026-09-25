@@ -499,3 +499,89 @@ describe("ChatPage", () => {
     await waitFor(() => expect(deleteChatThread).toHaveBeenCalledWith(1));
   });
 });
+
+describe("ChatPage, a Set being designed", () => {
+  const DESIGNING = [
+    ...SETS,
+    {
+      id: 6,
+      name: "Guji on the DF64",
+      designing: true,
+      current_version_id: 60,
+      current_version_no: 1,
+    },
+  ];
+  const DESIGN_THREAD = thread({
+    id: 12,
+    title: "Help me design this Set.",
+    set_id: 6,
+    set_name: "Guji on the DF64",
+    set_version_id: 60,
+    set_version_no: 1,
+  });
+
+  it("badges the folder of a Set being designed, and no other", async () => {
+    getSets.mockResolvedValue({ items: DESIGNING });
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^Guji on the DF64/ });
+    expect(within(folder("Guji on the DF64")).getByTestId("set-designing")).toHaveTextContent(
+      "Designing",
+    );
+    expect(within(folder("Guji on the Niche")).queryByTestId("set-designing")).toBeNull();
+    expect(within(folder("General")).queryByTestId("set-designing")).toBeNull();
+  });
+
+  it("asks for the design tools for a conversation on a Set being designed", async () => {
+    getSets.mockResolvedValue({ items: DESIGNING });
+    getChatThreads.mockResolvedValue([DESIGN_THREAD]);
+    getChatThread.mockResolvedValue({ ...DETAIL, thread: DESIGN_THREAD });
+    getChatTools.mockResolvedValue({
+      tools: [{ name: "propose_initial_recipe", permission: "propose", description: "v1" }],
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=12"] });
+
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set", { designing: true }));
+    // Only that list: the ordinary Set list would be tools the agent does not have.
+    expect(getChatTools).not.toHaveBeenCalledWith("set");
+    expect(await screen.findByTestId("chat-tools")).toHaveTextContent("propose_initial_recipe");
+    expect(screen.getByTestId("chat-tools")).toHaveTextContent("designing this Set's first recipe");
+  });
+
+  it("asks without it for a Set that has its recipe", async () => {
+    getSets.mockResolvedValue({ items: DESIGNING });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set"));
+    expect(getChatTools).not.toHaveBeenCalledWith("set", { designing: true });
+  });
+
+  it("switches to the Set tools once the Sets list says the design is over", async () => {
+    getSets.mockResolvedValue({ items: DESIGNING });
+    getChatThreads.mockResolvedValue([DESIGN_THREAD]);
+    getChatThread.mockResolvedValue({ ...DETAIL, thread: DESIGN_THREAD });
+    const { queryClient } = renderWithQueryClient(<ChatPage />, {
+      initialEntries: ["/chat?thread=12"],
+    });
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set", { designing: true }));
+
+    // Accepting the first recipe clears the flag and invalidates the list.
+    getSets.mockResolvedValue({
+      items: DESIGNING.map((row) => (row.id === 6 ? { ...row, designing: false } : row)),
+    });
+    await queryClient.invalidateQueries({ queryKey: ["sets", "list"] });
+
+    await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("set"));
+  });
+
+  it("waits for the Sets before asking which tools a Set conversation has", async () => {
+    getSets.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    // The conversation is on screen, so the page knows it is a Set's: only the
+    // Sets list, which says whether that Set is being designed, is missing.
+    expect(await screen.findByText("Grind two clicks finer.")).toBeInTheDocument();
+    expect(getChatTools).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("chat-tools")).not.toBeInTheDocument();
+  });
+});

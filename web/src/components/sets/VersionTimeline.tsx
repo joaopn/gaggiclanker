@@ -27,6 +27,11 @@ import { RollbackButton } from "./RollbackButton";
  * Version 1 shows no diff because it is a baseline rather than a change to
  * anything. A version a later roll back stepped over is muted but fully
  * readable: it was a real attempt, it is just not the line being brewed.
+ *
+ * Version 1 of a Set still being designed has no recipe at all, and says so in
+ * words — "being designed — no recipe yet" — rather than as a row of empty
+ * fields, a prediction button and an outcome control for an experiment nobody
+ * can run yet. Once the recipe is accepted it reads as any version 1.
  */
 /**
  * "Add a prediction" / "Edit prediction", and the reason when it is closed.
@@ -80,14 +85,27 @@ function absent(fromProfile: boolean, side: "before" | "after"): string {
   return side === "before" ? "not set" : "cleared";
 }
 
+/** Whether a version states nothing of a recipe: no profile, grind, dose or yield. */
+function hasNoRecipe(version: SetVersionDetail["version"]): boolean {
+  return (
+    !version.profile_version_id &&
+    !version.grind_setting &&
+    !version.dose_g &&
+    !version.target_yield_g
+  );
+}
+
 export function VersionTimeline({
   setId,
   versions,
   judgements,
+  designing = false,
 }: {
   setId: number;
   versions: SetVersionDetail[];
   judgements: Record<string, ShotJudgement>;
+  /** The Set is still being designed: its version 1 may have no recipe yet. */
+  designing?: boolean;
 }) {
   // Origins are a closed vocabulary like every other one on these pages, so the
   // words come from `GET /api/vocab`. The slug is the fallback while that is in
@@ -100,231 +118,292 @@ export function VersionTimeline({
 
   return (
     <ol className="space-y-3" data-testid="version-timeline">
-      {versions.map((entry) => (
-        <li
-          key={entry.version.id}
-          data-testid="version-entry"
-          data-version={entry.version.version_no}
-          data-dead-end={entry.dead_end ? "yes" : "no"}
-          className={cn("rounded-lg border border-border", entry.dead_end && "opacity-60")}
-        >
-          <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b px-3 py-2">
-            <div className="flex items-baseline gap-2">
-              <span className="font-medium text-sm tabular-nums">v{entry.version.version_no}</span>
-              <span className="text-muted-foreground text-sm">
-                {versionSummary(entry.version)}
-                {versionRatio(entry.version) ? ` · ${versionRatio(entry.version)}` : ""}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {entry.dead_end ? (
-                <Badge
-                  variant="outline"
-                  data-testid="dead-end"
-                  title="A later roll back went back past this version."
-                >
-                  dead end
-                </Badge>
-              ) : null}
-              {entry.version.profile_label ? (
-                <Badge variant="outline">{entry.version.profile_label}</Badge>
-              ) : null}
-              <Badge variant="ghost" className="text-muted-foreground">
-                {originLabel(entry.version.origin)}
-              </Badge>
-              <span className="text-muted-foreground text-xs">
-                {formatTime(entry.version.created_at)}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-2 px-3 py-2">
-            {entry.changes.length > 0 ? (
-              <ul className="flex flex-wrap gap-2" data-testid="version-changes">
-                {entry.changes.map((change) => (
-                  <li
-                    key={change.field}
-                    data-testid={change.from_profile ? "change-from-profile" : "change"}
-                    data-field={change.field}
-                    className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
+      {versions.map((entry) =>
+        designing && entry.version.version_no === 1 && hasNoRecipe(entry.version) ? (
+          <BeingDesigned key={entry.version.id} setId={setId} entry={entry} />
+        ) : (
+          <li
+            key={entry.version.id}
+            data-testid="version-entry"
+            data-version={entry.version.version_no}
+            data-dead-end={entry.dead_end ? "yes" : "no"}
+            className={cn("rounded-lg border border-border", entry.dead_end && "opacity-60")}
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b px-3 py-2">
+              <div className="flex items-baseline gap-2">
+                <span className="font-medium text-sm tabular-nums">
+                  v{entry.version.version_no}
+                </span>
+                <span className="text-muted-foreground text-sm">
+                  {versionSummary(entry.version)}
+                  {versionRatio(entry.version) ? ` · ${versionRatio(entry.version)}` : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {entry.dead_end ? (
+                  <Badge
+                    variant="outline"
+                    data-testid="dead-end"
+                    title="A later roll back went back past this version."
                   >
-                    <span className="text-muted-foreground">{change.label}</span>
-                    {/* "93 °C → —" reads as a rendering bug. A field that was
+                    dead end
+                  </Badge>
+                ) : null}
+                {entry.version.profile_label ? (
+                  <Badge variant="outline">{entry.version.profile_label}</Badge>
+                ) : null}
+                <Badge variant="ghost" className="text-muted-foreground">
+                  {originLabel(entry.version.origin)}
+                </Badge>
+                <span className="text-muted-foreground text-xs">
+                  {formatTime(entry.version.created_at)}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 px-3 py-2">
+              {entry.changes.length > 0 ? (
+                <ul className="flex flex-wrap gap-2" data-testid="version-changes">
+                  {entry.changes.map((change) => (
+                    <li
+                      key={change.field}
+                      data-testid={change.from_profile ? "change-from-profile" : "change"}
+                      data-field={change.field}
+                      className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs"
+                    >
+                      <span className="text-muted-foreground">{change.label}</span>
+                      {/* "93 °C → —" reads as a rendering bug. A field that was
                         set and is now unset is a deliberate change, and the
                         word is what makes it one — except for a change that
                         came with the profile, where nobody cleared anything:
                         the new profile simply does not state the number. */}
-                    <span className="tabular-nums line-through opacity-60">
-                      {change.before ?? absent(change.from_profile, "before")}
-                    </span>
-                    <ArrowRight className="size-3" aria-hidden="true" />
-                    <span className="font-medium tabular-nums">
-                      {change.after ?? absent(change.from_profile, "after")}
-                    </span>
-                    {/* Said in words rather than shown in a colour: this is the
+                      <span className="tabular-nums line-through opacity-60">
+                        {change.before ?? absent(change.from_profile, "before")}
+                      </span>
+                      <ArrowRight className="size-3" aria-hidden="true" />
+                      <span className="font-medium tabular-nums">
+                        {change.after ?? absent(change.from_profile, "after")}
+                      </span>
+                      {/* Said in words rather than shown in a colour: this is the
                         one line in the log with no field behind it on the form,
                         and a reader who cannot see why it is there reads it as
                         a bug. */}
-                    {change.from_profile ? (
-                      <span className="text-muted-foreground">· from the profile</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted-foreground text-xs" data-testid="version-baseline">
-                {entry.version.parent_version_id
-                  ? "Nothing in the recipe changed — only the intent."
-                  : "The starting point."}
-              </p>
-            )}
-
-            {entry.version.intent ? (
-              <p className="text-sm" data-testid="version-intent">
-                {entry.version.intent}
-              </p>
-            ) : null}
-
-            <div className="space-y-1" data-testid="version-prediction">
-              {entry.version.prediction ? (
-                <p className="text-sm">
-                  <span className="text-muted-foreground text-xs">
-                    Version prediction
-                    {entry.version.compares_to_version_no
-                      ? ` · compared to v${entry.version.compares_to_version_no}`
-                      : ""}
-                  </span>
-                  <br />
-                  {entry.version.prediction}
-                </p>
+                      {change.from_profile ? (
+                        <span className="text-muted-foreground">· from the profile</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <p className="text-muted-foreground text-xs">No prediction.</p>
+                <p className="text-muted-foreground text-xs" data-testid="version-baseline">
+                  {entry.version.parent_version_id
+                    ? "Nothing in the recipe changed — only the intent."
+                    : "The starting point."}
+                </p>
               )}
-              {/* Only while the version has no shots: the server refuses the
-                  write afterwards, so offering the field would be a lie. */}
-              {entry.version.shot_count === 0 ? (
-                editing === entry.version.id ? (
-                  <VersionPredictionEditor
-                    setId={setId}
-                    version={entry.version}
-                    versions={versions}
-                    onDone={() => setEditing(null)}
-                  />
-                ) : (
-                  <PredictionEditorButton
-                    version={entry.version}
-                    onEdit={() => setEditing(entry.version.id)}
-                  />
-                )
+
+              {entry.version.intent ? (
+                <p className="text-sm" data-testid="version-intent">
+                  {entry.version.intent}
+                </p>
               ) : null}
-            </div>
 
-            {entry.version.restores_version_no ? (
-              <p className="text-muted-foreground text-xs" data-testid="version-restores">
-                Restores v{entry.version.restores_version_no}. Nothing was sent to the machine.
-              </p>
-            ) : null}
+              <div className="space-y-1" data-testid="version-prediction">
+                {entry.version.prediction ? (
+                  <p className="text-sm">
+                    <span className="text-muted-foreground text-xs">
+                      Version prediction
+                      {entry.version.compares_to_version_no
+                        ? ` · compared to v${entry.version.compares_to_version_no}`
+                        : ""}
+                    </span>
+                    <br />
+                    {entry.version.prediction}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-xs">No prediction.</p>
+                )}
+                {/* Only while the version has no shots: the server refuses the
+                  write afterwards, so offering the field would be a lie. */}
+                {entry.version.shot_count === 0 ? (
+                  editing === entry.version.id ? (
+                    <VersionPredictionEditor
+                      setId={setId}
+                      version={entry.version}
+                      versions={versions}
+                      onDone={() => setEditing(null)}
+                    />
+                  ) : (
+                    <PredictionEditorButton
+                      version={entry.version}
+                      onEdit={() => setEditing(entry.version.id)}
+                    />
+                  )
+                ) : null}
+              </div>
 
-            {/* The room where this change was argued, one click from the log.
+              {entry.version.restores_version_no ? (
+                <p className="text-muted-foreground text-xs" data-testid="version-restores">
+                  Restores v{entry.version.restores_version_no}. Nothing was sent to the machine.
+                </p>
+              ) : null}
+
+              {/* The room where this change was argued, one click from the log.
                 Through the Chat page's open-or-continue link, so it is the
                 same conversation Discuss opens and not a second one. */}
-            <p className="text-xs" data-testid="version-chat">
-              <Link
-                to={`/chat?set=${setId}&version=${entry.version.id}`}
-                className="text-muted-foreground underline underline-offset-2"
-              >
-                Chat about v{entry.version.version_no}
-              </Link>
-            </p>
+              <p className="text-xs" data-testid="version-chat">
+                <Link
+                  to={`/chat?set=${setId}&version=${entry.version.id}`}
+                  className="text-muted-foreground underline underline-offset-2"
+                >
+                  Chat about v{entry.version.version_no}
+                </Link>
+              </p>
 
-            {/* A version an agent proposed was argued somewhere *else*: in the
+              {/* A version an agent proposed was argued somewhere *else*: in the
                 conversation about the version before it. That room holds the
                 reasoning this entry is the result of, and it is a different
                 thread from the one above. */}
-            {entry.chat_thread_id ? (
-              <p className="text-xs" data-testid="version-proposed-in">
-                <Link
-                  to={`/chat?thread=${entry.chat_thread_id}`}
-                  className="text-muted-foreground underline underline-offset-2"
-                >
-                  Proposed in a conversation — read it
-                </Link>
-              </p>
-            ) : null}
+              {entry.chat_thread_id ? (
+                <p className="text-xs" data-testid="version-proposed-in">
+                  <Link
+                    to={`/chat?thread=${entry.chat_thread_id}`}
+                    className="text-muted-foreground underline underline-offset-2"
+                  >
+                    Proposed in a conversation — read it
+                  </Link>
+                </p>
+              ) : null}
 
-            <p className="text-muted-foreground text-xs" data-testid="version-labels">
-              {/* This version's shots, not the whole Set's: the count beside
+              <p className="text-muted-foreground text-xs" data-testid="version-labels">
+                {/* This version's shots, not the whole Set's: the count beside
                   the link is this version's, and a link that widened to the
                   Set would answer a question nobody asked here. */}
-              <Link
-                to={`/shots?set=${setId}&version=${entry.version.id}`}
-                className="underline underline-offset-2"
-              >
-                {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
-              </Link>
-              {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}
-            </p>
+                <Link
+                  to={`/shots?set=${setId}&version=${entry.version.id}`}
+                  className="underline underline-offset-2"
+                >
+                  {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
+                </Link>
+                {labelSummary(entry.labels) ? ` · ${labelSummary(entry.labels)}` : ""}
+              </p>
 
-            {entry.shots.length > 0 ? (
-              <ul className="divide-y divide-border" data-testid="version-shots">
-                {entry.shots.map((shot) => {
-                  const judgement = judgements[String(shot.id)];
-                  return (
-                    <li key={shot.id}>
-                      <Link
-                        to={`/shots/${shot.id}`}
-                        className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm hover:bg-muted/40"
-                      >
-                        <span className="w-40 shrink-0 tabular-nums">
-                          {formatTime(shot.started_at)}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                          {profileName(shot)}
-                        </span>
-                        <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
-                        <ScoreBadge score={shot.execution_score ?? null} />
-                        <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="text-muted-foreground text-xs">No shots on this version yet.</p>
-            )}
+              {entry.shots.length > 0 ? (
+                <ul className="divide-y divide-border" data-testid="version-shots">
+                  {entry.shots.map((shot) => {
+                    const judgement = judgements[String(shot.id)];
+                    return (
+                      <li key={shot.id}>
+                        <Link
+                          to={`/shots/${shot.id}`}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-sm hover:bg-muted/40"
+                        >
+                          <span className="w-40 shrink-0 tabular-nums">
+                            {formatTime(shot.started_at)}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                            {profileName(shot)}
+                          </span>
+                          <span className="tabular-nums">{formatSeconds(shot.duration_ms)}</span>
+                          <ScoreBadge score={shot.execution_score ?? null} />
+                          <RatingStars rating={judgement?.rating ?? shot.rating ?? null} />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground text-xs">No shots on this version yet.</p>
+              )}
 
-            {/* Only where there is a prediction to be evidence for. Open by
+              {/* Only where there is a prediction to be evidence for. Open by
                 default on the one entry that is still a live question: a
                 prediction nobody has graded, on a version with shots to grade
                 it with. */}
-            {entry.evidence ? (
-              <VersionEvidence
-                evidence={entry.evidence}
-                versionNo={entry.version.version_no}
-                defaultOpen={
-                  entry.version.outcome_state === "open" && entry.evidence.this.shots > 0
-                }
-              />
-            ) : null}
+              {entry.evidence ? (
+                <VersionEvidence
+                  evidence={entry.evidence}
+                  versionNo={entry.version.version_no}
+                  defaultOpen={
+                    entry.version.outcome_state === "open" && entry.evidence.this.shots > 0
+                  }
+                />
+              ) : null}
 
-            <VersionOutcomeControl
-              setId={setId}
-              version={entry.version}
-              gradable={entry.labels.keep + entry.labels.improve > 0}
-            />
-
-            {entry.version.id !== current ? (
-              <RollbackButton
+              <VersionOutcomeControl
                 setId={setId}
-                versionId={entry.version.id}
-                versionNo={entry.version.version_no}
-                label="Roll back to this version"
-                icon={<Undo2 className="size-3.5" aria-hidden="true" />}
+                version={entry.version}
+                gradable={entry.labels.keep + entry.labels.improve > 0}
               />
-            ) : null}
-          </div>
-        </li>
-      ))}
+
+              {entry.version.id !== current ? (
+                <RollbackButton
+                  setId={setId}
+                  versionId={entry.version.id}
+                  versionNo={entry.version.version_no}
+                  label="Roll back to this version"
+                  icon={<Undo2 className="size-3.5" aria-hidden="true" />}
+                />
+              ) : null}
+            </div>
+          </li>
+        ),
+      )}
     </ol>
+  );
+}
+
+/**
+ * Version 1 while the recipe is still being worked out in its conversation.
+ *
+ * The link is the version's own conversation, the one the design is happening
+ * in. The shots line stays only when somebody filed a shot here by hand, which
+ * is also what stops the design being discarded.
+ */
+function BeingDesigned({ setId, entry }: { setId: number; entry: SetVersionDetail }) {
+  return (
+    <li
+      data-testid="version-entry"
+      data-version={entry.version.version_no}
+      data-designing="yes"
+      className="rounded-lg border border-border border-dashed"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b border-dashed px-3 py-2">
+        <div className="flex items-baseline gap-2">
+          <span className="font-medium text-sm tabular-nums">v{entry.version.version_no}</span>
+          <span className="text-muted-foreground text-sm" data-testid="version-being-designed">
+            being designed — no recipe yet
+          </span>
+        </div>
+        <span className="text-muted-foreground text-xs">
+          {formatTime(entry.version.created_at)}
+        </span>
+      </div>
+      <div className="space-y-2 px-3 py-2">
+        <p className="text-muted-foreground text-xs">
+          The agent works the first recipe out with you in this version's conversation. Accepting
+          its card fills this version in; so does recording one by hand.
+        </p>
+        <p className="text-xs" data-testid="version-chat">
+          <Link
+            to={`/chat?set=${setId}&version=${entry.version.id}`}
+            className="text-muted-foreground underline underline-offset-2"
+          >
+            Continue designing v{entry.version.version_no}
+          </Link>
+        </p>
+        {entry.version.shot_count > 0 ? (
+          <p className="text-muted-foreground text-xs" data-testid="version-labels">
+            <Link
+              to={`/shots?set=${setId}&version=${entry.version.id}`}
+              className="underline underline-offset-2"
+            >
+              {entry.version.shot_count} shot{entry.version.shot_count === 1 ? "" : "s"}
+            </Link>{" "}
+            filed here by hand
+          </p>
+        ) : null}
+      </div>
+    </li>
   );
 }

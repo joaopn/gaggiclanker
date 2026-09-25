@@ -3,6 +3,7 @@ import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useDecideProposal,
+  useDiscardDesign,
   useRollbackSet,
   useSetVersionOutcome,
   useSetVersionPrediction,
@@ -25,6 +26,7 @@ const {
   acceptSetProposal,
   declineSetProposal,
   designSet,
+  discardDesign,
 } = vi.hoisted(() => ({
   setVersionPrediction: vi.fn(),
   setVersionOutcome: vi.fn(),
@@ -33,6 +35,7 @@ const {
   acceptSetProposal: vi.fn(),
   declineSetProposal: vi.fn(),
   designSet: vi.fn(),
+  discardDesign: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -43,6 +46,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   acceptSetProposal,
   declineSetProposal,
   designSet,
+  discardDesign,
 }));
 
 beforeEach(() => {
@@ -61,6 +65,7 @@ beforeEach(() => {
     version: version({ id: 60, set_id: 6 }),
     thread_id: 12,
   });
+  discardDesign.mockResolvedValue({ set_id: 6, discarded: true });
 });
 
 /**
@@ -221,6 +226,22 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     // recipe exists yet, so no Set page, chart or shot has anything new.
     expect(keys).toContainEqual(["sets", "list"]);
     expect(keys).toContainEqual(queryKeys.chat.threads());
+  });
+
+  it("discarding a design reaches the Sets list, the conversations and the draft queue", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDiscardDesign());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync(6);
+
+    await waitFor(() => expect(keys.length).toBe(3));
+    expect(keys).toContainEqual(["sets", "list"]);
+    expect(keys).toContainEqual(queryKeys.chat.threads());
+    // A waiting card's draft is discarded with the Set.
+    expect(keys).toContainEqual(queryKeys.drafts.all);
+    // The Set's own page is left by navigation, not refetched into a 404.
+    expect(keys).not.toContainEqual(queryKeys.sets.detail("6"));
+    expect(keys).not.toContainEqual(queryKeys.sets.all);
   });
 
   it("a roll back sweeps the Sets, and nothing else", async () => {

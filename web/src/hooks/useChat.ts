@@ -140,13 +140,22 @@ export function useChatThread(id: number | null): UseQueryResult<ChatThreadDetai
  * can do here at all — and "here" differs, which is why the kind is part of
  * the key rather than something the page filters afterwards.
  */
-export function useChatTools(kind: "general" | "set" | null): UseQueryResult<ChatToolList, Error> {
+export function useChatTools(
+  kind: "general" | "set" | null,
+  designing = false,
+): UseQueryResult<ChatToolList, Error> {
+  // A Set still being designed is a third surface: the design tools, and none
+  // that change a recipe it does not have yet. Only a Set conversation can be
+  // one, and it stops being one when its first recipe is accepted — the page
+  // reads the flag off the Sets list, and the key follows it.
+  const design = kind === "set" && designing;
   return useQuery({
     // `null` is "the page does not know yet" — a conversation is selected and
     // its row has not arrived. Asking for a kind then would mean guessing, and
     // the guess is visible: the general list would flash beside a Set's chat.
-    queryKey: queryKeys.chat.tools(kind ?? "unknown"),
-    queryFn: () => getChatTools(kind ?? "general"),
+    queryKey: queryKeys.chat.tools(design ? "set-designing" : (kind ?? "unknown")),
+    queryFn: () =>
+      design ? getChatTools("set", { designing: true }) : getChatTools(kind ?? "general"),
     enabled: kind !== null,
     staleTime: Number.POSITIVE_INFINITY,
   });

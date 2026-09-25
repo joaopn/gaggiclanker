@@ -80,6 +80,7 @@ import type {
   SetCreate,
   SetDesignCreate,
   SetDesignCreated,
+  SetDesignDiscarded,
   SetDetailData,
   SetListData,
   SetProposalDecision,
@@ -816,6 +817,17 @@ export async function designSet(body: SetDesignCreate): Promise<SetDesignCreated
 }
 
 /**
+ * Delete a Set that is still being designed, with its conversations.
+ *
+ * Only while nothing is filed on it and it has no recipe: the server answers
+ * 409 `DESIGN_HAS_SHOTS` or `NOT_DESIGNING` otherwise, and a Set with history
+ * is archived instead.
+ */
+export async function discardDesign(id: number): Promise<SetDesignDiscarded> {
+  return fetchApi<SetDesignDiscarded>(`/sets/${id}/design`, { method: "DELETE" });
+}
+
+/**
  * A new version: the current one plus whatever is in `patch`.
  *
  * Only send what changed. Omitting a field inherits the parent's value and
@@ -1149,13 +1161,21 @@ export async function cancelChatRun(id: number): Promise<ChatRun> {
 /**
  * What the agent can do in a conversation of this kind.
  *
- * The kind is a parameter because the two surfaces differ: a Set's chat cannot
- * query the archive and a general one cannot change a Set. The page never
+ * The kind is a parameter because the surfaces differ: a Set's chat cannot
+ * query the archive, a general one cannot change a Set, and a Set still being
+ * designed has the design tools and none that change a recipe. The page never
  * filters this itself — the scope is the server's, and a second copy of the
  * rule in the browser is a copy that can disagree.
  */
-export async function getChatTools(kind: "general" | "set" = "general"): Promise<ChatToolList> {
-  return fetchApi<ChatToolList>(`/chat/tools${queryString({ kind })}`);
+export async function getChatTools(
+  kind: "general" | "set" = "general",
+  options: { designing?: boolean } = {},
+): Promise<ChatToolList> {
+  // `designing` only when true: a Set chat on a Set with a recipe asks exactly
+  // what it always has.
+  return fetchApi<ChatToolList>(
+    `/chat/tools${queryString({ kind, designing: options.designing ? true : undefined })}`,
+  );
 }
 
 /**

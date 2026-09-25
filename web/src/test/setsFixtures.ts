@@ -425,6 +425,52 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
   };
 }
 
+/** A Set still being designed: a bean and a grinder, and a version 1 with no recipe. */
+export function designingSet(overrides: Partial<SetRow> = {}): SetRow {
+  return setRow({
+    id: 6,
+    name: "Ethiopia Guji on the Niche Zero",
+    designing: true,
+    design_brief: { fork_profile_version_id: 7, usual_grind: "22", goal: "more body" },
+    current_version_id: 60,
+    current_version_no: 1,
+    version_count: 1,
+    shot_count: 0,
+    profile_version_id: null,
+    profile_label: null,
+    ...overrides,
+  });
+}
+
+/** The version 1 of a Set being designed, before anything has filled it. */
+export function emptyVersion(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
+  return version({
+    id: 60,
+    set_id: 6,
+    profile_version_id: null,
+    profile_label: null,
+    grind_setting: null,
+    grind_value: null,
+    dose_g: null,
+    target_yield_g: null,
+    profile_temperature_c: null,
+    shot_count: 0,
+    ...overrides,
+  });
+}
+
+/** The Set page of a Set being designed, with nothing proposed yet. */
+export function designingDetail(overrides: Partial<SetDetailData> = {}): SetDetailData {
+  return setDetail({
+    set: designingSet(),
+    versions: [
+      { version: emptyVersion(), changes: [], shots: [], dead_end: false, labels: labelCounts() },
+    ],
+    spread: [],
+    ...overrides,
+  });
+}
+
 /**
  * A Set's first recipe, waiting: drawn by the server as a diff against the
  * empty version 1, so every field's `after` side is the recipe itself.

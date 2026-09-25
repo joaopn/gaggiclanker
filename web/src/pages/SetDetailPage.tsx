@@ -5,11 +5,13 @@ import {
   Coffee,
   GitBranch,
   Sparkles,
+  Trash2,
   Undo2,
 } from "lucide-react";
 import { useId, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import type { SetDetailData, Suggestion } from "@/api/types";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ApiClientError } from "@/api/client";
+import type { SetDetailData, SetRow, Suggestion } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
 import { DiscussButton } from "@/components/chat/DiscussButton";
@@ -17,6 +19,7 @@ import { InsightCard } from "@/components/knowledge/InsightCard";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
+import { ContinueDesigning, DesigningBadge } from "@/components/sets/Designing";
 import {
   type AutoFilled,
   fillFromProfile,
@@ -38,6 +41,7 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
   useAddSetVersion,
   useArchiveSet,
+  useDiscardDesign,
   useSet,
   useSetAutomatch,
   useSetTrends,
@@ -148,18 +152,30 @@ export function SetDetailPage() {
         title={row.name}
         subtitle={setSummary(row)}
         actions={
-          <div className="flex items-center gap-2">
-            {row.automatch ? <Badge data-testid="set-automatch">automatch</Badge> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {row.designing ? <DesigningBadge /> : null}
+            {/* No automatch while designing: version 1 names no profile yet, so
+                there is nothing to match a shot on, and a badge or a toggle
+                would promise filing that cannot happen. */}
+            {row.automatch && !row.designing ? (
+              <Badge data-testid="set-automatch">automatch</Badge>
+            ) : null}
             {row.archived ? <Badge variant="outline">archived</Badge> : null}
             {/* The conversation about the change being argued right now: the
                 ledger, the spread and the evidence are in the prompt before the
-                first word is typed, and a second press lands in the same room. */}
-            <DiscussButton
-              setId={row.id}
-              versionId={current?.id ?? null}
-              question={`How is ${row.name} going, and what should I change next?`}
-            />
-            {row.archived ? null : (
+                first word is typed, and a second press lands in the same room.
+                While the Set is being designed that room is the design, and
+                there is nothing yet to ask "how is it going" about. */}
+            {row.designing ? (
+              <ContinueDesigning set={row} />
+            ) : (
+              <DiscussButton
+                setId={row.id}
+                versionId={current?.id ?? null}
+                question={`How is ${row.name} going, and what should I change next?`}
+              />
+            )}
+            {row.archived || row.designing ? null : (
               <Button
                 variant="outline"
                 size="sm"
@@ -185,13 +201,25 @@ export function SetDetailPage() {
         }
       />
 
+      {row.designing ? <DesignNotice set={row} /> : null}
+
       <SectionCard
-        title={`Now brewing: v${row.current_version_no}`}
-        description={current ? versionSummary(current) : undefined}
+        title={
+          row.designing
+            ? "No recipe yet: v1 is being designed"
+            : `Now brewing: v${row.current_version_no}`
+        }
+        description={
+          row.designing
+            ? "The agent works it out with you in the conversation. You can also set the first recipe by hand: that fills version 1 and ends the design."
+            : current
+              ? versionSummary(current)
+              : undefined
+        }
         actions={
           <Button size="sm" variant="outline" onClick={() => setVersioning((open) => !open)}>
             <GitBranch className="size-3.5" aria-hidden="true" />
-            Change something
+            {row.designing ? "Set the first recipe by hand" : "Change something"}
           </Button>
         }
       >
@@ -199,8 +227,14 @@ export function SetDetailPage() {
           <NewVersionForm
             setId={row.id}
             versions={detail.data.versions}
+            designing={row.designing}
             onDone={() => setVersioning(false)}
           />
+        ) : row.designing ? (
+          <p className="text-muted-foreground text-sm" data-testid="design-by-hand">
+            A card the agent proposed is answered where it is shown, in the conversation or in the
+            log below. Recording a recipe by hand instead sets any waiting card aside.
+          </p>
         ) : (
           <p className="text-muted-foreground text-sm">
             {row.shot_count} shot{row.shot_count === 1 ? "" : "s"} across {row.version_count}{" "}
@@ -218,7 +252,9 @@ export function SetDetailPage() {
           <Skeleton className="h-56 w-full" />
         ) : (trends.data?.shots.length ?? 0) === 0 ? (
           <p className="text-muted-foreground text-sm">
-            No shots yet. The next one pulled with this Set's profile files itself here.
+            {row.designing
+              ? "No shots yet. Once the first recipe is accepted and its profile pushed, shots brewed on it are filed here."
+              : "No shots yet. The next one pulled with this Set's profile files itself here."}
           </p>
         ) : (
           <SetTrendChart trends={trends.data as NonNullable<typeof trends.data>} />
@@ -247,6 +283,7 @@ export function SetDetailPage() {
           setId={row.id}
           versions={detail.data.versions}
           judgements={detail.data.judgements}
+          designing={row.designing}
         />
       </SectionCard>
 
@@ -278,6 +315,142 @@ export function SetDetailPage() {
         )}
       </SectionCard>
     </div>
+  );
+}
+
+/** What a refused discard means, in words the person can act on. */
+function discardRefusal(error: Error | null): string | null {
+  if (!(error instanceof ApiClientError)) return null;
+  if (error.code === "DESIGN_HAS_SHOTS") {
+    return "A shot is filed on this Set, so it is kept. Move the shot to another Set first, or archive this one.";
+  }
+  if (error.code === "NOT_DESIGNING") {
+    return "This Set has a recipe now, so it is no longer a design to discard. Archive it instead.";
+  }
+  return null;
+}
+
+/**
+ * What the design was asked for: the profile to fork, the usual grind, the goal.
+ *
+ * The same brief the agent is given on every turn, so the person can see what
+ * the conversation is working from without scrolling back to its first
+ * message. Only the parts that were given; nothing at all for an empty brief.
+ * The fork's label comes from the profile versions the page already reads for
+ * the version form (one cached query), with the id as the fallback while that
+ * list is loading or when the version is older than it reaches.
+ */
+function DesignBrief({ brief }: { brief: SetRow["design_brief"] }) {
+  const profiles = useProfileVersions({ limit: 200 });
+  const forkId = brief?.fork_profile_version_id ?? null;
+  const usualGrind = brief?.usual_grind?.trim() ?? "";
+  const goal = brief?.goal?.trim() ?? "";
+  if (forkId === null && !usualGrind && !goal) return null;
+  const forkLabel =
+    forkId === null
+      ? null
+      : ((profiles.data?.items ?? []).find((item) => item.id === forkId)?.label ??
+        `profile version #${forkId}`);
+  return (
+    <dl className="mb-2 space-y-1 text-sm" data-testid="design-brief">
+      {forkLabel ? (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 text-muted-foreground">Forking</dt>
+          <dd className="min-w-0" data-testid="design-brief-fork">
+            {forkLabel}
+          </dd>
+        </div>
+      ) : null}
+      {usualGrind ? (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 text-muted-foreground">Usual grind</dt>
+          <dd className="min-w-0 tabular-nums" data-testid="design-brief-grind">
+            {usualGrind}
+          </dd>
+        </div>
+      ) : null}
+      {goal ? (
+        <div className="flex gap-1.5">
+          <dt className="shrink-0 text-muted-foreground">Asked for</dt>
+          {/* Up to 2000 characters were allowed, and this is a notice, not
+              the conversation: three lines, the whole text on hover. */}
+          <dd
+            className="line-clamp-3 min-w-0 break-words"
+            title={goal}
+            data-testid="design-brief-goal"
+          >
+            “{goal}”
+          </dd>
+        </div>
+      ) : null}
+    </dl>
+  );
+}
+
+/**
+ * A Set whose recipe is still being worked out, and the way to give up on it.
+ *
+ * Discarding deletes the Set and its conversations, which is why it asks first
+ * — inline, in a strip rendered always and toggled with `hidden`, rather than
+ * in an overlay a test would have to open. The server allows it only while
+ * nothing is filed on the Set and it has no recipe; a design somebody brewed
+ * under has history and is archived instead, and the two refusals say so here.
+ */
+function DesignNotice({ set }: { set: SetRow }) {
+  const setId = set.id;
+  const discard = useDiscardDesign();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const regionId = useId();
+  const refusal = discard.isPending ? null : discardRefusal(discard.error);
+
+  return (
+    <SectionCard
+      title="Being designed"
+      description="This Set has a bean and a grinder and no recipe yet. The agent is working out version 1 with you in its conversation; nothing is brewed or filed here until a recipe is accepted."
+      actions={
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-expanded={confirming}
+          aria-controls={regionId}
+          data-testid="discard-design"
+          onClick={() => setConfirming((open) => !open)}
+        >
+          <Trash2 className="size-3.5" aria-hidden="true" />
+          Discard design
+        </Button>
+      }
+    >
+      <DesignBrief brief={set.design_brief} />
+      <div id={regionId} hidden={!confirming} className="space-y-2" data-testid="discard-confirm">
+        <p className="text-sm">
+          Discard this Set? It is deleted with its conversations, and a profile draft a waiting card
+          carried is discarded. Nothing was sent to the machine.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={discard.isPending}
+            onClick={async () => {
+              const done = await attempt(() => discard.mutateAsync(setId));
+              if (done) navigate("/sets");
+            }}
+          >
+            {discard.isPending ? "Discarding…" : "Discard it"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+            Keep designing
+          </Button>
+        </div>
+      </div>
+      {refusal ? (
+        <p className="mt-2 text-destructive text-sm" data-testid="discard-refused">
+          {refusal}
+        </p>
+      ) : null}
+    </SectionCard>
   );
 }
 
@@ -398,10 +571,17 @@ function BackLink() {
 function NewVersionForm({
   setId,
   versions,
+  designing = false,
   onDone,
 }: {
   setId: number;
   versions: SetDetailData["versions"];
+  /**
+   * The Set is still being designed: what is recorded here fills version 1 in
+   * place and ends the design. There is nothing for a prediction to be
+   * compared to, and the server ignores one there, so none is asked for.
+   */
+  designing?: boolean;
   onDone: () => void;
 }) {
   const add = useAddSetVersion();
@@ -459,12 +639,12 @@ function NewVersionForm({
             setId,
             patch: {
               intent,
-              prediction: prediction.trim(),
+              prediction: designing ? "" : prediction.trim(),
               // Sent explicitly whenever there is a prediction, including as
               // null: omitting the key means "against the parent", and an empty
               // select means "against nothing". With no prediction there is
               // nothing to compare, so the key is left off entirely.
-              ...(prediction.trim()
+              ...(!designing && prediction.trim()
                 ? { compares_to_version_id: compare ? Number(compare) : null }
                 : {}),
               origin: "manual",
@@ -483,9 +663,16 @@ function NewVersionForm({
         if (version) onDone();
       }}
     >
-      <p className="text-muted-foreground text-xs">
-        Fill in only what changed. Anything left blank carries over from the current version.
-      </p>
+      {designing ? (
+        <p className="font-medium text-sm" data-testid="new-version-designing">
+          Set the first recipe by hand. It fills version 1 and ends the design; a card waiting in
+          the conversation is set aside.
+        </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          Fill in only what changed. Anything left blank carries over from the current version.
+        </p>
+      )}
       {/* First, because it is the change that goes wrong most quietly: somebody
           who switched profiles on the machine and did not record it here finds
           their next shots in "needs a Set", since auto-assignment matches on
@@ -560,37 +747,39 @@ function NewVersionForm({
       {/* Optional, and deliberately separate from the intent: the intent is
           what you are attempting, the prediction is what you are claiming will
           happen. Only the second one can turn out to be wrong. */}
-      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
-        <Labelled id={ids.prediction} label="Version prediction">
-          <textarea
-            id={ids.prediction}
-            rows={2}
-            maxLength={1000}
-            className={cn(FIELD, "h-auto py-1.5")}
-            placeholder="Compared to v4: less bitter, a shorter shot"
-            value={prediction}
-            onChange={(event) => setPrediction(event.target.value)}
-          />
-        </Labelled>
-        <Labelled id={ids.compare} label="Compared to">
-          <select
-            id={ids.compare}
-            className={FIELD}
-            value={compare}
-            onChange={(event) => setCompare(event.target.value)}
-          >
-            <option value="">Nothing — grade it on its own numbers</option>
-            {versions.map((entry) => (
-              <option key={entry.version.id} value={String(entry.version.id)}>
-                v{entry.version.version_no}
-              </option>
-            ))}
-          </select>
-        </Labelled>
-      </div>
+      {designing ? null : (
+        <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+          <Labelled id={ids.prediction} label="Version prediction">
+            <textarea
+              id={ids.prediction}
+              rows={2}
+              maxLength={1000}
+              className={cn(FIELD, "h-auto py-1.5")}
+              placeholder="Compared to v4: less bitter, a shorter shot"
+              value={prediction}
+              onChange={(event) => setPrediction(event.target.value)}
+            />
+          </Labelled>
+          <Labelled id={ids.compare} label="Compared to">
+            <select
+              id={ids.compare}
+              className={FIELD}
+              value={compare}
+              onChange={(event) => setCompare(event.target.value)}
+            >
+              <option value="">Nothing — grade it on its own numbers</option>
+              {versions.map((entry) => (
+                <option key={entry.version.id} value={String(entry.version.id)}>
+                  v{entry.version.version_no}
+                </option>
+              ))}
+            </select>
+          </Labelled>
+        </div>
+      )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={add.isPending}>
-          {add.isPending ? "Recording…" : "Record the version"}
+          {add.isPending ? "Recording…" : designing ? "Set version 1" : "Record the version"}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel

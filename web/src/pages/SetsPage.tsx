@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { SetRow } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ContinueDesigning, DesigningBadge } from "@/components/sets/Designing";
 import { NewSetDialog } from "@/components/sets/NewSetDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,9 @@ import { setSummary } from "@/lib/sets";
  * collected, and whether new shots on its profile are filed under it. Any
  * number of Sets may be — several grinders means several bags loaded at once —
  * and the matcher tells them apart by the profile a shot was brewed with.
+ *
+ * A Set still being designed has no recipe to summarise, so its card says so
+ * with a badge and offers the way back into the conversation instead.
  */
 export function SetsPage() {
   const [showArchived, setShowArchived] = useState(false);
@@ -105,7 +109,9 @@ function SetCard({ row }: { row: SetRow }) {
             </Link>
           </CardTitle>
           <div className="flex items-center gap-1">
-            {row.automatch ? (
+            {row.designing ? <DesigningBadge /> : null}
+            {/* Nothing to match on while designing: version 1 names no profile. */}
+            {row.automatch && !row.designing ? (
               <Badge data-testid="set-automatch" className="gap-1">
                 automatch
               </Badge>
@@ -113,7 +119,16 @@ function SetCard({ row }: { row: SetRow }) {
             {row.archived ? <Badge variant="outline">archived</Badge> : null}
           </div>
         </div>
-        <p className="text-muted-foreground text-sm">{setSummary(row)}</p>
+        {row.designing ? (
+          <p className="text-muted-foreground text-sm" data-testid="set-design-summary">
+            {[row.bean_name ?? `bean #${row.bean_id}`, row.grinder_name]
+              .filter(Boolean)
+              .join(" · ")}{" "}
+            · no recipe yet
+          </p>
+        ) : (
+          <p className="text-muted-foreground text-sm">{setSummary(row)}</p>
+        )}
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -125,10 +140,11 @@ function SetCard({ row }: { row: SetRow }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {row.designing ? <ContinueDesigning set={row} /> : null}
           <Button asChild variant="outline" size="sm">
             <Link to={`/sets/${row.id}`}>Open</Link>
           </Button>
-          {row.archived ? null : (
+          {row.archived || row.designing ? null : (
             <Button
               variant="ghost"
               size="sm"

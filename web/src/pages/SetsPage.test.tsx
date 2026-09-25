@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SetsPage } from "@/pages/SetsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { setRow } from "@/test/setsFixtures";
+import { designingSet, setRow } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -94,5 +94,44 @@ describe("SetsPage", () => {
     await user.click(await screen.findByRole("button", { name: /New Set/ }));
 
     expect(await screen.findByTestId("new-set-dialog")).toBeInTheDocument();
+  });
+});
+
+describe("SetsPage, a Set being designed", () => {
+  it("carries the badge and Continue designing in place of the recipe", async () => {
+    getSets.mockResolvedValue({ items: [designingSet(), setRow()] });
+    renderWithQueryClient(<SetsPage />);
+
+    const cards = await screen.findAllByTestId("set-card");
+    expect(within(cards[0]).getByTestId("set-designing")).toHaveTextContent("Designing");
+    expect(within(cards[0]).getByTestId("set-design-summary")).toHaveTextContent(
+      "Ethiopia Guji · Niche Zero · no recipe yet",
+    );
+    // v1's own conversation, through the route Discuss opens or continues.
+    expect(within(cards[0]).getByTestId("continue-designing")).toHaveAttribute(
+      "href",
+      "/chat?set=6&version=60",
+    );
+
+    // The Set beside it has a recipe, and none of this.
+    expect(within(cards[1]).queryByTestId("set-designing")).not.toBeInTheDocument();
+    expect(within(cards[1]).queryByTestId("continue-designing")).not.toBeInTheDocument();
+    expect(cards[1]).toHaveTextContent("Ethiopia Guji · Niche Zero · 9 Bar Espresso v2");
+  });
+
+  it("offers no automatch on a Set with no profile to match on yet", async () => {
+    // Both collect shots, as every new Set does; only one has a profile.
+    getSets.mockResolvedValue({ items: [designingSet({ automatch: true }), setRow()] });
+    renderWithQueryClient(<SetsPage />);
+
+    const cards = await screen.findAllByTestId("set-card");
+    expect(within(cards[0]).queryByTestId("set-automatch")).not.toBeInTheDocument();
+    expect(
+      within(cards[0]).queryByRole("button", { name: /filing shots here|matching shots here/ }),
+    ).not.toBeInTheDocument();
+    expect(within(cards[1]).getByTestId("set-automatch")).toBeInTheDocument();
+    expect(
+      within(cards[1]).getByRole("button", { name: /Stop filing shots here/ }),
+    ).toBeInTheDocument();
   });
 });

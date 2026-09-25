@@ -52,6 +52,7 @@ export type SetRow = components["schemas"]["SetRow"];
 export type SetCreate = components["schemas"]["SetCreate"];
 export type SetDesignCreate = components["schemas"]["SetDesignCreate"];
 export type SetDesignCreated = components["schemas"]["SetDesignCreated"];
+export type SetDesignDiscarded = components["schemas"]["SetDesignDiscarded"];
 export type SetListData = components["schemas"]["SetListData"];
 export type SetDetailData = components["schemas"]["SetDetailData"];
 export type SetVersionRow = components["schemas"]["SetVersionRow"];
