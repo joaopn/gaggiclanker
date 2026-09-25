@@ -20,6 +20,11 @@ first (`POST /api/backup`), because there is no down-migration.
   most the three seconds the machine keeps recording after a brew, and the
   reading before them is at least 1 g and within 90% of the shot's highest.
   A shot that reaches zero any other way still has no final weight.
+- **Shots already in the archive are fixed at the next start.** The app
+  re-reads the stored file of every shot that had a scale connected but no
+  final weight, and fills the weight where the rule finds one (the log line
+  `boot_reconciled` counts them as `final_weights_refilled`). Nothing on the
+  machine is changed.
 
 ### Acidity, intensity and sweetness on a bean
 

@@ -36,6 +36,7 @@ from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
+from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
@@ -73,6 +74,7 @@ from gaggiclanker.settings import (
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
+from gaggiclanker.sync.derive import refill_final_weights
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools import registry as tool_registry
 
@@ -360,6 +362,10 @@ async def _start(app: FastAPI, db: Database) -> None:
     # The wizard's runs. Same rule again: the wizard renders a `running` row as a
     # spinner, and nothing else would ever clear one left by a restart.
     interrupted_starts = await StartingPointRunsRepository(db).reconcile_running()
+    # Shots archived before the final-weight rule last changed keep the weight
+    # the old rule found in their bytes; re-reading the few with none brings
+    # them in line (a scale that dropped to zero as the shot ended).
+    final_weights_refilled = await refill_final_weights(ShotsRepository(db))
     log.info(
         "boot_reconciled",
         analyses_interrupted=interrupted_analyses,
@@ -367,6 +373,7 @@ async def _start(app: FastAPI, db: Database) -> None:
         cleanup_runs_interrupted=interrupted_cleanups,
         chat_runs_interrupted=interrupted_chats,
         starting_points_interrupted=interrupted_starts,
+        final_weights_refilled=final_weights_refilled,
         auth_sessions_expired=forgotten,
         auth_enabled=await auth.enabled(),
     )

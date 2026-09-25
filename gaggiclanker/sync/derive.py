@@ -22,11 +22,11 @@ from typing import Any
 import structlog
 
 from gaggiclanker.db.repos.base import dumps, to_iso
-from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow
+from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
 from gaggiclanker.domain.diagnostics import transform_shot
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.scoring import execution_score
-from gaggiclanker.domain.slog import Slog
+from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
 
 __all__ = [
     "NO_TIMESTAMP_EPOCH",
@@ -35,6 +35,7 @@ __all__ = [
     "derive_shot",
     "epoch_to_iso",
     "index_fields",
+    "refill_final_weights",
     "sample_rows",
 ]
 
@@ -167,6 +168,30 @@ def _attach_diagnostics(shot: ShotInsert, slog: Slog, *, has_pressure: bool | No
     shot.execution_score = score.score
     shot.execution_reason = score.reason
     return None
+
+
+async def refill_final_weights(shots: ShotsRepository) -> int:
+    """Re-read the final weight of every stored shot that has none; return the count filled.
+
+    The final weight is derived from the bytes, so a better rule for reading it
+    (a shot whose scale dropped to zero in its last samples, see
+    :meth:`Slog.volume_g`) reaches the shots already archived only by reading
+    their bytes again. Run at boot: the candidates are the few shots a scale was
+    connected to that still have no weight, and a shot the rule finds nothing in
+    stays as it is, so running it again changes nothing.
+    """
+    filled = 0
+    for shot in await shots.missing_final_weight():
+        try:
+            weight = parse_slog(shot.raw_slog, shot.device_id).volume_g
+        except SlogError:
+            continue  # stored before it was quarantined for this; nothing to read
+        if weight is None:
+            continue
+        await shots.set_final_weight(shot.id, weight)
+        log.info("shot_final_weight_refilled", shot_id=shot.id, final_weight_g=weight)
+        filled += 1
+    return filled
 
 
 def index_fields(entry: IndexEntry | None) -> dict[str, Any]:

@@ -129,6 +129,14 @@ class ShotInsert(BaseModel):
     index_flags: int | None = None
 
 
+class ShotBytes(BaseModel):
+    """A shot's id and its stored bytes: what re-deriving a column needs."""
+
+    id: int
+    device_id: str
+    raw_slog: bytes
+
+
 class ShotSetBadge(BaseModel):
     """The Set a shot belongs to, in the three fields a badge renders.
 
@@ -549,6 +557,29 @@ class ShotsRepository(Repository):
         await self.db.execute(
             "UPDATE shots SET deleted_on_device = 1, updated_at = ? WHERE id = ?",
             (utc_now(), shot_id),
+        )
+
+    async def missing_final_weight(self) -> list[ShotBytes]:
+        """Shots a scale was connected to that were stored with no final weight.
+
+        The candidates for re-reading the yield out of the bytes when the rule
+        that derives it changes: a shot with no scale has no weight to find, and
+        a quarantined one has no samples to read it from.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT id, device_id, raw_slog FROM shots
+            WHERE final_weight_g IS NULL AND scale_connected = 1 AND quarantined = 0
+            ORDER BY id
+            """
+        )
+        return self.to_models(ShotBytes, rows)
+
+    async def set_final_weight(self, shot_id: int, final_weight_g: float) -> None:
+        """Fill a final weight that a better reading of the same bytes found."""
+        await self.db.execute(
+            "UPDATE shots SET final_weight_g = ?, updated_at = ? WHERE id = ?",
+            (final_weight_g, utc_now(), shot_id),
         )
 
     async def link_profile_version(self, shot_id: int, version_id: int) -> None:
