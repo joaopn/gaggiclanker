@@ -510,6 +510,95 @@ async def test_a_set_being_designed_is_given_the_design_tools_and_a_dispatcher_t
     assert "propose_initial_recipe" in refused.content
 
 
+async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_accepted(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    archive: Fixture,
+    chat_provider: FakeProvider,
+) -> None:
+    """Read from the Set on every turn: the turn after Accept is an ordinary Set chat."""
+    from gaggiclanker.db.repos.llm import LlmCallsRepository
+    from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository, ProfileDraftWrite
+    from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
+    from gaggiclanker.db.repos.sets import SetVersionPatch
+
+    calls = LlmCallsRepository(archive.db)
+    runner.llm.calls_repo = calls
+    designed = await SetsRepository(archive.db).create_design(
+        SetWrite(name="Designed", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+        DesignBrief(goal="More body."),
+    )
+    opened = await ChatRepository(archive.db).open_thread(designed.id)
+    assert opened.thread is not None
+    thread_id = opened.thread.id
+    chat_provider.chat_script = [ChatTurn(text="What basket?"), ChatTurn(text="Grade it.")]
+
+    first = await send(runner, tasks, thread_id, "Help me design this Set")
+
+    draft = await ProfileDraftsRepository(archive.db).create(
+        ProfileDraftWrite(
+            base_version_id=archive.profile_version_id,
+            draft_version_id=archive.profile_version_id,
+        )
+    )
+    proposals = SetProposalsRepository(archive.db)
+    card = await proposals.create(
+        designed.id,
+        ProposalWrite(
+            kind="design",
+            draft_id=draft.id,
+            thread_id=thread_id,
+            reason="The recipe we agreed.",
+            patch=SetVersionPatch(profile_version_id=archive.profile_version_id, dose_g=18),
+        ),
+    )
+    assert card.proposal is not None, card.refused
+    assert (await proposals.accept(designed.id, card.proposal.id)).refused is None
+
+    second = await send(runner, tasks, thread_id, "It came out fast.")
+
+    design_turn, set_turn = chat_provider.chat_calls
+    assert "THIS CONVERSATION IS DESIGNING A NEW SET" in design_turn.system
+    assert "GRADE FIRST" not in design_turn.system
+    assert {schema["function"]["name"] for schema in design_turn.tools} == DESIGN_TOOLS
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in set_turn.system
+    assert "GRADE FIRST" in set_turn.system
+    # The card it came from is told as the recipe it set, not as an empty change.
+    assert "its initial recipe was accepted as v1" in set_turn.system
+    assert {schema["function"]["name"] for schema in set_turn.tools} == SET_TOOLS
+    rows = {row.call_id: row.prompt_name for row in await calls.recent(limit=10)}
+    assert (rows[f"chat-{first}"], rows[f"chat-{second}"]) == ("chat-design", "chat-set")
+
+
+async def test_a_hand_made_set_that_names_no_profile_is_an_ordinary_set_chat(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    archive: Fixture,
+    chat_provider: FakeProvider,
+) -> None:
+    """Its version 1 looks like an empty design, and nothing about it changes."""
+    from gaggiclanker.db.repos.sets import SetVersionWrite
+
+    any_profile = await SetsRepository(archive.db).create(
+        SetWrite(name="Any profile", bean_id=archive.bean_id, grinder_id=archive.grinder_id),
+        SetVersionWrite(),
+    )
+    opened = await ChatRepository(archive.db).open_thread(any_profile.id)
+    assert opened.thread is not None
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+
+    await send(runner, tasks, opened.thread.id)
+
+    request = chat_provider.chat_calls[0]
+    assert request.system.rstrip().endswith(
+        "Those facts are the record, not the whole archive: use the tools for anything else, "
+        "and for anything you are about to quote a number from."
+    )
+    assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in request.system
+    assert "DESIGNING" not in request.system
+    assert {schema["function"]["name"] for schema in request.tools} == SET_TOOLS
+
+
 async def test_the_usage_row_records_which_prompt_answered_the_turn(
     runner: ChatRunner,
     tasks: TaskRegistry,

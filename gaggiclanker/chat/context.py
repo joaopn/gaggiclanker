@@ -27,7 +27,8 @@ prompt until a person has confirmed it, and the chat is a prompt like any other
 manufactured its own evidence.
 
 A general conversation gets no block at all: it is about the archive, and there
-is no one experiment to put in front of it.
+is no one experiment to put in front of it. A conversation about a Set that is
+still being designed gets the design brief instead (`chat/design_context.py`).
 """
 
 from __future__ import annotations
@@ -126,6 +127,13 @@ async def opening_context(db: Database, scope: ToolScope) -> str:
     """
     if scope.kind != "set" or scope.set_id is None:
         return ""
+    if scope.designing:
+        # A Set being designed has no experiment yet: its conversation is told
+        # the brief and the evidence to design from instead. Imported here
+        # because that module renders with this one's helpers.
+        from gaggiclanker.chat.design_context import design_context
+
+        return await design_context(db, scope.set_id)
     sets = SetsRepository(db)
     row = await sets.get(scope.set_id)
     if row is None:
@@ -332,12 +340,35 @@ async def _proposal_block(
             "PROPOSALS",
             "Nothing has been proposed to the person on this Set yet.",
         ]
+    if last.kind == "design":
+        return ["THE LAST PROPOSAL", await _design_line(proposals, last)]
     return [
         "THE LAST PROPOSAL",
         f"It proposed changing {await _proposal_change(proposals, last, profile_labels)}. "
         f"Reason: {_quote(last.reason)} {_proposal_prediction(last)}",
         _decided_line(last, current),
     ]
+
+
+async def _design_line(proposals: SetProposalsRepository, row: Any) -> str:
+    """The initial recipe this Set was designed with, once the design is over.
+
+    Said as a recipe, not as a change: it was the whole first recipe, and after
+    it was accepted its base *is* that recipe, so a diff against it is empty.
+    It carried no prediction, because a version 1 is a baseline.
+    """
+    preview = await proposals.preview(row)
+    recipe = _recipe(preview) if preview is not None else "(its recipe cannot be read)"
+    if row.status == "accepted":
+        return (
+            f"This Set was designed in conversation, and its initial recipe was accepted as "
+            f"v{row.resulting_version_no}: {recipe}. Reason: {_quote(row.reason)} It is the "
+            "baseline; every change since is in the ledger below."
+        )
+    return (
+        f"The last initial recipe proposed for this Set was {row.status} before anything was "
+        f"brewed: {recipe}. The Set's recipe was written another way."
+    )
 
 
 def _quote(text: str) -> str:

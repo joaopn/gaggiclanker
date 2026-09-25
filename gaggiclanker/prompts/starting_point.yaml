@@ -17,6 +17,8 @@ description: |
   conversion between two of them, so a number is only allowed when the user's
   usual setting or a similar Set on the *same* grinder anchors it. Everything
   else is relative, and `grind_is_absolute` is how the UI tells the two apart.
+  The rule's text is the `grind-number` fragment, which the design conversation
+  includes too, so the two can never state it differently.
 
   The output contract is `gaggiclanker/starting/models.py::StartingPointResult`,
   whose JSON schema is sent with the call — so this prompt explains what the
@@ -39,23 +41,13 @@ system: |
 
   RULES OF ENGAGEMENT
 
-  1. **Never invent a grind number.** A grinder's scale means nothing outside
-     that grinder: 22 on one and 22 on another are different grinds and there is
-     no conversion. You may put a number in `grind_setting` — and set
-     `grind_is_absolute` to true — only when one of these anchors it:
+  1. **Never invent a grind number.** The rule, in full:
 
-       * the user gave their usual espresso setting, or
-       * a similar Set below was pulled on the SAME grinder and records one.
+  {{> grind-number}}
 
-     State the anchor in `grind_note` and give your change as a number of that
-     grinder's own steps from it ("two clicks finer than your usual 22").
-
-     With neither anchor, `grind_is_absolute` is false and `grind_setting` is
-     words — "a little finer than your usual espresso setting", "fine enough
-     that the first drip is 8-10 s in". Then `grind_note` must say what to do
-     after the first shot: which way to move, by how much, and what tells them.
-     A made-up number is the most expensive mistake available here, because
-     somebody will dial it and lose a bag finding out.
+     In this answer the grind goes in `grind_setting`, a number only with
+     `grind_is_absolute` set to true, and the anchor — or, without one, what to
+     do after the first shot — goes in `grind_note`.
 
   2. **The similar Sets are evidence and they outrank the general rules.** They
      were pulled on this kitchen's own hardware, and the calibration in them —

@@ -243,6 +243,7 @@ SELECT v.id                                         AS set_version_id,
   LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
  WHERE (:grinder_id IS NULL OR s.grinder_id = :grinder_id)
    AND (:exclude_set_id IS NULL OR s.id <> :exclude_set_id)
+   AND (:exclude_bean_id IS NULL OR s.bean_id <> :exclude_bean_id)
  ORDER BY (attribute_score + outcome_score) DESC, o.shots DESC, v.id DESC
  LIMIT :limit
 """
@@ -257,6 +258,7 @@ async def similar_sets(
     grinder_id: int | None,
     decaf: bool = False,
     exclude_set_id: int | None = None,
+    exclude_bean_id: int | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[SimilarSet]:
     """The best few past Set versions to anchor a new bag on.
@@ -275,6 +277,10 @@ async def similar_sets(
     ``exclude_set_id`` keeps a Set out of its own suggestions, for the "suggest
     a new version of this Set" caller. The wizard leaves it ``None``: a
     previous bag of the same coffee is the *best* anchor there is.
+
+    ``exclude_bean_id`` leaves out every Set of one bean, for the design
+    conversation: it is shown that bean's own Sets in a section of their own,
+    and listing them twice would count the same evidence twice.
     """
     before, after = _neighbours(roast_level)
     rows = await db.fetch_all(
@@ -288,6 +294,7 @@ async def similar_sets(
             "decaf": int(decaf),
             "grinder_id": grinder_id,
             "exclude_set_id": exclude_set_id,
+            "exclude_bean_id": exclude_bean_id,
             "confidence_shots": OUTCOME_CONFIDENCE_SHOTS,
             "limit": max(1, limit),
         },

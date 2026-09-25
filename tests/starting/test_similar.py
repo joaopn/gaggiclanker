@@ -24,6 +24,7 @@ async def _for_the_new_bag(
     decaf: bool = False,
     grinder_id: int | None = -1,
     exclude_set_id: int | None = None,
+    exclude_bean_id: int | None = None,
 ) -> list[SimilarSet]:
     return await similar_sets(
         fixture.db,
@@ -33,6 +34,7 @@ async def _for_the_new_bag(
         decaf=decaf,
         grinder_id=fixture.grinder_id if grinder_id == -1 else grinder_id,
         exclude_set_id=exclude_set_id,
+        exclude_bean_id=exclude_bean_id,
         limit=5,
     )
 
@@ -254,6 +256,17 @@ async def test_an_unstated_roast_level_scores_nothing_rather_than_everything(
 async def test_a_set_can_be_excluded_from_its_own_suggestions(fixture: Fixture) -> None:
     rows = await _for_the_new_bag(fixture, exclude_set_id=fixture.sets["kenya"])
     assert fixture.versions["kenya"] not in {row.set_version_id for row in rows}
+
+
+async def test_one_bean_s_sets_can_be_left_out_altogether(fixture: Fixture) -> None:
+    """For the design conversation, which lists that bean's Sets in a block of their own."""
+    every = await _for_the_new_bag(fixture)
+    kenya = next(row for row in every if row.set_version_id == fixture.versions["kenya"])
+
+    rows = await _for_the_new_bag(fixture, exclude_bean_id=kenya.bean_id)
+
+    assert rows, "the other beans' Sets still anchor the answer"
+    assert all(row.bean_id != kenya.bean_id for row in rows)
 
 
 async def test_a_quarantined_shot_does_not_count_as_evidence(fixture: Fixture) -> None:

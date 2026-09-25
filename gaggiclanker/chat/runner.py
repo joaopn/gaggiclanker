@@ -69,6 +69,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CHAT_EVENT",
+    "DESIGN_CHAT_PROMPT",
     "GENERAL_CHAT_PROMPT",
     "SET_CHAT_PROMPT",
     "ChatRunner",
@@ -84,17 +85,26 @@ log = structlog.get_logger(__name__)
 #: parsed the name.
 CHAT_EVENT = "chat.event"
 
-#: The two prompts, one per kind of conversation. Two files rather than one
-#: with a conditional paragraph: they now say different things about what the
-#: agent is for — grading an experiment, against answering about the archive —
-#: and a single prompt would have to be read with half of it crossed out.
+#: The prompts, one per kind of conversation. Separate files rather than one
+#: with conditional paragraphs: they say different things about what the agent
+#: is for — grading an experiment, working out a recipe that does not exist
+#: yet, answering about the archive — and a single prompt would have to be read
+#: with two thirds of it crossed out.
 SET_CHAT_PROMPT = "chat-set"
+DESIGN_CHAT_PROMPT = "chat-design"
 GENERAL_CHAT_PROMPT = "chat-general"
 
 
 def prompt_for(scope: ToolScope) -> str:
-    """Which prompt this conversation is answered with. From the same scope."""
-    return SET_CHAT_PROMPT if scope.kind == "set" else GENERAL_CHAT_PROMPT
+    """Which prompt this conversation is answered with. From the same scope.
+
+    A Set being designed is answered with the design prompt for exactly as long
+    as the Set is being designed: the scope is resolved from the Set on every
+    turn, so the turn after its recipe is accepted gets the Set prompt.
+    """
+    if scope.kind != "set":
+        return GENERAL_CHAT_PROMPT
+    return DESIGN_CHAT_PROMPT if scope.designing else SET_CHAT_PROMPT
 
 
 #: Roughly four characters to a token. Deliberately crude: the budget exists to
@@ -307,12 +317,14 @@ class ChatRunner:
 
     async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
-        # The Set prompt is handed the experiment; the general one has no
-        # variables at all, and passing it one it does not use would be
-        # harmless but misleading to read.
+        # The Set prompt is handed the experiment and the design prompt the
+        # brief and its evidence; the general one has no variables at all, and
+        # passing it one it does not use would be harmless but misleading.
         prompt = prompt_for(scope)
         variables = (
-            {"scope": await opening_context(self.db, scope)} if prompt == SET_CHAT_PROMPT else {}
+            {"scope": await opening_context(self.db, scope)}
+            if prompt in (SET_CHAT_PROMPT, DESIGN_CHAT_PROMPT)
+            else {}
         )
         rendered = await self.prompts.load(prompt, variables)
         history = await self._history(state.thread_id, budget.history_tokens)

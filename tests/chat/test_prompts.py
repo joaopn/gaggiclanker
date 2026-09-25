@@ -19,7 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from gaggiclanker.chat.runner import GENERAL_CHAT_PROMPT, SET_CHAT_PROMPT, prompt_for
+from gaggiclanker.chat.runner import (
+    DESIGN_CHAT_PROMPT,
+    GENERAL_CHAT_PROMPT,
+    SET_CHAT_PROMPT,
+    prompt_for,
+)
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.llm import PromptsRepository
@@ -53,6 +58,7 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
     ("name", "variables", "golden"),
     [
         (SET_CHAT_PROMPT, {"scope": SCOPE_MARKER}, "chat-set-prompt.txt"),
+        (DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER}, "chat-design-prompt.txt"),
         (GENERAL_CHAT_PROMPT, {}, "chat-general-prompt.txt"),
     ],
 )
@@ -93,7 +99,48 @@ async def test_the_general_prompt_takes_no_variables(prompts: PromptService) -> 
 
 def test_the_prompt_follows_the_conversation_s_kind() -> None:
     assert prompt_for(ToolScope.for_thread(3, 9)) == SET_CHAT_PROMPT
+    assert prompt_for(ToolScope.for_thread(3, 9, designing=True)) == DESIGN_CHAT_PROMPT
     assert prompt_for(ToolScope()) == GENERAL_CHAT_PROMPT
+
+
+async def test_the_design_prompt_takes_the_design_context(prompts: PromptService) -> None:
+    rendered = await prompts.load(DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER})
+
+    assert rendered.declared == ["scope"]
+    assert SCOPE_MARKER in rendered.system
+
+
+async def test_the_design_prompt_says_what_designing_is_and_is_not(
+    prompts: PromptService,
+) -> None:
+    # Read as prose: where the lines wrap is not what is being tested.
+    system = " ".join((await prompts.load(DESIGN_CHAT_PROMPT, {"scope": ""})).system.split())
+
+    # Nothing exists until the person accepts, and one card replaces the last.
+    assert "nothing exists yet" in system
+    assert "a newer card replaces the one waiting" in system
+    # Ask first, but briefly.
+    assert "Never a questionnaire" in system
+    # The Sets are evidence and outrank the rules; the profile is new.
+    assert "THEY OUTRANK THE RULES" in system
+    assert "THE PROFILE IS NEW, SO NAME IT" in system
+    # And afterwards it is the Set's ordinary conversation.
+    assert "becomes the Set's ordinary one" in system
+    # None of the experiment's rules, which do not apply to a baseline.
+    assert "GRADE FIRST" not in system
+
+
+async def test_the_grind_number_rule_is_one_text_in_both_first_recipe_prompts(
+    prompts: PromptService,
+) -> None:
+    """The starting point and the design conversation state it identically."""
+    rule = await prompts.render_fragment("fragments/grind-number")
+    design = (await prompts.load(DESIGN_CHAT_PROMPT, {"scope": ""})).system
+    starting = (await prompts.load("starting_point", {})).system
+
+    assert "NEVER INVENT A GRIND NUMBER" in rule
+    assert rule.strip() in design
+    assert rule.strip() in starting
 
 
 async def test_the_set_prompt_says_what_a_grade_and_a_proposal_have_to_be(
@@ -127,6 +174,11 @@ async def test_the_general_prompt_sends_a_set_change_to_that_set_s_folder(
     ("name", "variables", "scope"),
     [
         (SET_CHAT_PROMPT, {"scope": SCOPE_MARKER}, ToolScope.for_thread(3, 9)),
+        (
+            DESIGN_CHAT_PROMPT,
+            {"scope": SCOPE_MARKER},
+            ToolScope.for_thread(3, 9, designing=True),
+        ),
         (GENERAL_CHAT_PROMPT, {}, ToolScope()),
     ],
 )

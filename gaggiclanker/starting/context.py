@@ -62,6 +62,11 @@ __all__ = [
     "ProfileCandidate",
     "StartingPointContext",
     "build_context",
+    "planned_style",
+    "profile_candidates",
+    "render_profiles",
+    "render_similar",
+    "starting_rules",
 ]
 
 #: The style assumed when nothing has been brewed on this kit that resembles
@@ -180,8 +185,8 @@ class StartingPointContext(BaseModel):
         return {
             "bean_facts": _render_bean(self.bean, self.as_of),
             "hardware_facts": _render_hardware(self.hardware),
-            "similar_sets": _render_similar(self.similar),
-            "profile_library": _render_profiles(self.profiles),
+            "similar_sets": render_similar(self.similar),
+            "profile_library": render_profiles(self.profiles),
             "planned_style": (
                 f"{self.planned_style} — {self.planned_style_reason}"
                 if self.planned_style_reason
@@ -262,12 +267,11 @@ async def build_context(
         grinder_id=hardware.grinder_id,
         limit=similar_limit,
     )
-    profiles = await _profile_candidates(db)
-    style, reason = await _planned_style(db, similar)
+    profiles = await profile_candidates(db)
+    style, reason = await planned_style(db, similar)
 
-    signals = _signal_tokens(style)
-    selection = await select_rules(
-        RulesRepository(db),
+    signals, rules = await starting_rules(
+        db,
         SetContext(
             roast_level=bean.roast_level,
             process=bean.process,
@@ -275,7 +279,6 @@ async def build_context(
             decaf=bean.decaf,
         ),
         style,
-        signals,
     )
     excerpts = await KnowledgeService(db).select_chunks(
         RetrievalContext(
@@ -296,19 +299,34 @@ async def build_context(
         planned_style_reason=reason,
         similar=similar,
         profiles=profiles,
-        signals=selection.signals,
-        rules=[
-            {
-                "key": rule.key,
-                "category": rule.category,
-                "text": rule.text,
-                "confidence": rule.confidence,
-                "source": rule.source,
-            }
-            for rule in selection.rules
-        ],
+        signals=signals,
+        rules=rules,
         excerpts=[excerpt.as_dict() for excerpt in excerpts],
     )
+
+
+async def starting_rules(
+    db: Database, context: SetContext, style: str
+) -> tuple[list[str], list[dict[str, str]]]:
+    """The rules for a recipe nobody has brewed yet: the signals and the selection.
+
+    Shared by the starting point and the design conversation, because both are
+    choosing a first recipe for a coffee with no shot behind it and must be told
+    the same rules for the same bean, kit and style. Deterministic: the same
+    selection :func:`~gaggiclanker.knowledge.rules.select_rules` makes for an
+    analysis, in its stable order.
+    """
+    selection = await select_rules(RulesRepository(db), context, style, _signal_tokens(style))
+    return selection.signals, [
+        {
+            "key": rule.key,
+            "category": rule.category,
+            "text": rule.text,
+            "confidence": rule.confidence,
+            "source": rule.source,
+        }
+        for rule in selection.rules
+    ]
 
 
 async def _fetch(db: Database, *, bean_id: int, grinder_id: int | None) -> _Inputs:
@@ -346,7 +364,7 @@ def _signal_tokens(style: str) -> list[str]:
     return [f"style:{style}"]
 
 
-async def _planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, str]:
+async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, str]:
     """The style to plan for, and the sentence explaining the choice.
 
     The best similar Set's profile, when it names one. That is the closest
@@ -370,7 +388,7 @@ async def _planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, 
     return DEFAULT_STYLE, "nothing comparable has been brewed on this kit yet"
 
 
-async def _profile_candidates(db: Database) -> list[ProfileCandidate]:
+async def profile_candidates(db: Database) -> list[ProfileCandidate]:
     """The library, shortlisted: most-used brew profiles first.
 
     Utility profiles are excluded — a backflush is not a starting point — and
@@ -500,7 +518,7 @@ def _render_hardware(hardware: HardwareFacts) -> str:
     return f"GRINDER\n{grinder}\n\nMACHINE\n{machine}"
 
 
-def _render_similar(similar: list[SimilarSet]) -> str:
+def render_similar(similar: list[SimilarSet]) -> str:
     if not similar:
         return (
             "Nothing comparable has been brewed on this grinder. There is no anchor on the "
@@ -567,7 +585,7 @@ def _mean(value: float | None, prefix: str = "") -> str:
     return "not recorded" if value is None else f"{prefix}{value:g}"
 
 
-def _render_profiles(profiles: list[ProfileCandidate]) -> str:
+def render_profiles(profiles: list[ProfileCandidate]) -> str:
     if not profiles:
         return (
             "The profile library is empty. Any option that wants a profile has to carry a "

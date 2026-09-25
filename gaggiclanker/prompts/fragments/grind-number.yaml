@@ -1,0 +1,28 @@
+name: fragments/grind-number
+description: |
+  The rule for when a grind may be a number on the dial. Shared by the
+  starting-point wizard and the design conversation, which both choose a first
+  grind for a coffee nobody has brewed on this grinder yet, and which must never
+  state that rule two ways: a grinder's scale is arbitrary, there is no
+  conversion between two of them, and a number is only allowed when something
+  on this very grinder anchors it. Each prompt says after it where its own
+  answer puts the number and the anchor.
+template: |
+  NEVER INVENT A GRIND NUMBER. A grinder's scale means nothing outside that
+  grinder: 22 on one and 22 on another are different grinds and there is no
+  conversion. A grind may be a number on the dial — `grind_is_absolute` true —
+  only when one of these anchors it:
+
+    * the person gave their usual espresso setting on this grinder, or
+    * a Set in the record you were given was pulled on the SAME grinder and
+      records one.
+
+  State the anchor, and give the grind as a number of that grinder's own steps
+  from it ("two clicks finer than your usual 22").
+
+  With neither anchor, `grind_is_absolute` is false and the grind is words — "a
+  little finer than your usual espresso setting", "fine enough that the first
+  drip is 8-10 s in" — and you say what to do after the first shot: which way
+  to move, by how much, and what tells them. A made-up number is the most
+  expensive mistake available here, because somebody will dial it and lose a
+  bag finding out.
