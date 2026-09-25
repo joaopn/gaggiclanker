@@ -16,7 +16,7 @@ import { useBeans, useGrinders } from "@/hooks/useCatalog";
 import { useSendChatMessage } from "@/hooks/useChat";
 import { useCreateSet, useStartDesign } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
-import { beanLabel } from "@/lib/sets";
+import { beanLabel, beanScaleLabels } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -423,7 +423,12 @@ export function NewSetDialog({
           </div>
           {chosenBean ? (
             <p className="text-muted-foreground text-xs" data-testid="new-set-bean-facts">
-              {[chosenBean.roast_level, chosenBean.process, chosenBean.origin]
+              {[
+                chosenBean.roast_level,
+                chosenBean.process,
+                chosenBean.origin,
+                ...beanScaleLabels(chosenBean),
+              ]
                 .filter(Boolean)
                 .join(" · ") || "Nothing recorded about this coffee yet."}
             </p>

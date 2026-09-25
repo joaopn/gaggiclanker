@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   beanFieldSuggestions,
+  beanScaleLabels,
   grindPatch,
   setSummary,
   versionRatio,
@@ -54,6 +55,16 @@ describe("grindPatch", () => {
     expect(grindPatch("")).toEqual({});
     expect(grindPatch(null)).toEqual({});
     expect(grindPatch(undefined)).toEqual({});
+  });
+});
+
+describe("beanScaleLabels", () => {
+  it("labels the scales that are set, in order, and leaves out the rest", () => {
+    expect(beanScaleLabels(bean({ sweetness: 2, acidity: 5 }))).toEqual([
+      "acidity 5/5",
+      "sweetness 2/5",
+    ]);
+    expect(beanScaleLabels(bean())).toEqual([]);
   });
 });
 

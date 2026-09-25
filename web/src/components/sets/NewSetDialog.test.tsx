@@ -217,6 +217,17 @@ describe("NewSetDialog", () => {
     expect(screen.getByLabelText("Call it")).toHaveValue("Ethiopia Guji");
   });
 
+  it("says the picked coffee's taste scales that are set, and only those", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ acidity: 4, intensity: 2 })] });
+    renderWithQueryClient(<NewSetDialog open onOpenChange={() => {}} />);
+
+    await pickBean();
+
+    expect(screen.getByTestId("new-set-bean-facts")).toHaveTextContent(
+      "light · natural · Ethiopia · acidity 4/5 · intensity 2/5",
+    );
+  });
+
   it("pre-selects the bag the Beans page shortcut named", async () => {
     renderWithQueryClient(<NewSetDialog open initialBeanId={1} onOpenChange={() => {}} />);
 

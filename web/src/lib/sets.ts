@@ -179,6 +179,22 @@ export function beanLabel(bean: Pick<BeanRow, "name" | "roaster">): string {
   return bean.roaster ? `${bean.name} — ${bean.roaster}` : bean.name;
 }
 
+/** A bean's taste scales, in the order every screen lists them. */
+export const BEAN_SCALES = ["acidity", "intensity", "sweetness"] as const;
+
+/**
+ * The taste scales a bean has, as short labels ("acidity 4/5"); an unset one
+ * is left out rather than shown as "not stated".
+ */
+export function beanScaleLabels(
+  bean: Pick<BeanRow, "acidity" | "intensity" | "sweetness">,
+): string[] {
+  return BEAN_SCALES.flatMap((scale) => {
+    const value = bean[scale];
+    return value == null ? [] : [`${scale} ${value}/5`];
+  });
+}
+
 /**
  * The roasters (or origins) already recorded, for the bean form to suggest.
  *

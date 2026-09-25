@@ -17,6 +17,10 @@ first (`POST /api/backup`), because there is no down-migration.
   rebuilt or lost). The analysis, the starting point, both chats and the SQL
   tool's `v_beans` see them, as one line that says which way the scale runs:
   `taste: acidity 4, sweetness 3 (1 low to 5 high)`.
+- **The bean form picks each one on a clickable 5-point scale**, Low to High;
+  clicking the chosen step again clears it. The bean's card and the New Set
+  dialog's summary of the picked coffee show the ones that are set
+  ("acidity 4/5").
 - **Only what you filled in about a bean reaches the model.** The analysis and
   the starting point used to write `process: not stated` and `roast level: not
   stated` (and the same for origin, and for a similar Set's bean), and the

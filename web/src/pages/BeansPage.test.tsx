@@ -130,6 +130,58 @@ describe("BeansPage", () => {
     expect(screen.queryByText(/The bag says/)).not.toBeInTheDocument();
   });
 
+  it("shows the taste scales that were filled in on the card, and only those", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ acidity: 4, sweetness: 2 })] });
+    renderWithQueryClient(<BeansPage />);
+
+    const list = await screen.findByTestId("bean-list");
+    expect(within(list).getByText("acidity 4/5")).toBeInTheDocument();
+    expect(within(list).getByText("sweetness 2/5")).toBeInTheDocument();
+    expect(within(list).queryByText(/intensity/)).not.toBeInTheDocument();
+  });
+
+  it("records acidity, intensity and sweetness by clicking a 5-point scale", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Add a coffee/ }));
+    const form = await screen.findByTestId("bean-form");
+    for (const name of ["Acidity", "Intensity", "Sweetness"]) {
+      expect(within(form).getByRole("group", { name })).toBeInTheDocument();
+    }
+    await user.type(within(form).getByLabelText("Name"), "Kenya Kiambu");
+    await user.click(within(form).getByRole("button", { name: "Acidity 5 of 5" }));
+    await user.click(within(form).getByRole("button", { name: "Intensity 2 of 5" }));
+    // A second click on the chosen step takes it back to not stated.
+    await user.click(within(form).getByRole("button", { name: "Clear the intensity" }));
+    await user.click(within(form).getByRole("button", { name: "Sweetness 3 of 5" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(createBean).toHaveBeenCalled());
+    expect(createBean.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ acidity: 5, intensity: null, sweetness: 3 }),
+    );
+  });
+
+  it("edits a coffee's scales from what it has, and sends every one back", async () => {
+    getBeans.mockResolvedValue({ items: [bean({ acidity: 3, intensity: 4 })] });
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit Ethiopia Guji" }));
+    const form = await screen.findByTestId("bean-form");
+    const acidity = within(form).getByRole("group", { name: "Acidity" });
+    expect(within(acidity).getByRole("button", { pressed: true })).toHaveTextContent("3");
+    await user.click(within(form).getByRole("button", { name: "Clear the acidity" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updateBean).toHaveBeenCalled());
+    // A whole-object PUT: the untouched intensity must go back, or it is cleared.
+    expect(updateBean.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ acidity: null, intensity: 4, sweetness: null }),
+    );
+  });
+
   it("suggests roasters and origins already recorded, archived coffees included", async () => {
     getBeans.mockImplementation(async (includeArchived: boolean) => ({
       items: includeArchived

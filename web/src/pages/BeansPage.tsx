@@ -9,6 +9,7 @@ import { NewSetDialog } from "@/components/sets/NewSetDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { ScalePicker } from "@/components/ui/scale-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useArchiveBean,
@@ -19,7 +20,7 @@ import {
 } from "@/hooks/useCatalog";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
-import { beanFieldSuggestions } from "@/lib/sets";
+import { BEAN_SCALES, beanFieldSuggestions, beanScaleLabels } from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,7 +36,9 @@ import { cn } from "@/lib/utils";
  * are the two fields the analyser reasons from, which is why they are selects
  * rather than text: a rule keyed on "medium-light" cannot match "med light".
  * Roaster and origin stay free text, but suggest the spellings already used, so
- * the same roaster does not end up recorded three ways.
+ * the same roaster does not end up recorded three ways. Acidity, intensity and
+ * sweetness are 1-to-5 scales, each clickable and each optional: an unset one
+ * is left out of every prompt rather than sent as "not stated".
  *
  * Archive is how a coffee with history is retired; delete is for a bean nobody
  * used (a typo, a duplicate), and the server refuses it while a Set points at
@@ -54,6 +57,9 @@ const EMPTY: BeanWrite = {
   process: null,
   roast_level: null,
   decaf: false,
+  acidity: null,
+  intensity: null,
+  sweetness: null,
   description: "",
   notes: "",
 };
@@ -161,9 +167,13 @@ function BeanCard({
   const archive = useArchiveBean();
   const remove = useDeleteBean();
   const [confirming, setConfirming] = useState(false);
-  const facts = [bean.origin, bean.process, bean.roast_level, bean.decaf ? "decaf" : null].filter(
-    Boolean,
-  );
+  const facts = [
+    bean.origin,
+    bean.process,
+    bean.roast_level,
+    bean.decaf ? "decaf" : null,
+    ...beanScaleLabels(bean),
+  ].filter(Boolean);
 
   return (
     <SectionCard
@@ -336,6 +346,9 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
           process: bean.process,
           roast_level: bean.roast_level,
           decaf: bean.decaf ?? false,
+          acidity: bean.acidity ?? null,
+          intensity: bean.intensity ?? null,
+          sweetness: bean.sweetness ?? null,
           description: bean.description ?? "",
           notes: bean.notes ?? "",
         }
@@ -445,6 +458,17 @@ function BeanForm({ bean, onDone }: { bean: BeanRow | null; onDone: () => void }
               />
             </div>
           </Labelled>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {BEAN_SCALES.map((scale) => (
+            <ScalePicker
+              key={scale}
+              label={scale.charAt(0).toUpperCase() + scale.slice(1)}
+              name={scale}
+              value={draft[scale]}
+              onChange={(value) => set(scale, value)}
+            />
+          ))}
         </div>
         <Labelled id={ids.description} label="Description">
           <textarea
