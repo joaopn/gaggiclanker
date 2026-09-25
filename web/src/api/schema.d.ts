@@ -1556,6 +1556,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/design": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard a Set that is still being designed
+         * @description Delete it, its conversations and its proposals; discard its drafts.
+         *
+         *     Only while the Set is being designed and nothing is filed on it. A Set with
+         *     a recipe or a shot has history, and is archived rather than deleted: 409
+         *     `NOT_DESIGNING` or `DESIGN_HAS_SHOTS`.
+         */
+        delete: operations["discard_design_api_sets__set_id__design_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/proposals": {
         parameters: {
             query?: never;
@@ -1764,6 +1788,34 @@ export interface paths {
          *     is the only way to remove one, and still only before the first shot.
          */
         patch: operations["set_prediction_api_sets__set_id__versions__version_id__prediction_patch"];
+        trace?: never;
+    };
+    "/api/sets/design": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Set to be designed in its own conversation
+         * @description A Set with a bean and a grinder and no recipe yet, and the chat to design it in.
+         *
+         *     Version 1 states nothing: the agent works the recipe out with the person
+         *     in version 1's own conversation, which is opened here and answered with the
+         *     design prompt while the Set is being designed. Nothing is proposed, drafted
+         *     or sent anywhere by this route.
+         *
+         *     Every reference is looked up first and a missing one is a 404 naming the
+         *     field, never the value sent.
+         */
+        post: operations["design_set_api_sets_design_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/settings": {
@@ -2837,6 +2889,22 @@ export interface components {
         /** ApiResponse[SendResult] */
         ApiResponse_SendResult_: {
             data?: components["schemas"]["SendResult"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetDesignCreated] */
+        ApiResponse_SetDesignCreated_: {
+            data?: components["schemas"]["SetDesignCreated"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SetDesignDiscarded] */
+        ApiResponse_SetDesignDiscarded_: {
+            data?: components["schemas"]["SetDesignDiscarded"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -5106,6 +5174,8 @@ export interface components {
             note: string;
         };
         /** @enum {string} */
+        ProposalKind: "change" | "design";
+        /** @enum {string} */
         ProposalStatus: "proposed" | "accepted" | "declined" | "stale";
         /**
          * ProviderBody
@@ -5317,6 +5387,57 @@ export interface components {
             version: components["schemas"]["SetVersionWrite"];
         };
         /**
+         * SetDesignCreate
+         * @description `POST /api/sets/design`: what the design wizard asks, and the brief it stores.
+         *
+         *     The brief's own fields — the profile to fork, the usual grind, the goal —
+         *     are inherited from :class:`DesignBrief`, so the route and the stored brief
+         *     cannot disagree about their limits.
+         */
+        SetDesignCreate: {
+            /** Bean Id */
+            bean_id: number;
+            /** Fork Profile Version Id */
+            fork_profile_version_id?: number | null;
+            /**
+             * Goal
+             * @default
+             */
+            goal: string;
+            /** Grinder Id */
+            grinder_id: number;
+            /** Name */
+            name?: string | null;
+            /**
+             * Usual Grind
+             * @default
+             */
+            usual_grind: string;
+        };
+        /**
+         * SetDesignCreated
+         * @description What starting a design produced: the Set, its empty version 1, and its chat.
+         */
+        SetDesignCreated: {
+            set: components["schemas"]["SetRow"];
+            /** Thread Id */
+            thread_id: number;
+            version: components["schemas"]["SetVersionRow"];
+        };
+        /**
+         * SetDesignDiscarded
+         * @description `DELETE /api/sets/{id}/design`: the Set that no longer exists.
+         */
+        SetDesignDiscarded: {
+            /**
+             * Discarded
+             * @default true
+             */
+            discarded: boolean;
+            /** Set Id */
+            set_id: number;
+        };
+        /**
          * SetDetailData
          * @description `GET /api/sets/{id}`: everything the Set page draws.
          */
@@ -5411,8 +5532,12 @@ export interface components {
              * @default
              */
             decline_note: string;
+            /** Draft Id */
+            draft_id?: number | null;
             /** Id */
             id: number;
+            /** @default change */
+            kind: components["schemas"]["ProposalKind"];
             /**
              * Prediction
              * @default
@@ -9650,6 +9775,37 @@ export interface operations {
             };
         };
     };
+    discard_design_api_sets__set_id__design_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetDesignDiscarded_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_proposals_api_sets__set_id__proposals_get: {
         parameters: {
             query?: never;
@@ -9972,6 +10128,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_set_api_sets_design_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDesignCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SetDesignCreated_"];
                 };
             };
             /** @description Validation Error */

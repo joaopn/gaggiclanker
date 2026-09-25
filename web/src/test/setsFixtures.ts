@@ -400,6 +400,7 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
   return {
     id: 5,
     set_id: 3,
+    kind: "change",
     thread_id: 9,
     base_version_id: 22,
     base_version_no: 2,

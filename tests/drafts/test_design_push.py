@@ -147,3 +147,56 @@ async def test_pushing_the_recipe_s_own_draft_never_discards_what_is_on_the_mach
     assert proposal is not None and proposal.status == "stale"
     draft = await ProfileDraftsRepository(app.state.db).get(draft_id)
     assert draft is not None and draft.status == "pushed"
+
+
+async def test_after_accept_and_a_push_shots_on_the_new_profile_are_filed_under_the_set(
+    writes_on: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Automatch is on from the start, and it needs nothing more than the push.
+
+    The design's draft belongs to no Set and is pushed plainly from the Profiles
+    page. What files the next shot is the push verifying against the draft's own
+    document: the machine's copy resolves to the version the accepted card put
+    on version 1.
+    """
+    app, client = writes_on
+    bean = data(await client.post("/api/beans", json={"name": "Kenya AA"}))
+    grinder = data(await client.post("/api/grinders", json={"name": "Niche Zero"}))
+    created = data(
+        await client.post(
+            "/api/sets/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
+        )
+    )
+    set_id = created["set"]["id"]
+    draft = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document={**lower_pressure(await base_profile(app), 8.5), "label": "Kenya AA body"},
+        change_summary="A gentler peak for body.",
+        new_profile_only=True,
+    )
+    proposal = await SetProposalsRepository(app.state.db).create(
+        set_id,
+        ProposalWrite(
+            kind="design",
+            draft_id=draft.id,
+            thread_id=created["thread_id"],
+            reason="A gentler peak for body.",
+            patch=SetVersionPatch(
+                profile_version_id=draft.draft_version_id, grind_setting="20", dose_g=18
+            ),
+        ),
+    )
+    assert proposal.proposal is not None, proposal.refused
+    data(await client.post(f"/api/sets/{set_id}/proposals/{proposal.proposal.id}/accept"))
+    data(await client.post(f"/api/profile-drafts/{draft.id}/approve", json={}))
+
+    pushed = data(await client.post(f"/api/profile-drafts/{draft.id}/push", json={}))["draft"]
+
+    assert pushed["status"] == "pushed"
+    shot = await make_shot(
+        app.state.db, "000601", profile_id_on_device=pushed["pushed_device_profile_id"]
+    )
+    summary = await SetsRepository(app.state.db).match_unfiled([shot])
+    assert summary.matched == 1
+    filed = await app.state.db.fetch_value("SELECT set_version_id FROM shots WHERE id = ?", (shot,))
+    assert filed == created["version"]["id"]

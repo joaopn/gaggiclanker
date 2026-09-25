@@ -21,6 +21,12 @@ proposal has changed nothing; `/accept` is what turns one into a version and
 `/decline` is what turns it down, and both are routes somebody presses. There is
 no tool for either, in the chat or over MCP — the agent proposes and the person
 decides, which is the same rule as everywhere else in this box.
+
+`/design` starts a Set the other way round: a bean and a grinder, a version 1
+with no recipe, and the conversation in which the recipe is worked out. The
+first version written to such a Set fills that version 1 in place, whichever
+route writes it; `DELETE /{id}/design` removes a design nobody brewed anything
+under.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from gaggiclanker.analyzer.service import BatchResult
 from gaggiclanker.api.deps import (
     AnalyzerServiceDep,
     BeansRepoDep,
+    DatabaseDep,
     GrindersRepoDep,
     JudgementsRepoDep,
     ProfilesRepoDep,
@@ -48,8 +55,10 @@ from gaggiclanker.api.deps import (
     SuggestionsRepoDep,
 )
 from gaggiclanker.db.repos.analyses import SuggestionRow
+from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.set_proposals import (
+    ProposalKind,
     ProposalRefusal,
     ProposalStatus,
     ProposalWriteResult,
@@ -57,6 +66,8 @@ from gaggiclanker.db.repos.set_proposals import (
     SetProposalsRepository,
 )
 from gaggiclanker.db.repos.sets import (
+    DesignBrief,
+    DesignRefusal,
     FieldChange,
     RollbackWrite,
     SetRow,
@@ -78,6 +89,7 @@ from gaggiclanker.db.repos.sets import (
     version_changes,
 )
 from gaggiclanker.db.repos.shots import ShotListRow
+from gaggiclanker.domain.sets import set_name
 from gaggiclanker.domain.spread import (
     MeasureSpread,
     VersionEvidence,
@@ -131,6 +143,44 @@ class SetCreate(BaseModel):
     #: that did not collect the shots pulled on its profile would look broken.
     #: It takes nothing away from any other Set.
     automatch: bool = True
+
+
+class SetDesignCreate(DesignBrief):
+    """`POST /api/sets/design`: what the design wizard asks, and the brief it stores.
+
+    The brief's own fields — the profile to fork, the usual grind, the goal —
+    are inherited from :class:`DesignBrief`, so the route and the stored brief
+    cannot disagree about their limits.
+    """
+
+    bean_id: int
+    #: Required: a grind is only ever a number on one grinder's dial, and a
+    #: design with no grinder has nothing to anchor one on. Pre-ground coffee
+    #: keeps the ordinary New Set form and its suggestions.
+    grinder_id: int
+    #: Defaults to "<bean> on the <grinder>", the name every new Set from a
+    #: suggestion gets.
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class SetDesignCreated(BaseModel):
+    """What starting a design produced: the Set, its empty version 1, and its chat."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    set: SetRow
+    version: SetVersionRow
+    #: Version 1's conversation, opened here so the page can go straight to it.
+    thread_id: int
+
+
+class SetDesignDiscarded(BaseModel):
+    """`DELETE /api/sets/{id}/design`: the Set that no longer exists."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    set_id: int
+    discarded: bool = True
 
 
 class AutomatchWrite(BaseModel):
@@ -203,6 +253,12 @@ class SetProposalDetail(BaseModel):
 
     id: int
     set_id: int
+    #: `change` for one move on a recipe, `design` for a Set's whole first
+    #: recipe — which fills version 1 in place when accepted.
+    kind: ProposalKind = "change"
+    #: The profile draft an initial recipe carries, waiting on the Profiles
+    #: page to be approved and pushed. Empty on a change.
+    draft_id: int | None = None
     #: The conversation it was argued in, if that conversation still exists.
     thread_id: int | None = None
     base_version_id: int
@@ -466,6 +522,20 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
     return NotFound(f"No proposal {proposal_id} in Set {set_id}")
 
 
+def _design_error(refusal: DesignRefusal, set_id: int) -> AppError:
+    """A refused discard, as the one error it means. Each 409 has its own code."""
+    if refusal == "no_set":
+        return NotFound(f"No Set {set_id}")
+    return Conflict(
+        design_refusal_message(refusal),
+        code=refusal.upper(),
+        details={
+            "field": "set_id",
+            "message": "only a Set still being designed, with nothing filed on it, is discarded",
+        },
+    )
+
+
 #: Every refusal the repository can answer with, and the error it becomes.
 _REFUSALS: dict[VersionRefusal, Callable[[int, int | None], AppError]] = {
     "no_version": _refusal_no_version,
@@ -503,6 +573,8 @@ async def _proposal_detail(
     return SetProposalDetail(
         id=row.id,
         set_id=row.set_id,
+        kind=row.kind,
+        draft_id=row.draft_id,
         thread_id=row.thread_id,
         base_version_id=row.base_version_id,
         base_version_no=row.base_version_no,
@@ -593,6 +665,89 @@ async def create_set(
         automatch=body.automatch,
     )
     return envelope_response(row.model_dump(mode="json"), status_code=201)
+
+
+@router.post(
+    "/design",
+    response_model=ApiResponse[SetDesignCreated],
+    status_code=201,
+    summary="Start a Set to be designed in its own conversation",
+)
+async def design_set(
+    body: SetDesignCreate,
+    db: DatabaseDep,
+    sets: SetsRepoDep,
+    beans: BeansRepoDep,
+    grinders: GrindersRepoDep,
+    profiles: ProfilesRepoDep,
+) -> JSONResponse:
+    """A Set with a bean and a grinder and no recipe yet, and the chat to design it in.
+
+    Version 1 states nothing: the agent works the recipe out with the person
+    in version 1's own conversation, which is opened here and answered with the
+    design prompt while the Set is being designed. Nothing is proposed, drafted
+    or sent anywhere by this route.
+
+    Every reference is looked up first and a missing one is a 404 naming the
+    field, never the value sent.
+    """
+    bean = await beans.get(body.bean_id)
+    if bean is None:
+        raise NotFound(
+            "No such bean", details={"field": "bean_id", "message": "that bean does not exist"}
+        )
+    grinder = await grinders.get(body.grinder_id)
+    if grinder is None:
+        raise NotFound(
+            "No such grinder",
+            details={"field": "grinder_id", "message": "that grinder does not exist"},
+        )
+    fork = body.fork_profile_version_id
+    if fork is not None and await profiles.get_version(fork) is None:
+        raise NotFound(
+            "No such profile version",
+            details={
+                "field": "fork_profile_version_id",
+                "message": "that profile version does not exist",
+            },
+        )
+
+    row = await sets.create_design(
+        SetWrite(
+            name=body.name or set_name(bean.name, grinder.name),
+            bean_id=bean.id,
+            grinder_id=grinder.id,
+        ),
+        DesignBrief.model_validate(body.model_dump(include=set(DesignBrief.model_fields))),
+    )
+    version = await sets.current_version(row.id)
+    opened = await ChatRepository(db).open_thread(row.id)
+    if version is None or opened.thread is None:  # pragma: no cover - created just above
+        raise NotFound(f"No Set {row.id}")
+    return envelope_response(
+        SetDesignCreated(set=row, version=version, thread_id=opened.thread.id).model_dump(
+            mode="json"
+        ),
+        status_code=201,
+    )
+
+
+@router.delete(
+    "/{set_id}/design",
+    response_model=ApiResponse[SetDesignDiscarded],
+    summary="Discard a Set that is still being designed",
+)
+async def discard_design(set_id: int, sets: SetsRepoDep) -> JSONResponse:
+    """Delete it, its conversations and its proposals; discard its drafts.
+
+    Only while the Set is being designed and nothing is filed on it. A Set with
+    a recipe or a shot has history, and is archived rather than deleted: 409
+    `NOT_DESIGNING` or `DESIGN_HAS_SHOTS`.
+    """
+    refusal = await sets.discard_design(set_id)
+    if refusal is not None:
+        raise _design_error(refusal, set_id)
+    return envelope_response(SetDesignDiscarded(set_id=set_id).model_dump(mode="json"))
 
 
 @router.get(
