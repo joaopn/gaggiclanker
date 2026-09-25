@@ -10,6 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A shot keeps its yield when the scale drops to zero as it ends
+
+- **A shot whose scale reads zero for its last few samples keeps the yield
+  from right before the drop.** The machine stores the scale reading at the
+  moment it closes the shot's file, so a cup lifted, or a scale that resets,
+  in the last second left the shot with no final weight although its curve
+  showed the full yield. The pattern is matched narrowly: the zeros last at
+  most the three seconds the machine keeps recording after a brew, and the
+  reading before them is at least 1 g and within 90% of the shot's highest.
+  A shot that reaches zero any other way still has no final weight.
+
 ### Acidity, intensity and sweetness on a bean
 
 - **A bean records its acidity, intensity and sweetness**, each on a scale of
