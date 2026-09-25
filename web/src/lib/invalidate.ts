@@ -62,6 +62,34 @@ export function invalidateSetDetail(queryClient: QueryClient, setId: string): Pr
 }
 
 /**
+ * The Sets list, both with and without the archived ones, and nothing else.
+ *
+ * For the writes that change what a Set's card says without touching its
+ * versions' shots or its chart: a Set that starts or stops being designed
+ * gains or loses its badge here, and the Chat page reads the same list to know
+ * which tools a design conversation has.
+ */
+export function invalidateSetList(queryClient: QueryClient): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: [...queryKeys.sets.all, "list"] })
+    .then(() => undefined);
+}
+
+/** Every change an agent has proposed for one Set, waiting and answered. */
+export function invalidateSetProposals(queryClient: QueryClient, setId: string): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: queryKeys.sets.proposals(setId) })
+    .then(() => undefined);
+}
+
+/** One conversation's transcript and runs. */
+export function invalidateChatThread(queryClient: QueryClient, threadId: string): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: queryKeys.chat.thread(threadId) })
+    .then(() => undefined);
+}
+
+/**
  * Every open shot detail, and no other shots query.
  *
  * A version's prediction reaches a shot through that shot's own detail

@@ -34,6 +34,7 @@ import type {
   SetCreate,
   SetDetailData,
   SetListData,
+  SetProposal,
   SetProposalDecision,
   SetProposalListData,
   SetRow,
@@ -46,7 +47,11 @@ import type {
   VersionPredictionWrite,
 } from "@/api/types";
 import {
+  invalidateChatThread,
+  invalidateDrafts,
   invalidateSetDetail,
+  invalidateSetList,
+  invalidateSetProposals,
   invalidateSets,
   invalidateShotDetails,
   invalidateShots,
@@ -117,6 +122,14 @@ export function useSetProposals(
  * and the proposals list, and nothing else. A decline that swept the prefix
  * would refetch every open Set page's five hundred shots to record a sentence.
  *
+ * **A Set's first recipe** (`kind: "design"`) is answered the same two ways and
+ * reaches further in one direction and less far in another. It adds no version
+ * — accepting fills version 1 in place — and no shot moves, so the trend chart
+ * is left alone; but it ends the design, which takes the badge off the Sets
+ * list and changes the tools the conversation it came from is offered, so the
+ * list and that conversation are read again. Declining it discards the profile
+ * draft it carried, so the draft queue is read again too.
+ *
  * The failure is the interesting half: the server answers a stale proposal and
  * an ungraded prediction with sentences the person can act on, so the toast
  * carries the server's words rather than "Could not accept".
@@ -124,7 +137,16 @@ export function useSetProposals(
 export function useDecideProposal(): UseMutationResult<
   SetProposalDecision,
   Error,
-  { setId: number; proposalId: number; decision: "accept" | "decline"; note?: string }
+  {
+    setId: number;
+    proposalId: number;
+    decision: "accept" | "decline";
+    note?: string;
+    /** Which kind of proposal is being answered. A change unless said otherwise. */
+    kind?: SetProposal["kind"];
+    /** The conversation it was argued in, when there is one. */
+    threadId?: number | null;
+  }
 > {
   const queryClient = useQueryClient();
   return useMutation({
@@ -134,12 +156,27 @@ export function useDecideProposal(): UseMutationResult<
         : declineSetProposal(setId, proposalId, { note: note ?? "" }),
     onSuccess: (result) =>
       toast.success(
-        result.version
-          ? `Version ${result.version.version_no} recorded. Nothing was sent to the machine.`
-          : "Proposal declined",
+        result.proposal.kind === "design"
+          ? result.version
+            ? "Version 1 is set. Its profile is a draft on the Profiles page, waiting for you to approve and push it."
+            : "First recipe declined, and its draft discarded"
+          : result.version
+            ? `Version ${result.version.version_no} recorded. Nothing was sent to the machine.`
+            : "Proposal declined",
       ),
     onError: (error) => toast.error(error.message),
     onSettled: (_data, _error, variables) => {
+      if (variables.kind === "design") {
+        const setId = String(variables.setId);
+        void invalidateSetDetail(queryClient, setId);
+        void invalidateSetList(queryClient);
+        void invalidateSetProposals(queryClient, setId);
+        if (variables.threadId !== null && variables.threadId !== undefined) {
+          void invalidateChatThread(queryClient, String(variables.threadId));
+        }
+        if (variables.decision === "decline") void invalidateDrafts(queryClient);
+        return;
+      }
       if (variables.decision === "accept") {
         void invalidateSets(queryClient);
         return;

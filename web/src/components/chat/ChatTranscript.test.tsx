@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { proposal } from "@/test/setsFixtures";
+import { designProposal, proposal } from "@/test/setsFixtures";
 
 const { getSetProposals } = vi.hoisted(() => ({ getSetProposals: vi.fn() }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -26,6 +26,7 @@ const PERMISSIONS = {
   get_shot: "read",
   query_shots: "read",
   propose_set_version: "propose",
+  propose_initial_recipe: "propose",
   record_insight: "propose",
 };
 
@@ -187,6 +188,79 @@ describe("ChatTranscript", () => {
 
     const decided = await screen.findByTestId("proposal-decided");
     expect(decided).toHaveTextContent("The dose is not the problem.");
+    expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
+  });
+
+  function designed(): ChatMessage[] {
+    return [
+      message({ id: 1, role: "user", content: "Help me design this Set." }),
+      message({
+        id: 2,
+        role: "assistant",
+        tool_calls: [
+          { id: "c1", name: "propose_initial_recipe", arguments: { reason: "a bloom" } },
+        ],
+      }),
+      message({
+        id: 3,
+        role: "tool",
+        tool_results: [
+          {
+            id: "c1",
+            name: "propose_initial_recipe",
+            ok: true,
+            content: JSON.stringify({
+              proposal_id: 8,
+              set_id: 6,
+              draft_id: 14,
+              kind: "design",
+              status: "proposed",
+              recipe: {
+                profile_version_id: 70,
+                profile_label: "Guji Bloom",
+                grind_setting: "20",
+                grind_value: 20,
+                dose_g: 18,
+                target_yield_g: 40,
+              },
+              note: "Nothing exists yet.",
+            }),
+          },
+        ],
+      }),
+    ];
+  }
+
+  it("turns a proposed first recipe into the live card, read from the Set's proposals", async () => {
+    getSetProposals.mockResolvedValue({ items: [designProposal()] });
+
+    renderWithQueryClient(
+      <ChatTranscript messages={designed()} runs={[]} permissions={PERMISSIONS} />,
+    );
+
+    // Before the row is read back, the tool's own figures stand in for it.
+    const holder = screen.getByTestId("propose-card-initial_recipe");
+    expect(holder).toHaveTextContent("The first recipe for this Set");
+    expect(holder).toHaveTextContent("Guji Bloom · grind 20 · 18 g in · 40 g out");
+
+    // Then the row itself, with the buttons that answer it: not a snapshot.
+    const card = await within(holder).findByTestId("proposal-card");
+    expect(getSetProposals).toHaveBeenCalledWith(6);
+    expect(card).toHaveAttribute("data-kind", "design");
+    expect(within(card).getByTestId("proposal-recipe")).toHaveTextContent("Guji Bloom");
+    expect(within(card).getByRole("button", { name: /Accept/ })).toBeInTheDocument();
+  });
+
+  it("says how a first recipe was answered when the conversation is read again", async () => {
+    getSetProposals.mockResolvedValue({
+      items: [designProposal({ status: "accepted", changes: [], resulting_version_no: 1 })],
+    });
+
+    renderWithQueryClient(
+      <ChatTranscript messages={designed()} runs={[]} permissions={PERMISSIONS} />,
+    );
+
+    expect(await screen.findByTestId("proposal-decided")).toHaveTextContent("version 1 is set");
     expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
   });
 

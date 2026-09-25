@@ -9,7 +9,7 @@ import {
 } from "@/hooks/useSets";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { proposal, version } from "@/test/setsFixtures";
+import { designProposal, proposal, version } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -137,6 +137,60 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     // refetch every open Set page's five hundred shots to record a sentence.
     expect(keys).toContainEqual(queryKeys.sets.detail("3"));
     expect(keys).toContainEqual(queryKeys.sets.proposals("3"));
+    expect(keys).not.toContainEqual(queryKeys.sets.all);
+  });
+
+  it("accepting a first recipe reaches the Set, the list, its proposals and its conversation", async () => {
+    acceptSetProposal.mockResolvedValue({
+      proposal: designProposal({ status: "accepted" }),
+      version: version({ id: 60, set_id: 6 }),
+    });
+    const { result, queryClient } = renderHookWithQueryClient(() => useDecideProposal());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      setId: 6,
+      proposalId: 8,
+      decision: "accept",
+      kind: "design",
+      threadId: 12,
+    });
+
+    await waitFor(() => expect(keys.length).toBe(4));
+    expect(keys).toContainEqual(queryKeys.sets.detail("6"));
+    // The list carries the Designing badge, and the Chat page reads it to know
+    // which tools the conversation has: both change when the design ends.
+    expect(keys).toContainEqual(["sets", "list"]);
+    expect(keys).toContainEqual(queryKeys.sets.proposals("6"));
+    expect(keys).toContainEqual(queryKeys.chat.thread("12"));
+    // Version 1 is filled in place and no shot moved: no chart, no shots.
+    expect(keys).not.toContainEqual(queryKeys.sets.all);
+    expect(keys.flat()).not.toContain("shots");
+  });
+
+  it("declining a first recipe reaches the same, and the draft queue it discarded from", async () => {
+    declineSetProposal.mockResolvedValue({
+      proposal: designProposal({ status: "declined" }),
+      version: null,
+    });
+    const { result, queryClient } = renderHookWithQueryClient(() => useDecideProposal());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      setId: 6,
+      proposalId: 8,
+      decision: "decline",
+      note: "",
+      kind: "design",
+      threadId: 12,
+    });
+
+    await waitFor(() => expect(keys.length).toBe(5));
+    expect(keys).toContainEqual(queryKeys.sets.detail("6"));
+    expect(keys).toContainEqual(["sets", "list"]);
+    expect(keys).toContainEqual(queryKeys.sets.proposals("6"));
+    expect(keys).toContainEqual(queryKeys.chat.thread("12"));
+    expect(keys).toContainEqual(queryKeys.drafts.all);
     expect(keys).not.toContainEqual(queryKeys.sets.all);
   });
 

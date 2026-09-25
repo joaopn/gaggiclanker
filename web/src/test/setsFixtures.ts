@@ -425,6 +425,60 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
   };
 }
 
+/**
+ * A Set's first recipe, waiting: drawn by the server as a diff against the
+ * empty version 1, so every field's `after` side is the recipe itself.
+ */
+export function designProposal(overrides: Partial<SetProposal> = {}): SetProposal {
+  return proposal({
+    id: 8,
+    set_id: 6,
+    kind: "design",
+    draft_id: 14,
+    thread_id: 12,
+    base_version_id: 60,
+    base_version_no: 1,
+    changes: [
+      {
+        field: "profile_version_id",
+        label: "Profile",
+        before: null,
+        after: "Guji Bloom",
+        from_profile: false,
+      },
+      { field: "grind_setting", label: "Grind", before: null, after: "20", from_profile: false },
+      {
+        field: "grind_value",
+        label: "Grind value",
+        before: null,
+        after: "20",
+        from_profile: false,
+      },
+      { field: "dose_g", label: "Dose", before: null, after: "18 g", from_profile: false },
+      {
+        field: "target_yield_g",
+        label: "Target yield",
+        before: null,
+        after: "40 g",
+        from_profile: false,
+      },
+      {
+        field: "profile_temperature_c",
+        label: "Temperature",
+        before: null,
+        after: "94 °C",
+        from_profile: true,
+      },
+    ],
+    changed: ["the profile", "the grind", "the dose", "the target yield"],
+    reason: "A bloom to open up a light natural, a longer ratio for sweetness.",
+    prediction: "",
+    compares_to_version_id: null,
+    compares_to_version_no: null,
+    ...overrides,
+  });
+}
+
 export function labelCounts(
   overrides: Partial<SetVersionDetail["labels"]> = {},
 ): SetVersionDetail["labels"] {

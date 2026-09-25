@@ -1,8 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProposalCard } from "@/components/sets/ProposalCard";
+import { ApiClientError } from "@/api/client";
+import { designRecipe, ProposalCard } from "@/components/sets/ProposalCard";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { proposal } from "@/test/setsFixtures";
+import { designProposal, proposal } from "@/test/setsFixtures";
 
 const { acceptSetProposal, declineSetProposal, toastError, toastSuccess } = vi.hoisted(() => ({
   acceptSetProposal: vi.fn(),
@@ -268,5 +269,217 @@ describe("ProposalCard", () => {
 
     renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
     expect(screen.queryByTestId("proposal-thread")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A Set's first recipe: the same question as a change, asked about a Set with
+ * no recipe yet. What it must get right is what the person is agreeing to — a
+ * whole recipe, a profile that is only a draft — and what happens after.
+ */
+describe("ProposalCard, a first recipe", () => {
+  it("renders the recipe, the draft it carries and no prediction", () => {
+    renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    const card = screen.getByTestId("proposal-card");
+    expect(card).toHaveAttribute("data-kind", "design");
+    expect(card).toHaveTextContent("The first recipe is waiting for you");
+    const recipe = screen.getByTestId("proposal-recipe");
+    expect(recipe).toHaveTextContent("Guji Bloom");
+    expect(recipe).toHaveTextContent("94 °C");
+    expect(recipe).toHaveTextContent("Grind20");
+    expect(recipe).toHaveTextContent("Dose18 g");
+    expect(recipe).toHaveTextContent("Yield40 g (1:2.2)");
+    expect(screen.getByTestId("proposal-draft-link")).toHaveAttribute("href", "/profiles#staged");
+    expect(card).toHaveTextContent("A bloom to open up a light natural");
+    // A version 1 is a baseline: nothing to predict against, nothing compared.
+    expect(screen.queryByTestId("proposal-prediction")).not.toBeInTheDocument();
+    expect(card).not.toHaveTextContent("compared to");
+    // Nor drawn as a diff: "not set → 18 g" five times says less than the recipe.
+    expect(screen.queryByTestId("proposal-changes")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("proposal-grind-relative")).not.toBeInTheDocument();
+  });
+
+  it("says a grind with no number behind it is relative", () => {
+    const changes = designProposal().changes.filter((change) => change.field !== "grind_value");
+    renderWithQueryClient(
+      <ProposalCard
+        setId={6}
+        proposal={designProposal({
+          changes: changes.map((change) =>
+            change.field === "grind_setting"
+              ? { ...change, after: "two finer than usual" }
+              : change,
+          ),
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("proposal-recipe")).toHaveTextContent("two finer than usual");
+    expect(screen.getByTestId("proposal-grind-relative")).toHaveTextContent(
+      "nothing anchors a number on your dial",
+    );
+  });
+
+  it("accepts through the accept route and says version 1 is set, with the draft link", async () => {
+    const user = setupUser();
+    acceptSetProposal.mockResolvedValue({
+      proposal: designProposal({
+        status: "accepted",
+        changes: [],
+        resulting_version_id: 60,
+        resulting_version_no: 1,
+        decided_at: "2026-03-02T09:00:00.000Z",
+      }),
+      version: { version_no: 1 },
+    });
+    renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    expect(acceptSetProposal).toHaveBeenCalledWith(6, 8);
+    const decided = await screen.findByTestId("proposal-decided");
+    expect(decided).toHaveTextContent("version 1 is set");
+    expect(decided).toHaveTextContent("approve and push");
+    expect(decided).toHaveTextContent("shots brewed on it are filed here");
+    expect(
+      within(decided).getByRole("link", { name: /draft on the Profiles page/ }),
+    ).toHaveAttribute("href", "/profiles#staged");
+    expect(within(decided).getByRole("link", { name: "version 1" })).toHaveAttribute(
+      "href",
+      "/sets/6",
+    );
+    expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
+    expect(String(toastSuccess.mock.calls[0][0])).toContain("Version 1 is set");
+  });
+
+  it("declines with the note, as a change does", async () => {
+    const user = setupUser();
+    declineSetProposal.mockResolvedValue({
+      proposal: designProposal({ status: "declined", decline_note: "too long a ratio" }),
+      version: null,
+    });
+    renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await user.click(screen.getByRole("button", { name: /^Decline$/ }));
+    await user.type(screen.getByLabelText(/Why not/), "too long a ratio{Enter}");
+
+    expect(declineSetProposal).toHaveBeenCalledWith(6, 8, { note: "too long a ratio" });
+    expect(await screen.findByTestId("proposal-decided")).toHaveTextContent(
+      "Declined: “too long a ratio” Its draft was discarded, unless it had already been pushed.",
+    );
+  });
+
+  it("says in words that the draft is gone when the accept is refused for it", async () => {
+    const user = setupUser();
+    acceptSetProposal.mockRejectedValue(
+      new ApiClientError("The profile draft proposal 8 carries is no longer open", {
+        status: 409,
+        code: "PROPOSAL_DRAFT_CLOSED",
+      }),
+    );
+    renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    const closed = await screen.findByTestId("proposal-draft-closed");
+    expect(closed).toHaveTextContent("discarded or replaced");
+    expect(closed).toHaveTextContent("Decline this card and ask the agent for a new one.");
+    expect(toastError).toHaveBeenCalledWith(
+      "The profile draft proposal 8 carries is no longer open",
+    );
+    // Still a question: declining is the way on, and it is still offered.
+    expect(screen.getByRole("button", { name: /^Decline$/ })).toBeInTheDocument();
+  });
+
+  it("does not blame the draft for any other refusal", async () => {
+    const user = setupUser();
+    acceptSetProposal.mockRejectedValue(
+      new ApiClientError("Proposal 8 has already been answered", {
+        status: 409,
+        code: "PROPOSAL_DECIDED",
+      }),
+    );
+    renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(screen.queryByTestId("proposal-draft-closed")).not.toBeInTheDocument();
+  });
+
+  it("says a newer card replaced one that was overtaken", () => {
+    renderWithQueryClient(
+      <ProposalCard setId={6} proposal={designProposal({ status: "stale" })} />,
+    );
+
+    expect(screen.getByTestId("proposal-decided")).toHaveTextContent(
+      "A newer card replaced this one",
+    );
+    expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Decline$/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps saying how it was answered once it has been", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        setId={6}
+        proposal={designProposal({ status: "accepted", changes: [], resulting_version_no: 1 })}
+      />,
+    );
+
+    expect(screen.getByTestId("proposal-card")).toHaveTextContent(
+      "A first recipe that was proposed",
+    );
+    expect(screen.getByTestId("proposal-decided")).toHaveTextContent("version 1 is set");
+  });
+
+  it("reads the recipe off the diff against the empty version 1", () => {
+    expect(designRecipe(designProposal().changes)).toEqual({
+      profile: "Guji Bloom",
+      temperature: "94 °C",
+      grind: "20",
+      grindIsAbsolute: true,
+      dose: "18 g",
+      target: "40 g",
+      ratio: "1:2.2",
+    });
+    expect(designRecipe([])).toEqual({
+      profile: null,
+      temperature: null,
+      grind: null,
+      grindIsAbsolute: false,
+      dose: null,
+      target: null,
+      ratio: null,
+    });
+  });
+});
+
+describe("ProposalCard, a change, after this feature", () => {
+  it("renders exactly the change card it always did", () => {
+    renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
+
+    const card = screen.getByTestId("proposal-card");
+    expect(card).toHaveAttribute("data-kind", "change");
+    expect(card).toHaveTextContent("A change is waiting for you");
+    expect(screen.getByTestId("proposal-changes")).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-prediction")).toHaveTextContent("compared to v2");
+    expect(card).toHaveTextContent("Accepting records a new version of this Set.");
+    expect(screen.queryByTestId("proposal-recipe")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("proposal-draft-link")).not.toBeInTheDocument();
+  });
+
+  it("shows what the accept recorded without waiting for the lists to be read again", async () => {
+    const user = setupUser();
+    acceptSetProposal.mockResolvedValue({
+      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
+      version: { version_no: 3 },
+    });
+    renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    expect(await screen.findByTestId("proposal-decided")).toHaveTextContent("Accepted as v3");
   });
 });

@@ -1,7 +1,8 @@
 import { ArrowRight, Check, X } from "lucide-react";
 import { useId, useState } from "react";
 import { Link } from "react-router-dom";
-import type { SetProposal } from "@/api/types";
+import { ApiClientError } from "@/api/client";
+import type { FieldChange, SetProposal } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDecideProposal } from "@/hooks/useSets";
@@ -21,6 +22,13 @@ import { formatTime } from "@/lib/shots";
  * A proposal that has already been answered keeps its card and says how it was
  * answered, so scrolling back through a conversation is reading a record rather
  * than a set of live buttons.
+ *
+ * **A Set's first recipe** (`kind: "design"`) is the same question asked about
+ * a Set that has no recipe yet, and it is drawn as a recipe rather than as a
+ * diff: "not set → 18 g" five times over says less than "18 g in, 36 g out".
+ * It has no prediction and nothing it is compared to — a version 1 is a
+ * baseline, not a change to anything — and its profile is a draft of its own,
+ * waiting on the Profiles page, so the card links there.
  */
 
 export type ProposalCardProps = {
@@ -38,6 +46,149 @@ function absent(fromProfile: boolean, side: "before" | "after"): string {
 
 /** How long a turn-down may be, as the route caps it. */
 const NOTE_MAX = 500;
+
+/** Where a draft waits for a person to approve and push it. */
+const DRAFTS_HREF = "/profiles#staged";
+
+/**
+ * The recipe a first-recipe card would fill version 1 with, read off its diff.
+ *
+ * The server draws every proposal as a diff against the version it would
+ * change, and for a design that version is empty, so each field's `after` side
+ * *is* the recipe. Read from there rather than asked for separately, so the
+ * card cannot say something the accept would not write. Once accepted, version
+ * 1 holds the same values and the diff is empty: the card then says what
+ * happened and the Set page shows the recipe.
+ */
+export function designRecipe(changes: FieldChange[]) {
+  const after = (field: string) => changes.find((change) => change.field === field)?.after ?? null;
+  const dose = after("dose_g");
+  const target = after("target_yield_g");
+  const doseG = dose === null ? Number.NaN : Number.parseFloat(dose);
+  const yieldG = target === null ? Number.NaN : Number.parseFloat(target);
+  return {
+    profile: after("profile_version_id"),
+    temperature: after("profile_temperature_c"),
+    grind: after("grind_setting"),
+    // A grind with no number behind it is words relative to the person's usual
+    // setting: nothing anchored a position on this grinder's dial.
+    grindIsAbsolute: after("grind_value") !== null,
+    dose,
+    target,
+    ratio: doseG > 0 && yieldG > 0 ? `1:${(yieldG / doseG).toFixed(1)}` : null,
+  };
+}
+
+/**
+ * The first recipe, as the numbers it would put on version 1.
+ *
+ * The grind is the one figure rendered differently, for the same reason as on
+ * the starting-point card: a grind the agent could not anchor on this grinder
+ * is words relative to the usual setting, and reading "two finer" as a dial
+ * position loses a bag finding out.
+ */
+function RecipeFigures({ proposal }: { proposal: SetProposal }) {
+  const recipe = designRecipe(proposal.changes);
+  if (proposal.changes.length === 0) return null;
+  return (
+    <dl className="mb-2 grid gap-x-3 gap-y-1 text-sm sm:grid-cols-2" data-testid="proposal-recipe">
+      <Figure label="Profile">
+        {recipe.profile ?? "none named"}
+        {proposal.draft_id ? (
+          <>
+            {" · "}
+            <Link
+              to={DRAFTS_HREF}
+              className="underline underline-offset-2"
+              data-testid="proposal-draft-link"
+            >
+              a new draft
+            </Link>
+          </>
+        ) : null}
+        {recipe.temperature ? (
+          <span className="text-muted-foreground"> · {recipe.temperature}</span>
+        ) : null}
+      </Figure>
+      <Figure label="Grind">
+        {recipe.grind ?? "not set"}
+        {recipe.grind && !recipe.grindIsAbsolute ? (
+          <span className="ml-1 text-muted-foreground" data-testid="proposal-grind-relative">
+            (relative to your usual setting — nothing anchors a number on your dial)
+          </span>
+        ) : null}
+      </Figure>
+      <Figure label="Dose">{recipe.dose ?? "not set"}</Figure>
+      <Figure label="Yield">
+        {recipe.target ?? "not set"}
+        {recipe.ratio ? <span className="text-muted-foreground"> ({recipe.ratio})</span> : null}
+      </Figure>
+    </dl>
+  );
+}
+
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 gap-1.5">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * How a first recipe was answered.
+ *
+ * Accepted is the one that has a next step, and it is the person's: the Set now
+ * has its version 1, but the profile it names is a draft until somebody
+ * approves and pushes it, and shots brewed on it only find the Set once it is
+ * on the machine. The card says so in those words because nothing else in the
+ * conversation will.
+ */
+function DecidedDesign({ proposal }: { proposal: SetProposal }) {
+  if (proposal.status === "accepted") {
+    return (
+      <p className="text-sm" data-testid="proposal-decided">
+        Accepted:{" "}
+        <Link to={`/sets/${proposal.set_id}`} className="font-medium underline underline-offset-2">
+          version 1
+        </Link>{" "}
+        is set. Its profile is{" "}
+        <Link to={DRAFTS_HREF} className="underline underline-offset-2">
+          a draft on the Profiles page
+        </Link>{" "}
+        for you to approve and push; once it is on the machine, shots brewed on it are filed here.{" "}
+        <span className="text-muted-foreground">{formatTime(proposal.decided_at ?? null)}</span>
+      </p>
+    );
+  }
+  if (proposal.status === "declined") {
+    return (
+      <p className="text-sm" data-testid="proposal-decided">
+        Declined{proposal.decline_note ? `: “${proposal.decline_note}”` : "."} Its draft was
+        discarded, unless it had already been pushed.
+      </p>
+    );
+  }
+  return (
+    <p className="text-sm" data-testid="proposal-decided">
+      A newer card replaced this one, or version 1 was recorded another way first, so it was never
+      applied. Its draft was discarded, unless it had already been pushed.
+    </p>
+  );
+}
+
+/**
+ * Whether an accept was refused because the card's draft is gone.
+ *
+ * The one refusal a first recipe has of its own: somebody discarded the draft
+ * on the Profiles page, or it was replaced. The card cannot be accepted any
+ * more, and the way on is in words — decline it and ask for another — rather
+ * than in a toast that has faded by the time anybody reads the card again.
+ */
+function draftClosed(error: Error | null): boolean {
+  return error instanceof ApiClientError && error.code === "PROPOSAL_DRAFT_CLOSED";
+}
 
 function Decided({ proposal }: { proposal: SetProposal }) {
   if (proposal.status === "accepted") {
@@ -81,20 +232,37 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
     setDeclining(false);
     setNote("");
   }
-  const waiting = proposal.status === "proposed";
+  // What the server said to the last press on this card, before the lists it
+  // invalidated have been read again. Shown straight away: on the Set page the
+  // waiting card leaves the page with that refetch, and the answer — above all
+  // "version 1 is set, and the profile is a draft" — would go with it.
+  const answered =
+    decide.data?.proposal.id === proposal.id && !decide.isPending ? decide.data.proposal : null;
+  const shown = answered ?? proposal;
+  const waiting = shown.status === "proposed";
+  const design = shown.kind === "design";
+  const refusedForDraft =
+    design && decide.variables?.proposalId === proposal.id && draftClosed(decide.error);
 
   return (
     <div
       className="rounded-lg border border-primary/40 bg-primary/5 p-3"
       data-testid="proposal-card"
-      data-status={proposal.status}
+      data-status={shown.status}
+      data-kind={shown.kind}
     >
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-medium text-sm">
-          {waiting ? "A change is waiting for you" : "A change that was proposed"}
+          {design
+            ? waiting
+              ? "The first recipe is waiting for you"
+              : "A first recipe that was proposed"
+            : waiting
+              ? "A change is waiting for you"
+              : "A change that was proposed"}
         </span>
         <div className="flex items-center gap-2">
-          {waiting && !proposal.base_is_current ? (
+          {waiting && !shown.base_is_current ? (
             // The accept will be refused, and saying so before the press is
             // kinder than the toast that follows it.
             <Badge variant="outline" data-testid="proposal-stale">
@@ -112,7 +280,9 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
         </p>
       ) : null}
 
-      {proposal.changes.length > 0 ? (
+      {design ? (
+        <RecipeFigures proposal={shown} />
+      ) : proposal.changes.length > 0 ? (
         <ul className="mb-2 flex flex-wrap gap-2" data-testid="proposal-changes">
           {proposal.changes.map((change) => (
             <li
@@ -138,16 +308,21 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
 
       {proposal.reason ? <p className="mb-2 text-sm">{proposal.reason}</p> : null}
 
-      <p className="mb-2 text-sm" data-testid="proposal-prediction">
-        <span className="text-muted-foreground text-xs">
-          Prediction
-          {proposal.compares_to_version_no
-            ? ` · compared to v${proposal.compares_to_version_no}`
-            : " · compared to nothing"}
-        </span>
-        <br />
-        {proposal.prediction}
-      </p>
+      {/* No prediction on a first recipe: a version 1 is the baseline later
+          versions are predicted against, and "compared to nothing" would be
+          a line saying so at length. */}
+      {design ? null : (
+        <p className="mb-2 text-sm" data-testid="proposal-prediction">
+          <span className="text-muted-foreground text-xs">
+            Prediction
+            {proposal.compares_to_version_no
+              ? ` · compared to v${proposal.compares_to_version_no}`
+              : " · compared to nothing"}
+          </span>
+          <br />
+          {proposal.prediction}
+        </p>
+      )}
 
       {proposal.combined_reason ? (
         <p className="mb-2 text-muted-foreground text-xs" data-testid="proposal-combined">
@@ -168,7 +343,13 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
                 disabled={decide.isPending}
                 onClick={() =>
                   void attempt(() =>
-                    decide.mutateAsync({ setId, proposalId: proposal.id, decision: "accept" }),
+                    decide.mutateAsync({
+                      setId,
+                      proposalId: proposal.id,
+                      decision: "accept",
+                      kind: proposal.kind,
+                      threadId: proposal.thread_id,
+                    }),
                   )
                 }
               >
@@ -206,6 +387,8 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
                   proposalId: proposal.id,
                   decision: "decline",
                   note: note.trim(),
+                  kind: proposal.kind,
+                  threadId: proposal.thread_id,
                 }),
               );
             }}
@@ -249,14 +432,25 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
             </div>
           </form>
 
+          {refusedForDraft ? (
+            <p className="mt-2 text-destructive text-sm" data-testid="proposal-draft-closed">
+              This card's profile draft was discarded or replaced on the Profiles page, so it can no
+              longer be accepted. Decline this card and ask the agent for a new one.
+            </p>
+          ) : null}
+
           <p className="mt-2 text-muted-foreground text-xs">
-            {proposal.readable
-              ? "Accepting records a new version of this Set. Nothing is sent to the machine either way."
-              : "The change stored with this one is damaged and cannot be read, so there is nothing to accept. Decline it and ask in the conversation again."}
+            {!proposal.readable
+              ? "The change stored with this one is damaged and cannot be read, so there is nothing to accept. Decline it and ask in the conversation again."
+              : design
+                ? "Accepting makes this the Set's version 1. The profile stays a draft on the Profiles page until you approve and push it: nothing is sent to the machine either way."
+                : "Accepting records a new version of this Set. Nothing is sent to the machine either way."}
           </p>
         </>
+      ) : design ? (
+        <DecidedDesign proposal={shown} />
       ) : (
-        <Decided proposal={proposal} />
+        <Decided proposal={shown} />
       )}
 
       {showThreadLink && proposal.thread_id ? (

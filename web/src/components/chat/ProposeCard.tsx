@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FilePen, Layers, Lightbulb } from "lucide-react";
+import { FilePen, Layers, Lightbulb, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
@@ -8,8 +8,9 @@ import { useSetProposals } from "@/hooks/useSets";
 /**
  * What a `propose_` tool created, as a card that links to it.
  *
- * The three propose tools each write a row somebody still has to decide about —
- * a Set version, a profile draft, an insight waiting to be confirmed — and the
+ * The propose tools each write a row somebody still has to decide about — a Set
+ * version, a Set's whole first recipe, a profile draft, an insight waiting to be
+ * confirmed — and the
  * difference between "the chat suggested" and "the chat created" is exactly
  * what a reader has to be able to see. So the result is read out of the tool's
  * own output rather than parsed out of the prose, and it is rendered outside
@@ -17,12 +18,12 @@ import { useSetProposals } from "@/hooks/useSets";
  */
 
 export type Proposal = {
-  kind: "set_version" | "draft" | "insight";
+  kind: "set_version" | "initial_recipe" | "draft" | "insight";
   label: string;
   detail: string;
   href: string;
   icon: LucideIcon;
-  /** A proposed Set change: which Set, and which row on it. */
+  /** A proposed Set change or first recipe: which Set, and which row on it. */
   setId?: number;
   proposalId?: number;
 };
@@ -61,6 +62,33 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
+  if (entry.name === "propose_initial_recipe") {
+    const proposalId = output.proposal_id;
+    const setId = output.set_id;
+    if (proposalId === undefined || setId === undefined) return null;
+    const recipe =
+      output.recipe && typeof output.recipe === "object"
+        ? (output.recipe as Record<string, unknown>)
+        : {};
+    const figures = [
+      recipe.profile_label ? String(recipe.profile_label) : null,
+      recipe.grind_setting ? `grind ${String(recipe.grind_setting)}` : null,
+      recipe.dose_g ? `${String(recipe.dose_g)} g in` : null,
+      recipe.target_yield_g ? `${String(recipe.target_yield_g)} g out` : null,
+    ].filter(Boolean);
+    return {
+      kind: "initial_recipe",
+      // The same live card as a change, read back from the Set's proposals:
+      // this is only what shows until that read lands.
+      label: "The first recipe for this Set",
+      detail: figures.length > 0 ? figures.join(" · ") : "waiting for you",
+      href: `/sets/${String(setId)}`,
+      icon: Sparkles,
+      setId: Number(setId),
+      proposalId: Number(proposalId),
+    };
+  }
+
   if (entry.name === "draft_profile") {
     const draftId = output.draft_id;
     if (draftId === undefined) return null;
@@ -94,7 +122,7 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
 }
 
 /**
- * A proposed Set change, read back live so the buttons tell the truth.
+ * A proposed Set change or first recipe, read back live so the buttons tell the truth.
  *
  * The tool's own output is a snapshot of the moment it was called, and this
  * card is read again every time the conversation is scrolled to — days later,
@@ -112,7 +140,7 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
   const row = proposals.data?.items.find((item) => item.id === proposal.proposalId);
   if (!row) {
     return (
-      <div className="m-2 mt-0" data-testid="propose-card-set_version">
+      <div className="m-2 mt-0" data-testid={`propose-card-${proposal.kind}`}>
         <p className="rounded-md border border-primary/40 bg-primary/5 p-2 text-sm">
           {proposal.label}
           <span className="block text-muted-foreground text-xs">{proposal.detail}</span>
@@ -121,7 +149,7 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
     );
   }
   return (
-    <div className="m-2 mt-0" data-testid="propose-card-set_version">
+    <div className="m-2 mt-0" data-testid={`propose-card-${proposal.kind}`}>
       <ProposalCard setId={setId} proposal={row} />
     </div>
   );
@@ -129,7 +157,11 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
 
 export function ProposeCard({ proposal }: { proposal: Proposal }) {
   const Icon = proposal.icon;
-  if (proposal.kind === "set_version" && proposal.setId && proposal.proposalId) {
+  if (
+    (proposal.kind === "set_version" || proposal.kind === "initial_recipe") &&
+    proposal.setId &&
+    proposal.proposalId
+  ) {
     return <ProposedChange proposal={proposal} />;
   }
   return (
