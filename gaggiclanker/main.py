@@ -400,9 +400,9 @@ async def _start(app: FastAPI, db: Database) -> None:
 
     # The chat and what its tools may use, built before the machine connection
     # exists and without it. A tool reads and proposes, so it is handed the
-    # proposal half of drafts (create one; never push, never roll back) and a
-    # starting-point service built over that same half, and nothing on this
-    # side of the app holds the connection, its client or a service that does.
+    # proposal half of drafts (create one; never push, never roll back), and
+    # nothing on this side of the app holds the connection, its client or a
+    # service that does.
     # A settings change that rebuilds the connection is nothing to them.
     app.state.draft_proposals = DraftProposals(db, settings_service)
 
@@ -420,8 +420,8 @@ async def _start(app: FastAPI, db: Database) -> None:
 
     # App-scoped for the reason the analyzer is: it holds the cancel event of
     # every run in flight, and a per-request copy would make the cancel button a
-    # no-op. It reaches into the analyzer, the draft proposals and the
-    # starting-point service for the three tools that queue or create work.
+    # no-op. It reaches into the analyzer and the draft proposals for the
+    # tools that queue or create work.
     app.state.chat = ChatRunner(
         db,
         app.state.llm,
@@ -430,7 +430,6 @@ async def _start(app: FastAPI, db: Database) -> None:
         bus=app.state.events,
         analyzer=app.state.analyzer,
         drafts=app.state.draft_proposals,
-        starting=app.state.starting,
         knowledge=app.state.knowledge,
         tasks=app.state.tasks,
         rate_limits=app.state.rate_limits,

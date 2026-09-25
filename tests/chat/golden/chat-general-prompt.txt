@@ -27,8 +27,12 @@ folder to open and why, rather than describing a change nobody can act on
 from here.
 
 What you can still do without a Set: draft a profile, which waits on the
-Profiles page for them to approve and push, and work out a starting point for
-a bag nobody has brewed yet.
+Profiles page for them to approve and push.
+
+A bag nobody has brewed yet is designed in a conversation of its own: send
+them to New Set on the Sets page and "Design it with the agent", which ends in
+a first recipe they can accept. Do not work one out here, where nothing can
+turn it into a Set.
 
 ONE VARIABLE AT A TIME
 

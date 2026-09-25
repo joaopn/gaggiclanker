@@ -684,8 +684,8 @@ push it, and the prediction is recorded on the Set when you push that draft for
 that Set.
 
 A conversation in **General** is the other way round: the whole archive,
-read-only. It runs SQL over the curated views, compares shots across Sets, works
-out a starting point for a bag with no Set yet and drafts a profile — and it
+read-only. It runs SQL over the curated views, compares shots across Sets and
+drafts a profile, and sends a bag with no Set yet to New Set's design path — and it
 cannot change a Set, because a change to a Set is an argument that belongs in
 that Set's own room, where the ledger and the evidence are in front of the
 model. It will tell you which folder to open.
@@ -716,12 +716,12 @@ a profile change, and the tool says so); an insight about this Set stored
 profile draft that goes through the same schema, safety-policy and clamp checks
 as one typed by hand. One of the reads is `get_profile`, a profile version's
 whole document, so the agent reads the profile it is about to change.
-**Seventeen in General** — fifteen reads and two proposals, the profile draft
-and a starting point; `starting_point` is `propose` rather than a read because
-it spends provider tokens, and it is rate limited on the same bucket as the
-route it shortcuts. **Eight while a Set is being designed** (below). The
-registry holds twenty-two in total: ten both kinds have, ten that belong to one
-kind or the other, `propose_initial_recipe`, which only a design has, and
+**Fifteen in General** — fourteen reads and one proposal, the profile draft. A
+new bag is not worked out there: the General chat sends you to New Set →
+**Design it with the agent**, whose conversation ends in a first recipe you
+accept. **Eight while a Set is being designed** (below). The registry holds
+twenty in total: ten both kinds have, eight that belong to one kind or the
+other, `propose_initial_recipe`, which only a design has, and
 `run_analysis`, which no conversation is offered at all — the per-shot analysis
 is the other adviser, and it is on its way out. Nothing in the chat can touch
 the machine — pushing a profile and deleting a shot off the display stay
@@ -789,8 +789,9 @@ answer is relative and the card says so.
 Taking one creates the Set with `origin=starting_point`, and — when the option
 authored a whole profile rather than pointing at one you already have — a draft
 staged on the **Profiles** page. Nothing is pushed; you approve it. The Beans
-page has the same shortcut for the coffee you are looking at, and the chat can
-ask through the `starting_point` tool.
+page has the same shortcut for the coffee you are looking at. The chat does not
+ask for starting points: a run it started had nowhere to be taken, and
+designing a Set with the agent (below) is the conversation for a new bag.
 
 ### Designing a Set with the agent
 

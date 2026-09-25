@@ -22,6 +22,7 @@ from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.sets import grind_value, set_name
 from gaggiclanker.infra.errors import Conflict, Unprocessable
+from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.starting.models import StartingPointResult
@@ -606,3 +607,26 @@ def test_the_default_name_is_the_bag_on_the_grinder() -> None:
     assert set_name(" Kenya ", None) == "Kenya"
     assert set_name(None, "") == "New bean"
     assert len(set_name("x" * 300, "Niche")) == 200
+
+
+async def test_a_second_call_for_the_same_bag_gets_the_running_row(
+    fixture: Fixture, starting: StartingPointService, provider: object
+) -> None:
+    """The registry name is the idempotency rule, and it is claimed synchronously.
+
+    A second tab pressing "Ask for suggestions" for the same bean and grinder
+    gets the run already in flight, not a second provider call.
+    """
+    tasks = TaskRegistry()
+    try:
+        first, first_started = await starting.start(
+            bean_id=fixture.new_bean_id, grinder_id=fixture.grinder_id, tasks=tasks
+        )
+        second, second_started = await starting.start(
+            bean_id=fixture.new_bean_id, grinder_id=fixture.grinder_id, tasks=tasks
+        )
+        assert first_started is True
+        assert second_started is False
+        assert second.id == first.id
+    finally:
+        await tasks.cancel_all()

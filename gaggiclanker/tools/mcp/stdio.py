@@ -19,9 +19,9 @@ so the surface is narrowed where it is built instead.
 It opens the archive directly from ``DATA_DIR`` and wires nothing else: no
 machine connection, and nothing that could reach one. Proposing a profile draft
 needs only the database and the safety bounds, so ``draft_profile`` works here
-exactly as it does in the app. ``run_analysis`` and ``starting_point`` queue a
-provider call on the running application's task registry, and over stdio they
-return an error naming that rather than half-working.
+exactly as it does in the app. ``run_analysis`` queues a provider call on the
+running application's task registry, and over stdio it returns an error naming
+that rather than half-working.
 
 **No migrations are run here.** A second process migrating a database the
 application is also using is a race with a schema at the end of it; instead the

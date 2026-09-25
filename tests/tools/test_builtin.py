@@ -709,17 +709,12 @@ async def test_run_analysis_shares_the_analysis_rate_limit(
         await run_analysis(ctx, RunAnalysisInput(shot_id=archive.shots[0]))
 
 
-@pytest.mark.parametrize("name", ["starting_point", "draft_profile"])
 async def test_a_tool_that_needs_a_service_says_so_rather_than_crashing(
-    ctx: ToolContext, archive: Fixture, name: str
+    ctx: ToolContext, archive: Fixture
 ) -> None:
     """A context built without the service a tool needs has to say so readably."""
-    arguments = (
-        {"bean_id": archive.bean_id}
-        if name == "starting_point"
-        else {"base_version_id": archive.profile_version_id, "patch": {}, "reason": "x"}
+    data = await refuse(
+        ctx, "draft_profile", base_version_id=archive.profile_version_id, patch={}, reason="x"
     )
-
-    data = await refuse(ctx, name, **arguments)
 
     assert "running gaggiclanker application" in data["detail"]

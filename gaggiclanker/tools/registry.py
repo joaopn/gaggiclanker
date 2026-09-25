@@ -60,7 +60,6 @@ from gaggiclanker.tools.scope import ToolScope
 
 if TYPE_CHECKING:
     from gaggiclanker.drafts.proposals import DraftProposals
-    from gaggiclanker.starting.service import StartingPointService
 
 __all__ = [
     "DEFAULT_TOOL_TIMEOUT_S",
@@ -97,7 +96,7 @@ class ToolContext:
     """Everything a tool is allowed to reach, and who is asking.
 
     Services are optional because the two callers differ: the app has an
-    analyzer and a starting-point service on ``app.state``, the stdio MCP entry
+    analyzer on ``app.state``, the stdio MCP entry
     point opens a database and nothing else. A tool that needs one it was not
     given says so as an error value rather than raising ``AttributeError`` at
     the bottom of a stack the model cannot read.
@@ -130,9 +129,6 @@ class ToolContext:
     #: Creates drafts and nothing else. Typed, and only under ``TYPE_CHECKING``,
     #: so the wiring cannot hand a tool the draft service that pushes.
     drafts: DraftProposals | None = None
-    #: ``None`` over stdio MCP — a connection with database access only cannot
-    #: queue a provider call.
-    starting: StartingPointService | None = None
     #: Queues one background task by name. Never the full registry's type: see
     #: the class docstring for why that is a statement of intent and not a
     #: barrier. ``None`` over stdio MCP, where there is no application to queue

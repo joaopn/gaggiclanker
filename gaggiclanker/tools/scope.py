@@ -62,9 +62,8 @@ type ChatKind = Literal["general", "set"]
 #: What is deliberately absent is as much of the design as what is here.
 #: ``query_shots`` and ``describe_schema`` would be a way around the scope in
 #: one SELECT; ``list_sets``, ``list_beans`` and ``list_grinders`` would name
-#: other coffees; ``starting_point`` is a question about a bag with no Set yet,
-#: which is a General question; ``run_analysis`` is a second adviser that owes
-#: no prediction.
+#: other coffees; ``run_analysis`` is a second adviser that owes no
+#: prediction.
 SET_TOOLS: frozenset[str] = frozenset(
     {
         "compare_shots",
@@ -126,14 +125,12 @@ GENERAL_TOOLS: frozenset[str] = frozenset(
         "get_rules",
         "get_set",
         "get_shot",
-        "get_starting_point",
         "list_beans",
         "list_grinders",
         "list_profiles",
         "list_sets",
         "query_shots",
         "search_knowledge",
-        "starting_point",
     }
 )
 

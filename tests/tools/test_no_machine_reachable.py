@@ -59,7 +59,6 @@ from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.notes.writeback import writeback_task_name
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
-from gaggiclanker.starting.service import starting_point_task_name
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
@@ -266,7 +265,6 @@ async def test_nothing_the_chat_hands_a_tool_reaches_the_machine(
         ctx = app.state.chat.tool_context(scope=scope, run_id=None)
 
         assert isinstance(ctx.drafts, DraftProposals)
-        assert ctx.starting is app.state.starting
         assert machine_paths(ctx, label=label) == []
     # The runner itself, too: it is what builds a context per run.
     assert machine_paths(app.state.chat, label="runner") == []
@@ -516,28 +514,13 @@ def test_the_mcp_command_itself_does_not_import_the_device_layer() -> None:
     assert loaded == []
 
 
-async def _await_named(app: FastAPI, name: str) -> None:
-    """Let a queued run reach its stored outcome before the app shuts down.
-
-    Through the app's registry rather than through ``ctx.tasks``: a context only
-    spawns, and reading a task back out of one is the thing a tool must not be
-    able to do.
-    """
-    task = app.state.tasks.get(name)
-    if task is not None:
-        async with asyncio.timeout(10):
-            await asyncio.gather(task, return_exceptions=True)
-
-
 async def test_every_propose_tool_still_works_from_the_chat_context(
     connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
     app, client, fixture = connected
     # Each proposal is dispatched in a conversation that has it: proposing a Set
-    # version belongs in that Set's own chat, and a starting point is a question
-    # about a bag with no Set yet.
+    # version belongs in that Set's own chat.
     ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(fixture.set_id), run_id=None)
-    general = app.state.chat.tool_context(scope=ToolScope(), run_id=None)
     proposers = {spec.name for spec in registry.specs(frozenset({"propose"}))}
     assert proposers == {
         "draft_profile",
@@ -545,7 +528,6 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
         "propose_set_version",
         "record_insight",
         "run_analysis",
-        "starting_point",
     }
 
     drafted = await registry.dispatch(
@@ -584,12 +566,6 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert learned.ok, learned.data
     assert learned.data["confirmed"] is False
 
-    started = await registry.dispatch(
-        general, "starting_point", {"bean_id": fixture.bean_id, "grinder_id": fixture.grinder_id}
-    )
-    assert started.ok, started.data
-    await _await_named(app, starting_point_task_name(fixture.bean_id, fixture.grinder_id))
-
     # And the initial recipe, in the conversation of a Set being designed.
     designed = await SetsRepository(app.state.db).create_design(
         SetWrite(name="Designed", bean_id=fixture.bean_id, grinder_id=fixture.grinder_id),
@@ -613,10 +589,10 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert recipe.ok, recipe.data
 
 
-async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
+async def test_the_stdio_context_proposes_drafts(
     tmp_path: Path,
 ) -> None:
-    """Drafting needs the archive and the bounds; queueing a provider call needs the app."""
+    """Drafting needs the archive and the bounds, and nothing that reaches the machine."""
     db = Database(tmp_path / "gaggiclanker.db")
     await db.connect()
     try:
@@ -624,7 +600,6 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
         fixture = await build_fixture(db)
         settings = SettingsService(SettingsRepository(db))
         ctx = stdio_tool_context(db, settings, scope=ToolScope.for_thread(fixture.set_id))
-        general = stdio_tool_context(db, settings, scope=ToolScope())
 
         drafted = await registry.dispatch(
             ctx,
@@ -649,9 +624,5 @@ async def test_the_stdio_context_proposes_drafts_and_says_what_it_cannot_queue(
             )
         ).ok
         assert (await registry.dispatch(ctx, "record_insight", {"text": "Noted."})).ok
-
-        outcome = await registry.dispatch(general, "starting_point", {"bean_id": fixture.bean_id})
-        assert outcome.status == "error"
-        assert "running gaggiclanker application" in outcome.error
     finally:
         await db.close()

@@ -57,14 +57,12 @@ def test_a_general_conversation_has_exactly_these_tools() -> None:
             "get_rules",
             "get_set",
             "get_shot",
-            "get_starting_point",
             "list_beans",
             "list_grinders",
             "list_profiles",
             "list_sets",
             "query_shots",
             "search_knowledge",
-            "starting_point",
         }
     )
 
@@ -124,6 +122,19 @@ def test_a_general_conversation_cannot_change_a_set() -> None:
 
     for name in ("propose_set_version", "record_insight"):
         assert not scope.allows(name), name
+
+
+@pytest.mark.parametrize("name", ["starting_point", "get_starting_point"])
+def test_no_conversation_can_ask_for_a_starting_point(name: str) -> None:
+    """A run started from a chat had no screen that could accept it.
+
+    A bag nobody has brewed is designed in a Set of its own, and the New Set
+    dialog's suggestions accept the run they start. So neither tool exists, in
+    any scope or over MCP.
+    """
+    assert registry.get(name) is None
+    for scope in (ToolScope(), ToolScope.for_thread(3), ToolScope.for_thread(3, designing=True)):
+        assert name not in scope.tools
 
 
 def test_the_kind_follows_the_thread_s_two_columns() -> None:

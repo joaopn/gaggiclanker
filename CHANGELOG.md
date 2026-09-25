@@ -10,6 +10,18 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The General chat no longer asks for starting points
+
+- **The `starting_point` and `get_starting_point` chat tools are gone.** The
+  General chat could ask for three starting recipes for a new bag and tell you
+  to accept one, but no screen could take a run the chat had started: the New
+  Set dialog takes only the suggestions it asked for itself. The tokens were
+  spent and the options sat unused. When you ask about a bag nobody has brewed,
+  the General chat now sends you to New Set → **Design it with the agent**,
+  which ends in a first recipe you accept. **Ask for suggestions** in the New
+  Set dialog, and the Beans page's shortcut, work as before; runs already
+  stored stay readable at `GET /api/starting-points/{id}`.
+
 ### A profile drafted in a Set's conversation is pushed for that Set
 
 - **The draft card can now push a Set's draft for its Set, and does so by

@@ -65,7 +65,6 @@ from gaggiclanker.tools.scope import ToolScope
 
 if TYPE_CHECKING:
     from gaggiclanker.drafts.proposals import DraftProposals
-    from gaggiclanker.starting.service import StartingPointService
 
 __all__ = [
     "CHAT_EVENT",
@@ -164,7 +163,6 @@ class ChatRunner:
         bus: SseEventBus | None = None,
         analyzer: Any = None,
         drafts: DraftProposals | None = None,
-        starting: StartingPointService | None = None,
         knowledge: Any = None,
         tasks: TaskRegistry | None = None,
         rate_limits: Any = None,
@@ -175,11 +173,10 @@ class ChatRunner:
         self.tools = tools
         self.bus = bus
         self.analyzer = analyzer
-        #: The proposal half of drafts, and a starting-point service built over
-        #: it. Neither holds the machine connection: this runner hands them to
-        #: tools a model drives, and pushing stays with the routes.
+        #: The proposal half of drafts. It does not hold the machine connection:
+        #: this runner hands it to tools a model drives, and pushing stays with
+        #: the routes.
         self.drafts = drafts
-        self.starting = starting
         self.knowledge = knowledge
         self.tasks = tasks
         self.rate_limits = rate_limits
@@ -457,7 +454,6 @@ class ChatRunner:
             knowledge=self.knowledge,
             analyzer=self.analyzer,
             drafts=self.drafts,
-            starting=self.starting,
             tasks=self.tasks,
             rate_limits=self.rate_limits,
             scope=scope,

@@ -404,20 +404,6 @@ def test_no_scope_at_all_is_a_general_server_and_starts(
     assert result.returncode == 0, result.stderr
 
 
-async def test_a_tool_that_needs_the_running_application_says_so(
-    archive_dir: tuple[Path, Fixture],
-) -> None:
-    """Over stdio there is a database and nothing else, and that has to read well."""
-    data_dir, fixture = archive_dir
-    async with AsyncExitStack() as stack:
-        session = await session_for(stack, data_dir)
-
-        result = await session.call_tool("starting_point", {"bean_id": fixture.bean_id})
-
-    assert result.is_error is True
-    assert "running gaggiclanker application" in str(result.content)
-
-
 async def test_a_profile_draft_can_be_proposed_over_stdio(
     archive_dir: tuple[Path, Fixture],
 ) -> None:
