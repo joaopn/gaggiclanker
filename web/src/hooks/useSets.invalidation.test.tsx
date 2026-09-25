@@ -6,10 +6,11 @@ import {
   useRollbackSet,
   useSetVersionOutcome,
   useSetVersionPrediction,
+  useStartDesign,
 } from "@/hooks/useSets";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { designProposal, proposal, version } from "@/test/setsFixtures";
+import { designProposal, proposal, setRow, version } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -23,6 +24,7 @@ const {
   rollbackSet,
   acceptSetProposal,
   declineSetProposal,
+  designSet,
 } = vi.hoisted(() => ({
   setVersionPrediction: vi.fn(),
   setVersionOutcome: vi.fn(),
@@ -30,6 +32,7 @@ const {
   rollbackSet: vi.fn(),
   acceptSetProposal: vi.fn(),
   declineSetProposal: vi.fn(),
+  designSet: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -39,6 +42,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   rollbackSet,
   acceptSetProposal,
   declineSetProposal,
+  designSet,
 }));
 
 beforeEach(() => {
@@ -51,6 +55,11 @@ beforeEach(() => {
   declineSetProposal.mockResolvedValue({
     proposal: proposal({ status: "declined" }),
     version: null,
+  });
+  designSet.mockResolvedValue({
+    set: setRow({ id: 6, designing: true }),
+    version: version({ id: 60, set_id: 6 }),
+    thread_id: 12,
   });
 });
 
@@ -192,6 +201,26 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     expect(keys).toContainEqual(queryKeys.chat.thread("12"));
     expect(keys).toContainEqual(queryKeys.drafts.all);
     expect(keys).not.toContainEqual(queryKeys.sets.all);
+  });
+
+  it("starting a design reaches the Sets list and the conversations, and nothing else", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useStartDesign());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      bean_id: 1,
+      grinder_id: 1,
+      name: null,
+      fork_profile_version_id: null,
+      usual_grind: "",
+      goal: "",
+    });
+
+    await waitFor(() => expect(keys.length).toBe(2));
+    // A card on the Sets page and a folder with a thread on the Chat page. No
+    // recipe exists yet, so no Set page, chart or shot has anything new.
+    expect(keys).toContainEqual(["sets", "list"]);
+    expect(keys).toContainEqual(queryKeys.chat.threads());
   });
 
   it("a roll back sweeps the Sets, and nothing else", async () => {

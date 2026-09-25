@@ -14,6 +14,7 @@ import {
   createSet,
   declineSetProposal,
   deleteJudgement,
+  designSet,
   getSet,
   getSetProposals,
   getSets,
@@ -32,6 +33,8 @@ import type {
   ProfileMatchSummary,
   RollbackWrite,
   SetCreate,
+  SetDesignCreate,
+  SetDesignCreated,
   SetDetailData,
   SetListData,
   SetProposal,
@@ -48,6 +51,7 @@ import type {
 } from "@/api/types";
 import {
   invalidateChatThread,
+  invalidateChatThreads,
   invalidateDrafts,
   invalidateSetDetail,
   invalidateSetList,
@@ -200,6 +204,27 @@ export function useCreateSet(): UseMutationResult<SetRow, Error, SetCreate> {
       // A new Set is active by default, so the machine's other Set just lost
       // the flag its card renders.
       void invalidateShots(queryClient);
+    },
+  });
+}
+
+/**
+ * Start a Set to be designed in its own conversation.
+ *
+ * A new Set and a new conversation, and nothing else: the Sets list gains a
+ * card and the Chat page a folder with a thread in it, so those two lists are
+ * read again. No version with a recipe exists yet, so no chart and no shot is
+ * touched.
+ */
+export function useStartDesign(): UseMutationResult<SetDesignCreated, Error, SetDesignCreate> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: designSet,
+    onSuccess: (created) => toast.success(`Started designing "${created.set.name}"`),
+    onError: (error) => toast.error(`Could not start the design: ${error.message}`),
+    onSettled: () => {
+      void invalidateSetList(queryClient);
+      void invalidateChatThreads(queryClient);
     },
   });
 }

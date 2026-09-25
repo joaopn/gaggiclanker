@@ -78,6 +78,8 @@ import type {
   ProposalDecline,
   RollbackWrite,
   SetCreate,
+  SetDesignCreate,
+  SetDesignCreated,
   SetDetailData,
   SetListData,
   SetProposalDecision,
@@ -798,6 +800,19 @@ export async function getSet(id: number): Promise<SetDetailData> {
 
 export async function createSet(body: SetCreate): Promise<SetRow> {
   return fetchApi<SetRow>("/sets", { method: "POST", body: JSON.stringify(body) });
+}
+
+/**
+ * A Set with a bean and a grinder and no recipe yet, and version 1's chat.
+ *
+ * The recipe is worked out in that conversation: the answer carries the thread
+ * the page goes to next. Nothing is proposed, drafted or sent anywhere by it.
+ */
+export async function designSet(body: SetDesignCreate): Promise<SetDesignCreated> {
+  return fetchApi<SetDesignCreated>("/sets/design", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /**

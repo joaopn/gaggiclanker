@@ -289,6 +289,20 @@ describe("BeansPage", () => {
     await waitFor(() => expect(screen.getByLabelText("Bean")).toHaveValue("1"));
   });
 
+  it("offers designing it with the agent from the same dialog, on that coffee", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<BeansPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Start a Set from Ethiopia Guji" }));
+    await waitFor(() => expect(screen.getByLabelText("Bean")).toHaveValue("1"));
+    await user.click(screen.getByTestId("design-with-agent"));
+
+    // The bag is picked; the grinder is the one thing left before it can start.
+    expect(await screen.findByTestId("design-needs-grinder")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Grinder"), "1");
+    expect(screen.getByTestId("start-designing")).toBeEnabled();
+  });
+
   it("does not offer the shortcut on an archived coffee", async () => {
     // Archiving is how a coffee you have stopped buying leaves the pickers,
     // and a shortcut that put it back in one would be the single path around

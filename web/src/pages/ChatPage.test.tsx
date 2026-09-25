@@ -376,6 +376,24 @@ describe("ChatPage", () => {
     await waitFor(() => expect(sendChatMessage).toHaveBeenCalledWith(2, "what is a 1:2 ratio?"));
   });
 
+  it("follows a run that is already going when it loads", async () => {
+    // What the New Set dialog's design path relies on: it sends the first
+    // message, then comes here, and the answer is already being written.
+    getChatThread.mockResolvedValue({
+      ...DETAIL,
+      runs: [...DETAIL.runs, { ...DETAIL.runs[0], id: 31, status: "running", finished_at: null }],
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    expect(await screen.findByRole("button", { name: /stop/i })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(useSse).toHaveBeenCalledWith(
+        expect.stringContaining("/chat/runs/31/stream"),
+        expect.any(Function),
+      ),
+    );
+  });
+
   it("cancels the run in flight", async () => {
     const user = setupUser();
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });

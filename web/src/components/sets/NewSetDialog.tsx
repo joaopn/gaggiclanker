@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import type { ProfileVersionSummary, SetCreate } from "@/api/types";
+import { useNavigate } from "react-router-dom";
+import type { ProfileVersionSummary, SetCreate, SetDesignCreate } from "@/api/types";
 import { StartingPointStep } from "@/components/sets/StartingPointStep";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { useProfileVersions } from "@/hooks/useArchive";
 import { useBeans, useGrinders } from "@/hooks/useCatalog";
-import { useCreateSet } from "@/hooks/useSets";
+import { useSendChatMessage } from "@/hooks/useChat";
+import { useCreateSet, useStartDesign } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
 import { beanLabel } from "@/lib/sets";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,14 @@ import { cn } from "@/lib/utils";
  * opening it costs no retyping, and closing it again costs nothing either.
  * It is self-contained (`SuggestStartingPoint` below plus `StartingPointStep`)
  * so the form stands on its own without it.
+ *
+ * **Designing it with the agent is the third path**, folded the same way. It
+ * reads the same bean, name, grinder and profile — the profile as the one to
+ * fork from — and adds only what the form lacks: the usual grind and what the
+ * person wants from the coffee. It creates a Set with no recipe yet and goes
+ * to that Set's own conversation, where the recipe is worked out; the form's
+ * grind, dose, yield and intent are not sent, because that is what the
+ * conversation is for.
  */
 
 const FIELD = cn(
@@ -54,10 +64,12 @@ type Draft = {
   intent: string;
   /**
    * What they normally grind espresso at. Never sent to `POST /api/sets` — it
-   * is an input to the suggestion, not a fact about the Set — which is why
-   * `toCreateBody` ignores it.
+   * is an input to the suggestion and the design, not a fact about the Set —
+   * which is why `toCreateBody` ignores it.
    */
   usualGrind: string;
+  /** "What do you want from it?": the design's brief, and its first message. */
+  goal: string;
   /**
    * Which recipe numbers a profile filled, and with what. Kept on the draft
    * rather than in a state of its own so a profile pick reads and writes both
@@ -76,8 +88,58 @@ const EMPTY: Draft = {
   targetYieldG: "",
   intent: "",
   usualGrind: "",
+  goal: "",
   filled: { targetYieldG: null },
 };
+
+/** How long the design's goal may be, as the route caps it. */
+export const GOAL_MAX = 2000;
+
+/**
+ * The first message of a design conversation when no goal was typed.
+ *
+ * Fixed, so the agent starts by asking: its opening context already holds the
+ * bean, the grinder, the fork source and this bean's other Sets, and a person
+ * who had nothing particular to say should not have to invent a sentence.
+ */
+export const DESIGN_OPENER = "Help me design this Set.";
+
+/**
+ * The name a design gets when none was typed: "<bean> on the <grinder>".
+ *
+ * The server's rule, said on screen before the press: the grinder is what
+ * tells two Sets of one bag apart, and the form's own default (the bag alone)
+ * is not what a design is called. Null until both are picked.
+ */
+export function designName(
+  beanName: string | undefined,
+  grinderName: string | undefined,
+): string | null {
+  const bean = beanName?.trim();
+  const grinder = grinderName?.trim();
+  if (!bean || !grinder) return null;
+  return `${bean} on the ${grinder}`.slice(0, 200);
+}
+
+/**
+ * `POST /api/sets/design`, from the same draft the form holds.
+ *
+ * The name only when one was typed: left empty, the server calls it "<bean> on
+ * the <grinder>", the name every Set from a suggestion gets, which tells two
+ * Sets of one bag on two grinders apart. The profile picker is read as the
+ * one to fork from. The grind, dose, yield and intent are left out on purpose:
+ * working those out is what the conversation is for.
+ */
+export function toDesignBody(draft: Draft): SetDesignCreate {
+  return {
+    bean_id: Number(draft.beanId),
+    grinder_id: Number(draft.grinderId),
+    name: draft.name.trim() || null,
+    fork_profile_version_id: draft.profileVersionId ? Number(draft.profileVersionId) : null,
+    usual_grind: draft.usualGrind.trim(),
+    goal: draft.goal.trim(),
+  };
+}
 
 function toNumber(value: string): number | null {
   const parsed = Number.parseFloat(value);
@@ -217,8 +279,12 @@ export function NewSetDialog({
   const grinders = useGrinders();
   const versions = useProfileVersions({ limit: 200 });
   const create = useCreateSet();
+  const design = useStartDesign();
+  const send = useSendChatMessage();
+  const navigate = useNavigate();
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [designOpen, setDesignOpen] = useState(false);
   // The starting-point run this dialog is following, if any. Held here rather
   // than inside the suggestion section so folding it and opening it again
   // shows the options again instead of an empty form and a second paid call.
@@ -261,7 +327,28 @@ export function NewSetDialog({
   function reset() {
     setDraft(EMPTY);
     setSuggestOpen(false);
+    setDesignOpen(false);
     setRunId(undefined);
+  }
+
+  async function startDesign() {
+    if (!draft.beanId || !draft.grinderId || design.isPending || send.isPending) return;
+    const created = await attempt(() => design.mutateAsync(toDesignBody(draft)));
+    // Refused — a stale bean, grinder or profile id is the usual cause — and
+    // the dialog keeps the draft, exactly as the form's own submit does.
+    if (!created) return;
+    // Through the chat's own send path, so the Chat page finds a run already
+    // going when it loads and follows it. A send that fails still goes on:
+    // the Set and its conversation exist, and the composer is right there.
+    await attempt(() =>
+      send.mutateAsync({
+        threadId: created.thread_id,
+        message: draft.goal.trim() || DESIGN_OPENER,
+      }),
+    );
+    reset();
+    onOpenChange(false);
+    navigate(`/chat?thread=${created.thread_id}`);
   }
 
   const chosenBean = beans.data?.items.find((bean) => String(bean.id) === draft.beanId);
@@ -466,6 +553,25 @@ export function NewSetDialog({
             onCreated?.(choice.setId);
           }}
         />
+
+        <DesignWithAgent
+          open={designOpen}
+          onOpenChange={setDesignOpen}
+          beanChosen={Boolean(draft.beanId)}
+          grinderChosen={Boolean(draft.grinderId)}
+          forkLabel={chosenProfile?.label ?? null}
+          defaultName={
+            // Only while nothing is typed: a typed name is sent as it is.
+            draft.name.trim() ? null : designName(chosenBean?.name, chosenGrinder?.name)
+          }
+          grindUnit={chosenGrinder?.step_unit ?? "clicks"}
+          usualGrind={draft.usualGrind}
+          onUsualGrindChange={(value) => set("usualGrind", value)}
+          goal={draft.goal}
+          onGoalChange={(value) => set("goal", value)}
+          pending={design.isPending || send.isPending}
+          onStart={() => void startDesign()}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -508,6 +614,152 @@ function SuggestStartingPoint({
           section runs no query and cannot start a paid call. */}
       <div id={regionId} className="mt-2" hidden={!open} data-testid="suggest-region">
         {open ? <StartingPointStep {...step} /> : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Design it with the agent, folded under the form beside the suggestion.
+ *
+ * Outside the `<form>` for the same reason the suggestion is: Enter in its
+ * fields must not start a Set by hand. Folded, it mounts nothing.
+ *
+ * **The grinder is required here** and nowhere else in the dialog. A grind is
+ * only ever a number on one grinder's dial, and the design is where the number
+ * gets worked out; pre-ground coffee has the form and the suggestion, and the
+ * section says so rather than leaving a disabled button to explain itself.
+ */
+function DesignWithAgent({
+  open,
+  onOpenChange,
+  beanChosen,
+  grinderChosen,
+  forkLabel,
+  defaultName,
+  grindUnit,
+  usualGrind,
+  onUsualGrindChange,
+  goal,
+  onGoalChange,
+  pending,
+  onStart,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  beanChosen: boolean;
+  grinderChosen: boolean;
+  /** The profile picked above, read here as the one to fork from. */
+  forkLabel: string | null;
+  /**
+   * What the server will call the Set when no name was typed, or null when one
+   * was. The form's "Call it" shows the bag's name, which is the plain form's
+   * default; a design is named after the grinder too.
+   */
+  defaultName: string | null;
+  grindUnit: string;
+  usualGrind: string;
+  onUsualGrindChange: (value: string) => void;
+  goal: string;
+  onGoalChange: (value: string) => void;
+  pending: boolean;
+  onStart: () => void;
+}) {
+  const regionId = useId();
+  const grindId = useId();
+  const goalId = useId();
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <div className="border-t pt-3">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="-ml-2 gap-1"
+        aria-expanded={open}
+        aria-controls={regionId}
+        data-testid="design-with-agent"
+        onClick={() => onOpenChange(!open)}
+      >
+        <Chevron className="size-3.5" aria-hidden="true" />
+        Design it with the agent
+      </Button>
+      {/* Always in the document so `aria-controls` resolves; the contents
+          mount only when open. */}
+      <div id={regionId} className="mt-2" hidden={!open} data-testid="design-region">
+        {open ? (
+          <div className="space-y-3" data-testid="design-step">
+            <p className="text-muted-foreground text-xs">
+              Opens this Set's own conversation, where the agent works out the first recipe with
+              you: it reads your other Sets on this bean, similar Sets on this grinder and the
+              profile you fork, asks what it needs, and proposes a profile of its own with the
+              grind, dose and yield as one card. Nothing exists until you accept it. It uses the
+              bean, name and grinder above; the grind, dose, yield and intent above are not sent —
+              the agent works those out with you.
+            </p>
+            {defaultName ? (
+              <p className="text-sm" data-testid="design-name">
+                Called “{defaultName}” unless you name it above.
+              </p>
+            ) : null}
+            <p className="text-sm" data-testid="design-fork">
+              <span className="text-muted-foreground">Fork from: </span>
+              {forkLabel ?? "no profile picked above — the agent starts from one in the library"}
+            </p>
+            <div>
+              <label htmlFor={grindId} className="mb-1 block text-muted-foreground text-xs">
+                What do you normally grind espresso at? ({grindUnit})
+              </label>
+              <input
+                id={grindId}
+                className={FIELD}
+                value={usualGrind}
+                placeholder="22"
+                onChange={(event) => onUsualGrindChange(event.target.value)}
+              />
+              <p className="mt-1 text-muted-foreground text-xs">
+                Optional: without it, or a past Set on this grinder, the agent can only say "a
+                little finer", not a number on your dial.
+              </p>
+            </div>
+            <div>
+              <label htmlFor={goalId} className="mb-1 block text-muted-foreground text-xs">
+                What do you want from it? (optional)
+              </label>
+              <textarea
+                id={goalId}
+                rows={3}
+                maxLength={GOAL_MAX}
+                className={cn(FIELD, "h-auto py-1.5")}
+                value={goal}
+                placeholder="more body than my other Set of this bean, and try a bloom"
+                onChange={(event) => onGoalChange(event.target.value)}
+              />
+              <p className="mt-1 text-muted-foreground text-xs">
+                Sent as your first message. Left empty, the conversation opens with "{DESIGN_OPENER}
+                " and the agent starts by asking.
+              </p>
+            </div>
+            {grinderChosen ? null : (
+              <p className="text-muted-foreground text-xs" data-testid="design-needs-grinder">
+                Pick a grinder above to design with the agent: a grind is only a number on one
+                grinder's dial. For pre-ground coffee, start the Set with the form or ask for a
+                suggestion.
+              </p>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              className="w-full gap-1.5"
+              data-testid="start-designing"
+              disabled={!beanChosen || !grinderChosen || pending}
+              onClick={onStart}
+            >
+              <MessageSquare className="size-3.5" aria-hidden="true" />
+              {pending ? "Starting…" : "Start designing"}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

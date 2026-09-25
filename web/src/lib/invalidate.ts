@@ -82,6 +82,13 @@ export function invalidateSetProposals(queryClient: QueryClient, setId: string):
     .then(() => undefined);
 }
 
+/** The conversation list: what the Chat page's folders are drawn from. */
+export function invalidateChatThreads(queryClient: QueryClient): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: queryKeys.chat.threads() })
+    .then(() => undefined);
+}
+
 /** One conversation's transcript and runs. */
 export function invalidateChatThread(queryClient: QueryClient, threadId: string): Promise<void> {
   return queryClient
