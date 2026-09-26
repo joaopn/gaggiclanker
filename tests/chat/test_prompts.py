@@ -124,8 +124,11 @@ async def test_the_design_prompt_says_what_designing_is_and_is_not(
     # The Sets are evidence and outrank the rules; the profile is new.
     assert "THEY OUTRANK THE RULES" in system
     assert "THE PROFILE IS NEW, SO NAME IT" in system
-    # And afterwards it is the Set's ordinary conversation.
-    assert "becomes the Set's ordinary one" in system
+    # And it is the design and nothing else: version 1's shots are analysed in
+    # a new conversation, and the person is told so before they accept.
+    assert "becomes the Set's ordinary one" not in system
+    assert "one conversation is one version's work" in system
+    assert "this design conversation is done" in system
     # None of the experiment's rules, which do not apply to a baseline.
     assert "GRADE FIRST" not in system
 
@@ -158,6 +161,25 @@ async def test_the_set_prompt_says_what_a_grade_and_a_proposal_have_to_be(
     assert "never tell them to stop or to carry on" in system
     # And it knows it can see one Set.
     assert "this Set and nothing else" in system
+
+
+async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
+    prompts: PromptService,
+) -> None:
+    """One conversation is one version, and the person is told so when they accept.
+
+    The Accept button on a card in the chat sends a message that starts with
+    "Accepted:" (the web's `acceptedMessage`); this is what the agent is told to
+    do with it, for a change and for a first recipe alike, since the turn after
+    a design is accepted is answered by this prompt.
+    """
+    system = " ".join((await prompts.load(SET_CHAT_PROMPT, {"scope": ""})).system.split())
+
+    assert "WHEN THEY ACCEPT, THIS CONVERSATION IS DONE" in system
+    assert '"Accepted:"' in system
+    assert "they must start a new conversation" in system
+    assert "Discuss in chat on the Set page" in system
+    assert "first recipe was designed" in system
 
 
 async def test_the_general_prompt_sends_a_set_change_to_that_set_s_folder(
