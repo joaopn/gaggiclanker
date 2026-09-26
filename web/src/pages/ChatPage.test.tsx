@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "@/pages/ChatPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
@@ -24,6 +24,8 @@ const {
   sendChatMessage,
   cancelChatRun,
   getSets,
+  getSetProposals,
+  acceptSetProposal,
 } = vi.hoisted(() => ({
   getChatThreads: vi.fn(),
   getChatThread: vi.fn(),
@@ -34,6 +36,8 @@ const {
   sendChatMessage: vi.fn(),
   cancelChatRun: vi.fn(),
   getSets: vi.fn(),
+  getSetProposals: vi.fn(),
+  acceptSetProposal: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -46,6 +50,8 @@ vi.mock("@/api/client", async (importOriginal) => ({
   sendChatMessage,
   cancelChatRun,
   getSets,
+  getSetProposals,
+  acceptSetProposal,
 }));
 
 const THREAD = {
@@ -167,6 +173,7 @@ beforeEach(() => {
   });
   cancelChatRun.mockResolvedValue({ ...DETAIL.runs[0], id: 9, status: "cancelled" });
   getSets.mockResolvedValue({ items: SETS });
+  getSetProposals.mockResolvedValue({ items: [] });
 });
 
 describe("ChatPage folders", () => {
@@ -583,5 +590,185 @@ describe("ChatPage, a Set being designed", () => {
     expect(await screen.findByText("Grind two clicks finer.")).toBeInTheDocument();
     expect(getChatTools).not.toHaveBeenCalled();
     expect(screen.queryByTestId("chat-tools")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A card the agent proposed, answered from inside the conversation.
+ *
+ * The accept route knows nothing about chats, so without this the agent went on
+ * as if the card were still waiting, and nobody told the person that the new
+ * version is brewed and analysed in a new conversation. The page sends the
+ * button's message as the next turn, and holds it while an answer is still
+ * being written.
+ */
+/** The event handler the page gave the (stubbed) stream of one run, latest first. */
+function streamHandler(runId: number): (message: { data: unknown }) => void {
+  const calls = [...useSse.mock.calls].reverse();
+  const call = calls.find((args) => String(args[0]).includes(`/chat/runs/${runId}/stream`));
+  if (!call) throw new Error(`the page never followed run ${runId}`);
+  return call[1] as (message: { data: unknown }) => void;
+}
+
+describe("ChatPage, accepting a card in the conversation", () => {
+  const PROPOSED = {
+    ...DETAIL,
+    messages: [
+      ...DETAIL.messages,
+      {
+        ...DETAIL.messages[1],
+        id: 3,
+        content: "",
+        tool_calls: [{ id: "c1", name: "propose_set_version", arguments: {} }],
+      },
+      {
+        ...DETAIL.messages[1],
+        id: 4,
+        role: "tool",
+        content: "",
+        usage: null,
+        tool_results: [
+          {
+            id: "c1",
+            name: "propose_set_version",
+            ok: true,
+            content: JSON.stringify({ proposal_id: 5, set_id: 3, changed: ["the dose"] }),
+          },
+        ],
+      },
+    ],
+  };
+  const WAITING = {
+    id: 5,
+    set_id: 3,
+    kind: "change",
+    thread_id: 1,
+    base_version_id: 30,
+    base_version_no: 4,
+    base_is_current: true,
+    changes: [
+      { field: "dose_g", label: "Dose", before: "18 g", after: "18.5 g", from_profile: false },
+    ],
+    changed: ["the dose"],
+    combined_reason: "",
+    reason: "Half a gram more.",
+    prediction: "Compared to v4, a touch more body.",
+    compares_to_version_id: 30,
+    compares_to_version_no: 4,
+    status: "proposed",
+    readable: true,
+    draft_id: null,
+    decline_note: "",
+    resulting_version_id: null,
+    resulting_version_no: null,
+    created_at: "2026-03-01T10:00:10.000Z",
+    decided_at: null,
+  };
+
+  beforeEach(() => {
+    getChatThread.mockResolvedValue(PROPOSED);
+    getSetProposals.mockResolvedValue({ items: [WAITING] });
+    acceptSetProposal.mockResolvedValue({
+      proposal: { ...WAITING, status: "accepted", resulting_version_no: 5 },
+      version: { version_no: 5 },
+    });
+  });
+
+  it("tells the agent what was accepted, and follows its answer", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    const card = await screen.findByTestId("proposal-card");
+    await user.click(within(card).getByRole("button", { name: /Accept/ }));
+
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5));
+    await waitFor(() =>
+      expect(sendChatMessage).toHaveBeenCalledWith(
+        1,
+        "Accepted: your proposed change is now version 5 of this Set.",
+      ),
+    );
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("button", { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it("holds the message until the answer being written has finished", async () => {
+    const user = setupUser();
+    getChatThread.mockResolvedValue({
+      ...PROPOSED,
+      runs: [
+        ...PROPOSED.runs,
+        { ...PROPOSED.runs[0], id: 31, status: "running", finished_at: null },
+      ],
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    const card = await screen.findByTestId("proposal-card");
+    await screen.findByRole("button", { name: /stop/i });
+    await user.click(within(card).getByRole("button", { name: /Accept/ }));
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalled());
+    // Give the page every chance to send it early.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sendChatMessage).not.toHaveBeenCalled();
+
+    // The run in flight ends; the stored transcript no longer has it running.
+    getChatThread.mockResolvedValue(PROPOSED);
+    const onEvent = streamHandler(31);
+    act(() => onEvent({ data: { seq: 1, kind: "completed" } }));
+
+    await waitFor(() =>
+      expect(sendChatMessage).toHaveBeenCalledWith(
+        1,
+        "Accepted: your proposed change is now version 5 of this Set.",
+      ),
+    );
+
+    // And only once, however many times the run it started ends.
+    const followed = streamHandler(9);
+    act(() => followed({ data: { seq: 1, kind: "completed" } }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps it for its own conversation when the person moves to another", async () => {
+    const user = setupUser();
+    const running = {
+      ...PROPOSED,
+      runs: [
+        ...PROPOSED.runs,
+        { ...PROPOSED.runs[0], id: 31, status: "running", finished_at: null },
+      ],
+    };
+    const other = thread({ id: 2 });
+    getChatThreads.mockResolvedValue([THREAD, other]);
+    getChatThread.mockImplementation(async (id: number) =>
+      id === 2 ? { ...DETAIL, thread: other, messages: [], runs: [] } : running,
+    );
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    const card = await screen.findByTestId("proposal-card");
+    await screen.findByRole("button", { name: /stop/i });
+    await user.click(within(card).getByRole("button", { name: /Accept/ }));
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalled());
+
+    // Somewhere else, nothing is running there, and the message is not its.
+    await user.click(await screen.findByText("Conversation 2"));
+    await waitFor(() => expect(screen.queryByTestId("proposal-card")).not.toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sendChatMessage).not.toHaveBeenCalled();
+
+    // Back, with the answer that was being written now finished.
+    getChatThread.mockImplementation(async (id: number) =>
+      id === 2 ? { ...DETAIL, thread: other, messages: [], runs: [] } : PROPOSED,
+    );
+    await user.click(screen.getByText("Why is Guji sour?"));
+
+    await waitFor(() =>
+      expect(sendChatMessage).toHaveBeenCalledWith(
+        1,
+        "Accepted: your proposed change is now version 5 of this Set.",
+      ),
+    );
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 });

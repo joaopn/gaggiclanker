@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
+import { TellAgentContext } from "@/components/chat/tellAgent";
 import { designRecipe, ProposalCard } from "@/components/sets/ProposalCard";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { designProposal, proposal } from "@/test/setsFixtures";
@@ -67,6 +68,77 @@ describe("ProposalCard", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(3, 5);
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
     expect(String(toastSuccess.mock.calls[0][0])).toContain("Version 3 recorded");
+  });
+
+  it("tells the agent in the conversation which version the accepted change became", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    acceptSetProposal.mockResolvedValue({
+      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
+      version: { version_no: 3 },
+    });
+    renderWithQueryClient(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={3} proposal={proposal()} />
+      </TellAgentContext.Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    // The Set prompt recognises the turn by its first word.
+    await waitFor(() =>
+      expect(tell).toHaveBeenCalledWith(
+        "Accepted: your proposed change is now version 3 of this Set.",
+      ),
+    );
+    expect(tell).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells the agent the first recipe is version 1", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    acceptSetProposal.mockResolvedValue({
+      proposal: designProposal({ status: "accepted" }),
+      version: { version_no: 1 },
+    });
+    renderWithQueryClient(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={6} proposal={designProposal()} />
+      </TellAgentContext.Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    await waitFor(() =>
+      expect(tell).toHaveBeenCalledWith(
+        "Accepted: your first recipe is now version 1 of this Set.",
+      ),
+    );
+  });
+
+  it("tells the agent nothing when the accept is refused or the card is declined", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    acceptSetProposal.mockRejectedValue(
+      new ApiClientError("The Set has moved on.", { status: 409, code: "PROPOSAL_STALE" }),
+    );
+    declineSetProposal.mockResolvedValue({
+      proposal: proposal({ status: "declined" }),
+      version: null,
+    });
+    renderWithQueryClient(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={3} proposal={proposal()} />
+      </TellAgentContext.Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: /^Decline$/ }));
+    await user.click(screen.getByRole("button", { name: /Decline it/ }));
+    await waitFor(() => expect(declineSetProposal).toHaveBeenCalled());
+
+    expect(tell).not.toHaveBeenCalled();
   });
 
   it("asks why before declining, and declines with the note", async () => {

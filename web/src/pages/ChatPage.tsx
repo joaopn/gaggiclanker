@@ -1,8 +1,9 @@
 import { Send, Square } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { ThreadFolders } from "@/components/chat/ThreadFolders";
+import { TellAgentContext } from "@/components/chat/tellAgent";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
 } from "@/hooks/useChat";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSets } from "@/hooks/useSets";
+import { attempt } from "@/lib/mutations";
 
 /**
  * The chat, as a page.
@@ -205,6 +207,40 @@ export function ChatPage() {
     setRunId(result.run.id);
   };
 
+  // What a button in the transcript asked to say to the agent — an Accept on a
+  // card it proposed. Sent as the person's next message, so the agent answers
+  // it like any other turn and the transcript shows what it was answering.
+  // Held while a run is still going: the card is live in the answer being
+  // written, and a second run in the same conversation would be answered
+  // without the first one's end in its history. Held in a ref and taken out
+  // of it before sending, so it goes out exactly once: a piece of state cleared
+  // in the effect can still be read as set by the effect's next run (a render
+  // with the new run id and the old message was seen), and only the run guard
+  // would then stand between it and a second send. The counter is only what
+  // wakes the effect. It waits for its own conversation to be on screen with
+  // nothing running: the run id is only ever the selected conversation's, so a
+  // move to another one would otherwise release it into a run still going.
+  const heldForAgent = useRef<{ threadId: number; message: string } | null>(null);
+  const [toldCount, setToldCount] = useState(0);
+  const tellAgent = useCallback(
+    (message: string) => {
+      if (selected === null) return;
+      heldForAgent.current = { threadId: selected, message };
+      setToldCount((count) => count + 1);
+    },
+    [selected],
+  );
+  const sendMessage = send.mutateAsync;
+  useEffect(() => {
+    if (toldCount === 0 || runId !== null) return;
+    const told = heldForAgent.current;
+    if (told === null || told.threadId !== selected) return;
+    heldForAgent.current = null;
+    void attempt(() => sendMessage(told)).then((result) => {
+      if (result) setRunId(result.run.id);
+    });
+  }, [toldCount, runId, sendMessage, selected]);
+
   const busy = runId !== null;
 
   return (
@@ -271,12 +307,14 @@ export function ChatPage() {
             ) : thread.isLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : (
-              <ChatTranscript
-                messages={thread.data?.messages ?? []}
-                runs={thread.data?.runs ?? []}
-                permissions={permissions}
-                live={live}
-              />
+              <TellAgentContext.Provider value={tellAgent}>
+                <ChatTranscript
+                  messages={thread.data?.messages ?? []}
+                  runs={thread.data?.runs ?? []}
+                  permissions={permissions}
+                  live={live}
+                />
+              </TellAgentContext.Provider>
             )}
             <div ref={scrollAnchor} />
           </div>

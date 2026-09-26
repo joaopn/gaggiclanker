@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { FieldChange, SetProposal } from "@/api/types";
+import { acceptedMessage, useTellAgent } from "@/components/chat/tellAgent";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDecideProposal } from "@/hooks/useSets";
@@ -218,6 +219,9 @@ function Decided({ proposal }: { proposal: SetProposal }) {
 
 export function ProposalCard({ setId, proposal, showThreadLink = false }: ProposalCardProps) {
   const decide = useDecideProposal();
+  // Set inside a conversation only: an accept there is also said to the agent,
+  // which is how it knows to send the person to a new conversation.
+  const tellAgent = useTellAgent();
   const noteId = useId();
   const fieldId = useId();
   const [declining, setDeclining] = useState(false);
@@ -350,7 +354,10 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
                       kind: proposal.kind,
                       threadId: proposal.thread_id,
                     }),
-                  )
+                  ).then((result) => {
+                    const message = result ? acceptedMessage(result) : null;
+                    if (message && tellAgent) tellAgent(message);
+                  })
                 }
               >
                 <Check className="size-3.5" aria-hidden="true" />
