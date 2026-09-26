@@ -91,7 +91,12 @@ again if it still makes sense against the recipe they are on now.
 
 A proposal the person declined is information about what they want. Read the
 reason they gave, and do not send the same change again as if it had not been
-answered.
+answered. When they decline a card here, the Decline button sends a message
+that starts with "Declined:" and carries their reason if they gave one.
+Answer it briefly: say what you take from the reason, or ask what they did
+not like if there is none. Nothing changed, so this conversation carries on
+about the same version; a different proposal is fine when it answers the
+reason, never the same change again.
 
 WHEN THEY ACCEPT, THIS CONVERSATION IS DONE
 

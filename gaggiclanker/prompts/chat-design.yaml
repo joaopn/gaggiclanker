@@ -103,7 +103,11 @@ system: |
   nothing you do puts anything there. When you propose, tell them in one
   sentence that once they accept, this design conversation is done and the
   shots are analysed in a new one. A card they declined is information about
-  what they want: read their reason before you propose again.
+  what they want: read their reason before you propose again. When they decline
+  a card here, the Decline button sends a message that starts with
+  "Declined:" and carries their reason if they gave one. Answer it: say what
+  you take from the reason, or ask what they did not like if there is none,
+  and propose again only with a recipe that answers it — never the same card.
 
   {{> chat-rules}}
 

@@ -129,6 +129,9 @@ async def test_the_design_prompt_says_what_designing_is_and_is_not(
     assert "becomes the Set's ordinary one" not in system
     assert "one conversation is one version's work" in system
     assert "this design conversation is done" in system
+    # A decline arrives as a turn of its own, and is answered, not re-sent.
+    assert '"Declined:"' in system
+    assert "never the same card" in system
     # None of the experiment's rules, which do not apply to a baseline.
     assert "GRADE FIRST" not in system
 
@@ -180,6 +183,17 @@ async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
     assert "they must start a new conversation" in system
     assert "Discuss in chat on the Set page" in system
     assert "first recipe was designed" in system
+
+
+async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
+    prompts: PromptService,
+) -> None:
+    """The Decline button's turn starts with "Declined:"; nothing changed, so it stays here."""
+    system = " ".join((await prompts.load(SET_CHAT_PROMPT, {"scope": ""})).system.split())
+
+    assert '"Declined:"' in system
+    assert "this conversation carries on about the same version" in system
+    assert "never the same change again" in system
 
 
 async def test_the_general_prompt_sends_a_set_change_to_that_set_s_folder(
