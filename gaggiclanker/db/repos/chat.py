@@ -202,14 +202,26 @@ class ChatRepository(Repository):
         is argued in the same room as the first. "The conversation" is the most
         recently updated one, so a version somebody has started several
         conversations about continues in the one they were last in.
+
+        Except the conversation a Set's first recipe was designed in, once the
+        design is over. It belongs to version 1 as well, but one conversation is
+        one version's worth of work, and designing the recipe was that work: the
+        agent tells the person to start a new conversation to analyse the shots,
+        so Discuss on version 1 must not bring them back into the design. While
+        the Set is still being designed it is the room, and Continue designing
+        lands in it. "The design conversation" is one a first-recipe card was
+        proposed in — the only trace a design leaves on a thread.
         """
         async with self.db.transaction():
             resolved = await self._resolve_version(set_id, set_version_id)
             if isinstance(resolved, str):
                 return ThreadWriteResult(refused=resolved)
             existing = await self.db.fetch_value(
-                "SELECT id FROM chat_threads WHERE set_version_id = ? "
-                "ORDER BY updated_at DESC, id DESC LIMIT 1",
+                "SELECT t.id FROM chat_threads t JOIN sets s ON s.id = t.set_id "
+                "WHERE t.set_version_id = ? AND (s.designing = 1 OR NOT EXISTS ("
+                "  SELECT 1 FROM set_version_proposals p "
+                "  WHERE p.thread_id = t.id AND p.kind = 'design')) "
+                "ORDER BY t.updated_at DESC, t.id DESC LIMIT 1",
                 (resolved,),
             )
             if existing is None:

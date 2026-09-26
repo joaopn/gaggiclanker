@@ -332,6 +332,69 @@ async def test_accepting_an_initial_recipe_fills_version_1_and_appends_nothing(
     assert await proposals.accepted_threads(row.id) == {v1.id: thread.thread.id}
 
 
+async def test_discuss_on_version_1_leaves_the_design_conversation_once_accepted(
+    wired: Fixtures,
+) -> None:
+    """One conversation is one version's work, and the design was that work.
+
+    While the Set is being designed, opening version 1 continues the design;
+    once its card is accepted the agent tells the person to start a new
+    conversation, and Discuss must agree with it rather than land back in the
+    design. A conversation about version 1 started after that is continued.
+    """
+    row = await designed(wired)
+    chat = ChatRepository(wired.db)
+    draft_id, profile = await a_draft(wired, "Designed")
+    design_room = (await chat.open_thread(row.id)).thread
+    assert design_room is not None
+    again = (await chat.open_thread(row.id)).thread
+    assert again is not None and again.id == design_room.id
+    proposals = SetProposalsRepository(wired.db)
+    stored = (
+        await proposals.create(row.id, design(draft_id, profile, thread_id=design_room.id))
+    ).proposal
+    assert stored is not None
+    # Still designing: the card waits, and the design is still the room.
+    waiting = (await chat.open_thread(row.id)).thread
+    assert waiting is not None and waiting.id == design_room.id
+
+    assert (await proposals.accept(row.id, stored.id)).refused is None
+
+    fresh = (await chat.open_thread(row.id)).thread
+    assert fresh is not None and fresh.id != design_room.id
+    assert fresh.set_version_id == design_room.set_version_id
+    continued = (await chat.open_thread(row.id)).thread
+    assert continued is not None and continued.id == fresh.id
+
+
+async def test_discuss_still_continues_an_ordinary_conversation_with_a_change_in_it(
+    wired: Fixtures,
+) -> None:
+    """Only a first-recipe card marks the design: a change argued in a room keeps it."""
+    row = await wired.sets.create(
+        SetWrite(name="Guji", bean_id=wired.bean_id, grinder_id=wired.grinder_id),
+        SetVersionWrite(dose_g=18, target_yield_g=36),
+    )
+    chat = ChatRepository(wired.db)
+    room = (await chat.open_thread(row.id)).thread
+    assert room is not None
+    stored = (
+        await SetProposalsRepository(wired.db).create(
+            row.id,
+            ProposalWrite(
+                reason="Longer.",
+                patch=SetVersionPatch(target_yield_g=40),
+                prediction="Compared to v1, sweeter and 3 s longer.",
+                thread_id=room.id,
+            ),
+        )
+    ).proposal
+    assert stored is not None
+
+    again = (await chat.open_thread(row.id)).thread
+    assert again is not None and again.id == room.id
+
+
 async def test_accepting_is_refused_once_a_shot_is_filed_on_the_design(wired: Fixtures) -> None:
     row = await designed(wired)
     draft_id, profile = await a_draft(wired, "Designed")
