@@ -10,6 +10,21 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The agent hears when you accept its card
+
+- **Accept on a card in the chat now tells the agent.** It used to record the
+  version and say nothing to the conversation, so the agent went on as if the
+  card were still waiting. The button now sends a message as your next turn
+  ("Accepted: your proposed change is now version 5 of this Set.", or "your
+  first recipe is now version 1"), held until an answer still being written has
+  finished. Accepting on the Set page sends nothing.
+- **One conversation is one version, and the agent says so.** When a card is
+  accepted it tells you directly to start a new conversation (New under the Set,
+  or Discuss in chat) to brew and analyse the new version. That includes the
+  design: the conversation a first recipe was designed in no longer turns into
+  the Set's ordinary one, and Discuss in chat on version 1 opens a new
+  conversation instead of returning to the design.
+
 ### A large Set batch asks before it spends
 
 - **Analyse the un-analysed asks first when it would run more than ten

@@ -705,7 +705,10 @@ about today's recipe. Rows are labelled `v6`, and a version a later roll back
 stepped over is muted and says *dead end*. **Discuss in chat** on a Set, and the
 **Chat** link on every entry in the experiment log, open or continue that
 version's conversation with the question already typed — press either twice and
-you land in the same room.
+you land in the same room. **Accept** on a card in the conversation also tells
+the agent, as your next message ("Accepted: … version 5 of this Set"), and it
+answers by sending you to a new conversation for the new version: the one you
+are in stays with the version it was opened on.
 
 **The agent is handed the experiment before it says a word:** the Set and the
 recipe, every version with what changed, what was predicted, against which
@@ -748,9 +751,10 @@ matcher ambiguous) plus grind, dose and yield, as one card you accept or
 decline. The profile starts from the one you picked to fork, or, when you
 picked none, from nothing: the agent writes it whole, and never builds on a
 profile of yours you did not choose. A newer card replaces the waiting one. Accepting fills
-version 1 in place, and from the next turn the same conversation is the Set's
-ordinary one; the profile waits on the Profiles page for you to approve and
-push. Writing a version by hand, or pushing a draft for the Set, ends the design
+version 1 in place and ends the design conversation: the agent is told, and
+tells you to analyse version 1's shots in a new conversation (Discuss in chat on
+the Set page opens one rather than the design); the profile waits on the
+Profiles page for you to approve and push. Writing a version by hand, or pushing a draft for the Set, ends the design
 the same way. A design nobody brewed anything under can be discarded
 (`DELETE /api/sets/{id}/design`).
 
@@ -823,8 +827,9 @@ other Sets and similar Sets on this grinder; it asks what it needs, then
 proposes the whole first recipe as one card — a profile of its own, the grind
 (said to be relative when nothing anchors a number on your dial), the dose and
 the yield. Nothing exists until you accept it, in the conversation or on the
-Set page. Accepting makes it version 1 and the conversation an ordinary one;
-the profile is then a draft on the Profiles page for you to approve and push,
+Set page. Accepting makes it version 1 and ends the design: the agent tells you
+to start a new conversation to analyse the shots, since one conversation is one
+version; the profile is then a draft on the Profiles page for you to approve and push,
 and once it is on the machine, shots brewed on it are filed under the new Set.
 
 Until then the Set carries a **Designing** badge on the Sets list, on its page
