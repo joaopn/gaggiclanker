@@ -116,14 +116,38 @@ describe("ProposalCard", () => {
     );
   });
 
-  it("tells the agent nothing when the accept is refused or the card is declined", async () => {
+  it("tells the agent nothing when an accept or a decline is refused", async () => {
     const user = setupUser();
     const tell = vi.fn();
     acceptSetProposal.mockRejectedValue(
       new ApiClientError("The Set has moved on.", { status: 409, code: "PROPOSAL_STALE" }),
     );
+    declineSetProposal.mockRejectedValue(
+      new ApiClientError("Proposal 5 has already been answered", {
+        status: 409,
+        code: "PROPOSAL_DECIDED",
+      }),
+    );
+    renderWithQueryClient(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={3} proposal={proposal()} />
+      </TellAgentContext.Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: /^Decline$/ }));
+    await user.click(screen.getByRole("button", { name: /Decline it/ }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
+
+    expect(tell).not.toHaveBeenCalled();
+  });
+
+  it("tells the agent a decline with the reason the person gave", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
     declineSetProposal.mockResolvedValue({
-      proposal: proposal({ status: "declined" }),
+      proposal: proposal({ status: "declined", decline_note: "the dose is not the problem" }),
       version: null,
     });
     renderWithQueryClient(
@@ -132,13 +156,31 @@ describe("ProposalCard", () => {
       </TellAgentContext.Provider>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Accept/ }));
-    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: /^Decline$/ }));
+    await user.type(screen.getByLabelText(/Why not/), "  the dose is not the problem ");
+    await user.click(screen.getByRole("button", { name: /Decline it/ }));
+
+    await waitFor(() => expect(tell).toHaveBeenCalledWith("Declined: the dose is not the problem"));
+    expect(tell).toHaveBeenCalledTimes(1);
+  });
+
+  it("says no reason was given when the note is left empty", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    declineSetProposal.mockResolvedValue({
+      proposal: designProposal({ status: "declined" }),
+      version: null,
+    });
+    renderWithQueryClient(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={6} proposal={designProposal()} />
+      </TellAgentContext.Provider>,
+    );
+
     await user.click(screen.getByRole("button", { name: /^Decline$/ }));
     await user.click(screen.getByRole("button", { name: /Decline it/ }));
-    await waitFor(() => expect(declineSetProposal).toHaveBeenCalled());
 
-    expect(tell).not.toHaveBeenCalled();
+    await waitFor(() => expect(tell).toHaveBeenCalledWith("Declined: no reason given."));
   });
 
   it("asks why before declining, and declines with the note", async () => {

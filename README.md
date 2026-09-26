@@ -708,7 +708,10 @@ version's conversation with the question already typed — press either twice an
 you land in the same room. **Accept** on a card in the conversation also tells
 the agent, as your next message ("Accepted: … version 5 of this Set"), and it
 answers by sending you to a new conversation for the new version: the one you
-are in stays with the version it was opened on.
+are in stays with the version it was opened on. **Decline** tells it too, with
+your reason ("Declined: the dose is not the problem", or "Declined: no reason
+given."), and it answers in the same conversation without sending that card
+again. Answering on the Set page tells no conversation.
 
 **The agent is handed the experiment before it says a word:** the Set and the
 recipe, every version with what changed, what was predicted, against which

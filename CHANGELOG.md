@@ -10,14 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
-### The agent hears when you accept its card
+### The agent hears when you accept or decline its card
 
 - **Accept on a card in the chat now tells the agent.** It used to record the
   version and say nothing to the conversation, so the agent went on as if the
   card were still waiting. The button now sends a message as your next turn
   ("Accepted: your proposed change is now version 5 of this Set.", or "your
   first recipe is now version 1"), held until an answer still being written has
-  finished. Accepting on the Set page sends nothing.
+  finished. **Decline** does the same with your reason ("Declined: <reason>",
+  or "Declined: no reason given."), and the agent answers it in the same
+  conversation without proposing that card again. Answering on the Set page
+  sends nothing.
 - **One conversation is one version, and the agent says so.** When a card is
   accepted it tells you directly to start a new conversation (New under the Set,
   or Discuss in chat) to brew and analyse the new version. That includes the

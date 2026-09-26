@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { FieldChange, SetProposal } from "@/api/types";
-import { acceptedMessage, useTellAgent } from "@/components/chat/tellAgent";
+import { acceptedMessage, declinedMessage, useTellAgent } from "@/components/chat/tellAgent";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDecideProposal } from "@/hooks/useSets";
@@ -219,8 +219,9 @@ function Decided({ proposal }: { proposal: SetProposal }) {
 
 export function ProposalCard({ setId, proposal, showThreadLink = false }: ProposalCardProps) {
   const decide = useDecideProposal();
-  // Set inside a conversation only: an accept there is also said to the agent,
-  // which is how it knows to send the person to a new conversation.
+  // Set inside a conversation only: an answer there is also said to the agent —
+  // an accept, so it sends the person to a new conversation, and a decline,
+  // with the reason, so it does not propose the same thing again.
   const tellAgent = useTellAgent();
   const noteId = useId();
   const fieldId = useId();
@@ -388,16 +389,19 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
             data-testid="decline-note"
             onSubmit={(event) => {
               event.preventDefault();
+              const reason = note.trim();
               void attempt(() =>
                 decide.mutateAsync({
                   setId,
                   proposalId: proposal.id,
                   decision: "decline",
-                  note: note.trim(),
+                  note: reason,
                   kind: proposal.kind,
                   threadId: proposal.thread_id,
                 }),
-              );
+              ).then((result) => {
+                if (result && tellAgent) tellAgent(declinedMessage(reason));
+              });
             }}
           >
             <label htmlFor={fieldId} className="block text-muted-foreground text-xs">

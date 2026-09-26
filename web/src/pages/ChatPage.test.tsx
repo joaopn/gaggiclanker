@@ -26,6 +26,7 @@ const {
   getSets,
   getSetProposals,
   acceptSetProposal,
+  declineSetProposal,
 } = vi.hoisted(() => ({
   getChatThreads: vi.fn(),
   getChatThread: vi.fn(),
@@ -38,6 +39,7 @@ const {
   getSets: vi.fn(),
   getSetProposals: vi.fn(),
   acceptSetProposal: vi.fn(),
+  declineSetProposal: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -52,6 +54,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSets,
   getSetProposals,
   acceptSetProposal,
+  declineSetProposal,
 }));
 
 const THREAD = {
@@ -690,6 +693,26 @@ describe("ChatPage, accepting a card in the conversation", () => {
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("button", { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it("tells the agent a decline, with the reason", async () => {
+    const user = setupUser();
+    declineSetProposal.mockResolvedValue({
+      proposal: { ...WAITING, status: "declined", decline_note: "too long already" },
+      version: null,
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    const card = await screen.findByTestId("proposal-card");
+    await user.click(within(card).getByRole("button", { name: /^Decline$/ }));
+    await user.type(within(card).getByLabelText(/Why not/), "too long already");
+    await user.click(within(card).getByRole("button", { name: /Decline it/ }));
+
+    await waitFor(() => expect(declineSetProposal).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(sendChatMessage).toHaveBeenCalledWith(1, "Declined: too long already"),
+    );
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 
   it("holds the message until the answer being written has finished", async () => {
