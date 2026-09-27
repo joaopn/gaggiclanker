@@ -61,6 +61,7 @@ from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import Usage
 from gaggiclanker.shotinfo.catalogue import effective_tiers
+from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolRegistry
 from gaggiclanker.tools.scope import ToolScope
 
@@ -316,8 +317,9 @@ class ChatRunner:
     async def _loop(self, state: _RunState, scope: ToolScope, *, model: str) -> None:
         budget = await self._budget()
         # The Set prompt is handed the experiment and the design prompt the
-        # brief and its evidence; the general one has no variables at all, and
-        # passing it one it does not use would be harmless but misleading.
+        # brief and its evidence. The Set and General prompts are also handed
+        # the glossary of shot fields, since both read shots; the design prompt
+        # reads none, and a prompt is passed only what it declares.
         prompt = prompt_for(scope)
         # Which shot items are base is read once per turn, like the scope: the
         # opening context written now and every shot tool this turn calls then
@@ -335,6 +337,8 @@ class ChatRunner:
             if prompt in (SET_CHAT_PROMPT, DESIGN_CHAT_PROMPT)
             else {}
         )
+        if prompt in (SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
+            variables["shot_fields"] = render_glossary(tiers)
         rendered = await self.prompts.load(prompt, variables)
         history = await self._history(state.thread_id, budget.history_tokens)
         provider = await self.llm.provider_for(await self.llm.config())

@@ -29,6 +29,8 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
+from gaggiclanker.shotinfo.catalogue import default_tiers
+from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
 
@@ -38,6 +40,10 @@ GOLDEN = Path(__file__).resolve().parent / "golden"
 #: by its own golden, and a prompt golden carrying a copy would fail twice for
 #: one change.
 SCOPE_MARKER = "<<the opening context goes here>>"
+
+#: What `{{shot_fields}}` is rendered with in the goldens, for the same reason:
+#: the glossary has its own golden (`tests/shotinfo/golden/glossary.txt`).
+FIELDS_MARKER = "<<the shot field glossary goes here>>"
 
 
 @pytest.fixture
@@ -57,9 +63,13 @@ async def prompts(tmp_path: Path) -> AsyncIterator[PromptService]:
 @pytest.mark.parametrize(
     ("name", "variables", "golden"),
     [
-        (SET_CHAT_PROMPT, {"scope": SCOPE_MARKER}, "chat-set-prompt.txt"),
+        (
+            SET_CHAT_PROMPT,
+            {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER},
+            "chat-set-prompt.txt",
+        ),
         (DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER}, "chat-design-prompt.txt"),
-        (GENERAL_CHAT_PROMPT, {}, "chat-general-prompt.txt"),
+        (GENERAL_CHAT_PROMPT, {"shot_fields": FIELDS_MARKER}, "chat-general-prompt.txt"),
     ],
 )
 async def test_the_rendered_prompt_matches_the_golden_file(
@@ -84,17 +94,38 @@ async def test_every_variable_the_set_prompt_uses_is_declared_and_provided(
     prompts: PromptService,
 ) -> None:
     """An undefined variable raises, so this is the only way to find a typo."""
-    rendered = await prompts.load(SET_CHAT_PROMPT, {"scope": SCOPE_MARKER})
+    rendered = await prompts.load(
+        SET_CHAT_PROMPT, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER}
+    )
 
-    assert rendered.declared == ["scope"]
+    assert rendered.declared == ["scope", "shot_fields"]
     assert SCOPE_MARKER in rendered.system
+    assert FIELDS_MARKER in rendered.system
 
 
-async def test_the_general_prompt_takes_no_variables(prompts: PromptService) -> None:
-    rendered = await prompts.load(GENERAL_CHAT_PROMPT, {})
+async def test_the_general_prompt_takes_only_the_shot_field_glossary(
+    prompts: PromptService,
+) -> None:
+    rendered = await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": FIELDS_MARKER})
 
-    assert rendered.declared == []
-    assert rendered.system.strip()
+    assert rendered.declared == ["shot_fields"]
+    assert FIELDS_MARKER in rendered.system
+
+
+@pytest.mark.parametrize("name", [SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT])
+async def test_the_glossary_comes_after_the_shared_rules(prompts: PromptService, name: str) -> None:
+    system = (
+        await prompts.load(name, {"scope": SCOPE_MARKER, "shot_fields": FIELDS_MARKER})
+    ).system
+
+    assert system.index("PROPOSE, NEVER ACT") < system.index(FIELDS_MARKER)
+
+
+async def test_the_design_prompt_does_not_take_the_glossary(prompts: PromptService) -> None:
+    rendered = await prompts.load(DESIGN_CHAT_PROMPT, {"scope": SCOPE_MARKER})
+
+    assert "shot_fields" not in rendered.declared
+    assert "{{shot_fields}}" not in rendered.system
 
 
 def test_the_prompt_follows_the_conversation_s_kind() -> None:
@@ -153,7 +184,7 @@ async def test_the_set_prompt_says_what_a_grade_and_a_proposal_have_to_be(
     prompts: PromptService,
 ) -> None:
     """The behaviour the whole piece exists for, in the words it is given in."""
-    system = (await prompts.load(SET_CHAT_PROMPT, {"scope": ""})).system
+    system = (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
 
     assert "GRADE FIRST" in system
     assert "inconclusive" in system
@@ -176,7 +207,9 @@ async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
     do with it, for a change and for a first recipe alike, since the turn after
     a design is accepted is answered by this prompt.
     """
-    system = " ".join((await prompts.load(SET_CHAT_PROMPT, {"scope": ""})).system.split())
+    system = " ".join(
+        (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+    )
 
     assert "WHEN THEY ACCEPT, THIS CONVERSATION IS DONE" in system
     assert '"Accepted:"' in system
@@ -189,7 +222,9 @@ async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
     prompts: PromptService,
 ) -> None:
     """The Decline button's turn starts with "Declined:"; nothing changed, so it stays here."""
-    system = " ".join((await prompts.load(SET_CHAT_PROMPT, {"scope": ""})).system.split())
+    system = " ".join(
+        (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+    )
 
     assert '"Declined:"' in system
     assert "this conversation carries on about the same version" in system
@@ -199,23 +234,32 @@ async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
 async def test_the_general_prompt_sends_a_set_change_to_that_set_s_folder(
     prompts: PromptService,
 ) -> None:
-    system = (await prompts.load(GENERAL_CHAT_PROMPT, {})).system
+    system = (await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": ""})).system
 
     assert "YOU CANNOT CHANGE A SET HERE" in system
     assert "propose_set_version" not in system
     assert "query_shots" in system
 
 
+#: The real glossary, not a marker: it names tools too, and they have to be in
+#: every scope it is rendered into.
+GLOSSARY = render_glossary(default_tiers())
+
+
 @pytest.mark.parametrize(
     ("name", "variables", "scope"),
     [
-        (SET_CHAT_PROMPT, {"scope": SCOPE_MARKER}, ToolScope.for_thread(3, 9)),
+        (
+            SET_CHAT_PROMPT,
+            {"scope": SCOPE_MARKER, "shot_fields": GLOSSARY},
+            ToolScope.for_thread(3, 9),
+        ),
         (
             DESIGN_CHAT_PROMPT,
             {"scope": SCOPE_MARKER},
             ToolScope.for_thread(3, 9, designing=True),
         ),
-        (GENERAL_CHAT_PROMPT, {}, ToolScope()),
+        (GENERAL_CHAT_PROMPT, {"shot_fields": GLOSSARY}, ToolScope()),
     ],
 )
 async def test_a_prompt_names_no_tool_this_conversation_does_not_have(
@@ -238,9 +282,29 @@ async def test_a_prompt_names_no_tool_this_conversation_does_not_have(
 
 async def test_both_prompts_carry_the_shared_rules(prompts: PromptService) -> None:
     """The fragment is expanded, not merely referenced."""
-    for name, variables in ((SET_CHAT_PROMPT, {"scope": ""}), (GENERAL_CHAT_PROMPT, {})):
-        system = (await prompts.load(name, variables)).system
+    for name, variables in (
+        (SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""}),
+        (GENERAL_CHAT_PROMPT, {"shot_fields": ""}),
+    ):
+        system = " ".join((await prompts.load(name, variables)).system.split())
 
         assert "NEVER INVENT DATA" in system, name
         assert "PROPOSE, NEVER ACT" in system, name
         assert "{{>" not in system, name
+        # The two rules for reading a shot, which the per-shot analysis
+        # prompt used to be the only one to carry.
+        assert "THE EXECUTION SCORE IS NOT YOURS TO GIVE" in system, name
+        assert "never restate it as your own opinion or contradict it" in system, name
+        assert "TWO ALIGNED CHANNELING INDICATORS MEAN A CHANNEL; ONE MEANS NOISE" in system, name
+        assert "Sour AND bitter in the same cup is channeling" in system, name
+        assert "do NOT suggest a finer grind for it" in system, name
+
+
+async def test_the_set_prompt_names_the_three_shot_tools_and_the_search(
+    prompts: PromptService,
+) -> None:
+    system = (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system
+
+    for tool_name in ("get_shot", "get_shot_extended", "get_shot_full", "list_set_shots"):
+        assert f"`{tool_name}`" in system, tool_name
+    assert "shots of both compared versions" not in system

@@ -22,6 +22,8 @@ from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.types import Usage
+from gaggiclanker.shotinfo.catalogue import default_tiers
+from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.analyzer.conftest import Fixture
 from tests.llm.conftest import FakeProvider
@@ -447,6 +449,28 @@ async def test_the_set_scope_opens_with_as_many_shots_as_the_setting_says(
     assert f"shot {archive.shots[-3]}\n" not in second
 
 
+async def test_the_set_and_general_prompts_carry_the_shot_field_glossary(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    from gaggiclanker.db.repos.chat import ChatThreadWrite
+
+    created = await ChatRepository(archive.db).create_thread(ChatThreadWrite())
+    assert created.thread is not None
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+
+    await send(runner, tasks, thread)
+    await send(runner, tasks, created.thread.id, "which beans did I like?")
+
+    glossary = render_glossary(default_tiers())
+    for request in chat_provider.chat_calls:
+        assert glossary in request.system
+        assert request.system.index("PROPOSE, NEVER ACT") < request.system.index("SHOT FIELDS")
+
+
 async def test_an_unscoped_thread_gets_no_scope_block(
     runner: ChatRunner, tasks: TaskRegistry, archive: Fixture, chat_provider: FakeProvider
 ) -> None:
@@ -580,9 +604,12 @@ async def test_a_design_is_answered_by_the_design_prompt_until_its_recipe_is_acc
     design_turn, set_turn = chat_provider.chat_calls
     assert "THIS CONVERSATION IS DESIGNING A NEW SET" in design_turn.system
     assert "GRADE FIRST" not in design_turn.system
+    # A design reads no shots, so it is not told what their fields mean.
+    assert "SHOT FIELDS" not in design_turn.system
     assert {schema["function"]["name"] for schema in design_turn.tools} == DESIGN_TOOLS
     assert "THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET" in set_turn.system
     assert "GRADE FIRST" in set_turn.system
+    assert "SHOT FIELDS" in set_turn.system
     # The card it came from is told as the recipe it set, not as an empty change.
     assert "its initial recipe was accepted as v1" in set_turn.system
     assert {schema["function"]["name"] for schema in set_turn.tools} == SET_TOOLS
