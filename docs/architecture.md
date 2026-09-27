@@ -76,7 +76,8 @@ the archive tells them apart by the profile a shot was brewed with.
 | `cleanup/` | Device storage: which shots are eligible to delete off the machine, the plan the Sync page shows, and the run of a plan a person confirmed. |
 | `notes/` | Judgements a person sends from the Sync page to the machine's own notes card, and only when ours is newer than its. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
-| `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
+| `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, the version's newest shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
+| `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary the chat prompts carry, generated from the catalogue. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
@@ -348,6 +349,23 @@ refused if called anyway, as an error value the model can read; a refusal about
 another Set's shot says nothing about whether it exists. There is no second list
 anywhere, the web included: the page shows what the server says the
 conversation has.
+
+**A shot reaches a model in two tiers, from one catalogue.** Every item a shot
+carries — the execution score, each diagnostic with its band, each phase's
+metrics, each curve channel, the person's judgement — is one entry in
+`shotinfo/catalogue.py` with a stable key, what it means, a default tier and the
+function that renders it. **Base** is what the model sees without asking: every
+shot in a Set conversation's opening context (the version's newest
+`chatRecentShots`), every result of the shot search (`list_set_shots`), and
+`get_shot`. **Extended** is what it asks for (`get_shot_extended`;
+`get_shot_full` and `compare_shots` are both). One renderer writes all of them,
+so a number the model quotes from the search is the number `get_shot` gives,
+and a value the machine did not record is left out rather than written as
+zero. The tiers are read once per turn through `effective_tiers`, by the runner
+and the stdio server alike. The glossary in the Set and General prompts is
+generated from the same entries — every item that is not excluded, with its
+tier and its meaning, the band thresholds read from the vendored tables — so an
+item and its explanation cannot drift apart.
 
 **A Set being designed is the third surface.** A Set created by the design
 route has a version 1 with no recipe and a `designing` flag, and while the flag

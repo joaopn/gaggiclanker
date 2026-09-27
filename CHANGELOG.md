@@ -10,6 +10,41 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The chat sees every shot field, and knows what each one means
+
+- **A Set conversation opens with its version's newest shots in full base
+  information**, not one summary line each: identity and whether it counts,
+  shot time, yield, exit reason, execution score, first drip, peak pressure,
+  average brew flow, resistance level, channeling risk, pressure and flow
+  adherence, and your whole judgement. How many is the new setting
+  **`chatRecentShots`** (Settings → LLM → Chat; default 20, at least 1). The
+  compared-to version's shots are no longer listed one by one; its side is still
+  in the evidence table and the gold standard, and any shot is a search away.
+- **Three shot tools.** `get_shot` returns a shot's base information,
+  `get_shot_extended` everything else (the execution score's working,
+  temperature, pressure, flow and weight statistics, every channeling indicator,
+  profile compliance, one line per phase and every sample of the curve) and
+  `get_shot_full` both. `get_shot`'s `detail` argument and the analysis it used
+  to carry are gone. `compare_shots` renders each of its shots in full, in the
+  order given.
+- **`list_set_shots` is now a search** over the Set's shots: by version, label,
+  balance, dates, a range on shot time, yield, first drip, peak pressure, average
+  brew flow, execution score, rating, dose in and out or ratio, or a band of
+  channeling risk, resistance level, pressure or flow adherence; sorted by date or
+  any of those numbers; at most ten results, each in its base information.
+- **The chat is told what every field means.** The Set and General prompts carry
+  a glossary generated from the same catalogue the shots are rendered from: what
+  each field measures, its unit, which way is better, and every band label with
+  its threshold. A value the machine did not record is left out rather than shown
+  as zero. The chat rules also gain two the per-shot analysis had: the execution
+  score is computed, not the agent's to give; and two aligned channeling
+  indicators mean a channel, one means noise.
+- **If you edited the `chat-set`, `chat-general` or `fragments/chat-rules`
+  prompt, your text is kept, so the glossary and the two moved rules never reach
+  the chat.** Reset the prompt under Settings → Prompts to take the new text, or
+  add `{{shot_fields}}` after `{{> chat-rules}}` in the first two and copy the two
+  rules into the third.
+
 ### The agent hears when you accept or decline its card
 
 - **Accept on a card in the chat now tells the agent.** It used to record the

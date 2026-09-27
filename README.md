@@ -717,24 +717,40 @@ again. Answering on the Set page tells no conversation.
 recipe, every version with what changed, what was predicted, against which
 version and how it turned out, the track record, how much this Set's shots vary
 when nothing changed, the evidence table this version's prediction is graded on,
-both compared versions' shots one line each with the discards marked, the Keep
-shots that are the target, and the insights you have confirmed. So the first
-turn is about the coffee rather than about learning what Set 3 is. Beside the
-composer, the page lists exactly what the agent can do in *this* conversation.
+this version's newest shots (twenty by default, `chatRecentShots`) with the
+discards marked, the Keep shots that are the target, and the insights you have
+confirmed. So the first turn is about the coffee rather than about learning what
+Set 3 is. Beside the composer, the page lists exactly what the agent can do in
+*this* conversation.
 
-**Thirteen tools in a Set's conversation** — ten reads and three that propose:
+**Every shot is told in two tiers, and every field is explained.** The
+*base* information of a shot — what it is and where it is filed, its outcome,
+the headline diagnostics and your judgement — is what the agent sees for every
+shot in the opening context and in its search; the *extended* information — the
+execution score's working, the temperature, pressure and flow statistics, every
+channeling indicator, profile compliance, one line per phase and the whole
+curve — is what it asks for, one shot at a time. A value the machine did not
+record (no scale, no pressure sensor) is left out, never shown as zero. The
+agent's instructions carry a glossary of every field it can be shown: what it
+measures, its unit, which way is better, and every band label with the threshold
+behind it, read from the diagnostics engine itself.
+
+**Fifteen tools in a Set's conversation** — twelve reads and three that propose:
 one change to this Set, waiting for you, with the prediction that makes it
 gradable (the grind, the dose, the yield or the profile: a temperature change is
 a profile change, and the tool says so); an insight about this Set stored
 **unconfirmed** that reaches no future prompt until you confirm it; and a
 profile draft that goes through the same schema, safety-policy and clamp checks
 as one typed by hand. One of the reads is `get_profile`, a profile version's
-whole document, so the agent reads the profile it is about to change.
-**Fifteen in General** — fourteen reads and one proposal, the profile draft. A
+whole document, so the agent reads the profile it is about to change, and three
+read one shot: `get_shot` its base information, `get_shot_extended` the rest and
+`get_shot_full` both, beside `list_set_shots`, which searches the Set's shots on
+their base information (filters, ranges, bands, a sort, at most ten back).
+**Seventeen in General** — sixteen reads and one proposal, the profile draft. A
 new bag is not worked out there: the General chat sends you to New Set →
 **Design it with the agent**, whose conversation ends in a first recipe you
 accept. **Eight while a Set is being designed** (below). The registry holds
-twenty in total: ten both kinds have, eight that belong to one kind or the
+twenty-two in total: twelve both kinds have, eight that belong to one kind or the
 other, `propose_initial_recipe`, which only a design has, and
 `run_analysis`, which no conversation is offered at all — the per-shot analysis
 is the other adviser, and it is on its way out. Nothing in the chat can touch
