@@ -1,0 +1,35 @@
+shot 1
+[Identity and status]
+Date and time: 2026-04-03 12:06
+Set version: v1 of Set 1
+Label: Keep
+Counted: counted
+Profile as brewed: Amigo Alturas Bloom [AI]
+Machine's shot number: 000204
+[Outcome]
+Shot time: 47.8 s
+Yield: 31.6 g
+Execution score: 6.9 / 10
+[Timing]
+First drip: 28.0 s
+[Pressure]
+Peak pressure: 8.20 bar
+[Flow and volume]
+Average brew flow: 1.42 ml/s
+[Puck resistance]
+Resistance level: 1.46 LOW
+[Channeling]
+Channeling risk: LOW
+[Profile compliance]
+Pressure adherence: 2.56 bar POOR
+Flow adherence: 1.73 ml/s POOR
+[Your judgement]
+Rating: 4/5
+Balance: Balanced
+Taste notes: Sweet › Brown sugar › Caramelized; Fruity › Citrus fruit › Lemon
+Aroma notes: Floral › Floral › Jasmine
+Notes: "Sweet, a little thin at the end."
+Dose in: 18.0 g
+Dose out: 36.5 g
+Ratio: 1:2.03
+Grind as brewed: 14

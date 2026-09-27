@@ -653,6 +653,32 @@ class ShotsRepository(Repository):
         )
         return self.to_model(ShotDetailRow, row)
 
+    async def get_many(self, shot_ids: Sequence[int]) -> list[ShotDetailRow]:
+        """Several shots' detail rows in one query, in the order the ids were given.
+
+        For the readers that render a list of shots in full — a chat's opening
+        context, the shot search — where one query per shot would be twenty
+        round trips to say what one could. An id with no shot is left out.
+        """
+        wanted = list(dict.fromkeys(int(shot_id) for shot_id in shot_ids))
+        if not wanted:
+            return []
+        placeholders = ", ".join("?" * len(wanted))
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT {_LIST_COLUMNS},
+                   s.final_exit_reason, s.brew_delay_ms, s.slog_version,
+                   s.sample_interval_ms, s.fields_mask, s.index_volume_g, s.index_flags,
+                   s.phases_json, s.diagnostics_json,
+                   LENGTH(s.raw_slog) AS raw_bytes, s.updated_at
+            {_LIST_FROM}
+            WHERE s.id IN ({placeholders})
+            """,
+            wanted,
+        )
+        found = {row.id: row for row in self.to_models(ShotDetailRow, rows)}
+        return [found[shot_id] for shot_id in wanted if shot_id in found]
+
     async def get_by_device_id(self, device_id: str) -> ShotDetailRow | None:
         """The shot the machine knows by that id. Unique since 0016."""
         row = await self.db.fetch_value("SELECT id FROM shots WHERE device_id = ?", (device_id,))
@@ -676,6 +702,28 @@ class ShotsRepository(Repository):
             (shot_id,),
         )
         return self.to_models(ShotSampleRow, rows)
+
+    async def samples_for(self, shot_ids: Sequence[int]) -> dict[int, list[ShotSampleRow]]:
+        """Every sample of several shots in one query, keyed by shot id.
+
+        The same range scan as :meth:`samples`, once for the whole batch: a
+        list of shots rendered with their curves would otherwise be a query
+        per shot. A shot with no samples maps to an empty list.
+        """
+        wanted = sorted({int(shot_id) for shot_id in shot_ids})
+        out: dict[int, list[ShotSampleRow]] = {shot_id: [] for shot_id in wanted}
+        if not wanted:
+            return out
+        placeholders = ", ".join("?" * len(wanted))
+        rows = await self.db.fetch_all(
+            f"SELECT shot_id, {', '.join(SAMPLE_FIELDS)} FROM shot_samples "  # noqa: S608 - module constant and generated placeholders
+            f"WHERE shot_id IN ({placeholders}) ORDER BY shot_id, t_ms",
+            wanted,
+        )
+        for row in rows:
+            data = dict(zip(row.keys(), tuple(row), strict=True))
+            out[int(data.pop("shot_id"))].append(ShotSampleRow.model_validate(data))
+        return out
 
     async def counts(self) -> ShotCounts:
         row = await self.db.fetch_one(

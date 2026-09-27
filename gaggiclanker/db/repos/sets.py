@@ -1586,6 +1586,18 @@ class SetsRepository(Repository):
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))
         return self.to_model(SetVersionRow, row)
 
+    async def versions_by_id(self, version_ids: Iterable[int]) -> dict[int, SetVersionRow]:
+        """Several versions, whichever Sets they belong to, in one query."""
+        wanted = sorted({int(version_id) for version_id in version_ids})
+        if not wanted:
+            return {}
+        placeholders = ", ".join("?" * len(wanted))
+        rows = await self.db.fetch_all(
+            f"{_VERSION_SELECT} WHERE v.id IN ({placeholders})",
+            wanted,
+        )
+        return {row.id: row for row in self.to_models(SetVersionRow, rows)}
+
     async def dead_end_versions(self, set_ids: Iterable[int]) -> set[int]:
         """Which of these Sets' versions are off the line still being brewed.
 

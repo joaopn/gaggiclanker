@@ -9,6 +9,7 @@ nothing here re-implements it.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -104,6 +105,18 @@ class NotesRepository(Repository):
             "SELECT * FROM device_shot_notes WHERE shot_id = ?", (shot_id,)
         )
         return self.to_model(DeviceShotNotesRow, row)
+
+    async def for_shots(self, shot_ids: Sequence[int]) -> dict[int, DeviceShotNotesRow]:
+        """The notes of several shots in one query, keyed by shot id."""
+        wanted = sorted({int(shot_id) for shot_id in shot_ids})
+        if not wanted:
+            return {}
+        placeholders = ", ".join("?" * len(wanted))
+        rows = await self.db.fetch_all(
+            f"SELECT * FROM device_shot_notes WHERE shot_id IN ({placeholders})",  # noqa: S608 - placeholders are generated, ids are bound
+            wanted,
+        )
+        return {row.shot_id: row for row in self.to_models(DeviceShotNotesRow, rows)}
 
     async def stale_shot_ids(self) -> dict[str, tuple[int, int | None, float | None]]:
         """Device id → (shot row id, synced rating, synced volume) for shots we hold notes for.
