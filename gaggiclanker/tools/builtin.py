@@ -22,12 +22,12 @@ than raise `AttributeError` at the bottom of a stack the caller cannot see.
 
 from __future__ import annotations
 
-import json
+from collections.abc import Mapping
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.db.repos.analyses import AnalysesRepository
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
@@ -49,9 +49,14 @@ from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value
+from gaggiclanker.domain.vocab import Balance
 from gaggiclanker.infra.errors import TooManyRequests, Unprocessable
 from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, ANALYSIS_WINDOW_SECONDS
 from gaggiclanker.knowledge.service import KnowledgeService
+from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
+from gaggiclanker.shotinfo.facts import ShotFacts
+from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot, with_samples
+from gaggiclanker.shotinfo.search import SEARCH_LIMIT, ShotQuery, search_shots
 from gaggiclanker.tools.registry import ToolContext, tool
 from gaggiclanker.tools.scope import DESIGN_RULE
 from gaggiclanker.tools.sql import (
@@ -207,137 +212,89 @@ async def query_shots(ctx: ToolContext, args: QueryInput) -> QueryOutput:
 
 
 # ── shots ────────────────────────────────────────────────────────────
+#
+# Three tools and one renderer. A shot is shown to a model in two tiers from
+# the shot information catalogue — base, which the opening context and the
+# search show for every shot, and extended, which is asked for — and these
+# tools are the only way to get either for one shot. Which item sits in which
+# tier is read per call through `effective_tiers`, so the stdio server and the
+# chat's own dispatcher answer with the same lines.
 
 
-class GetShotInput(_Model):
-    shot_id: int = Field(gt=0)
-    detail: Literal["summary", "per_phase", "curve"] = Field(
-        default="summary",
-        description=(
-            "summary: the row and its diagnostics. per_phase: adds the phase table. "
-            "curve: adds a downsampled series — only ask for it when the shape matters."
-        ),
-    )
+class ShotIdInput(_Model):
+    shot_id: int = Field(gt=0, description="The shot's id, as `shot <id>` heads its rendering.")
 
 
-class ShotSummary(_Model):
+class ShotTextOutput(_Model):
+    """One shot, rendered at one tier, as plain text."""
+
     shot_id: int
-    device_id: str = ""
-    started_at: str | None = None
-    duration_s: float = 0.0
-    profile_label: str | None = None
-    volume_g: float | None = None
-    execution_score: float | None = None
-    execution_reason: str | None = None
-    set_id: int | None = None
-    set_name: str | None = None
-    set_version_no: int | None = None
-    rating: int | None = None
-    balance: str | None = None
-    judgement_notes: str | None = None
-    quarantined: bool = False
+    tier: ShotTier
+    text: str
 
 
-class ShotOutput(_Model):
-    shot: ShotSummary
-    diagnostics: dict[str, Any] | None = None
-    phases: list[dict[str, Any]] | None = None
-    curve: list[dict[str, Any]] | None = None
-    analysis: dict[str, Any] | None = None
+async def _shots_in_scope(
+    ctx: ToolContext, shot_ids: list[int], tier: ShotTier
+) -> tuple[list[ShotFacts], Mapping[str, Tier]]:
+    """The shots, in the order asked, or the scope's refusal for the first one it refuses.
+
+    Checked before the samples are read, so a refused shot costs nothing but
+    its row, and in the same words whether the shot exists or not.
+    """
+    tiers = await effective_tiers(ctx.db)
+    loaded = {facts.shot_id: facts for facts in await load_shots(ctx.db, shot_ids)}
+    for shot_id in shot_ids:
+        found = loaded.get(shot_id)
+        _shot_of_scope(ctx, shot_id, {"set_id": found.set_id} if found is not None else None)
+    shots = [loaded[shot_id] for shot_id in shot_ids]
+    if needs_samples(tier, tiers):
+        shots = await with_samples(ctx.db, shots)
+    return shots, tiers
 
 
-#: How many points a `curve` request comes back with. A shot is ~213 samples at
-#: 250 ms; 60 is enough to see the shape and short enough to sit in a prompt
-#: next to everything else the turn is carrying.
-CURVE_POINTS = 60
-
-
-async def _shot_summary(ctx: ToolContext, shot_id: int) -> tuple[ShotSummary, Any] | None:
-    row = await ctx.db.fetch_one("SELECT * FROM v_shots WHERE shot_id = ?", (shot_id,))
-    if row is None:
-        return None
-    data = dict(zip(row.keys(), tuple(row), strict=True))
-    summary = ShotSummary(
-        shot_id=int(data["shot_id"]),
-        device_id=str(data.get("device_id") or ""),
-        started_at=data.get("started_at"),
-        duration_s=float(data.get("duration_s") or 0.0),
-        profile_label=data.get("profile_label") or data.get("profile_name_on_device"),
-        volume_g=data.get("volume_g"),
-        execution_score=data.get("execution_score"),
-        execution_reason=data.get("execution_reason"),
-        set_id=data.get("set_id"),
-        set_name=data.get("set_name"),
-        set_version_no=data.get("set_version_no"),
-        rating=data.get("rating"),
-        balance=data.get("balance"),
-        judgement_notes=data.get("judgement_notes"),
-        quarantined=bool(data.get("quarantined")),
-    )
-    return summary, data
-
-
-def _json(raw: Any) -> Any:
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    try:
-        return json.loads(raw)
-    except ValueError:  # pragma: no cover - written by the parser, so never
-        return None
+async def _one_shot(ctx: ToolContext, shot_id: int, tier: ShotTier) -> ShotTextOutput:
+    [facts], tiers = await _shots_in_scope(ctx, [shot_id], tier)
+    return ShotTextOutput(shot_id=shot_id, tier=tier, text=render_shot(facts, tier, tiers))
 
 
 @tool(
     "get_shot",
     permission="read",
     description=(
-        "One shot in full: the row, its deterministic diagnostics, and optionally the "
-        "phase table or a downsampled curve. Cite a shot by its id when you use it."
+        "One shot's base information: what it is and where it is filed, its outcome, the "
+        "headline diagnostics and the person's judgement — the lines a Set conversation's "
+        "opening context shows for every shot. Cite a shot by its id. get_shot_extended adds "
+        "the rest; get_shot_full is both."
     ),
 )
-async def get_shot(ctx: ToolContext, args: GetShotInput) -> ShotOutput:
-    found = await _shot_summary(ctx, args.shot_id)
-    _shot_of_scope(ctx, args.shot_id, found[1] if found is not None else None)
-    assert found is not None  # _shot_of_scope raises when there is nothing
-    summary, data = found
-    out = ShotOutput(shot=summary, diagnostics=_json(data.get("diagnostics_json")))
+async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
+    return await _one_shot(ctx, args.shot_id, "base")
 
-    latest = await AnalysesRepository(ctx.db).latest_for_shot(args.shot_id)
-    if latest is not None:
-        out.analysis = {
-            "analysis_id": latest.id,
-            "status": latest.status,
-            "output": latest.output,
-            "created_at": latest.created_at,
-        }
 
-    if args.detail in {"per_phase", "curve"}:
-        phases = await ctx.db.fetch_value(
-            "SELECT phases_json FROM shots WHERE id = ?", (args.shot_id,)
-        )
-        decoded = _json(phases)
-        out.phases = decoded if isinstance(decoded, list) else []
+@tool(
+    "get_shot_extended",
+    permission="read",
+    description=(
+        "One shot's extended information, without its base lines: the execution score's "
+        "working, temperature, pressure and flow statistics, the channeling indicators, "
+        "profile compliance, one line per phase and the full sample table. Ask for it when "
+        "the base lines raise a question the shape of the shot would answer."
+    ),
+)
+async def get_shot_extended(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
+    return await _one_shot(ctx, args.shot_id, "extended")
 
-    if args.detail == "curve":
-        rows = await ctx.db.fetch_all(
-            "SELECT COUNT(*) AS n FROM v_samples WHERE shot_id = ?", (args.shot_id,)
-        )
-        total = int(rows[0]["n"]) if rows else 0
-        # Modulo on the row number rather than a LIMIT: a LIMIT would give the
-        # first N samples, which is the pre-infusion and none of the shot.
-        stride = max(1, total // CURVE_POINTS)
-        points = await ctx.db.fetch_all(
-            """
-            SELECT t_s, temperature_c, pressure_bar, flow_ml_s, target_flow_ml_s,
-                   weight_g, phase_number
-              FROM (SELECT *, ROW_NUMBER() OVER (ORDER BY t_ms) AS rn
-                      FROM v_samples WHERE shot_id = ?)
-             WHERE (rn - 1) % ? = 0
-             ORDER BY t_s
-            """,
-            (args.shot_id, stride),
-        )
-        out.curve = [dict(zip(row.keys(), tuple(row), strict=True)) for row in points]
-    return out
+
+@tool(
+    "get_shot_full",
+    permission="read",
+    description=(
+        "One shot's base and extended information together. The largest answer a shot gives "
+        "(it carries every sample), so keep it for the shot a question turns on."
+    ),
+)
+async def get_shot_full(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
+    return await _one_shot(ctx, args.shot_id, "full")
 
 
 class CompareInput(_Model):
@@ -345,56 +302,28 @@ class CompareInput(_Model):
 
 
 class CompareOutput(_Model):
-    shots: list[ShotSummary]
-    differences: list[dict[str, Any]] = Field(default_factory=list)
-
-
-#: What a comparison actually turns on. Not every column: a table of forty
-#: fields is a table nobody reads, and these are the ones a change is made in.
-_COMPARE_FIELDS: tuple[str, ...] = (
-    "profile_label",
-    "grind_setting",
-    "set_dose_g",
-    "target_yield_g",
-    "profile_temperature_c",
-    "duration_s",
-    "volume_g",
-    "avg_temp_c",
-    "max_pressure_bar",
-    "avg_flow_ml_s",
-    "execution_score",
-    "rating",
-    "balance",
-    "ratio",
-)
+    shots: list[ShotTextOutput]
 
 
 @tool(
     "compare_shots",
     permission="read",
     description=(
-        "Two to four shots side by side, with the fields that differ called out. "
-        "Use it for 'did the grind change actually help' questions."
+        "Two to four shots, each in full (base and extended, sample table included), in the "
+        "order given, to read side by side. Use it for 'did the grind change actually help' "
+        "questions. Large: prefer get_shot for a shot you only need the headline of."
     ),
 )
 async def compare_shots(ctx: ToolContext, args: CompareInput) -> CompareOutput:
-    summaries: list[ShotSummary] = []
-    raw: list[dict[str, Any]] = []
-    for shot_id in args.shot_ids:
-        found = await _shot_summary(ctx, shot_id)
-        _shot_of_scope(ctx, shot_id, found[1] if found is not None else None)
-        assert found is not None  # _shot_of_scope raises when there is nothing
-        summaries.append(found[0])
-        raw.append(found[1])
-
-    differences: list[dict[str, Any]] = []
-    for field_name in _COMPARE_FIELDS:
-        values = [row.get(field_name) for row in raw]
-        if len({json.dumps(value, default=str) for value in values}) > 1:
-            differences.append(
-                {"field": field_name, "values": dict(zip(args.shot_ids, values, strict=True))}
+    shots, tiers = await _shots_in_scope(ctx, args.shot_ids, "full")
+    return CompareOutput(
+        shots=[
+            ShotTextOutput(
+                shot_id=facts.shot_id, tier="full", text=render_shot(facts, "full", tiers)
             )
-    return CompareOutput(shots=summaries, differences=differences)
+            for facts in shots
+        ]
+    )
 
 
 # ── sets and catalogue ───────────────────────────────────────────────
@@ -500,105 +429,197 @@ async def _set_insights(ctx: ToolContext, row: Any) -> list[Any]:
     return await InsightsRepository(ctx.db).select(attributes)
 
 
-class ListSetShotsInput(_Model):
+class Range(_Model):
+    """Both ends inclusive; leave one out for an open range."""
+
+    min: float | None = None
+    max: float | None = None
+
+
+#: The labels the three banded base items can carry. Written out because a
+#: tool argument needs a static type; a test pins each one to the vendored
+#: table (or scoring) it comes from.
+ChannelingRisk = Literal["LOW", "MODERATE", "HIGH", "VERY_HIGH", "INSUFFICIENT_DATA"]
+ResistanceLevel = Literal["VERY_LOW", "LOW", "MODERATE", "HIGH", "VERY_HIGH"]
+Adherence = Literal["EXCELLENT", "GOOD", "FAIR", "POOR"]
+
+#: What `order_by` may name, and the catalogue item each one is.
+_ORDER_KEYS: dict[str, str] = {
+    "date": "date",
+    "execution_score": "execution_score",
+    "rating": "rating",
+    "shot_time": "shot_time",
+    "yield_g": "yield",
+    "first_drip": "first_drip",
+    "peak_pressure": "peak_pressure",
+    "brew_flow": "brew_flow",
+    "dose_in": "dose_in",
+    "dose_out": "dose_out",
+    "ratio": "ratio",
+}
+
+
+class SearchShotsInput(_Model):
     version_no: int | None = Field(
-        default=None,
-        gt=0,
-        description="Only the shots pulled under this version of the Set.",
+        default=None, gt=0, description="Only the shots pulled under this version of the Set."
     )
     label: Literal["keep", "improve", "discard"] | None = Field(
         default=None,
         description=(
-            "Only the shots labelled this way. Keep is the gold standard, Improve is what "
-            "you are working on, and Discard says the shot went wrong rather than the recipe."
+            "Only the shots labelled this way. Keep is the gold standard, Improve is what you "
+            "are working on, and Discard says the shot went wrong rather than the recipe."
         ),
     )
-    limit: int = Field(default=50, ge=1, le=200)
+    balance: Balance | None = Field(default=None, description="Only this taste balance.")
+    since: date | None = Field(default=None, description="From this day (UTC), inclusive.")
+    until: date | None = Field(default=None, description="Up to this day (UTC), inclusive.")
+    execution_score: Range | None = Field(default=None, description="Out of 10.")
+    rating: Range | None = Field(default=None, description="1 to 5 stars.")
+    shot_time: Range | None = Field(default=None, description="Seconds.")
+    yield_g: Range | None = Field(default=None, description="The scale's final weight, grams.")
+    first_drip: Range | None = Field(default=None, description="Seconds.")
+    peak_pressure: Range | None = Field(default=None, description="Bar.")
+    brew_flow: Range | None = Field(default=None, description="Average brew flow, ml/s.")
+    dose_in: Range | None = Field(default=None, description="Grams.")
+    dose_out: Range | None = Field(default=None, description="Grams.")
+    ratio: Range | None = Field(default=None, description="Dose out / dose in, e.g. 2.0.")
+    channeling_risk: ChannelingRisk | None = None
+    resistance_level: ResistanceLevel | None = None
+    pressure_adherence: Adherence | None = None
+    flow_adherence: Adherence | None = None
+    order_by: Literal[
+        "date",
+        "execution_score",
+        "rating",
+        "shot_time",
+        "yield_g",
+        "first_drip",
+        "peak_pressure",
+        "brew_flow",
+        "dose_in",
+        "dose_out",
+        "ratio",
+    ] = Field(default="date", description="What the results are sorted by.")
+    descending: bool = Field(default=True, description="Largest (or newest) first.")
+    limit: int = Field(default=SEARCH_LIMIT, ge=1, le=SEARCH_LIMIT)
 
 
-class SetShotLine(_Model):
-    """One shot, with the numbers a prediction is graded on beside the verdict."""
-
+class ShotHit(_Model):
     shot_id: int
-    version_no: int
-    started_at: str | None = None
-    shot_time_s: float | None = None
-    first_drip_s: float | None = None
-    yield_g: float | None = None
-    peak_pressure_bar: float | None = None
-    brew_flow_ml_s: float | None = None
-    rating: int | None = None
-    balance: str | None = None
-    decision: str | None = None
-    taste_notes: list[str] = Field(default_factory=list)
-    aroma_notes: list[str] = Field(default_factory=list)
-    notes: str = ""
-    #: True when the shot's own numbers are not evidence: it never parsed, it
-    #: stopped early, or it was labelled Discard. Said on the row rather than
-    #: left out of the list, because "when did it go wrong" is a question these
-    #: shots are part of the answer to.
-    counts: bool = True
+    #: The shot's base rendering.
+    text: str
 
 
-class ListSetShotsOutput(_Model):
-    shots: list[SetShotLine] = Field(default_factory=list)
+class SearchShotsOutput(_Model):
+    shots: list[ShotHit] = Field(default_factory=list)
     count: int = 0
-    #: True when the limit cut the list short, so a model can ask for more
-    #: rather than conclude the Set has that many shots.
+    #: True when more shots matched than came back, so a model can narrow the
+    #: search rather than conclude the Set has only these.
     truncated: bool = False
+
+
+#: Which catalogue item each search argument reads, beyond the ranges and bands
+#: whose argument names already are (or map through `_ORDER_KEYS` to) the key.
+_ARGUMENT_ITEMS: dict[str, str] = {
+    "version_no": "set_version",
+    "label": "label",
+    "balance": "balance",
+    "since": "started_at",
+    "until": "started_at",
+    **{name: key for name, key in _ORDER_KEYS.items() if name != "date"},
+    "channeling_risk": "channeling_risk",
+    "resistance_level": "resistance_level",
+    "pressure_adherence": "pressure_adherence",
+    "flow_adherence": "flow_adherence",
+}
+
+
+def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier]) -> None:
+    """Refuse a filter or a sort on an item the agent is not shown.
+
+    Searching on an excluded item would hand back what excluding it withheld:
+    which shots are above a rating is the rating, a bisection away. Which items
+    are excluded is no secret — the glossary leaves them out — so the refusal
+    names the item. An extended item stays searchable, since the agent may read
+    it with `get_shot_extended` anyway.
+    """
+    used = [name for name in _ARGUMENT_ITEMS if getattr(args, name) is not None]
+    order = "started_at" if args.order_by == "date" else _ORDER_KEYS[args.order_by]
+    keys = [_ARGUMENT_ITEMS[name] for name in used] + [order]
+    for key in dict.fromkeys(keys):
+        if tiers.get(key, "excluded") == "excluded":
+            raise ValueError(
+                f"{ITEMS[key].name} is not shared with the agent, so the search cannot filter "
+                "or sort on it; leave that argument out."
+            )
 
 
 @tool(
     "list_set_shots",
     permission="read",
     description=(
-        "This Set's shots, newest first: the six measures a prediction is graded on, the "
-        "rating, the balance, the flavour notes, the label and the note. Filter by version "
-        "number or by label — 'every Keep shot' and 'everything on v5' are the two questions "
-        "it exists for. A shot marked counts=false is quarantined, incomplete or Discard: "
-        "read it, but do not average it."
+        "Search this Set's shots on their base information, and get each match's base "
+        "rendering. Filter by version, label, balance and dates, by a range on shot time, "
+        "yield, first drip, peak pressure, average brew flow, execution score, rating, dose in, "
+        "dose out or ratio, or by the band of channeling risk, resistance level, pressure or "
+        "flow adherence; sort by date or any of those numbers. At most 10 shots come back; "
+        "truncated says more matched. A shot with no value for a filter never matches it. A "
+        "shot that is not counted is read, never averaged."
     ),
 )
-async def list_set_shots(ctx: ToolContext, args: ListSetShotsInput) -> ListSetShotsOutput:
+async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShotsOutput:
     """No ``set_id``: the Set is the conversation's, which is the whole point.
 
-    A Set conversation reads its own shots and cannot be pointed at anybody
+    A Set conversation searches its own shots and cannot be pointed at anybody
     else's, so there is no argument here to point wrongly.
     """
     set_id = _resolve_set(ctx, None)
-    # One more than asked for, and then trimmed: "did the limit cut this list
-    # short" and "does the Set have exactly this many" are different answers,
-    # and a count equal to the limit cannot tell them apart.
-    found = await SetsRepository(ctx.db).set_shots(
+    tiers = await effective_tiers(ctx.db)
+    _refuse_excluded(args, tiers)
+    ranges = {
+        _ORDER_KEYS[name]: (bounds.min, bounds.max)
+        for name in (
+            "execution_score",
+            "rating",
+            "shot_time",
+            "yield_g",
+            "first_drip",
+            "peak_pressure",
+            "brew_flow",
+            "dose_in",
+            "dose_out",
+            "ratio",
+        )
+        if (bounds := getattr(args, name)) is not None
+    }
+    bands = {
+        name: wanted
+        for name in ("channeling_risk", "resistance_level", "pressure_adherence", "flow_adherence")
+        if (wanted := getattr(args, name)) is not None
+    }
+    found = await search_shots(
+        ctx.db,
         set_id,
-        version_no=args.version_no,
-        decision=args.label,
-        limit=args.limit + 1,
+        ShotQuery(
+            version_no=args.version_no,
+            label=args.label,
+            balance=args.balance,
+            since=args.since.isoformat() if args.since is not None else None,
+            until=args.until.isoformat() if args.until is not None else None,
+            ranges=ranges,
+            bands=bands,
+            order_by=_ORDER_KEYS[args.order_by],
+            descending=args.descending,
+            limit=args.limit,
+        ),
     )
-    rows = found[: args.limit]
-    return ListSetShotsOutput(
+    return SearchShotsOutput(
         shots=[
-            SetShotLine(
-                shot_id=row.shot_id,
-                version_no=row.version_no,
-                started_at=row.started_at,
-                shot_time_s=row.shot_time_s,
-                first_drip_s=row.first_drip_s,
-                yield_g=row.yield_g,
-                peak_pressure_bar=row.peak_pressure_bar,
-                brew_flow_ml_s=row.brew_flow_ml_s,
-                rating=row.rating,
-                balance=row.balance,
-                decision=row.decision,
-                taste_notes=row.taste_notes,
-                aroma_notes=row.aroma_notes,
-                notes=row.notes,
-                counts=not (row.quarantined or row.incomplete or row.decision == "discard"),
-            )
-            for row in rows
+            ShotHit(shot_id=facts.shot_id, text=render_shot(facts, "base", tiers))
+            for facts in found.shots
         ],
-        count=len(rows),
-        truncated=len(found) > args.limit,
+        count=len(found.shots),
+        truncated=found.truncated,
     )
 
 
@@ -1028,7 +1049,7 @@ class RunAnalysisOutput(_Model):
     permission="propose",
     description=(
         "Queue the deterministic per-shot analysis for a shot that has none, and return "
-        "the row. It runs in the background; read it back with get_shot once it is done. "
+        "the row. It runs in the background, and its result appears on the shot's page. "
         "Idempotent: a shot already being analysed returns the running row. It spends "
         "provider tokens, so it is rate limited."
     ),

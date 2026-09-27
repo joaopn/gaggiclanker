@@ -58,42 +58,69 @@ async def test_the_schema_examples_all_run(ctx: ToolContext) -> None:
         assert outcome.ok, (example["sql"], outcome.data)
 
 
-async def test_get_shot_summary_carries_the_verdict_and_the_diagnostics(
+async def test_get_shot_is_the_base_rendering_of_the_shot(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     data = await call(ctx, "get_shot", shot_id=archive.shots[0])
 
-    assert data["shot"]["shot_id"] == archive.shots[0]
-    assert data["shot"]["set_name"]
-    assert data["diagnostics"] is not None
-    assert data["phases"] is None, "summary is summary"
+    assert data["shot_id"] == archive.shots[0]
+    assert data["tier"] == "base"
+    assert data["text"].startswith(f"shot {archive.shots[0]}\n")
+    assert "Rating: 2/5" in data["text"]
+    assert "Channeling risk: MODERATE" in data["text"]
+    # Nothing extended, and no curve: that is what the other two tools are for.
+    assert "[Curve]" not in data["text"]
+    assert "Score confidence" not in data["text"]
+    assert set(data) == {"shot_id", "tier", "text"}, "the old analysis field is gone"
 
 
-async def test_get_shot_curve_is_downsampled_across_the_whole_shot(
+async def test_get_shot_extended_adds_only_what_base_leaves_out(
     ctx: ToolContext, archive: Fixture
 ) -> None:
     # The last shot is the one the fixture gives samples to.
-    data = await call(ctx, "get_shot", shot_id=archive.shots[-1], detail="curve")
+    base = (await call(ctx, "get_shot", shot_id=archive.shots[-1]))["text"]
+    extended = await call(ctx, "get_shot_extended", shot_id=archive.shots[-1])
 
-    curve = data["curve"]
-    assert curve
-    # Not the first N samples: a LIMIT would return the pre-infusion and none
-    # of the shot, which is the bug the modulo exists to avoid.
-    assert curve[-1]["t_s"] > curve[0]["t_s"]
+    assert extended["tier"] == "extended"
+    assert "Score confidence: high" in extended["text"]
+    assert "[Curve]\n112 samples" in extended["text"], "every stored sample, not a sample of them"
+    assert "Rating:" not in extended["text"]
+    assert "Rating: 3/5" in base
 
 
-async def test_get_shot_says_so_when_there_is_no_such_shot(ctx: ToolContext) -> None:
-    data = await refuse(ctx, "get_shot", shot_id=999_999)
+async def test_get_shot_full_is_both(ctx: ToolContext, archive: Fixture) -> None:
+    full = await call(ctx, "get_shot_full", shot_id=archive.shots[-1])
+
+    assert full["tier"] == "full"
+    assert "Rating: 3/5" in full["text"]
+    assert "Score confidence: high" in full["text"]
+    assert "[Curve]" in full["text"]
+
+
+@pytest.mark.parametrize("name", ["get_shot", "get_shot_extended", "get_shot_full"])
+async def test_a_shot_tool_says_so_when_there_is_no_such_shot(ctx: ToolContext, name: str) -> None:
+    data = await refuse(ctx, name, shot_id=999_999)
     assert "No shot" in data["detail"]
 
 
-async def test_compare_shots_reports_only_what_differs(ctx: ToolContext, archive: Fixture) -> None:
-    data = await call(ctx, "compare_shots", shot_ids=archive.shots[:3])
+async def test_the_shot_tools_take_the_shot_id_and_nothing_else(ctx: ToolContext) -> None:
+    """The old `detail` argument is gone: the tier is the tool."""
+    data = await refuse(ctx, "get_shot", shot_id=1, detail="curve")
+    assert data["error"] == "invalid_arguments"
 
-    assert len(data["shots"]) == 3
-    fields = {row["field"] for row in data["differences"]}
-    assert fields, "three shots from different versions differ in something"
-    assert "set_name" not in fields, "they are all in the same Set"
+
+async def test_compare_shots_renders_each_in_full_in_the_order_given(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    wanted = [archive.shots[2], archive.shots[0], archive.shots[-1]]
+
+    data = await call(ctx, "compare_shots", shot_ids=wanted)
+
+    assert [shot["shot_id"] for shot in data["shots"]] == wanted
+    assert all(shot["tier"] == "full" for shot in data["shots"])
+    assert all(shot["text"].startswith(f"shot {shot['shot_id']}\n") for shot in data["shots"])
+    assert "Score confidence" in data["shots"][0]["text"]
+    assert "Rating:" in data["shots"][0]["text"]
 
 
 async def test_compare_shots_refuses_more_than_four(ctx: ToolContext, archive: Fixture) -> None:

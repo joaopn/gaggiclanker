@@ -48,7 +48,7 @@ one of them true:
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Protocol
 
@@ -79,6 +79,7 @@ log = structlog.get_logger(__name__)
 
 __all__ = [
     "RECIPE_FIELDS",
+    "SEARCH_COLUMNS",
     "VERSION_FIELDS",
     "DesignBrief",
     "DesignRefusal",
@@ -853,6 +854,19 @@ _MEASURE_COLUMNS = """
                         THEN json_extract(sh.diagnostics_json,
                                           '$.diagnostics.extraction.flow_avg_brew_ml_s')
                         END AS brew_flow_ml_s""".strip()
+
+#: The shot search's numbers that are a column, and the expression each one is.
+#: Each reads exactly as the catalogue's item does — a zero duration is no
+#: time, the final weight is the scale's — so a shot the SQL keeps is one the
+#: catalogue would show inside the range.
+SEARCH_COLUMNS: dict[str, str] = {
+    "execution_score": "sh.execution_score",
+    "rating": "j.rating",
+    "shot_time": "CASE WHEN sh.duration_ms > 0 THEN sh.duration_ms / 1000.0 END",
+    "yield": "CASE WHEN sh.final_weight_g > 0 THEN sh.final_weight_g END",
+    "dose_in": "j.dose_in_g",
+    "dose_out": "j.dose_out_g",
+}
 
 #: Every column of `set_versions` that a new version copies from its parent —
 #: which is exactly the recipe. Named and exported because a proposed change is
@@ -1896,6 +1910,67 @@ class SetsRepository(Repository):
             (set_id,),
         )
         return {int(row["id"]) for row in rows}
+
+    async def search_shot_ids(
+        self,
+        set_id: int,
+        *,
+        version_no: int | None = None,
+        decision: Decision | None = None,
+        balance: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        ranges: Mapping[str, tuple[float | None, float | None]] | None = None,
+    ) -> list[int]:
+        """The ids of this Set's shots that pass the filters a column can answer.
+
+        The first half of the shot search: whatever is a plain column — the
+        version, the label, the balance, the day, and the ranges on the
+        numbers in :data:`SEARCH_COLUMNS` — is filtered here, so the second
+        half loads only the shots that can still match. A range on anything
+        else is the caller's to apply over the loaded shots. ``since`` and
+        ``until`` are ``YYYY-MM-DD`` days, both inclusive, of the UTC start
+        time. Ordered by id, because the order is the caller's to decide.
+        """
+        where = ["v.set_id = :set_id"]
+        params: dict[str, Any] = {"set_id": set_id}
+        if version_no is not None:
+            where.append("v.version_no = :version_no")
+            params["version_no"] = version_no
+        if decision is not None:
+            where.append("j.decision = :decision")
+            params["decision"] = decision
+        if balance is not None:
+            where.append("j.balance = :balance")
+            params["balance"] = balance
+        if since is not None:
+            where.append("date(sh.started_at) >= :since")
+            params["since"] = since
+        if until is not None:
+            where.append("date(sh.started_at) <= :until")
+            params["until"] = until
+        for index, (key, (low, high)) in enumerate(sorted((ranges or {}).items())):
+            column = SEARCH_COLUMNS.get(key)
+            if column is None:
+                continue
+            if low is not None:
+                where.append(f"({column}) >= :low{index}")
+                params[f"low{index}"] = low
+            if high is not None:
+                where.append(f"({column}) <= :high{index}")
+                params[f"high{index}"] = high
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT sh.id
+            FROM shots sh
+            JOIN set_versions v ON v.id = sh.set_version_id
+            LEFT JOIN shot_judgements j ON j.shot_id = sh.id
+            WHERE {" AND ".join(where)}
+            ORDER BY sh.id
+            """,  # noqa: S608 - the clauses are the literals above and the module constant, every value is bound
+            params,
+        )
+        return [int(row["id"]) for row in rows]
 
     async def set_shots(
         self,

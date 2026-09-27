@@ -72,10 +72,11 @@ MCP_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. It holds every shot "
     "the machine has pulled with full telemetry, the user's verdict on each cup, the Sets "
     "they are dialling in, and a knowledge base of espresso heuristics.\n\n"
-    "Start with describe_schema, then query_shots for anything about many shots at once. "
-    "Cite shots by id and knowledge passages by their heading_path. Tools whose names begin "
-    "with propose_, draft_ or record_ create something the user must confirm; nothing here "
-    "writes to the espresso machine."
+    "Start with describe_schema, then query_shots for anything about many shots at once; "
+    "get_shot reads one shot's base information, get_shot_extended the rest of it and "
+    "get_shot_full both. Cite shots by id and knowledge passages by their heading_path. Tools "
+    "whose names begin with propose_, draft_ or record_ create something the user must "
+    "confirm; nothing here writes to the espresso machine."
 )
 
 #: The same, for a server serving one Set's conversation. It names the tools
@@ -86,10 +87,11 @@ SET_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
     "about one Set — one coffee being dialled in — and it can see that Set only: its "
     "versions with their predictions and outcomes, its shots, and the knowledge base.\n\n"
-    "Start with get_set for the experiment so far, then list_set_shots for the shots behind "
-    "it. Cite shots by id and knowledge passages by their heading_path. Tools whose names "
-    "begin with propose_, draft_ or record_ create something the user must confirm; nothing "
-    "here writes to the espresso machine."
+    "Start with get_set for the experiment so far, then list_set_shots to search the shots "
+    "behind it on their base information; get_shot_extended and get_shot_full read one shot in "
+    "more detail. Cite shots by id and knowledge passages by their heading_path. Tools whose "
+    "names begin with propose_, draft_ or record_ create something the user must confirm; "
+    "nothing here writes to the espresso machine."
 )
 
 

@@ -55,9 +55,10 @@ __all__ = [
 type ChatKind = Literal["general", "set"]
 
 #: The tools a Set conversation has. Everything here is bounded by the Set:
-#: ``get_set`` and ``propose_set_version`` refuse another Set's id, ``get_shot``
-#: and ``compare_shots`` refuse a shot filed elsewhere, and ``list_set_shots``
-#: takes no Set at all — it reads the one this conversation is about.
+#: ``get_set`` and ``propose_set_version`` refuse another Set's id, the three
+#: shot tools (``get_shot``, ``get_shot_extended``, ``get_shot_full``) and
+#: ``compare_shots`` refuse a shot filed elsewhere, and ``list_set_shots`` — the
+#: shot search — takes no Set at all: it reads the one this conversation is about.
 #:
 #: What is deliberately absent is as much of the design as what is here.
 #: ``query_shots`` and ``describe_schema`` would be a way around the scope in
@@ -74,6 +75,8 @@ SET_TOOLS: frozenset[str] = frozenset(
         "get_profile",
         "get_set",
         "get_shot",
+        "get_shot_extended",
+        "get_shot_full",
         "list_profiles",
         "list_set_shots",
         "propose_set_version",
@@ -125,6 +128,8 @@ GENERAL_TOOLS: frozenset[str] = frozenset(
         "get_rules",
         "get_set",
         "get_shot",
+        "get_shot_extended",
+        "get_shot_full",
         "list_beans",
         "list_grinders",
         "list_profiles",

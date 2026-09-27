@@ -17,6 +17,7 @@ give the same text, and a golden file can hold it.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -43,6 +44,7 @@ __all__ = [
     "needs_samples",
     "render_shot",
     "shot_lines",
+    "with_samples",
 ]
 
 
@@ -84,6 +86,18 @@ async def load_shots(
             samples=tuple(curves.get(row.id, ())) if samples else None,
         )
         for row in rows
+    ]
+
+
+async def with_samples(db: Database, shots: Sequence[ShotFacts]) -> list[ShotFacts]:
+    """The same shots with their samples, read in one query for all of them.
+
+    For a caller that checks what it loaded before paying for the curve: a
+    shot tool refuses a shot outside its Set before reading its samples.
+    """
+    curves = await ShotsRepository(db).samples_for([facts.shot_id for facts in shots])
+    return [
+        dataclasses.replace(facts, samples=tuple(curves.get(facts.shot_id, ()))) for facts in shots
     ]
 
 

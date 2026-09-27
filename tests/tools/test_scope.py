@@ -36,6 +36,8 @@ def test_a_set_conversation_has_exactly_these_tools() -> None:
             "get_rules",
             "get_set",
             "get_shot",
+            "get_shot_extended",
+            "get_shot_full",
             "list_profiles",
             "list_set_shots",
             "propose_set_version",
@@ -57,6 +59,8 @@ def test_a_general_conversation_has_exactly_these_tools() -> None:
             "get_rules",
             "get_set",
             "get_shot",
+            "get_shot_extended",
+            "get_shot_full",
             "list_beans",
             "list_grinders",
             "list_profiles",
@@ -211,11 +215,12 @@ async def test_propose_set_version_refuses_another_set(
     assert "can see no other" in outcome.data["detail"]
 
 
-async def test_get_shot_refuses_a_shot_of_another_set_and_one_that_is_not_there(
-    set_ctx: ToolContext, archive: Fixture, other_set_shot: int
+@pytest.mark.parametrize("name", ["get_shot", "get_shot_extended", "get_shot_full"])
+async def test_a_shot_tool_refuses_a_shot_of_another_set_and_one_that_is_not_there(
+    set_ctx: ToolContext, archive: Fixture, other_set_shot: int, name: str
 ) -> None:
-    elsewhere = await registry.dispatch(set_ctx, "get_shot", {"shot_id": other_set_shot})
-    missing = await registry.dispatch(set_ctx, "get_shot", {"shot_id": 999_999})
+    elsewhere = await registry.dispatch(set_ctx, name, {"shot_id": other_set_shot})
+    missing = await registry.dispatch(set_ctx, name, {"shot_id": 999_999})
 
     assert not elsewhere.ok
     assert not missing.ok
@@ -229,12 +234,28 @@ async def test_get_shot_refuses_a_shot_of_another_set_and_one_that_is_not_there(
 async def test_compare_shots_refuses_the_moment_one_is_not_this_set_s(
     set_ctx: ToolContext, archive: Fixture, other_set_shot: int
 ) -> None:
-    outcome = await registry.dispatch(
+    elsewhere = await registry.dispatch(
         set_ctx, "compare_shots", {"shot_ids": [archive.shots[0], other_set_shot]}
     )
+    missing = await registry.dispatch(
+        set_ctx, "compare_shots", {"shot_ids": [archive.shots[0], 999_999]}
+    )
 
-    assert not outcome.ok
-    assert "not a shot of this Set" in outcome.data["detail"]
+    assert not elsewhere.ok
+    assert "not a shot of this Set" in elsewhere.data["detail"]
+    assert elsewhere.data["detail"].replace(str(other_set_shot), "N") == missing.data[
+        "detail"
+    ].replace("999999", "N")
+
+
+@pytest.mark.parametrize("name", ["get_shot", "get_shot_extended", "get_shot_full"])
+async def test_a_shot_tool_reads_this_set_s_shot(
+    set_ctx: ToolContext, archive: Fixture, name: str
+) -> None:
+    outcome = await registry.dispatch(set_ctx, name, {"shot_id": archive.shots[0]})
+
+    assert outcome.ok, outcome.data
+    assert outcome.data["text"].startswith(f"shot {archive.shots[0]}\n")
 
 
 async def test_a_general_conversation_still_reads_any_shot(
@@ -403,6 +424,8 @@ async def design_ctx(archive: Fixture, settings: object) -> ToolContext:
         ),
         ("list_set_shots", {}),
         ("get_shot", {"shot_id": 1}),
+        ("get_shot_extended", {"shot_id": 1}),
+        ("get_shot_full", {"shot_id": 1}),
         ("compare_shots", {"shot_ids": [1, 2]}),
         ("record_insight", {"text": "Something."}),
         ("query_shots", {"sql": "SELECT 1"}),
@@ -449,58 +472,6 @@ async def test_the_schemas_sent_while_designing_are_the_design_scope_s(
     assert names == DESIGN_TOOLS
 
 
-# -- list_set_shots --------------------------------------------------------
-
-
-async def test_list_set_shots_returns_this_set_s_shots_newest_first(
-    set_ctx: ToolContext, archive: Fixture, other_set_shot: int
-) -> None:
-    data = (await registry.dispatch(set_ctx, "list_set_shots", {})).data
-
-    ids = [shot["shot_id"] for shot in data["shots"]]
-    assert ids, data
-    assert other_set_shot not in ids
-    assert set(ids) <= set(archive.shots)
-    assert data["count"] == len(ids)
-
-
-async def test_list_set_shots_filters_by_version_and_by_label(
-    set_ctx: ToolContext, archive: Fixture
-) -> None:
-    every = (await registry.dispatch(set_ctx, "list_set_shots", {})).data
-    version_no = every["shots"][0]["version_no"]
-
-    filtered = (await registry.dispatch(set_ctx, "list_set_shots", {"version_no": version_no})).data
-    assert {shot["version_no"] for shot in filtered["shots"]} == {version_no}
-
-    keeps = (await registry.dispatch(set_ctx, "list_set_shots", {"label": "keep"})).data
-    assert all(shot["decision"] == "keep" for shot in keeps["shots"])
-
-
-async def test_list_set_shots_is_bounded_and_says_when_it_cut_the_list(
-    set_ctx: ToolContext,
-) -> None:
-    data = (await registry.dispatch(set_ctx, "list_set_shots", {"limit": 1})).data
-
-    assert len(data["shots"]) == 1
-    assert data["truncated"] is True
-
-    refused = await registry.dispatch(set_ctx, "list_set_shots", {"limit": 500})
-    assert refused.status == "error"
-
-
-async def test_a_list_exactly_the_size_of_the_limit_is_not_truncated(
-    set_ctx: ToolContext,
-) -> None:
-    """ "The limit cut it short" and "that is all there is" are different answers."""
-    every = (await registry.dispatch(set_ctx, "list_set_shots", {})).data
-
-    exact = (await registry.dispatch(set_ctx, "list_set_shots", {"limit": every["count"]})).data
-
-    assert exact["count"] == every["count"]
-    assert exact["truncated"] is False
-
-
 async def test_list_profiles_in_a_set_chat_does_not_count_other_sets_shots(
     set_ctx: ToolContext, ctx: ToolContext
 ) -> None:
@@ -511,23 +482,6 @@ async def test_list_profiles_in_a_set_chat_does_not_count_other_sets_shots(
     assert scoped["items"], scoped
     assert all("shot_count" not in item for item in scoped["items"])
     assert any("shot_count" in item for item in general["items"])
-
-
-async def test_list_set_shots_marks_what_does_not_count(
-    set_ctx: ToolContext, archive: Fixture
-) -> None:
-    """A Discard is listed — it is part of "when did it go wrong" — and flagged."""
-    from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
-
-    await JudgementsRepository(archive.db).upsert(
-        archive.shots[0], JudgementWrite(decision="discard")
-    )
-
-    data = (await registry.dispatch(set_ctx, "list_set_shots", {})).data
-
-    discarded = next(shot for shot in data["shots"] if shot["shot_id"] == archive.shots[0])
-    assert discarded["decision"] == "discard"
-    assert discarded["counts"] is False
 
 
 @pytest.fixture
