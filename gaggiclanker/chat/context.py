@@ -4,8 +4,9 @@ A Set conversation is about **one version** of one Set — the change being
 argued — and this module writes down everything the archive already knows about
 that change before a word is typed: the Set and the recipe, the whole prediction
 ledger with its outcomes, the evidence table this version's prediction is graded
-on, the spread that decides what counts as a difference, the shots on both sides
-of the comparison, and what a good shot of this coffee has looked like.
+on, the spread that decides what counts as a difference, this version's newest
+shots in their base information, and what a good shot of this coffee has looked
+like.
 
 Three properties are load-bearing.
 
@@ -33,7 +34,7 @@ still being designed gets the design brief instead (`chat/design_context.py`).
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from gaggiclanker.db.connection import Database
@@ -43,7 +44,6 @@ from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, set_att
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
-    SetShotRow,
     SetsRepository,
     SetVersionRow,
     dead_end_ids,
@@ -59,6 +59,8 @@ from gaggiclanker.domain.spread import (
     version_evidence,
 )
 from gaggiclanker.domain.vocab import SPREAD_MEASURES, MeasureTerm, SpreadMeasure, vocabulary
+from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
+from gaggiclanker.shotinfo.render import load_shots, render_shot
 from gaggiclanker.tools.scope import ToolScope
 
 __all__ = [
@@ -66,7 +68,7 @@ __all__ = [
     "INSIGHT_CHARS",
     "LEDGER_VERSIONS",
     "NOTE_CHARS",
-    "VERSION_SHOTS",
+    "RECENT_SHOTS",
     "opening_context",
     "thread_title_from",
 ]
@@ -76,9 +78,10 @@ __all__ = [
 #: the two versions it never drops.
 LEDGER_VERSIONS = 12
 
-#: How many shots of each compared version are listed one line at a time. Enough
-#: to show a run and short of a chapter; `list_set_shots` fetches the rest.
-VERSION_SHOTS = 12
+#: How many of this version's newest shots are written out when the caller
+#: does not say: the `chatRecentShots` setting's default, which is what the
+#: runner passes. The rest are a search away.
+RECENT_SHOTS = 20
 
 #: How many confirmed insights are written out, and how long each may be. The
 #: only section whose size follows the kitchen rather than the experiment, so it
@@ -109,8 +112,6 @@ _OUTCOMES: dict[str, str] = {
     "inconclusive": "inconclusive",
 }
 
-_DECISIONS: dict[str, str] = {"keep": "Keep", "improve": "Improve", "discard": "Discard"}
-
 
 def _taste(bean: BeanRow | None) -> str:
     """The heading's taste clause ("; taste acidity 4 (1 low to 5 high)"), or ""."""
@@ -123,13 +124,23 @@ def _plural(count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
-async def opening_context(db: Database, scope: ToolScope) -> str:
+async def opening_context(
+    db: Database,
+    scope: ToolScope,
+    *,
+    recent_shots: int = RECENT_SHOTS,
+    tiers: Mapping[str, Tier] | None = None,
+) -> str:
     """The experiment so far, as markdown, or an empty string for a general chat.
 
     ``scope.set_version_id`` is the version being argued. A scope that names a
     Set and no version falls back to the current one rather than refusing: a
     thread always stores both, and a caller assembling a context by hand (a
     test, a script) should get the obvious answer.
+
+    ``recent_shots`` is how many of the version's newest shots are written
+    out, and ``tiers`` which of their items are base; the runner reads both at
+    the start of the turn, so the context and the tools of one turn agree.
     """
     if scope.kind != "set" or scope.set_id is None:
         return ""
@@ -179,7 +190,16 @@ async def opening_context(db: Database, scope: ToolScope) -> str:
     lines += ["", *_spread_block(spreads)]
     if evidence is not None:
         lines += ["", *_evidence_block(evidence, version, compared)]
-    lines += ["", *await _shots_block(sets, scope.set_id, version, compared)]
+    lines += [
+        "",
+        *await _shots_block(
+            db,
+            scope.set_id,
+            version,
+            recent=max(1, recent_shots),
+            tiers=tiers if tiers is not None else await effective_tiers(db),
+        ),
+    ]
     lines += ["", *_gold_standard(counted, versions, dead_ends)]
     lines += ["", *await _insights_block(db, row)]
     lines += [
@@ -703,69 +723,48 @@ def _counts_line(label: str, counts: Any) -> str:
 
 
 async def _shots_block(
-    sets: SetsRepository,
+    db: Database,
     set_id: int,
     version: SetVersionRow,
-    compared: SetVersionRow | None,
+    *,
+    recent: int,
+    tiers: Mapping[str, Tier],
 ) -> list[str]:
-    """This version's shots and the compared version's, one line each."""
-    lines = [f"THE SHOTS OF v{version.version_no} (newest first)"]
-    lines += _shot_lines(
-        await sets.set_shots(set_id, version_no=version.version_no, limit=VERSION_SHOTS)
-    )
-    if compared is not None:
-        lines += ["", f"THE SHOTS OF v{compared.version_no}, WHICH IT IS COMPARED AGAINST"]
-        lines += _shot_lines(
-            await sets.set_shots(set_id, version_no=compared.version_no, limit=VERSION_SHOTS)
-        )
-    return lines
+    """This version's newest shots, counted or not, each in its base information.
 
-
-def _shot_lines(shots: Sequence[SetShotRow]) -> list[str]:
+    Only this version's: the compared-to version is in the evidence table and
+    the gold standard, which are aggregates over every counted shot, and any
+    one of its shots is a search away. A shot that does not count is written
+    out like the rest — "when did it go wrong" is a question it is part of the
+    answer to — and says so on its own line.
+    """
+    rows = await SetsRepository(db).set_shots(set_id, version_no=version.version_no, limit=recent)
+    shots = await load_shots(db, [row.shot_id for row in rows])
+    number = f"v{version.version_no}"
     if not shots:
-        return ["- none yet."]
-    return [_shot_line(shot) for shot in shots]
-
-
-def _shot_line(shot: SetShotRow) -> str:
-    bits = [f"shot {shot.shot_id}"]
-    if shot.started_at:
-        bits.append(str(shot.started_at)[:16].replace("T", " "))
-    for measure in (
-        "shot_time_s",
-        "first_drip_s",
-        "yield_g",
-        "peak_pressure_bar",
-        "brew_flow_ml_s",
-    ):
-        value = getattr(shot, measure)
-        if value is None:
-            continue
-        term = _MEASURES[measure]
-        bits.append(f"{term.label.lower()} {_number(measure, value)}{_unit(measure)}")
-    if shot.rating is not None:
-        bits.append(f"rated {shot.rating}/5")
-    if shot.balance:
-        bits.append(shot.balance)
-    bits.append(_DECISIONS.get(shot.decision or "", "not labelled"))
-    notes = [*shot.taste_notes, *shot.aroma_notes]
-    if notes:
-        bits.append("flavours " + ", ".join(notes))
-    line = f"- {' · '.join(bits)}"
-    if not _counts(shot):
-        line += " — NOT COUNTED (" + _why_not_counted(shot) + ")"
-    written = str(shot.notes or "").strip()
-    return f'{line} — "{_cut(written, NOTE_CHARS)}"' if written else line
-
-
-def _counts(shot: SetShotRow) -> bool:
-    return not (shot.quarantined or shot.incomplete or shot.decision == "discard")
-
-
-def _why_not_counted(shot: SetShotRow) -> str:
-    if shot.decision == "discard":
-        return "discarded: the shot went wrong, not the recipe"
-    return "quarantined" if shot.quarantined else "stopped early"
+        return [f"THE SHOTS OF {number}", "- none yet."]
+    total = max(version.shot_count, len(shots))
+    if total > len(shots):
+        heading = f"THE LAST {len(shots)} OF {total} SHOTS OF {number} (newest first)"
+        rest = (
+            f"The other {total - len(shots)} of {number}'s shots, and every other version's, "
+            "are a list_set_shots search away"
+        )
+    else:
+        heading = (
+            f"THE ONLY SHOT OF {number}"
+            if total == 1
+            else f"ALL {total} SHOTS OF {number} (newest first)"
+        )
+        rest = "Every other version's shots are a list_set_shots search away"
+    lines = [
+        heading,
+        f"Each in its base information. {rest}; get_shot_extended adds any one shot's "
+        "diagnostics, phases and curve.",
+    ]
+    for facts in shots:
+        lines += ["", render_shot(facts, "base", tiers)]
+    return lines
 
 
 # ── the gold standard ────────────────────────────────────────────────

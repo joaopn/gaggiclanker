@@ -427,6 +427,26 @@ async def test_the_system_prompt_carries_the_set_scope(
     assert "THE EXPERIMENT SO FAR" in system
 
 
+async def test_the_set_scope_opens_with_as_many_shots_as_the_setting_says(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+    await send(runner, tasks, thread)
+    await runner.llm.settings.store("chatRecentShots", 2)
+    await send(runner, tasks, thread, "and now?")
+
+    first, second = (call.system for call in chat_provider.chat_calls)
+    assert "ALL 6 SHOTS OF v1 (newest first)" in first
+    assert "THE LAST 2 OF 6 SHOTS OF v1 (newest first)" in second
+    assert f"shot {archive.shots[-1]}\n" in second
+    assert f"shot {archive.shots[-2]}\n" in second
+    assert f"shot {archive.shots[-3]}\n" not in second
+
+
 async def test_an_unscoped_thread_gets_no_scope_block(
     runner: ChatRunner, tasks: TaskRegistry, archive: Fixture, chat_provider: FakeProvider
 ) -> None:

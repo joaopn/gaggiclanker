@@ -407,3 +407,17 @@ async def test_rejection_messages_are_fixed_strings(
     response = await client.patch("/api/settings", json={key: value})
     assert response.status_code == 400
     assert response.json()["error"]["details"] == [{"field": key, "message": message}]
+
+
+async def test_a_set_conversation_opens_with_at_least_one_shot(
+    client: httpx.AsyncClient,
+) -> None:
+    """How many of a version's shots the opening context carries: 20, and never none."""
+    settings = await get_settings(client)
+    assert settings["chatRecentShots"]["value"] == 20
+
+    refused = await client.patch("/api/settings", json={"chatRecentShots": 0})
+    assert refused.status_code == 400
+    accepted = await client.patch("/api/settings", json={"chatRecentShots": 5})
+    assert accepted.status_code == 200
+    assert (await get_settings(client))["chatRecentShots"]["value"] == 5

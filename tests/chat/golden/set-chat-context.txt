@@ -45,14 +45,49 @@ Every counted shot of both versions, never a chosen one.
 v5: 1 counted shot — 0 sour, 1 balanced, 0 bitter; 0 Keep, 1 Improve, 0 unlabelled.
 v4: 3 counted shots — 0 sour, 3 balanced, 0 bitter; 3 Keep, 0 Improve, 0 unlabelled.
 
-THE SHOTS OF v5 (newest first)
-- shot 9 · 2026-04-05 08:10 · shot time 12.0 s · time to first drip 6.0 s · yield 9.0 g · peak pressure 9.00 bar · average brew flow 2.40 ml/s · Discard — NOT COUNTED (discarded: the shot went wrong, not the recipe) — "Knocked the cup."
-- shot 8 · 2026-04-05 08:00 · shot time 36.0 s · time to first drip 8.0 s · yield 36.3 g · peak pressure 9.30 bar · average brew flow 1.70 ml/s · rated 3/5 · balanced · Improve · flavours sweet.brown_sugar — "Sweeter, but the finish is drying."
+ALL 2 SHOTS OF v5 (newest first)
+Each in its base information. Every other version's shots are a list_set_shots search away; get_shot_extended adds any one shot's diagnostics, phases and curve.
 
-THE SHOTS OF v4, WHICH IT IS COMPARED AGAINST
-- shot 7 · 2026-04-04 09:01 · shot time 34.5 s · time to first drip 7.6 s · yield 36.4 g · peak pressure 9.25 bar · average brew flow 1.80 ml/s · rated 5/5 · balanced · Keep
-- shot 6 · 2026-04-04 09:00 · shot time 32.5 s · time to first drip 6.9 s · yield 35.8 g · peak pressure 9.05 bar · average brew flow 1.95 ml/s · rated 4/5 · balanced · Keep
-- shot 5 · 2026-04-04 08:00 · shot time 33.5 s · time to first drip 7.2 s · yield 36.1 g · peak pressure 9.15 bar · average brew flow 1.88 ml/s · rated 4/5 · balanced · Keep
+shot 9
+[Identity and status]
+Date and time: 2026-04-05 08:10
+Set version: v5 of Set 1
+Label: Discard
+Counted: not counted: discarded
+Machine's shot number: 000007
+[Outcome]
+Shot time: 12.0 s
+Yield: 9.0 g
+[Timing]
+First drip: 6.0 s
+[Pressure]
+Peak pressure: 9.00 bar
+[Flow and volume]
+Average brew flow: 2.40 ml/s
+[Your judgement]
+Notes: "Knocked the cup."
+
+shot 8
+[Identity and status]
+Date and time: 2026-04-05 08:00
+Set version: v5 of Set 1
+Label: Improve
+Counted: counted
+Machine's shot number: 000006
+[Outcome]
+Shot time: 36.0 s
+Yield: 36.3 g
+[Timing]
+First drip: 8.0 s
+[Pressure]
+Peak pressure: 9.30 bar
+[Flow and volume]
+Average brew flow: 1.70 ml/s
+[Your judgement]
+Rating: 3/5
+Balance: Balanced
+Taste notes: Sweet › Brown sugar
+Notes: "Sweeter, but the finish is drying."
 
 THE GOLD STANDARD
 5 Keep shots on the line being brewed, on v1, v4. Their averages: shot time 33.5 s, time to first drip 7.2 s, yield 36.1 g, peak pressure 9.15 bar, average brew flow 1.88 ml/s, rating 4.2.

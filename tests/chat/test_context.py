@@ -3,8 +3,9 @@
 The golden file is `golden/set-chat-context.txt`, and it is the real check on
 this module: the other tests here each pin one rule, while the golden asserts
 that the whole document — the version being argued, the ledger with its dead
-ends and outcomes, the spread, the evidence table, both versions' shots and the
-Keep shots that are the target — reads as one thing a person would recognise.
+ends and outcomes, the spread, the evidence table, this version's shots in
+their base information and the Keep shots that are the target — reads as one
+thing a person would recognise.
 
 The archive behind it is built here rather than borrowed, because it has to
 carry everything at once: a roll back, the two versions it stepped over, a
@@ -28,6 +29,7 @@ from gaggiclanker.chat.context import (
     INSIGHT_CHARS,
     INSIGHTS_SHOWN,
     LEDGER_VERSIONS,
+    RECENT_SHOTS,
     opening_context,
 )
 from gaggiclanker.db.connection import Database
@@ -50,6 +52,7 @@ from gaggiclanker.db.repos.sets import (
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.settings import SETTINGS_REGISTRY
 from gaggiclanker.tools.scope import ToolScope
 from tests.sets.conftest import make_profile_version
 
@@ -588,7 +591,66 @@ async def test_a_discarded_shot_is_listed_and_marked_as_not_counted(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
     )
 
-    assert "NOT COUNTED (discarded" in rendered
+    assert "Counted: not counted: discarded" in rendered
+
+
+def _shot_headers(rendered: str) -> list[int]:
+    """The shots written out in the shots block, in order."""
+    block = rendered.split("SHOTS OF v", 1)[1].split("THE GOLD STANDARD", 1)[0]
+    return [int(match) for match in re.findall(r"^shot (\d+)$", block, flags=re.MULTILINE)]
+
+
+async def test_the_shots_are_this_version_s_newest_in_base_and_no_other_version_s(
+    experiment: Experiment,
+) -> None:
+    sets = SetsRepository(experiment.db)
+    mine = [row.shot_id for row in await sets.set_shots(experiment.set_id, version_no=5)]
+    compared = {row.shot_id for row in await sets.set_shots(experiment.set_id, version_no=4)}
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert "ALL 2 SHOTS OF v5 (newest first)" in rendered
+    assert _shot_headers(rendered) == mine, "newest first, as the Set page lists them"
+    assert not set(_shot_headers(rendered)) & compared
+    # Base only: the extended lines are a tool call away.
+    assert "Rating: 3/5" in rendered
+    assert "Score confidence" not in rendered and "[Curve]" not in rendered
+
+
+async def test_the_number_of_shots_follows_what_the_caller_asks_for(
+    experiment: Experiment,
+) -> None:
+    sets = SetsRepository(experiment.db)
+    newest = (await sets.set_shots(experiment.set_id, version_no=4))[0].shot_id
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4), recent_shots=1
+    )
+
+    assert "THE LAST 1 OF 3 SHOTS OF v4 (newest first)" in rendered
+    assert "The other 2 of v4's shots, and every other version's, are a list_set_shots" in (
+        rendered
+    )
+    assert _shot_headers(rendered) == [newest]
+
+
+async def test_a_version_with_no_shots_says_so(experiment: Experiment) -> None:
+    version = await SetsRepository(experiment.db).add_version(
+        experiment.set_id, SetVersionPatch(intent="Nothing pulled on this yet.")
+    )
+    assert version is not None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+    )
+
+    assert f"THE SHOTS OF v{version.version_no}\n- none yet." in rendered
+
+
+def test_the_default_number_of_shots_is_the_setting_s_default() -> None:
+    assert SETTINGS_REGISTRY["chatRecentShots"].default == RECENT_SHOTS
 
 
 async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(

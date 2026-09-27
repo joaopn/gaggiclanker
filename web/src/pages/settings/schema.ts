@@ -289,8 +289,9 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
     {
       id: "chat",
       title: "Chat",
-      description: "How far one chat answer may go, and how much history it carries.",
-      keys: ["chatMaxToolRounds", "chatMaxToolCalls", "chatHistoryTokenBudget"],
+      description:
+        "How far one chat answer may go, how much history it carries, and how many shots a Set conversation opens with.",
+      keys: ["chatMaxToolRounds", "chatMaxToolCalls", "chatHistoryTokenBudget", "chatRecentShots"],
     },
   ],
   auth: [

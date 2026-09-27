@@ -1140,4 +1140,15 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "because a turn without the question is not a turn."
         ),
     ),
+    SettingDefinition(
+        key="chatRecentShots",
+        type="int",
+        default=20,
+        validate=_at_least(1, "a Set conversation opens with at least its newest shot"),
+        description=(
+            "How many of a version's newest shots a Set conversation opens with, each in its "
+            "base information. The rest are a search away, so this is what the agent sees "
+            "before it asks; every shot costs a few hundred tokens on every turn."
+        ),
+    ),
 )

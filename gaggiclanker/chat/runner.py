@@ -60,6 +60,7 @@ from gaggiclanker.llm.errors import LlmApiError, classify_llm_error
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import Usage
+from gaggiclanker.shotinfo.catalogue import effective_tiers
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolRegistry
 from gaggiclanker.tools.scope import ToolScope
 
@@ -318,8 +319,19 @@ class ChatRunner:
         # brief and its evidence; the general one has no variables at all, and
         # passing it one it does not use would be harmless but misleading.
         prompt = prompt_for(scope)
+        # Which shot items are base is read once per turn, like the scope: the
+        # opening context written now and every shot tool this turn calls then
+        # render the same lines.
+        tiers = await effective_tiers(self.db)
         variables = (
-            {"scope": await opening_context(self.db, scope)}
+            {
+                "scope": await opening_context(
+                    self.db,
+                    scope,
+                    recent_shots=int(await self.llm.settings.get("chatRecentShots")),
+                    tiers=tiers,
+                )
+            }
             if prompt in (SET_CHAT_PROMPT, DESIGN_CHAT_PROMPT)
             else {}
         )
