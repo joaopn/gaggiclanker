@@ -17,8 +17,12 @@ the diff before committing it.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
+import gaggiclanker.review.context as context_module
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.reviews import ReviewOutcome, ReviewStart, ShotReviewsRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
@@ -32,7 +36,7 @@ from gaggiclanker.review.context import (
     review_keys,
 )
 from gaggiclanker.settings_service import SettingsService
-from gaggiclanker.shotinfo import CATALOGUE, ITEMS
+from gaggiclanker.shotinfo import CATALOGUE, ITEMS, ShotFacts, ShotTier, Tier, render_shot
 from tests.review.conftest import Fixture
 
 GOLDEN = Path(__file__).resolve().parent / "golden" / "review-prompt.txt"
@@ -294,3 +298,61 @@ async def test_the_input_carries_reference_excerpts_with_citable_paths(fixture: 
 async def test_the_excerpt_budget_is_a_parameter_and_zero_turns_it_off(fixture: Fixture) -> None:
     review = await build_review_input(fixture.db, fixture.shots[-1], chunk_token_budget=0)
     assert review.excerpts == []
+
+
+async def test_the_loader_s_judgement_is_dropped_whatever_the_exclusions_say(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blind twice over: the judgement, the Set and an earlier review are gone first.
+
+    The exclusion list keeps their lines out; the facts a review renders carry
+    no judgement, note, version or earlier review, and the shot row none of its
+    copies of them, to begin with. With the list widened to every item, nothing
+    of any of them may appear either, and the facts handed to the renderer say
+    why.
+    """
+    subject = fixture.shots[-1]
+    earlier = ShotReviewsRepository(fixture.db)
+    earlier_id = await earlier.start(ReviewStart(shot_id=subject, model="earlier-model"))
+    await earlier.finish(
+        earlier_id,
+        ReviewOutcome(
+            status="ok",
+            taste_balance="bitter",
+            description="An earlier reading of this shot.",
+            summary="An earlier one-line reading.",
+        ),
+    )
+    everything = frozenset(item.key for item in CATALOGUE)
+    monkeypatch.setattr("gaggiclanker.review.context.review_keys", lambda: everything)
+    rendered: list[ShotFacts] = []
+
+    def spy(
+        facts: ShotFacts, tier: ShotTier, tiers: Mapping[str, Tier], *, curve_points: int
+    ) -> str:
+        rendered.append(facts)
+        return render_shot(facts, tier, tiers, curve_points=curve_points)
+
+    monkeypatch.setattr(context_module, "render_shot", spy)
+
+    review = await build_review_input(fixture.db, subject)
+
+    assert "Sharp up front, nothing behind it" not in review.shot
+    assert "Rating:" not in review.shot
+    assert "Balance:" not in review.shot
+    assert "Guji natural on the Niche" not in review.shot
+    assert f"of Set {fixture.set_id}" not in review.shot
+    assert "An earlier reading of this shot." not in review.shot
+    assert "An earlier one-line reading." not in review.shot
+    assert "earlier-model" not in review.shot
+    assert "Predicted balance" not in review.shot
+    assert "not labelled" in review.shot, "the widened list really did render the label"
+    assert "not filed in a Set" in review.shot, "and the Set version line"
+
+    [facts] = rendered
+    assert (facts.judgement, facts.version, facts.note, facts.review) == (None, None, None, None)
+    assert facts.shot.set_version_id is None
+    assert facts.shot.set_badge is None
+    assert facts.shot.judgement_rating is None
+    assert facts.shot.judgement_notes is None
+    assert facts.shot.judgement_decision is None

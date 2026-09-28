@@ -188,7 +188,26 @@ async def build_review_input(
     # verdict, the Set version, the machine's notes card and an earlier review
     # is dropped here, before anything renders, and the exclusions below keep
     # the lines that would describe them out as well.
-    facts = dataclasses.replace(loaded[0], judgement=None, version=None, note=None, review=None)
+    # The shot row carries a copy of some of it too (the Set badge, the
+    # judgement's rating, notes and label, the machine's own rating), which no
+    # item a review reads renders; cleared all the same, so the rule holds by
+    # what is in hand rather than by what happens to be printed.
+    shot = loaded[0].shot.model_copy(
+        update={
+            "set_version_id": None,
+            "set_badge": None,
+            "rating": None,
+            "index_rating": None,
+            "judgement_rating": None,
+            "judgement_notes": None,
+            "judgement_decision": None,
+            "has_judgement": False,
+            "has_notes": False,
+        }
+    )
+    facts = dataclasses.replace(
+        loaded[0], shot=shot, judgement=None, version=None, note=None, review=None
+    )
 
     profile_label = ""
     profile: dict[str, Any] | None = None
