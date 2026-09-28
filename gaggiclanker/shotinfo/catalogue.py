@@ -44,6 +44,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 
+import structlog
+
 from gaggiclanker.domain import diagnostics as engine
 from gaggiclanker.domain.models import PHASE_EXIT_REASONS
 from gaggiclanker.domain.slog import (
@@ -81,6 +83,8 @@ __all__ = [
     "effective_tiers",
     "keys_in",
 ]
+
+log = structlog.get_logger(__name__)
 
 #: Where an item sits. Excluded is a tier rather than an absence, because it
 #: is a choice somebody made about an item that exists.
@@ -2062,14 +2066,43 @@ def default_tiers() -> Mapping[str, Tier]:
 async def effective_tiers(db: Database) -> Mapping[str, Tier]:
     """The tier each item is in **now**: the one read everything renders through.
 
-    The defaults, today. The database handle is taken already because the
-    person's own choices will live there and be read here, per turn — so every
-    caller (the chat runner, the stdio tool server, the tools themselves)
-    already asks the one function that will know about them. Nothing reads an
-    item's ``default_tier`` except through this.
+    The catalogue's defaults with the person's choices laid over them (the
+    overrides Settings → Shot information stores), read in one query. Every
+    caller asks at the moment it renders — the chat runner once per turn, each
+    shot tool once per call, the stdio tool server the same way — so a tier
+    changed on the settings page applies from the next turn, with no restart
+    and no cache to go stale. Nothing reads an item's ``default_tier`` except
+    through this.
+
+    A stored choice this catalogue cannot honour is skipped rather than
+    raised, since a chat turn is no place to fail over a setting: a key a
+    later release removed, and a locked item, which the settings route
+    refuses to move but a hand-written row could still name. Each is logged
+    once per process, not on every turn that reads it.
     """
-    del db
-    return default_tiers()
+    # Imported here: the repository's model validates keys against this
+    # module's catalogue, so importing it at the top would be a cycle.
+    from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository
+
+    tiers = dict(default_tiers())
+    for key, tier in (await ShotInfoTiersRepository(db).overrides()).items():
+        item = ITEMS.get(key)
+        if item is None or item.locked:
+            if key not in _IGNORED_LOGGED:
+                _IGNORED_LOGGED.add(key)
+                log.warning(
+                    "shot_info_override_ignored",
+                    item_key=key,
+                    reason="unknown" if item is None else "locked",
+                )
+            continue
+        tiers[key] = tier
+    return MappingProxyType(tiers)
+
+
+#: The stored choices already reported as ignored, so a stale row is one log
+#: line per process rather than one per chat turn.
+_IGNORED_LOGGED: set[str] = set()
 
 
 def keys_in(tier: ShotTier, tiers: Mapping[str, Tier]) -> frozenset[str]:

@@ -22,6 +22,7 @@ from gaggiclanker.db.repos.sets import (
     SetVersionWrite,
     SetWrite,
 )
+from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.tools.registry import READ_ONLY, ToolContext, registry
 from gaggiclanker.tools.sql import ALLOWED_VIEWS
@@ -95,6 +96,27 @@ async def test_get_shot_full_is_both(ctx: ToolContext, archive: Fixture) -> None
     assert "Rating: 3/5" in full["text"]
     assert "Score confidence: high" in full["text"]
     assert "[Curve]" in full["text"]
+
+
+async def test_the_next_shot_tool_call_follows_a_tier_moved_since_the_last(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """Read per call, the way the stdio child reads it too."""
+    shot = archive.shots[-1]
+    before = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    repo = ShotInfoTiersRepository(archive.db)
+    await repo.set_tier(ShotInfoTierWrite(item_key="score_confidence", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
+
+    after = (await call(ctx, "get_shot", shot_id=shot))["text"]
+    extended = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
+
+    assert "Score confidence: high" not in before
+    assert "Score confidence: high" in after
+    assert "Score confidence" not in extended, "an item sits in one tier at a time"
+    assert "Rating: 3/5" in before
+    assert "Rating:" not in after
+    assert "Rating:" not in (await call(ctx, "get_shot_full", shot_id=shot))["text"]
 
 
 @pytest.mark.parametrize("name", ["get_shot", "get_shot_extended", "get_shot_full"])

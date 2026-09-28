@@ -499,7 +499,13 @@ class SearchShotsInput(_Model):
         "dose_in",
         "dose_out",
         "ratio",
-    ] = Field(default="date", description="What the results are sorted by.")
+    ] = Field(
+        default="date",
+        description=(
+            "What the results are sorted by. Left out, the date, or the shot id when the date "
+            "is not shared with you."
+        ),
+    )
     descending: bool = Field(default=True, description="Largest (or newest) first.")
     limit: int = Field(default=SEARCH_LIMIT, ge=1, le=SEARCH_LIMIT)
 
@@ -534,7 +540,19 @@ _ARGUMENT_ITEMS: dict[str, str] = {
 }
 
 
-def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier]) -> None:
+def _order(args: SearchShotsInput, tiers: Mapping[str, Tier]) -> str:
+    """What the results are sorted by: the one asked for, else the date.
+
+    With the date excluded and no sort asked for, the shot id instead, which is
+    locked in base: a search the agent made without naming the date must not be
+    refused for sorting on it. A sort on the date it did name still is.
+    """
+    if "order_by" in args.model_fields_set or tiers.get("started_at") != "excluded":
+        return args.order_by
+    return "shot_id"
+
+
+def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier], order: str) -> None:
     """Refuse a filter or a sort on an item the agent is not shown.
 
     Searching on an excluded item would hand back what excluding it withheld:
@@ -544,8 +562,8 @@ def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier]) -> None:
     it with `get_shot_extended` anyway.
     """
     used = [name for name in _ARGUMENT_ITEMS if getattr(args, name) is not None]
-    order = "started_at" if args.order_by == "date" else _ORDER_KEYS[args.order_by]
-    keys = [_ARGUMENT_ITEMS[name] for name in used] + [order]
+    sorted_on = {"date": "started_at", "shot_id": "shot_id"}.get(order) or _ORDER_KEYS[order]
+    keys = [_ARGUMENT_ITEMS[name] for name in used] + [sorted_on]
     for key in dict.fromkeys(keys):
         if tiers.get(key, "excluded") == "excluded":
             raise ValueError(
@@ -575,7 +593,8 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
     """
     set_id = _resolve_set(ctx, None)
     tiers = await effective_tiers(ctx.db)
-    _refuse_excluded(args, tiers)
+    order = _order(args, tiers)
+    _refuse_excluded(args, tiers, order)
     ranges = {
         _ORDER_KEYS[name]: (bounds.min, bounds.max)
         for name in (
@@ -608,7 +627,7 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
             until=args.until.isoformat() if args.until is not None else None,
             ranges=ranges,
             bands=bands,
-            order_by=_ORDER_KEYS[args.order_by],
+            order_by=_ORDER_KEYS.get(order, order),
             descending=args.descending,
             limit=args.limit,
         ),

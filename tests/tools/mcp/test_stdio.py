@@ -26,6 +26,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.tools.mcp.server import SERVER_NAME
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
@@ -137,6 +138,33 @@ async def test_a_query_runs_against_the_archive_the_server_left_behind(
     assert result.is_error is False
     assert result.structured_content is not None
     assert result.structured_content["rows"][0][0] == len(fixture.shots)
+
+
+async def test_the_child_reads_the_tiers_per_call_so_a_change_needs_no_restart(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The settings page writes through the app's connection; the child has its own."""
+    data_dir, fixture = archive_dir
+    shot = fixture.shots[-1]
+    async with AsyncExitStack() as stack:
+        session = await session_for(stack, data_dir)
+        before = await session.call_tool("get_shot", {"shot_id": shot})
+
+        db = Database(data_dir / "gaggiclanker.db")
+        await db.connect()
+        try:
+            await ShotInfoTiersRepository(db).set_tier(
+                ShotInfoTierWrite(item_key="score_confidence", tier="base")
+            )
+        finally:
+            await db.close()
+
+        after = await session.call_tool("get_shot", {"shot_id": shot})
+
+    assert before.structured_content is not None
+    assert after.structured_content is not None
+    assert "Score confidence: high" not in before.structured_content["text"]
+    assert "Score confidence: high" in after.structured_content["text"]
 
 
 async def test_the_scope_env_var_makes_an_unqualified_question_answerable(

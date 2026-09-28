@@ -76,7 +76,7 @@ class ShotQuery:
     ranges: Mapping[str, tuple[float | None, float | None]] = field(default_factory=dict)
     #: One label per :data:`SEARCH_BANDS` key.
     bands: Mapping[str, str] = field(default_factory=dict)
-    #: A :data:`SEARCH_NUMBERS` key, or ``date``.
+    #: A :data:`SEARCH_NUMBERS` key, ``date``, or ``shot_id``.
     order_by: str = "date"
     descending: bool = True
     limit: int = SEARCH_LIMIT
@@ -128,6 +128,8 @@ def _ordered(shots: list[ShotFacts], order_by: str, *, descending: bool) -> list
     def value(facts: ShotFacts) -> float | str | None:
         if order_by == "date":
             return facts.shot.started_at or None
+        if order_by == "shot_id":
+            return facts.shot_id
         return SEARCH_NUMBERS[order_by](facts)
 
     keyed = [(value(facts), facts) for facts in shots]

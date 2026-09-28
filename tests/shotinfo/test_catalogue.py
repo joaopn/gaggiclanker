@@ -10,11 +10,16 @@ otherwise silently drop whatever choice a person had made about it.
 from __future__ import annotations
 
 import re
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+from structlog.testing import capture_logs
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.shotinfo import catalogue
 from gaggiclanker.shotinfo.catalogue import (
     CATALOGUE,
     GROUP_NOTES,
@@ -275,10 +280,61 @@ def test_phase_and_curve_items_live_in_their_own_groups() -> None:
         assert (item.kind == "curve") == (item.group == "Curve"), item.key
 
 
-async def test_effective_tiers_are_the_defaults(tmp_path: Path) -> None:
-    db = Database(tmp_path / "unused.db")  # never opened: nothing is read yet
+@pytest.fixture
+async def db(tmp_path: Path) -> AsyncIterator[Database]:
+    database = Database(tmp_path / "tiers.db")
+    await database.connect()
+    await run_migrations(database)
+    try:
+        yield database
+    finally:
+        await database.close()
 
+
+async def test_effective_tiers_are_the_defaults_until_somebody_moves_an_item(
+    db: Database,
+) -> None:
     assert dict(await effective_tiers(db)) == dict(default_tiers())
+
+
+async def test_effective_tiers_lay_the_person_s_choices_over_the_defaults(db: Database) -> None:
+    repo = ShotInfoTiersRepository(db)
+    await repo.set_tier(ShotInfoTierWrite(item_key="flow_jitter", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
+
+    tiers = await effective_tiers(db)
+
+    assert dict(tiers) == {**default_tiers(), "flow_jitter": "base", "rating": "excluded"}
+    assert "flow_jitter" in keys_in("base", tiers)
+    assert "rating" not in keys_in("full", tiers)
+
+
+@pytest.mark.parametrize(("key", "reason"), [("retired_item", "unknown"), ("shot_id", "locked")])
+async def test_a_stored_choice_the_catalogue_cannot_honour_is_ignored_and_logged_once(
+    db: Database, key: str, reason: str
+) -> None:
+    """A key a later release removed, or a locked item a hand-written row moved."""
+    # Past the write model on purpose: the route and the model both refuse
+    # these, and the reader must still survive a row that got in another way.
+    await db.execute("INSERT INTO shot_info_tiers (item_key, tier) VALUES (?, 'excluded')", (key,))
+    await ShotInfoTiersRepository(db).set_tier(
+        ShotInfoTierWrite(item_key="rating", tier="extended")
+    )
+    catalogue._IGNORED_LOGGED.discard(key)
+
+    with capture_logs() as logged:
+        first = await effective_tiers(db)
+        second = await effective_tiers(db)
+
+    assert dict(first) == dict(second) == {**default_tiers(), "rating": "extended"}
+    assert [entry for entry in logged if entry["event"] == "shot_info_override_ignored"] == [
+        {
+            "event": "shot_info_override_ignored",
+            "item_key": key,
+            "reason": reason,
+            "log_level": "warning",
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -294,7 +350,7 @@ def test_a_rendering_s_keys_follow_its_tier(tier: str, expected: frozenset[str])
 
 
 def test_an_item_moved_to_another_tier_moves_with_it() -> None:
-    """The tiers are an argument, not a constant: chunk-B-style overrides just work."""
+    """The tiers are an argument, not a constant: a person's overrides just work."""
     moved = {**default_tiers(), "flow_jitter": "base", "rating": "excluded"}
 
     assert "flow_jitter" in keys_in("base", moved)

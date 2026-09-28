@@ -10,6 +10,7 @@ middle of an answer.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 from gaggiclanker.chat.runner import ChatRunner, _to_chat_message, run_task_name
 from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
+from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
@@ -447,6 +449,35 @@ async def test_the_set_scope_opens_with_as_many_shots_as_the_setting_says(
     assert f"shot {archive.shots[-1]}\n" in second
     assert f"shot {archive.shots[-2]}\n" in second
     assert f"shot {archive.shots[-3]}\n" not in second
+
+
+async def test_a_tier_moved_between_turns_reaches_the_next_turn_s_context_and_glossary(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """Read at the start of every turn: no restart, and nothing cached across turns."""
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+    await send(runner, tasks, thread)
+    repo = ShotInfoTiersRepository(archive.db)
+    await repo.set_tier(ShotInfoTierWrite(item_key="score_confidence", tier="base"))
+    await repo.set_tier(ShotInfoTierWrite(item_key="rating", tier="excluded"))
+    await send(runner, tasks, thread, "and now?")
+
+    first, second = (call.system for call in chat_provider.chat_calls)
+    # The opening context's shots, rendered in base.
+    assert "\nScore confidence: high" not in first
+    assert "\nScore confidence: high" in second
+    assert re.search(r"\nRating: \d/5", first)
+    assert not re.search(r"\nRating: \d/5", second)
+    # And the glossary follows: the moved item under its new tier, the
+    # excluded one no longer explained.
+    assert "- Score confidence [extended]: " in first
+    assert "- Score confidence [base]: " in second
+    assert "- Rating [base]: " in first
+    assert "- Rating [" not in second
 
 
 async def test_the_set_and_general_prompts_carry_the_shot_field_glossary(

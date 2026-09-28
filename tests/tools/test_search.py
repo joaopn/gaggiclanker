@@ -233,8 +233,10 @@ def test_the_band_arguments_are_the_engine_s_labels() -> None:
 _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
     ("label", {"label": "keep"}, "label"),
     ("balance", {"balance": "sour"}, "balance"),
-    ("since", {"since": "2026-03-01"}, "started_at"),
-    ("until", {"until": "2026-03-09"}, "started_at"),
+    # Sorted on something else, so it is the filter that is refused, not the
+    # default sort on the date.
+    ("since", {"since": "2026-03-01", "order_by": "shot_time"}, "started_at"),
+    ("until", {"until": "2026-03-09", "order_by": "shot_time"}, "started_at"),
     ("execution_score", {"execution_score": {"min": 1}}, "execution_score"),
     ("rating", {"rating": {"min": 1}}, "rating"),
     ("shot_time", {"shot_time": {"min": 1}}, "shot_time"),
@@ -347,3 +349,17 @@ async def test_no_shot_tool_ever_shows_an_excluded_item(
     # The fixture records no average brew flow at all, so that line never shows.
     assert line in shown or key == "brew_flow", "the item shows while it is not excluded"
     assert line not in hidden, key
+
+
+@pytest.mark.parametrize("descending", [True, False])
+async def test_with_the_date_excluded_the_default_sort_is_the_shot_id(
+    set_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch, descending: bool
+) -> None:
+    """The agent named no date, so nothing it asked for is refused."""
+    _tiers_with(monkeypatch, started_at="excluded")
+
+    data = await search(set_ctx, descending=descending)
+
+    ids = [shot["shot_id"] for shot in data["shots"]]
+    assert ids == sorted(archive.shots, reverse=descending)
+    assert all("Date and time:" not in shot["text"] for shot in data["shots"])
