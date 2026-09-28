@@ -25,6 +25,7 @@ from gaggiclanker.domain.vocab import Decision
 
 __all__ = [
     "SAMPLE_FIELDS",
+    "ExampleShotRow",
     "ShotCounts",
     "ShotDetailRow",
     "ShotInsert",
@@ -269,6 +270,16 @@ class ShotDetailRow(ShotListRow):
     diagnostics: JsonObject = Field(default=None, validation_alias="diagnostics_json")
     raw_bytes: int = 0
     updated_at: str
+
+
+class ExampleShotRow(BaseModel):
+    """The shot a page takes its examples from, and whether it was judged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    started_at: str | None = None
+    judged: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -742,6 +753,31 @@ class ShotsRepository(Repository):
             return ShotCounts()
         counts.samples = int(samples or 0)
         return counts
+
+    async def example_shot(self) -> ExampleShotRow | None:
+        """The shot a page takes its examples from; ``None`` for an empty archive.
+
+        The newest **judged** shot — one whose judgement carries a rating or a
+        decision — because that is the shot with every item on it: the newest
+        shot is often the one nobody has tasted yet. Failing that the newest
+        with any judgement at all (the machine's notes card can seed one that
+        holds only a dose), and failing that the newest shot. A quarantined
+        shot is never chosen, since its numbers are whatever the header held.
+        "Newest" is the shot list's own order. ``judged`` is the first case.
+        """
+        row = await self.db.fetch_one(
+            """
+            SELECT s.id, s.started_at,
+                   (j.rating IS NOT NULL OR j.decision IS NOT NULL) AS judged
+            FROM shots s
+            LEFT JOIN shot_judgements j ON j.shot_id = s.id
+            WHERE s.quarantined = 0
+            ORDER BY judged DESC, j.shot_id IS NOT NULL DESC,
+                     COALESCE(s.started_at, '') DESC, s.id DESC
+            LIMIT 1
+            """
+        )
+        return self.to_model(ExampleShotRow, row)
 
     async def list_shots(
         self,

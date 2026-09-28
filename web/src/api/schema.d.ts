@@ -1858,6 +1858,57 @@ export interface paths {
         patch: operations["patch_settings_api_settings_patch"];
         trace?: never;
     };
+    "/api/shot-information": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every item of shot information, its tier, an example and the cost */
+        get: operations["get_shot_information_api_shot_information_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shot-information/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Move one item to a tier */
+        put: operations["put_shot_information_tier_api_shot_information__key__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shot-information/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put every item back in its default tier */
+        post: operations["reset_shot_information_api_shot_information_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shots": {
         parameters: {
             query?: never;
@@ -2990,6 +3041,14 @@ export interface components {
         /** ApiResponse[ShotDetailRow] */
         ApiResponse_ShotDetailRow_: {
             data?: components["schemas"]["ShotDetailRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotInformation] */
+        ApiResponse_ShotInformation_: {
+            data?: components["schemas"]["ShotInformation"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4152,6 +4211,15 @@ export interface components {
             version_id: number;
             /** Version No */
             version_no: number;
+        };
+        /** ExampleShot */
+        ExampleShot: {
+            /** Judged */
+            judged: boolean;
+            /** Shot Id */
+            shot_id: number;
+            /** Started At */
+            started_at: string | null;
         };
         /**
          * FieldChange
@@ -6167,6 +6235,42 @@ export interface components {
             /** Volume G */
             volume_g?: number | null;
         };
+        /** ShotInfoGroup */
+        ShotInfoGroup: {
+            /** Items */
+            items: components["schemas"]["ShotInfoItem"][];
+            /** Name */
+            name: string;
+            /** Note */
+            note: string | null;
+        };
+        /** ShotInfoItem */
+        ShotInfoItem: {
+            default_tier: components["schemas"]["Tier"];
+            /** Example */
+            example: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Locked */
+            locked: boolean;
+            /** Meaning */
+            meaning: string;
+            /** Name */
+            name: string;
+            tier: components["schemas"]["Tier"];
+        };
+        /**
+         * ShotInformation
+         * @description `GET /api/shot-information`: the whole page.
+         */
+        ShotInformation: {
+            estimates: components["schemas"]["TokenEstimates"];
+            example_shot: components["schemas"]["ExampleShot"] | null;
+            /** Groups */
+            groups: components["schemas"]["ShotInfoGroup"][];
+        };
         /**
          * ShotJudgementRow
          * @description One row of `shot_judgements`, as read back.
@@ -6932,6 +7036,36 @@ export interface components {
             /** Runs */
             runs?: components["schemas"]["ChatRunRow"][];
             thread: components["schemas"]["ChatThreadRow"];
+        };
+        /** @enum {string} */
+        Tier: "base" | "extended" | "excluded";
+        /**
+         * TierBody
+         * @description The tier one item moves to.
+         */
+        TierBody: {
+            tier: components["schemas"]["Tier"];
+        };
+        /**
+         * TokenEstimates
+         * @description Approximate tokens, measured on the example shot at the current tiers.
+         *
+         *     The per-shot figures and the autoload are ``None`` with no shot to measure;
+         *     the glossary is text of its own and is always given.
+         */
+        TokenEstimates: {
+            /** Autoload */
+            autoload: number | null;
+            /** Base Per Shot */
+            base_per_shot: number | null;
+            /** Extended Per Shot */
+            extended_per_shot: number | null;
+            /** Full Per Shot */
+            full_per_shot: number | null;
+            /** Glossary */
+            glossary: number;
+            /** Recent Shots */
+            recent_shots: number;
         };
         /**
          * ToolInfo
@@ -10238,6 +10372,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shot_information_api_shot_information_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotInformation_"];
+                };
+            };
+        };
+    };
+    put_shot_information_tier_api_shot_information__key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TierBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotInformation_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_shot_information_api_shot_information_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotInformation_"];
                 };
             };
         };

@@ -21,6 +21,7 @@ from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers, keys_in
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import (
     Line,
+    item_example,
     load_shots,
     needs_samples,
     render_shot,
@@ -376,3 +377,28 @@ async def test_a_stored_final_weight_of_zero_is_no_yield(archive: Archive) -> No
     assert catalogue.yield_g(zero) is None
     assert "Yield:" not in render_shot(zero, "base", default_tiers())
     assert "Yield: 31.6 g" in render_shot(facts, "base", default_tiers())
+
+
+async def test_an_example_is_absent_wherever_the_rendering_leaves_the_line_out(
+    archive: Archive,
+) -> None:
+    """The settings page's "not on this shot" is the rendering's own absence."""
+    full = await _one(archive.db, archive.shot)
+    no_scale = await _one(archive.db, archive.no_scale)
+    no_pressure = await _one(archive.db, archive.no_pressure)
+    unsampled = await _one(archive.db, archive.shot, samples=False)
+
+    assert item_example(full, "yield") == "31.6 g"
+    assert item_example(no_scale, "yield") is None
+    assert item_example(full, "curve_weight") is not None
+    assert item_example(no_scale, "curve_weight") is None
+    assert item_example(full, "curve_pressure") is not None
+    assert item_example(no_pressure, "curve_pressure") is None
+    assert item_example(unsampled, "curve_pressure") is None
+    # A phase item is one line per phase that has it, and no line for one that
+    # does not: the ramp rate belongs to pre-infusion phases only.
+    ramps = item_example(full, "phase_ramp")
+    assert ramps is not None
+    assert all(": ramp " in line for line in ramps.splitlines())
+    assert len(ramps.splitlines()) < len(full.phases)
+    assert len((item_example(full, "phase_name") or "").splitlines()) == len(full.phases)

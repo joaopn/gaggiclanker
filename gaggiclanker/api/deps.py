@@ -45,6 +45,7 @@ from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.shotinfo.service import ShotInformationService
 from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.sync.engine import SyncEngine
 
@@ -78,6 +79,7 @@ __all__ = [
     "SetProposalsRepoDep",
     "SetsRepoDep",
     "SettingsServiceDep",
+    "ShotInformationServiceDep",
     "ShotsRepoDep",
     "StartingPointServiceDep",
     "SuggestionsRepoDep",
@@ -231,6 +233,10 @@ def get_flavor_picks_repo(request: Request) -> FlavorPicksRepository:
     return FlavorPicksRepository(get_database(request))
 
 
+def get_shot_information_service(request: Request) -> ShotInformationService:
+    return ShotInformationService(get_database(request), get_settings_service(request))
+
+
 def get_rules_repo(request: Request) -> RulesRepository:
     return RulesRepository(get_database(request))
 
@@ -329,6 +335,7 @@ SetsRepoDep = Annotated[SetsRepository, Depends(get_sets_repo)]
 SetProposalsRepoDep = Annotated[SetProposalsRepository, Depends(get_set_proposals_repo)]
 JudgementsRepoDep = Annotated[JudgementsRepository, Depends(get_judgements_repo)]
 FlavorPicksRepoDep = Annotated[FlavorPicksRepository, Depends(get_flavor_picks_repo)]
+ShotInformationServiceDep = Annotated[ShotInformationService, Depends(get_shot_information_service)]
 RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
 KnowledgeDocsRepoDep = Annotated[KnowledgeDocsRepository, Depends(get_knowledge_docs_repo)]
 InsightsRepoDep = Annotated[InsightsRepository, Depends(get_insights_repo)]

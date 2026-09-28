@@ -18,8 +18,10 @@ give the same text, and a golden file can hold it.
 from __future__ import annotations
 
 import dataclasses
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.judgements import JudgementsRepository
@@ -40,6 +42,7 @@ from gaggiclanker.shotinfo.facts import ShotFacts
 
 __all__ = [
     "Line",
+    "item_example",
     "load_shots",
     "needs_samples",
     "render_shot",
@@ -153,6 +156,40 @@ def render_shot(facts: ShotFacts, tier: ShotTier, tiers: Mapping[str, Tier]) -> 
     return "\n".join(out)
 
 
+def item_example(facts: ShotFacts, key: str) -> str | None:
+    """One item's value on one shot, as a rendering writes it; ``None`` when absent.
+
+    What Settings → Shot information shows beside each item, built from the
+    renderer's own pieces so the page shows what the agent reads rather than
+    a second formatting of it:
+
+    * a shot item is its line's value (``54.6 s``);
+    * a phase item is one line per phase that has it, headed as the phase
+      lines are, and always by the phase's name, whatever tier the name sits
+      in: a bare phase number on a settings page says nothing;
+    * a curve channel, whose column is far too long to show, is the table's
+      sample count and the range the column spans (``213 samples, 0.0 to 9.2
+      bar``), written at the column's precision. A channel the table would
+      leave out is absent here too.
+    """
+    item = ITEMS[key]
+    if item.channel is not None:
+        return _channel_summary(facts, item.channel)
+    if item.phase is None:
+        return next((line.value for line in shot_lines(facts, frozenset({key}))), None)
+    lines = shot_lines(facts, frozenset({key, "phase_name"}))
+    out: list[str] = []
+    for index, phase in enumerate(facts.phases):
+        mine = {line.key: line for line in lines if line.phase == index}
+        own = mine.get(key)
+        if own is None:
+            continue
+        named = mine.get("phase_name")
+        head = _phase_head(phase, named.value if named is not None else None)
+        out.append(head if key == "phase_name" else f"{head}: {_phase_value(own)}")
+    return "\n".join(out) or None
+
+
 def _group_body(facts: ShotFacts, group: str, keys: frozenset[str], lines: list[Line]) -> list[str]:
     members = [item for item in CATALOGUE if item.group == group]
     if any(item.kind == "curve" for item in members):
@@ -176,15 +213,20 @@ def _phase_lines(facts: ShotFacts, lines: list[Line]) -> list[str]:
     for index, phase in enumerate(facts.phases):
         mine = [line for line in lines if line.phase == index]
         named = next((line.value for line in mine if line.key == "phase_name"), None)
-        values = [
-            f"{ITEMS[line.key].label} {line.value}" for line in mine if line.key != "phase_name"
-        ]
+        values = [_phase_value(line) for line in mine if line.key != "phase_name"]
         if not values and named is None:
             continue
-        number = phase.get("phase_number")
-        head = f"phase {named}" if named is not None else f"phase {number}"
+        head = _phase_head(phase, named)
         out.append(f"{head}: {'; '.join(values)}" if values else head)
     return out
+
+
+def _phase_head(phase: Mapping[str, Any], named: str | None) -> str:
+    return f"phase {named}" if named is not None else f"phase {phase.get('phase_number')}"
+
+
+def _phase_value(line: Line) -> str:
+    return f"{ITEMS[line.key].label} {line.value}"
 
 
 def _curve_table(facts: ShotFacts, items: list[Item]) -> list[str]:
@@ -216,6 +258,21 @@ def _curve_table(facts: ShotFacts, items: list[Item]) -> list[str]:
         for sample in facts.samples
     ]
     return [f"{len(rows)} samples", header, *rows]
+
+
+#: A column header's unit, the part in brackets: ``pressure (bar)``.
+_UNIT = re.compile(r"\(([^)]+)\)$")
+
+
+def _channel_summary(facts: ShotFacts, channel: Channel) -> str | None:
+    if not facts.samples or not _recorded(facts, channel):
+        return None
+    values = [
+        value for sample in facts.samples if (value := getattr(sample, channel.field)) is not None
+    ]
+    unit = _UNIT.search(channel.header)
+    span = f"{_cell(min(values), channel)} to {_cell(max(values), channel)}"
+    return f"{len(facts.samples)} samples, {span}" + (f" {unit.group(1)}" if unit else "")
 
 
 def _recorded(facts: ShotFacts, channel: Channel) -> bool:

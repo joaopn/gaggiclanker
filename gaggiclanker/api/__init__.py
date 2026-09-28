@@ -23,6 +23,7 @@ from gaggiclanker.api import (
     prompts,
     sets,
     settings,
+    shot_info,
     shots,
     starting,
     sync,
@@ -46,6 +47,7 @@ api_router.include_router(drafts.router)
 api_router.include_router(machine.router)
 api_router.include_router(vocab.router)
 api_router.include_router(flavor_picks.router)
+api_router.include_router(shot_info.router)
 api_router.include_router(beans.router)
 api_router.include_router(grinders.router)
 api_router.include_router(sets.router)
