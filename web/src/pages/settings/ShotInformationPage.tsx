@@ -98,7 +98,8 @@ function Overview({ document }: { document: ShotInformation }) {
         </li>
         <li>
           <span className="font-medium">extended</span>: added when the agent asks for a shot in
-          detail.
+          detail. Its curve is cut to about {estimates.curve_points} rows that keep its shape and
+          every moment the diagnostics are about.
         </li>
         <li>
           <span className="font-medium">excluded</span>: left out of the opening context, the shot
@@ -127,7 +128,13 @@ function Overview({ document }: { document: ShotInformation }) {
           <dd data-testid="estimate-base">{tokens(estimates.base_per_shot)}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground text-xs">Extended, per shot</dt>
+          <dt className="text-muted-foreground text-xs">
+            Extended, per shot, curve at{" "}
+            <Link to={settingsPath("llm", "chat")} className="underline underline-offset-2">
+              {estimates.curve_points} points
+              <span className="sr-only"> (set under Settings → LLM, Chat)</span>
+            </Link>
+          </dt>
           <dd data-testid="estimate-extended">{tokens(estimates.extended_per_shot)}</dd>
         </div>
         <div>

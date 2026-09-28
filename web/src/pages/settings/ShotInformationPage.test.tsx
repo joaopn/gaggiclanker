@@ -170,6 +170,27 @@ describe("ShotInformationPage", () => {
       "href",
       "/settings/llm#chat",
     );
+    expect(
+      screen.getByRole("link", { name: "60 points (set under Settings → LLM, Chat)" }),
+    ).toHaveAttribute("href", "/settings/llm#chat");
+    expect(screen.getByRole("list", { name: "The tiers" })).toHaveTextContent(
+      "extended: added when the agent asks for a shot in detail. Its curve is cut to about 60 rows",
+    );
+  });
+
+  it("follows the curve budget the server answers with", async () => {
+    getShotInformation.mockResolvedValue(
+      documentWith({}, { curve_points: 25, extended_per_shot: 1400 }),
+    );
+    await renderPage();
+
+    expect(
+      screen.getByRole("link", { name: "25 points (set under Settings → LLM, Chat)" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("estimate-extended")).toHaveTextContent("≈ 1,400 tokens");
+    expect(screen.getByRole("list", { name: "The tiers" })).toHaveTextContent(
+      "cut to about 25 rows",
+    );
   });
 
   it("shows a locked item's tier with no control", async () => {
