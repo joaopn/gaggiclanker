@@ -714,11 +714,24 @@ class ListProfilesInput(_Model):
 @tool(
     "list_profiles",
     permission="read",
-    description="Brew profile versions known to the archive, newest first.",
+    description=(
+        "Brew profile versions known to the archive, newest first. on_machine says whether "
+        "the machine has that version now; only those can be brewed as they are."
+    ),
 )
 async def list_profiles(ctx: ToolContext, args: ListProfilesInput) -> ListOutput:
+    # `on_machine` is what a proposal naming a profile needs to know: a version
+    # the machine does not have can only get there as a pushed draft.
     rows = await ctx.db.fetch_all(
-        "SELECT * FROM v_profiles ORDER BY created_at DESC, profile_version_id DESC LIMIT ?",
+        """
+        SELECT p.*,
+               EXISTS (SELECT 1 FROM device_profiles d
+                        WHERE d.current_version_id = p.profile_version_id
+                          AND d.deleted_at IS NULL) AS on_machine
+          FROM v_profiles p
+         ORDER BY p.created_at DESC, p.profile_version_id DESC
+         LIMIT ?
+        """,
         (args.limit,),
     )
     items = [dict(zip(row.keys(), tuple(row), strict=True)) for row in rows]
@@ -1254,6 +1267,27 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
             "call this again with combined_reason saying why, in at least "
             f"{PREDICTION_MIN_CHARS} characters."
         )
+
+    if patch.profile_version_id is not None:
+        profiles = ProfilesRepository(ctx.db)
+        if (
+            await profiles.get_version(patch.profile_version_id) is not None
+            and await profiles.find_device_id_for_version(patch.profile_version_id) is None
+        ):
+            # Accepting records the version and sends nothing, and nothing in
+            # this app can put an existing profile version on the machine: only
+            # a draft is ever pushed. A version naming a profile the machine
+            # does not have is a recipe nobody can brew, and the person would
+            # find that out at the machine, after the press. (A profile the
+            # archive does not know at all is the repository's refusal below.)
+            raise ValueError(
+                f"Profile version {patch.profile_version_id} is not on the machine, and "
+                "nothing in this app can put an existing profile version there, so a Set "
+                "version naming it could not be brewed. list_profiles says which profiles are "
+                "on the machine (on_machine). To brew this one, use draft_profile with it as "
+                "the base: the person approves and pushes the draft for this Set, and that "
+                "push records the version."
+            )
 
     proposals = SetProposalsRepository(ctx.db)
     spec: dict[str, Any] = {

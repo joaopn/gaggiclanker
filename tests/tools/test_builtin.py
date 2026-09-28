@@ -15,6 +15,7 @@ import pytest
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetsRepository,
@@ -23,6 +24,7 @@ from gaggiclanker.db.repos.sets import (
     SetWrite,
 )
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.tools.registry import READ_ONLY, ToolContext, registry
 from gaggiclanker.tools.sql import ALLOWED_VIEWS
@@ -451,6 +453,87 @@ async def test_a_profile_nobody_has_is_refused_where_the_change_is_made(
     assert "not one this archive knows" in data["detail"]
     assert "list_profiles" in data["detail"]
     assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def _second_profile(archive: Fixture) -> int:
+    """A profile version the archive knows besides the Set's own, on no machine yet."""
+    profiles = ProfilesRepository(archive.db)
+    own = await profiles.get_version(archive.profile_version_id)
+    assert own is not None and isinstance(own.profile, dict)
+    version, _ = await profiles.ensure_version(
+        Profile.model_validate({**own.profile, "label": "Hotter"})
+    )
+    return version.id
+
+
+async def test_a_profile_not_on_the_machine_is_refused_and_draft_profile_named(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """Nothing in the app can put an existing version on the machine; only drafts are pushed.
+
+    A Set version naming such a profile is a recipe nobody can brew, and the
+    person finds that out at the machine after pressing Accept.
+    """
+    hotter = await _second_profile(archive)
+
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Switch to the hotter profile.",
+        profile_version_id=hotter,
+        prediction=PREDICTION,
+    )
+
+    assert f"Profile version {hotter} is not on the machine" in data["detail"]
+    assert "draft_profile" in data["detail"]
+    assert "on_machine" in data["detail"]
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def test_a_profile_on_the_machine_can_be_proposed(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """The refusal is about the machine, not about changing the profile."""
+    hotter = await _second_profile(archive)
+    profiles = ProfilesRepository(archive.db)
+    await profiles.upsert_device_profile(device_id="hot", version_id=hotter)
+
+    data = await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Switch to the hotter profile.",
+        profile_version_id=hotter,
+        prediction=PREDICTION,
+    )
+    assert data["changed"] == ["the profile"]
+
+    # A profile deleted from the machine since is refused again.
+    await SetProposalsRepository(archive.db).decline(archive.set_id, data["proposal_id"])
+    await profiles.mark_one_deleted("hot")
+    again = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Switch to the hotter profile.",
+        profile_version_id=hotter,
+        prediction=PREDICTION,
+    )
+    assert "is not on the machine" in again["detail"]
+
+
+async def test_list_profiles_says_which_are_on_the_machine(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    hotter = await _second_profile(archive)
+    await ProfilesRepository(archive.db).upsert_device_profile(
+        device_id="own", version_id=archive.profile_version_id
+    )
+
+    items = {
+        item["profile_version_id"]: item for item in (await call(ctx, "list_profiles"))["items"]
+    }
+
+    assert items[archive.profile_version_id]["on_machine"] == 1
+    assert items[hotter]["on_machine"] == 0
 
 
 async def test_a_combined_reason_too_short_to_be_one_does_not_buy_two_changes(
