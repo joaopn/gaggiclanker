@@ -736,7 +736,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     const card = await screen.findByTestId("proposal-card");
     await user.click(within(card).getByRole("button", { name: /Accept/ }));
 
-    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5));
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: false }));
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,

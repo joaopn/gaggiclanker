@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { FieldChange, SetProposal } from "@/api/types";
 import { acceptedMessage, declinedMessage, useTellAgent } from "@/components/chat/tellAgent";
+import { MajorChoice } from "@/components/sets/MajorChoice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDecideProposal } from "@/hooks/useSets";
@@ -303,6 +304,10 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
   const fieldId = useId();
   const [declining, setDeclining] = useState(false);
   const [note, setNote] = useState("");
+  // The person's answer to "Major change", once they have given one. Until
+  // then the box shows what the card suggests: major when the agent suggested
+  // it or the shared rule says so (a different profile), minor otherwise.
+  const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
   // The card is re-used for whatever proposal it is handed, and a half-typed
   // turn-down must not follow one proposal onto the next. Held in state and
   // reset during render rather than in a ref: StrictMode's double render and a
@@ -312,6 +317,7 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
     setShownFor(proposal.id);
     setDeclining(false);
     setNote("");
+    setMajorChoice(null);
   }
   // What the server said to the last press on this card, before the lists it
   // invalidated have been read again. Shown straight away: on the Set page the
@@ -324,6 +330,8 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
   const design = shown.kind === "design";
   const refusedForDraft =
     design && decide.variables?.proposalId === proposal.id && draftClosed(decide.error);
+  const major = majorChoice ?? (proposal.suggest_major || proposal.major_by_default);
+  const resulting = major ? proposal.next_major_label : proposal.next_minor_label;
 
   return (
     <div
@@ -414,6 +422,20 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
 
       {waiting ? (
         <>
+          {/* A first recipe fills version 1 whichever way, so it is no major or
+              minor of anything; an unreadable change has nothing to name. */}
+          {!design && proposal.readable ? (
+            <div className="mb-2">
+              <MajorChoice
+                checked={major}
+                onChange={setMajorChoice}
+                minorLabel={proposal.next_minor_label}
+                majorLabel={proposal.next_major_label}
+                reason={proposal.suggest_major ? proposal.major_reason : ""}
+                disabled={decide.isPending}
+              />
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             {/* No Accept on a proposal nobody can read: there is no change to
                 record, and the route refuses it. Declining still works, which
@@ -430,6 +452,9 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
                       decision: "accept",
                       kind: proposal.kind,
                       threadId: proposal.thread_id,
+                      // Always said on a change: the box shows an answer, and
+                      // what is sent is what it shows.
+                      ...(design ? {} : { major }),
                     }),
                   ).then((result) => {
                     const message = result ? acceptedMessage(result) : null;
@@ -438,7 +463,7 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
                 }
               >
                 <Check className="size-3.5" aria-hidden="true" />
-                Accept
+                {design ? "Accept" : `Accept as ${resulting}`}
               </Button>
             ) : null}
             <Button

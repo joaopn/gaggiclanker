@@ -506,13 +506,17 @@ export async function approveProfileDraft(
 
 export async function pushProfileDraft(
   id: number,
-  options: { setId?: number; allowStaleBase?: boolean } = {},
+  options: { setId?: number; allowStaleBase?: boolean; major?: boolean } = {},
 ): Promise<DraftPushResult> {
   return fetchApi<DraftPushResult>(`/profile-drafts/${id}/push`, {
     method: "POST",
     body: JSON.stringify({
       set_id: options.setId ?? null,
       allow_stale_base: options.allowStaleBase ?? false,
+      // Only with a Set: a push that records nothing on one names no version.
+      ...(options.setId !== undefined && options.major !== undefined
+        ? { major: options.major }
+        : {}),
     }),
   });
 }
@@ -912,13 +916,18 @@ export async function getSetProposals(id: number): Promise<SetProposalListData> 
 }
 
 /** Record a proposed change as the Set's next version. A person's press. */
+/**
+ * Accept a proposed change. `major` is the card's "Major change" box; left out,
+ * the server's rule names the version (a different profile is a major).
+ */
 export async function acceptSetProposal(
   id: number,
   proposalId: number,
+  options: { major?: boolean } = {},
 ): Promise<SetProposalDecision> {
   return fetchApi<SetProposalDecision>(`/sets/${id}/proposals/${proposalId}/accept`, {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(options.major === undefined ? {} : { major: options.major }),
   });
 }
 

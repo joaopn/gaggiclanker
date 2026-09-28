@@ -167,7 +167,7 @@ describe("SetDetailPage", () => {
 
     await user.click(await screen.findByRole("button", { name: /Accept/ }));
 
-    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5));
+    await waitFor(() => expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: false }));
     // Accepting is not "add a version with these fields": the server owns the
     // staleness and outcome checks, and a client-side append would skip them.
     expect(addSetVersion).not.toHaveBeenCalled();
@@ -228,7 +228,7 @@ describe("SetDetailPage", () => {
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
     await user.type(await screen.findByLabelText("Grind"), "20");
     await user.type(screen.getByLabelText("What are you trying?"), "finer still");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     const [setId, patch] = addSetVersion.mock.calls[0];
@@ -241,6 +241,8 @@ describe("SetDetailPage", () => {
       origin: "manual",
       grind_setting: "20",
       grind_value: 20,
+      // What the Major change box showed: a grind change is a minor version.
+      major: false,
     });
   });
 
@@ -251,7 +253,7 @@ describe("SetDetailPage", () => {
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
     await user.type(screen.getByLabelText("What are you trying?"), "one finer");
     await user.type(screen.getByLabelText("Version prediction"), "less sour");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     const [, patch] = addSetVersion.mock.calls[0];
@@ -272,7 +274,7 @@ describe("SetDetailPage", () => {
     await user.type(screen.getByLabelText("What are you trying?"), "a fresh baseline");
     await user.type(screen.getByLabelText("Version prediction"), "  a clean 1:2  ");
     await user.selectOptions(screen.getByLabelText("Compared to"), "");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     const [, patch] = addSetVersion.mock.calls[0];
@@ -288,7 +290,7 @@ describe("SetDetailPage", () => {
 
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
     await user.type(screen.getByLabelText("What are you trying?"), "one finer");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     const [, patch] = addSetVersion.mock.calls[0];
@@ -304,7 +306,7 @@ describe("SetDetailPage", () => {
     await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
     await user.type(screen.getByLabelText("What are you trying?"), "one finer");
     await user.type(screen.getByLabelText("Grind"), "20");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     // Untouched means inherited, like every other recipe field on this form.
@@ -325,13 +327,63 @@ describe("SetDetailPage", () => {
 
     await user.selectOptions(screen.getByLabelText("Profile"), "8");
     await user.type(screen.getByLabelText("What are you trying?"), "switched to the turbo");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 8 });
     // Nothing on this path goes near a draft or the machine.
     expect(pushProfileDraft).not.toHaveBeenCalled();
     expect(createProfileDraft).not.toHaveBeenCalled();
+  });
+
+  it("names the version it will record, and marks a change of profile major", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+    const box = screen.getByRole("checkbox", { name: "Major change" });
+    // The profile is the current one, so the rule says minor: v2 → v2.1.
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Record it as v2.1" })).toBeInTheDocument();
+    expect(screen.getByTestId("major-choice-result")).toHaveTextContent("v2.1");
+
+    // A different profile is a major version by default…
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+    expect(box).toBeChecked();
+    expect(screen.getByRole("button", { name: "Record it as v3" })).toBeInTheDocument();
+    // …and back again when the profile goes back.
+    await user.selectOptions(screen.getByLabelText("Profile"), "7");
+    expect(box).not.toBeChecked();
+
+    // The person has the last word: a grind change marked major.
+    await user.type(screen.getByLabelText("Grind"), "20");
+    await user.click(box);
+    expect(screen.getByRole("button", { name: "Record it as v3" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("What are you trying?"), "a new direction");
+    await user.click(screen.getByRole("button", { name: "Record it as v3" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ grind_setting: "20", major: true });
+  });
+
+  it("sends the person's minor on a change of profile they unticked", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+    await user.click(screen.getByRole("checkbox", { name: "Major change" }));
+    // Their answer sticks when the profile moves again.
+    await user.selectOptions(screen.getByLabelText("Profile"), "7");
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+    expect(screen.getByRole("checkbox", { name: "Major change" })).not.toBeChecked();
+    await user.type(screen.getByLabelText("What are you trying?"), "a tuned copy");
+    await user.click(screen.getByRole("button", { name: "Record it as v2.1" }));
+
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 8, major: false });
   });
 
   it("carries the new profile's target yield across, without overwriting a typed one", async () => {
@@ -377,7 +429,7 @@ describe("SetDetailPage", () => {
     expect(cell()).toHaveTextContent("90 °C");
 
     await user.type(screen.getByLabelText("What are you trying?"), "the turbo, cooler");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     expect(addSetVersion.mock.calls[0][1]).not.toHaveProperty("target_temperature_c");
@@ -392,7 +444,7 @@ describe("SetDetailPage", () => {
 
     await user.selectOptions(screen.getByLabelText("Profile"), "");
     await user.type(screen.getByLabelText("What are you trying?"), "any profile now");
-    await user.click(screen.getByRole("button", { name: "Record the version" }));
+    await user.click(screen.getByRole("button", { name: /^Record it as/ }));
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: null });

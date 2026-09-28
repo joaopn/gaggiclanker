@@ -214,8 +214,51 @@ describe("DraftCard", () => {
       // The Set in the body is what makes the server record the version and
       // the prediction; without it the push records nothing on the Set.
       await waitFor(() =>
-        expect(pushProfileDraft).toHaveBeenCalledWith(1, { setId: 3, allowStaleBase: false }),
+        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
+          setId: 3,
+          allowStaleBase: false,
+          major: false,
+        }),
       );
+    });
+
+    it("pushes a draft as a minor version unless the person marks it major", async () => {
+      const user = setupUser();
+      renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
+
+      const box = screen.getByRole("checkbox", { name: "Major change" });
+      expect(box).not.toBeChecked();
+      await user.click(box);
+      const button = screen.getByTestId("push-draft-for-set");
+      expect(button).toHaveTextContent("record it as v3 of Guji on the Niche");
+      await user.click(button);
+
+      await waitFor(() =>
+        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
+          setId: 3,
+          allowStaleBase: false,
+          major: true,
+        }),
+      );
+    });
+
+    it("preselects the agent's suggestion of major and shows its reason", () => {
+      renderWithQueryClient(
+        <DraftCard
+          draft={draft({
+            ...forGuji,
+            status: "approved",
+            suggest_major: true,
+            major_reason: "Eight bar is a different kind of shot from nine.",
+          })}
+        />,
+      );
+
+      expect(screen.getByRole("checkbox", { name: "Major change" })).toBeChecked();
+      expect(screen.getByTestId("major-reason")).toHaveTextContent(
+        "Eight bar is a different kind of shot from nine.",
+      );
+      expect(screen.getByTestId("push-draft-for-set")).toHaveTextContent("record it as v3");
     });
 
     it("can still be pushed without recording it on the Set", async () => {
@@ -226,6 +269,7 @@ describe("DraftCard", () => {
       expect(plain).toHaveTextContent("Push without recording it on the Set");
       await user.click(plain);
 
+      // No version is named by a push that records nothing on the Set.
       await waitFor(() =>
         expect(pushProfileDraft).toHaveBeenCalledWith(1, {
           setId: undefined,
@@ -242,11 +286,15 @@ describe("DraftCard", () => {
       expect(screen.getByTestId("push-draft-for-set")).toBeDisabled();
       expect(screen.getByTestId("push-draft")).toBeDisabled();
 
-      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("checkbox", { name: "Push it anyway." }));
       await user.click(screen.getByTestId("push-draft-for-set"));
 
       await waitFor(() =>
-        expect(pushProfileDraft).toHaveBeenCalledWith(1, { setId: 3, allowStaleBase: true }),
+        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
+          setId: 3,
+          allowStaleBase: true,
+          major: false,
+        }),
       );
     });
 

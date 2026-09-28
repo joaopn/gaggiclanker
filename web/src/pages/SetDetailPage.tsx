@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { ContinueDesigning, DesigningBadge } from "@/components/sets/Designing";
+import { MajorChoice } from "@/components/sets/MajorChoice";
 import {
   type AutoFilled,
   fillFromProfile,
@@ -215,6 +216,8 @@ export function SetDetailPage() {
             setId={row.id}
             versions={detail.data.versions}
             designing={row.designing}
+            nextMinorLabel={row.next_minor_label}
+            nextMajorLabel={row.next_major_label}
             onDone={() => setVersioning(false)}
           />
         ) : row.designing ? (
@@ -482,10 +485,15 @@ function NewVersionForm({
   setId,
   versions,
   designing = false,
+  nextMinorLabel,
+  nextMajorLabel,
   onDone,
 }: {
   setId: number;
   versions: SetDetailData["versions"];
+  /** What the version is called as a minor and as a major, from the server. */
+  nextMinorLabel: string;
+  nextMajorLabel: string;
   /**
    * The Set is still being designed: what is recorded here fills version 1 in
    * place and ends the design. There is nothing for a prediction to be
@@ -510,6 +518,11 @@ function NewVersionForm({
   // four are numbers, where blank reads as "unchanged" on its own.
   const inheritedProfile = current?.profile_version_id ? String(current.profile_version_id) : "";
   const [profile, setProfile] = useState(inheritedProfile);
+  // "Major change": the person's answer once they have given one; until then
+  // the box follows the shared rule — a different profile is a major version,
+  // grind, dose and yield are minor ones.
+  const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
+  const major = majorChoice ?? profile !== inheritedProfile;
   const [filled, setFilled] = useState<AutoFilled>({ targetYieldG: null });
   const ids = {
     profile: useId(),
@@ -567,6 +580,9 @@ function NewVersionForm({
               ...grindPatch(grind),
               ...(number(dose) ? { dose_g: number(dose) } : {}),
               ...(number(target) ? { target_yield_g: number(target) } : {}),
+              // What the box shows is what is sent. Nothing while designing:
+              // the recipe fills version 1 either way.
+              ...(designing ? {} : { major }),
             },
           }),
         );
@@ -687,9 +703,22 @@ function NewVersionForm({
           </Labelled>
         </div>
       )}
+      {designing ? null : (
+        <MajorChoice
+          checked={major}
+          onChange={setMajorChoice}
+          minorLabel={nextMinorLabel}
+          majorLabel={nextMajorLabel}
+          disabled={add.isPending}
+        />
+      )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={add.isPending}>
-          {add.isPending ? "Recording…" : designing ? "Set version 1" : "Record the version"}
+          {add.isPending
+            ? "Recording…"
+            : designing
+              ? "Set version 1"
+              : `Record it as ${major ? nextMajorLabel : nextMinorLabel}`}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel

@@ -69,7 +69,7 @@ describe("ProposalCard", () => {
 
     await user.click(screen.getByRole("button", { name: /Accept/ }));
 
-    expect(acceptSetProposal).toHaveBeenCalledWith(3, 5);
+    expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: false });
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
     expect(String(toastSuccess.mock.calls[0][0])).toContain("v2.1 recorded");
     expect(String(toastSuccess.mock.calls[0][0])).not.toContain("3");
@@ -423,6 +423,69 @@ describe("ProposalCard, minor versions", () => {
     expect(screen.getByTestId("proposal-prediction")).toHaveTextContent("compared to v1.1");
     expect(card).not.toHaveTextContent(/\bv3\b/);
     expect(card).not.toHaveTextContent(/\bv2\b/);
+  });
+});
+
+describe("ProposalCard, major or minor", () => {
+  it("preselects minor for a dial-in change, and says which version Accept records", async () => {
+    const user = setupUser();
+    acceptSetProposal.mockResolvedValue({
+      proposal: proposal({ status: "accepted", resulting_version_label: "v3" }),
+      version: { version_no: 3, version_label: "v3" },
+    });
+    renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
+
+    const box = screen.getByRole("checkbox", { name: "Major change" });
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Accept as v2.1" })).toBeInTheDocument();
+    expect(screen.queryByTestId("major-reason")).not.toBeInTheDocument();
+
+    await user.click(box);
+    expect(screen.getByRole("button", { name: "Accept as v3" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Accept as v3" }));
+
+    expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: true });
+  });
+
+  it("preselects major when the rule says so, and the person can untick it", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <ProposalCard setId={3} proposal={proposal({ major_by_default: true })} />,
+    );
+
+    const box = screen.getByRole("checkbox", { name: "Major change" });
+    expect(box).toBeChecked();
+    expect(screen.getByRole("button", { name: "Accept as v3" })).toBeInTheDocument();
+
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: "Accept as v2.1" }));
+
+    expect(acceptSetProposal).toHaveBeenCalledWith(3, 5, { major: false });
+  });
+
+  it("shows the agent's suggestion of major with its reason, and preselects it", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        setId={3}
+        proposal={proposal({
+          suggest_major: true,
+          major_reason: "Half a gram changes what this recipe is for.",
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Major change" })).toBeChecked();
+    expect(screen.getByTestId("major-reason")).toHaveTextContent(
+      "The agent suggests a major version: “Half a gram changes what this recipe is for.”",
+    );
+    expect(screen.getByRole("button", { name: "Accept as v3" })).toBeInTheDocument();
+  });
+
+  it("offers no box on a first recipe, which fills version 1 either way", () => {
+    renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
+
+    expect(screen.queryByTestId("major-choice")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
   });
 });
 

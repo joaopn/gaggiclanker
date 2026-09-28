@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import type { ProfileDraft, StopConditionChange } from "@/api/types";
 import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
+import { MajorChoice } from "@/components/sets/MajorChoice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,6 +56,11 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
   const [allowStale, setAllowStale] = useState(false);
   const [notes, setNotes] = useState("");
   const [refining, setRefining] = useState(false);
+  // "Major change" on the push for the draft's Set: the person's answer once
+  // given, the agent's suggestion until then. A pushed draft tunes a profile,
+  // so without either it is a minor version.
+  const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
+  const major = majorChoice ?? draft.suggest_major;
   const acknowledgeId = useId();
   const staleId = useId();
   const notesId = useId();
@@ -75,8 +81,8 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
       ? {
           id: draft.set_id,
           name: draft.set_name,
-          // A pushed draft is a minor version unless the person says otherwise.
-          nextLabel: draft.set_next_minor_label ?? null,
+          minorLabel: draft.set_next_minor_label ?? null,
+          majorLabel: draft.set_next_major_label ?? null,
         }
       : null;
 
@@ -243,6 +249,18 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
             recorded and gets the plain push. */}
         {draft.status === "approved" && forSet !== null ? (
           <>
+            {forSet.minorLabel !== null && forSet.majorLabel !== null ? (
+              <div className="w-full">
+                <MajorChoice
+                  checked={major}
+                  onChange={setMajorChoice}
+                  minorLabel={forSet.minorLabel}
+                  majorLabel={forSet.majorLabel}
+                  reason={draft.suggest_major ? draft.major_reason : ""}
+                  disabled={busy}
+                />
+              </div>
+            ) : null}
             <Button
               size="sm"
               disabled={busy || (!draft.base_is_current && !allowStale)}
@@ -251,12 +269,12 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
               // card wider than a phone.
               className="h-auto min-h-8 whitespace-normal text-left"
               onClick={() =>
-                push.mutate({ id: draft.id, setId: forSet.id, allowStaleBase: allowStale })
+                push.mutate({ id: draft.id, setId: forSet.id, allowStaleBase: allowStale, major })
               }
             >
               <Upload className="size-3.5" aria-hidden="true" />
-              Push to the machine and record it as {forSet.nextLabel ?? "a new version"} of{" "}
-              {forSet.name}
+              Push to the machine and record it as{" "}
+              {(major ? forSet.majorLabel : forSet.minorLabel) ?? "a new version"} of {forSet.name}
             </Button>
             <Button
               size="sm"

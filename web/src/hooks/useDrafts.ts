@@ -166,11 +166,15 @@ export function useApproveDraft(): UseMutationResult<
 export function usePushDraft(): UseMutationResult<
   DraftPushResult,
   Error,
-  { id: number; setId?: number; allowStaleBase?: boolean }
+  { id: number; setId?: number; allowStaleBase?: boolean; major?: boolean }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, setId, allowStaleBase }) => pushProfileDraft(id, { setId, allowStaleBase }),
+    mutationFn: ({ id, setId, allowStaleBase, major }) =>
+      pushProfileDraft(
+        id,
+        major === undefined ? { setId, allowStaleBase } : { setId, allowStaleBase, major },
+      ),
     onSuccess: (result) => {
       if (result.draft.status === "pushed") {
         toast.success(

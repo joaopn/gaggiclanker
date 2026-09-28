@@ -152,13 +152,17 @@ export function useDecideProposal(): UseMutationResult<
     kind?: SetProposal["kind"];
     /** The conversation it was argued in, when there is one. */
     threadId?: number | null;
+    /** The card's "Major change" box, on an accept of a change. */
+    major?: boolean;
   }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ setId, proposalId, decision, note }) =>
+    mutationFn: ({ setId, proposalId, decision, note, major }) =>
       decision === "accept"
-        ? acceptSetProposal(setId, proposalId)
+        ? major === undefined
+          ? acceptSetProposal(setId, proposalId)
+          : acceptSetProposal(setId, proposalId, { major })
         : declineSetProposal(setId, proposalId, { note: note ?? "" }),
     onSuccess: (result) =>
       toast.success(
