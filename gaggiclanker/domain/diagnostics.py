@@ -37,7 +37,8 @@ SampleDict = dict[str, float]
 DetailLevel = Literal["summary", "per_phase", "per_phase_detailed"]
 VALID_DETAIL_LEVELS: tuple[str, ...] = ("summary", "per_phase", "per_phase_detailed")
 
-_SAMPLE_FIELDS = ("t", "tt", "ct", "tp", "cp", "fl", "tf", "pf", "vf", "v", "ev", "pr", "wp")
+#: The `.slog` fields a :data:`SampleDict` may carry, besides ``phase``.
+SAMPLE_FIELDS = ("t", "tt", "ct", "tp", "cp", "fl", "tf", "pf", "vf", "v", "ev", "pr", "wp")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -421,6 +422,11 @@ _RAMP_RATE_BANDS: list[tuple[float, str]] = [
 #: Fewer steady-state samples than this and channeling is not assessed at all.
 _MIN_STEADY_STATE_SAMPLES: int = 5
 
+#: Fewer samples than this, or fewer brew-phase samples than the second, and
+#: there are no shot diagnostics at all.
+_MIN_SHOT_SAMPLES: int = 5
+_MIN_BREW_SAMPLES: int = 3
+
 
 # ═══════════════════════════════════════════════════════════════════
 # HELPERS
@@ -436,7 +442,7 @@ def as_sample_dicts(slog: Slog) -> list[SampleDict]:
     out: list[SampleDict] = []
     for sample in slog.samples:
         row: SampleDict = {}
-        for name in _SAMPLE_FIELDS:
+        for name in SAMPLE_FIELDS:
             value = getattr(sample, name)
             if value is not None:
                 row[name] = float(value)
@@ -554,16 +560,18 @@ def _pressure_volatility_label(std: float, mean: float) -> str:
     return _annotate_ascending(std, _PRESSURE_VOLATILITY_BANDS)
 
 
-def _trim_ramp_up(
+def _trim_ramp_up[T](
     pressures: list[float],
     flows: list[float],
-    samples: list[SampleDict],
+    samples: list[T],
     threshold_pct: float = 0.90,
-) -> tuple[list[float], list[float], list[SampleDict]]:
+) -> tuple[list[float], list[float], list[T]]:
     """Drop the ramp-up: everything before pressure first reaches 90 % of peak.
 
     Ramping is the profile's intent, not the puck's behaviour, and leaving it
-    in makes every pressure-led shot look unstable.
+    in makes every pressure-led shot look unstable. ``samples`` rides along
+    with the two value lists: the sample dicts themselves, or their positions
+    in the shot when a caller needs to know *which* samples were kept.
     """
     if not pressures:
         return pressures, flows, samples
@@ -580,12 +588,12 @@ def _trim_ramp_up(
     return pressures, flows, samples
 
 
-def _strip_flow_edges(
+def _strip_flow_edges[T](
     pressures: list[float],
     flows: list[float],
-    samples: list[SampleDict],
+    samples: list[T],
     thr: float = 0.1,
-) -> tuple[list[float], list[float], list[SampleDict], tuple[int, int]]:
+) -> tuple[list[float], list[float], list[T], tuple[int, int]]:
     """Drop leading and trailing samples with flow below `thr` ml/s.
 
     Leading: pressure ramped but the valve has not opened. Trailing: the
@@ -690,16 +698,55 @@ def _classify_phase(
     return "brew"
 
 
+def _phase_ranges(
+    count: int, transitions: list[PhaseTransition]
+) -> list[tuple[PhaseTransition, range]]:
+    """Pair each transition with the positions of the samples recorded while it was active.
+
+    Clamped to the ``count`` samples there are, as a slice would be: a table
+    can name a sample index the recording never reached.
+    """
+    result: list[tuple[PhaseTransition, range]] = []
+    for i, transition in enumerate(transitions):
+        start = transition.sample_index
+        end = transitions[i + 1].sample_index if i + 1 < len(transitions) else count
+        result.append((transition, range(min(start, count), min(end, count))))
+    return result
+
+
 def _phase_slices(
     samples: list[SampleDict], transitions: list[PhaseTransition]
 ) -> list[tuple[PhaseTransition, list[SampleDict]]]:
     """Pair each transition with the samples recorded while it was active."""
-    result: list[tuple[PhaseTransition, list[SampleDict]]] = []
-    for i, transition in enumerate(transitions):
-        start = transition.sample_index
-        end = transitions[i + 1].sample_index if i + 1 < len(transitions) else len(samples)
-        result.append((transition, samples[start:end]))
-    return result
+    return [
+        (transition, samples[span.start : span.stop])
+        for transition, span in _phase_ranges(len(samples), transitions)
+    ]
+
+
+def _brew_phase_positions(
+    samples: list[SampleDict], transitions: list[PhaseTransition]
+) -> list[int]:
+    """Where the samples of :func:`_get_brew_phase_samples` sit in the shot, in order."""
+    if not samples:
+        return []
+
+    if transitions:
+        brew: list[int] = []
+        for transition, span in _phase_ranges(len(samples), transitions):
+            if _classify_phase_by_name(transition.phase_name) == "preinfusion":
+                continue
+            brew.extend(span)
+        return brew if brew else list(range(len(samples)))
+
+    pressures = [s.get("cp", 0.0) for s in samples]
+    peak = max(pressures) if pressures else 0.0
+    if peak > 0:
+        threshold = peak * 0.5
+        for i, p in enumerate(pressures):
+            if p >= threshold:
+                return list(range(i, len(samples)))
+    return list(range(len(samples)))
 
 
 def _get_brew_phase_samples(
@@ -710,25 +757,7 @@ def _get_brew_phase_samples(
     With no transition table (v4 and earlier) there is nothing to go on but the
     trace, so fall back to "after pressure first reaches half its peak".
     """
-    if not samples:
-        return []
-
-    if transitions:
-        brew: list[SampleDict] = []
-        for transition, window in _phase_slices(samples, transitions):
-            if _classify_phase_by_name(transition.phase_name) == "preinfusion":
-                continue
-            brew.extend(window)
-        return brew if brew else samples
-
-    pressures = [s.get("cp", 0.0) for s in samples]
-    peak = max(pressures) if pressures else 0.0
-    if peak > 0:
-        threshold = peak * 0.5
-        for i, p in enumerate(pressures):
-            if p >= threshold:
-                return samples[i:]
-    return samples
+    return [samples[i] for i in _brew_phase_positions(samples, transitions)]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -854,6 +883,27 @@ def _channeling_guidance(risk: str, primary: str, confidence: str, flow_shape: s
     return f"Single-indicator flag ({primary}); verify against other diagnostics."
 
 
+def _steady_state[T](
+    brew_pressures: list[float], brew_flows: list[float], brew_samples: list[T]
+) -> tuple[list[float], list[float], list[T], int, tuple[int, int]]:
+    """The window channeling is assessed on: the brew less its ramp-up and its dry edges.
+
+    Returns the trimmed lists, how many ramp-up samples came off, and how many
+    zero-flow samples came off each end.
+    """
+    ss_pressures, ss_flows, ss_samples = _trim_ramp_up(brew_pressures, brew_flows, brew_samples)
+    ramp_excluded = len(brew_pressures) - len(ss_pressures)
+    ss_pressures, ss_flows, ss_samples, edges = _strip_flow_edges(
+        ss_pressures, ss_flows, ss_samples
+    )
+    return ss_pressures, ss_flows, ss_samples, ramp_excluded, edges
+
+
+def _pressure_rates(pressures: list[float], dt: float) -> list[float]:
+    """Sample-to-sample pressure change in bar/s: entry ``i`` is samples ``i`` to ``i + 1``."""
+    return [(pressures[i] - pressures[i - 1]) / dt for i in range(1, len(pressures))]
+
+
 def _build_channeling(
     brew_pressures: list[float],
     brew_flows: list[float],
@@ -865,11 +915,8 @@ def _build_channeling(
     Shared by the full-shot, summary and per-phase paths so all three trim the
     window the same way and cannot disagree about the same shot.
     """
-    ss_pressures, ss_flows, ss_samples = _trim_ramp_up(brew_pressures, brew_flows, brew_samples)
-    ramp_excluded = len(brew_pressures) - len(ss_pressures)
-
-    ss_pressures, ss_flows, ss_samples, (zf_lead, zf_tail) = _strip_flow_edges(
-        ss_pressures, ss_flows, ss_samples
+    ss_pressures, ss_flows, ss_samples, ramp_excluded, (zf_lead, zf_tail) = _steady_state(
+        brew_pressures, brew_flows, brew_samples
     )
 
     n = len(ss_pressures)
@@ -909,9 +956,7 @@ def _build_channeling(
     flow_jitter_raw = _jitter_std(ss_flows)
     pressure_jitter_raw = _jitter_std(ss_pressures)
     flow_vs_tgt_raw = _residual_std_vs_target(ss_samples)
-    p_derivatives = [
-        (ss_pressures[i] - ss_pressures[i - 1]) / dt for i in range(1, len(ss_pressures))
-    ]
+    p_derivatives = _pressure_rates(ss_pressures, dt)
     p_max_drop_raw = min(p_derivatives) if p_derivatives else 0.0
     f_accel_late_raw = _late_flow_runaway(ss_flows, dt)
 
@@ -987,6 +1032,61 @@ def calculate_total_volume(samples: list[SampleDict], interval_ms: int) -> float
     return _round1(sum(s.get("pf", 0.0) for s in samples) * interval_seconds)
 
 
+# ═══════════════════════════════════════════════════════════════════
+# WHERE THE HEADLINE MOMENTS ARE
+# ═══════════════════════════════════════════════════════════════════
+#
+# The sample behind a number, for a reader that shows the curve and must not
+# lose the moment a diagnostic is about. Each is the engine's own rule, used by
+# the engine itself, so the sample and the number cannot drift apart.
+
+
+def first_drip_index(samples: list[SampleDict]) -> int | None:
+    """The sample the time to first drip is read from: the first puck flow above zero.
+
+    ``None`` when puck flow never rose, or was not recorded.
+    """
+    flows = [s["pf"] for s in samples if "pf" in s]
+    return next((i for i, flow in enumerate(flows) if flow > 0.0), None)
+
+
+def peak_pressure_index(samples: list[SampleDict]) -> int | None:
+    """The sample the time of peak pressure is read from: the first at the maximum.
+
+    ``None`` when no pressure above zero was recorded.
+    """
+    pressures = [s["cp"] for s in samples if "cp" in s]
+    peak = max(pressures) if pressures else 0.0
+    return pressures.index(peak) if pressures and peak > 0 else None
+
+
+def largest_pressure_drop(
+    samples: list[SampleDict], transitions: list[PhaseTransition], dt: float
+) -> tuple[int, int] | None:
+    """The two samples the channeling indicator's largest pressure drop runs between.
+
+    ``pressure_max_drop_rate_bar_s`` is the pressure change between them over
+    ``dt``: the same brew window, the same steady-state trims and the same
+    first-of-equals minimum as :func:`_build_channeling`. ``None`` wherever
+    the whole-shot diagnostics would assess no drop — too few samples, too few
+    brew or steady-state samples. The caller decides whether the shot had a
+    pressure sensor at all, as the engine's own callers do.
+    """
+    if len(samples) < _MIN_SHOT_SAMPLES or dt <= 0:
+        return None
+    brew = _brew_phase_positions(samples, transitions)
+    if len(brew) < _MIN_BREW_SAMPLES:
+        return None
+    pressures = [samples[i].get("cp", 0.0) for i in brew]
+    flows = [samples[i].get("pf", 0.0) for i in brew]
+    ss_pressures, _, positions, _, _ = _steady_state(pressures, flows, brew)
+    if len(ss_pressures) < _MIN_STEADY_STATE_SAMPLES:
+        return None
+    rates = _pressure_rates(ss_pressures, dt)
+    step = rates.index(min(rates))
+    return positions[step], positions[step + 1]
+
+
 def calculate_summary(slog: Slog, *, has_pressure: bool | None = None) -> ShotSummary:
     """Headline statistics for a shot."""
     samples = as_sample_dicts(slog)
@@ -1006,8 +1106,9 @@ def calculate_summary(slog: Slog, *, has_pressure: bool | None = None) -> ShotSu
     )
 
     peak_pressure = max(pressures) if pressures else 0.0
-    peak_pressure_index = pressures.index(peak_pressure) if pressures and peak_pressure > 0 else 0
-    peak_time = times[peak_pressure_index] if peak_pressure_index < len(times) else 0.0
+    peak = peak_pressure_index(samples)
+    peak_index = peak if peak is not None else 0
+    peak_time = times[peak_index] if peak_index < len(times) else 0.0
 
     pressure_summary: PressureSummary | None = None
     if pressure_ok:
@@ -1018,11 +1119,8 @@ def calculate_summary(slog: Slog, *, has_pressure: bool | None = None) -> ShotSu
             peak_time_s=_round1(peak_time),
         )
 
-    time_to_first_drip: float | None = None
-    for i, flow in enumerate(flows):
-        if flow > 0.0:
-            time_to_first_drip = _round1(times[i]) if i < len(times) else None
-            break
+    drip = first_drip_index(samples)
+    time_to_first_drip = _round1(times[drip]) if drip is not None else None
 
     flow_summary = FlowSummary(
         total_volume_ml=calculate_total_volume(samples, slog.sample_interval),
@@ -1071,14 +1169,14 @@ def compute_shot_diagnostics(
     pressure at all, which is how a Standard board shows up.
     """
     samples = as_sample_dicts(slog)
-    if len(samples) < 5:
+    if len(samples) < _MIN_SHOT_SAMPLES:
         return None
 
     pressure_ok = slog.has_pressure if has_pressure is None else has_pressure
     dt = slog.sample_interval / 1000.0
 
     brew_samples = _get_brew_phase_samples(samples, slog.transitions)
-    if len(brew_samples) < 3:
+    if len(brew_samples) < _MIN_BREW_SAMPLES:
         return None
 
     brew_pressures = [s.get("cp", 0.0) for s in brew_samples]
@@ -1277,13 +1375,13 @@ def compute_summary_diagnostics(
 ) -> SummaryDiagnostics | None:
     """The cheap detail level: key indicators only, same trims and bands."""
     samples = as_sample_dicts(slog)
-    if len(samples) < 5:
+    if len(samples) < _MIN_SHOT_SAMPLES:
         return None
 
     pressure_ok = slog.has_pressure if has_pressure is None else has_pressure
     dt = slog.sample_interval / 1000.0
     brew_samples = _get_brew_phase_samples(samples, slog.transitions)
-    if len(brew_samples) < 3:
+    if len(brew_samples) < _MIN_BREW_SAMPLES:
         return None
 
     brew_pressures = [s.get("cp", 0.0) for s in brew_samples]

@@ -60,6 +60,16 @@ and value for value, as do all three detail levels of the shot transform.
 5. **Typing and style.** `Optional[X]` → `X | None`, full annotations for
    `mypy --strict`, `zip(..., strict=True)`, ruff formatting. Comments were
    rewritten to say *why* a rule exists (house style), not to change what it does.
+6. **The sample behind a headline number.** `first_drip_index`,
+   `peak_pressure_index` and `largest_pressure_drop` say *which* samples the
+   time to first drip, the time of peak pressure and the largest pressure drop
+   rate were read from, so the curve the chat is shown keeps them. They are not
+   copies: `calculate_summary` reads its two times through the first two, and
+   `_build_channeling` shares the brew window (`_brew_phase_positions`), the
+   steady-state trims (`_steady_state`, the two trims now carrying any list
+   alongside the values) and the rate list (`_pressure_rates`) with the third.
+   The minimum sample counts are named constants. No number moved: the three
+   detail levels are byte-identical on every fixture shot.
 
 ---
 
