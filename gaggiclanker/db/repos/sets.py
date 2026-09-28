@@ -61,11 +61,17 @@ from pydantic import (
     ValidationError,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
-from gaggiclanker.db.repos.version_names import label_sql, next_numbers
+from gaggiclanker.db.repos.version_names import (
+    label_sql,
+    names_from_state,
+    next_numbers,
+    state_sql,
+)
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.sets import VersionPath, change_is_major, version_label
 from gaggiclanker.domain.spread import CountedShot
@@ -519,10 +525,39 @@ class SetRow(BaseModel):
     #: The current version's name, "v1.2"; empty only for a Set with no
     #: version, which does not exist outside a half-written transaction.
     current_version_label: str = ""
+    #: What the next version would be called as a minor ("v1.3") and as a
+    #: major ("v2"), for every button and form that says which version it will
+    #: record. Worked out in this row's own query with the arithmetic the
+    #: insert uses, so the web never numbers anything. Both v1 while the Set is
+    #: being designed: the next write fills version 1.
+    next_minor_label: str = ""
+    next_major_label: str = ""
     version_count: int = 0
     shot_count: int = 0
     profile_version_id: int | None = None
     profile_label: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _name_the_next_version(cls, data: Any) -> Any:
+        """Turn the three numbering columns of the row into the two names.
+
+        The columns are selected flat (there is no other way to get them out of
+        one query) and are not part of the row anybody reads: what a reader
+        needs is the names, and the arithmetic stays in one function.
+        """
+        if not isinstance(data, dict) or "current_major" not in data:
+            return data
+        payload = dict(data)
+        names = names_from_state(
+            designing=bool(payload.get("designing")),
+            current_major=payload.pop("current_major"),
+            current_major_minor_max=payload.pop("current_major_minor_max", None),
+            highest_major=payload.pop("highest_major", None),
+        )
+        payload["next_minor_label"] = names.minor
+        payload["next_major_label"] = names.major
+        return payload
 
     @field_validator("design_brief", mode="before")
     @classmethod
@@ -912,6 +947,7 @@ _SET_SELECT = f"""
            cur.id AS current_version_id,
            COALESCE(cur.version_no, 0) AS current_version_no,
            COALESCE({label_sql("cur")}, '') AS current_version_label,
+           {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
            pv.label AS profile_label,
            (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = s.id) AS version_count,

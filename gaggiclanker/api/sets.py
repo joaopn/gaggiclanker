@@ -361,11 +361,6 @@ class SetDetailData(BaseModel):
     #: per Set, and it has changed nothing: the next shot is still filed under
     #: the recipe in the hopper until somebody presses Accept.
     proposal: SetProposalDetail | None = None
-    #: What the next version would be called as a minor ("v1.3") and as a
-    #: major ("v2"), for the Add a version form to say which it will record.
-    #: Both v1 while the Set is being designed: the next write fills v1.
-    next_minor_label: str
-    next_major_label: str
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -849,7 +844,6 @@ async def get_set(
     ]
     verdicts = await judgements.for_shots([shot.id for shot in page.items])
     waiting = await proposals.waiting(set_id)
-    names = await proposals.next_names(set_id)
     return envelope_response(
         SetDetailData(
             set=row,
@@ -859,8 +853,6 @@ async def get_set(
             spread=spread_report(spreads),
             rollback_target_version_id=await sets.rollback_target(set_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
-            next_minor_label=names.minor,
-            next_major_label=names.major,
         ).model_dump(mode="json")
     )
 

@@ -98,14 +98,24 @@ class TestTheSetPage:
     async def test_it_serves_both_names_the_next_version_could_take(
         self, client: httpx.AsyncClient, set_id: int
     ) -> None:
-        detail = data(await client.get(f"/api/sets/{set_id}"))
+        detail = data(await client.get(f"/api/sets/{set_id}"))["set"]
         assert (detail["next_minor_label"], detail["next_major_label"]) == ("v1.1", "v2")
-        assert detail["set"]["current_version_label"] == "v1"
+        assert detail["current_version_label"] == "v1"
         await client.post(f"/api/sets/{set_id}/versions", json={"grind_setting": "21"})
-        detail = data(await client.get(f"/api/sets/{set_id}"))
-        assert (detail["next_minor_label"], detail["next_major_label"]) == ("v1.2", "v2")
-        assert detail["set"]["current_version_label"] == "v1.1"
-        assert detail["versions"][0]["version"]["version_label"] == "v1.1"
+        body = data(await client.get(f"/api/sets/{set_id}"))
+        assert (body["set"]["next_minor_label"], body["set"]["next_major_label"]) == (
+            "v1.2",
+            "v2",
+        )
+        assert body["set"]["current_version_label"] == "v1.1"
+        assert body["versions"][0]["version"]["version_label"] == "v1.1"
+        # The list serves the same names, from the same query.
+        listed = data(await client.get("/api/sets"))["items"][0]
+        assert (listed["next_minor_label"], listed["next_major_label"]) == ("v1.2", "v2")
+        await client.post(f"/api/sets/{set_id}/versions", json={"dose_g": 19, "major": True})
+        listed = data(await client.get("/api/sets"))["items"][0]
+        assert listed["current_version_label"] == "v2"
+        assert (listed["next_minor_label"], listed["next_major_label"]) == ("v2.1", "v3")
 
     async def test_a_set_being_designed_names_both_v1(
         self, client: httpx.AsyncClient, app: FastAPI
@@ -122,7 +132,11 @@ class TestTheSetPage:
                 "/api/sets/design", json={"bean_id": bean["id"], "grinder_id": grinder["id"]}
             )
         )
-        detail = data(await client.get(f"/api/sets/{designed['set']['id']}"))
+        assert (designed["set"]["next_minor_label"], designed["set"]["next_major_label"]) == (
+            "v1",
+            "v1",
+        )
+        detail = data(await client.get(f"/api/sets/{designed['set']['id']}"))["set"]
         assert (detail["next_minor_label"], detail["next_major_label"]) == ("v1", "v1")
 
 

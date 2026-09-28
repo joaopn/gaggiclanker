@@ -97,6 +97,10 @@ async def test_the_next_names_are_the_names_the_insert_then_writes(wired: Fixtur
 
     names = await next_names(wired.db, set_id)
     assert (names.minor, names.major) == ("v1.2", "v2")
+    # The Set row serves the same two names from its own query.
+    row = await wired.sets.get(set_id)
+    assert row is not None
+    assert (row.next_minor_label, row.next_major_label) == (names.minor, names.major)
     assert await _add(wired.sets, set_id, major=True, dose_g=19) == names.major
     names = await next_names(wired.db, set_id)
     assert (names.minor, names.major) == ("v2.1", "v3")
@@ -112,6 +116,7 @@ async def test_a_design_filled_in_place_stays_v1(wired: Fixtures) -> None:
     )
     names = await next_names(wired.db, row.id)
     assert (names.minor, names.major) == ("v1", "v1")
+    assert (row.next_minor_label, row.next_major_label) == ("v1", "v1")
     profile = await make_profile_version(wired.db, "Designed")
 
     # Even marked major, and even though it names a profile the empty v1 did

@@ -273,6 +273,8 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
     current_version_id: 22,
     current_version_no: 2,
     current_version_label: "v2",
+    next_minor_label: "v2.1",
+    next_major_label: "v3",
     version_count: 2,
     shot_count: 4,
     profile_version_id: 7,
@@ -383,8 +385,6 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
     spread: spreadReport(),
     rollback_target_version_id: null,
     proposal: null,
-    next_minor_label: "v2.1",
-    next_major_label: "v3",
     ...overrides,
   };
 }

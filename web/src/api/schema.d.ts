@@ -5321,10 +5321,6 @@ export interface components {
             judgements: {
                 [key: string]: components["schemas"]["ShotJudgementRow"];
             };
-            /** Next Major Label */
-            next_major_label: string;
-            /** Next Minor Label */
-            next_minor_label: string;
             proposal?: components["schemas"]["SetProposalDetail"] | null;
             /** Rollback Target Version Id */
             rollback_target_version_id?: number | null;
@@ -5529,6 +5525,16 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+            /**
+             * Next Major Label
+             * @default
+             */
+            next_major_label: string;
+            /**
+             * Next Minor Label
+             * @default
+             */
+            next_minor_label: string;
             /** Profile Label */
             profile_label?: string | null;
             /** Profile Version Id */

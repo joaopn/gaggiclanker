@@ -28,8 +28,10 @@ __all__ = [
     "NextNumbers",
     "label_sql",
     "named_dump",
+    "names_from_state",
     "next_names",
     "next_numbers",
+    "state_sql",
 ]
 
 #: The ordinals a row carries beside each version's name. A model handed both
@@ -84,31 +86,68 @@ class NextNames:
     major: str
 
 
+def state_sql(current: str) -> str:
+    """What numbering the next version needs, off the current version called ``current``.
+
+    Three columns: the current version's major, the highest minor within that
+    major, and the Set's highest major. One text for the insert's own read
+    (:func:`next_numbers`) and for the Sets list, which serves every Set's next
+    names in its one query, so what a button promises and what the insert
+    writes are the same arithmetic on the same columns.
+    """
+    return f"""
+           {current}.version_major AS current_major,
+           (SELECT MAX(m.version_minor) FROM set_versions m
+             WHERE m.set_id = {current}.set_id AND m.version_major = {current}.version_major)
+               AS current_major_minor_max,
+           (SELECT MAX(h.version_major) FROM set_versions h
+             WHERE h.set_id = {current}.set_id) AS highest_major"""  # noqa: S608 - an alias, never input
+
+
+def names_from_state(
+    *,
+    designing: bool,
+    current_major: int | None,
+    current_major_minor_max: int | None,
+    highest_major: int | None,
+) -> NextNames:
+    """What the next version would be called as a minor and as a major.
+
+    A Set being designed has an empty version 1 that the next write fills in
+    place, so both answers are v1 there.
+    """
+    if designing:
+        return NextNames(minor=version_label(1, 0), major=version_label(1, 0))
+    state = {
+        "current_major": current_major or 0,
+        "current_major_minor_max": current_major_minor_max or 0,
+        "highest_major": highest_major or 0,
+    }
+    return NextNames(
+        minor=version_label(*next_version_name(**state, major=False)),
+        major=version_label(*next_version_name(**state, major=True)),
+    )
+
+
 async def _state(db: Database, set_id: int) -> tuple[int, int, int, int]:
     """(highest ordinal, current major, highest minor in it, highest major), zeros for none."""
     row = await db.fetch_one(
-        """
-        SELECT cur.version_no,
-               cur.version_major,
-               (SELECT MAX(m.version_minor) FROM set_versions m
-                 WHERE m.set_id = cur.set_id AND m.version_major = cur.version_major)
-                   AS minor_max,
-               (SELECT MAX(h.version_major) FROM set_versions h
-                 WHERE h.set_id = cur.set_id) AS major_max
+        f"""
+        SELECT cur.version_no, {state_sql("cur")}
           FROM set_versions cur
          WHERE cur.set_id = ?
          ORDER BY cur.version_no DESC
          LIMIT 1
-        """,
+        """,  # noqa: S608 - the interpolation is the module's own SQL text, the id is bound
         (set_id,),
     )
     if row is None:
         return 0, 0, 0, 0
     return (
         int(row["version_no"]),
-        int(row["version_major"]),
-        int(row["minor_max"] or 0),
-        int(row["major_max"] or 0),
+        int(row["current_major"]),
+        int(row["current_major_minor_max"] or 0),
+        int(row["highest_major"] or 0),
     )
 
 
@@ -131,14 +170,12 @@ async def next_numbers(db: Database, set_id: int, *, major: bool) -> NextNumbers
 
 
 async def next_names(db: Database, set_id: int) -> NextNames:
-    """What the next version would be called as a minor and as a major.
-
-    A Set being designed has an empty version 1 that the next write fills in
-    place, so both answers are v1 there.
-    """
+    """What the next version of one Set would be called as a minor and as a major."""
     designing = await db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,))
-    if designing:
-        return NextNames(minor=version_label(1, 0), major=version_label(1, 0))
-    as_minor = await next_numbers(db, set_id, major=False)
-    as_major = await next_numbers(db, set_id, major=True)
-    return NextNames(minor=as_minor.label, major=as_major.label)
+    _, current_major, minor_max, major_max = await _state(db, set_id)
+    return names_from_state(
+        designing=bool(designing),
+        current_major=current_major,
+        current_major_minor_max=minor_max,
+        highest_major=major_max,
+    )
