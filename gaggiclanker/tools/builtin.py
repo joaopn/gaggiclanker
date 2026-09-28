@@ -252,9 +252,15 @@ async def _shots_in_scope(
     return shots, tiers
 
 
+async def _curve_points(ctx: ToolContext) -> int:
+    """The `chatCurvePoints` setting, read per call like the tiers."""
+    return int(await ctx.settings.get("chatCurvePoints"))
+
+
 async def _one_shot(ctx: ToolContext, shot_id: int, tier: ShotTier) -> ShotTextOutput:
     [facts], tiers = await _shots_in_scope(ctx, [shot_id], tier)
-    return ShotTextOutput(shot_id=shot_id, tier=tier, text=render_shot(facts, tier, tiers))
+    text = render_shot(facts, tier, tiers, curve_points=await _curve_points(ctx))
+    return ShotTextOutput(shot_id=shot_id, tier=tier, text=text)
 
 
 @tool(
@@ -277,8 +283,9 @@ async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
     description=(
         "One shot's extended information, without its base lines: the execution score's "
         "working, temperature, pressure and flow statistics, the channeling indicators, "
-        "profile compliance, one line per phase and the full sample table. Ask for it when "
-        "the base lines raise a question the shape of the shot would answer."
+        "profile compliance, one line per phase and the curve as one table (its shape and "
+        "every moment the diagnostics are about, not every sample). Ask for it when the base "
+        "lines raise a question the shape of the shot would answer."
     ),
 )
 async def get_shot_extended(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
@@ -290,7 +297,7 @@ async def get_shot_extended(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutp
     permission="read",
     description=(
         "One shot's base and extended information together. The largest answer a shot gives "
-        "(it carries every sample), so keep it for the shot a question turns on."
+        "(it carries the curve), so keep it for the shot a question turns on."
     ),
 )
 async def get_shot_full(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
@@ -309,17 +316,20 @@ class CompareOutput(_Model):
     "compare_shots",
     permission="read",
     description=(
-        "Two to four shots, each in full (base and extended, sample table included), in the "
+        "Two to four shots, each in full (base and extended, curve table included), in the "
         "order given, to read side by side. Use it for 'did the grind change actually help' "
         "questions. Large: prefer get_shot for a shot you only need the headline of."
     ),
 )
 async def compare_shots(ctx: ToolContext, args: CompareInput) -> CompareOutput:
     shots, tiers = await _shots_in_scope(ctx, args.shot_ids, "full")
+    points = await _curve_points(ctx)
     return CompareOutput(
         shots=[
             ShotTextOutput(
-                shot_id=facts.shot_id, tier="full", text=render_shot(facts, "full", tiers)
+                shot_id=facts.shot_id,
+                tier="full",
+                text=render_shot(facts, "full", tiers, curve_points=points),
             )
             for facts in shots
         ]
@@ -632,9 +642,13 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
             limit=args.limit,
         ),
     )
+    points = await _curve_points(ctx)
     return SearchShotsOutput(
         shots=[
-            ShotHit(shot_id=facts.shot_id, text=render_shot(facts, "base", tiers))
+            ShotHit(
+                shot_id=facts.shot_id,
+                text=render_shot(facts, "base", tiers, curve_points=points),
+            )
             for facts in found.shots
         ],
         count=len(found.shots),

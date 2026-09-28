@@ -18,16 +18,19 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.shotinfo import catalogue
 from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers, keys_in
+from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import (
     Line,
+    _selection,
     item_example,
     load_shots,
     needs_samples,
     render_shot,
     shot_lines,
 )
-from tests.shotinfo.conftest import Archive
+from gaggiclanker.shotinfo.service import approximate_tokens
+from tests.shotinfo.conftest import Archive, insert_shot_129
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 
@@ -42,7 +45,7 @@ async def test_a_shot_renders_as_its_golden_file(
     archive: Archive, update_golden: bool, tier: str
 ) -> None:
     facts = await _one(archive.db, archive.shot)
-    rendered = render_shot(facts, tier, default_tiers())  # type: ignore[arg-type]
+    rendered = render_shot(facts, tier, default_tiers(), curve_points=CURVE_POINTS)  # type: ignore[arg-type]
 
     path = GOLDEN / f"shot-{tier}.txt"
     if update_golden:
@@ -54,8 +57,12 @@ async def test_a_shot_renders_as_its_golden_file(
 
 
 async def test_the_same_shot_renders_the_same_bytes(archive: Archive) -> None:
-    first = render_shot(await _one(archive.db, archive.shot), "full", default_tiers())
-    second = render_shot(await _one(archive.db, archive.shot), "full", default_tiers())
+    first = render_shot(
+        await _one(archive.db, archive.shot), "full", default_tiers(), curve_points=CURVE_POINTS
+    )
+    second = render_shot(
+        await _one(archive.db, archive.shot), "full", default_tiers(), curve_points=CURVE_POINTS
+    )
 
     assert first == second
 
@@ -78,26 +85,141 @@ async def test_extended_carries_no_base_item_and_full_is_both_item_by_item(
     assert {line.key for line in base} <= keys_in("base", tiers)
     assert _pairs(full) == _pairs(base) | _pairs(extended)
 
-    rendered = render_shot(facts, "extended", tiers)
+    rendered = render_shot(facts, "extended", tiers, curve_points=CURVE_POINTS)
     for line in base:
         if line.key != "shot_id":
             assert f"{ITEMS[line.key].label}: {line.value}" not in rendered, line.key
 
 
-async def test_the_curve_is_one_table_at_full_resolution(archive: Archive) -> None:
+def _curve(rendered: str) -> list[str]:
+    """The curve group's lines, up to the next group."""
+    lines = rendered.split("[Curve]\n", 1)[1].splitlines()
+    end = next((i for i, line in enumerate(lines) if line.startswith("[")), len(lines))
+    return lines[:end]
+
+
+def _times(table: list[str]) -> list[str]:
+    return [row.split(",", 1)[0] for row in table[2:]]
+
+
+async def test_the_curve_is_one_table_of_the_rows_the_selection_keeps(archive: Archive) -> None:
     facts = await _one(archive.db, archive.shot)
     assert facts.samples
 
-    rendered = render_shot(facts, "extended", default_tiers())
-    table = rendered.split("[Curve]\n", 1)[1].splitlines()
+    table = _curve(render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS))
+    rows, _ = _selection(facts, CURVE_POINTS)
 
-    assert table[0] == f"{len(facts.samples)} samples"
+    assert 10 < len(rows) <= CURVE_POINTS < len(facts.samples)
+    assert table[0] == (
+        f"{len(rows)} of {len(facts.samples)} samples, shape-preserving; always kept: the first "
+        "and last, each phase's first and last, peak pressure, first drip, both ends of the "
+        "largest pressure drop"
+    )
     assert table[1] == (
         "t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),"
         "weight (g),temperature (°C),phase marker"
     )
-    assert len(table) == 2 + len(facts.samples)
+    assert _times(table) == [f"{facts.samples[i].t_ms / 1000:.2f}" for i in rows]
     assert all(row.count(",") == 7 for row in table[2:])
+
+
+async def test_a_budget_at_or_above_the_samples_writes_every_sample(archive: Archive) -> None:
+    facts = await _one(archive.db, archive.shot)
+    assert facts.samples
+    count = len(facts.samples)
+
+    for budget in (count, count + 100):
+        table = _curve(render_shot(facts, "extended", default_tiers(), curve_points=budget))
+        assert table[0] == f"all {count} samples"
+        assert len(table) == 2 + count
+
+
+async def test_the_budget_moves_the_row_count(archive: Archive) -> None:
+    facts = await _one(archive.db, archive.shot)
+
+    def count(budget: int) -> int:
+        table = _curve(render_shot(facts, "extended", default_tiers(), curve_points=budget))
+        return len(table) - 2
+
+    assert count(10) < count(30) < count(CURVE_POINTS) < count(120)
+
+
+async def test_moving_a_channel_between_tiers_never_moves_a_timestamp(archive: Archive) -> None:
+    facts = await _one(archive.db, archive.shot)
+    tiers = default_tiers()
+    thinner = {
+        **tiers,
+        "curve_pressure": "excluded",
+        "curve_puck_flow": "excluded",
+        "curve_weight": "base",
+    }
+
+    everything = _curve(render_shot(facts, "extended", tiers, curve_points=CURVE_POINTS))
+    extended = _curve(render_shot(facts, "extended", thinner, curve_points=CURVE_POINTS))
+    base = _curve(render_shot(facts, "base", thinner, curve_points=CURVE_POINTS))
+
+    assert (
+        extended[1]
+        == "t (s),target pressure (bar),target flow (ml/s),temperature (°C),phase marker"
+    )
+    assert base[1] == "t (s),weight (g)"
+    assert _times(extended) == _times(everything) == _times(base)
+    assert extended[0] == everything[0] == base[0]
+
+
+async def test_a_machine_without_a_pressure_sensor_keeps_no_pressure_moment(
+    archive: Archive,
+) -> None:
+    facts = await _one(archive.db, archive.no_pressure)
+
+    table = _curve(render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS))
+
+    assert table[0].endswith(
+        "always kept: the first and last, each phase's first and last, first drip"
+    )
+    assert "pressure (bar)" not in table[1].split(",")
+
+
+async def test_shot_129_keeps_these_rows(archive: Archive, update_golden: bool) -> None:
+    """The real shot's rows at the default budget, each with the moments it is kept for."""
+    facts = await _one(archive.db, await insert_shot_129(archive.db))
+    assert facts.samples is not None and len(facts.samples) == 213
+    rows, events = _selection(facts, CURVE_POINTS)
+    reasons: dict[int, list[str]] = {}
+    for index in (0, len(facts.samples) - 1):
+        reasons.setdefault(index, []).append("end")
+    for index in events.phase_edges:
+        reasons.setdefault(index, []).append("phase edge")
+    for name, moment in (
+        ("peak pressure", events.peak_pressure),
+        ("first drip", events.first_drip),
+    ):
+        if moment is not None:
+            reasons.setdefault(moment, []).append(name)
+    for index in events.pressure_drop or ():
+        reasons.setdefault(index, []).append("largest pressure drop")
+    lines = []
+    for index in rows:
+        why = ", ".join(reasons.get(index, []))
+        lines.append(
+            f"{index}\t{facts.samples[index].t_ms / 1000:.2f}" + (f"\t{why}" if why else "")
+        )
+    text = "\n".join(lines) + "\n"
+
+    path = GOLDEN / "shot-129-rows.txt"
+    if update_golden:
+        path.write_text(text, encoding="utf-8")
+        pytest.skip("golden file rewritten")
+    assert text == path.read_text(encoding="utf-8")
+
+
+async def test_shot_129_s_curve_costs_a_few_hundred_tokens(archive: Archive) -> None:
+    facts = await _one(archive.db, await insert_shot_129(archive.db))
+    curve = "[Curve]\n" + "\n".join(
+        _curve(render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS))
+    )
+
+    assert approximate_tokens(curve) < 700
 
 
 async def test_a_tier_with_no_curve_channel_has_no_table_and_needs_no_samples(
@@ -107,21 +229,23 @@ async def test_a_tier_with_no_curve_channel_has_no_table_and_needs_no_samples(
 
     assert not needs_samples("base", default_tiers())
     assert needs_samples("extended", default_tiers())
-    assert "[Curve]" not in render_shot(facts, "base", default_tiers())
+    assert "[Curve]" not in render_shot(facts, "base", default_tiers(), curve_points=CURVE_POINTS)
 
 
 async def test_no_curve_is_written_when_the_samples_were_not_loaded(archive: Archive) -> None:
     facts = await _one(archive.db, archive.shot, samples=False)
 
     assert facts.samples is None
-    assert "[Curve]" not in render_shot(facts, "extended", default_tiers())
+    assert "[Curve]" not in render_shot(
+        facts, "extended", default_tiers(), curve_points=CURVE_POINTS
+    )
 
 
 async def test_a_shot_with_no_scale_has_no_weight_derived_values(archive: Archive) -> None:
     facts = await _one(archive.db, archive.no_scale)
     tiers = default_tiers()
     keys = {line.key for line in shot_lines(facts, keys_in("full", tiers))}
-    rendered = render_shot(facts, "full", tiers)
+    rendered = render_shot(facts, "full", tiers, curve_points=CURVE_POINTS)
 
     assert "yield" not in keys
     assert "weight_rate" not in keys
@@ -139,7 +263,7 @@ async def test_a_shot_with_no_pressure_sensor_has_no_pressure_derived_values(
     tiers = default_tiers()
     lines = shot_lines(facts, keys_in("full", tiers))
     keys = {line.key for line in lines}
-    rendered = render_shot(facts, "full", tiers)
+    rendered = render_shot(facts, "full", tiers, curve_points=CURVE_POINTS)
 
     for absent in (
         "peak_pressure",
@@ -167,7 +291,9 @@ async def test_a_shot_with_no_pressure_sensor_has_no_pressure_derived_values(
 
 
 async def test_the_judgement_reads_with_its_flavour_wheel_paths(archive: Archive) -> None:
-    rendered = render_shot(await _one(archive.db, archive.shot), "base", default_tiers())
+    rendered = render_shot(
+        await _one(archive.db, archive.shot), "base", default_tiers(), curve_points=CURVE_POINTS
+    )
 
     assert "Taste notes: Sweet › Brown sugar › Caramelized; Fruity › Citrus fruit › Lemon" in (
         rendered
@@ -179,7 +305,9 @@ async def test_the_judgement_reads_with_its_flavour_wheel_paths(archive: Archive
 
 
 async def test_the_header_is_the_shot_id_and_is_not_repeated(archive: Archive) -> None:
-    rendered = render_shot(await _one(archive.db, archive.shot), "base", default_tiers())
+    rendered = render_shot(
+        await _one(archive.db, archive.shot), "base", default_tiers(), curve_points=CURVE_POINTS
+    )
 
     assert rendered.startswith(f"shot {archive.shot}\n")
     assert "Shot id:" not in rendered
@@ -269,7 +397,9 @@ async def test_summary_level_diagnostics_are_read_as_well(archive: Archive) -> N
         )
     )
 
-    rendered = render_shot(await _one(archive.db, shot_id), "full", default_tiers())
+    rendered = render_shot(
+        await _one(archive.db, shot_id), "full", default_tiers(), curve_points=CURVE_POINTS
+    )
 
     assert "Resistance level: 2.40 MODERATE" in rendered
     assert "Resistance erosion: -0.04 /s GRADUAL_DECLINE" in rendered
@@ -332,7 +462,7 @@ async def test_a_choked_puck_shows_its_zero_brew_flow(archive: Archive) -> None:
     assert facts.shot.fields_mask is not None
     choked = _with(facts, diagnostics=blob)
 
-    rendered = render_shot(choked, "full", default_tiers())
+    rendered = render_shot(choked, "full", default_tiers(), curve_points=CURVE_POINTS)
 
     assert choked.puck_flow_recorded
     assert "Average brew flow: 0.00 ml/s" in rendered
@@ -375,8 +505,8 @@ async def test_a_stored_final_weight_of_zero_is_no_yield(archive: Archive) -> No
     zero = _with(facts, final_weight_g=0.0)
 
     assert catalogue.yield_g(zero) is None
-    assert "Yield:" not in render_shot(zero, "base", default_tiers())
-    assert "Yield: 31.6 g" in render_shot(facts, "base", default_tiers())
+    assert "Yield:" not in render_shot(zero, "base", default_tiers(), curve_points=CURVE_POINTS)
+    assert "Yield: 31.6 g" in render_shot(facts, "base", default_tiers(), curve_points=CURVE_POINTS)
 
 
 async def test_an_example_is_absent_wherever_the_rendering_leaves_the_line_out(
@@ -388,17 +518,19 @@ async def test_an_example_is_absent_wherever_the_rendering_leaves_the_line_out(
     no_pressure = await _one(archive.db, archive.no_pressure)
     unsampled = await _one(archive.db, archive.shot, samples=False)
 
-    assert item_example(full, "yield") == "31.6 g"
-    assert item_example(no_scale, "yield") is None
-    assert item_example(full, "curve_weight") is not None
-    assert item_example(no_scale, "curve_weight") is None
-    assert item_example(full, "curve_pressure") is not None
-    assert item_example(no_pressure, "curve_pressure") is None
-    assert item_example(unsampled, "curve_pressure") is None
+    assert item_example(full, "yield", curve_points=CURVE_POINTS) == "31.6 g"
+    assert item_example(no_scale, "yield", curve_points=CURVE_POINTS) is None
+    assert item_example(full, "curve_weight", curve_points=CURVE_POINTS) is not None
+    assert item_example(no_scale, "curve_weight", curve_points=CURVE_POINTS) is None
+    assert item_example(full, "curve_pressure", curve_points=CURVE_POINTS) is not None
+    assert item_example(no_pressure, "curve_pressure", curve_points=CURVE_POINTS) is None
+    assert item_example(unsampled, "curve_pressure", curve_points=CURVE_POINTS) is None
     # A phase item is one line per phase that has it, and no line for one that
     # does not: the ramp rate belongs to pre-infusion phases only.
-    ramps = item_example(full, "phase_ramp")
+    ramps = item_example(full, "phase_ramp", curve_points=CURVE_POINTS)
     assert ramps is not None
     assert all(": ramp " in line for line in ramps.splitlines())
     assert len(ramps.splitlines()) < len(full.phases)
-    assert len((item_example(full, "phase_name") or "").splitlines()) == len(full.phases)
+    assert len(
+        (item_example(full, "phase_name", curve_points=CURVE_POINTS) or "").splitlines()
+    ) == len(full.phases)

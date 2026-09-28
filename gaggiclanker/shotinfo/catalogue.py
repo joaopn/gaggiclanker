@@ -18,7 +18,9 @@ shot. Three kinds, because a shot has three shapes of information:
 * a **phase** item has one per phase that has it, and is skipped for a phase
   that does not (`taper -0.14 bar/s, 0.24 bar/s SMOOTH` on the decline);
 * a **curve** item is one channel of the sample table — every channel of the
-  tier is one column of one table, at full resolution.
+  tier is one column of one table, whose rows are a shape-preserving subset
+  of the samples (:mod:`~gaggiclanker.shotinfo.downsample`), the same for
+  every channel.
 
 Two rules are load-bearing everywhere below.
 
@@ -603,10 +605,14 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "need a pressure sensor."
         ),
         "Curve": (
-            "One table: the number of samples, a header naming each column and its unit, then one "
-            "comma-separated row per recorded sample in time order, every sample the machine "
-            "stored. An empty cell was not recorded; a channel the machine did not record is left "
-            "out."
+            "One table: a line saying how many of the shot's samples it holds, a header naming "
+            "each column and its unit, then one comma-separated row per sample in time order. A "
+            "long shot is cut to a few dozen rows chosen to keep the curve's shape (peaks, dips "
+            "and turns of pressure and puck flow), and the line says which moments are always "
+            "kept: the first and last sample, each phase's first and last, peak pressure, first "
+            "drip and both ends of the largest pressure drop. A short shot is whole. Every column "
+            "is cut at the same rows. An empty cell was not recorded; a channel the machine did "
+            "not record is left out."
         ),
     }
 )

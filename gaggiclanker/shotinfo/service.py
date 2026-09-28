@@ -29,6 +29,7 @@ from gaggiclanker.shotinfo.catalogue import (
     GROUP_NOTES,
     GROUPS,
     ITEMS,
+    ShotTier,
     Tier,
     effective_tiers,
 )
@@ -109,6 +110,9 @@ class TokenEstimates(BaseModel):
     autoload: int | None
     #: The `chatRecentShots` setting.
     recent_shots: int
+    #: The `chatCurvePoints` setting: about how many rows the curve in the
+    #: extended and full figures is cut to.
+    curve_points: int
 
 
 class ShotInformation(BaseModel):
@@ -137,15 +141,16 @@ class ShotInformationService:
         loaded = await load_shots(self.db, [example.id], samples=True) if example else []
         facts = loaded[0] if loaded else None
         recent = int(await self.settings.get("chatRecentShots"))
+        curve_points = int(await self.settings.get("chatCurvePoints"))
         shown = (
             ExampleShot(shot_id=example.id, started_at=example.started_at, judged=example.judged)
             if example is not None and facts is not None
             else None
         )
         return ShotInformation(
-            groups=_groups(tiers, facts),
+            groups=_groups(tiers, facts, curve_points),
             example_shot=shown,
-            estimates=_estimates(tiers, facts, recent),
+            estimates=_estimates(tiers, facts, recent, curve_points),
         )
 
     async def set_tier(self, key: str, tier: Tier) -> ShotInformation:
@@ -167,7 +172,9 @@ class ShotInformationService:
         return await self.document()
 
 
-def _groups(tiers: Mapping[str, Tier], facts: ShotFacts | None) -> list[ShotInfoGroup]:
+def _groups(
+    tiers: Mapping[str, Tier], facts: ShotFacts | None, curve_points: int
+) -> list[ShotInfoGroup]:
     return [
         ShotInfoGroup(
             name=group,
@@ -181,7 +188,11 @@ def _groups(tiers: Mapping[str, Tier], facts: ShotFacts | None) -> list[ShotInfo
                     default_tier=item.default_tier,
                     tier=tiers[item.key],
                     locked=item.locked,
-                    example=item_example(facts, item.key) if facts is not None else None,
+                    example=(
+                        item_example(facts, item.key, curve_points=curve_points)
+                        if facts is not None
+                        else None
+                    ),
                 )
                 for item in CATALOGUE
                 if item.group == group
@@ -192,7 +203,7 @@ def _groups(tiers: Mapping[str, Tier], facts: ShotFacts | None) -> list[ShotInfo
 
 
 def _estimates(
-    tiers: Mapping[str, Tier], facts: ShotFacts | None, recent_shots: int
+    tiers: Mapping[str, Tier], facts: ShotFacts | None, recent_shots: int, curve_points: int
 ) -> TokenEstimates:
     glossary = approximate_tokens(render_glossary(tiers))
     if facts is None:
@@ -203,13 +214,19 @@ def _estimates(
             glossary=glossary,
             autoload=None,
             recent_shots=recent_shots,
+            curve_points=curve_points,
         )
-    base = approximate_tokens(render_shot(facts, "base", tiers))
+
+    def cost(tier: ShotTier) -> int:
+        return approximate_tokens(render_shot(facts, tier, tiers, curve_points=curve_points))
+
+    base = cost("base")
     return TokenEstimates(
         base_per_shot=base,
-        extended_per_shot=approximate_tokens(render_shot(facts, "extended", tiers)),
-        full_per_shot=approximate_tokens(render_shot(facts, "full", tiers)),
+        extended_per_shot=cost("extended"),
+        full_per_shot=cost("full"),
         glossary=glossary,
         autoload=base * recent_shots,
         recent_shots=recent_shots,
+        curve_points=curve_points,
     )

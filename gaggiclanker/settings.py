@@ -1151,4 +1151,17 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "before it asks; every shot costs a few hundred tokens on every turn."
         ),
     ),
+    SettingDefinition(
+        key="chatCurvePoints",
+        type="int",
+        default=60,
+        validate=_at_least(10, "below 10 rows a curve is only the moments that are always kept"),
+        description=(
+            "About how many rows of a shot's curve the agent reads when it asks for a shot in "
+            "detail. The rows are chosen to keep the curve's shape, and every phase boundary, "
+            "peak pressure, first drip and the largest pressure drop are kept whatever this is, "
+            "so a shot can come to a few rows more. A shot with no more samples than this is sent "
+            "whole; each row costs about ten tokens."
+        ),
+    ),
 )

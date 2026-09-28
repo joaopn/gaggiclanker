@@ -7058,6 +7058,8 @@ export interface components {
             autoload: number | null;
             /** Base Per Shot */
             base_per_shot: number | null;
+            /** Curve Points */
+            curve_points: number;
             /** Extended Per Shot */
             extended_per_shot: number | null;
             /** Full Per Shot */

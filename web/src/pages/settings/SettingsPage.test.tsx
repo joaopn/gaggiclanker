@@ -388,6 +388,7 @@ describe("SettingsPage", () => {
         glossary: 1200,
         autoload: null,
         recent_shots: 20,
+        curve_points: 60,
       },
     });
     renderAt("/settings/shot-information");

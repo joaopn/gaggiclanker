@@ -76,6 +76,7 @@ function documentWith(
       glossary: 3100,
       autoload: 2400,
       recent_shots: 20,
+      curve_points: 60,
       ...estimates,
     },
   };

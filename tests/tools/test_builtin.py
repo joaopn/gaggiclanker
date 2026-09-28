@@ -8,6 +8,7 @@ work.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -86,9 +87,35 @@ async def test_get_shot_extended_adds_only_what_base_leaves_out(
 
     assert extended["tier"] == "extended"
     assert "Score confidence: high" in extended["text"]
-    assert "[Curve]\n112 samples" in extended["text"], "every stored sample, not a sample of them"
+    assert "[Curve]\n" in extended["text"]
+    heading = extended["text"].split("[Curve]\n", 1)[1].splitlines()[0]
+    assert re.fullmatch(r"\d+ of 112 samples, shape-preserving; always kept: .+", heading)
     assert "Rating:" not in extended["text"]
     assert "Rating: 3/5" in base
+
+
+async def test_the_next_shot_tool_call_follows_the_curve_points_setting(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """Read per call, like the tiers: no restart, no new conversation."""
+    shot = archive.shots[-1]
+
+    def rows(text: str) -> int:
+        lines = text.split("[Curve]\n", 1)[1].splitlines()
+        end = next((i for i, line in enumerate(lines) if line.startswith("[")), len(lines))
+        return end - 2
+
+    before = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
+    await ctx.settings.store("chatCurvePoints", 10)
+    fewer = (await call(ctx, "get_shot_extended", shot_id=shot))["text"]
+    compared = (await call(ctx, "compare_shots", shot_ids=[shot, archive.shots[0]]))["shots"]
+    await ctx.settings.store("chatCurvePoints", 500)
+    whole = (await call(ctx, "get_shot_full", shot_id=shot))["text"]
+
+    assert rows(fewer) < rows(before) <= 60
+    assert rows(compared[0]["text"]) == rows(fewer)
+    assert "[Curve]\nall 112 samples\n" in whole
+    assert rows(whole) == 112
 
 
 async def test_get_shot_full_is_both(ctx: ToolContext, archive: Fixture) -> None:

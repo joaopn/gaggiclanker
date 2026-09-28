@@ -16,6 +16,7 @@ are what the model is told about a shot.
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,12 +31,17 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrit
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
+from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog, slog_to_raw
 from gaggiclanker.domain.models import ShotNotes
 from gaggiclanker.domain.slog import Slog, parse_slog
 from gaggiclanker.sync.derive import SI_SCALE_CONNECTED, derive_shot
 from tests.sets.conftest import make_profile_version
 
 SLOG = Path(__file__).resolve().parents[1] / "fixtures" / "slog" / "shot_204_ramping_flow.slog"
+#: The newest shot of the demo archive, exported by the machine's web UI: 213
+#: samples over 53 s, four phases, a real scale. What a person's own shot looks
+#: like, and so what the curve's budget is measured on.
+SHOT_129 = Path(__file__).resolve().parents[1] / "fixtures" / "exports" / "shot-129.json"
 
 
 @dataclass(slots=True)
@@ -64,6 +70,13 @@ def _without_scale(slog: Slog) -> Slog:
     ]
     header = slog.header.model_copy(update={"final_weight_g": None})
     return dataclasses.replace(slog, samples=samples, header=header)
+
+
+async def insert_shot_129(db: Database) -> int:
+    """The exported shot, stored the way an import stores it."""
+    slog = shot_export_to_slog(ShotExport.model_validate(json.loads(SHOT_129.read_text())))
+    derived = derive_shot(slog, slog_to_raw(slog), device_id="000129", source="import")
+    return await ShotsRepository(db).insert(derived.shot, derived.samples)
 
 
 async def _insert(

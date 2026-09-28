@@ -19,6 +19,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.shotinfo.catalogue import CATALOGUE, GROUP_NOTES, GROUPS, ITEMS, default_tiers
+from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.shotinfo.render import load_shots, render_shot
 from tests.sets.test_api import data, error
@@ -86,6 +87,7 @@ async def test_an_empty_archive_has_no_example_and_only_the_glossary_estimate(
         "glossary": tokens(render_glossary(default_tiers())),
         "autoload": None,
         "recent_shots": 20,
+        "curve_points": 60,
     }
 
 
@@ -112,7 +114,7 @@ async def test_every_example_is_what_the_rendering_says(
     document = data(await client.get("/api/shot-information"))
     [facts] = await load_shots(db, [shot], samples=True)
     # Everything in one rendering, so every item has a line to be compared with.
-    rendered = render_shot(facts, "base", dict.fromkeys(ITEMS, "base"))
+    rendered = render_shot(facts, "base", dict.fromkeys(ITEMS, "base"), curve_points=CURVE_POINTS)
     lines = rendered.splitlines()
 
     shown = {key: item["example"] for key, item in items_of(document).items()}
@@ -143,13 +145,18 @@ async def test_every_example_is_what_the_rendering_says(
 
 def _assert_channel(lines: list[str], header: str, example: str) -> None:
     table = lines[lines.index("[Curve]") + 1 :]
-    count = int(table[0].split()[0])
+    heading = re.match(r"(?:all (\d+)|(\d+) of (\d+)) samples", table[0])
+    assert heading is not None, table[0]
+    count = int(heading[1] or heading[2])
     columns = table[1].split(",")
     cells = [row.split(",")[columns.index(header)] for row in table[2 : 2 + count]]
+    assert len(cells) == count
     values = [float(cell) for cell in cells if cell]
-    match = re.fullmatch(r"(\d+) samples, (\S+) to (\S+)(?: .+)?", example)
+    # The example says what the table says: its row count of the shot's
+    # samples, and the range over the rows written.
+    match = re.fullmatch(r"(all \d+|\d+ of \d+) samples, (\S+) to (\S+)(?: .+)?", example)
     assert match is not None, example
-    assert int(match[1]) == count
+    assert table[0].startswith(f"{match[1]} samples")
     assert float(match[2]) == min(values)
     assert float(match[3]) == max(values)
     # At the column's own precision: the same text as a cell of the table.
@@ -171,19 +178,51 @@ async def test_the_estimates_are_the_example_s_renderings_at_the_current_tiers(
 
     tiers = default_tiers()
     assert before == {
-        "base_per_shot": tokens(render_shot(facts, "base", tiers)),
-        "extended_per_shot": tokens(render_shot(facts, "extended", tiers)),
-        "full_per_shot": tokens(render_shot(facts, "full", tiers)),
+        "base_per_shot": tokens(render_shot(facts, "base", tiers, curve_points=CURVE_POINTS)),
+        "extended_per_shot": tokens(
+            render_shot(facts, "extended", tiers, curve_points=CURVE_POINTS)
+        ),
+        "full_per_shot": tokens(render_shot(facts, "full", tiers, curve_points=CURVE_POINTS)),
         "glossary": tokens(render_glossary(tiers)),
-        "autoload": tokens(render_shot(facts, "base", tiers)) * 20,
+        "autoload": tokens(render_shot(facts, "base", tiers, curve_points=CURVE_POINTS)) * 20,
         "recent_shots": 20,
+        "curve_points": CURVE_POINTS,
     }
     now = {**tiers, "curve_pressure": "base"}
-    assert moved["base_per_shot"] == tokens(render_shot(facts, "base", now))
-    assert moved["base_per_shot"] > before["base_per_shot"] + 200, "a whole column of samples"
-    assert moved["extended_per_shot"] == tokens(render_shot(facts, "extended", now))
+    assert moved["base_per_shot"] == tokens(
+        render_shot(facts, "base", now, curve_points=CURVE_POINTS)
+    )
+    assert moved["base_per_shot"] > before["base_per_shot"] + 100, "a column of the curve"
+    assert moved["extended_per_shot"] == tokens(
+        render_shot(facts, "extended", now, curve_points=CURVE_POINTS)
+    )
     assert moved["glossary"] == tokens(render_glossary(now))
     assert moved["autoload"] == moved["base_per_shot"] * 20
+
+
+async def test_the_estimates_and_the_curve_examples_follow_the_curve_points_setting(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    db: Database = app.state.db
+    shot = await _judged_shot(db)
+    [facts] = await load_shots(db, [shot], samples=True)
+    before = data(await client.get("/api/shot-information"))
+    assert data(await client.patch("/api/settings", json={"chatCurvePoints": 10}))
+
+    after = data(await client.get("/api/shot-information"))
+
+    tiers = default_tiers()
+    estimates = after["estimates"]
+    assert estimates["curve_points"] == 10
+    assert estimates["extended_per_shot"] == tokens(
+        render_shot(facts, "extended", tiers, curve_points=10)
+    )
+    assert estimates["full_per_shot"] == tokens(render_shot(facts, "full", tiers, curve_points=10))
+    assert estimates["extended_per_shot"] < before["estimates"]["extended_per_shot"]
+    assert estimates["base_per_shot"] == before["estimates"]["base_per_shot"], "no curve in base"
+    example = items_of(after)["curve_pressure"]["example"]
+    assert example is not None and example.startswith("12 of 188 samples, ")
+    assert items_of(before)["curve_pressure"]["example"].startswith("47 of 188 samples, ")
 
 
 async def test_the_autoload_follows_the_recent_shots_setting(

@@ -60,6 +60,7 @@ from gaggiclanker.domain.spread import (
 )
 from gaggiclanker.domain.vocab import SPREAD_MEASURES, MeasureTerm, SpreadMeasure, vocabulary
 from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
+from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.render import load_shots, render_shot
 from gaggiclanker.tools.scope import ToolScope
 
@@ -130,6 +131,7 @@ async def opening_context(
     *,
     recent_shots: int = RECENT_SHOTS,
     tiers: Mapping[str, Tier] | None = None,
+    curve_points: int = CURVE_POINTS,
 ) -> str:
     """The experiment so far, as markdown, or an empty string for a general chat.
 
@@ -139,8 +141,9 @@ async def opening_context(
     test, a script) should get the obvious answer.
 
     ``recent_shots`` is how many of the version's newest shots are written
-    out, and ``tiers`` which of their items are base; the runner reads both at
-    the start of the turn, so the context and the tools of one turn agree.
+    out, ``tiers`` which of their items are base and ``curve_points`` how far a
+    curve moved into base is cut; the runner reads all three at the start of
+    the turn, so the context and the tools of one turn agree.
     """
     if scope.kind != "set" or scope.set_id is None:
         return ""
@@ -198,6 +201,7 @@ async def opening_context(
             version,
             recent=max(1, recent_shots),
             tiers=tiers if tiers is not None else await effective_tiers(db),
+            curve_points=curve_points,
         ),
     ]
     lines += ["", *_gold_standard(counted, versions, dead_ends)]
@@ -729,6 +733,7 @@ async def _shots_block(
     *,
     recent: int,
     tiers: Mapping[str, Tier],
+    curve_points: int,
 ) -> list[str]:
     """This version's newest shots, counted or not, each in its base information.
 
@@ -763,7 +768,7 @@ async def _shots_block(
         "diagnostics, phases and curve.",
     ]
     for facts in shots:
-        lines += ["", render_shot(facts, "base", tiers)]
+        lines += ["", render_shot(facts, "base", tiers, curve_points=curve_points)]
     return lines
 
 

@@ -22,6 +22,7 @@ from gaggiclanker.settings import (
     EnvSettings,
     secret_hint,
 )
+from gaggiclanker.shotinfo.downsample import CURVE_POINTS, MIN_CURVE_POINTS
 from tests.conftest import running_app
 
 
@@ -421,3 +422,17 @@ async def test_a_set_conversation_opens_with_at_least_one_shot(
     accepted = await client.patch("/api/settings", json={"chatRecentShots": 5})
     assert accepted.status_code == 200
     assert (await get_settings(client))["chatRecentShots"]["value"] == 5
+
+
+async def test_a_curve_is_cut_to_sixty_rows_and_never_below_ten(
+    client: httpx.AsyncClient,
+) -> None:
+    """How many rows a shot's curve is cut to: the renderer's default, and a floor."""
+    settings = await get_settings(client)
+    assert settings["chatCurvePoints"]["value"] == CURVE_POINTS == 60
+
+    refused = await client.patch("/api/settings", json={"chatCurvePoints": MIN_CURVE_POINTS - 1})
+    assert refused.status_code == 400
+    accepted = await client.patch("/api/settings", json={"chatCurvePoints": MIN_CURVE_POINTS})
+    assert accepted.status_code == 200
+    assert (await get_settings(client))["chatCurvePoints"]["value"] == MIN_CURVE_POINTS

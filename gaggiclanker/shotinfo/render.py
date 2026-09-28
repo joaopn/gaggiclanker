@@ -10,9 +10,11 @@ would have given it.
 The rendering is plain text, not JSON: a header line ``shot <id>``, then each
 group that has something to say, in catalogue order, as a ``[Group]`` line and
 ``label: value`` lines. Phases are one line each; the curve is one compact
-table. It is **byte-stable**: nothing here reads the clock, iterates a set or
-depends on a query's incidental order, so the same archive and the same tiers
-give the same text, and a golden file can hold it.
+table, cut to about as many rows as the caller asks for
+(:mod:`~gaggiclanker.shotinfo.downsample`). It is **byte-stable**: nothing
+here reads the clock, iterates a set or depends on a query's incidental order,
+so the same archive, tiers and curve budget give the same text, and a golden
+file can hold it.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from gaggiclanker.shotinfo.catalogue import (
     Tier,
     keys_in,
 )
+from gaggiclanker.shotinfo.downsample import CurveEvents, find_events, select_rows
 from gaggiclanker.shotinfo.facts import ShotFacts
 
 __all__ = [
@@ -137,26 +140,29 @@ def shot_lines(facts: ShotFacts, keys: frozenset[str]) -> list[Line]:
     return lines
 
 
-def render_shot(facts: ShotFacts, tier: ShotTier, tiers: Mapping[str, Tier]) -> str:
+def render_shot(
+    facts: ShotFacts, tier: ShotTier, tiers: Mapping[str, Tier], *, curve_points: int
+) -> str:
     """One shot, as the model reads it, at ``base``, ``extended`` or ``full``.
 
     The header ``shot <id>`` opens every rendering, whatever the tier: it is
     how the text is cited, so the shot id is written there and not again as a
     line. A group with nothing to show is left out, as is a line the shot has
-    no value for — absent means not recorded, never zero.
+    no value for — absent means not recorded, never zero. ``curve_points`` is
+    the `chatCurvePoints` setting: about how many rows the curve is cut to.
     """
     keys = keys_in(tier, tiers)
     lines = shot_lines(facts, keys)
     out = [f"shot {facts.shot_id}"]
     for group in GROUPS:
-        body = _group_body(facts, group, keys, lines)
+        body = _group_body(facts, group, keys, lines, curve_points)
         if body:
             out.append(f"[{group}]")
             out.extend(body)
     return "\n".join(out)
 
 
-def item_example(facts: ShotFacts, key: str) -> str | None:
+def item_example(facts: ShotFacts, key: str, *, curve_points: int) -> str | None:
     """One item's value on one shot, as a rendering writes it; ``None`` when absent.
 
     What Settings → Shot information shows beside each item, built from the
@@ -168,13 +174,14 @@ def item_example(facts: ShotFacts, key: str) -> str | None:
       lines are, and always by the phase's name, whatever tier the name sits
       in: a bare phase number on a settings page says nothing;
     * a curve channel, whose column is far too long to show, is the table's
-      sample count and the range the column spans (``213 samples, 0.0 to 9.2
-      bar``), written at the column's precision. A channel the table would
+      row count and the range the column spans over those rows (``54 of 213
+      samples, 0.2 to 8.5 bar``, or ``all 24 samples, …`` for a curve that is
+      not cut), written at the column's precision. A channel the table would
       leave out is absent here too.
     """
     item = ITEMS[key]
     if item.channel is not None:
-        return _channel_summary(facts, item.channel)
+        return _channel_summary(facts, item.channel, curve_points)
     if item.phase is None:
         return next((line.value for line in shot_lines(facts, frozenset({key}))), None)
     lines = shot_lines(facts, frozenset({key, "phase_name"}))
@@ -190,10 +197,12 @@ def item_example(facts: ShotFacts, key: str) -> str | None:
     return "\n".join(out) or None
 
 
-def _group_body(facts: ShotFacts, group: str, keys: frozenset[str], lines: list[Line]) -> list[str]:
+def _group_body(
+    facts: ShotFacts, group: str, keys: frozenset[str], lines: list[Line], curve_points: int
+) -> list[str]:
     members = [item for item in CATALOGUE if item.group == group]
     if any(item.kind == "curve" for item in members):
-        return _curve_table(facts, [item for item in members if item.key in keys])
+        return _curve_table(facts, [item for item in members if item.key in keys], curve_points)
     if any(item.kind == "phase" for item in members):
         return _phase_lines(facts, lines)
     # The shot id is the header already; a line repeating it would be the one
@@ -229,14 +238,16 @@ def _phase_value(line: Line) -> str:
     return f"{ITEMS[line.key].label} {line.value}"
 
 
-def _curve_table(facts: ShotFacts, items: list[Item]) -> list[str]:
-    """The tier's channels as one table: a header, then a row per sample.
+def _curve_table(facts: ShotFacts, items: list[Item], curve_points: int) -> list[str]:
+    """The tier's channels as one table: what it holds, a header, then a row per sample kept.
 
-    Full resolution, every stored sample. A channel the shot did not record —
-    every value missing, or a scale or pressure channel on a machine without
-    one, which the firmware writes as zeros — is left out of the table rather
-    than shown as a column of zeros. An empty cell is one sample the firmware
-    did not record.
+    The rows are the shot's :func:`_selection` at ``curve_points``, the same
+    timestamps for every channel, and the first line says how many of the
+    shot's samples they are and which moments were kept whatever the budget.
+    A channel the shot did not record — every value missing, or a scale or
+    pressure channel on a machine without one, which the firmware writes as
+    zeros — is left out of the table rather than shown as a column of zeros.
+    An empty cell is one sample the firmware did not record.
     """
     if not items or not facts.samples:
         return []
@@ -247,32 +258,91 @@ def _curve_table(facts: ShotFacts, items: list[Item]) -> list[str]:
     ]
     if not channels:
         return []
+    samples = facts.samples
+    positions, events = _selection(facts, curve_points)
     header = ",".join(["t (s)", *(channel.header for channel in channels)])
     rows = [
         ",".join(
             [
-                f"{sample.t_ms / 1000:.2f}",
-                *(_cell(getattr(sample, channel.field), channel) for channel in channels),
+                f"{samples[index].t_ms / 1000:.2f}",
+                *(_cell(getattr(samples[index], channel.field), channel) for channel in channels),
             ]
         )
-        for sample in facts.samples
+        for index in positions
     ]
-    return [f"{len(rows)} samples", header, *rows]
+    return [_curve_heading(len(positions), len(samples), events), header, *rows]
+
+
+def _selection(facts: ShotFacts, curve_points: int) -> tuple[list[int], CurveEvents]:
+    """Which samples the curve writes, and the moments among them that were guaranteed.
+
+    One selection per shot, whatever channels the tiers show: it reads
+    pressure and puck flow only as far as the shot recorded them, so moving a
+    channel between tiers never moves a timestamp.
+    """
+    samples = facts.samples or ()
+    pressure = _recorded(facts, _PRESSURE)
+    puck_flow = _recorded(facts, _PUCK_FLOW)
+    events = find_events(
+        samples,
+        facts.phases,
+        pressure=pressure,
+        puck_flow=puck_flow,
+        sample_interval_ms=facts.shot.sample_interval_ms,
+    )
+    positions = select_rows(samples, events, curve_points, pressure=pressure, puck_flow=puck_flow)
+    return positions, events
+
+
+def _curve_heading(shown: int, total: int, events: CurveEvents) -> str:
+    """``all 24 samples``, or how many of how many and what was kept whatever the budget."""
+    if shown == total:
+        return f"all {total} samples"
+    kept = ["the first and last"]
+    if events.phase_edges:
+        kept.append("each phase's first and last")
+    if events.peak_pressure is not None:
+        kept.append("peak pressure")
+    if events.first_drip is not None:
+        kept.append("first drip")
+    if events.pressure_drop is not None:
+        kept.append("both ends of the largest pressure drop")
+    return f"{shown} of {total} samples, shape-preserving; always kept: {', '.join(kept)}"
 
 
 #: A column header's unit, the part in brackets: ``pressure (bar)``.
 _UNIT = re.compile(r"\(([^)]+)\)$")
 
 
-def _channel_summary(facts: ShotFacts, channel: Channel) -> str | None:
+def _channel_summary(facts: ShotFacts, channel: Channel, curve_points: int) -> str | None:
+    """The column's row count and range, over the rows the table writes."""
     if not facts.samples or not _recorded(facts, channel):
         return None
+    positions, _ = _selection(facts, curve_points)
     values = [
-        value for sample in facts.samples if (value := getattr(sample, channel.field)) is not None
+        value
+        for index in positions
+        if (value := getattr(facts.samples[index], channel.field)) is not None
     ]
+    if not values:
+        return None
+    total = len(facts.samples)
+    count = f"all {total}" if len(positions) == total else f"{len(positions)} of {total}"
     unit = _UNIT.search(channel.header)
     span = f"{_cell(min(values), channel)} to {_cell(max(values), channel)}"
-    return f"{len(facts.samples)} samples, {span}" + (f" {unit.group(1)}" if unit else "")
+    return f"{count} samples, {span}" + (f" {unit.group(1)}" if unit else "")
+
+
+def _channel_of(key: str) -> Channel:
+    channel = ITEMS[key].channel
+    if channel is None:  # pragma: no cover - the catalogue defines both as channels
+        raise LookupError(key)
+    return channel
+
+
+#: The two channels the curve's rows are chosen on.
+_PRESSURE = _channel_of("curve_pressure")
+_PUCK_FLOW = _channel_of("curve_puck_flow")
 
 
 def _recorded(facts: ShotFacts, channel: Channel) -> bool:
