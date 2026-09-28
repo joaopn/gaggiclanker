@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -10,6 +10,7 @@ import type {
   ShotSamplesData,
   SyncStatusData,
 } from "@/api/types";
+import { setChatQuestion } from "@/components/shots/SetChatBar";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { ShotsPage } from "@/pages/ShotsPage";
@@ -1741,7 +1742,10 @@ describe("ShotsPage needs-a-Set menu", () => {
       expect(screen.getByTestId("set-badge")).toHaveAttribute("data-state", "assigned"),
     );
     expect(screen.getByTestId("set-badge")).toHaveTextContent("Kenya AA");
-    expect(screen.getByRole("link", { name: /Kenya AA/ })).toHaveAttribute("href", "/sets/4");
+    // Within the rows: the bar above the table links every active Set too.
+    expect(
+      within(screen.getByTestId("shot-rows")).getByRole("link", { name: /Kenya AA/ }),
+    ).toHaveAttribute("href", "/sets/4");
   });
 
   it("refreshes the header's count of shots that need a Set once one is filed", async () => {
@@ -1902,7 +1906,9 @@ describe("ShotsPage needs-a-Set menu", () => {
     renderList();
     await listed();
 
-    const setLink = screen.getByRole("link", { name: /Guji on the Niche/ });
+    const setLink = within(screen.getByTestId("shot-rows")).getByRole("link", {
+      name: /Guji on the Niche/,
+    });
     expect(setLink).toHaveAttribute("href", "/sets/3");
     // Lifted like the other row controls: under the stretched row toggle, a
     // click on the badge would open the row instead.
@@ -2512,5 +2518,54 @@ describe("ShotsPage drop zone", () => {
     const input = screen.getByTestId("shots-import-input");
     expect(input).toHaveAttribute("accept", expect.stringContaining(".slog"));
     expect(screen.getByRole("button", { name: "Choose files" })).toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage bar of Set conversations", () => {
+  /** Where a bar button lands, read back from the router. */
+  function ChatProbe() {
+    const { pathname, search } = useLocation();
+    return <p data-testid="chat-probe">{`${pathname}${search}`}</p>;
+  }
+
+  it("sits above the table and takes a Set to its current version's conversation", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSets.mockResolvedValue({
+      items: [
+        setRow({ id: 5, name: "Guji on the Niche", current_version_id: 51, current_version_no: 4 }),
+        setRow({ id: 4, name: "Kenya AA", archived: true }),
+      ],
+    });
+
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/" element={<ShotsPage />} />
+        <Route path="/chat" element={<ChatProbe />} />
+      </Routes>,
+    );
+    await listed();
+
+    const bar = await screen.findByRole("navigation", { name: "Chat about a Set" });
+    // Before the table in the same box, so it reads as the table's own bar.
+    expect(
+      bar.compareDocumentPosition(screen.getByTestId("shots-scroll")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(bar)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Guji on the Niche · v4"]);
+
+    await user.click(within(bar).getByRole("link", { name: "Guji on the Niche · v4" }));
+
+    const landed = new URL(screen.getByTestId("chat-probe").textContent ?? "", "http://x");
+    expect(landed.pathname).toBe("/chat");
+    expect(Object.fromEntries(landed.searchParams)).toEqual({
+      set: "5",
+      version: "51",
+      ask: setChatQuestion(4),
+    });
   });
 });

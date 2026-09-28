@@ -96,7 +96,7 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The pull button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The pull button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
 | **Chat** | `g c` | The tool-using conversation, in a folder per Set. New inside a folder starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
@@ -702,10 +702,11 @@ model. It will tell you which folder to open.
 Set's current version and it stays on that version afterwards, so a folder reads
 as a history of what was argued rather than a pile of rooms all claiming to be
 about today's recipe. Rows are labelled `v6`, and a version a later roll back
-stepped over is muted and says *dead end*. **Discuss in chat** on a Set, and the
-**Chat** link on every entry in the experiment log, open or continue that
-version's conversation with the question already typed — press either twice and
-you land in the same room. **Accept** on a card in the conversation also tells
+stepped over is muted and says *dead end*. **Discuss in chat** on a Set, the
+**Chat** link on every entry in the experiment log, and the Set's button in the
+**Chat about** bar above the shots table open or continue that version's
+conversation with the question already typed — press any of them twice and you
+land in the same room. **Accept** on a card in the conversation also tells
 the agent, as your next message ("Accepted: … version 5 of this Set"), and it
 answers by sending you to a new conversation for the new version: the one you
 are in stays with the version it was opened on. **Decline** tells it too, with

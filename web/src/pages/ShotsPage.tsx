@@ -9,6 +9,7 @@ import { CompareDrawer, MAX_COMPARE } from "@/components/shots/CompareDrawer";
 import { ImportDropZone } from "@/components/shots/ImportDropZone";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { PullButton } from "@/components/shots/PullButton";
+import { SetChatBar } from "@/components/shots/SetChatBar";
 import { ShotFilters } from "@/components/shots/ShotFilters";
 import { ShotsTable } from "@/components/shots/ShotsTable";
 import { Button } from "@/components/ui/button";
@@ -115,7 +116,8 @@ export function ShotsPage() {
   // Both sources, so an imported profile can be filtered on even though no
   // device profile points at it.
   const versions = useProfileVersions({ limit: 200 });
-  // The filter popover's Set picker, and the header's "needs a Set" count.
+  // The filter popover's Set picker, the header's "needs a Set" count, and
+  // the bar of Set conversations above the table.
   const sets = useSets();
   // Only while a version filter is on: the version *number* is not on the Set
   // row, and the Set's own detail is where it already lives. One request, and
@@ -229,6 +231,10 @@ export function ShotsPage() {
         // Centred in the page, so the room the columns leave is shared out on
         // both sides rather than left as a gap on the right.
         <div className="mx-auto w-fit max-w-full space-y-3">
+          {/* `w-0 min-w-full`: as wide as the table and no wider, so a long
+              row of Sets wraps instead of widening the box past the last
+              column. */}
+          <SetChatBar sets={sets.data?.items ?? []} className="w-0 min-w-full" />
           {/* The scroll container is the window `useVirtualRows` measures, so
               it owns a height rather than growing with its content. */}
           <div

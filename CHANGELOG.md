@@ -10,6 +10,16 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Chat about a Set from the shots table
+
+- **A "Chat about" bar above the shots table** has one button per Set you are
+  brewing (not archived, not being designed), each labelled with the Set's
+  current version ("Guji on the Niche · v4"). It opens or continues that
+  version's conversation on the Chat page with a question already typed ("I've
+  judged my latest shots on v4. What do they show, and what should I change
+  next?"): judge the shots in the table, press the Set's button, press Enter, or
+  replace the question with your own. The bar is hidden when no Set is active.
+
 ### The chat sees every shot field, and knows what each one means
 
 - **A Set conversation opens with its version's newest shots in full base
