@@ -274,8 +274,10 @@ def _evidence_for(shots: list[CountedShot], measure: str = "shot_time_s") -> Mea
         pooled_spreads(shots),
         version_id=2,
         version_no=2,
+        version_label="v2",
         compares_to_version_id=1,
         compares_to_version_no=1,
+        compares_to_version_label="v1",
     )
     return next(row for row in evidence.measures if row.measure == measure)
 
@@ -340,7 +342,12 @@ def test_a_version_compared_against_nothing_gets_its_own_side_only() -> None:
     ]
 
     evidence = version_evidence(
-        shots, pooled_spreads(shots), version_id=1, version_no=1, compares_to_version_id=None
+        shots,
+        pooled_spreads(shots),
+        version_id=1,
+        version_no=1,
+        version_label="v1",
+        compares_to_version_id=None,
     )
 
     assert evidence.other is None
@@ -380,13 +387,16 @@ def test_the_counts_are_plain_facts_with_no_verdict_on_them() -> None:
         pooled_spreads(shots),
         version_id=2,
         version_no=2,
+        version_label="v2",
         compares_to_version_id=1,
         compares_to_version_no=1,
+        compares_to_version_label="v1",
     )
 
     assert evidence.this.model_dump() == {
         "version_id": 2,
         "version_no": 2,
+        "version_label": "v2",
         "shots": 2,
         "sour": 0,
         "balanced": 1,
@@ -429,8 +439,10 @@ def test_the_other_side_is_the_compared_versions_own_shots_only() -> None:
         spreads,
         version_id=2,
         version_no=2,
+        version_label="v2",
         compares_to_version_id=1,
         compares_to_version_no=1,
+        compares_to_version_label="v1",
     )
 
     row = evidence.measures[0]
@@ -460,8 +472,10 @@ def test_a_compared_version_with_no_shots_is_a_side_with_no_values() -> None:
         pooled_spreads(shots),
         version_id=2,
         version_no=2,
+        version_label="v2",
         compares_to_version_id=1,
         compares_to_version_no=1,
+        compares_to_version_label="v1",
     )
 
     assert evidence.other is not None
@@ -580,8 +594,10 @@ def test_the_same_shots_in_any_order_give_the_same_numbers() -> None:
         pooled_spreads(shots),
         version_id=2,
         version_no=2,
+        version_label="v2",
         compares_to_version_id=1,
         compares_to_version_no=1,
+        compares_to_version_label="v1",
     ).model_dump()
 
     for ordering in permutations(shots):
@@ -596,8 +612,10 @@ def test_the_same_shots_in_any_order_give_the_same_numbers() -> None:
                 spreads,
                 version_id=2,
                 version_no=2,
+                version_label="v2",
                 compares_to_version_id=1,
                 compares_to_version_no=1,
+                compares_to_version_label="v1",
             ).model_dump()
             == expected_evidence
         )

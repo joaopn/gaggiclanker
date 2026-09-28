@@ -3216,6 +3216,8 @@ export interface components {
             set_name?: string | null;
             /** Set Version Id */
             set_version_id?: number | null;
+            /** Set Version Label */
+            set_version_label?: string | null;
             /** Set Version No */
             set_version_no?: number | null;
             /**
@@ -3949,6 +3951,8 @@ export interface components {
             unlabelled: number;
             /** Version Id */
             version_id: number;
+            /** Version Label */
+            version_label: string;
             /** Version No */
             version_no: number;
         };
@@ -4760,6 +4764,8 @@ export interface components {
             clamp_changes?: components["schemas"]["JsonList"];
             /** Compares To Version Id */
             compares_to_version_id?: number | null;
+            /** Compares To Version Label */
+            compares_to_version_label?: string | null;
             /** Compares To Version No */
             compares_to_version_no?: number | null;
             /** Created At */
@@ -4772,6 +4778,11 @@ export interface components {
             error?: string | null;
             /** Id */
             id: number;
+            /**
+             * Major Reason
+             * @default
+             */
+            major_reason: string;
             /**
              * Notes
              * @default
@@ -4786,12 +4797,18 @@ export interface components {
             prediction: string;
             /** Pushed Device Profile Id */
             pushed_device_profile_id?: string | null;
+            /** Recorded Version Label */
+            recorded_version_label?: string | null;
             /** Recorded Version No */
             recorded_version_no?: number | null;
             /** Set Id */
             set_id?: number | null;
             /** Set Name */
             set_name?: string | null;
+            /** Set Next Major Label */
+            set_next_major_label?: string | null;
+            /** Set Next Minor Label */
+            set_next_minor_label?: string | null;
             /** Set Next Version No */
             set_next_version_no?: number | null;
             /** Source Analysis Id */
@@ -4804,6 +4821,11 @@ export interface components {
              */
             status: string;
             stop_condition_changes?: components["schemas"]["JsonList"];
+            /**
+             * Suggest Major
+             * @default false
+             */
+            suggest_major: boolean;
             /** Updated At */
             updated_at: string;
             verification?: components["schemas"]["JsonObject"];
@@ -5428,6 +5450,11 @@ export interface components {
             /** Current Version Id */
             current_version_id?: number | null;
             /**
+             * Current Version Label
+             * @default
+             */
+            current_version_label: string;
+            /**
              * Current Version No
              * @default 0
              */
@@ -5543,6 +5570,8 @@ export interface components {
             shot_id: number;
             /** Started At */
             started_at?: string | null;
+            /** Version Label */
+            version_label: string;
             /** Version No */
             version_no: number;
         };
@@ -5590,6 +5619,8 @@ export interface components {
              * @default 0
              */
             shots: number;
+            /** Version Label */
+            version_label: string;
             /** Version No */
             version_no: number;
         };
@@ -5681,6 +5712,8 @@ export interface components {
         SetVersionRow: {
             /** Compares To Version Id */
             compares_to_version_id?: number | null;
+            /** Compares To Version Label */
+            compares_to_version_label?: string | null;
             /** Compares To Version No */
             compares_to_version_no?: number | null;
             /** Created At */
@@ -5739,6 +5772,8 @@ export interface components {
             pushed_device_profile_id?: string | null;
             /** Restores Version Id */
             restores_version_id?: number | null;
+            /** Restores Version Label */
+            restores_version_label?: string | null;
             /** Restores Version No */
             restores_version_no?: number | null;
             /** Set Id */
@@ -5750,6 +5785,18 @@ export interface components {
             shot_count: number;
             /** Target Yield G */
             target_yield_g?: number | null;
+            /**
+             * Version Label
+             * @description "v1", "v1.1": the name every screen, tool and prompt shows.
+             */
+            readonly version_label: string;
+            /** Version Major */
+            version_major: number;
+            /**
+             * Version Minor
+             * @default 0
+             */
+            version_minor: number;
             /** Version No */
             version_no: number;
         };
@@ -6345,7 +6392,7 @@ export interface components {
          * @description The Set a shot belongs to, in the three fields a badge renders.
          *
          *     Nested on the list row rather than three flat columns because it is one
-         *     fact — "this shot is Ethiopia natural v3" — and a row with
+         *     fact — "this shot is Ethiopia natural v1.1" — and a row with
          *     `set_name: null, set_version_no: 2` would be a shape nothing can render.
          */
         ShotSetBadge: {
@@ -6353,6 +6400,8 @@ export interface components {
             set_id: number;
             /** Set Name */
             set_name: string;
+            /** Version Label */
+            version_label: string;
             /** Version No */
             version_no: number;
         };
@@ -6461,6 +6510,8 @@ export interface components {
             set_version_id: number;
             /** Target Yield G */
             target_yield_g?: number | null;
+            /** Version Label */
+            version_label: string;
             /** Version No */
             version_no: number;
         };

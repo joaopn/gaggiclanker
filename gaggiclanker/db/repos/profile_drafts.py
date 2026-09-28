@@ -28,6 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, dumps, utc_now
+from gaggiclanker.db.repos.version_names import label_sql, next_names
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -83,6 +84,12 @@ class ProfileDraftWrite(BaseModel):
     prediction: str = ""
     #: Which version of that Set the prediction is measured against.
     compares_to_version_id: int | None = None
+    #: The agent thinks recording this on its Set is a major version — a
+    #: functional change to what the profile does rather than dialling in —
+    #: and why. Only a suggestion: the push card preselects its box from it
+    #: and the person decides.
+    suggest_major: bool = False
+    major_reason: str = Field(default="", max_length=500)
     change_summary: str = ""
     stop_condition_changes: list[Any] = Field(default_factory=list)
     clamp_changes: list[Any] = Field(default_factory=list)
@@ -110,14 +117,27 @@ class ProfileDraftRow(BaseModel):
     set_name: str | None = None
     prediction: str = ""
     compares_to_version_id: int | None = None
-    #: The compared-to version's number, joined in: a reader thinks in "v3".
+    #: The compared-to version's ordinal and name, joined in: a reader thinks
+    #: in "v1.1".
     compares_to_version_no: int | None = None
-    #: The number the version a push for this draft's Set would record right
+    compares_to_version_label: str | None = None
+    #: The agent's suggestion that recording this on its Set is a major
+    #: version, and its reason. The push card preselects "Major change" from
+    #: it; the person decides.
+    suggest_major: bool = False
+    major_reason: str = ""
+    #: The ordinal the version a push for this draft's Set would record right
     #: now: the Set's next one, or 1 while the Set is being designed (that
     #: version is filled, not appended to; nothing drafts for a Set being
     #: designed today, so that case only keeps the number true). NULL without a
     #: Set. Computed, since the Set moves on whether or not the draft does.
     set_next_version_no: int | None = None
+    #: What that version would be called as a minor ("v1.3") and as a major
+    #: ("v2"): the push button names one of them, whichever the person ticks.
+    #: NULL without a Set. Filled by the repository from the same query the
+    #: insert numbers with, so the button and the record cannot disagree.
+    set_next_minor_label: str | None = None
+    set_next_major_label: str | None = None
     #: The version of this draft's Set that its push recorded, prediction and
     #: all. NULL when it was pushed without recording it there (or for another
     #: Set), or not pushed yet. Found rather than stored: only a push for the
@@ -128,6 +148,8 @@ class ProfileDraftRow(BaseModel):
     #: adds a version by hand naming both would read as this push's record; the
     #: web's form never sends a device id.
     recorded_version_no: int | None = None
+    #: That version's name, "v1.3".
+    recorded_version_label: str | None = None
     #: Whether the machine still holds the profile this was drafted from.
     #:
     #: Computed in SQL rather than stored, because it is a fact about *now*: a
@@ -161,12 +183,13 @@ class ProfileDraftRow(BaseModel):
     draft_label: str | None = None
 
 
-_SELECT = """
+_SELECT = f"""
     SELECT d.*,
            base.label AS base_label,
            drafted.label AS draft_label,
            s.name AS set_name,
            cmp.version_no AS compares_to_version_no,
+           {label_sql("cmp")} AS compares_to_version_label,
            CASE
                WHEN s.id IS NULL THEN NULL
                WHEN s.designing THEN 1
@@ -178,6 +201,11 @@ _SELECT = """
                AND rv.profile_version_id = d.draft_version_id
                AND rv.pushed_device_profile_id = d.pushed_device_profile_id
              ORDER BY rv.version_no DESC LIMIT 1) AS recorded_version_no,
+           (SELECT {label_sql("rv")} FROM set_versions rv
+             WHERE rv.set_id = d.set_id
+               AND rv.profile_version_id = d.draft_version_id
+               AND rv.pushed_device_profile_id = d.pushed_device_profile_id
+             ORDER BY rv.version_no DESC LIMIT 1) AS recorded_version_label,
            CASE
                WHEN d.base_device_profile_id IS NULL THEN 1
                ELSE EXISTS (
@@ -192,7 +220,7 @@ _SELECT = """
     LEFT JOIN profile_versions drafted ON drafted.id = d.draft_version_id
     LEFT JOIN sets s ON s.id = d.set_id
     LEFT JOIN set_versions cmp ON cmp.id = d.compares_to_version_id
-"""
+"""  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
 class ProfileDraftsRepository(Repository):
@@ -205,10 +233,10 @@ class ProfileDraftsRepository(Repository):
             INSERT INTO profile_drafts
                 (base_version_id, draft_version_id, source_analysis_id, source_suggestion_id,
                  parent_draft_id, base_device_profile_id, set_id, prediction,
-                 compares_to_version_id, change_summary,
+                 compares_to_version_id, suggest_major, major_reason, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
                  created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
             """,
             (
                 write.base_version_id,
@@ -220,6 +248,8 @@ class ProfileDraftsRepository(Repository):
                 write.set_id,
                 write.prediction,
                 write.compares_to_version_id,
+                int(write.suggest_major),
+                write.major_reason,
                 write.change_summary,
                 dumps(write.stop_condition_changes),
                 dumps(write.clamp_changes),
@@ -235,7 +265,32 @@ class ProfileDraftsRepository(Repository):
 
     async def get(self, draft_id: int) -> ProfileDraftRow | None:
         row = await self.db.fetch_one(f"{_SELECT} WHERE d.id = ?", (draft_id,))
-        return self.to_model(ProfileDraftRow, row)
+        draft = self.to_model(ProfileDraftRow, row)
+        return None if draft is None else (await self._with_next_names([draft]))[0]
+
+    async def _with_next_names(self, drafts: list[ProfileDraftRow]) -> list[ProfileDraftRow]:
+        """Fill in what the next version of each draft's Set would be called.
+
+        Asked of :func:`next_names`, the query the insert itself numbers with,
+        once per Set however many drafts share it. A draft with no Set has
+        nothing to name.
+        """
+        names: dict[int, tuple[str, str]] = {}
+        filled: list[ProfileDraftRow] = []
+        for draft in drafts:
+            if draft.set_id is None or draft.set_name is None:
+                filled.append(draft)
+                continue
+            if draft.set_id not in names:
+                found = await next_names(self.db, draft.set_id)
+                names[draft.set_id] = (found.minor, found.major)
+            minor, major = names[draft.set_id]
+            filled.append(
+                draft.model_copy(
+                    update={"set_next_minor_label": minor, "set_next_major_label": major}
+                )
+            )
+        return filled
 
     async def list_drafts(
         self, *, status: str | None = None, open_only: bool = False, limit: int = 100
@@ -254,7 +309,7 @@ class ProfileDraftsRepository(Repository):
             f"{_SELECT} WHERE {' AND '.join(where)} ORDER BY d.id DESC LIMIT ?",
             [*params, limit],
         )
-        return self.to_models(ProfileDraftRow, rows)
+        return await self._with_next_names(self.to_models(ProfileDraftRow, rows))
 
     async def set_status(
         self,

@@ -70,7 +70,9 @@ from gaggiclanker.db.repos.sets import (
     SetVersionRow,
     VersionRefused,
 )
+from gaggiclanker.db.repos.version_names import NextNames, label_sql, next_names
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.sets import change_is_major
 
 log = structlog.get_logger(__name__)
 
@@ -183,6 +185,11 @@ class ProposalWrite(BaseModel):
     #: The profile draft an initial recipe carries — required on a design,
     #: which always brings a profile of its own, and refused on a change.
     draft_id: int | None = None
+    #: The agent thinks this is a major version — a functional change to what
+    #: the profile does — and why. A suggestion the card shows beside its
+    #: "Major change" box, never a decision: the person's Accept says which.
+    suggest_major: bool = False
+    major_reason: str = Field(default="", max_length=500)
 
     @model_validator(mode="after")
     def _kind_decides_what_is_owed(self) -> ProposalWrite:
@@ -201,6 +208,8 @@ class ProposalWrite(BaseModel):
             raise ValueError("an initial recipe carries its profile draft")
         if self.prediction or self.combined_reason or self.compares_to_version_id is not None:
             raise ValueError("an initial recipe is a baseline and predicts nothing")
+        if self.suggest_major or self.major_reason:
+            raise ValueError("an initial recipe fills version 1 and is no major of anything")
         return self
 
 
@@ -219,6 +228,7 @@ class SetProposalRow(BaseModel):
     thread_id: int | None = None
     base_version_id: int
     base_version_no: int | None = None
+    base_version_label: str | None = None
     #: Re-validated on the way out by the same model that validated it on the
     #: way in. ``None`` when the stored JSON cannot be read as a patch — which
     #: nothing this application does can produce, and a hand-edited row can.
@@ -231,11 +241,16 @@ class SetProposalRow(BaseModel):
     prediction: str = ""
     compares_to_version_id: int | None = None
     compares_to_version_no: int | None = None
+    compares_to_version_label: str | None = None
     combined_reason: str = ""
+    #: The agent's suggestion that this is a major version, and its reason.
+    suggest_major: bool = False
+    major_reason: str = ""
     status: ProposalStatus = "proposed"
     decline_note: str = ""
     resulting_version_id: int | None = None
     resulting_version_no: int | None = None
+    resulting_version_label: str | None = None
     created_at: str
     decided_at: str | None = None
     #: Whether the version this was proposed against is still the Set's current
@@ -327,11 +342,14 @@ class ProposalWriteResult:
     waiting: SetProposalRow | None = None
 
 
-_SELECT = """
+_SELECT = f"""
     SELECT p.*,
            base.version_no AS base_version_no,
+           {label_sql("base")} AS base_version_label,
            cmp.version_no AS compares_to_version_no,
+           {label_sql("cmp")} AS compares_to_version_label,
            res.version_no AS resulting_version_no,
+           {label_sql("res")} AS resulting_version_label,
            NOT EXISTS (SELECT 1 FROM set_versions later
                         WHERE later.set_id = p.set_id
                           AND later.version_no > base.version_no) AS base_is_current
@@ -339,7 +357,7 @@ _SELECT = """
     LEFT JOIN set_versions base ON base.id = p.base_version_id
     LEFT JOIN set_versions cmp ON cmp.id = p.compares_to_version_id
     LEFT JOIN set_versions res ON res.id = p.resulting_version_id
-"""
+"""  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
 class SetProposalsRepository(Repository):
@@ -535,6 +553,30 @@ class SetProposalsRepository(Repository):
             return {"profile_label": None, "profile_temperature_c": None}
         return {"profile_label": row["label"], "profile_temperature_c": row["temperature_c"]}
 
+    async def default_major(self, proposal: SetProposalRow) -> bool:
+        """Whether accepting this without saying would record a major version.
+
+        The shared rule (:func:`~gaggiclanker.domain.sets.change_is_major`) on
+        what the change moves against the version it was made to: a different
+        profile is a major, grind, dose and yield are minor. The agent's
+        suggestion is not part of it — the card shows that separately and the
+        person decides. A first recipe fills version 1 whichever way, so it is
+        never a major of anything.
+        """
+        if proposal.kind == "design" or proposal.patch is None:
+            return False
+        base = await self.sets.get_version(proposal.base_version_id)
+        moves_profile = (
+            "profile_version_id" in proposal.patch.model_fields_set
+            and base is not None
+            and proposal.patch.profile_version_id != base.profile_version_id
+        )
+        return change_is_major("change", profile_changed=moves_profile, major=None)
+
+    async def next_names(self, set_id: int) -> NextNames:
+        """What accepting would name the version, as a minor and as a major."""
+        return await next_names(self.db, set_id)
+
     # ── writing ──────────────────────────────────────────────────────
 
     async def create(self, set_id: int, spec: ProposalWrite) -> ProposalWriteResult:
@@ -635,11 +677,11 @@ class SetProposalsRepository(Repository):
                 """
                 INSERT INTO set_version_proposals
                     (set_id, thread_id, base_version_id, patch_json, reason, prediction,
-                     compares_to_version_id, combined_reason, kind, draft_id, status,
-                     created_at)
+                     compares_to_version_id, combined_reason, kind, draft_id,
+                     suggest_major, major_reason, status, created_at)
                 VALUES (:set_id, :thread_id, :base_version_id, :patch_json, :reason, :prediction,
-                        :compares_to_version_id, :combined_reason, :kind, :draft_id, 'proposed',
-                        :created_at)
+                        :compares_to_version_id, :combined_reason, :kind, :draft_id,
+                        :suggest_major, :major_reason, 'proposed', :created_at)
                 """,
                 {
                     "set_id": set_id,
@@ -652,13 +694,17 @@ class SetProposalsRepository(Repository):
                     "combined_reason": spec.combined_reason,
                     "kind": spec.kind,
                     "draft_id": spec.draft_id,
+                    "suggest_major": int(spec.suggest_major),
+                    "major_reason": spec.major_reason,
                     "created_at": now,
                 },
             )
             proposal_id = int(cursor.lastrowid or 0)
         return ProposalWriteResult(proposal=await self.get(set_id, proposal_id))
 
-    async def accept(self, set_id: int, proposal_id: int) -> ProposalWriteResult:
+    async def accept(
+        self, set_id: int, proposal_id: int, *, major: bool | None = None
+    ) -> ProposalWriteResult:
         """Make the proposed change the Set's next version. A person's press.
 
         One transaction, and the order is the order of the questions: is this
@@ -680,6 +726,10 @@ class SetProposalsRepository(Repository):
         profile records that the Set now brews with that profile, exactly as the
         Add a version form does; putting a profile on the display is a separate
         act, on the Profiles page, by a person.
+
+        ``major`` is the person's answer on the card's "Major change" box. Left
+        out, the shared rule decides (a different profile is a major), never
+        the agent's suggestion. A first recipe fills version 1 either way.
         """
         now = utc_now()
         try:
@@ -717,7 +767,11 @@ class SetProposalsRepository(Repository):
                     # patch.
                     return ProposalWriteResult(refused="unreadable", proposal=proposal)
                 version_id = await self.sets.append_version(
-                    set_id, _version_patch(proposal), keep_proposal=proposal_id
+                    set_id,
+                    _version_patch(proposal),
+                    keep_proposal=proposal_id,
+                    major=major,
+                    path="change",
                 )
                 if version_id is None:  # pragma: no cover - current proved there is a parent
                     return ProposalWriteResult(refused="no_current_version")

@@ -777,8 +777,10 @@ async def get_set(
                     spreads,
                     version_id=version.id,
                     version_no=version.version_no,
+                    version_label=version.version_label,
                     compares_to_version_id=version.compares_to_version_id,
                     compares_to_version_no=version.compares_to_version_no,
+                    compares_to_version_label=version.compares_to_version_label,
                 )
                 if version.prediction
                 else None

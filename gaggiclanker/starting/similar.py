@@ -54,6 +54,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.domain.vocab import ROAST_LEVELS
 
 __all__ = [
@@ -102,6 +103,8 @@ class SimilarSet(BaseModel):
     set_name: str
     set_version_id: int
     version_no: int
+    #: The version's name, "v1.1", which is what the card and the prompt show.
+    version_label: str
     created_at: str
     #: What made it similar, so the card can say "same roast, same process"
     #: rather than "score 5.3".
@@ -169,7 +172,7 @@ def _neighbours(roast_level: str | None) -> tuple[str | None, str | None]:
 #: The outcome CTE aggregates over *shots*, so a version with none simply has
 #: no row in it and the inner join drops it — the exclusion is structural
 #: rather than a `HAVING` somebody could delete.
-_SQL = """
+_SQL = f"""
 WITH outcomes AS (
     SELECT sh.set_version_id                       AS version_id,
            COUNT(*)                                AS shots,
@@ -190,6 +193,7 @@ WITH outcomes AS (
 SELECT v.id                                         AS set_version_id,
        v.set_id,
        v.version_no,
+       {label_sql("v")}                              AS version_label,
        v.created_at,
        v.grind_setting,
        v.grind_value,
@@ -252,7 +256,7 @@ SELECT v.id                                         AS set_version_id,
    AND (:exclude_bean_id IS NULL OR s.bean_id <> :exclude_bean_id)
  ORDER BY (attribute_score + outcome_score) DESC, o.shots DESC, v.id DESC
  LIMIT :limit
-"""
+"""  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
 async def similar_sets(
@@ -318,6 +322,7 @@ def _to_model(row: dict[str, Any]) -> SimilarSet:
         set_name=str(row["set_name"]),
         set_version_id=int(row["set_version_id"]),
         version_no=int(row["version_no"]),
+        version_label=str(row["version_label"]),
         created_at=str(row["created_at"]),
         score=round(attribute + outcome, 3),
         attribute_score=attribute,

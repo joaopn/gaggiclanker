@@ -619,6 +619,7 @@ describe("ShotsPage column widths", () => {
             set_id: 3,
             set_name: "A long Set name for a Guji on the Niche",
             version_no: 2,
+            version_label: "v2",
           },
           set_version_id: 22,
         }),
@@ -1540,7 +1541,12 @@ describe("ShotsPage and Sets", () => {
         shot({
           id: 1,
           set_version_id: 22,
-          set_badge: { set_id: 3, set_name: "Guji on the Niche", version_no: 2 },
+          set_badge: {
+            set_id: 3,
+            set_name: "Guji on the Niche",
+            version_no: 2,
+            version_label: "v2",
+          },
         }),
         shot({ id: 2, device_id: "000102", set_version_id: null, set_badge: null }),
       ]),
@@ -1728,13 +1734,13 @@ describe("ShotsPage needs-a-Set menu", () => {
         listData([
           shot({
             set_version_id: 41,
-            set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2 },
+            set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2, version_label: "v2" },
           }),
         ]),
       );
       return shot({
         set_version_id: 41,
-        set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2 },
+        set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2, version_label: "v2" },
       });
     });
 
@@ -1766,7 +1772,7 @@ describe("ShotsPage needs-a-Set menu", () => {
       getSyncStatus.mockResolvedValue(statusData({ counts: { ...counts, needs_set: 3 } }));
       return shot({
         set_version_id: 41,
-        set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2 },
+        set_badge: { set_id: 4, set_name: "Kenya AA", version_no: 2, version_label: "v2" },
       });
     });
 
@@ -1903,7 +1909,12 @@ describe("ShotsPage needs-a-Set menu", () => {
       listData([
         shot({
           set_version_id: 22,
-          set_badge: { set_id: 3, set_name: "Guji on the Niche", version_no: 2 },
+          set_badge: {
+            set_id: 3,
+            set_name: "Guji on the Niche",
+            version_no: 2,
+            version_label: "v2",
+          },
         }),
       ]),
     );

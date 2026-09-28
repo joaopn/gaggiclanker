@@ -560,6 +560,7 @@ class TestTheLineOnMalformedData:
                 "id": version_no,
                 "set_id": 1,
                 "version_no": version_no,
+                "version_major": version_no,
                 "created_at": "2026-04-01T08:00:00.000Z",
                 **over,
             }

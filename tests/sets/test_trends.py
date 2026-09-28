@@ -114,6 +114,7 @@ class TestTrends:
             "device_id",
             "set_version_id",
             "version_no",
+            "version_label",
             "started_at",
             "execution_score",
             "duration_s",

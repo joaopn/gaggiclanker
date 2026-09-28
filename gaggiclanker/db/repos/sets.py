@@ -65,7 +65,9 @@ from pydantic import (
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.version_names import label_sql, next_numbers
 from gaggiclanker.db.repository import Repository
+from gaggiclanker.domain.sets import VersionPath, change_is_major, version_label
 from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.domain.vocab import (
     VERSION_OUTCOMES,
@@ -229,7 +231,13 @@ class SetVersionRow(BaseModel):
 
     id: int
     set_id: int
+    #: The ordinal: this is the Set's Nth version. What orders the versions and
+    #: says which one is current; never shown — a reader sees `version_label`.
     version_no: int
+    #: The version's name, v<major>.<minor>. A dial-in change bumps the minor,
+    #: a functional change starts the next major (`domain/sets.py`).
+    version_major: int
+    version_minor: int = 0
     parent_version_id: int | None = None
     profile_version_id: int | None = None
     #: The profile's label, joined in. A version that names a profile the mirror
@@ -259,19 +267,27 @@ class SetVersionRow(BaseModel):
     #: guess, so there is nothing here to be right or wrong about.
     prediction: str = ""
     compares_to_version_id: int | None = None
-    #: The compared-to version's number, joined in. A reader — and a model
-    #: reading the curated view — thinks in "v3", never in a row id.
+    #: The compared-to version's ordinal and name, joined in. A reader — and a
+    #: model reading the curated view — thinks in "v1.1", never in a row id.
     compares_to_version_no: int | None = None
+    compares_to_version_label: str | None = None
     #: The version whose recipe this one restores, when it came from a roll
-    #: back, and its number beside it.
+    #: back, and its ordinal and name beside it.
     restores_version_id: int | None = None
     restores_version_no: int | None = None
+    restores_version_label: str | None = None
     prediction_at: str | None = None
     outcome: VersionOutcome | None = None
     outcome_note: str = ""
     outcome_at: str | None = None
     created_at: str
     shot_count: int = 0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def version_label(self) -> str:
+        """ "v1", "v1.1": the name every screen, tool and prompt shows."""
+        return version_label(self.version_major, self.version_minor)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -500,6 +516,9 @@ class SetRow(BaseModel):
     created_at: str
     current_version_id: int | None = None
     current_version_no: int = 0
+    #: The current version's name, "v1.2"; empty only for a Set with no
+    #: version, which does not exist outside a half-written transaction.
+    current_version_label: str = ""
     version_count: int = 0
     shot_count: int = 0
     profile_version_id: int | None = None
@@ -553,6 +572,7 @@ class SetShotRow(BaseModel):
     shot_id: int
     version_id: int
     version_no: int
+    version_label: str
     started_at: str | None = None
     #: Never parsed; its numbers are whatever the header happened to hold.
     quarantined: bool = False
@@ -601,6 +621,7 @@ class SetTrendPoint(BaseModel):
     device_id: str
     set_version_id: int
     version_no: int
+    version_label: str
     started_at: str | None = None
     execution_score: float | None = None
     duration_s: float | None = None
@@ -618,6 +639,7 @@ class SetTrendVersion(BaseModel):
 
     set_version_id: int
     version_no: int
+    version_label: str
     intent: str = ""
     origin: str = "manual"
     created_at: str
@@ -883,12 +905,13 @@ RECIPE_FIELDS: tuple[str, ...] = (
     "target_yield_g",
 )
 
-_SET_SELECT = """
+_SET_SELECT = f"""
     SELECT s.*,
            b.name AS bean_name,
            g.name AS grinder_name,
            cur.id AS current_version_id,
            COALESCE(cur.version_no, 0) AS current_version_no,
+           COALESCE({label_sql("cur")}, '') AS current_version_label,
            cur.profile_version_id AS profile_version_id,
            pv.label AS profile_label,
            (SELECT COUNT(*) FROM set_versions v WHERE v.set_id = s.id) AS version_count,
@@ -906,12 +929,12 @@ _SET_SELECT = """
           AND cur.version_no = (SELECT MAX(v3.version_no)
                                   FROM set_versions v3 WHERE v3.set_id = s.id)
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
-"""
+"""  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 #: The two self-joins resolve a row id into the version *number* a reader sees.
 #: Joined rather than looked up by the caller, because the shot page is handed
 #: one version and has no list to resolve it against.
-_VERSION_SELECT = """
+_VERSION_SELECT = f"""
     SELECT v.*, pv.label AS profile_label,
            -- The brew temperature, out of the profile's own document: the
            -- firmware's 0 means "not set", which is the same rule
@@ -922,13 +945,15 @@ _VERSION_SELECT = """
                  AND json_extract(pv.json, '$.temperature') > 0
                 THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
            cmp.version_no AS compares_to_version_no,
+           {label_sql("cmp")} AS compares_to_version_label,
            res.version_no AS restores_version_no,
+           {label_sql("res")} AS restores_version_label,
            (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count
     FROM set_versions v
     LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
     LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
     LEFT JOIN set_versions res ON res.id = v.restores_version_id
-"""
+"""  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
 class SetsRepository(Repository):
@@ -972,7 +997,7 @@ class SetsRepository(Repository):
             # Version 1 has no parent, so a prediction on it compares against
             # nothing: it is graded against the numbers the version states.
             values.update(_prediction_values(version.prediction, None, now=now))
-            await self._insert_version(set_id, 1, None, values, now)
+            await self._insert_version(set_id, None, values, now, major=True)
         stored = await self.get(set_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("the set vanished between write and read")
@@ -1012,7 +1037,7 @@ class SetsRepository(Repository):
                 },
             )
             set_id = int(cursor.lastrowid or 0)
-            await self._insert_version(set_id, 1, None, {"origin": "manual"}, now)
+            await self._insert_version(set_id, None, {"origin": "manual"}, now, major=True)
         stored = await self.get(set_id)
         if stored is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("the set vanished between write and read")
@@ -1132,19 +1157,32 @@ class SetsRepository(Repository):
 
     # ── versions ─────────────────────────────────────────────────────
 
-    async def add_version(self, set_id: int, patch: SetVersionPatch) -> SetVersionRow | None:
+    async def add_version(
+        self,
+        set_id: int,
+        patch: SetVersionPatch,
+        *,
+        major: bool | None = None,
+        path: VersionPath = "change",
+    ) -> SetVersionRow | None:
         """Append a version: the current one, with the sent fields changed.
 
         The parent is whatever is current *now*, read inside the transaction
         that writes the child, so two versions added at once cannot both claim
-        the same parent or the same `version_no`.
+        the same parent, the same `version_no` or the same name.
         """
         async with self.db.transaction():
-            version_id = await self.append_version(set_id, patch)
+            version_id = await self.append_version(set_id, patch, major=major, path=path)
         return None if version_id is None else await self.get_version(version_id)
 
     async def append_version(
-        self, set_id: int, patch: SetVersionPatch, *, keep_proposal: int | None = None
+        self,
+        set_id: int,
+        patch: SetVersionPatch,
+        *,
+        keep_proposal: int | None = None,
+        major: bool | None = None,
+        path: VersionPath = "change",
     ) -> int | None:
         """The append itself, inside a transaction the caller already holds.
 
@@ -1167,6 +1205,12 @@ class SetsRepository(Repository):
         paths already arrives, so none of them can miss it. When the design
         cannot be filled any more (a shot was filed on it by hand) the write
         raises :class:`VersionRefused` and the caller's transaction rolls back.
+
+        **Its name** is the current version's major and the next minor, or the
+        next major: ``major`` is the person's answer when they gave one, and
+        ``None`` asks :func:`~gaggiclanker.domain.sets.change_is_major` for the
+        default of ``path`` — the one rule every path shares. A design filled
+        in place keeps its v1.
 
         Returns the new version's id — version 1's own when it was filled — or
         ``None`` when the Set has no current version to build on.
@@ -1198,21 +1242,25 @@ class SetsRepository(Repository):
         values.update(_prediction_values(patch.prediction, compares_to, now=now))
         return await self._insert_version(
             set_id,
-            parent.version_no + 1,
             parent.id,
             values,
             now,
+            major=change_is_major(
+                path,
+                profile_changed=values["profile_version_id"] != parent.profile_version_id,
+                major=major,
+            ),
             keep_proposal=keep_proposal,
         )
 
     async def _insert_version(
         self,
         set_id: int,
-        version_no: int,
         parent_version_id: int | None,
         values: dict[str, Any],
         now: str,
         *,
+        major: bool,
         keep_proposal: int | None = None,
     ) -> int:
         """Write one version row, and retire whatever it has overtaken.
@@ -1232,10 +1280,18 @@ class SetsRepository(Repository):
         ``keep_proposal`` is the exception and the only one: accepting a
         proposal appends a version too, and that proposal is not overtaken by
         the version it created.
+
+        **The ordinal and the name are numbered here too**, from the Set's rows
+        read in this same transaction, so no path numbers a version itself and
+        two writers cannot mint one name (the unique index on it is the
+        backstop). ``major`` is already decided by the caller's rule.
         """
+        numbers = await next_numbers(self.db, set_id, major=major)
         payload: dict[str, Any] = {
             "set_id": set_id,
-            "version_no": version_no,
+            "version_no": numbers.version_no,
+            "version_major": numbers.major,
+            "version_minor": numbers.minor,
             "parent_version_id": parent_version_id,
             "intent": values.get("intent", ""),
             "origin": values.get("origin", "manual"),
@@ -1256,6 +1312,13 @@ class SetsRepository(Repository):
             payload,
         )
         await self._retire_waiting(set_id, now, keep_proposal=keep_proposal)
+        log.info(
+            "set_version_added",
+            set_id=set_id,
+            version_no=numbers.version_no,
+            version_label=numbers.label,
+            major=major,
+        )
         return int(cursor.lastrowid or 0)
 
     async def _fill_design(
@@ -1463,6 +1526,10 @@ class SetsRepository(Repository):
         `pushed_device_profile_id` is not copied, exactly as it is not on any
         other new version: it names a file on the display, and nothing here
         writes to the machine.
+
+        There is no major/minor choice here: a roll back is named by the rule
+        alone, on what it changes relative to the current version — back to
+        another profile is a major, back over a grind nudge a minor.
         """
         now = utc_now()
         async with self.db.transaction():
@@ -1480,7 +1547,15 @@ class SetsRepository(Repository):
             values["restores_version_id"] = target.id
             values.update(_prediction_values(spec.prediction, current.id, now=now))
             version_id = await self._insert_version(
-                set_id, current.version_no + 1, current.id, values, now
+                set_id,
+                current.id,
+                values,
+                now,
+                major=change_is_major(
+                    "rollback",
+                    profile_changed=target.profile_version_id != current.profile_version_id,
+                    major=None,
+                ),
             )
         return VersionWriteResult(version=await self.get_version(version_id))
 
@@ -1874,6 +1949,7 @@ class SetsRepository(Repository):
             SELECT sh.id AS shot_id,
                    sh.set_version_id AS version_id,
                    v.version_no,
+                   {label_sql("v")} AS version_label,
                    v.profile_version_id,
                    v.grind_setting,
                    v.grind_value,
@@ -2008,6 +2084,7 @@ class SetsRepository(Repository):
             SELECT sh.id AS shot_id,
                    sh.set_version_id AS version_id,
                    v.version_no,
+                   {label_sql("v")} AS version_label,
                    sh.started_at,
                    sh.quarantined,
                    sh.incomplete,
@@ -2045,8 +2122,9 @@ class SetsRepository(Repository):
         saying so is more useful than inventing one from the nominal basket size.
         """
         rows = await self.db.fetch_all(
-            """
+            f"""
             SELECT sh.id AS shot_id, sh.device_id, sh.set_version_id, v.version_no,
+                   {label_sql("v")} AS version_label,
                    sh.started_at, sh.execution_score, sh.duration_ms,
                    j.dose_in_g, j.dose_out_g, j.rating,
                    COALESCE(sh.final_weight_g, sh.index_volume_g) AS volume_g
@@ -2055,7 +2133,7 @@ class SetsRepository(Repository):
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
             WHERE v.set_id = ?
             ORDER BY v.version_no, COALESCE(sh.started_at, ''), sh.id
-            """,
+            """,  # noqa: S608 - the interpolation is the label expression, the id is bound
             (set_id,),
         )
         points: list[SetTrendPoint] = []
@@ -2071,6 +2149,7 @@ class SetsRepository(Repository):
                     device_id=str(row["device_id"]),
                     set_version_id=int(row["set_version_id"]),
                     version_no=int(row["version_no"]),
+                    version_label=str(row["version_label"]),
                     started_at=row["started_at"],
                     execution_score=row["execution_score"],
                     duration_s=None if row["duration_ms"] is None else row["duration_ms"] / 1000,
@@ -2090,6 +2169,7 @@ class SetsRepository(Repository):
             SetTrendVersion(
                 set_version_id=version.id,
                 version_no=version.version_no,
+                version_label=version.version_label,
                 intent=version.intent,
                 origin=version.origin,
                 created_at=version.created_at,

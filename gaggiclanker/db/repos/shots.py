@@ -20,6 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
+from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.vocab import Decision
 
@@ -142,7 +143,7 @@ class ShotSetBadge(BaseModel):
     """The Set a shot belongs to, in the three fields a badge renders.
 
     Nested on the list row rather than three flat columns because it is one
-    fact — "this shot is Ethiopia natural v3" — and a row with
+    fact — "this shot is Ethiopia natural v1.1" — and a row with
     `set_name: null, set_version_no: 2` would be a shape nothing can render.
     """
 
@@ -150,7 +151,9 @@ class ShotSetBadge(BaseModel):
 
     set_id: int
     set_name: str
+    #: The version's ordinal, and its name ("v1.1"), which is what a badge shows.
     version_no: int
+    version_label: str
 
 
 class ShotListRow(BaseModel):
@@ -227,11 +230,13 @@ class ShotListRow(BaseModel):
         badge_set_id = payload.pop("badge_set_id", None)
         badge_set_name = payload.pop("badge_set_name", None)
         badge_version_no = payload.pop("badge_version_no", None)
+        badge_version_label = payload.pop("badge_version_label", None)
         if badge_set_id is not None and badge_version_no is not None:
             payload["set_badge"] = {
                 "set_id": badge_set_id,
                 "set_name": badge_set_name or "",
                 "version_no": badge_version_no,
+                "version_label": badge_version_label or "",
             }
         return payload
 
@@ -320,7 +325,7 @@ class ShotPage(BaseModel):
 # The list projection. Written once because the list route, the detail route and
 # the tests must all agree on what "volume" means: the scale's final weight when
 # there was a scale, and the device index's figure otherwise.
-_LIST_COLUMNS = """
+_LIST_COLUMNS = f"""
     s.id, s.device_id, s.source, s.started_at, s.start_epoch, s.duration_ms,
     s.profile_version_id, s.profile_id_on_device, s.profile_name_on_device,
     v.label AS profile_label,
@@ -340,6 +345,7 @@ _LIST_COLUMNS = """
     sv.set_id AS badge_set_id,
     st.name AS badge_set_name,
     sv.version_no AS badge_version_no,
+    {label_sql("sv")} AS badge_version_label,
     s.synced_at
 """
 

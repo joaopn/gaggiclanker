@@ -517,6 +517,9 @@ class ProfileDraftService:
                     **experiment,
                 }
             ),
+            # A pushed draft is a tuned copy of a profile — dialling in — so its
+            # default is a minor version; the person can say otherwise.
+            path="draft",
         )
 
     async def _experiment(self, draft: ProfileDraftRow, set_id: int) -> dict[str, Any]:

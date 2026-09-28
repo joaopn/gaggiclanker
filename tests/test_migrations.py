@@ -1091,3 +1091,65 @@ async def test_0026_carries_finished_analyses_into_reviews_and_drops_the_rest(
     assert result.rows == [[7, 1, "bitter", "Ran long: 38 s against a 28 s target."]]
     with pytest.raises(SqlRefused):
         await run_query(env.database_path, "SELECT input_json FROM shot_reviews")
+
+
+async def test_0027_names_every_existing_version_by_its_number(
+    db: Database, tmp_path: Path
+) -> None:
+    """Existing versions keep their numbers: v3 is still v3, now as 3.0.
+
+    Names written before the upgrade — in chats, predictions, outcome notes —
+    must still point at the same version, so nothing is renumbered. The views
+    the SQL tool reads carry the name beside the ordinal.
+    """
+    await _migrate_below(db, tmp_path, "0027")
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('Guji', 1, 'x')")
+    for number in (1, 2, 3):
+        await db.execute(
+            "INSERT INTO set_versions (set_id, version_no, parent_version_id, "
+            "compares_to_version_id, prediction, created_at) VALUES (1, ?, ?, ?, ?, 'x')",
+            (number, number - 1 or None, number - 1 or None, "longer" if number > 1 else ""),
+        )
+    await db.execute(
+        "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+        "VALUES ('000001', x'00', 3, 'x', 'x')"
+    )
+
+    assert "0027" in await run_migrations(db)
+
+    rows = await db.fetch_all(
+        "SELECT version_no, version_major, version_minor FROM set_versions ORDER BY version_no"
+    )
+    assert [tuple(r) for r in rows] == [(1, 1, 0), (2, 2, 0), (3, 3, 0)]
+    view = await db.fetch_all(
+        "SELECT version_no, version_major, version_minor, version_label, "
+        "compares_to_version_label FROM v_set_versions ORDER BY version_no"
+    )
+    assert [tuple(r) for r in view] == [
+        (1, 1, 0, "v1", None),
+        (2, 2, 0, "v2", "v1"),
+        (3, 3, 0, "v3", "v2"),
+    ]
+    shot = await db.fetch_one(
+        "SELECT set_version_no, set_version_major, set_version_minor, set_version_label "
+        "FROM v_shots"
+    )
+    assert shot is not None
+    assert tuple(shot) == (3, 3, 0, "v3")
+    # The suggestion columns arrive empty on existing rows.
+    proposal_columns = {
+        str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(set_version_proposals)")
+    }
+    draft_columns = {
+        str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(profile_drafts)")
+    }
+    assert {"suggest_major", "major_reason"} <= proposal_columns & draft_columns
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+    # And the repository numbers the next one from there.
+    from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+
+    added = await SetsRepository(db).add_version(1, SetVersionPatch(grind_setting="21"))
+    assert added is not None
+    assert (added.version_no, added.version_label) == (4, "v3.1")

@@ -503,6 +503,9 @@ class TestTheSetDetail:
         assert evidence["other"] == {
             "version_id": seeded["v3"],
             "version_no": 3,
+            # Seeded as a grind change and a dose change after v1: both are
+            # dial-in changes, so the third version is v1.2.
+            "version_label": "v1.2",
             "shots": 0,
             "sour": 0,
             "balanced": 0,

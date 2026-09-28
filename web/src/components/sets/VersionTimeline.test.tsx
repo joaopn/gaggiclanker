@@ -275,7 +275,7 @@ describe("VersionTimeline", () => {
         has_notes: false,
         has_judgement: true,
         set_version_id: 22,
-        set_badge: { set_id: 3, set_name: "Guji on the Niche", version_no: 2 },
+        set_badge: { set_id: 3, set_name: "Guji on the Niche", version_no: 2, version_label: "v2" },
         synced_at: "2026-04-03T08:16:00.000Z",
       },
     ];

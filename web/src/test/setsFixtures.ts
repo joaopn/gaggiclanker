@@ -272,6 +272,7 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
     created_at: "2026-04-02T00:00:00.000Z",
     current_version_id: 22,
     current_version_no: 2,
+    current_version_label: "v2",
     version_count: 2,
     shot_count: 4,
     profile_version_id: 7,
@@ -280,11 +281,26 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
   };
 }
 
+/**
+ * "v1", "v1.1": the server's label, spelled here only so a fixture that states
+ * its numbers gets the name the server would serve with them.
+ */
+function labelOf(major: number, minor: number): string {
+  return minor === 0 ? `v${major}` : `v${major}.${minor}`;
+}
+
 export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
+  // Unless a test says otherwise, a fixture version is a major one named by its
+  // ordinal, as every version made before minor versions existed is.
+  const major = overrides.version_major ?? overrides.version_no ?? 1;
+  const minor = overrides.version_minor ?? 0;
   return {
     id: 21,
     set_id: 3,
     version_no: 1,
+    version_major: major,
+    version_minor: minor,
+    version_label: labelOf(major, minor),
     parent_version_id: null,
     profile_version_id: 7,
     profile_label: "9 Bar Espresso",
@@ -299,8 +315,10 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
     prediction: "",
     compares_to_version_id: null,
     compares_to_version_no: null,
+    compares_to_version_label: null,
     restores_version_id: null,
     restores_version_no: null,
+    restores_version_label: null,
     prediction_at: null,
     outcome: null,
     outcome_note: "",
@@ -623,6 +641,7 @@ export function evidence(overrides: Partial<VersionEvidence> = {}): VersionEvide
     this: {
       version_id: 22,
       version_no: 2,
+      version_label: "v2",
       shots: 3,
       sour: 0,
       balanced: 2,
@@ -634,6 +653,7 @@ export function evidence(overrides: Partial<VersionEvidence> = {}): VersionEvide
     other: {
       version_id: 21,
       version_no: 1,
+      version_label: "v1",
       shots: 4,
       sour: 3,
       balanced: 1,
@@ -653,6 +673,7 @@ export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
       {
         set_version_id: 21,
         version_no: 1,
+        version_label: "v1",
         intent: "",
         origin: "manual",
         created_at: "2026-04-02T00:00:00.000Z",
@@ -665,6 +686,7 @@ export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
       {
         set_version_id: 22,
         version_no: 2,
+        version_label: "v2",
         intent: "one click finer",
         origin: "manual",
         created_at: "2026-04-03T00:00:00.000Z",
@@ -696,6 +718,7 @@ function point(
     device_id: String(id).padStart(6, "0"),
     set_version_id: versionId,
     version_no: versionNo,
+    version_label: `v${versionNo}`,
     started_at: "2026-04-03T08:00:00.000Z",
     execution_score: 8,
     duration_s: 28,
@@ -713,6 +736,7 @@ export function similarSet(overrides: Partial<SimilarSet> = {}): SimilarSet {
     set_name: "Kenya AA on the Niche",
     set_version_id: 21,
     version_no: 1,
+    version_label: "v1",
     created_at: "2026-03-01T00:00:00.000Z",
     score: 8.2,
     attribute_score: 6,

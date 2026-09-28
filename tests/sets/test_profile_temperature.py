@@ -226,6 +226,7 @@ def test_every_sql_copy_of_the_rule_is_the_same_sentence() -> None:
     expression = everywhere.pop()
     assert "json_type" in expression and "'integer', 'real'" in expression
     assert "> 0" in expression and ">= 0" not in expression
-    # Both views in each of the three migrations that define them, plus the
-    # repository's version select and the similar-Sets query.
-    assert sum(len(copies) for copies in found.values()) == 8, found
+    # Both views in each of the four migrations that define them (0013, 0014,
+    # 0016 and 0027, which added the version's name), plus the repository's
+    # version select and the similar-Sets query.
+    assert sum(len(copies) for copies in found.values()) == 10, found

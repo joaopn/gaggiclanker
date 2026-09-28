@@ -125,6 +125,9 @@ class CountedShot(BaseModel):
     shot_id: int
     version_id: int
     version_no: int
+    #: The version's name as a reader sees it ("v1.1"); the ordinal above only
+    #: orders.
+    version_label: str = ""
 
     #: The version's recipe, which is what makes two shots repeats of each
     #: other. A roll back copies these five, so its shots join the group of the
@@ -281,6 +284,8 @@ class EvidenceCounts(BaseModel):
 
     version_id: int
     version_no: int
+    #: "v1.1": the name the table's heading shows.
+    version_label: str
     shots: int = 0
     sour: int = 0
     balanced: int = 0
@@ -343,8 +348,10 @@ def version_evidence(
     *,
     version_id: int,
     version_no: int,
+    version_label: str,
     compares_to_version_id: int | None = None,
     compares_to_version_no: int | None = None,
+    compares_to_version_label: str | None = None,
 ) -> VersionEvidence:
     """What this version's shots did, beside the compared version's.
 
@@ -360,14 +367,20 @@ def version_evidence(
     # measure rows came to disagree with the counts beside them.
     theirs: list[CountedShot] | None = None
     other: EvidenceCounts | None = None
-    if compares_to_version_id is not None and compares_to_version_no is not None:
+    if (
+        compares_to_version_id is not None
+        and compares_to_version_no is not None
+        and compares_to_version_label is not None
+    ):
         theirs = _of_version(shots, compares_to_version_id)
-        other = _counts(theirs, compares_to_version_id, compares_to_version_no)
+        other = _counts(
+            theirs, compares_to_version_id, compares_to_version_no, compares_to_version_label
+        )
     return VersionEvidence(
         version_id=version_id,
         compares_to_version_id=compares_to_version_id,
         measures=[_measure_evidence(mine, theirs, spreads[name], name) for name in SPREAD_MEASURES],
-        this=_counts(mine, version_id, version_no),
+        this=_counts(mine, version_id, version_no, version_label),
         other=other,
     )
 
@@ -480,10 +493,13 @@ def _measure_evidence(
     )
 
 
-def _counts(shots: Sequence[CountedShot], version_id: int, version_no: int) -> EvidenceCounts:
+def _counts(
+    shots: Sequence[CountedShot], version_id: int, version_no: int, version_label: str
+) -> EvidenceCounts:
     return EvidenceCounts(
         version_id=version_id,
         version_no=version_no,
+        version_label=version_label,
         shots=len(shots),
         sour=sum(1 for shot in shots if shot.balance == "sour"),
         balanced=sum(1 for shot in shots if shot.balance == "balanced"),
