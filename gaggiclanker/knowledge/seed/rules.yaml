@@ -22,10 +22,10 @@
 # `web/src/lib/shots.ts::BAND_MEANINGS`. That table explains one label to a
 # reader looking at a card and is shared across metrics — "GOOD" means the same
 # sentence under pressure adherence and under flow adherence. These rules are
-# per metric and carry the interpretation the analyzer needs, which is the part
+# per metric and carry the interpretation a model needs, which is the part
 # worth having: flow_adherence says *why* flow deviation is the better grind
 # signal, and the card has no room for that. What IS pinned, by
-# `tests/analyzer/test_band_parity.py`, is coverage — every band label the
+# `tests/review/test_band_parity.py`, is coverage — every band label the
 # diagnostics engine can emit has a rule here and a line there, so adding a band
 # to `diagnostics.py` and forgetting one of the two is a failing test rather
 # than a silent gap.
@@ -664,7 +664,7 @@ rules:
   # ── diagnostic band meanings ───────────────────────────────────────
   # One per band label the summary diagnostics can carry. Keys are
   # `<metric>:<LABEL>` and the wording is kept in step with
-  # web/src/lib/shots.ts::BAND_MEANINGS so the analyzer and the shot page agree.
+  # web/src/lib/shots.ts::BAND_MEANINGS so a review and the shot page agree.
 
   - category: band_meanings
     key: "channeling_risk:LOW"
@@ -1056,7 +1056,7 @@ rules:
     # A mouthfeel, and mouthfeel is not on the flavour wheel, so no note the
     # shot panel records says this. The rule keeps its text for the
     # Knowledge page and the chat's get_rules; an empty signal list selects it
-    # for no analysis until something records these words again.
+    # for no review until something records these words again.
     applies: { signal: [] }
     value:
       text: >-

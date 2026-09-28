@@ -40,7 +40,7 @@ __all__ = ["build_parser", "main", "serve"]
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gaggiclanker",
-        description="Archive, diagnose and analyse espresso shots from a GaggiMate machine.",
+        description="Archive, diagnose and review espresso shots from a GaggiMate machine.",
     )
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command")

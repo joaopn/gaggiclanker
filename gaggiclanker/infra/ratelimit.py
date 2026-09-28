@@ -1,7 +1,7 @@
 """A small in-memory rate limiter for the routes that spend money.
 
-The routes that queue LLM work need one (the per-shot analysis, the chat and
-the starting point, each in its own bucket). Everything else here reads
+The routes that queue LLM work need one (a shot's review, the chat and the
+starting point, each in its own bucket). Everything else here reads
 SQLite. The failure this guards against is not an attacker — it
 is a browser tab with a retry loop, or a script, turning into a provider bill
 while nobody is watching.
@@ -9,7 +9,7 @@ while nobody is watching.
 In memory, and per process, for the same reason the login throttle is: this is
 one uvicorn process on an appliance, and a limiter that writes to the database
 on every request is a heavier tax than the thing it is protecting. A restart
-clears it, which is fine: a restart also cancels every queued analysis.
+clears it, which is fine: a restart also cancels every queued review.
 
 Note what already exists and what this adds. The :class:`~gaggiclanker.infra.tasks.TaskRegistry`
 makes a *second* request for the same shot idempotent — the name is claimed
@@ -31,8 +31,8 @@ from fastapi import Request
 from gaggiclanker.infra.errors import TooManyRequests
 
 __all__ = [
-    "ANALYSIS_RATE_LIMIT",
-    "ANALYSIS_WINDOW_SECONDS",
+    "REVIEW_RATE_LIMIT",
+    "REVIEW_WINDOW_SECONDS",
     "SWEEP_EVERY",
     "RateLimiter",
     "rate_limit",
@@ -40,10 +40,10 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: Ten analyses a minute. A single analysis takes a provider tens of seconds, so
+#: Ten reviews a minute. A single review takes a provider tens of seconds, so
 #: anything faster than this is a loop rather than a person.
-ANALYSIS_RATE_LIMIT = 10
-ANALYSIS_WINDOW_SECONDS = 60.0
+REVIEW_RATE_LIMIT = 10
+REVIEW_WINDOW_SECONDS = 60.0
 
 #: How many checks between sweeps of the counter map. Small enough that an idle
 #: key is forgotten quickly, large enough that the sweep is noise next to the
@@ -133,11 +133,11 @@ def caller_key(request: Request) -> str:
 def rate_limit(
     bucket: str,
     limit: int,
-    window: float = ANALYSIS_WINDOW_SECONDS,
+    window: float = REVIEW_WINDOW_SECONDS,
 ) -> Callable[[Request], None]:
     """A FastAPI dependency that applies one bucket's limit to a route.
 
-    Used as ``dependencies=[Depends(rate_limit("analysis", ANALYSIS_RATE_LIMIT))]``
+    Used as ``dependencies=[Depends(rate_limit("review", REVIEW_RATE_LIMIT))]``
     so the limit is visible in the route declaration rather than buried in the
     handler, and so it runs before the body is validated.
     """

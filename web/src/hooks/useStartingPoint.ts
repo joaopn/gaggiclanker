@@ -25,8 +25,8 @@ import { queryKeys } from "@/lib/queryKeys";
  * The starting-point wizard: the free evidence, the paid suggestion,
  * and taking one of the three.
  *
- * Two things here are not the obvious thing, and both are the analysis hook's
- * reasoning (`useAnalysis.ts`).
+ * Two things here are not the obvious thing, and both are the review hook's
+ * reasoning (`useReview.ts`).
  *
  * **Creating a run resolves when the work is *queued*, not when it is done.**
  * The server answers 202 with a `running` row, because a provider call takes a

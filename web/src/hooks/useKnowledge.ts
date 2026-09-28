@@ -32,16 +32,14 @@ import type {
   KnowledgeRulePatch,
   KnowledgeSearchData,
 } from "@/api/types";
-import { invalidateAnalyses, invalidateKnowledge } from "@/lib/invalidate";
+import { invalidateKnowledge } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
  * The rule tier: reading it, turning one off, and editing what one says.
  *
- * Every mutation invalidates `analyses` as well as `knowledge`, because a rule
- * change is only interesting in terms of what the analyzer does next: the rules
- * a stored analysis lists are the ones it was given, and the page linking a
- * rule key back to this one has to agree about whether that rule is still on.
+ * A rule change reaches the next review and the next chat turn; the rules a
+ * stored review cites are the ones it was given, and stay as they were.
  */
 
 export function useKnowledgeRules(
@@ -65,7 +63,6 @@ export function usePatchKnowledgeRule(): UseMutationResult<
     onError: (error) => toast.error(`Could not save the rule: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
-      void invalidateAnalyses(queryClient);
     },
   });
 }
@@ -87,10 +84,6 @@ export function useReloadKnowledgeRules(): UseMutationResult<{ changed: number }
 
 /**
  * Tier 2: the documents, their chunks and the search over them.
- *
- * Editing a document invalidates `knowledge` **and** `analyses`, for the same
- * reason a rule edit does: an analysis's "excerpts it leaned on" links into a
- * document, and the two pages have to agree about what that document now says.
  */
 
 export function useKnowledgeDocs(): UseQueryResult<KnowledgeDocListData, Error> {
@@ -143,7 +136,6 @@ export function useSaveKnowledgeDoc(): UseMutationResult<
     onError: (error) => toast.error(`Could not save the document: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
-      void invalidateAnalyses(queryClient);
     },
   });
 }
@@ -156,7 +148,6 @@ export function useResetKnowledgeDoc(): UseMutationResult<KnowledgeDocDetail, Er
     onError: (error) => toast.error(`Could not reset the document: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
-      void invalidateAnalyses(queryClient);
     },
   });
 }
@@ -164,14 +155,11 @@ export function useResetKnowledgeDoc(): UseMutationResult<KnowledgeDocDetail, Er
 /**
  * Tier 3: the learned insights.
  *
- * Confirming is what puts one in front of the next analysis of a matching Set,
- * so every mutation here invalidates `analyses` too — the shot panel renders
- * the proposals of the analysis it is showing, and a confirm pressed there has
- * to move the badge on this page and the other way round.
+ * Confirming is what puts one in front of the matching Set's conversations.
  */
 
 export function useKnowledgeInsights(
-  filters: { confirmed?: boolean; analysis_id?: number; set_id?: number } = {},
+  filters: { confirmed?: boolean; set_id?: number } = {},
 ): UseQueryResult<KnowledgeInsightListData, Error> {
   return useQuery({
     queryKey: queryKeys.knowledge.insights(filters),
@@ -191,7 +179,6 @@ export function useCreateKnowledgeInsight(): UseMutationResult<
     onError: (error) => toast.error(`Could not save the insight: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
-      void invalidateAnalyses(queryClient);
     },
   });
 }
@@ -211,14 +198,13 @@ export function usePatchKnowledgeInsight(): UseMutationResult<
       }
       toast.success(
         insight.confirmed
-          ? "Confirmed — later analyses of matching Sets will be told this"
+          ? "Confirmed — conversations about matching Sets will be told this"
           : "Unconfirmed — it will not be put in front of the model",
       );
     },
     onError: (error) => toast.error(`Could not save the insight: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
-      void invalidateAnalyses(queryClient);
     },
   });
 }
@@ -235,7 +221,6 @@ export function useDeleteKnowledgeInsight(): UseMutationResult<
     onError: (error) => toast.error(`Could not delete the insight: ${error.message}`),
     onSettled: () => {
       void invalidateKnowledge(queryClient);
-      void invalidateAnalyses(queryClient);
     },
   });
 }

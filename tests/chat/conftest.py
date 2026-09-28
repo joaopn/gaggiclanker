@@ -29,8 +29,8 @@ from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_pr
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import registry
-from tests.analyzer.conftest import Fixture, build_fixture
 from tests.llm.conftest import FakeProvider
+from tests.review.conftest import Fixture, build_fixture
 
 
 @pytest.fixture

@@ -73,9 +73,8 @@ export function isNavGroup(item: NavItem): item is NavGroup {
  * The knowledge base, listed under Settings just before Prompts: its rules and
  * documents ship with the app and are tuned rarely, like the prompts. It stays
  * a page of its own at `/knowledge` rather than becoming a settings page — it
- * is a tabbed reader every analysis and chat citation links into — and keeps
- * its chord. Insights an analysis proposes are confirmed on that analysis, so
- * the queue does not depend on this row being in view.
+ * is a tabbed reader every review and chat citation links into — and keeps
+ * its chord.
  */
 const KNOWLEDGE: NavPage = {
   to: "/knowledge",
@@ -196,7 +195,7 @@ export function isGroupActive(group: NavGroup, pathname: string): boolean {
  * How wide the page under the shell is allowed to get.
  *
  * Two answers, because the application holds two kinds of page. Most of them
- * are things to read — a Set's log, a shot's analysis, a settings form — and a
+ * are things to read — a Set's log, a shot's review, a settings form — and a
  * line of prose that runs the width of a wide monitor is a line nobody
  * finishes; `max-w-5xl` is the reading column those are laid out in.
  *

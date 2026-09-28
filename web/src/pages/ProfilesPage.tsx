@@ -68,8 +68,8 @@ export function ProfilesPage() {
   // permanent warning is one nobody reads by the second week.
   const writesBlocked = writes.data?.enabled === false && (openDrafts.data?.items.length ?? 0) > 0;
 
-  // Everything that creates a draft elsewhere — an accepted analysis
-  // suggestion, the starting-point wizard, the JSON editor, a chat tool — comes
+  // Everything that creates a draft elsewhere — the starting-point wizard,
+  // the JSON editor, a chat tool — comes
   // back here with `#staged`. Landing at the top of a long page and leaving the
   // reader to find the thing they just made is half a link.
   const stagedArrived = !drafts.isPending;
@@ -274,7 +274,7 @@ function StagedForTheMachine({
           <p className="text-muted-foreground text-sm" data-testid="staged-empty">
             {showAll
               ? "Nothing has ever been staged."
-              : "Nothing staged. Stage a version below, or accept a profile suggestion from an analysis."}
+              : "Nothing staged. Stage a version below, or ask the chat to draft a profile change."}
           </p>
         ) : (
           <ul className="space-y-3" data-testid="draft-list">

@@ -17,7 +17,7 @@ from gaggiclanker.tools.sql import (
     run_query,
     validate_sql,
 )
-from tests.analyzer.conftest import Fixture
+from tests.review.conftest import Fixture
 
 # -- the textual pre-check -------------------------------------------------
 

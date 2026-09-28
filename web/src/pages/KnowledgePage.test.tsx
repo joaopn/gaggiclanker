@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KnowledgePage } from "@/pages/KnowledgePage";
-import { knowledgeChunk, knowledgeDoc, knowledgeInsight, rule } from "@/test/analysisFixtures";
+import { knowledgeChunk, knowledgeDoc, knowledgeInsight, rule } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -118,7 +118,7 @@ describe("KnowledgePage", () => {
     );
   });
 
-  it("highlights the rule an analysis linked to", async () => {
+  it("highlights the rule a review linked to", async () => {
     renderWithQueryClient(<KnowledgePage />, { initialEntries: ["/knowledge?rule=hierarchy"] });
 
     const [row] = await screen.findAllByTestId("rule");

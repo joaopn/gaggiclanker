@@ -1,9 +1,9 @@
 """The rule tier: what the seed produces, and what selection picks out of it.
 
-The first acceptance criterion for the analyzer is that two analyses of the same shot
+Rule selection is deterministic: two reviews of the same shot
 select the same rules. That is a property of two things — a total sort key and a
 filter with no iteration order in it — and both are asserted here rather than
-inferred from the analyzer producing the same text twice.
+inferred from a review producing the same text twice.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def test_a_typo_in_applies_is_rejected(tmp_path: Path) -> None:
     """A rule that filters on `roast` instead of `roast_level` matches everything.
 
     The output would still look plausible, which is why this is an error at
-    load time rather than something to notice in an analysis six weeks later.
+    load time rather than something to notice in a review six weeks later.
     """
     bad = tmp_path / "rules.yaml"
     bad.write_text(
@@ -192,7 +192,7 @@ async def test_the_channeling_rule_needs_both_sides_of_the_cup(db: Database) -> 
     assert "sour_and_bitter_is_channeling" in both.keys
 
 
-async def test_a_disabled_rule_leaves_the_next_analysis(db: Database) -> None:
+async def test_a_disabled_rule_leaves_the_next_review(db: Database) -> None:
     repo = RulesRepository(db)
     await seed_rules(repo)
     rule = await repo.get_by_key("dial_in_order", "hierarchy")

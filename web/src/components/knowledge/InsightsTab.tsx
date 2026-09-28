@@ -14,9 +14,9 @@ import { attempt } from "@/lib/mutations";
  * Tier 3: what this archive has learned about *this* kitchen.
  *
  * The proposals come first and unconfirmed, because that is the decision
- * waiting for somebody: an insight the analyzer proposed is a claim about your
+ * waiting for somebody: an insight the chat proposed is a claim about your
  * setup that nothing will act on until you say so. Confirming one puts it in
- * front of every later analysis whose Set matches its scope — which is why the
+ * front of every conversation about a Set its scope matches — which is why the
  * scope badge and the evidence links are on the card rather than behind a
  * disclosure.
  */
@@ -98,14 +98,14 @@ export function InsightsTab() {
         <EmptyState
           icon={Lightbulb}
           title="Nothing learned yet"
-          description="The analyser proposes at most two insights per shot, and they land here unconfirmed. Nothing is put in front of the model until you confirm it."
+          description="The chat proposes insights about a Set, and they land here unconfirmed. Nothing is put in front of the model until you confirm it."
         />
       ) : (
         <>
           {proposed.length > 0 ? (
             <SectionCard
               title="Waiting for you"
-              description="Proposed by an analysis or the chat. Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
+              description="Proposed by the chat (or, before it was retired, the per-shot analysis). Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
             >
               <ul className="space-y-2" data-testid="proposed-insights">
                 {proposed.map((insight) => (
@@ -117,7 +117,7 @@ export function InsightsTab() {
 
           <SectionCard
             title="Confirmed"
-            description="These are put in front of every later analysis whose Set matches the scope, above the general rules."
+            description="These are put in front of every conversation about a Set the scope matches, above the general rules."
           >
             {confirmed.length === 0 ? (
               <p className="text-muted-foreground text-sm">Nothing confirmed yet.</p>

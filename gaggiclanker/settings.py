@@ -989,7 +989,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description=(
             "How long one attempt may take before it is abandoned. Five minutes: a reasoning "
             "model working through a shot's diagnostics genuinely takes minutes, and a "
-            "deadline shorter than the work turns every analysis into a timeout."
+            "deadline shorter than the work turns every review into a timeout."
         ),
     ),
     SettingDefinition(
@@ -1011,20 +1011,20 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         description=(
             "Keep the rendered prompt and the raw reply on each row of the call ledger, "
             "capped at 200 KB each. On by default because a prompt is editable, so without "
-            "the text an analysis stored today cannot be explained after the prompt that "
+            "the text a review stored today cannot be explained after the prompt that "
             "produced it has been changed. Turn it off to keep only the token counts."
         ),
     ),
     SettingDefinition(
-        key="analysisChunkTokenBudget",
+        key="knowledgeChunkTokenBudget",
         type="int",
         default=1500,
         description=(
-            "How many estimated tokens of knowledge-base prose one analysis may be given. "
-            "The retrieved excerpts are supporting context — the rule tier is what is "
-            "authoritative — so the default of 1500 buys two or three passages and leaves "
-            "the shot, its trajectory and the rules dominating the prompt. 0 turns "
-            "retrieval off entirely."
+            "How many estimated tokens of knowledge-base prose one review of a shot, or one "
+            "starting-point suggestion, may be given. The retrieved excerpts are supporting "
+            "context — the rule tier is what is authoritative — so the default of 1500 buys "
+            "two or three passages and leaves the facts and the rules dominating the prompt. "
+            "0 turns retrieval off entirely."
         ),
     ),
     SettingDefinition(
@@ -1037,11 +1037,11 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         ),
     ),
     SettingDefinition(
-        key="modelAnalysis",
+        key="modelReview",
         type="string",
         default="",
         description=(
-            "Model for per-shot analysis, the slow careful one. Empty falls back to modelDefault."
+            "Model for a shot's review, the slow careful one. Empty falls back to modelDefault."
         ),
     ),
     SettingDefinition(

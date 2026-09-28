@@ -8,7 +8,7 @@ changed IP became a second machine, taking its shots, profiles and Sets with it.
 Nothing merged them back.
 
 So connecting to a new address updates this row. Nothing else in the archive
-carries a machine id; the analyzer, the starting point and the Device page all
+carries a machine id; the chat, the starting point and the Device page all
 ask for "the machine" and get it.
 """
 

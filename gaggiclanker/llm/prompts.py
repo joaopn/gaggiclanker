@@ -118,7 +118,7 @@ class RenderedPrompt:
     description: str
     system: str
     user: str
-    #: The row's ``updated_at``, recorded on the usage row so an analysis can
+    #: The row's ``updated_at``, recorded on the usage row so a review can
     #: be traced to the exact prompt text that produced it.
     version: str = ""
     declared: list[str] = field(default_factory=list)

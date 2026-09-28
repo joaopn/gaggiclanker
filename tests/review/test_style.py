@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from gaggiclanker.analyzer.style import detect_style
+from gaggiclanker.review.style import detect_style
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "profiles"
 
@@ -59,7 +59,7 @@ def test_a_backflush_is_not_read_as_a_bloom() -> None:
     """The specific regression the utility test exists for.
 
     Every `Depressurize` phase runs the pump at zero, which is the bloom
-    signature. Without the utility check first, the analyzer would hand the
+    signature. Without the utility check first, a review would hand the
     model bloom expectations for a cleaning cycle.
     """
     verdict = detect_style(_profile("docs-backflush"))

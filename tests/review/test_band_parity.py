@@ -3,7 +3,7 @@
 Three tables have to agree about which labels exist:
 
 * `gaggiclanker/domain/diagnostics.py` — the thresholds, which *produce* them;
-* `gaggiclanker/knowledge/seed/rules.yaml` — what the analyzer is told one means;
+* `gaggiclanker/knowledge/seed/rules.yaml` — what a model is told one means;
 * `web/src/lib/shots.ts::BAND_MEANINGS` — what the shot page tells a reader.
 
 They are not the same sentences and should not be: the rule carries the
@@ -11,7 +11,7 @@ interpretation the model needs ("flow deviation is the better grind signal,
 because the PID masks pressure error"), the card carries one line a person can
 read at a glance. What must not drift is *coverage*. A band added to the engine
 and to one of the other two is a shot whose page says "NOTABLE_DEVIATION" and
-whose analysis has never heard of it, which is exactly the kind of gap nobody
+whose review has never heard of it, which is exactly the kind of gap nobody
 notices until they are comparing the two.
 
 The TypeScript is read with a regex rather than executed. Standing up Node to

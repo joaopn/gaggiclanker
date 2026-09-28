@@ -30,9 +30,9 @@ Tier 3 is the telemetry, for a shot with neither — the archive holds shots fro
 before the profile sync existed, and "unknown" for all of them would make the
 whole style tier useless on exactly the shots that are hardest to read.
 
-Every answer carries its evidence. The UI shows it, and it is the difference
-between "the analyzer thinks this is a lever shot" and "the analyzer thinks this
-is a lever shot *because* pressure declines 6 bar over 50 s".
+Every answer carries its evidence. A prompt shows it, and it is the difference
+between "this is a lever shot" and "this is a lever shot *because* pressure
+declines 6 bar over 50 s".
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def detect_style(
     duration_s: float | None = None,
     profile_name: str = "",
 ) -> StyleVerdict:
-    """Classify a shot. ``profile`` is the Set version's profile document.
+    """Classify a shot. ``profile`` is the profile document it was brewed with.
 
     ``profile_name`` is the name the shot's own `.slog` header recorded — the
     one thing every shot has, even one whose profile the mirror never captured.

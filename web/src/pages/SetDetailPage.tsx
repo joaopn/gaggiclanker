@@ -2,8 +2,7 @@ import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch, Trash2, Undo2 } f
 import { useId, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
-import type { SetDetailData, SetRow, Suggestion } from "@/api/types";
-import { SuggestionCard } from "@/components/analysis/SuggestionCard";
+import type { SetDetailData, SetRow } from "@/api/types";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
 import { DiscussButton } from "@/components/chat/DiscussButton";
 import { InsightCard } from "@/components/knowledge/InsightCard";
@@ -25,7 +24,6 @@ import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSetSuggestions } from "@/hooks/useAnalysis";
 import { useProfileVersions } from "@/hooks/useArchive";
 import { useKnowledgeInsights } from "@/hooks/useKnowledge";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
@@ -44,14 +42,14 @@ import { cn } from "@/lib/utils";
 /**
  * What this archive has learned that applies to this Set.
  *
- * Selected by the server through the same `select_insights` an analysis of one
- * of these shots is given, so the page cannot show a different answer from the
+ * Selected by the server through the same `select_insights` the Set's
+ * conversations are given, so the page cannot show a different answer from the
  * prompt — which is the whole reason the filter is a query parameter rather than
  * a scope comparison written a second time in TypeScript.
  *
  * Confirmed only, and the card's unconfirm button is live: taking an insight
  * back out is meant to be as easy as it was to put in, because the one that
- * turns out to be wrong is discovered by reading an analysis that followed it.
+ * turns out to be wrong is discovered by reading a conversation that followed it.
  * Renders nothing when there is nothing — an empty card on every Set would be
  * noise on the page people look at most.
  */
@@ -62,7 +60,7 @@ function SetInsights({ setId }: { setId: number }) {
   return (
     <SectionCard
       title="What you have learned about this Set"
-      description="Confirmed insights whose scope matches this bean, grinder and machine. Every analysis of a shot in this Set is told them, above the general rules."
+      description="Confirmed insights whose scope matches this bean, grinder and machine. Every conversation about this Set is told them, above the general rules."
     >
       <ul className="space-y-2" data-testid="set-insights">
         {items.map((insight) => (
@@ -100,7 +98,6 @@ export function SetDetailPage() {
   const valid = Number.isFinite(setId);
   const detail = useSet(valid ? setId : undefined);
   const trends = useSetTrends(valid ? setId : undefined);
-  const suggestions = useSetSuggestions(valid ? setId : undefined);
   const automatch = useSetAutomatch();
   const archive = useArchiveSet();
   const [versioning, setVersioning] = useState(false);
@@ -275,22 +272,6 @@ export function SetDetailPage() {
           judgements={detail.data.judgements}
           designing={row.designing}
         />
-      </SectionCard>
-
-      <SectionCard
-        title="Suggestions"
-        description="Every piece of advice an analysis has given about a shot in this Set, newest first, grouped by the version it was about. Accepting one records a new version; the acceptance history is the answer to 'did following the model help'."
-      >
-        {suggestions.isPending ? (
-          <Skeleton className="h-24 w-full" />
-        ) : (
-          <SuggestionsByVersion
-            items={suggestions.data?.items ?? []}
-            versionNumbers={Object.fromEntries(
-              detail.data.versions.map((entry) => [entry.version.id, entry.version.version_no]),
-            )}
-          />
-        )}
       </SectionCard>
     </div>
   );
@@ -473,55 +454,6 @@ function TrackRecord({ detail, setId }: { detail: SetDetailData; setId: number }
           icon={<Undo2 className="size-3.5" aria-hidden="true" />}
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * The Set's advice, grouped by the version it was about.
- *
- * Grouped rather than flat because a suggestion is a delta from the numbers it
- * was given: advice about v1 and advice about v3 are not comparable, and a flat
- * list invites reading them as one conversation. Within a version they stay in
- * the order the server sent — newest analysis first, priority within it.
- */
-function SuggestionsByVersion({
-  items,
-  versionNumbers,
-}: {
-  items: Suggestion[];
-  versionNumbers: Record<number, number>;
-}) {
-  if (items.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm" data-testid="no-suggestions">
-        No analysis has suggested anything for this Set yet.
-      </p>
-    );
-  }
-
-  const groups = new Map<number, Suggestion[]>();
-  for (const item of items) {
-    const key = item.set_version_id ?? 0;
-    const bucket = groups.get(key);
-    if (bucket) bucket.push(item);
-    else groups.set(key, [item]);
-  }
-
-  return (
-    <div className="space-y-4" data-testid="set-suggestions">
-      {[...groups.entries()].map(([versionId, group]) => (
-        <div key={versionId}>
-          <h4 className="mb-1.5 text-muted-foreground text-xs">
-            about v{versionNumbers[versionId] ?? "?"}
-          </h4>
-          <ul className="space-y-2">
-            {group.map((item) => (
-              <SuggestionCard key={item.id} suggestion={item} />
-            ))}
-          </ul>
-        </div>
-      ))}
     </div>
   );
 }

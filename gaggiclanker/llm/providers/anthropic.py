@@ -15,7 +15,7 @@ this file exists to absorb:
   number has to be chosen, and a too-small one truncates mid-JSON and looks
   like a parse bug.
 
-Prompt caching is switched on for the system block. The analysis prompt is the
+Prompt caching is switched on for the system block. The review prompt is the
 same few thousand tokens on every shot in a backfill, and a cache read is a
 tenth of the price of a fresh read; the marker costs nothing when the prompt is
 below the cache minimum, because the API just ignores it.
@@ -368,7 +368,7 @@ def _extract_usage(message: Any) -> Usage:
     All three are billed as input and all three are real work; reporting only
     ``input_tokens`` on a cached call makes a 30k-token prompt look like 20
     tokens, which is exactly the number someone would use to conclude the
-    analysis is free.
+    review is free.
     """
     usage = getattr(message, "usage", None)
     if usage is None:

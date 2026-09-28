@@ -69,6 +69,16 @@ describe("DraftCard", () => {
     expect(block).toHaveTextContent("when you push this draft for that Set");
   });
 
+  it("says a draft made from an analysis came from one, as history and not a link", () => {
+    renderWithQueryClient(<DraftCard draft={draft({ source_analysis_id: 3 })} />);
+    const card = screen.getByTestId("draft-card");
+    expect(card).toHaveTextContent("· from an analysis (now a review)");
+    expect(card).not.toHaveTextContent("analysis #3");
+
+    renderWithQueryClient(<DraftCard draft={draft({ id: 9, source_analysis_id: null })} />);
+    expect(screen.getAllByTestId("draft-card")[1]).not.toHaveTextContent("from an analysis");
+  });
+
   it("shows no prediction block on a draft nobody predicted anything about", () => {
     renderWithQueryClient(<DraftCard draft={draft()} />);
     expect(screen.queryByTestId("draft-prediction")).not.toBeInTheDocument();

@@ -3,7 +3,7 @@
 Small table, one job: record the grinder in enough detail that advice can be
 given in **its own units**. `step_unit` is why this exists at all — "two clicks
 finer" is something a person can act on, "fifteen microns finer" is not, and the
-analyzer prompt is handed this field so it stops inventing a scale.
+chat's prompts are handed this field so a model stops inventing a scale.
 
 No archive flag, unlike beans: a grinder is not consumed. One that leaves the
 kitchen stays in the list, because the shots it ground still point at it.
@@ -30,7 +30,7 @@ class GrinderWrite(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     model: str | None = Field(default=None, max_length=200)
     #: 'unknown' is the default on purpose: most people do not know, and
-    #: guessing here would hand the analyzer a fact it would then reason from.
+    #: guessing here would hand a model a fact it would then reason from.
     burr_type: BurrType = "unknown"
     step_unit: StepUnit = "clicks"
     notes: str = Field(default="", max_length=2000)

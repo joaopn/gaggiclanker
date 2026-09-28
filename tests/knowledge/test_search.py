@@ -4,7 +4,7 @@ The search is the SQL — there is no Python ranking pass — so these tests are
 about the index and the query expression rather than about a scoring function.
 The two that would be easy to lose in a refactor are the porter stemming (which
 is most of the value at this corpus size) and the deterministic tie-break
-(without which the analyzer's retrieval stops being reproducible).
+(without which a review's retrieval stops being reproducible).
 """
 
 from __future__ import annotations

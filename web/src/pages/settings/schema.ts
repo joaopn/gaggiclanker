@@ -161,8 +161,8 @@ export type RegistryPageId = Extract<SettingsPageId, "machine" | "safety" | "llm
  *
  * Three pages are recognised by prefix, and everything else is the LLM page's.
  * That is not a catch-all by accident: the LLM keys are named after the things
- * they configure - `anthropicApiKey`, `claudeCodeBin`, `modelAnalysis`,
- * `chatMaxToolRounds`, `analysisChunkTokenBudget` - rather than sharing one
+ * they configure - `anthropicApiKey`, `claudeCodeBin`, `modelReview`,
+ * `chatMaxToolRounds`, `knowledgeChunkTokenBudget` - rather than sharing one
  * prefix, and they are most of the registry. A key that is not an LLM setting
  * and has no prefix here still shows up, in the LLM page's trailing "Other"
  * card, plainly unsorted until somebody gives it a prefix.
@@ -272,7 +272,7 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       title: "Models",
       description:
         "Each purpose falls back to the default, and the default falls back to whatever the provider picks.",
-      keys: ["modelDefault", "modelAnalysis", "modelDraft", "modelChat", "modelStartingPoint"],
+      keys: ["modelDefault", "modelReview", "modelDraft", "modelChat", "modelStartingPoint"],
     },
     {
       id: "limits",
@@ -281,10 +281,11 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       keys: ["llmTimeoutSeconds", "llmRateLimitRetries", "llmStoreCallText"],
     },
     {
-      id: "analysis",
-      title: "Analysis",
-      description: "How much of the knowledge base one analysis may read.",
-      keys: ["analysisChunkTokenBudget"],
+      id: "knowledge",
+      title: "Knowledge",
+      description:
+        "How much of the knowledge base one review of a shot, or one starting-point suggestion, may read.",
+      keys: ["knowledgeChunkTokenBudget"],
     },
     {
       id: "chat",

@@ -168,8 +168,8 @@ export function ShotsPage() {
       (counts.quarantined ? ` · ${counts.quarantined} quarantined` : "") +
       ` · ${pulled}`
     : pulled;
-  // A shot with no Set is invisible to every trend and to the analyser's view
-  // of what has been tried, so the count is a call to action in the header
+  // A shot with no Set is invisible to every trend and to the Set's
+  // conversations about what has been tried, so the count is a call to action in the header
   // rather than a number buried in the filter bar.
   const needsSet = counts?.needs_set ?? 0;
 

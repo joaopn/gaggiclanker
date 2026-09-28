@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
 import {
   type KeyboardEvent,
   type RefObject,
@@ -727,13 +727,8 @@ export function ratingOf(shot: ShotListRow): number | null {
 }
 
 /**
- * The badges a row can carry.
- *
- * The analysis state is a state with something to do behind it rather than an
- * absence: "not analysed" is rendered rather than left blank, because a row
- * that said nothing would read as a shot with no analysis available rather
- * than one waiting for a click. The Set badge is the same idea and has grown
- * into a column of its own.
+ * The badges a row can carry: what is unusual about the shot's record. A
+ * review of a shot lives on the shot page only, never here.
  */
 function ShotFlags({ shot }: { shot: ShotListRow }) {
   return (
@@ -747,46 +742,6 @@ function ShotFlags({ shot }: { shot: ShotListRow }) {
       {shot.deleted_on_device ? <Badge variant="outline">gone from machine</Badge> : null}
       {shot.incomplete ? <Badge variant="outline">incomplete</Badge> : null}
       {shot.source === "import" ? <Badge variant="secondary">imported</Badge> : null}
-      <AnalysisFlag state={shot.analysis_state} />
     </>
-  );
-}
-
-/**
- * Where the newest analysis of this row got to.
- *
- * Four states, not five: an `interrupted` row — one a restart cut off — is
- * reported as `failed` by the server, because to somebody scanning a list the
- * two mean the same thing and a fifth word would only need explaining.
- */
-function AnalysisFlag({ state }: { state: string }) {
-  if (state === "ok") {
-    return (
-      <Badge variant="secondary" className="gap-1" data-testid="analysis-slot">
-        <Sparkles className="size-3" aria-hidden="true" />
-        analysed
-      </Badge>
-    );
-  }
-  if (state === "running") {
-    return (
-      <Badge variant="outline" className="gap-1" data-testid="analysis-slot">
-        <Sparkles className="size-3 animate-pulse" aria-hidden="true" />
-        analysing
-      </Badge>
-    );
-  }
-  if (state === "failed") {
-    return (
-      <Badge variant="outline" className="gap-1 text-status-warn-text" data-testid="analysis-slot">
-        <AlertTriangle className="size-3" aria-hidden="true" />
-        analysis failed
-      </Badge>
-    );
-  }
-  return (
-    <span data-testid="analysis-slot" className="text-[10px] text-muted-foreground/60">
-      not analysed
-    </span>
   );
 }

@@ -105,7 +105,7 @@ CLAUDE_CODE_EFFORT_LEVELS: tuple[str, ...] = ("low", "medium", "high", "xhigh", 
 #: There is no models endpoint, so the settings page gets a static list. The
 #: aliases float to whatever the CLI currently considers current, which is what
 #: most people want; the dated and numbered ids pin one, which is what a
-#: reproducible analysis wants.
+#: reproducible review wants.
 SUGGESTED_MODELS: tuple[str, ...] = (
     "sonnet",
     "opus",
@@ -159,7 +159,7 @@ AUTH_TIMEOUT_S = 15.0
 #: The validate probe: one real ``claude -p`` round trip on the smallest model
 #: with a one-word answer. ``auth status`` only proves a token is *present* — a
 #: mistyped or revoked one reads as logged in — so without a call that reaches
-#: Anthropic, Validate said yes to a token the first analysis would fail on.
+#: Anthropic, Validate said yes to a token the first review would fail on.
 #: The cost is a few dozen tokens against the subscription, paid only when
 #: somebody presses the button.
 PROBE_MODEL = "haiku"
@@ -222,7 +222,7 @@ def build_call_argv(
         "",
         # Ignore user, project and local settings, CLAUDE.md and MCP config.
         # Without this the container's own repository instructions would be
-        # prepended to every shot analysis.
+        # prepended to every shot review.
         "--setting-sources",
         "",
         "--strict-mcp-config",

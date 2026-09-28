@@ -4,7 +4,7 @@ Two halves, and they are deliberately far apart in time: `propose` spends a
 provider call and stores three options; `accept` is a button press that happens
 minutes or days later and creates exactly one Set.
 
-**`propose` is shaped exactly like an analysis** (`analyzer/service.py`), for
+**`propose` is shaped exactly like a review** (`review/service.py`), for
 the same three reasons and with the same consequences:
 
 * the row is opened before the call, so a process that dies mid-call leaves a
@@ -92,7 +92,7 @@ __all__ = [
 
 log = structlog.get_logger(__name__)
 
-#: The two prompts one run renders. Split for the reason the analysis pair is:
+#: The two prompts one run renders. Split for the reason the review pair is:
 #: the persona and the layout of the facts are edited by different people for
 #: different reasons.
 STARTING_POINT_PROMPT = "starting_point"
@@ -172,7 +172,7 @@ class StartingPointService:
         self.sets = SetsRepository(db)
         # Runs whose row is being opened right now, so a second request waits
         # for the first one's row instead of reading a database it has not
-        # written to yet. Exactly the analyzer's `_opening` map, and it is held
+        # written to yet. Exactly the review service's `_opening` map, and it is held
         # only across the opening.
         self._opening: dict[str, asyncio.Future[StartingPointRunRow]] = {}
 
@@ -288,7 +288,7 @@ class StartingPointService:
         # Read here rather than inside `build_context`, so assembling a context
         # stays a pure function of the database it was handed — which is what
         # lets the golden test build one without a settings service.
-        budget = int(await self.llm.settings.get("analysisChunkTokenBudget"))
+        budget = int(await self.llm.settings.get("knowledgeChunkTokenBudget"))
         context = await build_context(
             self.db,
             bean_id=bean_id,
@@ -748,8 +748,8 @@ def _post_process(
 ) -> StartingPointResult:
     """Everything the schema cannot check, in one place.
 
-    Four filters, all the same shape and all the analyzer's reasoning
-    (`analyzer/service.py::_post_process`): a citation the run was not given is
+    Four filters, all the same shape and all a review's reasoning
+    (`review/service.py::_cited`): a citation the run was not given is
     dropped and logged rather than failing the whole answer, because a
     fabricated citation is a small flaw in an otherwise useful suggestion and
     throwing three options away over it costs the user a call.

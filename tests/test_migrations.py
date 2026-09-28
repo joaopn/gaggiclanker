@@ -21,6 +21,7 @@ from gaggiclanker.db.migrations import (
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.sql import SqlRefused, run_query
+from tests.conftest import running_app
 
 
 @pytest.fixture
@@ -261,7 +262,7 @@ async def test_ledger_row_is_not_written_without_the_schema(db: Database, tmp_pa
     assert applied == ["0001"]
 
 
-async def _migrate_below(db: Database, tmp_path: Path, version: str) -> None:
+async def _migrate_below(db: Database, tmp_path: Path, version: str) -> list[str]:
     """Bring a database up to just below `version`, using the shipped files.
 
     Copies rather than a slice of `load_migrations()`, because the runner takes
@@ -273,7 +274,7 @@ async def _migrate_below(db: Database, tmp_path: Path, version: str) -> None:
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
         if path.name < version:
             shutil.copy(path, directory / path.name)
-    await run_migrations(db, directory)
+    return await run_migrations(db, directory)
 
 
 async def _migrate_to_0013(db: Database, tmp_path: Path) -> None:
@@ -330,9 +331,9 @@ async def test_0014_upgrades_a_populated_database(db: Database, tmp_path: Path) 
         "VALUES (1, 'by hand', 'x', 'x')"
     )
 
-    # Everything from 0014 up, so the assertions below are made against HEAD
-    # rather than against a version nobody ships.
-    applied = await run_migrations(db)
+    # Everything from 0014 up to the last migration that still has the
+    # analysis tables these assertions read (0026 retires them).
+    applied = await _migrate_below(db, tmp_path, "0026")
     assert applied[0] == "0014"
 
     # Every row survived, and so did every link between them.
@@ -535,7 +536,9 @@ async def test_0016_merges_the_import_placeholder_into_the_real_machine(
     )
     await db.execute("INSERT INTO sync_events (kind, shot_id) VALUES ('shot_ingested', 1)")
 
-    assert (await run_migrations(db))[0] == "0016"
+    # Up to the last migration that still has the analysis tables the
+    # assertions below read (0026 retires them).
+    assert (await _migrate_below(db, tmp_path, "0026"))[0] == "0016"
 
     # One machine, and it is the real one, renumbered to the singleton's id.
     rows = await db.fetch_all("SELECT id, host, name FROM machines")
@@ -908,3 +911,183 @@ async def test_0022_maps_status_to_archived_and_offers_every_live_set_to_the_mat
     columns = {str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(sets)")}
     assert "status" not in columns and "active" not in columns
     assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+
+async def test_0026_carries_finished_analyses_into_reviews_and_drops_the_rest(
+    env: EnvSettings, tmp_path: Path
+) -> None:
+    """An archive from before Review, booted with Review: what is carried, what goes.
+
+    Built with every migration below 0026 holding a finished analysis with
+    suggestions (one of them accepted into a Set version), a failed analysis,
+    an insight the finished one proposed, a profile draft made from it, stored
+    overrides for both analysis settings and a person's edit of the analysis
+    prompt. Then the real app boots on it.
+    """
+    database = Database(env.database_path)
+    await database.connect()
+    try:
+        await _migrate_below(database, tmp_path, "0026")
+        execute = database.execute
+        await execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+        await execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
+        await execute(
+            "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+            "VALUES (1, 1, 'baseline', 'x')"
+        )
+        await execute(
+            "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+            "VALUES ('000001', x'00', 1, 'x', 'x')"
+        )
+        output = {
+            "shot_style": "classic",
+            "execution": {"summary": "Clean.", "issues": []},
+            "taste_prediction": {"balance": "bitter", "body": "heavy", "confidence": "high"},
+            "diagnosis": "Ran long: 38 s against a 28 s target.",
+            "suggestions": [],
+            "profile_patch": [],
+            "questions_for_user": [],
+            "rules_used": ["hierarchy"],
+            "excerpts_used": ["DOC#a"],
+            "proposed_insights": [],
+        }
+        await execute(
+            "INSERT INTO shot_analyses (id, shot_id, set_version_id, provider, model, "
+            "prompt_name, prompt_version, input_json, output_json, usage_json, status, "
+            "llm_call_id, created_at, finished_at) VALUES (7, 1, 1, 'anthropic', 'careful', "
+            "'analysis', 'v1+v2', '{\"judgement\": \"secret\"}', ?, '{\"total_tokens\": 9}', 'ok', "
+            "'call-7', '2026-09-01T08:00:00.000Z', '2026-09-01T08:01:00.000Z')",
+            (json.dumps(output),),
+        )
+        # Failed, yet carrying a document (a reply that failed validation can
+        # leave one): the status is what keeps it from being carried.
+        await execute(
+            "INSERT INTO shot_analyses (id, shot_id, status, error, output_json) "
+            "VALUES (8, 1, 'failed', 'invalid_output: bad reply', ?)",
+            (json.dumps(output),),
+        )
+        # Interrupted after a document was written (a hand edit, a crash at the
+        # wrong moment): still not a finished analysis, so still not carried.
+        await execute(
+            "INSERT INTO shot_analyses (id, shot_id, status, output_json) "
+            "VALUES (9, 1, 'interrupted', ?)",
+            (json.dumps(output),),
+        )
+        await execute(
+            "INSERT INTO set_versions (set_id, version_no, parent_version_id, origin, "
+            "origin_analysis_id, grind_value, created_at) VALUES (1, 2, 1, 'analysis', 7, 20, 'y')"
+        )
+        await execute(
+            "INSERT INTO suggestions (analysis_id, variable, direction, reason, status, "
+            "resulting_set_version_id) VALUES (7, 'grind', 'finer', 'slow', 'accepted', 2)"
+        )
+        await execute(
+            "INSERT INTO suggestions (analysis_id, variable, direction, reason) "
+            "VALUES (7, 'yield', 'increase', 'backup')"
+        )
+        await execute(
+            "INSERT INTO knowledge_insights (scope_json, text, source, analysis_id, confirmed) "
+            "VALUES ('{\"bean_id\": 1}', 'this bag runs long', 'analysis', 7, 1)"
+        )
+        await execute(
+            "INSERT INTO profile_versions (content_hash, label, type, json, created_at) "
+            "VALUES ('abc', '9 Bar', 'pro', '{}', 'x')"
+        )
+        await execute(
+            "INSERT INTO profile_drafts (base_version_id, source_analysis_id, "
+            "source_suggestion_id, change_summary, created_at, updated_at) "
+            "VALUES (1, 7, 1, 'from the analysis', 'x', 'x')"
+        )
+        await execute("INSERT INTO settings (key, value) VALUES ('modelAnalysis', '\"careful\"')")
+        await execute(
+            "INSERT INTO settings (key, value) VALUES ('analysisChunkTokenBudget', '900')"
+        )
+        await execute(
+            "INSERT INTO prompts (name, content, default_content) "
+            "VALUES ('analysis', 'my edited analysis prompt', 'the shipped one')"
+        )
+    finally:
+        await database.close()
+
+    async with running_app(env) as (app, client):
+        db = app.state.db
+
+        # The finished analysis is a review with the same id; the failed and the
+        # interrupted ones are gone.
+        reviews = await db.fetch_all("SELECT * FROM shot_reviews ORDER BY id")
+        assert len(reviews) == 1
+        review = dict(reviews[0])
+        assert review["id"] == 7
+        assert review["shot_id"] == 1
+        assert review["status"] == "ok"
+        assert (review["taste_balance"], review["taste_body"], review["taste_confidence"]) == (
+            "bitter",
+            "heavy",
+            "high",
+        )
+        assert review["description"] == "Ran long: 38 s against a 28 s target."
+        assert review["summary"] == ""
+        assert json.loads(review["rules_used_json"]) == ["hierarchy"]
+        assert json.loads(review["excerpts_used_json"]) == ["DOC#a"]
+        assert (review["model"], review["provider"], review["llm_call_id"]) == (
+            "careful",
+            "anthropic",
+            "call-7",
+        )
+        assert review["finished_at"] == "2026-09-01T08:01:00.000Z"
+
+        # Served through the routes, as the shot page reads it.
+        served = (await client.get("/api/shots/1")).json()["data"]["reviews"]
+        assert [row["id"] for row in served] == [7]
+        assert served[0]["summary"] == ""
+
+        # The analysis tables, their views and the prompts are gone.
+        names = {
+            str(row["name"])
+            for row in await db.fetch_all(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+            )
+        }
+        assert not names & {"shot_analyses", "suggestions", "v_analyses", "v_suggestions"}
+        assert "v_reviews" in names
+        prompts = {str(r["name"]) for r in await db.fetch_all("SELECT name FROM prompts")}
+        assert not prompts & {"analysis", "analysis-user"}
+        assert {"review", "review-user"} <= prompts
+
+        # The rows that pointed at the analysis still read correctly.
+        version = await db.fetch_one(
+            "SELECT origin, origin_analysis_id FROM set_versions WHERE version_no = 2"
+        )
+        assert (version["origin"], version["origin_analysis_id"]) == ("analysis", 7)
+        insight = await db.fetch_one(
+            "SELECT text, source, analysis_id, confirmed FROM knowledge_insights"
+        )
+        assert tuple(insight) == ("this bag runs long", "analysis", 7, 1)
+        listed = (await client.get("/api/knowledge/insights")).json()["data"]["items"]
+        assert [(row["text"], row["source"]) for row in listed] == [
+            ("this bag runs long", "analysis")
+        ]
+        draft = await db.fetch_one(
+            "SELECT source_analysis_id, source_suggestion_id FROM profile_drafts"
+        )
+        assert tuple(draft) == (7, 1)
+
+        # The settings moved to their new names; the old keys are gone.
+        settings = {
+            str(r["key"]): str(r["value"])
+            for r in await db.fetch_all("SELECT key, value FROM settings")
+        }
+        assert settings.get("modelReview") == '"careful"'
+        assert settings.get("knowledgeChunkTokenBudget") == "900"
+        assert "modelAnalysis" not in settings and "analysisChunkTokenBudget" not in settings
+
+        assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+    # The SQL tool reads the new view.
+    result = await run_query(
+        env.database_path,
+        "SELECT review_id, shot_id, taste_balance, description FROM v_reviews",
+    )
+    assert result.rows == [[7, 1, "bitter", "Ran long: 38 s against a 28 s target."]]
+    with pytest.raises(SqlRefused):
+        await run_query(env.database_path, "SELECT input_json FROM shot_reviews")

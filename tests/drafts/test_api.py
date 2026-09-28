@@ -102,32 +102,26 @@ async def test_the_prompt_carries_the_current_profile_the_advice_and_the_notes(
     assert "Return every phase, in order." in sent
 
 
-async def test_a_draft_from_an_analysis_carries_its_profile_patch_into_the_prompt(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, analysis_id: int
+async def test_a_draft_cannot_name_an_analysis_and_the_prompt_says_it_has_no_advice(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
-    """The shot page's button. The patch is advice, not an edit to apply.
+    """The per-shot analysis and its suggestions are gone: notes are the brief.
 
-    `profile_patch` is a list of "phase 0, pressure: 9 -> 8" lines the analyzer
-    recorded and never applied; this is the route that turns them into a
-    profile, and the model is the thing that turns them into one.
+    A body naming an analysis or a suggestion is refused as an unknown field,
+    and the prompt's advice block says there is none rather than going missing
+    (a person's edited copy of the prompt may still name it).
     """
     app, client = live
-    profile = await base_profile(app)
-    provider.script = [
-        json.dumps({"profile": lower_pressure(profile, 8), "change_summary": "8 bar"})
-    ]
-
-    draft = data(
-        await client.post(
-            "/api/profile-drafts",
-            json={"base_version_id": await base_version_id(app), "analysis_id": analysis_id},
-        )
+    refused = await client.post(
+        "/api/profile-drafts",
+        json={"base_version_id": await base_version_id(app), "analysis_id": 1},
     )
+    assert refused.status_code == 400
+    assert provider.calls == []
 
-    assert draft["source_analysis_id"] == analysis_id
+    await a_draft(app, client, provider, notes="Less harsh on the finish.")
     sent = "\n".join(message.content for message in provider.calls[0].messages)
-    assert "phase 0, pump.pressure: 9 -> 8" in sent
-    assert "the puck was compacted" in sent
+    assert "No suggestions were attached" in sent
 
 
 async def test_a_draft_with_nothing_to_go_on_is_refused_before_the_model_is_called(
@@ -603,10 +597,15 @@ async def test_a_hand_drafted_push_stays_manual(
     assert version["origin"] == "manual"
 
 
-async def test_a_draft_from_an_analysis_stays_an_analysis(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int, analysis_id: int
+async def test_a_draft_made_from_an_analysis_before_it_was_retired_stays_an_analysis(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
 ) -> None:
-    """Even when it also carries a Set and a prediction: provenance first."""
+    """An older draft keeps its provenance when pushed, even with a Set and a prediction.
+
+    Nothing makes such a draft any more; one made before the per-shot analysis
+    was retired still carries `source_analysis_id`, and the version it becomes
+    says where it came from.
+    """
     app, client = writes_on
     profile = await base_profile(app)
     row = await app.state.draft_proposals.create_manual(
@@ -617,7 +616,7 @@ async def test_a_draft_from_an_analysis_stays_an_analysis(
         prediction="Compared to v1: less of the dry finish.",
     )
     await app.state.db.execute(
-        "UPDATE profile_drafts SET source_analysis_id = ? WHERE id = ?", (analysis_id, row.id)
+        "UPDATE profile_drafts SET source_analysis_id = 7 WHERE id = ?", (row.id,)
     )
     await client.post(f"/api/profile-drafts/{row.id}/approve", json={})
 
@@ -877,53 +876,6 @@ async def a_set(live: tuple[FastAPI, httpx.AsyncClient]) -> int:
         )
     )
     return int(stored["id"])
-
-
-@pytest.fixture
-async def analysis_id(live: tuple[FastAPI, httpx.AsyncClient]) -> int:
-    """An `ok` analysis carrying a profile patch, written straight to the table.
-
-    Built through the repository rather than by running the analyzer: what this
-    fixture is for is the *patch*, and going through a second scripted LLM call
-    to obtain one would make every test that uses it depend on the analyzer's
-    prompt as well as on its own.
-    """
-    app, _client = live
-    from gaggiclanker.db.repos.analyses import AnalysesRepository, AnalysisStart
-    from gaggiclanker.db.repos.shots import ShotsRepository
-
-    # An analysis has a foreign key to a shot, so the archive needs one. The
-    # `live` fixture only mirrors profiles — a draft does not need shots — so
-    # this is the one place that pays for a shot sync.
-    await app.state.connection.engine.sync_shots(trigger="test")
-    shots = await ShotsRepository(app.state.db).list_shots(limit=1)
-    assert shots.items, "the fake device served no shots"
-    shot_id = shots.items[0].id
-    repo = AnalysesRepository(app.state.db)
-    row_id = await repo.start(AnalysisStart(shot_id=shot_id, provider="fake", model="fake"))
-    await repo.finish(
-        row_id,
-        status="ok",
-        output={
-            "shot_style": "classic_9bar",
-            "execution": {"summary": "fine", "issues": []},
-            "taste_prediction": {"balance": "bitter", "body": "heavy", "confidence": "medium"},
-            "diagnosis": "It ran slow and the puck was compacted.",
-            "suggestions": [],
-            "profile_patch": [
-                {
-                    "phase_index": 0,
-                    "field": "pump.pressure",
-                    "from": "9",
-                    "to": "8",
-                    "reason": "a gentler peak on a dense puck",
-                }
-            ],
-            "questions_for_user": [],
-            "rules_used": [],
-        },
-    )
-    return row_id
 
 
 # ── taking a profile back off the machine ────────────────────────────

@@ -13,12 +13,10 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
-from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.flavor_picks import FlavorPicksRepository
@@ -31,6 +29,7 @@ from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
@@ -43,6 +42,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService
+from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.shotinfo.service import ShotInformationService
@@ -50,8 +50,6 @@ from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.sync.engine import SyncEngine
 
 __all__ = [
-    "AnalysesRepoDep",
-    "AnalyzerServiceDep",
     "AuthServiceDep",
     "BeansRepoDep",
     "ChatRunnerDep",
@@ -75,6 +73,8 @@ __all__ = [
     "NotesWritebackServiceDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
+    "ReviewServiceDep",
+    "ReviewsRepoDep",
     "RulesRepoDep",
     "SetProposalsRepoDep",
     "SetsRepoDep",
@@ -82,7 +82,6 @@ __all__ = [
     "ShotInformationServiceDep",
     "ShotsRepoDep",
     "StartingPointServiceDep",
-    "SuggestionsRepoDep",
     "SyncEngineDep",
     "SyncRepoDep",
 ]
@@ -134,20 +133,20 @@ def get_prompt_service(request: Request) -> PromptService:
     return PromptService(PromptsRepository(get_database(request)))
 
 
-def get_analyzer(request: Request) -> AnalyzerService:
-    """The analyzer. App-scoped, and it has to be.
+def get_review_service(request: Request) -> ReviewService:
+    """The review service. App-scoped, and it has to be.
 
-    It holds the map of shots whose analysis row is being opened right now,
-    which is half of "one analysis per shot at a time" — the registry's name
-    guard is the other half. A per-request copy would make that map empty for
-    every caller and two browser tabs would each start their own analysis.
+    It holds the map of shots whose review row is being opened right now,
+    which is half of "one running review per shot" — the registry's name guard
+    is the other half. A per-request copy would make that map empty for every
+    caller and two browser tabs would each start their own review.
 
     Its prompt service can be long-lived safely: the cache is keyed on the
     row's ``updated_at`` and the row is re-read on every load, so an edit
     invalidates the entry by changing the key (see
     :class:`~gaggiclanker.llm.prompts.PromptService`).
     """
-    service: AnalyzerService = request.app.state.analyzer
+    service: ReviewService = request.app.state.reviews
     return service
 
 
@@ -260,12 +259,8 @@ def get_knowledge_service(request: Request) -> KnowledgeService:
     return KnowledgeService(get_database(request))
 
 
-def get_analyses_repo(request: Request) -> AnalysesRepository:
-    return AnalysesRepository(get_database(request))
-
-
-def get_suggestions_repo(request: Request) -> SuggestionsRepository:
-    return SuggestionsRepository(get_database(request))
+def get_reviews_repo(request: Request) -> ShotReviewsRepository:
+    return ShotReviewsRepository(get_database(request))
 
 
 def get_device_writes_repo(request: Request) -> DeviceWritesRepository:
@@ -289,7 +284,7 @@ def get_notes_writeback_service(request: Request) -> NotesWritebackService | Non
 
 
 def get_starting_point_service(request: Request) -> StartingPointService:
-    """The starting-point wizard. App-scoped, for the analyzer's reason.
+    """The starting-point wizard. App-scoped, for the review service's reason.
 
     It holds the map of runs whose row is being opened right now, which is half
     of "one run per bag and kit at a time" — the registry's name guard is the
@@ -340,9 +335,8 @@ RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
 KnowledgeDocsRepoDep = Annotated[KnowledgeDocsRepository, Depends(get_knowledge_docs_repo)]
 InsightsRepoDep = Annotated[InsightsRepository, Depends(get_insights_repo)]
 KnowledgeServiceDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
-AnalysesRepoDep = Annotated[AnalysesRepository, Depends(get_analyses_repo)]
-SuggestionsRepoDep = Annotated[SuggestionsRepository, Depends(get_suggestions_repo)]
-AnalyzerServiceDep = Annotated[AnalyzerService, Depends(get_analyzer)]
+ReviewsRepoDep = Annotated[ShotReviewsRepository, Depends(get_reviews_repo)]
+ReviewServiceDep = Annotated[ReviewService, Depends(get_review_service)]
 DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_writes_repo)]
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
 StartingPointServiceDep = Annotated[StartingPointService, Depends(get_starting_point_service)]

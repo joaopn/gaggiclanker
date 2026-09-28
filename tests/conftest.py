@@ -92,8 +92,8 @@ LEAKY_ENV_KEYS = (
 def pytest_addoption(parser: pytest.Parser) -> None:
     """``--update-golden`` rewrites the committed golden files instead of failing.
 
-    The analyzer's prompt is a golden test (`tests/analyzer/test_context.py`):
-    a fixture Set of six shots renders to a file in the repository, and any
+    A review's input is a golden test (`tests/review/test_context.py`):
+    a fixture shot renders to a file in the repository, and any
     change to the assembly shows up as a diff in review rather than as a
     passing test nobody read. Regenerating it has to be one flag, or the
     temptation is to loosen the assertion instead.

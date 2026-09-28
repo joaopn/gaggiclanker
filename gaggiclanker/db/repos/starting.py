@@ -1,9 +1,9 @@
 """`starting_point_runs` — one row per "suggest a starting point".
 
-Shaped after `shot_analyses` (`repos/analyses.py`) deliberately, because it has
+Shaped after `shot_reviews` (`repos/reviews.py`) deliberately, because it has
 the same life: a row is opened before the provider is contacted, closed when it
 answers, and reconciled at boot if the process died in between. The one thing
-it has that an analysis does not is an *accept*: three options are offered and
+it has that a review does not is an *accept*: three options are offered and
 at most one of them becomes a Set, so the row carries what was chosen and what
 it produced.
 
@@ -31,7 +31,7 @@ __all__ = [
     "StartingPointStart",
 ]
 
-#: The same four states an analysis has, for the same reasons. `interrupted` is
+#: The same four states a review has, for the same reasons. `interrupted` is
 #: written by boot reconciliation and never by a request.
 type StartingPointStatus = Literal["running", "ok", "failed", "interrupted"]
 
@@ -269,7 +269,7 @@ class StartingPointRunsRepository(Repository):
 
         A `running` row is only true while a process holds it, and no process
         survives a restart — leaving them would be a spinner nobody can clear,
-        which is the same reasoning as `AnalysesRepository.reconcile_running`.
+        which is the same reasoning as `ShotReviewsRepository.reconcile_running`.
         """
         cursor = await self.db.execute(
             """

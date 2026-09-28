@@ -105,7 +105,7 @@ async def live(
 def _rewire_llm(app: FastAPI, provider: FakeProvider) -> None:
     """Point the app's LLM service — and the draft service holding it — at the fake.
 
-    The same substitution `tests/analyzer/test_api.py` makes, and for the same
+    The same substitution `tests/review/test_api.py` makes, and for the same
     reason: both services are app-scoped, so replacing `app.state.llm` alone
     would leave the draft service talking to the real provider factory.
     """

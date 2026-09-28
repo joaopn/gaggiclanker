@@ -23,11 +23,11 @@ vi.mock("@/lib/sse", async (importOriginal) => ({
 function call(overrides: Partial<LlmCall> = {}): LlmCall {
   return {
     id: "1",
-    label: "analyse shot",
+    label: "review shot",
     subject: "#129",
     provider: "claude_code",
     model: "sonnet",
-    purpose: "analysis",
+    purpose: "review",
     status: "succeeded",
     started_at: "2026-09-11T00:00:00.000Z",
     completed_at: "2026-09-11T00:00:42.000Z",
@@ -75,7 +75,7 @@ describe("LlmActivity", () => {
     await waitFor(() => expect(getLlmCalls).toHaveBeenCalled());
     await user.click(screen.getByTestId("llm-activity"));
 
-    expect(await screen.findByText("analyse shot")).toBeInTheDocument();
+    expect(await screen.findByText("review shot")).toBeInTheDocument();
     expect(screen.getByText("#129")).toBeInTheDocument();
     expect(screen.getByText(/claude_code - sonnet - 1500 tokens/)).toBeInTheDocument();
     expect(screen.getByText("42.0s")).toBeInTheDocument();

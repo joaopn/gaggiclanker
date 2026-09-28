@@ -193,7 +193,7 @@ class ChatRunner:
     ) -> tuple[ChatRunRow, ChatMessageRow]:
         """Store the question, open a run, and hand the work to a background task.
 
-        202-shaped on purpose, exactly like an analysis: the answer takes tens of
+        202-shaped on purpose, exactly like a review: the answer takes tens of
         seconds and a request holding it open is a request `docker stop` kills
         mid-flight. The row is the handle and the stream is how it moves.
         """

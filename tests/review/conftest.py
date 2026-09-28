@@ -1,15 +1,16 @@
-"""A Set with six shots, a knowledge tier, and an analyzer wired to a fake provider.
+"""A Set with six judged shots, a knowledge tier, and a review service on a fake provider.
 
-Everything here is deterministic on purpose. The context builder's whole claim is
+Everything here is deterministic on purpose. The review input's whole claim is
 that two builds of the same shot produce byte-identical text — that is what the
 golden test asserts and what makes "the same shot selects the same rules"
 checkable — so nothing in this fixture reads the clock, and the shots carry
 hand-written diagnostics rather than diagnostics derived from a `.slog`, whose
 numbers would move the day the diagnostics engine is tuned.
 
-The fixture Set is the one from the chunk's third acceptance criterion: five
-earlier shots in the same Set, judged, with the advice that followed each of
-them, plus the sixth shot that is the subject of the analysis.
+The Set is also the shared archive the chat and tool tests read: five earlier
+shots in one Set, each judged, the sixth shot (the one a review reads) judged
+in full, and three insights. Everything a review must never see is here on
+purpose, so the tests that say it sees none of it have something to find.
 """
 
 from __future__ import annotations
@@ -22,14 +23,8 @@ from typing import Any
 
 import pytest
 
-from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
-from gaggiclanker.db.repos.analyses import (
-    AnalysesRepository,
-    SuggestionsRepository,
-    SuggestionWrite,
-)
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
 from gaggiclanker.db.repos.grinders import GrindersRepository, GrinderWrite
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
@@ -52,74 +47,30 @@ from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import DEFAULT_PROMPTS_DIR, PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings_service import SettingsService
 from tests.llm.conftest import FakeProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
-#: A complete, valid analysis. The default the fake provider answers with, so a
+#: A complete, valid review. The default the fake provider answers with, so a
 #: test that is about the *service* does not have to restate the output
 #: contract; a test that is about the output overrides one field of it.
-GOOD_OUTPUT: dict[str, Any] = {
-    "shot_style": "bloom",
-    "execution": {
-        "summary": "Clean extraction with a short bloom and no channeling.",
-        "issues": [
-            {
-                "signal": "flow_adherence",
-                "severity": "minor",
-                "evidence": "flow RMSE 0.41 ml/s against the commanded curve",
-            }
-        ],
-    },
+GOOD_REVIEW: dict[str, Any] = {
     "taste_prediction": {"balance": "sour", "body": "thin", "confidence": "medium"},
-    "diagnosis": "The shot ran four seconds fast for a bloom profile and the puck never loaded.",
-    "suggestions": [
-        {
-            "variable": "grind",
-            "direction": "finer",
-            "magnitude": 2,
-            "unit": "grinder_steps",
-            "reason": "28 s target, 24 s actual, and flow overshot the commanded curve.",
-            "confidence": "high",
-            "priority": 1,
-        },
-        {
-            "variable": "yield",
-            "direction": "increase",
-            "magnitude": 5,
-            "unit": "g",
-            "reason": "If the grind is already at its limit, take the ratio out instead.",
-            "confidence": "medium",
-            "priority": 2,
-        },
-        {
-            "variable": "pressure",
-            "direction": "decrease",
-            "magnitude": 1,
-            "unit": "bar",
-            "reason": "A natural at this roast wants a bar less than nine.",
-            "confidence": "low",
-            "priority": 3,
-        },
-    ],
-    "profile_patch": [
-        {
-            "phase_index": 1,
-            "field": "duration",
-            "from": "7",
-            "to": "10",
-            "reason": "A longer bloom for a light natural.",
-        }
-    ],
-    "questions_for_user": ["What did the last shot taste like at the same grind?"],
-    "rules_used": ["hierarchy", "grind", "natural.light"],
+    "description": (
+        "The shot ran 24.0 s for a bloom profile and the puck never loaded: flow ran "
+        "0.41 ml/s off its target and the execution score lost 0.07 to it."
+    ),
+    "summary": "Fast for a bloom; likely sour and thin.",
+    "rules_used": ["hierarchy", "grind"],
+    "excerpts_used": [],
 }
 
 
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[Database]:
-    database = Database(tmp_path / "analyzer.db")
+    database = Database(tmp_path / "review.db")
     await database.connect()
     await run_migrations(database)
     try:
@@ -146,7 +97,7 @@ async def seeded(db: Database) -> Database:
 
 @dataclass(slots=True)
 class Fixture:
-    """The ids the analyzer tests reach for."""
+    """The ids the review, chat and tool tests reach for."""
 
     db: Database
     bean_id: int
@@ -154,8 +105,8 @@ class Fixture:
     set_id: int
     version_id: int
     profile_version_id: int
-    #: Oldest first. `shots[-1]` is the one under analysis; the five before it
-    #: are the trajectory.
+    #: Oldest first. `shots[-1]` is the one a review reads; the five before it
+    #: are the Set's history.
     shots: list[int]
 
 
@@ -299,9 +250,9 @@ def _samples() -> list[ShotSampleRow]:
     return rows
 
 
-#: The five earlier shots, in order: what each one did, and what was said about
-#: it afterwards. Written out rather than generated because the golden file has
-#: to read as a trajectory somebody could follow.
+#: The five earlier shots, in order: what each one did, and what the person
+#: said about it. Written out rather than generated because the chat's golden
+#: files read them as a history somebody could follow.
 _HISTORY: tuple[dict[str, Any], ...] = (
     {
         "device_id": "000101",
@@ -314,7 +265,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "balance": "sour",
         "taste": ["sour_fermented.sour"],
         "notes": "Gushed. Sour and thin.",
-        "advice": ("grind", "finer", 2.0, "grinder_steps", "accepted"),
     },
     {
         "device_id": "000102",
@@ -327,7 +277,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "balance": "sour",
         "taste": ["sour_fermented.sour.citric_acid"],
         "notes": "Better, still sharp.",
-        "advice": ("grind", "finer", 1.0, "grinder_steps", "accepted"),
     },
     {
         "device_id": "000103",
@@ -340,7 +289,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "balance": "sour",
         "taste": ["sour_fermented.sour", "fruity.citrus_fruit"],
         "notes": "Still on the sour side of balanced.",
-        "advice": ("temperature", "increase", 1.0, "c", "rejected"),
     },
     {
         "device_id": "000104",
@@ -353,7 +301,6 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "balance": "balanced",
         "taste": ["sweet.brown_sugar.caramelized", "nutty_cocoa.cocoa"],
         "notes": "Best so far.",
-        "advice": None,
     },
     {
         "device_id": "000105",
@@ -366,14 +313,13 @@ _HISTORY: tuple[dict[str, Any], ...] = (
         "balance": "sour",
         "taste": ["sour_fermented.sour"],
         "notes": "Went backwards.",
-        "advice": ("yield", "increase", 5.0, "g", "open"),
     },
 )
 
 
 @pytest.fixture
 async def fixture(seeded: Database) -> Fixture:
-    """One Set, six shots, five judgements and the advice that followed them."""
+    """One Set, six shots, six judgements and three insights."""
     return await build_fixture(seeded)
 
 
@@ -431,8 +377,6 @@ async def build_fixture(db: Database) -> Fixture:
 
     shots_repo = ShotsRepository(db)
     judgements = JudgementsRepository(db)
-    analyses = AnalysesRepository(db)
-    suggestions = SuggestionsRepository(db)
     shot_ids: list[int] = []
 
     for entry in _HISTORY:
@@ -474,31 +418,6 @@ async def build_fixture(db: Database) -> Fixture:
                 notes=str(entry["notes"]),
             ),
         )
-        advice = entry["advice"]
-        if advice is not None:
-            variable, direction, magnitude, unit, status = advice
-            analysis_id = await analyses.start(
-                _start(shot_id, version_id),
-            )
-            await analyses.finish(analysis_id, status="ok", output={"diagnosis": "fixture"})
-            suggestion_ids = await suggestions.insert_many(
-                analysis_id,
-                [
-                    SuggestionWrite(
-                        variable=variable,
-                        direction=direction,
-                        magnitude=magnitude,
-                        unit=unit,
-                        reason="from the fixture",
-                        confidence="medium",
-                        priority=1,
-                    )
-                ],
-            )
-            if status == "accepted":
-                await suggestions.accept(suggestion_ids[0], None)
-            elif status == "rejected":
-                await suggestions.reject(suggestion_ids[0])
         shot_ids.append(shot_id)
 
     subject = await shots_repo.insert(
@@ -546,9 +465,10 @@ async def build_fixture(db: Database) -> Fixture:
     shot_ids.append(subject)
 
     # Tier 3, both halves: one confirmed insight that applies to this Set (so
-    # the golden shows what "what you have learned" renders as), and one that is
-    # confirmed but scoped to a different grinder (so the golden also proves
-    # that scoping actually excludes something).
+    # the Set's conversation has something learned to read), one that is
+    # confirmed but scoped to a different grinder (so scoping is seen to
+    # exclude something), and one unconfirmed proposal. A review reads none of
+    # them, which is what its blind test looks for.
     insights = InsightsRepository(db)
     await insights.insert(
         InsightWrite(
@@ -556,7 +476,7 @@ async def build_fixture(db: Database) -> Fixture:
             text="Naturals on this grinder want two numbers finer than a washed bean of the "
             "same roast.",
             evidence_shot_ids=[shot_ids[0], shot_ids[1]],
-            source="analysis",
+            source="chat",
             confirmed=True,
         )
     )
@@ -572,7 +492,7 @@ async def build_fixture(db: Database) -> Fixture:
         InsightWrite(
             scope=InsightScope(process="natural"),
             text="An unconfirmed proposal, which must never reach a prompt.",
-            source="analysis",
+            source="chat",
             confirmed=False,
         )
     )
@@ -588,23 +508,10 @@ async def build_fixture(db: Database) -> Fixture:
     )
 
 
-def _start(shot_id: int, version_id: int) -> Any:
-    from gaggiclanker.db.repos.analyses import AnalysisStart
-
-    return AnalysisStart(
-        shot_id=shot_id,
-        set_version_id=version_id,
-        provider="fake",
-        model="fixture-model",
-        prompt_name="analysis",
-        prompt_version="fixture",
-    )
-
-
 @pytest.fixture
 def provider() -> FakeProvider:
-    """A provider that answers with :data:`GOOD_OUTPUT` unless a test scripts it."""
-    return FakeProvider(script=[json.dumps(GOOD_OUTPUT)])
+    """A provider that answers with :data:`GOOD_REVIEW` unless a test scripts it."""
+    return FakeProvider(script=[json.dumps(GOOD_REVIEW)])
 
 
 @pytest.fixture
@@ -624,8 +531,8 @@ def llm(db: Database, provider: FakeProvider, budget: RateLimitBudget) -> LlmSer
 
 
 @pytest.fixture
-def analyzer(fixture: Fixture, llm: LlmService) -> AnalyzerService:
-    service = AnalyzerService(fixture.db, llm, PromptService(PromptsRepository(fixture.db)))
+def reviewer(fixture: Fixture, llm: LlmService) -> ReviewService:
+    service = ReviewService(fixture.db, llm, PromptService(PromptsRepository(fixture.db)))
     # The retry backoff is a real wait in production and dead time here: the
     # failure paths retry two or three times, and half a second each adds up to
     # most of this file's wall clock.

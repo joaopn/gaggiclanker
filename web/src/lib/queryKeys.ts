@@ -143,12 +143,6 @@ export const queryKeys = {
       ["knowledge", "insights", filters ?? {}] as const,
   },
   /**
-   * Analyses live outside the `shots` prefix, like samples and for the same
-   * reason: a shot ingested during a backfill invalidates `shots`, and an
-   * analysis list under that prefix would be re-fetched for every row on screen
-   * for a list that changes only when somebody presses a button.
-   */
-  /**
    * The chat. `tools` is outside `threads` because the tool list
    * changes with a redeploy and nothing a conversation does invalidates it,
    * while a thread moves on every turn.
@@ -159,11 +153,6 @@ export const queryKeys = {
     thread: (id: string) => ["chat", "thread", id] as const,
     run: (id: string) => ["chat", "run", id] as const,
     tools: (kind: string) => ["chat", "tools", kind] as const,
-  },
-  analyses: {
-    all: ["analyses"] as const,
-    forShot: (shotId: string) => ["analyses", "shot", shotId] as const,
-    forSet: (setId: string) => ["analyses", "set", setId] as const,
   },
   imports: { all: ["imports"] as const, list: () => ["imports", "list"] as const },
   device: {

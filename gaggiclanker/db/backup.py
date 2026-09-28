@@ -1,7 +1,7 @@
 """Database backup via ``VACUUM INTO``.
 
 The whole install is one SQLite file — shots, raw ``.slog`` bytes, profiles,
-judgements, analyses — so a backup is a file copy. ``VACUUM INTO`` is the
+judgements, reviews — so a backup is a file copy. ``VACUUM INTO`` is the
 correct way to take one while the app is running: it produces a consistent,
 defragmented copy from a read transaction without stopping writers, which
 ``cp`` cannot promise with WAL in play.

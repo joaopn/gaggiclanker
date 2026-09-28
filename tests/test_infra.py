@@ -117,12 +117,12 @@ async def test_task_registry_cancels_only_the_named_tasks_and_frees_their_names(
 
     registry.spawn("sync-shots", forever())
     registry.spawn("sync-profiles", forever())
-    other = registry.spawn("analysis-7", forever())
+    other = registry.spawn("review-7", forever())
     await asyncio.sleep(0)
 
     await registry.cancel(["sync-shots", "sync-profiles", "never-spawned"])
 
-    assert registry.names == ["analysis-7"]
+    assert registry.names == ["review-7"]
     assert not other.done()
     # The names are free at once, for the next engine's loops.
     again = registry.spawn("sync-shots", forever())

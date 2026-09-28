@@ -391,9 +391,9 @@ async def test_a_failed_call_is_recorded_with_its_message(
 async def test_the_model_comes_from_the_purpose(
     service: LlmService, provider: FakeProvider
 ) -> None:
-    await service.settings.apply({"modelDefault": "base-model", "modelAnalysis": "careful-model"})
+    await service.settings.apply({"modelDefault": "base-model", "modelReview": "careful-model"})
 
-    await service.call_json(request(model="", purpose="analysis"))
+    await service.call_json(request(model="", purpose="review"))
     await service.call_json(request(model="", purpose="chat"))
 
     assert provider.calls[0].model == "careful-model"

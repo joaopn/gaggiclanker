@@ -36,7 +36,7 @@ import { queryKeys } from "@/lib/queryKeys";
  * a consequence of the server's design rather than a preference.
  *
  * **Sending resolves as soon as the turn is queued.** `POST .../messages`
- * answers 202 with a `running` run, exactly as running an analysis does, so the
+ * answers 202 with a `running` run, exactly as running a review does, so the
  * mutation resolving means "queued" and the answer arrives on the stream.
  *
  * **The live answer is component state, not cache.** Tokens arrive a few a

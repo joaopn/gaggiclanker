@@ -60,7 +60,7 @@ class RuleListData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[RuleRow]
-    #: The categories that exist, in the order the analyzer lists them, so the
+    #: The categories that exist, in the order a prompt lists them, so the
     #: page can render its groups without inventing an order of its own.
     categories: list[str]
 
@@ -327,7 +327,7 @@ class InsightCreate(BaseModel):
     """`POST /api/knowledge/insights`: write one by hand.
 
     Source is fixed to `user` rather than taken from the body: the column says
-    *who* learned this, and a client asserting "an analysis said so" would make
+    *who* learned this, and a client asserting "a model said so" would make
     the one thing this row is for — knowing whether a model or a person is
     behind it — unreliable.
     """
@@ -369,13 +369,12 @@ async def list_insights(
     sets: SetsRepoDep,
     beans: BeansRepoDep,
     confirmed: Annotated[bool | None, Query()] = None,
-    analysis_id: Annotated[int | None, Query()] = None,
     set_id: Annotated[
         int | None,
         Query(
             description=(
                 "Only the **confirmed** insights that apply to this Set — the same "
-                "selection an analysis of one of its shots is given."
+                "selection the Set's conversations are given."
             )
         ),
     ] = None,
@@ -383,7 +382,7 @@ async def list_insights(
     """Every insight, or the ones a filter narrows to.
 
     `?set_id=` answers the Set page's question — "what has this archive learned
-    that applies here" — through the same `select_insights` an analysis uses, so
+    that applies here" — through the same `select_insights` the chat uses, so
     the page cannot show a different answer from the prompt. It matches on the
     Set's own attributes only: `profile_style` is detected *per shot* from the
     profile the machine ran, so a Set has no single one and an insight scoped by
@@ -392,7 +391,7 @@ async def list_insights(
     if set_id is not None:
         items = await insights.select(await _set_attributes(sets, beans, set_id))
     else:
-        items = await insights.list_insights(confirmed=confirmed, analysis_id=analysis_id)
+        items = await insights.list_insights(confirmed=confirmed)
     return envelope_response(
         InsightListData(items=items, scope_keys=list(SCOPE_KEYS)).model_dump(mode="json")
     )
@@ -454,7 +453,7 @@ async def patch_insight(
 ) -> JSONResponse:
     """Apply whichever fields were sent.
 
-    Confirming is what puts an insight in front of the next analysis of a
+    Confirming is what puts an insight in front of the conversations about a
     matching Set; un-confirming takes it out again with nothing else to
     remember, the way disabling a rule does.
     """

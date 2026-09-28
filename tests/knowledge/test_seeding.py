@@ -131,7 +131,7 @@ async def test_setting_and_resetting_an_unknown_slug_is_none_not_a_crash(
 async def test_an_unreadable_directory_is_skipped_rather_than_raised(
     knowledge: KnowledgeService, tmp_path: Path
 ) -> None:
-    """The archive must still boot. An analysis with no excerpts says so."""
+    """The archive must still boot. A review with no excerpts says so."""
     assert await knowledge.seed_docs(tmp_path / "does-not-exist") == 0
     assert await knowledge.docs.count_docs() == 0
 

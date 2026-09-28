@@ -3,7 +3,7 @@
 :class:`KnowledgeService` is a thin façade over three repositories, and it is
 here for a reason that has not arrived yet: the chat calls
 :meth:`~KnowledgeService.search_chunks` and
-:meth:`~KnowledgeService.select_insights` as tools, while the analyzer calls
+:meth:`~KnowledgeService.select_insights` as tools, while a review calls
 :meth:`~KnowledgeService.select_chunks` and the same ``select_insights`` in one
 deterministic pass. Two callers, one behaviour — so the behaviour is written
 once, as plain async methods taking plain values, with nothing on them that
@@ -78,13 +78,13 @@ SEED_ATTRIBUTION = (
     "each document names its own sources. See knowledge/seed/docs/ATTRIBUTION.md."
 )
 
-#: The analyzer's default excerpt budget, in estimated tokens. Overridden by the
-#: `analysisChunkTokenBudget` setting. Fifteen hundred is two or three chunks —
-#: enough that a diagnosis can quote the passage it is leaning on, small enough
-#: that the rules, the trajectory and the shot itself still dominate the prompt.
+#: The default excerpt budget, in estimated tokens. Overridden by the
+#: `knowledgeChunkTokenBudget` setting. Fifteen hundred is two or three chunks —
+#: enough that a review can quote the passage it is leaning on, small enough
+#: that the rules and the shot itself still dominate the prompt.
 DEFAULT_CHUNK_TOKEN_BUDGET = 1500
 
-#: A hard ceiling on how many excerpts an analysis gets, whatever the budget
+#: A hard ceiling on how many excerpts a review gets, whatever the budget
 #: says. A budget raised to 20 000 should buy longer excerpts, not a reading
 #: list: past about half a dozen citations nobody checks any of them.
 MAX_EXCERPTS = 6
@@ -93,7 +93,7 @@ MAX_EXCERPTS = 6
 _PER_QUERY = 3
 
 #: Band labels that mean "this was fine". A query built from one of these
-#: retrieves prose about the normal case, which is the one thing an analysis
+#: retrieves prose about the normal case, which is the one thing a review
 #: does not need explaining.
 _UNREMARKABLE_BANDS = frozenset(
     {
@@ -117,21 +117,22 @@ _NON_BAND_PREFIXES = ("style", "taste", "balance", "primary", "scale")
 
 @dataclass(frozen=True, slots=True)
 class RetrievalContext:
-    """What an analysis knows, in the shape retrieval needs it.
+    """What a caller knows, in the shape retrieval needs it.
 
-    A flat record rather than the analyzer's :class:`AnalysisContext`, and
-    deliberately so: ``gaggiclanker.analyzer`` imports
-    ``gaggiclanker.knowledge``, never the other way round, and the chat
+    A flat record rather than a review's input, and deliberately so:
+    ``gaggiclanker.review`` imports ``gaggiclanker.knowledge``, never the other
+    way round, the starting point builds one from a bag, and the chat
     will build one of these from a conversation that has no shot in it at all.
     """
 
     #: The detected shot style (`bloom`, `turbo`, `traditional`, …).
     style: str = "unknown"
     #: The signal tokens rule selection was made against, exactly as
-    #: :func:`gaggiclanker.analyzer.context.signal_tokens` produced them.
+    #: :func:`gaggiclanker.review.context.signal_tokens` produced them.
     signals: tuple[str, ...] = ()
     #: The user's taste notes (flavour-wheel slugs) and their balance verdict.
-    #: Ground truth for taste, so they lead the query list.
+    #: Ground truth for taste, so they lead the query list. A review passes
+    #: none: it reads no judgement.
     taste_notes: tuple[str, ...] = ()
     balance: str | None = None
     #: The bean, for the two queries that are about the coffee rather than the
@@ -139,13 +140,13 @@ class RetrievalContext:
     roast_level: str | None = None
     process: str | None = None
     #: Free-text terms a caller wants folded in. The chat's own question goes
-    #: here; the analyzer leaves it empty.
+    #: here; a review leaves it empty.
     extra_queries: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class Excerpt:
-    """One retrieved chunk, as the prompt and the analysis snapshot carry it."""
+    """One retrieved chunk, as the prompt and a review's input snapshot carry it."""
 
     heading_path: str
     doc_slug: str
@@ -173,7 +174,7 @@ def render_excerpts(excerpts: list[dict[str, Any]]) -> str:
     """Retrieved chunks as prompt text, each under its citable heading path.
 
     Takes dicts rather than models for the reason :func:`render_rules` does: the
-    analysis snapshot stores its excerpts as plain JSON and has to render the
+    review's input stores its excerpts as plain JSON and has to render the
     same way months later, when the documents have been edited. One renderer, so
     the live prompt and the stored one cannot disagree about what was said.
     """
@@ -218,8 +219,8 @@ class KnowledgeService:
         user may have edited.
 
         A file that cannot be read is logged and skipped rather than raised. The
-        archive must still boot, and an analysis with no excerpts says so in its
-        context instead of taking the app down.
+        archive must still boot, and a review with no excerpts says so in its
+        input instead of taking the app down.
         """
         root = directory or DEFAULT_DOCS_DIR
         changed = 0
@@ -307,7 +308,7 @@ class KnowledgeService:
     async def get_chunk(self, heading_path: str) -> ChunkRow | None:
         """One chunk by its citation. ``None`` when nothing has that path.
 
-        Expanding a citation is its own operation: an analysis stores
+        Expanding a citation is its own operation: a review stores
         ``excerpts_used`` as heading paths, the chat will be handed one in a
         question ("what does X say?"), and both want the passage back without
         guessing at a search query that would find it again.
@@ -320,22 +321,22 @@ class KnowledgeService:
 
         A path that no longer resolves — a document edited so that the heading
         moved — is dropped rather than returned as a hole. A citation into text
-        that has changed is not a failure worth raising; it is an old analysis
+        that has changed is not a failure worth raising; it is an old review
         pointing at prose that has moved on, which is exactly why the snapshot
-        on the analysis row carries the body it was given.
+        on the review row carries the body it was given.
         """
         return await self.docs.chunks_by_paths(heading_paths)
 
-    # ── retrieval for an analysis ────────────────────────────────────
+    # ── retrieval for a review ───────────────────────────────────────
 
     def queries_for(self, context: RetrievalContext) -> list[str]:
-        """The search queries one analysis makes, in a fixed order.
+        """The search queries one retrieval makes, in a fixed order.
 
         Order is priority: what the person tasted first, then the channeling
         indicators that actually fired, then the diagnostic bands that were not
         normal, then the bean and the style. The merge below takes each query's
         best hit before any query's second, so this order is what decides which
-        excerpt an analysis gets when the budget only buys two.
+        excerpt a review gets when the budget only buys two.
         """
         queries: list[str] = []
 
@@ -356,7 +357,7 @@ class KnowledgeService:
         # 1. Taste, because taste is ground truth. Both sides in one cup is
         #    channeling rather than an extraction level, and the seed's own
         #    `taste:sour_and_bitter` token says so — asked for by name so the
-        #    retrieval agrees with the rule the analysis is also given.
+        #    retrieval agrees with the rule the caller is also given.
         if "taste:sour_and_bitter" in context.signals:
             add("channeling sour and bitter puck preparation distribution")
         if context.balance and context.balance != "balanced":
@@ -385,7 +386,7 @@ class KnowledgeService:
             add(f"{metric} {label}")
 
         # 4. The bean and the shot style — always present, always last. They are
-        #    background rather than evidence, and they are what an analysis with
+        #    background rather than evidence, and they are what a shot with
         #    nothing wrong in it retrieves.
         if context.process:
             add(f"{context.process} processing extraction pressure temperature")
@@ -403,7 +404,7 @@ class KnowledgeService:
         token_budget: int = DEFAULT_CHUNK_TOKEN_BUDGET,
         max_excerpts: int = MAX_EXCERPTS,
     ) -> list[Excerpt]:
-        """The excerpts one analysis is given. Deterministic, budgeted, deduped.
+        """The excerpts one review is given. Deterministic, budgeted, deduped.
 
         Three properties, each of which a test pins:
 
@@ -418,7 +419,7 @@ class KnowledgeService:
         * **deduped by document** — at most one chunk per document. Two sections
           of the same guide say much the same thing in much the same words, so
           without this the second-best hit is almost always the neighbour of the
-          best one, and the analysis gets one document's opinion twice.
+          best one, and the reader gets one document's opinion twice.
         """
         queries = self.queries_for(context)
         if not queries or token_budget <= 0:

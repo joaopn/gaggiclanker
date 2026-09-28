@@ -133,9 +133,8 @@ export const SHOT_COLUMNS: ShotColumn[] = [
  * is off because the flags are mostly absences (imported, gone from the
  * machine, incomplete) that matter on a handful of rows — Decision, "keep this
  * recipe, improve on it, or bin the shot", is the question every shot ends on,
- * and a column that answers it with a click is worth more than a badge. An
- * analysis is started from the shot page; its state is in Flags, which stays
- * in the chooser.
+ * and a column that answers it with a click is worth more than a badge. A
+ * review is started and shown on the shot page only, never in this table.
  */
 export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "set",

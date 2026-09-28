@@ -17,7 +17,7 @@ import pytest
 
 from gaggiclanker.tools.registry import ToolContext, registry
 from gaggiclanker.tools.scope import DESIGN_RULE, DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS, ToolScope
-from tests.analyzer.conftest import Fixture
+from tests.review.conftest import Fixture
 
 
 def test_a_set_conversation_has_exactly_these_tools() -> None:

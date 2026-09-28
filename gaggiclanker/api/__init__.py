@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from gaggiclanker.api import (
-    analyses,
     auth,
     backup,
     beans,
@@ -21,6 +20,7 @@ from gaggiclanker.api import (
     machine,
     profiles,
     prompts,
+    reviews,
     sets,
     settings,
     shot_info,
@@ -55,8 +55,7 @@ api_router.include_router(imports.router)
 api_router.include_router(llm.router)
 api_router.include_router(prompts.router)
 api_router.include_router(knowledge.router)
-api_router.include_router(analyses.router)
-api_router.include_router(analyses.suggestions_router)
+api_router.include_router(reviews.router)
 api_router.include_router(starting.router)
 api_router.include_router(chat.router)
 

@@ -26,7 +26,7 @@ type Tab = (typeof TABS)[number];
 /**
  * The whole knowledge base, one tab per tier.
  *
- * This page exists because the analyzer is asked to name what it used: the value
+ * This page exists because a review and the chat are asked to name what they used: the value
  * of those lists is only realised if the reader can follow a citation here, read
  * what it actually says, and turn it off when it turns out to mislead. So every
  * citation deep-links — `?rule=<key>` to a rule, `?tab=docs&doc=<slug>&chunk=<heading path>`
@@ -78,7 +78,7 @@ export function KnowledgePage() {
     <div className="space-y-4">
       <PageHeader
         title="Knowledge"
-        subtitle="Three tiers: the rules the analyser must follow, the prose it quotes from, and what this archive has learned about your kitchen."
+        subtitle="Three tiers: the rules a model must follow, the prose it quotes from, and what this archive has learned about your kitchen."
       />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -143,8 +143,8 @@ function RulesTab({
   return (
     <div className="space-y-4">
       <SectionCard
-        title="What the analyser is told"
-        description="Every rule that matches a shot's bean, grinder, style and diagnostics is put in front of the model verbatim, and it is asked to name the ones it used. Turning a rule off removes it from the very next analysis; editing one keeps your text through every upgrade."
+        title="What a model is told"
+        description="Every rule that matches a shot's bean, grinder, style and diagnostics is put in front of the model verbatim, and it is asked to name the ones it used. Turning a rule off removes it from the very next review; editing one keeps your text through every upgrade."
         actions={
           <Button
             size="sm"

@@ -13,7 +13,7 @@ A tool cannot reach a client it was never given a path to.
 re-checks and applies the label suffix; :meth:`store` is the only insert. The
 route-facing service delegates to both for a manual draft and for one the model
 generated, so a draft typed by hand, proposed in chat, taken from a starting
-point or drafted from an analysis all go through the same offline layers.
+point or drafted from notes all go through the same offline layers.
 """
 
 from __future__ import annotations
@@ -171,8 +171,6 @@ class DraftProposals:
         prepared: PreparedDraft,
         change_summary: str,
         notes: str,
-        analysis_id: int | None = None,
-        suggestion_id: int | None = None,
         parent_draft_id: int | None = None,
         set_id: int | None = None,
         prediction: str = "",
@@ -191,8 +189,6 @@ class DraftProposals:
                 base_device_profile_id=await self.profiles.find_device_id_for_version(
                     base_version_id
                 ),
-                source_analysis_id=analysis_id,
-                source_suggestion_id=suggestion_id,
                 parent_draft_id=parent_draft_id,
                 set_id=set_id,
                 prediction=prediction,

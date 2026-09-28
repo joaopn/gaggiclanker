@@ -63,8 +63,8 @@ from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools.mcp.stdio import stdio_tool_context
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
-from tests.analyzer.conftest import Fixture, build_fixture
 from tests.conftest import running_app, seed_settings
+from tests.review.conftest import Fixture, build_fixture
 from tests.sync.conftest import FIRST_ID, SMALL_COUNT, build_archive_device
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -133,7 +133,7 @@ def _children(obj: Any) -> list[tuple[str, Any]]:
         return found
     if isinstance(obj, asyncio.Future):
         # A future is how one caller hands a finished object to another: the
-        # analyzer parks the row it opened in one.
+        # review service parks the row it opened in one.
         return _settled(obj)
     if isinstance(obj, types.CoroutineType):
         return [(".cr_frame", obj.cr_frame), (".cr_await", obj.cr_await)]
@@ -227,7 +227,7 @@ async def fake_device() -> AsyncIterator[FakeDevice]:
 async def connected(
     env: EnvSettings, fake_device: FakeDevice
 ) -> AsyncIterator[tuple[FastAPI, httpx.AsyncClient, Fixture]]:
-    """The app, connected to the fake machine, with the analyzer's archive in it."""
+    """The app, connected to the fake machine, with the review tests' archive in it."""
     await seed_settings(env, gaggimateHost=fake_device.address, gaggimateTimeoutSeconds=5)
     async with running_app(env) as (app, client):
         connection = app.state.connection

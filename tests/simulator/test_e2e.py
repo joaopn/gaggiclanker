@@ -5,7 +5,7 @@ Opt-in: ``scripts/sim.sh test`` (which builds and starts the simulator), or
 
 Everything else in this repository tests a layer. This tests the claim the
 README makes: point it at a machine, pull the shot in, and it is archived with
-its curve, judged, grouped, analysed and backed up without anybody touching the
+its curve, judged, grouped, reviewed and backed up without anybody touching the
 database. It runs against `src/display/` compiled natively, so what passes here
 is what the machine on the bench does — which is how we found `OtaSettings`
 rejecting every real identity frame.
@@ -21,8 +21,8 @@ makes that socket a real cost, so it is opened for the brew and closed again
 immediately — never held for the length of the test.
 
 The one provider that is faked is the LLM: this suite must not spend money or
-need a network, and what it is checking is that the route, the row and the
-suggestion all line up, not what a model says.
+need a network, and what it is checking is that the route and the row line up,
+not what a model says.
 """
 
 from __future__ import annotations
@@ -40,16 +40,16 @@ import pytest
 import websockets
 from fastapi import FastAPI
 
-from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import EnvSettings
-from tests.analyzer.conftest import GOOD_OUTPUT
 from tests.conftest import running_app, seed_settings
 from tests.llm.conftest import FakeProvider
+from tests.review.conftest import GOOD_REVIEW
 
 pytestmark = pytest.mark.simulator
 
@@ -89,7 +89,7 @@ async def sim_env(env: EnvSettings) -> AsyncIterator[EnvSettings]:
 
 @pytest.fixture
 def provider() -> FakeProvider:
-    return FakeProvider(script=[json.dumps(GOOD_OUTPUT)])
+    return FakeProvider(script=[json.dumps(GOOD_REVIEW)])
 
 
 @pytest.fixture
@@ -103,11 +103,11 @@ async def live(
 
 
 def _rewire_llm(app: FastAPI, provider: FakeProvider) -> None:
-    """Point the app's LLM service, and the analyzer holding it, at the fake.
+    """Point the app's LLM service, and the review service holding it, at the fake.
 
-    Same substitution `tests/analyzer/test_api.py` makes and for the same
-    reason: the analyzer is app-scoped, so replacing ``app.state.llm`` alone
-    would leave it talking to the real provider factory.
+    Same substitution `tests/review/test_api.py` makes and for the same
+    reason: the review service is app-scoped, so replacing ``app.state.llm``
+    alone would leave it talking to the real provider factory.
     """
     app.state.llm = LlmService(
         app.state.settings_service,
@@ -116,7 +116,7 @@ def _rewire_llm(app: FastAPI, provider: FakeProvider) -> None:
         mode_memory=ModeMemory(),
         provider_factory=lambda _config, _name: provider,
     )
-    app.state.analyzer = AnalyzerService(
+    app.state.reviews = ReviewService(
         app.state.db,
         app.state.llm,
         PromptService(PromptsRepository(app.state.db)),
@@ -334,22 +334,20 @@ async def test_the_whole_prototype_against_the_simulator(
     )
     assert assigned["set_version_id"] == version_id
 
-    # 8. Analyse it with the fake provider — DoD item 4, second half.
-    #    `?wait=1` blocks until the task is done, which is what this route
-    #    offers for exactly this case.
-    analysis = data(
-        await client.post(f"/api/shots/{shot_id}/analyses?wait=1", json={}, timeout=60.0)
-    )
-    assert analysis["status"] == "ok", analysis.get("error")
-    assert provider.calls, "the analyzer never called a provider"
-    assert analysis["suggestions"], "the analysis produced no suggestions"
+    # 8. Review it with the fake provider. `?wait=1` blocks until the task is
+    #    done, which is what this route offers for exactly this case.
+    review = data(await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={}, timeout=60.0))
+    assert review["status"] == "ok", review.get("error")
+    assert provider.calls, "the review never called a provider"
+    assert review["summary"] == GOOD_REVIEW["summary"]
 
-    # 9. Accept one — DoD item 5. The new version must name the old as parent.
-    suggestion = analysis["suggestions"][0]
-    accepted = data(await client.post(f"/api/suggestions/{suggestion['id']}/accept", json={}))
-    new_version = accepted["version"]
+    # 9. The person records the next recipe. The new version must name the old
+    #    as parent.
+    new_version = data(
+        await client.post(f"/api/sets/{stored_set['id']}/versions", json={"grind_value": 21.0})
+    )
     assert new_version["parent_version_id"] == version_id
-    assert new_version["origin"] == "analysis"
+    assert new_version["origin"] == "manual"
 
     # 10. Back up — DoD item 8. The file is what a restore copies.
     backup = data(await client.post("/api/backup"))

@@ -1,13 +1,14 @@
 """``/api/llm`` — configuring the provider, and watching what it is doing.
 
-Nothing here makes an analysis call; that is the analyzer's. These endpoints are the
-plumbing around one: prove the credentials work, list the models on offer, show
-the calls in flight, add up what they cost, and clear the rate-limit latch when
-the provider has recovered.
+Nothing here makes a model call of its own. These endpoints are the plumbing
+around the calls the review, the chat and the drafts make: prove the
+credentials work, list the models on offer, show the calls in flight, add up
+what they cost, and clear the rate-limit latch when the provider has
+recovered.
 
 The live list is split the same way the device stream is (see
 ``gaggiclanker/api/device.py``): a snapshot for a tab that has just opened, and
-a stream for everything after. A tab that joined mid-analysis would otherwise
+a stream for everything after. A tab that joined mid-review would otherwise
 see nothing until the call finished, which is exactly the window the indicator
 exists to cover.
 """
@@ -22,7 +23,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from gaggiclanker.analyzer.service import ANALYSIS_EVENTS
 from gaggiclanker.api.deps import LlmServiceDep, SettingsServiceDep
 from gaggiclanker.db.repos.llm import LlmCallsRepository, UsageTotals
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
@@ -37,6 +37,7 @@ from gaggiclanker.llm.providers.claude_code import (
     ClaudeCodeProvider,
 )
 from gaggiclanker.llm.types import ProviderId
+from gaggiclanker.review.service import REVIEW_EVENTS
 
 __all__ = ["router"]
 
@@ -241,11 +242,11 @@ async def _call_stream(observer: LlmCallObserver, bus: Any) -> AsyncIterator[Sse
         },
     )
     async for event in bus.stream():
-        # The call ring, plus the analyzer's own lifecycle. An analysis is
-        # an LLM call with a row behind it, and a client watching this stream to
+        # The call ring, plus the review's own lifecycle. A review is an LLM
+        # call with a row behind it, and a client watching this stream to
         # know what the LLM is doing should not have to open the sync stream as
         # well to learn that one started.
-        if event.event == LLM_CALL_EVENT or event.event in ANALYSIS_EVENTS:
+        if event.event == LLM_CALL_EVENT or event.event in REVIEW_EVENTS:
             yield event
 
 

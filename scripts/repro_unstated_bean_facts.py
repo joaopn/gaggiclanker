@@ -9,8 +9,9 @@ The bug
 -------
 
 A bean needs nothing but a name, so most of its fields are often empty. The
-prompts rendered some of those empty fields anyway: the analysis context's BEAN
-block wrote ``process: not stated`` and ``roast level: not stated``, the
+prompts rendered some of those empty fields anyway: the per-shot analysis
+context's BEAN block (since retired; a review reads no bean) wrote
+``process: not stated`` and ``roast level: not stated``, the
 starting-point context wrote the same for origin, process and roast level (and
 ``roast not stated, process not stated, origin not stated`` on a similar Set,
 whose "why it is similar" line also called every field neither bean recorded
@@ -21,7 +22,7 @@ the coffee. An absent line says the same without inviting it to reason from a
 placeholder.
 
 The fix renders a bean field only when it holds a value. Checked here for a
-bean with nothing but a name, through each of the three renderers.
+bean with nothing but a name, through each renderer that still carries a bean.
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from gaggiclanker.analyzer.context import SetFacts, _render_set
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
@@ -53,14 +53,6 @@ async def main() -> int:
         try:
             await run_migrations(db)
             bean = await BeansRepository(db).create(BeanWrite(name="Mystery"))
-
-            analysis = _render_set(
-                SetFacts(
-                    set_id=1, set_name="A Set", version_id=1, version_no=1, bean_name="Mystery"
-                )
-            )
-            if "not stated" in analysis:
-                problems.append("analysis BEAN block: " + _lines_with(analysis, "not stated"))
 
             starting = (await build_context(db, bean_id=bean.id, as_of="2026-01-01")).render()
             if "not stated" in starting["bean_facts"]:

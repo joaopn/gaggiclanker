@@ -1,0 +1,46 @@
+name: review-user
+description: |
+  The user turn of a review: the facts about one shot, in the order they are
+  read.
+
+  Every variable is a block of text rendered by
+  `gaggiclanker/review/context.py::ReviewInput.render`, which is also what is
+  snapshotted onto the review row — so what an old review says it was told is
+  exactly what it was told.
+
+  The shot first, because that is the subject; the profile it brewed next,
+  because it says what the machine was commanded to do; the detected style,
+  which sets the expectations; the rules after that, because they are reference
+  material rather than evidence; and the retrieved prose last of all, because
+  it is the least authoritative thing in the prompt.
+variables:
+  - name: shot_information
+    description: The shot's own information, every line a review reads, in the shot renderer's layout.
+  - name: profile
+    description: The profile the shot was brewed with, as its label and compact JSON.
+  - name: shot_style
+    description: The style the server detected, with its evidence.
+  - name: knowledge_rules
+    description: The knowledge rules selected for this shot, verbatim.
+  - name: knowledge_excerpts
+    description: Passages retrieved from the knowledge base for this shot, with their citations.
+user: |
+  THE SHOT
+
+  {{shot_information}}
+
+  THE PROFILE IT BREWED
+
+  {{profile}}
+
+  STYLE (detected by the server)
+
+  {{shot_style}}
+
+  KNOWLEDGE RULES SELECTED FOR THIS SHOT — authoritative over your own priors
+
+  {{knowledge_rules}}
+
+  REFERENCE EXCERPTS — supporting material, not authoritative. Cite by heading path.
+
+  {{knowledge_excerpts}}

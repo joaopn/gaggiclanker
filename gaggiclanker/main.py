@@ -22,7 +22,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from gaggiclanker import __version__
-from gaggiclanker.analyzer.service import AnalyzerService
 from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
 from gaggiclanker.auth.service import AuthService
@@ -30,12 +29,12 @@ from gaggiclanker.chat.runner import ChatRunner
 from gaggiclanker.cleanup.service import CleanupService, cleanup_task_name
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
-from gaggiclanker.db.repos.analyses import AnalysesRepository
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
+from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
@@ -64,6 +63,7 @@ from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
+from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import (
     IGNORED_ENV_FILE,
     EnvSettings,
@@ -83,7 +83,7 @@ __all__ = ["app", "check_configuration", "create_app"]
 log = get_logger(__name__)
 
 DESCRIPTION = """
-Archive, diagnose and analyse espresso shots from a GaggiMate machine.
+Archive, diagnose and review espresso shots from a GaggiMate machine.
 
 Every response uses the envelope `{ok, data | error, meta}`. The `meta.request_id`
 is the same id echoed in the `x-request-id` header and written on every log line
@@ -225,7 +225,7 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
 
     Called from two places: the ordinary shutdown, and a failed startup — where
     only some of these exist. Hence ``getattr`` throughout rather than direct
-    attribute access: a startup that died building the analyzer must still close
+    attribute access: a startup that died building the review service must still close
     the database, and a teardown that raised ``AttributeError`` on the way would
     leave the very thread this exists to reap.
 
@@ -317,7 +317,7 @@ async def _start(app: FastAPI, db: Database) -> None:
             fix="settings are configured in the Settings page and stored in the database",
         )
     app.state.events = EventBus[SseEvent]()
-    # The app's shared registry: analyses, chat runs, starting points — work a
+    # The app's shared registry: reviews, chat runs, starting points — work a
     # language model can queue, and nothing that touches the machine. The tasks
     # that do live on the machine connection's own registry instead; see
     # `gaggiclanker/device/connection.py`.
@@ -345,18 +345,18 @@ async def _start(app: FastAPI, db: Database) -> None:
     # Boot reconciliation. A row is only `running` while a process holds it, and
     # no process survives a boot: anything still in that state was cut off
     # mid-flight. Saying so turns a spinner nobody can clear into a row with an
-    # error on it, for an analysis and for a sync run alike.
+    # error on it, for a review and for a sync run alike.
     #
     # One line either way, even when the counts are zero, because "what did the
     # last restart interrupt" is the first question after an unexpected one and
     # an absent log line does not answer it.
-    interrupted_analyses = await AnalysesRepository(db).reconcile_running()
+    interrupted_reviews = await ShotReviewsRepository(db).reconcile_running()
     interrupted_syncs = await SyncRepository(db).reconcile_running()
     # The cleanup ledger gets the same treatment and for the same reason: a
     # `running` cleanup row nothing closes would show a deletion in progress for
     # ever on the Sync page.
     interrupted_cleanups = await CleanupRepository(db).reconcile_running()
-    # The chat's runs, for the reason an analysis's are: a `running` chat run
+    # The chat's runs, for the reason a review's are: a `running` chat run
     # nobody owns is a spinner and a cancel button that cancels nothing.
     interrupted_chats = await ChatRepository(db).reconcile_running()
     # The wizard's runs. Same rule again: the wizard renders a `running` row as a
@@ -368,7 +368,7 @@ async def _start(app: FastAPI, db: Database) -> None:
     final_weights_refilled = await refill_final_weights(ShotsRepository(db))
     log.info(
         "boot_reconciled",
-        analyses_interrupted=interrupted_analyses,
+        reviews_interrupted=interrupted_reviews,
         sync_runs_interrupted=interrupted_syncs,
         cleanup_runs_interrupted=interrupted_cleanups,
         chat_runs_interrupted=interrupted_chats,
@@ -397,8 +397,10 @@ async def _start(app: FastAPI, db: Database) -> None:
         log.warning("claude_cli_reconcile_failed", reason=str(exc))
 
     # App-scoped, not per request: it holds the "being opened right now" map
-    # that makes one analysis per shot an invariant across concurrent requests.
-    app.state.analyzer = AnalyzerService(
+    # that makes one running review per shot an invariant across concurrent
+    # requests. Only the review route reaches it: no tool, task or boot step is
+    # handed it.
+    app.state.reviews = ReviewService(
         db,
         app.state.llm,
         PromptService(PromptsRepository(db)),
@@ -425,7 +427,7 @@ async def _start(app: FastAPI, db: Database) -> None:
         bus=app.state.events,
     )
 
-    # App-scoped for the reason the analyzer is: it holds the cancel event of
+    # App-scoped for the reason the review service is: it holds the cancel event of
     # every run in flight, and a per-request copy would make the cancel button a
     # no-op. It reaches into the draft proposals for the tool that creates
     # work.

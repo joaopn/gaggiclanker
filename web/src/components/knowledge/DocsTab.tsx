@@ -18,12 +18,12 @@ import { attempt } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
 
 /**
- * Tier 2: the prose the analyzer quotes from, and the search over it.
+ * Tier 2: the prose a review quotes from, and the search over it.
  *
  * Two things are on screen for a reason. The **chunks**, not just the markdown:
- * retrieval sees chunks, an analysis cites one by `heading_path`, and "why did
+ * retrieval sees chunks, a review cites one by `heading_path`, and "why did
  * my edit split that section in two" is otherwise unanswerable. And the
- * **search**, because it is the same BM25 call the analyzer makes — typing the
+ * **search**, because it is the same BM25 call a review makes — typing the
  * words a shot would produce is how you find out what the model will be shown.
  */
 export function DocsTab({
@@ -32,7 +32,7 @@ export function DocsTab({
   highlightedChunk,
 }: {
   /** The open document, or `null` for the directory. Comes from `?doc=` so a
-   *  citation in an analysis deep-links straight to the passage. */
+   *  citation in a review deep-links straight to the passage. */
   slug: string | null;
   /** `chunk` is the heading path to open at, so a search hit lands on the
    *  passage rather than on the top of the document. */
@@ -57,7 +57,7 @@ export function DocsTab({
     <div className="space-y-4">
       <SectionCard
         title="Search the knowledge base"
-        description="The same BM25 search the analyser runs when it picks excerpts for a shot. Headings are weighted above bodies, and the words are stemmed — 'channeling' finds 'channel'."
+        description="The same BM25 search a review runs when it picks excerpts for a shot. Headings are weighted above bodies, and the words are stemmed — 'channeling' finds 'channel'."
       >
         <div className="relative">
           <Search
@@ -106,7 +106,7 @@ export function DocsTab({
         description={
           docs.isPending
             ? "Loading…"
-            : `${items.length} documents, ${chunks} chunks, about ${tokens.toLocaleString()} tokens in total — of which one analysis is given a couple of thousand.`
+            : `${items.length} documents, ${chunks} chunks, about ${tokens.toLocaleString()} tokens in total — of which one review is given a couple of thousand.`
         }
       >
         {docs.isPending ? (
@@ -341,7 +341,7 @@ function DocView({
       ) : (
         <SectionCard
           title="Chunks"
-          description="What retrieval actually sees. The heading path is the citation an analysis prints."
+          description="What retrieval actually sees. The heading path is the citation a review prints."
         >
           <ul className="space-y-3" data-testid="chunk-list">
             {chunks.map((chunk) => (

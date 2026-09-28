@@ -17,7 +17,7 @@ import { useOpenGroups } from "@/pages/settings/useOpenGroups";
  * The prompt editor: one card per prompt.
  *
  * A prompt is data, not code (`gaggiclanker/llm/prompts.py`), so this is where
- * the wording of an analysis is changed - and the change reaches the next call
+ * the wording of a review or a chat is changed - and the change reaches the next call
  * with no restart. Two things the UI has to be honest about:
  *
  * - **"Edited" is a real state.** An edited prompt no longer tracks the one
@@ -40,7 +40,7 @@ export function PromptsPage({ page }: { page: SettingsPageInfo }) {
 
   const list: PromptSummary[] = prompts.data?.prompts ?? [];
 
-  // A card opened by a link (`#analysis`) mounts its editor like a clicked one.
+  // A card opened by a link (`#review`) mounts its editor like a clicked one.
   useEffect(() => {
     const linked = list.filter((prompt) => isOpen(prompt.name) && !mounted.has(prompt.name));
     if (linked.length > 0)

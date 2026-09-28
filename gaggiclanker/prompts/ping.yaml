@@ -3,7 +3,7 @@ description: |
   The smallest possible structured call: it asks the model to name itself and
   say one short thing about espresso. Used by the "Validate" button in Settings
   to prove that the whole path works — credentials, endpoint, response mode,
-  schema, parsing and validation — without spending the tokens a shot analysis
+  schema, parsing and validation — without spending the tokens a shot review
   costs, and by the test suite as a real prompt to render.
 variables:
   - name: topic

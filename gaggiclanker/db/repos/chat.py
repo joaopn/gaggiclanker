@@ -206,7 +206,7 @@ class ChatRepository(Repository):
         Except the conversation a Set's first recipe was designed in, once the
         design is over. It belongs to version 1 as well, but one conversation is
         one version's worth of work, and designing the recipe was that work: the
-        agent tells the person to start a new conversation to analyse the shots,
+        agent tells the person to start a new conversation to read the shots,
         so Discuss on version 1 must not bring them back into the design. While
         the Set is still being designed it is the room, and Continue designing
         lands in it. "The design conversation" is one a first-recipe card was
@@ -416,7 +416,7 @@ class ChatRepository(Repository):
     async def reconcile_running(self) -> int:
         """Mark every ``running`` run interrupted. Called once, at boot.
 
-        Same rule as an analysis: a run is only ``running`` while a process
+        Same rule as a review: a run is only ``running`` while a process
         holds it, and no process survives a restart. Without this the chat page
         shows a spinner nobody can clear and a cancel button that cancels
         nothing.

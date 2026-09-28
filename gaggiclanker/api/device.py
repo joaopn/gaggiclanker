@@ -15,7 +15,7 @@ Storage cleanup adds the storage-cleanup trio (plan, run, history), and notes ad
 the pending list and the send. Both writes start only from a person's
 confirmation on the Sync page — the run and the send carry the shot ids that
 were shown, and a list that moved since is a 409 — and both follow the same
-shape as the analyzer's routes: the **plan** is computed in the request because
+shape as the review routes: the **plan** is computed in the request because
 it is a database read, and the **run** is 202 plus a background task, because it
 is a sequence of WebSocket frames paced at two a second and `docker stop` allows
 ten seconds in total.
@@ -211,7 +211,7 @@ async def post_cleanup_run(body: CleanupRunRequest, cleanup: CleanupServiceDep) 
     switch. This route is the only way a cleanup starts: nothing runs one
     automatically.
 
-    Not in the request, for the same reason an analysis is not: a run is one
+    Not in the request, for the same reason a review is not: a run is one
     WebSocket frame per shot paced at two a second, so a hundred shots is most
     of a minute and `docker stop` allows ten seconds. The task is named
     `cleanup`, claimed synchronously, so a second tab pressing the button gets a

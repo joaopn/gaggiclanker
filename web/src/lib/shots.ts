@@ -19,13 +19,6 @@ import type { ShotListRow } from "@/api/types";
  */
 export const ASSIGN_ANCHOR = "set";
 
-/**
- * The shot page's analysis panel, as a fragment. The shots list's "Analysed"
- * links here: the link promises the analysis, and landing at the top of a long
- * page would leave the reader to find it.
- */
-export const ANALYSIS_ANCHOR = "analysis";
-
 // ── numbers ──────────────────────────────────────────────────────────
 
 export function formatTime(value: string | null | undefined): string {
@@ -164,8 +157,8 @@ export function exitReasonLabel(code: number | null | undefined): string {
  * The labels come from the threshold tables in
  * `gaggiclanker/domain/diagnostics.py` and they are *upstream's calibration* —
  * the meanings here describe what the number is measuring, never a
- * recommendation to grind finer. That judgement is the maintainer's, and from
- * the analyser's; a deterministic band has no business making it.
+ * recommendation to grind finer. That judgement is the maintainer's, and the
+ * chat's; a deterministic band has no business making it.
  *
  * Several labels appear in more than one table (`MODERATE` is a resistance
  * level, a temperature stability and a taper smoothness), so lookup is by

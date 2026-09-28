@@ -1,6 +1,6 @@
 """The live-call ring: what the LLM is doing, right now, in fifty entries.
 
-An analysis call takes thirty seconds to two minutes. Without this the UI has
+A review call takes thirty seconds to two minutes. Without this the UI has
 one bit of information — a spinner — and no answer to "is it stuck, is it
 rate-limited, or is it just slow?". The observer gives the header a running
 count and the sheet behind it a list: what was asked, about which shot, on

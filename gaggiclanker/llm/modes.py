@@ -2,7 +2,7 @@
 
 Mode fallback costs a round trip: ask for ``json_schema``, get a 400 saying the
 gateway has never heard of it, ask again for ``json_object``. Paying that on
-every call against a local Ollama would double the latency of every analysis
+every call against a local Ollama would double the latency of every review
 for the lifetime of the container.
 
 So the first success is remembered, keyed by ``provider:base_url`` rather than

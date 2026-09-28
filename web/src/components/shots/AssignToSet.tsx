@@ -85,8 +85,8 @@ export function AssignToSet({
             </>
           ) : (
             <span className="text-muted-foreground">
-              Not in a Set yet. Until it is, this shot is invisible to every trend and to the
-              analyser's view of what you have been trying.
+              Not in a Set yet. Until it is, this shot is invisible to every trend and to the Set's
+              conversations about what you have been trying.
             </span>
           )}
         </p>

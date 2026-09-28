@@ -1,7 +1,7 @@
 """A seeded archive and a tool context over it.
 
-The fixture is the analyzer's — one Set, six shots, five judgements, the whole
-knowledge base — because the tools are asked the same questions an analysis is
+The fixture is the review tests' — one Set, six judged shots, the whole
+knowledge base — because the tools are asked about the same shots a review is,
 and building a second archive would mean two places to keep the coffee facts
 consistent.
 """
@@ -21,7 +21,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
 from gaggiclanker.tools.scope import ToolScope
-from tests.analyzer.conftest import Fixture, build_fixture
+from tests.review.conftest import Fixture, build_fixture
 
 
 @pytest.fixture

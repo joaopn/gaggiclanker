@@ -28,8 +28,8 @@ from gaggiclanker.llm.types import Usage
 from gaggiclanker.shotinfo.catalogue import default_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
-from tests.analyzer.conftest import Fixture
 from tests.llm.conftest import FakeProvider
+from tests.review.conftest import Fixture
 
 
 async def finish(tasks: TaskRegistry, run_id: int) -> None:
@@ -746,7 +746,7 @@ async def test_the_usage_row_records_which_prompt_answered_the_turn(
     """A turn has to be traceable to the instructions that produced it.
 
     The two kinds of conversation are answered by two different prompts, and
-    the ledger row is where that is written down — an analysis of what the
+    the ledger row is where that is written down — a reading of what the
     agent said six weeks ago is explainable only if the row names the prompt.
     """
     from gaggiclanker.db.repos.chat import ChatThreadWrite

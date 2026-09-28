@@ -5,7 +5,7 @@ CRUD surface over one table with two rules worth stating:
 
 * **A PUT is validated before it is stored.** YAML, the schema, and every
   fragment it references. A prompt that does not parse would otherwise fail at
-  the next analysis, minutes later and nowhere near the editor.
+  the next review or chat turn, minutes later and nowhere near the editor.
 * **There is no DELETE.** A prompt is created by shipping a file; deleting the
   row would only mean the next boot re-seeds it, and "reset" is what people
   actually want when they say delete.

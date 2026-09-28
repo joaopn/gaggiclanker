@@ -78,7 +78,7 @@ function useFormProvider(control: Control<SettingsFormValues>): string {
  * unchanged. What this adds is the three things a generated form cannot know:
  * which fields are irrelevant to the chosen provider, that some of them are a
  * closed set and want a picker, and that a credential is worth testing before
- * an analysis fails at midnight.
+ * a review fails at midnight.
  */
 export function LlmProviderGroup({ entries, control, errors, disabled }: GroupProps) {
   const status = useLlmStatus();

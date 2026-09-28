@@ -24,8 +24,8 @@ from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository, ChatThreadWrite
 from gaggiclanker.db.repos.sets import RollbackWrite, SetsRepository, SetVersionPatch
 from gaggiclanker.settings import EnvSettings
-from tests.analyzer.conftest import Fixture, build_fixture
 from tests.conftest import running_app
+from tests.review.conftest import Fixture, build_fixture
 
 
 @pytest.fixture

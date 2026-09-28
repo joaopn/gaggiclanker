@@ -57,7 +57,7 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     label: "LLM",
     icon: Bot,
     description:
-      "Which provider answers a call, which model does what, and how much an analysis or a chat answer may take.",
+      "Which provider answers a call, which model does what, and how much a review or a chat answer may take.",
   },
   {
     id: "auth",

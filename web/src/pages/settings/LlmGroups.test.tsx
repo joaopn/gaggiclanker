@@ -106,7 +106,7 @@ const ENTRIES: ResolvedSetting[] = [
   plain("claudeCodeBin", "claude"),
   plain("claudeCodeEffort", ""),
   plain("modelDefault", ""),
-  plain("modelAnalysis", ""),
+  plain("modelReview", ""),
 ];
 
 function Harness({ provider = "claude_code" }: { provider?: string }) {
@@ -120,7 +120,7 @@ function Harness({ provider = "claude_code" }: { provider?: string }) {
       claudeCodeBin: "claude",
       claudeCodeEffort: "",
       modelDefault: "",
-      modelAnalysis: "",
+      modelReview: "",
     },
   });
   const props = { control: form.control, errors: form.formState.errors };

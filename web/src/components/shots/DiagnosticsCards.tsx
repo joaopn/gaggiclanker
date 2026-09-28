@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
  * What these cards deliberately do *not* do is advise. A deterministic band can
  * say the puck lost structure; it cannot say to grind coarser, and pretending
  * otherwise is how a diagnostic stops being trusted. The advice comes from the
- * maintainer, and from the analyser.
+ * maintainer, and from the chat.
  */
 
 /** One metric: the number, its band, and what the band means. */

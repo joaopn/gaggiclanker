@@ -228,7 +228,7 @@ def test_the_ring_drops_finished_calls_but_never_running_ones() -> None:
 
 def test_a_finished_call_carries_its_totals() -> None:
     observer = LlmCallObserver()
-    handle = observer.register(label="analyse", subject="#7", provider="anthropic", model="opus")
+    handle = observer.register(label="review", subject="#7", provider="anthropic", model="opus")
     handle.succeed(Usage(prompt_tokens=100, completion_tokens=20), mode="json_schema")
 
     record = observer.snapshot()[0]

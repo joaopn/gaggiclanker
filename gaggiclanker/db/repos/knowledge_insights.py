@@ -2,8 +2,8 @@
 
 Rows rather than a file (gaggimate-mcp keeps the same thing as
 `brewing-insights.md`) because an insight has to be *selected*: "this grinder
-needs two clicks finer for anything anaerobic" belongs in front of an analysis
-of an anaerobic shot on that grinder and nowhere else. The selection rule is one
+needs two clicks finer for anything anaerobic" belongs in front of a
+conversation about an anaerobic Set on that grinder and nowhere else. The selection rule is one
 sentence and it lives in :func:`scope_matches`:
 
     an insight applies when **every** key its scope states matches the Set.
@@ -15,9 +15,9 @@ partial credit and no scoring: a rule that half-applies is a rule nobody can
 predict, and the point of showing these to a model is that the user knows what
 it was told.
 
-**Unconfirmed insights never reach a prompt.** They are proposals — by the
-analyzer, at most two per analysis, or by the chat — and a model that
-generalises from one shot and is then believed by the next analysis has
+**Unconfirmed insights never reach a prompt.** They are proposals — by the chat
+today, and by the per-shot analysis before it was retired — and a model that
+generalises from one shot and is then believed by the next conversation has
 manufactured its own evidence. :meth:`InsightsRepository.select` reads
 ``confirmed = 1``.
 """
@@ -43,7 +43,7 @@ __all__ = [
     "set_attributes",
 ]
 
-#: The dimensions an insight may be scoped by. Closed, because the analyzer is
+#: The dimensions an insight may be scoped by. Closed, because the chat is
 #: asked to propose scopes and a model inventing `bean_variety` would produce a
 #: row that silently never matches anything.
 SCOPE_KEYS = (
@@ -94,7 +94,7 @@ def scope_matches(scope: dict[str, Any] | None, attributes: dict[str, Any]) -> b
 
     All-keys-must-match, and an attribute the Set does not state never matches a
     scope that names it: an insight about natural processing must not be handed
-    to an analysis of a bag whose roaster printed no process. Saying nothing is
+    to a conversation about a bag whose roaster printed no process. Saying nothing is
     better than reasoning from a guess — the same rule
     :class:`~gaggiclanker.knowledge.rules.SetContext` documents for tier 1.
 
@@ -130,7 +130,7 @@ def set_attributes(
     """A Set's attributes in the shape :func:`scope_matches` reads them.
 
     One place, because there are two callers that assemble it from different
-    rows — the analyzer from the context it built, the API from a Set the page
+    rows — the chat from the Set it is about, the API from a Set the page
     asked about — and a dimension added to :data:`SCOPE_KEYS` has to reach both
     or an insight silently stops matching on one of them.
 
@@ -163,7 +163,6 @@ class InsightWrite(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     evidence_shot_ids: list[int] = Field(default_factory=list)
     source: InsightSource = "user"
-    analysis_id: int | None = None
     confirmed: bool = False
 
     @field_validator("text")
@@ -186,6 +185,9 @@ class InsightRow(BaseModel):
     text: str
     evidence_shot_ids: JsonList = Field(default=None, validation_alias="evidence_shot_ids_json")
     source: str = "user"
+    #: The retired per-shot analysis that proposed it, for an insight with
+    #: `source = 'analysis'`; nothing writes it now. Its id is the carried
+    #: review of the same shot when that analysis finished.
     analysis_id: int | None = None
     confirmed: bool = False
     created_at: str = ""
@@ -208,7 +210,6 @@ class InsightsRepository(Repository):
         self,
         *,
         confirmed: bool | None = None,
-        analysis_id: int | None = None,
     ) -> list[InsightRow]:
         """Insights, oldest first.
 
@@ -221,9 +222,6 @@ class InsightsRepository(Repository):
         if confirmed is not None:
             where.append("confirmed = ?")
             params.append(int(confirmed))
-        if analysis_id is not None:
-            where.append("analysis_id = ?")
-            params.append(analysis_id)
         rows = await self.db.fetch_all(
             f"SELECT * FROM knowledge_insights WHERE {' AND '.join(where)} "  # noqa: S608 - clauses are literals, values are bound
             "ORDER BY created_at, id",
@@ -256,9 +254,9 @@ class InsightsRepository(Repository):
         cursor = await self.db.execute(
             """
             INSERT INTO knowledge_insights
-                (scope_json, text, evidence_shot_ids_json, source, analysis_id,
+                (scope_json, text, evidence_shot_ids_json, source,
                  confirmed, created_at, updated_at, confirmed_at)
-            VALUES (:scope, :text, :evidence, :source, :analysis_id,
+            VALUES (:scope, :text, :evidence, :source,
                     :confirmed, :now, :now, :confirmed_at)
             """,
             {
@@ -266,7 +264,6 @@ class InsightsRepository(Repository):
                 "text": insight.text,
                 "evidence": dumps(sorted(set(insight.evidence_shot_ids))),
                 "source": insight.source,
-                "analysis_id": insight.analysis_id,
                 "confirmed": int(insight.confirmed),
                 "now": now,
                 "confirmed_at": now if insight.confirmed else None,

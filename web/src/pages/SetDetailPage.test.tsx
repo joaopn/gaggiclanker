@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { SetDetailPage } from "@/pages/SetDetailPage";
-import { knowledgeInsight, suggestion } from "@/test/analysisFixtures";
+import { knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import {
   designingDetail,
@@ -66,7 +66,6 @@ const {
   getSetTrends,
   addSetVersion,
   archiveSet,
-  getSetSuggestions,
   getVocabulary,
   getKnowledgeInsights,
   rollbackSet,
@@ -80,7 +79,6 @@ const {
   getSetTrends: vi.fn(),
   addSetVersion: vi.fn(),
   archiveSet: vi.fn(),
-  getSetSuggestions: vi.fn(),
   getVocabulary: vi.fn(),
   getKnowledgeInsights: vi.fn(),
   rollbackSet: vi.fn(),
@@ -102,7 +100,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSetTrends,
   addSetVersion,
   archiveSet,
-  getSetSuggestions,
   getVocabulary,
   getKnowledgeInsights,
   rollbackSet,
@@ -120,7 +117,6 @@ beforeEach(() => {
   getSetTrends.mockResolvedValue(trends());
   addSetVersion.mockResolvedValue(setDetail().versions[0].version);
   archiveSet.mockResolvedValue({ ...setDetail().set, archived: true, automatch: false });
-  getSetSuggestions.mockResolvedValue({ items: [] });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
@@ -500,42 +496,20 @@ describe("SetDetailPage with a URL that is not a Set", () => {
   });
 });
 
-describe("SetDetailPage suggestions", () => {
-  it("says so when nothing has been suggested yet", async () => {
-    renderWithQueryClient(<SetDetailPage />);
-
-    expect(await screen.findByTestId("no-suggestions")).toHaveTextContent(
-      "No analysis has suggested anything",
-    );
-  });
-
-  it("groups the advice by the version it was about", async () => {
-    // A suggestion is a delta from the numbers it was given, so advice about v1
-    // and advice about v2 are not one conversation.
-    getSetSuggestions.mockResolvedValue({
-      items: [
-        // 21 and 22 are the fixture Set's v1 and v2.
-        suggestion({ id: 1, set_version_id: 21, variable: "grind" }),
-        suggestion({ id: 2, set_version_id: 22, variable: "yield", direction: "increase" }),
-      ],
-    });
-
-    renderWithQueryClient(<SetDetailPage />);
-
-    const group = await screen.findByTestId("set-suggestions");
-    expect(group).toHaveTextContent("about v1");
-    expect(group).toHaveTextContent("about v2");
-  });
-
-  it("offers no batch analysis of the Set", async () => {
+describe("SetDetailPage has no model-reading surface", () => {
+  it("offers no suggestions, no batch analysis and no review of the Set", async () => {
     // A model reads a shot only when a person presses Review on that shot's
-    // page: nothing on the Set page queues provider calls.
+    // page, and what it writes stays there: nothing on the Set page lists
+    // advice, queues provider calls or shows a review.
     renderWithQueryClient(<SetDetailPage />);
 
-    await screen.findByTestId("no-suggestions");
+    await screen.findAllByText("Guji on the Niche");
+    expect(screen.queryByText("Suggestions")).toBeNull();
+    expect(screen.queryByTestId("set-suggestions")).toBeNull();
     expect(screen.queryByTestId("analyse-set")).toBeNull();
-    expect(screen.queryByRole("button", { name: /analyse/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /analyse|review/i })).toBeNull();
     expect(screen.queryByTestId("large-batch-warning")).toBeNull();
+    expect(screen.queryByTestId("review-card")).toBeNull();
   });
 });
 
@@ -549,7 +523,7 @@ describe("SetDetailPage — what this archive has learned", () => {
 
     const card = await screen.findByTestId("set-insights");
     expect(card).toHaveTextContent("Naturals on this grinder");
-    // The server does the scope matching, through the same call an analysis
+    // The server does the scope matching, through the same call the chat
     // makes — so the page cannot show a different answer from the prompt.
     expect(getKnowledgeInsights).toHaveBeenCalledWith({ set_id: 3 });
   });

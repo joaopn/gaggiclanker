@@ -75,8 +75,7 @@ async def test_crud_round_trip(db) -> None:  # type: ignore[no-untyped-def]
             scope=InsightScope(grinder_id=2),
             text="  Two   clicks finer   for naturals.  ",
             evidence_shot_ids=[9, 3, 3],
-            source="analysis",
-            analysis_id=None,
+            source="chat",
         )
     )
     stored = await repo.get(insight_id)
@@ -147,7 +146,7 @@ async def test_selection_filters_by_scope(knowledge: KnowledgeService) -> None:
     assert texts == ["This grinder.", "Everything."]
 
 
-async def test_listing_filters_by_confirmation_and_analysis(
+async def test_listing_filters_by_confirmation(
     knowledge: KnowledgeService,
 ) -> None:
     repo = knowledge.insights

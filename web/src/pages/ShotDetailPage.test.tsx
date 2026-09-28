@@ -4,7 +4,6 @@ import { Link, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
-import { analysis } from "@/test/analysisFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { version, vocabulary } from "@/test/setsFixtures";
 import {
@@ -19,25 +18,23 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getShot, getShotSamples, getLlmCalls, runAnalysis, getVocabulary, getKnowledgeInsights } =
-  vi.hoisted(() => ({
+const { getShot, getShotSamples, getLlmCalls, getVocabulary, getKnowledgeInsights } = vi.hoisted(
+  () => ({
     getShot: vi.fn(),
     getShotSamples: vi.fn(),
     getLlmCalls: vi.fn(),
-    runAnalysis: vi.fn(),
     getVocabulary: vi.fn(),
     getKnowledgeInsights: vi.fn(),
-  }));
+  }),
+);
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getShot,
   getShotSamples,
   getLlmCalls,
-  runAnalysis,
   getVocabulary,
-  // Mocked rather than left to the real fetch: the analysis panel asks for the
-  // insights its analysis proposed, and an unmocked call is a rejected promise
-  // and a console full of noise that hides a real failure.
+  // Mocked rather than left to the real fetch: an unmocked call is a rejected
+  // promise and a console full of noise that hides a real failure.
   getKnowledgeInsights,
 }));
 
@@ -65,7 +62,6 @@ beforeEach(() => {
   getLlmCalls.mockResolvedValue({ calls: [], running: 0 });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
-  runAnalysis.mockResolvedValue(analysis());
 });
 
 describe("ShotDetailPage version prediction", () => {
@@ -413,31 +409,6 @@ describe("ShotDetailPage render budget", () => {
   });
 });
 
-describe("ShotDetailPage analysis panel", () => {
-  it("offers to analyse a shot that has none, and renders what comes back", async () => {
-    const user = setupUser();
-    renderShot();
-
-    expect(await screen.findByTestId("analysis-empty")).toHaveTextContent("Not analysed yet");
-
-    getShot.mockResolvedValue({ ...shot129, analyses: [analysis()] });
-    await user.click(screen.getByTestId("run-analysis"));
-
-    await waitFor(() => expect(runAnalysis.mock.calls[0]?.[0]).toBe(shot129.shot.id));
-    expect(await screen.findByTestId("analysis-result")).toHaveTextContent("ran four seconds fast");
-  });
-
-  it("is not offered for a quarantined shot", async () => {
-    // Its bytes never parsed, so there are no diagnostics to reason from.
-    getShot.mockResolvedValue(detail({ quarantined: true, quarantine_reason: "bad magic" }));
-
-    renderShot();
-
-    expect(await screen.findByTestId("quarantine-reason")).toBeInTheDocument();
-    expect(screen.queryByTestId("run-analysis")).not.toBeInTheDocument();
-  });
-});
-
 describe("ShotDetailPage Set panel", () => {
   it("scrolls to the Assign panel when the link asks for it", async () => {
     // The shots list's needs-a-Set menu offers only three Sets and sends the
@@ -459,29 +430,6 @@ describe("ShotDetailPage Set panel", () => {
     expect(await screen.findByTestId("assign-to-set")).toBeInTheDocument();
     await waitFor(() => expect(scrolled).toContain("set"));
     expect(document.getElementById("set")).toContainElement(screen.getByTestId("assign-to-set"));
-  });
-
-  it("scrolls to the analysis when the link asks for it", async () => {
-    // A link to a shot's analysis comes here with `#analysis`.
-    const scrolled: string[] = [];
-    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
-      this: Element,
-    ) {
-      scrolled.push(this.id);
-    });
-
-    renderWithQueryClient(
-      <Routes>
-        <Route path="/shots/:shotId" element={<ShotDetailPage />} />
-      </Routes>,
-      { initialEntries: [`/shots/${shot129.shot.id}#analysis`] },
-    );
-
-    expect(await screen.findByTestId("run-analysis")).toBeInTheDocument();
-    await waitFor(() => expect(scrolled).toContain("analysis"));
-    expect(document.getElementById("analysis")).toContainElement(
-      screen.getByTestId("run-analysis"),
-    );
   });
 
   it("stays at the top without the fragment", async () => {

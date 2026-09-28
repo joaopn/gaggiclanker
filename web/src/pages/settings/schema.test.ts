@@ -135,14 +135,14 @@ describe("labels and sections", () => {
     // prefix, so the section covers three of them.
     expect(sectionFor("anthropicApiKey")).toBe("llm");
     expect(sectionFor("claudeCodeBin")).toBe("llm");
-    expect(sectionFor("modelAnalysis")).toBe("llm");
+    expect(sectionFor("modelReview")).toBe("llm");
     // The writes switch is about the machine; the seven bounds are about what
     // may be written, which is a different question and its own section.
     expect(sectionFor("deviceWritesEnabled")).toBe("machine");
     expect(sectionFor("profilePolicyTemperatureMaxC")).toBe("safety");
     expect(sectionFor("profilePolicyMaxPhases")).toBe("safety");
-    // The analysis and chat budgets bound what a call may consume.
-    expect(sectionFor("analysisChunkTokenBudget")).toBe("llm");
+    // The knowledge and chat budgets bound what a call may consume.
+    expect(sectionFor("knowledgeChunkTokenBudget")).toBe("llm");
     expect(sectionFor("chatMaxToolRounds")).toBe("llm");
     // No catch-all page: an unrecognised key is visible under LLM's "Other".
     expect(sectionFor("somethingNew")).toBe("llm");

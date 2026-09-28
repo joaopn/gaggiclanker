@@ -24,8 +24,8 @@ from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
-from tests.analyzer.conftest import Fixture, build_fixture
 from tests.llm.conftest import FakeProvider
+from tests.review.conftest import Fixture, build_fixture
 
 
 def data(response: httpx.Response) -> Any:

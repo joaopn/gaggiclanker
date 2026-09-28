@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
  * The machine knows nothing about any of this — the whole of its notes card is
  * one free-text `beanType` string — so everything here is typed by a person and
  * everything closed is picked from `GET /api/vocab`. Roast level and process
- * are the two fields the analyser reasons from, which is why they are selects
+ * are the two fields the chat reasons from, which is why they are selects
  * rather than text: a rule keyed on "medium-light" cannot match "med light".
  * Roaster and origin stay free text, but suggest the spellings already used, so
  * the same roaster does not end up recorded three ways. Acidity, intensity and
@@ -123,7 +123,7 @@ export function BeansPage() {
         <EmptyState
           icon={Bean}
           title="No beans recorded"
-          description="A Set needs a coffee. Record the roast level and the process — those two are what the analyser uses to reason about temperature and pressure."
+          description="A Set needs a coffee. Record the roast level and the process — those two are what the chat uses to reason about temperature and pressure."
           action={
             <Button size="sm" onClick={() => setEditing("new")}>
               Add a coffee

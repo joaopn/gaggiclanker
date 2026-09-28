@@ -1,7 +1,7 @@
 """`list_set_shots`, the shot search: every filter, the order, the cap, the scope.
 
-Over the analyzer's fixture Set (six shots, summary-level diagnostics, five of
-them judged), whose numbers are written out in `tests/analyzer/conftest.py`:
+Over the review tests' fixture Set (six shots, summary-level diagnostics, five of
+them judged), whose numbers are written out in `tests/review/conftest.py`:
 
     shot  duration  weight  score  rating  balance   channeling  started
     0     21.0 s    38.0 g  7.4    2       sour      MODERATE    03-02
@@ -30,7 +30,7 @@ from gaggiclanker.domain import diagnostics as engine
 from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers
 from gaggiclanker.tools import builtin
 from gaggiclanker.tools.registry import ToolContext, registry
-from tests.analyzer.conftest import Fixture
+from tests.review.conftest import Fixture
 
 
 async def search(ctx: ToolContext, **arguments: Any) -> dict[str, Any]:

@@ -76,7 +76,7 @@ describe("HardwarePage", () => {
 
     const list = await screen.findByTestId("grinder-list");
     expect(list).toHaveTextContent("Niche Zero");
-    // Burrs decide the profile; the step unit is what stops the analyser
+    // Burrs decide the profile; the step unit is what stops a model
     // inventing a scale.
     expect(list).toHaveTextContent("conical burrs");
     expect(list).toHaveTextContent("steps in numbers");

@@ -213,11 +213,11 @@ describe("ProfilesPage staging queue", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     expect(await screen.findByTestId("staged-empty")).toHaveTextContent(
-      "Stage a version below, or accept a profile suggestion from an analysis.",
+      "Stage a version below, or ask the chat to draft a profile change.",
     );
   });
 
-  it("is anchored, so a link from an analysis lands on it", async () => {
+  it("is anchored, so a link from a draft's origin lands on it", async () => {
     const scrollIntoView = vi.fn();
     // jsdom has no layout, so the method does not exist at all.
     Element.prototype.scrollIntoView = scrollIntoView;

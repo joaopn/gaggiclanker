@@ -39,7 +39,6 @@ from __future__ import annotations
 import json
 from typing import Any, get_args
 
-from gaggiclanker.analyzer.style import detect_style
 from gaggiclanker.chat.context import _OUTCOMES, _cut, _plural, _quote, _recipe, _taste
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository
@@ -57,6 +56,7 @@ from gaggiclanker.domain.models import (
     TransitionType,
 )
 from gaggiclanker.knowledge.rules import SetContext, render_rules
+from gaggiclanker.review.style import detect_style
 from gaggiclanker.starting.context import (
     planned_style,
     render_similar,

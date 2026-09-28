@@ -98,7 +98,6 @@ function shot(overrides: Partial<ShotListRow> = {}): ShotListRow {
     quarantined: false,
     quarantine_reason: null,
     deleted_on_device: false,
-    analysis_state: "none",
     rating: 4,
     has_notes: true,
     has_judgement: false,
@@ -385,9 +384,8 @@ describe("ShotsPage", () => {
     expect(screen.queryByTestId("shot-sparkline")).not.toBeInTheDocument();
   });
 
-  it("shows the Set badge and, with Flags on, the analysis state on every row", async () => {
-    // Both are states with something to do behind them rather than absences,
-    // which is why "not analysed" is rendered rather than left blank.
+  it("shows the Set badge on every row, and no review state among the flags", async () => {
+    // A review lives on the shot page only, never in the shots table.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
 
@@ -396,24 +394,8 @@ describe("ShotsPage", () => {
     await showColumn(user, "Flags");
 
     expect(await screen.findByTestId("set-badge-slot")).toBeInTheDocument();
-    expect(screen.getByTestId("analysis-slot")).toHaveTextContent("not analysed");
-  });
-
-  it.each([
-    ["ok", "analysed"],
-    ["running", "analysing"],
-    // An interrupted run is reported as `failed` by the server: four states on
-    // a list, not five.
-    ["failed", "analysis failed"],
-  ])("renders the %s analysis state among the flags", async (state, label) => {
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot({ analysis_state: state })]));
-
-    renderWithQueryClient(<ShotsPage />);
-    await listed();
-    await showColumn(user, "Flags");
-
-    expect(await screen.findByTestId("analysis-slot")).toHaveTextContent(label);
+    expect(screen.queryByTestId("analysis-slot")).toBeNull();
+    expect(within(screen.getByTestId("shot-rows")).queryByText(/analys|review/i)).toBeNull();
   });
 
   it("says so when a machine has no clock", async () => {

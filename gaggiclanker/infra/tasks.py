@@ -56,7 +56,7 @@ class TaskRegistry:
         """The task under ``name``, if one is still running.
 
         For a caller that wants to wait for work it queued — `?wait=1` on the
-        analysis routes. A finished task has already released its name, so
+        review routes. A finished task has already released its name, so
         ``None`` means "it is over", not "it was never there".
         """
         return self._tasks.get(name)

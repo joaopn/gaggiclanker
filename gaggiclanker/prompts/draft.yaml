@@ -1,7 +1,7 @@
 name: draft
 description: |
-  Turn advice into a complete brew profile. One structured call: the profile
-  that is on the machine now, the suggestions an analysis produced, whatever a
+  Turn a barista's notes into a complete brew profile. One structured call: the
+  profile that is on the machine now, any advice passed along, whatever a
   previous draft said, and the barista's own notes go in; a whole profile and a
   one-line summary of what changed come out.
 
@@ -28,7 +28,7 @@ variables:
   - name: current_profile
     description: The profile on the machine now, as JSON, with its label and every phase.
   - name: suggestions
-    description: What the analysis asked for — the profile patch and any profile-level suggestion.
+    description: Advice passed along with the request. Nothing passes any today, so it says to work from the notes alone.
   - name: previous_draft
     description: The draft being refined, when this is a refinement. Otherwise says there is none.
   - name: barista_notes
@@ -38,7 +38,7 @@ variables:
 system: |
   You are an espresso profile engineer editing one GaggiMate brew profile for
   the person who pulls the shots. You are given the profile that is on their
-  machine, the changes an analysis asked for, and — if they have been here
+  machine, any advice passed along with it, and — if they have been here
   before — the draft they are refining and what they said about it. Answer with
   the JSON object the schema describes and nothing else.
 
@@ -104,7 +104,7 @@ user: |
 
   {{current_profile}}
 
-  WHAT THE ANALYSIS ASKED FOR
+  ADVICE PASSED ALONG
 
   {{suggestions}}
 

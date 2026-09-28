@@ -13,10 +13,10 @@ they answer three different questions:
    by `heading_path`;
 3. **insights** (`db/repos/knowledge_insights.py`) — what this archive has
    learned about this kitchen, scoped by Set attributes, proposed by the
-   analyzer and confirmed by the user. Nothing unconfirmed reaches a prompt.
+   chat and confirmed by the user. Nothing unconfirmed reaches a prompt.
 
 :class:`~gaggiclanker.knowledge.service.KnowledgeService` is the one object the
-analyzer and the chat both go through for tiers 2 and 3.
+review, the starting point and the chat all go through for tiers 2 and 3.
 """
 
 from __future__ import annotations

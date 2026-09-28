@@ -137,7 +137,7 @@ class SyncRepository(Repository):
     async def reconcile_running(self) -> int:
         """Close every run still marked `running` at boot. Returns how many.
 
-        Same argument as the analyses ledger: a run is only `running` while a
+        Same argument as the reviews ledger: a run is only `running` while a
         process is holding it, so anything in that state after a restart was cut
         off — and `GET /api/sync/status` reporting a backfill that has been
         "running" since Tuesday is worse than reporting that it was interrupted.

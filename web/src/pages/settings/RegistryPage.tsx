@@ -200,7 +200,7 @@ function GroupBody({
     case "auth.sign-in":
       return <AuthSection {...props} />;
     // Which LLM keys matter depends on the provider, two are a closed set, and
-    // a credential is worth testing before an analysis fails at midnight.
+    // a credential is worth testing before a review fails at midnight.
     case "llm.provider":
       return <LlmProviderGroup {...props} />;
     case "llm.models":

@@ -123,10 +123,10 @@ class ProfileDraftRow(BaseModel):
     #: Set), or not pushed yet. Found rather than stored: only a push for the
     #: draft's own Set writes a version of that Set naming both the drafted
     #: profile and the device id the firmware gave this push, and a rollback
-    #: clears that id. Not by origin: a draft from an analysis records its
-    #: prediction under `analysis`. An API client that adds a version by hand
-    #: naming both would read as this push's record; the web's form never sends
-    #: a device id.
+    #: clears that id. Not by origin: a draft made from an analysis (before it
+    #: was retired) records its prediction under `analysis`. An API client that
+    #: adds a version by hand naming both would read as this push's record; the
+    #: web's form never sends a device id.
     recorded_version_no: int | None = None
     #: Whether the machine still holds the profile this was drafted from.
     #:

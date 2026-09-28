@@ -12,7 +12,7 @@ provider's endpoint while still sending its key is how a key ends up on
 someone else's server, so ``llmBaseUrl`` applies to the self-hosted presets and
 the generic one, and is ignored for OpenAI and OpenRouter.
 
-**A model is chosen per purpose, falling back.** The careful analysis and a
+**A model is chosen per purpose, falling back.** The careful review and a
 quick chat turn should not have to share one model, but nobody wants to fill in
 four boxes to get started — so each purpose falls back to ``modelDefault`` and
 then to the provider's own default (an empty string, which every provider reads
@@ -63,7 +63,7 @@ DRAFT_KEYS: tuple[str, ...] = (
 #: Which settings key holds the per-purpose model. ``default`` is the fallback
 #: for all of them, so it is not in this map.
 _PURPOSE_KEYS: dict[ModelPurpose, str] = {
-    "analysis": "modelAnalysis",
+    "review": "modelReview",
     "draft": "modelDraft",
     "chat": "modelChat",
     "starting_point": "modelStartingPoint",

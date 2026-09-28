@@ -108,7 +108,7 @@ describe("ProfileJsonEditor", () => {
     const body = createProfileDraft.mock.calls[0][0];
     expect(body.base_version_id).toBe(7);
     expect(body.profile.label).toBe("9 Bar Espresso");
-    // No analysis, no suggestion: the server takes this path without a provider.
-    expect(body.analysis_id).toBeUndefined();
+    // A whole document: the server takes this path without a provider.
+    expect(body).not.toHaveProperty("notes");
   });
 });

@@ -23,24 +23,24 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.analyzer.service import analysis_task_name
 from gaggiclanker.api.deps import (
-    AnalysesRepoDep,
-    AnalyzerServiceDep,
     JudgementsRepoDep,
     NotesRepoDep,
+    ReviewServiceDep,
+    ReviewsRepoDep,
     SetsRepoDep,
     ShotsRepoDep,
 )
-from gaggiclanker.db.repos.analyses import AnalysisRow
 from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
+from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.sets import ProfileMatchSummary, SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListRow, ShotSampleRow
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
 from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
-from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
+from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
+from gaggiclanker.review.service import review_task_name
 from gaggiclanker.sync.engine import downsample
 
 __all__ = ["router"]
@@ -89,11 +89,11 @@ class ShotDetailData(BaseModel):
     judgement: ShotJudgementRow | None = None
     #: The Set version this shot is attached to, resolved. NULL is `needs_set`.
     set_version: SetVersionRow | None = None
-    #: Every analysis of this shot, newest first. Sent with the shot
-    #: rather than fetched separately because the panel is on this page and a
-    #: second request for a list that is almost always empty or one row long is
-    #: a round trip for nothing.
-    analyses: list[AnalysisRow] = Field(default_factory=list)
+    #: Every review of this shot, newest first. Sent with the shot rather than
+    #: fetched separately because the Review card is on this page and a second
+    #: request for a list that is almost always empty or one row long is a
+    #: round trip for nothing.
+    reviews: list[ShotReviewRow] = Field(default_factory=list)
 
 
 class ShotSamplesData(BaseModel):
@@ -211,7 +211,7 @@ async def get_shot(
     notes: NotesRepoDep,
     judgements: JudgementsRepoDep,
     sets: SetsRepoDep,
-    analyses: AnalysesRepoDep,
+    reviews: ReviewsRepoDep,
 ) -> JSONResponse:
     shot = await shots.get(shot_id)
     if shot is None:
@@ -223,7 +223,7 @@ async def get_shot(
             notes=await notes.get(shot_id),
             judgement=await judgements.get(shot_id),
             set_version=version,
-            analyses=await analyses.for_shot(shot_id),
+            reviews=await reviews.for_shot(shot_id),
         ).model_dump(mode="json")
     )
 
@@ -425,78 +425,73 @@ async def post_profile_match(
     return envelope_response(summary.model_dump(mode="json"))
 
 
-class AnalysisRequest(BaseModel):
-    """`POST /api/shots/{id}/analyses`: run one, optionally on a named model.
+class ReviewRequest(BaseModel):
+    """`POST /api/shots/{id}/reviews`: run one, optionally on a named model.
 
-    `force` is what makes a second press of the button mean something. Without
-    it a shot that already has a successful analysis answers with that one,
-    because the common accidental double-click should not spend a second call
-    on a question that is already answered.
+    Every press starts a review: a person pressing Review again wants a fresh
+    reading, and the earlier one stays stored. A press while one is running
+    gets that running row back.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Overrides `modelAnalysis` for this run only. Empty takes the setting.
+    #: Overrides `modelReview` for this run only. Empty takes the setting.
     model: str = ""
-    force: bool = False
 
 
-class AnalysisListData(BaseModel):
+class ReviewListData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[AnalysisRow]
+    items: list[ShotReviewRow]
 
 
 @router.get(
-    "/{shot_id}/analyses",
-    response_model=ApiResponse[AnalysisListData],
-    summary="Every analysis of this shot, newest first",
+    "/{shot_id}/reviews",
+    response_model=ApiResponse[ReviewListData],
+    summary="Every review of this shot, newest first",
 )
-async def list_analyses(shot_id: int, analyses: AnalysesRepoDep) -> JSONResponse:
+async def list_reviews(shot_id: int, reviews: ReviewsRepoDep) -> JSONResponse:
     return envelope_response(
-        AnalysisListData(items=await analyses.for_shot(shot_id)).model_dump(mode="json")
+        ReviewListData(items=await reviews.for_shot(shot_id)).model_dump(mode="json")
     )
 
 
 @router.post(
-    "/{shot_id}/analyses",
-    response_model=ApiResponse[AnalysisRow],
+    "/{shot_id}/reviews",
+    response_model=ApiResponse[ShotReviewRow],
     status_code=202,
-    summary="Queue an analysis of this shot",
-    # One of the two routes in this API that spends money. The registry already
+    summary="Queue a review of this shot",
+    # One of the routes in this API that spends money. The registry already
     # makes a repeat request for the *same* shot idempotent; this bounds a loop
     # walking different ones. See gaggiclanker/infra/ratelimit.py.
-    dependencies=[Depends(rate_limit("analysis", ANALYSIS_RATE_LIMIT))],
+    dependencies=[Depends(rate_limit("review", REVIEW_RATE_LIMIT))],
 )
-async def run_analysis(
+async def run_review(
     shot_id: int,
-    body: AnalysisRequest,
+    body: ReviewRequest,
     request: Request,
     shots: ShotsRepoDep,
-    analyses: AnalysesRepoDep,
-    analyzer: AnalyzerServiceDep,
+    reviews: ReviewsRepoDep,
+    reviewer: ReviewServiceDep,
     wait: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
     """Queue the work and answer with the `running` row. 202, not 201.
 
-    The provider call takes thirty seconds to two minutes and does **not** run
-    inside this request: `docker stop` allows ten seconds, and a request holding
-    a call that long is killed mid-flight with the browser still waiting. It
-    goes to the app's task registry instead, the row is the handle, and the LLM
-    stream carries `analysis.started` / `analysis.finished` for the page to
-    follow.
+    This is the only way a review starts: a person pressing Review on the shot
+    page. The provider call takes tens of seconds and does **not** run inside
+    this request; it goes to the app's task registry, the row is the handle,
+    and the LLM stream carries `review.started` / `review.finished` for the
+    page to follow.
 
-    Idempotent per shot. A second tab pressing the button — or this tab pressing
-    it twice — gets the running row back rather than a second call, because the
-    registry name `analysis:<id>` can only be held once.
+    Idempotent per shot while one runs: the registry name `review:<id>` can
+    only be held once, so a second press gets the running row back.
 
     ``?wait=1`` blocks until the work is finished and answers with the final
-    row. It exists for tests and for `curl`; a browser should follow the stream.
+    row. It exists for tests and for `curl`; a browser follows the stream.
 
     A **provider failure still answers 2xx.** The row exists, it says `failed`
-    and it carries the error code; turning that into a 502 would leave the
-    client an error and no id, and the row it could not see is the one thing
-    that explains what happened.
+    and it carries the error code; a 502 would leave the client an error and no
+    id, and the row is the one thing that explains what happened.
     """
     shot = await shots.get(shot_id)
     if shot is None:
@@ -507,30 +502,23 @@ async def run_analysis(
             details={
                 "field": "shot_id",
                 "message": (
-                    "Its bytes never parsed, so there are no diagnostics to analyse. "
+                    "Its bytes never parsed, so there is nothing to read. "
                     "The raw file is still stored and a parser fix can re-derive it."
                 ),
             },
         )
 
-    # The accidental double-click should not spend a call on a question that is
-    # already answered; `force` is what makes a deliberate second press mean
-    # something. 200, because nothing was accepted.
-    previous = await analyses.latest_for_shot(shot_id)
-    if previous is not None and previous.status == "ok" and not body.force:
-        return envelope_response(previous.model_dump(mode="json"))
-
-    row, _started = await analyzer.start(
+    row, _started = await reviewer.start(
         shot_id, tasks=request.app.state.tasks, model=body.model or None
     )
     if wait:
-        row = await _awaited(request, analysis_task_name(shot_id), analyses, row)
+        row = await _awaited(request, review_task_name(shot_id), reviews, row)
     return envelope_response(row.model_dump(mode="json"), status_code=202)
 
 
 async def _awaited(
-    request: Request, task_name: str, analyses: AnalysesRepoDep, row: AnalysisRow
-) -> AnalysisRow:
+    request: Request, task_name: str, reviews: ReviewsRepoDep, row: ShotReviewRow
+) -> ShotReviewRow:
     """Wait for a queued task and re-read the row. ``?wait=1`` only.
 
     A task that has already finished is not in the registry any more, which is
@@ -541,4 +529,4 @@ async def _awaited(
     if task is not None:
         with suppress(asyncio.CancelledError):
             await asyncio.shield(task)
-    return await analyses.get(row.id) or row
+    return await reviews.get(row.id) or row

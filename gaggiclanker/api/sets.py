@@ -47,9 +47,7 @@ from gaggiclanker.api.deps import (
     SetProposalsRepoDep,
     SetsRepoDep,
     ShotsRepoDep,
-    SuggestionsRepoDep,
 )
-from gaggiclanker.db.repos.analyses import SuggestionRow
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.set_proposals import (
@@ -204,20 +202,6 @@ class SetVersionDetail(BaseModel):
     #: accepted proposal and that conversation still exists. The log offers a
     #: way back into the room where the reasoning is.
     chat_thread_id: int | None = None
-
-
-class SuggestionListData(BaseModel):
-    """`GET /api/sets/{id}/suggestions`: every piece of advice about this Set.
-
-    Flat and newest first rather than grouped by version: the reader's question
-    is "what is outstanding", and grouping would bury one open suggestion from
-    last week under four resolved ones from today. Each row carries its shot and
-    its version, so the page groups them however it likes.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    items: list[SuggestionRow]
 
 
 class SetProposalDetail(BaseModel):
@@ -429,8 +413,8 @@ def version_refused(exc: VersionRefused) -> AppError:
     Today every such refusal is about a Set being designed whose version 1 can
     no longer be filled, and each carries its own code
     (`DESIGN_HAS_SHOTS`, `DESIGN_HAS_VERSIONS`) so a page can say which.
-    Public because the other paths that write a version — a push for a Set,
-    an accepted suggestion — answer with the same error.
+    Public because the other path that writes a version — a push for a Set —
+    answers with the same error.
     """
     return Conflict(
         exc.message,
@@ -1034,18 +1018,3 @@ async def get_trends(set_id: int, sets: SetsRepoDep) -> JSONResponse:
     if row is None:
         raise NotFound(f"No Set {set_id}")
     return envelope_response((await sets.trends(set_id)).model_dump(mode="json"))
-
-
-@router.get(
-    "/{set_id}/suggestions",
-    response_model=ApiResponse[SuggestionListData],
-    summary="Every suggestion made about a shot in this Set",
-)
-async def list_suggestions(
-    set_id: int, sets: SetsRepoDep, suggestions: SuggestionsRepoDep
-) -> JSONResponse:
-    if await sets.get(set_id) is None:
-        raise NotFound(f"No Set {set_id}")
-    return envelope_response(
-        SuggestionListData(items=await suggestions.for_set(set_id)).model_dump(mode="json")
-    )

@@ -1,6 +1,6 @@
 """The shape the starting-point call must answer in.
 
-As with the analyzer (`gaggiclanker/analyzer/models.py`) this is the only
+As with a review (`gaggiclanker/review/models.py`) this is the only
 description of the contract: its JSON schema is what the provider is sent and
 its validator is what the reply is checked against, so the prompt explains what
 the fields are *for* and never restates their types.

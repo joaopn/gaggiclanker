@@ -107,12 +107,12 @@ async def test_every_shipped_prompt_round_trips_through_a_save(
     The list comes from the API rather than from a parametrize literal, so
     shipping a prompt is one file and not two edits — and a prompt that only
     exists because somebody added it to `gaggiclanker/prompts/` is covered the
-    moment it is seeded. A hard-coded pair is how `analysis` and
-    `analysis-user` went uncovered.
+    moment it is seeded. A hard-coded pair is how two prompts once went
+    uncovered.
     """
     listing = await data(await client.get("/api/prompts"))
     names = [prompt["name"] for prompt in listing["prompts"]]
-    assert {"ping", "fragments/style", "analysis", "analysis-user"} <= set(names)
+    assert {"ping", "fragments/style", "review", "review-user"} <= set(names)
 
     for name in names:
         prompt = await data(await client.get(f"/api/prompts/{name}"))

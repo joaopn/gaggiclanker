@@ -79,8 +79,8 @@ class _Model(BaseModel):
 
 #: Shown with the schema. Examples are worth more than column lists to a model
 #: that has to write correlated SQL, and these four are the shapes that actually
-#: come up: one Set's shots, a per-version average, a join to the judgement, and
-#: a curve slice.
+#: come up: one Set's shots, a per-version average, a join to a shot's review,
+#: and a curve slice.
 EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     (
         "The ten most recent shots in one Set, newest first",
@@ -95,10 +95,11 @@ EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
         "  FROM v_shots WHERE set_id = 3 GROUP BY set_version_no ORDER BY set_version_no",
     ),
     (
-        "Shots the person disliked, with what the analyzer suggested",
-        "SELECT s.shot_id, s.rating, s.balance, g.variable, g.direction, g.reason\n"
-        "  FROM v_shots s JOIN v_suggestions g ON g.shot_id = s.shot_id\n"
-        " WHERE s.rating <= 2 ORDER BY s.started_at DESC LIMIT 20",
+        "Shots where a review's blind taste prediction disagreed with the person",
+        "SELECT s.shot_id, s.balance, r.taste_balance, r.summary\n"
+        "  FROM v_shots s JOIN v_reviews r ON r.shot_id = s.shot_id AND r.status = 'ok'\n"
+        " WHERE s.balance IS NOT NULL AND r.taste_balance != s.balance\n"
+        " ORDER BY s.started_at DESC LIMIT 20",
     ),
     (
         "Flow against its target over the second half of one shot",
@@ -423,7 +424,7 @@ async def get_set(ctx: ToolContext, args: GetSetInput) -> SetOutput:
 async def _set_insights(ctx: ToolContext, row: Any) -> list[Any]:
     """The confirmed insights that apply to a Set, through the shared matcher.
 
-    The same ``select_insights`` an analysis uses, so the chat and the prompt
+    The same ``select_insights`` the Set page uses, so the chat and the page
     cannot disagree about which insights apply — reimplementing the rule here
     is how the two drift.
     """

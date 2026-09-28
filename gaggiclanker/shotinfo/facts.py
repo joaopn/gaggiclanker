@@ -98,7 +98,7 @@ class ShotFacts:
     def has_pressure(self) -> bool:
         """Whether the machine had a pressure sensor for this shot.
 
-        Read from the blob, defaulting to yes as the analyzer does: a shot
+        Read from the blob, defaulting to yes: a shot
         derived before the flag existed had a sensor, since the flag was added
         for the boards that do not.
         """

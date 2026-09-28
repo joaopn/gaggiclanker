@@ -530,7 +530,7 @@ class LlmService:
         The row is the only durable record of what the LLM cost; the observer's
         ring is gone at the next restart. But a call that succeeded and then
         could not be logged still succeeded, and turning that into an error
-        would lose the analysis as well as the accounting.
+        would lose the review as well as the accounting.
         """
         if self.calls_repo is None:
             return

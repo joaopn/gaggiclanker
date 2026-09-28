@@ -435,7 +435,7 @@ export function NewSetDialog({
           ) : (
             <p className="text-muted-foreground text-xs">
               No coffee here yet? Add one on the Beans page first — the roast level and process are
-              what the analyser reasons from.
+              what the chat reasons from.
             </p>
           )}
 

@@ -33,7 +33,7 @@ the sync package — the direction `docs/architecture.md` draws.
 keeps a :class:`~gaggiclanker.infra.tasks.TaskRegistry` of its own — the sync
 engine's loops, a cleanup run, a notes send — rather than sharing the app's.
 The app's registry is handed to things a language model drives (a chat run, an
-analysis, a starting point queue work on it), and a registry is not an opaque
+review, a starting point queue work on it), and a registry is not an opaque
 handle: every task in it answers ``get_coro()``, and a coroutine's frame holds
 the ``self`` it was called on. One shared registry therefore means a chat tool
 holding the sync engine, its client and its ``save_profile`` two public calls

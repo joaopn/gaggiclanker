@@ -2,7 +2,7 @@
 
 One function — :func:`chunk_markdown` — and it is pure: text in, chunks out, no
 database, no clock, no randomness. That is deliberate and it is the property the
-tests pin, because a chunk's `heading_path` is a **citation**. An analysis says
+tests pin, because a chunk's `heading_path` is a **citation**. A review says
 ``[ESPRESSO_BREWING_BASICS#adjustment-strategies/variable-hierarchy]`` and that
 string has to still name the same passage after a re-seed, a reset and an
 upgrade. Ids derived from the headings do; ids derived from a counter, a hash of
@@ -51,7 +51,7 @@ __all__ = [
 MIN_WORDS = 200
 
 #: Above this a section is split at a paragraph boundary. 600 words is roughly
-#: 800 tokens — three of them fit inside the analyzer's default budget with room
+#: 800 tokens — three of them fit inside a review's default budget with room
 #: for the rules, and a chunk larger than that is being retrieved for one
 #: paragraph and paid for in full.
 MAX_WORDS = 600

@@ -47,7 +47,7 @@ class LlmCallRow(BaseModel):
     status: str
     error: str | None = None
     #: The rendered messages and the raw reply, when `llmStoreCallText` is on.
-    #: See migration 0004: this is what makes a stored analysis explainable
+    #: See migration 0004: this is what makes a stored review explainable
     #: after the prompt that produced it has been edited.
     input_text: str | None = None
     output_text: str | None = None

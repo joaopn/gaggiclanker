@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 /**
  * "Is the LLM doing anything?", in the header.
  *
- * An analysis call takes thirty seconds to two minutes. Without this the only
+ * A review call takes thirty seconds to two minutes. Without this the only
  * signal is a spinner on whichever page started it, which answers neither "is
  * it stuck" nor "is it rate-limited" nor "did the other tab already ask". The
  * count comes off the same stream the server publishes to every tab, so two

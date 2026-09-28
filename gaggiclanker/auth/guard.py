@@ -127,7 +127,7 @@ class AuthGuardMiddleware:
             await response(scope, receive, send)
             return
 
-        # Downstream (the analysis rate limit) keys on the caller; with auth on
+        # Downstream (the review rate limit) keys on the caller; with auth on
         # that is the user, not the proxy's idea of an address.
         scope["auth_subject"] = subject
         await self.app(scope, receive, send)

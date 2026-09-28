@@ -39,7 +39,7 @@ from gaggiclanker.llm.service import LlmService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import GENERAL_TOOLS, SET_TOOLS
-from tests.analyzer.conftest import Fixture, build_fixture
+from tests.review.conftest import Fixture, build_fixture
 
 
 class Recorder:

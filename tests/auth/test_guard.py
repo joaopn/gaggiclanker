@@ -60,7 +60,7 @@ def test_the_enumeration_finds_a_realistic_number_of_routes(app: FastAPI) -> Non
     routes = api_routes(app)
     assert len(routes) > 40
     assert ("GET", "/api/shots") in routes
-    assert ("POST", "/api/shots/1/analyses") in routes
+    assert ("POST", "/api/shots/1/reviews") in routes
 
 
 async def test_every_api_route_is_guarded(secured: tuple[FastAPI, httpx.AsyncClient]) -> None:

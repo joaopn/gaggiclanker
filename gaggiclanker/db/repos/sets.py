@@ -178,7 +178,10 @@ class SetVersionWrite(BaseModel):
     #: numbers this version itself states.
     prediction: LongText = ""
     origin: SetVersionOrigin = "manual"
-    #: The analysis whose accepted suggestion produced this version.
+    #: The analysis whose accepted suggestion produced this version, for a
+    #: version made before the per-shot analysis was retired; the carried
+    #: review of the same id when that analysis finished. Nothing sets it now
+    #: but a push of such an older draft.
     origin_analysis_id: int | None = None
 
 
@@ -1215,8 +1218,8 @@ class SetsRepository(Repository):
         """Write one version row, and retire whatever it has overtaken.
 
         Every path that appends a version to a Set comes through here — the Add
-        a version form, a roll back, a pushed profile draft, an accepted
-        analysis suggestion, and accepting a proposal — which is why the
+        a version form, a roll back, a pushed profile draft and accepting a
+        proposal — which is why the
         retirement lives here rather than in each of them. A change an agent
         proposed was argued against the version that was current when it was
         made; the moment the Set moves on, that argument is about a recipe

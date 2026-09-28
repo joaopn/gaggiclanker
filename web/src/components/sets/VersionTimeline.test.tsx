@@ -157,7 +157,8 @@ describe("VersionTimeline", () => {
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
 
-    // The label comes from /api/vocab like every other closed vocabulary here;
+    // A version an accepted analysis suggestion made keeps saying so. The label
+    // comes from /api/vocab like every other closed vocabulary here;
     // the slug is what shows while that is in flight.
     expect(screen.getByText("analysis")).toBeInTheDocument();
     expect(await screen.findByText("From an analysis")).toBeInTheDocument();
@@ -270,7 +271,6 @@ describe("VersionTimeline", () => {
         quarantined: false,
         quarantine_reason: null,
         deleted_on_device: false,
-        analysis_state: "none",
         rating: null,
         has_notes: false,
         has_judgement: true,

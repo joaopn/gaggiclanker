@@ -208,15 +208,6 @@ class ShotListRow(BaseModel):
     #: somebody to say which one it belongs to.
     set_version_id: int | None = None
     set_badge: ShotSetBadge | None = None
-    #: Where the newest LLM analysis of this shot got to: `none`,
-    #: `running`, `ok` or `failed`. An `interrupted` row — one a restart cut off
-    #: — reads as `failed`, because to somebody looking at a list the two mean
-    #: the same thing and a fifth state would only need explaining.
-    analysis_state: str = "none"
-    #: The newest analysis's error when `analysis_state` is `failed`, and
-    #: ``None`` otherwise: a failure from an earlier run that a later one
-    #: superseded is not this shot's problem any more.
-    analysis_error: str | None = None
     synced_at: str
 
     @model_validator(mode="before")
@@ -312,7 +303,7 @@ class ShotCounts(BaseModel):
     samples: int = 0
     #: Shots with no Set version, quarantined ones excluded. The Shots page
     #: header shows it as a call to action, because an unassigned shot is
-    #: invisible to every Set trend and to the analyzer's trajectory.
+    #: invisible to every Set trend, the spread and the Set's conversations.
     needs_set: int = 0
 
 
@@ -341,22 +332,6 @@ _LIST_COLUMNS = """
     s.quarantined, s.quarantine_reason, s.deleted_on_device,
     n.rating AS rating,
     n.shot_id IS NOT NULL AS has_notes,
-    -- The newest analysis's status, flattened. A correlated subquery rather
-    -- than a join: a shot usually has zero or one analysis, and a join would
-    -- need a GROUP BY over the whole list to pick the newest of the few that
-    -- have several.
-    COALESCE((SELECT CASE a.status WHEN 'interrupted' THEN 'failed' ELSE a.status END
-                FROM shot_analyses a
-               WHERE a.shot_id = s.id
-               ORDER BY a.id DESC LIMIT 1), 'none') AS analysis_state,
-    -- And its error when that newest one failed, so the list's Retry button can
-    -- say what went wrong without a request per row. A second subquery on the
-    -- same (shot_id, id DESC) walk as the one above, not a join, for the same
-    -- reason.
-    (SELECT CASE WHEN a.status IN ('failed', 'interrupted') THEN a.error END
-       FROM shot_analyses a
-      WHERE a.shot_id = s.id
-      ORDER BY a.id DESC LIMIT 1) AS analysis_error,
     j.shot_id IS NOT NULL AS has_judgement,
     j.rating AS judgement_rating,
     j.notes AS judgement_notes,

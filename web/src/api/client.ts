@@ -12,8 +12,6 @@
  */
 
 import type {
-  AcceptedSuggestion,
-  Analysis,
   AuthStatusData,
   BackupData,
   BeanRow,
@@ -102,8 +100,6 @@ import type {
   StartingPointAccepted,
   StartingPointRequest,
   StartingPointRun,
-  Suggestion,
-  SuggestionListData,
   SyncStatusData,
   VersionOutcomeWrite,
   VersionPredictionWrite,
@@ -561,7 +557,7 @@ export async function getCleanupPlan(): Promise<CleanupPlan> {
  *
  * `shotIds` are the planned shots the preview showed. The server compares them
  * with a fresh plan and refuses with a 409 if they differ, so what runs is what
- * was approved. 202 and a background task, like running an analysis: a hundred
+ * was approved. 202 and a background task, like running a review: a hundred
  * shots at two deletes a second is most of a minute. The page follows the ledger.
  */
 export async function runCleanup(shotIds: number[]): Promise<CleanupRunAccepted> {
@@ -703,7 +699,7 @@ export async function resetPrompt(name: string): Promise<PromptData> {
 /** Which registry key holds the model for a purpose. Mirrors config.py. */
 export const MODEL_KEYS: Record<LlmPurpose, string> = {
   default: "modelDefault",
-  analysis: "modelAnalysis",
+  review: "modelReview",
   draft: "modelDraft",
   chat: "modelChat",
 };
@@ -985,46 +981,6 @@ export async function matchShotsByProfile(shotIds?: number[]): Promise<ProfileMa
   });
 }
 
-// ---------------------------------------------------------------------------
-// The analyzer.
-//
-// `runAnalysis` is a long request on purpose: the call behind it takes thirty
-// seconds to two minutes, and the LLM stream reports `analysis.started` and
-// `analysis.finished` to anyone watching in the meantime. It resolves with the
-// stored row whatever happened — a provider failure is a `failed` row and a
-// 201, not an exception — so a caller renders the outcome rather than a toast.
-//
-// There is no wrapper for `GET /shots/{id}/analyses`: the shot detail already
-// carries them, and a second request for a list that is usually empty or one
-// row long would be a round trip for nothing. The route exists for API users.
-// ---------------------------------------------------------------------------
-
-export async function runAnalysis(
-  shotId: number,
-  options: { model?: string; force?: boolean } = {},
-): Promise<Analysis> {
-  return fetchApi<Analysis>(`/shots/${shotId}/analyses`, {
-    method: "POST",
-    body: JSON.stringify({ model: options.model ?? "", force: options.force ?? false }),
-  });
-}
-
-export async function getAnalysis(id: number): Promise<Analysis> {
-  return fetchApi<Analysis>(`/analyses/${id}`);
-}
-
-export async function getSetSuggestions(setId: number): Promise<SuggestionListData> {
-  return fetchApi<SuggestionListData>(`/sets/${setId}/suggestions`);
-}
-
-export async function acceptSuggestion(id: number): Promise<AcceptedSuggestion> {
-  return fetchApi<AcceptedSuggestion>(`/suggestions/${id}/accept`, { method: "POST" });
-}
-
-export async function rejectSuggestion(id: number): Promise<Suggestion> {
-  return fetchApi<Suggestion>(`/suggestions/${id}/reject`, { method: "POST" });
-}
-
 export async function getKnowledgeRules(
   params: { category?: string; enabled?: boolean } = {},
 ): Promise<KnowledgeRuleListData> {
@@ -1079,7 +1035,7 @@ export async function searchKnowledge(q: string, k = 8): Promise<KnowledgeSearch
 // boot, an insight is this box's alone.
 
 export async function getKnowledgeInsights(
-  params: { confirmed?: boolean; analysis_id?: number; set_id?: number } = {},
+  params: { confirmed?: boolean; set_id?: number } = {},
 ): Promise<KnowledgeInsightListData> {
   return fetchApi<KnowledgeInsightListData>(`/knowledge/insights${queryString(params)}`);
 }
@@ -1220,7 +1176,7 @@ export async function getSimilarSets(
 /**
  * Ask for three starting points. Answers 202 with a `running` row.
  *
- * "Resolved" means *queued*, exactly as it does for an analysis: the provider
+ * "Resolved" means *queued*, exactly as it does for a review: the provider
  * call runs in the background and the row is the handle. `wait` blocks until it
  * is done and exists for tests.
  */

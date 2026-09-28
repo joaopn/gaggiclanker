@@ -40,7 +40,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolOutcome, registry
 from gaggiclanker.tools.scope import ToolScope
-from tests.analyzer.conftest import Fixture
+from tests.review.conftest import Fixture
 
 #: A whole profile document, as a design with nothing to fork writes one.
 WHOLE_PROFILE: dict[str, Any] = {

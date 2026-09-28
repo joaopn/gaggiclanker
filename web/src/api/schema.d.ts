@@ -3,23 +3,6 @@
  * Do not edit by hand: regenerate after changing a route or a response model.
  */
 export interface paths {
-    "/api/analyses/{analysis_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** One analysis, with its suggestions */
-        get: operations["get_analysis_api_analyses__analysis_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -162,8 +145,8 @@ export interface paths {
          * @description A real delete, refused for a bean that is in use.
          *
          *     Starting-point runs about the bean go with it (their foreign key cascades).
-         *     Nothing else holds a bean id that has to keep resolving: an analysis keeps
-         *     its own snapshot of the facts it was given, and an insight scoped to the id
+         *     Nothing else holds a bean id that has to keep resolving: a review reads no
+         *     bean, and an insight scoped to the id
          *     simply never matches again, because ids are never reused.
          */
         delete: operations["delete_bean_api_beans__bean_id__delete"];
@@ -339,7 +322,7 @@ export interface paths {
          * Ask something; the answer streams on the run
          * @description 202, not 200: the work is queued and the row is the handle.
          *
-         *     The same shape as `POST /api/shots/{id}/analyses`, and for the same reason —
+         *     The same shape as `POST /api/shots/{id}/reviews`, and for the same reason —
          *     a request holding a two-minute provider call open is a request `docker stop`
          *     kills mid-flight, with the browser still waiting.
          */
@@ -448,7 +431,7 @@ export interface paths {
          *     switch. This route is the only way a cleanup starts: nothing runs one
          *     automatically.
          *
-         *     Not in the request, for the same reason an analysis is not: a run is one
+         *     Not in the request, for the same reason a review is not: a run is one
          *     WebSocket frame per shot paced at two a second, so a hundred shots is most
          *     of a minute and `docker stop` allows ten seconds. The task is named
          *     `cleanup`, claimed synchronously, so a second tab pressing the button gets a
@@ -744,7 +727,7 @@ export interface paths {
          * @description Every insight, or the ones a filter narrows to.
          *
          *     `?set_id=` answers the Set page's question — "what has this archive learned
-         *     that applies here" — through the same `select_insights` an analysis uses, so
+         *     that applies here" — through the same `select_insights` the chat uses, so
          *     the page cannot show a different answer from the prompt. It matches on the
          *     Set's own attributes only: `profile_style` is detected *per shot* from the
          *     profile the machine ran, so a Set has no single one and an insight scoped by
@@ -786,7 +769,7 @@ export interface paths {
          * Edit an insight, or confirm it
          * @description Apply whichever fields were sent.
          *
-         *     Confirming is what puts an insight in front of the next analysis of a
+         *     Confirming is what puts an insight in front of the conversations about a
          *     matching Set; un-confirming takes it out again with nothing else to
          *     remember, the way disabling a rule does.
          */
@@ -1431,6 +1414,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One review, with the input it was given */
+        get: operations["get_review_api_reviews__review_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets": {
         parameters: {
             query?: never;
@@ -1638,23 +1638,6 @@ export interface paths {
          *     deliberate act.
          */
         post: operations["rollback_api_sets__set_id__rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sets/{set_id}/suggestions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Every suggestion made about a shot in this Set */
-        get: operations["list_suggestions_api_sets__set_id__suggestions_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1928,46 +1911,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/shots/{shot_id}/analyses": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Every analysis of this shot, newest first */
-        get: operations["list_analyses_api_shots__shot_id__analyses_get"];
-        put?: never;
-        /**
-         * Queue an analysis of this shot
-         * @description Queue the work and answer with the `running` row. 202, not 201.
-         *
-         *     The provider call takes thirty seconds to two minutes and does **not** run
-         *     inside this request: `docker stop` allows ten seconds, and a request holding
-         *     a call that long is killed mid-flight with the browser still waiting. It
-         *     goes to the app's task registry instead, the row is the handle, and the LLM
-         *     stream carries `analysis.started` / `analysis.finished` for the page to
-         *     follow.
-         *
-         *     Idempotent per shot. A second tab pressing the button — or this tab pressing
-         *     it twice — gets the running row back rather than a second call, because the
-         *     registry name `analysis:<id>` can only be held once.
-         *
-         *     ``?wait=1`` blocks until the work is finished and answers with the final
-         *     row. It exists for tests and for `curl`; a browser should follow the stream.
-         *
-         *     A **provider failure still answers 2xx.** The row exists, it says `failed`
-         *     and it carries the error code; turning that into a 502 would leave the
-         *     client an error and no id, and the row it could not see is the one thing
-         *     that explains what happened.
-         */
-        post: operations["run_analysis_api_shots__shot_id__analyses_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/shots/{shot_id}/judgement": {
         parameters: {
             query?: never;
@@ -2037,6 +1980,43 @@ export interface paths {
         get: operations["get_shot_raw_api_shots__shot_id__raw_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shots/{shot_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every review of this shot, newest first */
+        get: operations["list_reviews_api_shots__shot_id__reviews_get"];
+        put?: never;
+        /**
+         * Queue a review of this shot
+         * @description Queue the work and answer with the `running` row. 202, not 201.
+         *
+         *     This is the only way a review starts: a person pressing Review on the shot
+         *     page. The provider call takes tens of seconds and does **not** run inside
+         *     this request; it goes to the app's task registry, the row is the handle,
+         *     and the LLM stream carries `review.started` / `review.finished` for the
+         *     page to follow.
+         *
+         *     Idempotent per shot while one runs: the registry name `review:<id>` can
+         *     only be held once, so a second press gets the running row back.
+         *
+         *     ``?wait=1`` blocks until the work is finished and answers with the final
+         *     row. It exists for tests and for `curl`; a browser follows the stream.
+         *
+         *     A **provider failure still answers 2xx.** The row exists, it says `failed`
+         *     and it carries the error code; a 502 would leave the client an error and no
+         *     id, and the row is the one thing that explains what happened.
+         */
+        post: operations["run_review_api_shots__shot_id__reviews_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2191,52 +2171,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/suggestions/{suggestion_id}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply a suggestion: a new Set version with that one field changed
-         * @description Create the version this suggestion asks for, and supersede its siblings.
-         *
-         *     Refused with a 409 for a suggestion that cannot be applied — a pressure or
-         *     profile change (the prototype writes nothing to the machine), a Set that has
-         *     moved on since the shot, or a version with no number to change. Each refusal
-         *     names what would have to be different; see
-         *     :mod:`gaggiclanker.analyzer.suggestions`.
-         */
-        post: operations["accept_api_suggestions__suggestion_id__accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/suggestions/{suggestion_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Turn a suggestion down
-         * @description Rejecting one suggestion leaves its siblings open: the backups may still be right.
-         */
-        post: operations["reject_api_suggestions__suggestion_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/sync/events": {
         parameters: {
             query?: never;
@@ -2347,91 +2281,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * AcceptedData
-         * @description What an accept produced: the resolved suggestion and the new version.
-         */
-        AcceptedData: {
-            suggestion: components["schemas"]["SuggestionRow"];
-            version: components["schemas"]["SetVersionRow"];
-        };
-        /** AnalysisListData */
-        AnalysisListData: {
-            /** Items */
-            items: components["schemas"]["AnalysisRow"][];
-        };
-        /**
-         * AnalysisRequest
-         * @description `POST /api/shots/{id}/analyses`: run one, optionally on a named model.
-         *
-         *     `force` is what makes a second press of the button mean something. Without
-         *     it a shot that already has a successful analysis answers with that one,
-         *     because the common accidental double-click should not spend a second call
-         *     on a question that is already answered.
-         */
-        AnalysisRequest: {
-            /**
-             * Force
-             * @default false
-             */
-            force: boolean;
-            /**
-             * Model
-             * @default
-             */
-            model: string;
-        };
-        /**
-         * AnalysisRow
-         * @description One row of `shot_analyses`, as read back.
-         */
-        AnalysisRow: {
-            /** Cost Estimate */
-            cost_estimate?: number | null;
-            /** Created At */
-            created_at: string;
-            /** Error */
-            error?: string | null;
-            /** Finished At */
-            finished_at?: string | null;
-            /** Id */
-            id: number;
-            input?: components["schemas"]["JsonObject"];
-            /** Llm Call Id */
-            llm_call_id?: string | null;
-            /**
-             * Model
-             * @default
-             */
-            model: string;
-            output?: components["schemas"]["JsonObject"];
-            /**
-             * Prompt Name
-             * @default
-             */
-            prompt_name: string;
-            /**
-             * Prompt Version
-             * @default
-             */
-            prompt_version: string;
-            /**
-             * Provider
-             * @default
-             */
-            provider: string;
-            /** Set Version Id */
-            set_version_id?: number | null;
-            /** Shot Id */
-            shot_id: number;
-            /** @default running */
-            status: components["schemas"]["AnalysisStatus"];
-            /** Suggestions */
-            suggestions?: components["schemas"]["SuggestionRow"][];
-            usage?: components["schemas"]["JsonObject"];
-        };
-        /** @enum {string} */
-        AnalysisStatus: "running" | "ok" | "failed" | "interrupted";
-        /**
          * ApiError
          * @description The error half of the envelope.
          */
@@ -2450,30 +2299,6 @@ export interface components {
         ApiMeta: {
             /** Request Id */
             request_id: string;
-        };
-        /** ApiResponse[AcceptedData] */
-        ApiResponse_AcceptedData_: {
-            data?: components["schemas"]["AcceptedData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[AnalysisListData] */
-        ApiResponse_AnalysisListData_: {
-            data?: components["schemas"]["AnalysisListData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[AnalysisRow] */
-        ApiResponse_AnalysisRow_: {
-            data?: components["schemas"]["AnalysisRow"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
         };
         /** ApiResponse[AuthStatusData] */
         ApiResponse_AuthStatusData_: {
@@ -2871,6 +2696,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ReviewListData] */
+        ApiResponse_ReviewListData_: {
+            data?: components["schemas"]["ReviewListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[RuleListData] */
         ApiResponse_RuleListData_: {
             data?: components["schemas"]["RuleListData"] | null;
@@ -3023,6 +2856,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ShotReviewDetail] */
+        ApiResponse_ShotReviewDetail_: {
+            data?: components["schemas"]["ShotReviewDetail"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ShotReviewRow] */
+        ApiResponse_ShotReviewRow_: {
+            data?: components["schemas"]["ShotReviewRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[ShotSamplesData] */
         ApiResponse_ShotSamplesData_: {
             data?: components["schemas"]["ShotSamplesData"] | null;
@@ -3050,22 +2899,6 @@ export interface components {
         /** ApiResponse[StartingPointRunRow] */
         ApiResponse_StartingPointRunRow_: {
             data?: components["schemas"]["StartingPointRunRow"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SuggestionListData] */
-        ApiResponse_SuggestionListData_: {
-            data?: components["schemas"]["SuggestionListData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[SuggestionRow] */
-        ApiResponse_SuggestionRow_: {
-            data?: components["schemas"]["SuggestionRow"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -3967,13 +3800,11 @@ export interface components {
          * @description Ask for a draft. Either the model writes it, or you did.
          *
          *     `profile` present means "this document, validated" and no provider is
-         *     contacted. `profile` absent means "draft one from the advice", which needs
-         *     at least one of `analysis_id` or `suggestion_id` — a draft with nothing to
-         *     go on is a model rewriting somebody's profile for no stated reason.
+         *     contacted. `profile` absent means "draft one from the notes", which needs
+         *     notes — a draft with nothing to go on is a model rewriting somebody's
+         *     profile for no stated reason.
          */
         DraftCreate: {
-            /** Analysis Id */
-            analysis_id?: number | null;
             /** Base Version Id */
             base_version_id: number;
             /**
@@ -3995,8 +3826,6 @@ export interface components {
             profile?: {
                 [key: string]: unknown;
             } | null;
-            /** Suggestion Id */
-            suggestion_id?: number | null;
         };
         /**
          * DraftListData
@@ -4349,7 +4178,7 @@ export interface components {
          * @description `POST /api/knowledge/insights`: write one by hand.
          *
          *     Source is fixed to `user` rather than taken from the body: the column says
-         *     *who* learned this, and a client asserting "an analysis said so" would make
+         *     *who* learned this, and a client asserting "a model said so" would make
          *     the one thing this row is for — knowing whether a model or a person is
          *     behind it — unreliable.
          */
@@ -5214,6 +5043,30 @@ export interface components {
             title: string;
         };
         /** @enum {string} */
+        ReviewConfidence: "low" | "medium" | "high";
+        /** ReviewListData */
+        ReviewListData: {
+            /** Items */
+            items: components["schemas"]["ShotReviewRow"][];
+        };
+        /**
+         * ReviewRequest
+         * @description `POST /api/shots/{id}/reviews`: run one, optionally on a named model.
+         *
+         *     Every press starts a review: a person pressing Review again wants a fresh
+         *     reading, and the earlier one stays stored. A press while one is running
+         *     gets that running row back.
+         */
+        ReviewRequest: {
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+        };
+        /** @enum {string} */
+        ReviewStatus: "running" | "ok" | "failed" | "interrupted";
+        /** @enum {string} */
         RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
         /**
          * RollbackWrite
@@ -5617,7 +5470,7 @@ export interface components {
         };
         /**
          * SettingsPatchBody
-         * @description ``{"gaggimateHost": "10.0.0.5", "modelAnalysis": null}``
+         * @description ``{"gaggimateHost": "10.0.0.5", "modelReview": null}``
          */
         SettingsPatchBody: {
             [key: string]: components["schemas"]["SettingValue"];
@@ -5977,10 +5830,10 @@ export interface components {
          *     a disagreement between them visible.
          */
         ShotDetailData: {
-            /** Analyses */
-            analyses?: components["schemas"]["AnalysisRow"][];
             judgement?: components["schemas"]["ShotJudgementRow"] | null;
             notes?: components["schemas"]["DeviceShotNotesRow"] | null;
+            /** Reviews */
+            reviews?: components["schemas"]["ShotReviewRow"][];
             set_version?: components["schemas"]["SetVersionRow"] | null;
             shot: components["schemas"]["ShotDetailRow"];
         };
@@ -5994,13 +5847,6 @@ export interface components {
          *     caller can tell "we hold the bytes" from "we hold a row".
          */
         ShotDetailRow: {
-            /** Analysis Error */
-            analysis_error?: string | null;
-            /**
-             * Analysis State
-             * @default none
-             */
-            analysis_state: string;
             /** Brew Delay Ms */
             brew_delay_ms?: number | null;
             /**
@@ -6231,13 +6077,6 @@ export interface components {
          * @description A row of `GET /api/shots`: enough to draw a line in a table, no curve.
          */
         ShotListRow: {
-            /** Analysis Error */
-            analysis_error?: string | null;
-            /**
-             * Analysis State
-             * @default none
-             */
-            analysis_state: string;
             /**
              * Deleted On Device
              * @default false
@@ -6338,6 +6177,107 @@ export interface components {
             synced_at: string;
             /** Volume G */
             volume_g?: number | null;
+        };
+        /**
+         * ShotReviewDetail
+         * @description One review with what it was told: the row plus its stored input.
+         */
+        ShotReviewDetail: {
+            /** Created At */
+            created_at: string;
+            /** Description */
+            description?: string | null;
+            /** Error */
+            error?: string | null;
+            excerpts_used?: components["schemas"]["JsonList"];
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: number;
+            input?: components["schemas"]["JsonObject"];
+            /** Llm Call Id */
+            llm_call_id?: string | null;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Prompt Name
+             * @default
+             */
+            prompt_name: string;
+            /**
+             * Prompt Version
+             * @default
+             */
+            prompt_version: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            rules_used?: components["schemas"]["JsonList"];
+            /** Shot Id */
+            shot_id: number;
+            /** @default running */
+            status: components["schemas"]["ReviewStatus"];
+            /** Summary */
+            summary?: string | null;
+            taste_balance?: components["schemas"]["Balance"] | null;
+            taste_body?: components["schemas"]["TasteBody"] | null;
+            taste_confidence?: components["schemas"]["ReviewConfidence"] | null;
+            usage?: components["schemas"]["JsonObject"];
+        };
+        /**
+         * ShotReviewRow
+         * @description One row of `shot_reviews`, as a page reads it: everything but the input.
+         */
+        ShotReviewRow: {
+            /** Created At */
+            created_at: string;
+            /** Description */
+            description?: string | null;
+            /** Error */
+            error?: string | null;
+            excerpts_used?: components["schemas"]["JsonList"];
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: number;
+            /** Llm Call Id */
+            llm_call_id?: string | null;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Prompt Name
+             * @default
+             */
+            prompt_name: string;
+            /**
+             * Prompt Version
+             * @default
+             */
+            prompt_version: string;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            rules_used?: components["schemas"]["JsonList"];
+            /** Shot Id */
+            shot_id: number;
+            /** @default running */
+            status: components["schemas"]["ReviewStatus"];
+            /** Summary */
+            summary?: string | null;
+            taste_balance?: components["schemas"]["Balance"] | null;
+            taste_body?: components["schemas"]["TasteBody"] | null;
+            taste_confidence?: components["schemas"]["ReviewConfidence"] | null;
+            usage?: components["schemas"]["JsonObject"];
         };
         /**
          * ShotSampleRow
@@ -6706,71 +6646,6 @@ export interface components {
             target_type: string;
         };
         /**
-         * SuggestionListData
-         * @description `GET /api/sets/{id}/suggestions`: every piece of advice about this Set.
-         *
-         *     Flat and newest first rather than grouped by version: the reader's question
-         *     is "what is outstanding", and grouping would bury one open suggestion from
-         *     last week under four resolved ones from today. Each row carries its shot and
-         *     its version, so the page groups them however it likes.
-         */
-        SuggestionListData: {
-            /** Items */
-            items: components["schemas"]["SuggestionRow"][];
-        };
-        /**
-         * SuggestionRow
-         * @description One row of `suggestions`, as read back.
-         */
-        SuggestionRow: {
-            /** Analysis Id */
-            analysis_id: number;
-            /**
-             * Confidence
-             * @default
-             */
-            confidence: string;
-            /** Created At */
-            created_at: string;
-            /**
-             * Direction
-             * @default
-             */
-            direction: string;
-            /** Id */
-            id: number;
-            /** Magnitude */
-            magnitude?: number | null;
-            /**
-             * Priority
-             * @default 1
-             */
-            priority: number;
-            /**
-             * Reason
-             * @default
-             */
-            reason: string;
-            /** Resulting Set Version Id */
-            resulting_set_version_id?: number | null;
-            /** Set Version Id */
-            set_version_id?: number | null;
-            /** Shot Id */
-            shot_id?: number | null;
-            /** @default open */
-            status: components["schemas"]["SuggestionStatus"];
-            /**
-             * Unit
-             * @default none
-             */
-            unit: string;
-            variable: components["schemas"]["SuggestionVariable"];
-        };
-        /** @enum {string} */
-        SuggestionStatus: "open" | "accepted" | "rejected" | "superseded";
-        /** @enum {string} */
-        SuggestionVariable: "grind" | "dose" | "yield" | "temperature" | "pressure" | "flow" | "preinfusion" | "puck_prep" | "profile";
-        /**
          * SyncEventRow
          * @description One line of the sync feed.
          */
@@ -6906,6 +6781,8 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** @enum {string} */
+        TasteBody: "thin" | "medium" | "heavy";
         /**
          * Term
          * @description One member of a simple vocabulary: the stored value and its label.
@@ -7132,8 +7009,6 @@ export interface components {
          *     and the symptom is a 422 on a value the user picked from a dropdown.
          */
         Vocabulary: {
-            /** Actionable Variables */
-            actionable_variables: string[];
             /** Balances */
             balances: components["schemas"]["Term"][];
             /** Burr Types */
@@ -7160,14 +7035,6 @@ export interface components {
             spread_measures: components["schemas"]["MeasureTerm"][];
             /** Step Units */
             step_units: components["schemas"]["Term"][];
-            /** Suggestion Directions */
-            suggestion_directions: components["schemas"]["Term"][];
-            /** Suggestion Statuses */
-            suggestion_statuses: components["schemas"]["Term"][];
-            /** Suggestion Units */
-            suggestion_units: components["schemas"]["Term"][];
-            /** Suggestion Variables */
-            suggestion_variables: components["schemas"]["Term"][];
             /** Version Outcomes */
             version_outcomes: components["schemas"]["Term"][];
         };
@@ -7180,37 +7047,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    get_analysis_api_analyses__analysis_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                analysis_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_AnalysisRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;
@@ -8484,9 +8320,8 @@ export interface operations {
     list_insights_api_knowledge_insights_get: {
         parameters: {
             query?: {
-                analysis_id?: number | null;
                 confirmed?: boolean | null;
-                /** @description Only the **confirmed** insights that apply to this Set — the same selection an analysis of one of its shots is given. */
+                /** @description Only the **confirmed** insights that apply to this Set — the same selection the Set's conversations are given. */
                 set_id?: number | null;
             };
             header?: never;
@@ -9618,6 +9453,37 @@ export interface operations {
             };
         };
     };
+    get_review_api_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotReviewDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_sets_api_sets_get: {
         parameters: {
             query?: {
@@ -9931,37 +9797,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetVersionRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_suggestions_api_sets__set_id__suggestions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SuggestionListData_"];
                 };
             };
             /** @description Validation Error */
@@ -10384,74 +10219,6 @@ export interface operations {
             };
         };
     };
-    list_analyses_api_shots__shot_id__analyses_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                shot_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_AnalysisListData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    run_analysis_api_shots__shot_id__analyses_post: {
-        parameters: {
-            query?: {
-                wait?: boolean;
-            };
-            header?: never;
-            path: {
-                shot_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AnalysisRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_AnalysisRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     put_judgement_api_shots__shot_id__judgement_put: {
         parameters: {
             query?: never;
@@ -10567,6 +10334,74 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reviews_api_shots__shot_id__reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ReviewListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_review_api_shots__shot_id__reviews_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ShotReviewRow_"];
                 };
             };
             /** @description Validation Error */
@@ -10769,68 +10604,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_StartingPointAccepted_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    accept_api_suggestions__suggestion_id__accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                suggestion_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_AcceptedData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reject_api_suggestions__suggestion_id__reject_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                suggestion_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_SuggestionRow_"];
                 };
             };
             /** @description Validation Error */

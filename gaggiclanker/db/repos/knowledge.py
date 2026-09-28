@@ -1,8 +1,8 @@
 """`knowledge_rules` — the structured dial-in facts, as rows.
 
 Tier 1 of the knowledge base: small,
-machine-readable rules with the conditions they apply under, shared by the
-analyzer, the Knowledge page and — later — the chat.
+machine-readable rules with the conditions they apply under, shared by a
+shot's review, the Knowledge page and the chat.
 
 The seeding rules are `prompts`' rules, for the same reason: a shipped file is
 the default, the row is the live copy, and an upgrade must reach every rule
@@ -12,9 +12,8 @@ nobody has touched without clobbering the ones they have. See
 Selection happens in Python, not SQL. The table is a few hundred rows, the
 conditions are a JSON document with per-category dimensions, and a WHERE clause
 that could express them would be unreadable and — the part that matters — hard
-to prove deterministic. The acceptance criterion for the analyzer is that two analyses of
-the same shot select the *same* rules in the *same* order, and that is a sort
-over a list.
+to prove deterministic. Two reviews of the same shot must select the *same*
+rules in the *same* order, and that is a sort over a list.
 """
 
 from __future__ import annotations
@@ -254,8 +253,8 @@ def _would_select(rule: RuleRow, tokens: list[str]) -> bool:
 
     A deliberately simple mirror of
     :func:`gaggiclanker.knowledge.rules._matches`: that one reads a typed
-    context an analysis has assembled, this one reads strings off a query
-    string. Keeping them apart means the query cannot make the analyzer's
+    context a review has assembled, this one reads strings off a query
+    string. Keeping them apart means the query cannot make a review's
     selection wrong; keeping them the same shape means the answers agree.
     """
     given: dict[str, set[str]] = {}

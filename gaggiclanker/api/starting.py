@@ -8,7 +8,7 @@ its own on the bean (`api/beans.py`), because the wizard shows those cards
 like this" is useful on its own and free.
 
 The POST does not run the call inside the request, for the reason
-`POST /api/shots/{id}/analyses` does not: `docker stop` allows ten seconds and a
+`POST /api/shots/{id}/reviews` does not: `docker stop` allows ten seconds and a
 request holding a two-minute provider call is killed mid-flight with the browser
 still waiting. `?wait=1` blocks until the work is done, for tests and `curl`.
 """
@@ -37,8 +37,8 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/starting-points", tags=["starting-point"])
 
-#: The same bucket size the analysis route uses, and for the same reason: this
-#: is the other route in the API that spends money, and the registry's name
+#: The same bucket size the review route uses, and for the same reason: this
+#: is another route in the API that spends money, and the registry's name
 #: guard only makes a repeat request for the *same* bag idempotent. A loop
 #: walking a catalogue of beans is what this bounds.
 STARTING_POINT_RATE_LIMIT = 30

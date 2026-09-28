@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { shotRawUrl } from "@/api/client";
 import type { ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
-import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
 import { DiscussButton } from "@/components/chat/DiscussButton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -29,7 +28,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useShot, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import {
-  ANALYSIS_ANCHOR,
   ASSIGN_ANCHOR,
   exitReasonLabel,
   formatGrams,
@@ -45,7 +43,7 @@ import {
  *
  * Composed top to bottom in the order somebody works through a shot: what it
  * was, what you thought of it, what the curves did, how cleanly it was
- * executed, which Set it belongs to and what the model made of it, what each
+ * executed, which Set it belongs to, what each
  * diagnostic says, which phase it happened in, what the machine's own notes
  * recorded, and finally the raw header for anybody checking the archive
  * against the device.
@@ -67,14 +65,13 @@ export function ShotDetailPage() {
   const { hash } = useLocation();
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
-  // rest here with `#set`, and a link to a shot's analysis comes here with
-  // `#analysis`. Both panels are far down a long page, and landing at the
-  // top of it would leave the reader to find the thing the link promised. It
-  // waits for the shot, because until then the panels do not exist.
+  // rest here with `#set`. The panel is far down a long page, and landing at
+  // the top of it would leave the reader to find the thing the link promised.
+  // It waits for the shot, because until then the panel does not exist.
   const arrived = shot.isSuccess;
   useEffect(() => {
     const anchor = hash.slice(1);
-    if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== ANALYSIS_ANCHOR)) return;
+    if (!arrived || anchor !== ASSIGN_ANCHOR) return;
     document.getElementById(anchor)?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [arrived, hash]);
 
@@ -159,9 +156,7 @@ export function ShotDetailPage() {
 
       {/* What you thought comes first, straight under the facts: recording it
           is what a shot page is opened for, and it should not wait below a
-          chart. The Set and the analysis come after the curves and the score,
-          and the analysis last because it reads both — advice given before you
-          have said how it tasted is worth markedly less, and the order says so. */}
+          chart. The Set comes after the curves and the score. */}
       {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
           a revealed prediction must not survive the change of subject. */}
       <VersionPrediction
@@ -194,16 +189,6 @@ export function ShotDetailPage() {
           judgement={shot.data.judgement}
         />
       </section>
-      {!row.quarantined ? (
-        <section id={ANALYSIS_ANCHOR} className="scroll-mt-20">
-          <AnalysisPanel
-            shotId={row.id}
-            analyses={shot.data.analyses ?? []}
-            hasSet={shot.data.set_version != null}
-            profileVersionId={row.profile_version_id}
-          />
-        </section>
-      ) : null}
 
       {!row.quarantined ? (
         <div className="grid gap-4 md:grid-cols-2">

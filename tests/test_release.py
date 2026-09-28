@@ -21,7 +21,7 @@ import yaml
 from fastapi import FastAPI
 
 from gaggiclanker import __version__
-from gaggiclanker.db.repos.analyses import AnalysesRepository, AnalysisStart
+from gaggiclanker.db.repos.reviews import ReviewStart, ShotReviewsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.settings import (
     DEVICE_WRITES_ENV_KEY,
@@ -168,7 +168,7 @@ def test_the_bind_port_default_is_the_same_number_everywhere() -> None:
 def test_the_image_puts_the_default_providers_cli_on_path() -> None:
     """The default provider runs `claude`; the runtime stage must carry it.
 
-    Without it a fresh install answered every Validate and every analysis with
+    Without it a fresh install answered every Validate and every review with
     "the Claude Code CLI (claude) was not found on PATH". The binary lands under
     the name `claudeCodeBin` defaults to, in a directory on the image's PATH.
     `scripts/repro_image_has_claude_cli.py` builds the image and runs it; this
@@ -241,18 +241,18 @@ async def interrupted(env: EnvSettings) -> EnvSettings:
         shot_id = int(await db.fetch_value("SELECT id FROM shots") or 0)
         # Through the repository, so the row is exactly the shape a killed
         # process would have left behind rather than a hand-written guess at it.
-        await AnalysesRepository(db).start(
-            AnalysisStart(shot_id=shot_id, provider="fake", model="fake")
+        await ShotReviewsRepository(db).start(
+            ReviewStart(shot_id=shot_id, provider="fake", model="fake")
         )
         await SyncRepository(db).start_run("backfill", trigger="test")
     return env
 
 
-async def test_a_running_analysis_is_marked_interrupted_at_the_next_boot(
+async def test_a_running_review_is_marked_interrupted_at_the_next_boot(
     interrupted: EnvSettings,
 ) -> None:
     async with running_app(interrupted) as (app, _client):
-        row = await app.state.db.fetch_one("SELECT * FROM shot_analyses")
+        row = await app.state.db.fetch_one("SELECT * FROM shot_reviews")
         assert row["status"] == "interrupted"
         assert row["error"]
         assert row["finished_at"]
@@ -272,7 +272,7 @@ async def test_a_running_sync_run_is_closed_at_the_next_boot(
 async def test_reconciliation_is_idempotent(interrupted: EnvSettings) -> None:
     async with running_app(interrupted) as (app, _client):
         db = app.state.db
-        assert await AnalysesRepository(db).reconcile_running() == 0
+        assert await ShotReviewsRepository(db).reconcile_running() == 0
         assert await SyncRepository(db).reconcile_running() == 0
 
 
@@ -291,6 +291,6 @@ async def test_the_boot_summary_is_logged(
         pass
     lines = [x for x in capsys.readouterr().out.splitlines() if "boot_reconciled" in x]
     assert len(lines) == 1, lines
-    assert '"analyses_interrupted": 1' in lines[0]
+    assert '"reviews_interrupted": 1' in lines[0]
     assert '"sync_runs_interrupted": 1' in lines[0]
     assert '"auth_enabled": false' in lines[0]

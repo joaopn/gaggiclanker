@@ -30,7 +30,7 @@ from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTie
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.tools.mcp.server import SERVER_NAME
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
-from tests.analyzer.conftest import Fixture, build_fixture
+from tests.review.conftest import Fixture, build_fixture
 
 #: The subprocess has to import gaggiclanker, and a test run is not necessarily
 #: cwd'd at the repository root.

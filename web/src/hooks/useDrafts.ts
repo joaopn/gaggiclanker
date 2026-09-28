@@ -43,7 +43,7 @@ import { queryKeys } from "@/lib/queryKeys";
  * push.** `POST /profile-drafts/{id}/push` answers 200 whether the machine
  * stored what we sent or something else, because the profile is on the display
  * either way and only the draft's `status` says which happened. So `onSuccess`
- * branches on the row — the same rule `useRunAnalysis` follows for an analysis
+ * branches on the row — the same rule the review hook follows for a review
  * that came back `failed`.
  */
 

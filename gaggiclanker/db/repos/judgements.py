@@ -51,7 +51,7 @@ def _within(value: float | None, low: float, high: float) -> float | None:
 
     Used only on the seeding path. A figure outside the bounds is dropped rather
     than clamped: the bounds exist because a dose of 600 g is not a dose, and a
-    clamped 500 would be a number the ratio and the analyzer would go on to
+    clamped 500 would be a number the ratio and the chat would go on to
     reason from as though somebody had meant it.
     """
     if value is None or not (low < value <= high):
@@ -253,7 +253,7 @@ class JudgementsRepository(Repository):
                 # Dropped rather than clamped: a dose of 150 g is not 100 g of
                 # coffee, it is somebody's typo or another client's unit, and
                 # clamping would turn a nonsense figure into a plausible one
-                # that the ratio and the analyzer would then reason from.
+                # that the ratio and the chat would then reason from.
                 dose_in_g=_within(parsed.dose_in, 0, 100),
                 dose_out_g=_within(parsed.dose_out, 0, 500),
                 # Truncated rather than dropped: a grind setting is a label, so

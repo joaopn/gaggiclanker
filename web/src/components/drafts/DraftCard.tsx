@@ -86,7 +86,10 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
           <p className="truncate font-medium text-sm">{draft.draft_label ?? "Untitled draft"}</p>
           <p className="text-muted-foreground text-xs">
             from {draft.base_label ?? "an unknown profile"} · {formatTime(draft.created_at)}
-            {draft.source_analysis_id ? ` · analysis #${draft.source_analysis_id}` : ""}
+            {/* History only: a draft made from an analysis before the per-shot
+                analysis was retired. Its id now names a carried review, so it
+                is not shown as a link or a number. */}
+            {draft.source_analysis_id ? " · from an analysis (now a review)" : ""}
           </p>
         </div>
         <Badge variant={badge.variant}>{badge.label}</Badge>

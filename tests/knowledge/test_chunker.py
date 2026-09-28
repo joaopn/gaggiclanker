@@ -1,7 +1,7 @@
 """The chunker: stable ids, sizes within bounds, and tables kept whole.
 
 The properties here are the ones a *citation* depends on. A heading path is
-printed by an analysis and followed by a reader months later, so the tests that
+printed by a review and followed by a reader months later, so the tests that
 matter are "the same text gives the same ids" and "the ids come from the
 headings rather than from the order or the length".
 """

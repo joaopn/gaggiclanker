@@ -1,4 +1,4 @@
-"""Seeding the rule tier, and choosing which rules an analysis is told about.
+"""Seeding the rule tier, and choosing which rules a review is told about.
 
 Two jobs, and they are here together because they are two halves of one
 contract: the seed file declares what a rule applies to, and
@@ -14,7 +14,10 @@ precisely so that a rule that misleads can be found and turned off.
 
 **The signal grammar.** `applies.signal` is a list of tokens, and a rule matches
 if *any* of them is present. The tokens are built by
-:func:`gaggiclanker.analyzer.context.signal_tokens` and there are eight shapes:
+:func:`gaggiclanker.review.context.signal_tokens` from a shot's telemetry, or
+passed by the chat's `get_rules`, and there are eight shapes (a review reads
+no judgement, so the taste, aroma and balance shapes only ever come from the
+chat):
 
     ``<metric>:<LABEL>``   a diagnostics band, e.g. ``channeling_risk:HIGH``
     ``primary:<name>``     a channeling indicator that fired, e.g. ``primary:pressure_cliff``
@@ -104,10 +107,10 @@ class SetContext:
 
 @dataclass(frozen=True, slots=True)
 class RuleSelection:
-    """What an analysis was told, and what it was allowed to cite."""
+    """What a review was told, and what it was allowed to cite."""
 
     rules: list[RuleRow] = field(default_factory=list)
-    #: The signal tokens the selection was made against. Stored on the analysis
+    #: The signal tokens the selection was made against. Stored on the review's
     #: input snapshot so a later reader can see *why* a rule was chosen, not
     #: only that it was.
     signals: list[str] = field(default_factory=list)
@@ -127,7 +130,7 @@ class RuleSelection:
 def render_rules(rules: list[dict[str, str]]) -> str:
     """Selected rules as prompt text, grouped by category in selection order.
 
-    Takes dicts rather than rows because the analysis context stores its rules
+    Takes dicts rather than rows because a review's input stores its rules
     as plain JSON — the snapshot on the row has to render the same way months
     later, when the `knowledge_rules` table has moved on. One renderer, so the
     live prompt and the stored one cannot disagree about what was said.
@@ -197,8 +200,8 @@ async def seed_rules(repo: RulesRepository, path: Path | None = None) -> int:
     "I do not want this rule" means here.
 
     A broken seed file is logged and skipped rather than raised: the archive
-    must still boot, and an analysis that runs with no rules says so in its
-    context instead of taking the app down.
+    must still boot, and a review that runs with no rules says so in its
+    input instead of taking the app down.
     """
     try:
         rules = load_seed_rules(path)
@@ -268,12 +271,11 @@ async def select_rules(
 
     Deterministic by construction: the repository returns rules sorted by
     (category rank, category, key), and this filters that list without
-    reordering it. Two analyses of the same shot therefore select the same rules
-    in the same order, which is what the chunk's first acceptance criterion asks
-    for.
+    reordering it. Two reviews of the same shot therefore select the same rules
+    in the same order.
 
     Disabled rules are excluded *here* rather than in the caller, so turning a
-    rule off in the UI removes it from the very next analysis with nothing else
+    rule off in the UI removes it from the very next review with nothing else
     to remember.
     """
     tokens = set(signals)

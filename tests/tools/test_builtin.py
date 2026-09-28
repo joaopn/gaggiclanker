@@ -29,7 +29,7 @@ from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.tools.registry import READ_ONLY, ToolContext, registry
 from gaggiclanker.tools.sql import ALLOWED_VIEWS
-from tests.analyzer.conftest import Fixture
+from tests.review.conftest import Fixture
 
 
 async def call(ctx: ToolContext, name: str, **arguments: Any) -> dict[str, Any]:

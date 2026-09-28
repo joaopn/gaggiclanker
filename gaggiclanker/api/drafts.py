@@ -18,7 +18,7 @@ something nobody here created; this one can only reach what the audit says we
 wrote.
 
 Every route runs its work inside the request. A draft call is one LLM turn — ten
-seconds, not the analysis's two minutes — and a push is three WebSocket frames,
+seconds, not a review's minute or two — and a push is three WebSocket frames,
 so there is nothing here worth the second place an outcome could get lost.
 """
 
@@ -55,9 +55,9 @@ class DraftCreate(BaseModel):
     """Ask for a draft. Either the model writes it, or you did.
 
     `profile` present means "this document, validated" and no provider is
-    contacted. `profile` absent means "draft one from the advice", which needs
-    at least one of `analysis_id` or `suggestion_id` — a draft with nothing to
-    go on is a model rewriting somebody's profile for no stated reason.
+    contacted. `profile` absent means "draft one from the notes", which needs
+    notes — a draft with nothing to go on is a model rewriting somebody's
+    profile for no stated reason.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -68,8 +68,6 @@ class DraftCreate(BaseModel):
     #: service, and a 422 naming the field is more useful than FastAPI's own
     #: rendering of a deeply nested union.
     profile: dict[str, Any] | None = None
-    analysis_id: int | None = None
-    suggestion_id: int | None = None
     #: What the barista asked for, in their words. Goes into the prompt.
     notes: str = Field(default="", max_length=4000)
     change_summary: str = Field(default="", max_length=1000)
@@ -169,16 +167,14 @@ async def create_draft(body: DraftCreate, drafts: DraftServiceDep) -> JSONRespon
             notes=body.notes,
         )
         return envelope_response(row.model_dump(mode="json"), status_code=201)
-    if body.analysis_id is None and body.suggestion_id is None and not body.notes.strip():
+    if not body.notes.strip():
         raise BadRequest(
-            "A draft needs something to go on: an analysis, a suggestion, notes of your own, "
+            "A draft needs something to go on: notes of your own, "
             "or a complete profile document to validate.",
-            details={"field": "analysis_id", "message": "one of these is required"},
+            details={"field": "notes", "message": "one of these is required"},
         )
     row = await drafts.generate(
         base_version_id=body.base_version_id,
-        analysis_id=body.analysis_id,
-        suggestion_id=body.suggestion_id,
         notes=body.notes,
         model=body.model,
     )

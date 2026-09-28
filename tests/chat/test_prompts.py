@@ -312,8 +312,8 @@ async def test_both_prompts_carry_the_shared_rules(prompts: PromptService) -> No
         assert "NEVER INVENT DATA" in system, name
         assert "PROPOSE, NEVER ACT" in system, name
         assert "{{>" not in system, name
-        # The two rules for reading a shot, which the per-shot analysis
-        # prompt used to be the only one to carry.
+        # The two rules for reading a shot, which the chat prompts carry as
+        # well as a review's.
         assert "THE EXECUTION SCORE IS NOT YOURS TO GIVE" in system, name
         assert "never restate it as your own opinion or contradict it" in system, name
         assert "TWO ALIGNED CHANNELING INDICATORS MEAN A CHANNEL; ONE MEANS NOISE" in system, name

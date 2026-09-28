@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DocsTab } from "@/components/knowledge/DocsTab";
-import { knowledgeChunk, knowledgeDoc } from "@/test/analysisFixtures";
+import { knowledgeChunk, knowledgeDoc } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({

@@ -88,22 +88,20 @@ export type SettingValue = components["schemas"]["SettingValue"];
 
 // The starting-point wizard. The run row, the request body and the
 // similar-Set cards are all real pydantic models, so none of them is retyped
-// here; only `StartingPointOutput` below is, for the reason `AnalysisOutput`
-// is — the server declares it as a JSON column.
+// here; only `StartingPointOutput` below is, because the server declares it
+// as a JSON column.
 export type StartingPointRun = components["schemas"]["StartingPointRunRow"];
 export type StartingPointRequest = components["schemas"]["StartingPointRequest"];
 export type StartingPointAccepted = components["schemas"]["StartingPointAccepted"];
 export type SimilarSet = components["schemas"]["SimilarSet"];
 export type SimilarSetsData = components["schemas"]["SimilarSetsData"];
 
-// The analyzer and its knowledge tier. All real pydantic models on the
+// A shot's review and the knowledge tier. All real pydantic models on the
 // server, so none of them is retyped here either.
-export type Analysis = components["schemas"]["AnalysisRow"];
-export type AnalysisListData = components["schemas"]["AnalysisListData"];
-export type AnalysisRequest = components["schemas"]["AnalysisRequest"];
-export type Suggestion = components["schemas"]["SuggestionRow"];
-export type SuggestionListData = components["schemas"]["SuggestionListData"];
-export type AcceptedSuggestion = components["schemas"]["AcceptedData"];
+export type ShotReview = components["schemas"]["ShotReviewRow"];
+export type ShotReviewDetail = components["schemas"]["ShotReviewDetail"];
+export type ReviewListData = components["schemas"]["ReviewListData"];
+export type ReviewRequest = components["schemas"]["ReviewRequest"];
 export type KnowledgeRule = components["schemas"]["RuleRow"];
 export type KnowledgeRuleListData = components["schemas"]["RuleListData"];
 export type KnowledgeRulePatch = components["schemas"]["RulePatch"];
@@ -124,18 +122,9 @@ export type KnowledgeInsightPatch = components["schemas"]["InsightPatch"];
 export type KnowledgeInsightScope = components["schemas"]["InsightScope"];
 
 /**
- * The analysis document the model returns, as stored on `Analysis.output`.
- *
- * Declared server-side as decoded JSON of whatever `AnalysisResult` produced,
- * so OpenAPI can only say "an object". This mirrors
- * `gaggiclanker/analyzer/models.py`; when that changes, change this. Everything
- * below the top level is optional because a row written by an older build, or
- * one whose provider answered a slightly different shape, still has to render.
- */
-/**
  * The three options a starting-point run answers with, decoded.
  *
- * Hand-written for the reason `AnalysisOutput` is: `output` is a JSON column on
+ * Hand-written because `output` is a JSON column on
  * `starting_point_runs`, so the server declares it as `dict[str, Any]` and the
  * generated type is `unknown`. The authority is
  * `gaggiclanker/starting/models.py::StartingPointResult`; when that changes,
@@ -176,53 +165,6 @@ export type StartingPointOutput = {
   options?: StartingPointOption[];
 };
 
-export type AnalysisOutput = {
-  shot_style?: string;
-  execution?: {
-    summary?: string;
-    issues?: Array<{ signal?: string; severity?: string; evidence?: string }>;
-  };
-  taste_prediction?: { balance?: string; body?: string; confidence?: string };
-  diagnosis?: string;
-  suggestions?: Array<{
-    variable?: string;
-    direction?: string;
-    magnitude?: number | null;
-    unit?: string;
-    reason?: string;
-    confidence?: string;
-    priority?: number;
-  }>;
-  profile_patch?: Array<{
-    phase_index?: number;
-    field?: string;
-    from?: string;
-    to?: string;
-    reason?: string;
-  }>;
-  questions_for_user?: string[];
-  rules_used?: string[];
-  /**
-   * The heading paths of the reference excerpts the model leaned on. Checked
-   * server-side against the excerpts this shot was actually given, so a path
-   * here always resolves to a passage in the Docs tab.
-   */
-  excerpts_used?: string[];
-  /**
-   * At most two. Already stored as unconfirmed rows linked to the analysis, so
-   * the panel renders the *rows* rather than this copy — this is what the model
-   * said, and the rows are what the user acts on.
-   */
-  proposed_insights?: Array<{
-    scope?: KnowledgeInsightScope;
-    text?: string;
-    evidence_shot_ids?: number[];
-  }>;
-};
-
-/** Where the newest analysis of a shot got to. Four states, not five. */
-export type AnalysisState = "none" | "running" | "ok" | "failed";
-
 // The LLM layer. These the schema DOES describe, so they are imported
 // rather than retyped; only the live-call record below is hand-written,
 // because the observer's ring is a plain dict on the server side.
@@ -237,7 +179,7 @@ export type PromptListData = components["schemas"]["PromptListData"];
 export type PromptData = components["schemas"]["PromptData"];
 
 /** What a purpose is called on both sides. `default` is the fallback. */
-export type LlmPurpose = "default" | "analysis" | "draft" | "chat";
+export type LlmPurpose = "default" | "review" | "draft" | "chat";
 
 /**
  * One entry in the live-call ring (`gaggiclanker/llm/observer.py`). Declared
@@ -522,8 +464,6 @@ export type DraftCreateBody = {
   base_version_id: number;
   /** A complete profile document: the manual editor's path, no model involved. */
   profile?: Record<string, unknown>;
-  analysis_id?: number;
-  suggestion_id?: number;
   notes?: string;
   change_summary?: string;
   model?: string;

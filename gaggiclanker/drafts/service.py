@@ -43,7 +43,6 @@ import structlog
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.analyses import AnalysesRepository, SuggestionsRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
@@ -78,10 +77,18 @@ __all__ = ["DRAFT_PROMPT", "ProfileDraftService"]
 
 log = structlog.get_logger(__name__)
 
-#: The prompt one draft renders. One file rather than the analysis's two,
+#: The prompt one draft renders. One file rather than a review's two,
 #: because the facts here are four short blocks rather than a page of context
 #: whose layout is worth editing separately from the persona.
 DRAFT_PROMPT = "draft"
+
+#: What the prompt's advice block says. No path passes advice to a draft any
+#: more (a profile change the chat argues for is drafted by its own tool), so
+#: the block always says to work from the notes alone.
+NO_ADVICE = (
+    "No suggestions were attached. Work from the barista's notes alone, "
+    "and if they ask for nothing a profile can change, change nothing."
+)
 
 #: What the SSE bus carries when a draft moves. The Drafts queue watches it, so
 #: a push started in one tab updates the list in another.
@@ -113,8 +120,6 @@ class ProfileDraftService:
         self.proposals = proposals or DraftProposals(db, settings)
         self.drafts = ProfileDraftsRepository(db)
         self.profiles = ProfilesRepository(db)
-        self.analyses = AnalysesRepository(db)
-        self.suggestions = SuggestionsRepository(db)
         self.sets = SetsRepository(db)
         self.writes = DeviceWritesRepository(db)
 
@@ -172,8 +177,6 @@ class ProfileDraftService:
         self,
         *,
         base_version_id: int,
-        analysis_id: int | None = None,
-        suggestion_id: int | None = None,
         notes: str = "",
         parent_draft_id: int | None = None,
         model: str = "",
@@ -181,21 +184,15 @@ class ProfileDraftService:
         """Ask the model for an edited profile, then put it through the layers.
 
         A provider failure raises rather than storing a `failed` draft, which is
-        the opposite of what an analysis does and deliberately so: an analysis
-        row is the handle a page is already rendering, whereas a draft that was
+        the opposite of what a review does and deliberately so: a review row is
+        the handle a page is already rendering, whereas a draft that was
         never drafted is nothing — there is no document, no diff and nothing to
         approve. The caller gets the LLM layer's own message and a button that
         says "try again".
         """
         base = await self.proposals.base_profile(base_version_id)
         parent = await self._parent_draft(parent_draft_id)
-        rendered = await self._render(
-            base=base,
-            analysis_id=analysis_id,
-            suggestion_id=suggestion_id,
-            notes=notes,
-            parent=parent,
-        )
+        rendered = await self._render(base=base, notes=notes, parent=parent)
         result = await self.llm.call_json(
             LlmRequest(
                 messages=rendered.messages(),
@@ -219,8 +216,6 @@ class ProfileDraftService:
             prepared=prepared,
             change_summary=result.data.change_summary,
             notes=notes,
-            analysis_id=analysis_id,
-            suggestion_id=suggestion_id,
             parent_draft_id=parent_draft_id,
             # A refinement is the next attempt at the same idea, so it is an
             # attempt on the same experiment: the Set it was made for and the
@@ -253,8 +248,6 @@ class ProfileDraftService:
         combined = "\n".join(part for part in (parent.notes, notes) if part.strip())
         return await self.generate(
             base_version_id=parent.base_version_id,
-            analysis_id=parent.source_analysis_id,
-            suggestion_id=parent.source_suggestion_id,
             notes=combined,
             parent_draft_id=parent.id,
             model=model,
@@ -501,7 +494,8 @@ class ProfileDraftService:
             return None
         experiment = await self._experiment(draft, set_id)
         # Who proposed this recipe, which is what "did following the advice
-        # help" is a GROUP BY on. An analysis stays an analysis. Otherwise it is
+        # help" is a GROUP BY on. A draft made from an analysis before the
+        # analysis was retired still records it. Otherwise it is
         # `chat` exactly when this push is recording the agent's own prediction
         # — the draft was argued in this Set's conversation and is being pushed
         # for that Set — because a profile change the agent proposed filed under
@@ -611,8 +605,6 @@ class ProfileDraftService:
         self,
         *,
         base: Profile,
-        analysis_id: int | None,
-        suggestion_id: int | None,
         notes: str,
         parent: ProfileDraftRow | None,
     ) -> RenderedPrompt:
@@ -629,58 +621,15 @@ class ProfileDraftService:
             DRAFT_PROMPT,
             {
                 "current_profile": json.dumps(base.to_device(), indent=2),
-                "suggestions": await self._advice(analysis_id, suggestion_id),
+                # Nothing passes advice along any more; the variable is still
+                # filled because a person's edited copy of this prompt may name
+                # it, and an undefined variable refuses to render.
+                "suggestions": NO_ADVICE,
                 "previous_draft": previous,
                 "barista_notes": notes.strip() or "They said nothing beyond the advice above.",
                 "policy_bounds": _render_bounds(await self.bounds()),
             },
         )
-
-    async def _advice(self, analysis_id: int | None, suggestion_id: int | None) -> str:
-        """The advice block, assembled from whichever handle the caller had.
-
-        Two entry points because the UI has two buttons: "draft from this
-        analysis" reads the whole `profile_patch`, and "draft from this
-        suggestion" reads one row. Both end up as prose, because that is what a
-        model reads, and both name the field they came from so a reader of the
-        stored prompt can tell which button was pressed.
-        """
-        lines: list[str] = []
-        if analysis_id is not None:
-            analysis = await self.analyses.get(analysis_id)
-            if analysis is None:
-                raise NotFound(f"No analysis {analysis_id}")
-            output = analysis.output or {}
-            for patch in output.get("profile_patch") or []:
-                lines.append(
-                    f"- phase {patch.get('phase_index')}, {patch.get('field')}: "
-                    f"{patch.get('from', '?')} -> {patch.get('to', '?')}"
-                    + (f" — {patch['reason']}" if patch.get("reason") else "")
-                )
-            for suggestion in analysis.suggestions:
-                if suggestion.variable in ("pressure", "flow", "preinfusion", "profile"):
-                    lines.append(f"- {_suggestion_line(suggestion)}")
-            diagnosis = str(output.get("diagnosis") or "").strip()
-            if diagnosis:
-                lines.append(f"\nThe diagnosis this came from: {diagnosis}")
-        if suggestion_id is not None:
-            asked = await self.suggestions.get(suggestion_id)
-            if asked is None:
-                raise NotFound(f"No suggestion {suggestion_id}")
-            lines.insert(0, f"- {_suggestion_line(asked)}")
-        if not lines:
-            return (
-                "No analysis suggestions were attached. Work from the barista's notes alone, "
-                "and if they ask for nothing a profile can change, change nothing."
-            )
-        return "\n".join(lines)
-
-
-def _suggestion_line(suggestion: Any) -> str:
-    magnitude = "" if suggestion.magnitude is None else f" by {suggestion.magnitude:g}"
-    unit = "" if suggestion.unit in ("", "none") else f" {suggestion.unit}"
-    reason = f" — {suggestion.reason}" if suggestion.reason else ""
-    return f"{suggestion.variable} {suggestion.direction}{magnitude}{unit}{reason}"
 
 
 def _render_bounds(bounds: PolicyBounds) -> str:

@@ -1,4 +1,4 @@
-"""`select_chunks`: which excerpts an analysis gets, and why those.
+"""`select_chunks`: which excerpts a review gets, and why those.
 
 Three properties, and each of them is load-bearing somewhere else:
 
@@ -7,7 +7,7 @@ Three properties, and each of them is load-bearing somewhere else:
 * **budgeted**, because excerpts are supporting context and a retrieval that
   quietly spends ten thousand tokens has made them the prompt;
 * **deduped by document**, because two sections of the same guide say much the
-  same thing and an analysis given both has heard one opinion twice.
+  same thing and a review given both has heard one opinion twice.
 """
 
 from __future__ import annotations
@@ -217,7 +217,7 @@ async def test_a_taste_query_does_not_carry_the_word_espresso(
 
     With it in the query, a chunk that merely repeats it — the drinks
     specification table — outranked the passage that explains what a thin shot
-    means, and an analysis of a sour bloom shot was handed milk drink formats.
+    means, and a reading of a sour bloom shot was handed milk drink formats.
     """
     queries = seeded_docs.queries_for(
         RetrievalContext(taste_notes=("other.chemical.salty",), balance=None)

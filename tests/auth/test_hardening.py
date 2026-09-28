@@ -11,7 +11,7 @@ import structlog
 from fastapi import FastAPI
 
 from gaggiclanker.infra.logging import configure_logging
-from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, RateLimiter
+from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, RateLimiter
 from gaggiclanker.infra.redact import REDACTED, redact_value
 from gaggiclanker.infra.security import (
     DEFAULT_MAX_BODY_BYTES,
@@ -279,7 +279,7 @@ def test_the_limiter_slides_rather_than_resetting_on_a_boundary() -> None:
     limiter.check("b", "someone-else", limit=3, window=60.0)
 
 
-async def test_the_analysis_route_is_rate_limited(app: FastAPI, client: httpx.AsyncClient) -> None:
+async def test_the_review_route_is_rate_limited(app: FastAPI, client: httpx.AsyncClient) -> None:
     """Eleven requests in a minute; the eleventh is a 429 envelope.
 
     It runs against a shot that does not exist, so nothing is queued and no
@@ -287,22 +287,22 @@ async def test_the_analysis_route_is_rate_limited(app: FastAPI, client: httpx.As
     handler, which is what stops a loop from spending money.
     """
     seen: list[int] = []
-    for _ in range(ANALYSIS_RATE_LIMIT + 1):
-        response = await client.post("/api/shots/999999/analyses", json={})
+    for _ in range(REVIEW_RATE_LIMIT + 1):
+        response = await client.post("/api/shots/999999/reviews", json={})
         seen.append(response.status_code)
     assert seen[-1] == 429
     assert seen.count(429) == 1
-    body = (await client.post("/api/shots/999999/analyses", json={})).json()
+    body = (await client.post("/api/shots/999999/reviews", json={})).json()
     assert body["error"]["code"] == "RATE_LIMITED"
-    assert body["error"]["details"]["limit"] == ANALYSIS_RATE_LIMIT
+    assert body["error"]["details"]["limit"] == REVIEW_RATE_LIMIT
 
 
 async def test_the_limit_is_per_user_when_auth_is_on(
     secured_client: httpx.AsyncClient, bearer: dict[str, str]
 ) -> None:
-    for _ in range(ANALYSIS_RATE_LIMIT):
-        await secured_client.post("/api/shots/999999/analyses", json={}, headers=bearer)
-    over = await secured_client.post("/api/shots/999999/analyses", json={}, headers=bearer)
+    for _ in range(REVIEW_RATE_LIMIT):
+        await secured_client.post("/api/shots/999999/reviews", json={}, headers=bearer)
+    over = await secured_client.post("/api/shots/999999/reviews", json={}, headers=bearer)
     assert over.status_code == 429
     assert over.headers["retry-after"]
 

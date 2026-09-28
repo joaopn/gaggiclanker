@@ -1,4 +1,4 @@
-"""gaggiclanker — archive, diagnose and analyse GaggiMate espresso shots."""
+"""gaggiclanker — archive, diagnose and review GaggiMate espresso shots."""
 
 from __future__ import annotations
 

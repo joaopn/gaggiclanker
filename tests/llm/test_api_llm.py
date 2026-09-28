@@ -207,7 +207,7 @@ async def test_calls_are_listed_newest_first(app: FastAPI, client: httpx.AsyncCl
 
 
 async def test_the_stream_opens_with_a_snapshot_then_carries_updates(app: FastAPI) -> None:
-    """A tab that joins mid-analysis has to be immediately correct.
+    """A tab that joins mid-review has to be immediately correct.
 
     Driven as a generator rather than over HTTP: the ordering being asserted is
     the generator's, and racing it against a real SSE connection would test the
@@ -236,7 +236,7 @@ async def test_the_stream_opens_with_a_snapshot_then_carries_updates(app: FastAP
 async def test_the_stream_is_a_real_event_stream_over_http(env: EnvSettings) -> None:
     """The wire format, including the CRLF separator sse-starlette writes."""
     async with serving(env) as (app, base_url):
-        app.state.llm.observer.register(label="analyse shot", subject="#129")
+        app.state.llm.observer.register(label="review shot", subject="#129")
         async with httpx.AsyncClient(base_url=base_url) as http:
             async with http.stream("GET", "/api/llm/calls/stream") as response:
                 assert response.status_code == 200
@@ -266,7 +266,7 @@ async def test_a_call_publishes_onto_the_stream(app: FastAPI) -> None:
             messages=[LlmMessage(role="user", content="hi")],
             output_model=Answer,
             model="m",
-            label="analyse",
+            label="review",
         )
     )
     await asyncio.wait_for(task, timeout=2)
@@ -285,8 +285,8 @@ async def test_a_call_writes_a_usage_row(app: FastAPI, client: httpx.AsyncClient
             messages=[LlmMessage(role="user", content="hi")],
             output_model=Answer,
             model="test-model",
-            purpose="analysis",
-            label="analyse shot",
+            purpose="review",
+            label="review shot",
             subject="#129",
             prompt_name="ping",
         )
@@ -306,7 +306,7 @@ async def test_usage_can_be_scoped_to_a_date(app: FastAPI, client: httpx.AsyncCl
     await repo.record(
         LlmCallRow(
             call_id="old",
-            purpose="analysis",
+            purpose="review",
             provider="anthropic",
             model="opus",
             status="succeeded",
@@ -319,7 +319,7 @@ async def test_usage_can_be_scoped_to_a_date(app: FastAPI, client: httpx.AsyncCl
     await repo.record(
         LlmCallRow(
             call_id="new",
-            purpose="analysis",
+            purpose="review",
             provider="anthropic",
             model="opus",
             status="failed",
@@ -359,7 +359,7 @@ async def test_status_reports_the_provider_and_the_models(
 
     assert data["provider"] == "openrouter"
     assert data["models"]["chat"] == "chatty"
-    assert data["models"]["analysis"] == "base"
+    assert data["models"]["review"] == "base"
     assert "max" in data["effort_levels"]
     # The CLI is not probed unless it is the provider in use.
     assert "version" not in data["claude_code"]

@@ -1,6 +1,6 @@
 """``/api/chat`` — threads, turns, and the stream one turn is watched on.
 
-Shaped like the analyzer's routes and for the same reason: an answer takes tens
+Shaped like the review routes and for the same reason: an answer takes tens
 of seconds, so ``POST .../messages`` answers 202 with a ``running`` row and the
 work happens in a registered background task. The browser follows
 ``GET /api/chat/runs/{id}/stream``, which **replays from the database first** and
@@ -9,7 +9,7 @@ lost its connection, sees the whole thing rather than the tail.
 
 The rate limit is on starting a run, not on reading one. A chat turn spends
 provider tokens per press of Send, and the failure this guards against is the
-same as the analyzer's: a retry loop in a tab nobody is watching.
+same as a review's: a retry loop in a tab nobody is watching.
 """
 
 from __future__ import annotations
@@ -45,8 +45,8 @@ __all__ = ["CHAT_RATE_LIMIT", "router"]
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 #: Twenty turns a minute. A turn is a provider call and several tool calls, so
-#: anything faster is a loop; the number is higher than the analyzer's because a
-#: conversation is a person typing and a backfill is not.
+#: anything faster is a loop; the number is higher than a review's because a
+#: conversation is a person typing, one message after another.
 CHAT_RATE_LIMIT = 20
 
 
@@ -277,7 +277,7 @@ async def send(
 ) -> JSONResponse:
     """202, not 200: the work is queued and the row is the handle.
 
-    The same shape as `POST /api/shots/{id}/analyses`, and for the same reason —
+    The same shape as `POST /api/shots/{id}/reviews`, and for the same reason —
     a request holding a two-minute provider call open is a request `docker stop`
     kills mid-flight, with the browser still waiting.
     """

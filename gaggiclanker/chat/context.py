@@ -852,7 +852,7 @@ def _cut(text: str, limit: int) -> str:
 
 
 async def _insights(db: Database, row: SetRow) -> list[Any]:
-    """Through the shared matcher, so the chat and an analysis cannot disagree."""
+    """Through the shared matcher, so the chat and the Set page cannot disagree."""
     bean = await BeansRepository(db).get(row.bean_id) if row.bean_id else None
     attributes = set_attributes(
         bean_id=row.bean_id,

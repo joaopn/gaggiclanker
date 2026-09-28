@@ -59,8 +59,8 @@ type ProviderId = Literal[
 type ResponseMode = Literal["json_schema", "json_object", "text"]
 
 #: What a call is *for*. Each purpose can name its own model, so the cheap
-#: chat turn and the careful shot analysis do not have to share one.
-type ModelPurpose = Literal["default", "analysis", "draft", "chat", "starting_point"]
+#: chat turn and the careful shot review do not have to share one.
+type ModelPurpose = Literal["default", "review", "draft", "chat", "starting_point"]
 
 #: The five things that can go wrong, as far as a caller is concerned.
 #:
@@ -138,7 +138,7 @@ class LlmRequest[T: BaseModel]:
     retry_delay_s: float = 0.5
     #: Per-attempt ceiling. ``None`` takes the ``llmTimeoutSeconds`` setting.
     timeout_s: float | None = None
-    #: What the live-call list shows: what this call is ("analyse shot") and
+    #: What the live-call list shows: what this call is ("review shot") and
     #: what it is about ("#129, Gaggiuino 9 bar"). Never a secret — it is
     #: rendered in a browser and written to the usage table.
     label: str = "llm call"
@@ -163,7 +163,7 @@ class Ok[T: BaseModel]:
     mode: str = ""
     #: The observer record's id, which is also the ledger row's `call_id`. It is
     #: on the result rather than only in the observer so a caller that stores an
-    #: outcome of its own — a shot analysis, say — can point at the row holding
+    #: outcome of its own — a shot's review, say — can point at the row holding
     #: the rendered prompt and the raw reply without guessing which one it was.
     call_id: str = ""
     ok: Literal[True] = True

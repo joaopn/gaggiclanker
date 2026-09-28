@@ -1,6 +1,6 @@
 """Everything the starting-point call is told, assembled once and rendered once.
 
-The same contract as `gaggiclanker/analyzer/context.py`, and for the same
+The same contract as `gaggiclanker/review/context.py`, and for the same
 reason: the document built here is stored verbatim on the run row, so a
 suggestion stays explainable after the bag has been finished, the rules edited
 and the prompt rewritten. One function builds it; one method renders it into
@@ -38,7 +38,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.analyzer.style import detect_style
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
@@ -52,6 +51,7 @@ from gaggiclanker.knowledge.service import (
     RetrievalContext,
     render_excerpts,
 )
+from gaggiclanker.review.style import detect_style
 from gaggiclanker.starting.similar import DEFAULT_LIMIT, SimilarSet, similar_sets
 
 __all__ = [
@@ -157,7 +157,7 @@ class StartingPointContext(BaseModel):
     signals: list[str] = Field(default_factory=list)
     #: `[{key, category, text, confidence, source}]` for every selected rule.
     rules: list[dict[str, str]] = Field(default_factory=list)
-    #: The tier-2 excerpts, stored in full for the reason an analysis stores
+    #: The tier-2 excerpts, stored in full for the reason a review stores
     #: them in full: a citation into a document since edited has to resolve to
     #: the text the model actually read.
     excerpts: list[dict[str, Any]] = Field(default_factory=list)
@@ -181,8 +181,8 @@ class StartingPointContext(BaseModel):
     def render(self) -> dict[str, str]:
         """The prompt's variables: one rendered block per section.
 
-        Prose with numbers in it rather than JSON, for the reason the analyzer
-        renders the same way — the same facts cost about a third of the tokens
+        Prose with numbers in it rather than JSON, for the reason the shot renderer
+        writes the same way — the same facts cost about a third of the tokens
         — except the candidate profiles' shapes, which are already one line.
         """
         return {
@@ -319,8 +319,8 @@ async def starting_rules(
     Shared by the starting point and the design conversation, because both are
     choosing a first recipe for a coffee with no shot behind it and must be told
     the same rules for the same bean, kit and style. Deterministic: the same
-    selection :func:`~gaggiclanker.knowledge.rules.select_rules` makes for an
-    analysis, in its stable order.
+    selection :func:`~gaggiclanker.knowledge.rules.select_rules` makes for a
+    review, in its stable order.
     """
     selection = await select_rules(RulesRepository(db), context, style, _signal_tokens(style))
     return selection.signals, [
@@ -357,7 +357,7 @@ async def _fetch(db: Database, *, bean_id: int, grinder_id: int | None) -> _Inpu
 def _signal_tokens(style: str) -> list[str]:
     """The tokens rule selection matches `applies.signal` against.
 
-    A much shorter list than an analysis's — one token — because the whole of
+    A much shorter list than a review's — one token — because the whole of
     that grammar is about a shot or a cup that has not happened: there is no
     channeling band, no first drip, no taste. Nothing about the coffee itself is
     a signal either; roast level, process and decaf are matched as Set
@@ -365,7 +365,7 @@ def _signal_tokens(style: str) -> list[str]:
     itself and which is repeated here so the stored signal list reads as the
     whole basis of the selection.
 
-    A list rather than a bare string so the snapshot has the analyzer's shape.
+    A list rather than a bare string so the snapshot has a review's shape.
     """
     return [f"style:{style}"]
 

@@ -11,8 +11,8 @@ Two invariants hold this together and are worth stating before the code.
 
 **Chunks are derived; heading paths are not.** A document's chunks are deleted
 and rebuilt whenever its markdown changes, so a chunk *id* is meaningless to
-anything outside this module. What is stored elsewhere — in an analysis's
-`excerpts_used`, in a citation inside a diagnosis — is the `heading_path`, which
+anything outside this module. What is stored elsewhere — in a review's
+`excerpts_used`, in a citation inside a description — is the `heading_path`, which
 the chunker derives from the headings themselves and which therefore survives a
 re-chunk of unchanged text.
 
@@ -75,7 +75,7 @@ def content_hash(text: str) -> str:
 def match_expression(query: str) -> str:
     """A user's words as a safe FTS5 MATCH expression, or "" for no words.
 
-    Terms are OR-ed rather than AND-ed. The queries the analyzer builds are
+    Terms are OR-ed rather than AND-ed. The queries a review builds are
     descriptions of a situation ("channeling pressure cliff sour"), not
     conjunctions somebody wants all of; requiring every term would return
     nothing for most of them, and BM25 already ranks a chunk matching four terms
@@ -400,7 +400,7 @@ class KnowledgeDocsRepository(Repository):
 
         **Then the heading path.** Two chunks can still tie on both, SQLite is
         free to break that however the index happens to be laid out, and the
-        analyzer's retrieval has to produce the same excerpts for the same shot
+        a review's retrieval has to produce the same excerpts for the same shot
         twice running.
         """
         expression = match_expression(query)

@@ -11,7 +11,7 @@ The bug
 
 ``llmProvider`` defaults to ``claude_code``, which runs the Claude Code CLI as
 a subprocess. The runtime stage of the Dockerfile carried Python and the venv
-and nothing else, so on a fresh install every Validate, analysis and chat
+and nothing else, so on a fresh install every Validate, review and chat
 answered "the Claude Code CLI (claude) was not found on PATH" — the default
 provider could not work in the image the README tells people to run, however
 the token was set.

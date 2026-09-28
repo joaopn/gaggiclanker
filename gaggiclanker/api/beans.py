@@ -97,8 +97,8 @@ async def delete_bean(bean_id: int, beans: BeansRepoDep) -> JSONResponse:
     """A real delete, refused for a bean that is in use.
 
     Starting-point runs about the bean go with it (their foreign key cascades).
-    Nothing else holds a bean id that has to keep resolving: an analysis keeps
-    its own snapshot of the facts it was given, and an insight scoped to the id
+    Nothing else holds a bean id that has to keep resolving: a review reads no
+    bean, and an insight scoped to the id
     simply never matches again, because ids are never reused.
     """
     outcome = await beans.delete(bean_id)
