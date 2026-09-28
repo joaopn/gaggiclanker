@@ -145,6 +145,21 @@ are in and you have labelled them Keep or Improve, you record the **outcome**:
 held, partly held, failed or inconclusive, with a line saying why. Above the log
 sits the only number that matters, "6 of 10 predictions held".
 
+**Versions are named v1, v1.1, v1.2, v2.** Dialling in — the grind, the dose,
+the yield, a profile draft that only tunes a parameter such as a degree of
+temperature — is a **minor** version: it keeps the major and takes the next
+minor (v1.2 → v1.3). A functional change to what the profile does is a **major**
+version: the next whole number (v1.2 → v2). You decide which, with the **Major
+change** box on the Add a version form, on a change card before you accept it,
+and on a draft's push for its Set; each button names the version it will record
+("Accept as v1.3", "Accept as v2"). The box starts where the rule puts it:
+switching to a different profile is major, everything else — a pushed draft
+included — is minor, and a roll back is major exactly when it goes back to
+another profile. The agent may suggest major on its card, with its reason
+beside the box, but the box is yours. Versions recorded before this existed
+keep their numbers: v3 is still v3. Everywhere a version is named — the log,
+the chat, the agent's context and tools, the shots table — it is by this name.
+
 Two rules keep that number honest:
 
 * **A prediction can only be written before the version's first shot**, and

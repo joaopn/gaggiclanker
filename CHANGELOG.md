@@ -10,6 +10,33 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Minor versions for dialling in, a new major for a new direction
+
+- **A Set's versions are named v1, v1.1, v1.2, v2.** A grind, dose or yield
+  change, or a profile draft that only tunes a parameter, is a minor version:
+  one click finer on v1 is v1.1, not v2. A functional change to what the
+  profile does is the next major. You decide on each: the Add a version form,
+  a change card and a draft's push for its Set have a **Major change** box, and
+  the button says which version it records ("Accept as v1.1", "Accept as v2").
+  The box starts where the rule puts it — a different profile is major,
+  anything else minor — and the agent may suggest major on its card, with a
+  reason shown beside the box; it never decides.
+- **Existing versions keep their numbers.** The upgrade adds the new name
+  beside every version as N.0 (shown as vN), so every "v3" already written in a
+  chat, a prediction or a note still means the same version. Nothing needs
+  resetting.
+- **The name is used everywhere a version is named**: the Set page and its log,
+  the version pickers, the Chat folders and headings, the "Chat about" bar and
+  its question, the Set badges, the proposal and draft cards, the toasts, the
+  agent's opening context, its tools and their refusals, and the SQL views
+  (`version_label` in `v_set_versions`, `set_version_label` in `v_shots`).
+  The agent's shot search takes a version by its name ("v1.1", "1.1", or "2"
+  for v2). The message an accept sends to the agent reads "Accepted: your
+  proposed change (Grind 2 → 1) is now v1.1 of this Set."
+- **If you edited the Set chat's prompt** (Settings → Prompts, `chat-set`), your
+  text is kept and does not receive the new paragraph on version names; reset
+  it to pick that up.
+
 ### Review replaces the per-shot analysis
 
 - **Review on a shot's page** asks a model to read that one shot, and nothing
@@ -71,15 +98,15 @@ first (`POST /api/backup`), because there is no down-migration.
   does not exist. It now says what you do by hand, from the change itself: for
   a grind, dose or yield change, "Nothing goes to the machine: the profile is
   unchanged, so there is nothing to push. Set the grinder to 1 and brew; the
-  next shots on this profile are filed under v2 by themselves." A profile change
+  next shots on this profile are filed under v1.1 by themselves." A profile change
   says to select that profile on the machine. The line under a waiting card
   says the same before you press Accept.
 - **The agent knows it too.** The Set conversation's instructions now say that
   an accepted change puts nothing on the machine, that there is nothing to
   push, approve, stage or log for a grind, dose or yield change, and never to
   describe a step the archive does not have. The "Accepted:" message names the
-  change: "Accepted: your proposed change (Grind 2 → 1) is now version 2 of
-  this Set."
+  change: "Accepted: your proposed change (Grind 2 → 1) is now v1.1 of this
+  Set."
 - **The agent can no longer propose switching to a profile the machine does not
   have.** Nothing in the app can put an existing profile version on the machine
   (only drafts are pushed), so a version naming one could not be brewed; the
@@ -184,8 +211,8 @@ first (`POST /api/backup`), because there is no down-migration.
 - **Accept on a card in the chat now tells the agent.** It used to record the
   version and say nothing to the conversation, so the agent went on as if the
   card were still waiting. The button now sends a message as your next turn
-  ("Accepted: your proposed change is now version 5 of this Set.", or "your
-  first recipe is now version 1"), held until an answer still being written has
+  ("Accepted: your proposed change is now v4.1 of this Set.", or "your
+  first recipe is now v1"), held until an answer still being written has
   finished. **Decline** does the same with your reason ("Declined: <reason>",
   or "Declined: no reason given."), and the agent answers it in the same
   conversation without proposing that card again. Answering on the Set page

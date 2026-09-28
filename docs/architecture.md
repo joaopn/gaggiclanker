@@ -121,7 +121,7 @@ means drafting or editing the profile.
 so four queries repeat that one sentence: the version select in
 `db/repos/sets.py`, the similar-Sets query in `starting/similar.py`, and the
 `profile_temperature_c` column of `v_set_versions` and `v_shots` (defined in
-`0013`, rebuilt in `0014` and `0016`). Repetition of a rule is drift waiting to
+`0013`, rebuilt in `0014`, `0016` and `0027`). Repetition of a rule is drift waiting to
 happen, so `tests/sets/test_profile_temperature.py` pins every copy to the
 Python one: it stores a table of profile documents — the field missing, null,
 0, negative, an integer, a float, and shapes only a hand-edited row could hold
@@ -131,7 +131,14 @@ only while the version has no shots and no grade, because one typed afterwards
 would grade itself. The outcome, somebody's grade of that prediction, needs a
 prediction and a shot labelled Keep or Improve before it can be recorded, and
 can be changed or cleared for ever after. `set_versions` carries all three and
-the comment on it in `0005_sets.sql` says which is which.
+the comment on it in `0005_sets.sql` says which is which. **A version has an
+ordinal and a name**: `version_no` orders the versions and says which is
+current, and `version_major`.`version_minor` (migration 0027) is what every
+screen, prompt and tool shows ("v1.1"), numbered by `_insert_version` in the
+insert's own transaction from one rule, `domain/sets.py::change_is_major` — the
+person's answer if given, else a different profile is major, a pushed draft
+minor, a roll back by what it changes — with `db/repos/version_names.py` serving
+the next names a button promises from the same arithmetic.
 
 A Set itself carries two booleans, and `0022_set_automatch_and_archived.sql`
 says why they are two: `archived` is the lifecycle — the bag is finished with,
