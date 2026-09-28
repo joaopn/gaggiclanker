@@ -663,8 +663,14 @@ in the hopper. The card appears in the conversation and again above the
 experiment log, with **Accept** and **Decline** on it, and it says what would
 move, why, and what is predicted — *compared to v4, expect 3 to 5 s longer and
 less sour*. Accepting records the change as the Set's next version, with that
-prediction on it, and sends nothing to the machine. Declining creates nothing,
-and the note you leave is what the next conversation is told.
+prediction on it, and sends nothing to the machine. The accepted card says what
+you do instead: for a grind, dose or yield change the profile on the machine is
+already the right one, so there is nothing to push — *set the grinder to 1 and
+brew; the next shots on this profile are filed under v2 by themselves*. A change
+to another profile says to select it on the machine, and the agent can only
+propose a profile the machine has (`list_profiles` says which); any other goes
+through a profile draft. Declining creates nothing, and the note you leave is
+what the next conversation is told.
 
 The agent cannot dodge any of that. A change with no prediction is refused, and
 so is one that moves two things at once unless it says why they cannot be
@@ -707,7 +713,8 @@ stepped over is muted and says *dead end*. **Discuss in chat** on a Set, the
 **Chat about** bar above the shots table open or continue that version's
 conversation with the question already typed — press any of them twice and you
 land in the same room. **Accept** on a card in the conversation also tells
-the agent, as your next message ("Accepted: … version 5 of this Set"), and it
+the agent, as your next message ("Accepted: your proposed change (Grind 2 → 1)
+is now version 2 of this Set"), and it
 answers by sending you to a new conversation for the new version: the one you
 are in stays with the version it was opened on. **Decline** tells it too, with
 your reason ("Declined: the dose is not the problem", or "Declined: no reason

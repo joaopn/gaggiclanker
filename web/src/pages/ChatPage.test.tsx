@@ -688,7 +688,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change is now version 5 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 5 of this Set.",
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
@@ -742,7 +742,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change is now version 5 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 5 of this Set.",
       ),
     );
 
@@ -789,7 +789,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change is now version 5 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 5 of this Set.",
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);

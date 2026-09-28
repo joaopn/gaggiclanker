@@ -218,6 +218,27 @@ async def test_the_set_prompt_sends_an_accepted_version_to_a_new_conversation(
     assert "first recipe was designed" in system
 
 
+async def test_the_set_prompt_says_an_accepted_change_needs_nothing_on_the_machine(
+    prompts: PromptService,
+) -> None:
+    """A grind change needs no push, and the agent must not invent one.
+
+    Asked what to do after accepting a grind change, the agent made up a
+    profile push, a staging queue and a step to log the shot against the
+    version. None exists: the profile is already on the machine, and the next
+    shots on it are filed under the new version by themselves.
+    """
+    system = " ".join(
+        (await prompts.load(SET_CHAT_PROMPT, {"scope": "", "shot_fields": ""})).system.split()
+    )
+
+    assert "An accepted change puts nothing on the machine" in system
+    assert "the grind, the dose or the yield needs nothing there" in system
+    assert "filed under the new version by themselves" in system
+    assert "There is nothing to push, approve, stage or log, and no queue" in system
+    assert "never describe a step this archive does not have" in system
+
+
 async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
     prompts: PromptService,
 ) -> None:

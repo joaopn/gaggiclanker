@@ -25,14 +25,23 @@ export function useTellAgent(): TellAgent | null {
  *
  * It starts with "Accepted:" because that is what the Set prompt tells the
  * agent to recognise: the turn is the button's, and the answer to it is to say
- * that the new version is brewed and analysed in a new conversation.
+ * that the new version is brewed and analysed in a new conversation. A change
+ * names what it recorded, in the card's own before → after words, so the
+ * agent answers about the change that was accepted — whether the profile moved
+ * is what decides if anything is to be done on the machine.
  */
 export function acceptedMessage(decision: SetProposalDecision): string | null {
   // Only an accept records a version; a decline answers with none.
   const version = decision.version;
   if (!version) return null;
-  return decision.proposal.kind === "design"
-    ? `Accepted: your first recipe is now version ${version.version_no} of this Set.`
+  if (decision.proposal.kind === "design") {
+    return `Accepted: your first recipe is now version ${version.version_no} of this Set.`;
+  }
+  const changes = decision.proposal.changes
+    .map((change) => `${change.label} ${change.before ?? "not set"} → ${change.after ?? "cleared"}`)
+    .join("; ");
+  return changes
+    ? `Accepted: your proposed change (${changes}) is now version ${version.version_no} of this Set.`
     : `Accepted: your proposed change is now version ${version.version_no} of this Set.`;
 }
 

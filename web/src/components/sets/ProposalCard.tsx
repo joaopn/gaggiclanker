@@ -138,6 +138,64 @@ function Figure({ label, children }: { label: string; children: React.ReactNode 
 }
 
 /**
+ * What the person does by hand to brew an accepted change, read off its diff.
+ *
+ * Accepting records a version and sends nothing to the machine, and "nothing
+ * is sent" on its own left a person looking for a push that does not exist
+ * after a grind change (and the agent, asked, invented one). So the card says
+ * what *is* done instead: the grind, the dose, the yield and the profile are
+ * each set at the machine or the grinder. A profile the machine has is only
+ * selected there — the agent's tool refuses to propose one it does not have.
+ * Read from the same diff the card shows, so the step cannot name a value the
+ * accept did not record.
+ */
+export function handSteps(changes: FieldChange[]): string[] {
+  const after = (field: string) => changes.find((change) => change.field === field)?.after;
+  const steps: string[] = [];
+  const profile = after("profile_version_id");
+  if (profile) steps.push(`select ${profile} on the machine`);
+  // The words win over the number: "2 clicks finer" is what the person dials,
+  // and the number is only there when one anchors the words on this grinder.
+  const grind = after("grind_setting") ?? after("grind_value");
+  if (grind) steps.push(`set the grinder to ${grind}`);
+  const dose = after("dose_g");
+  if (dose) steps.push(`dose ${dose}`);
+  const target = after("target_yield_g");
+  if (target) steps.push(`stop at ${target} out`);
+  return steps;
+}
+
+/** "a", "a and b", "a, b and c". */
+function joinSteps(steps: string[]): string {
+  if (steps.length <= 1) return steps.join("");
+  return `${steps.slice(0, -1).join(", ")} and ${steps[steps.length - 1]}`;
+}
+
+function capitalised(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Whether a change moves the profile: the one change the machine has to be told about. */
+function movesProfile(changes: FieldChange[]): boolean {
+  return changes.some((change) => change.field === "profile_version_id");
+}
+
+/**
+ * The line under a waiting change's buttons: what Accept records, what it does
+ * not send, and what the person does instead.
+ */
+export function acceptHint(changes: FieldChange[]): string {
+  const steps = handSteps(changes);
+  const base =
+    "Accepting records a new version of this Set. Nothing is sent to the machine either way";
+  if (steps.length === 0) return `${base}.`;
+  const push = movesProfile(changes)
+    ? ""
+    : " — the profile stays as it is, so there is nothing to push";
+  return `${base}: to brew it, you ${joinSteps(steps)} yourself${push}.`;
+}
+
+/**
  * How a first recipe was answered.
  *
  * Accepted is the one that has a next step, and it is the person's: the Set now
@@ -193,14 +251,32 @@ function draftClosed(error: Error | null): boolean {
 
 function Decided({ proposal }: { proposal: SetProposal }) {
   if (proposal.status === "accepted") {
+    const steps = handSteps(proposal.changes);
+    const version = `v${proposal.resulting_version_no}`;
     return (
-      <p className="text-sm" data-testid="proposal-decided">
-        Accepted as{" "}
-        <Link to={`/sets/${proposal.set_id}`} className="font-medium underline underline-offset-2">
-          v{proposal.resulting_version_no}
-        </Link>{" "}
-        <span className="text-muted-foreground">on {formatTime(proposal.decided_at ?? null)}</span>
-      </p>
+      <div className="space-y-1 text-sm" data-testid="proposal-decided">
+        <p>
+          Accepted as{" "}
+          <Link
+            to={`/sets/${proposal.set_id}`}
+            className="font-medium underline underline-offset-2"
+          >
+            {version}
+          </Link>{" "}
+          <span className="text-muted-foreground">
+            on {formatTime(proposal.decided_at ?? null)}
+          </span>
+        </p>
+        {/* The next step is the person's, and nothing else on the screen says
+            it: without it, a grind change reads as a push that never came. */}
+        {steps.length > 0 ? (
+          <p data-testid="proposal-next-step">
+            {movesProfile(proposal.changes)
+              ? `Nothing was sent to the machine. ${capitalised(joinSteps(steps))} and brew; shots on that profile are filed under ${version}.`
+              : `Nothing goes to the machine: the profile is unchanged, so there is nothing to push. ${capitalised(joinSteps(steps))} and brew; the next shots on this profile are filed under ${version} by themselves.`}
+          </p>
+        ) : null}
+      </div>
     );
   }
   if (proposal.status === "declined") {
@@ -455,7 +531,7 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
               ? "The change stored with this one is damaged and cannot be read, so there is nothing to accept. Decline it and ask in the conversation again."
               : design
                 ? "Accepting makes this the Set's version 1. The profile stays a draft on the Profiles page until you approve and push it: nothing is sent to the machine either way."
-                : "Accepting records a new version of this Set. Nothing is sent to the machine either way."}
+                : acceptHint(proposal.changes)}
           </p>
         </>
       ) : design ? (

@@ -10,6 +10,28 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### An accepted change says what to do at the machine
+
+- **The accepted change card names the next step.** It used to say only
+  "Accepted as v2", so after a grind change a person looked for a push that
+  does not exist. It now says what you do by hand, from the change itself: for
+  a grind, dose or yield change, "Nothing goes to the machine: the profile is
+  unchanged, so there is nothing to push. Set the grinder to 1 and brew; the
+  next shots on this profile are filed under v2 by themselves." A profile change
+  says to select that profile on the machine. The line under a waiting card
+  says the same before you press Accept.
+- **The agent knows it too.** The Set conversation's instructions now say that
+  an accepted change puts nothing on the machine, that there is nothing to
+  push, approve, stage or log for a grind, dose or yield change, and never to
+  describe a step the archive does not have. The "Accepted:" message names the
+  change: "Accepted: your proposed change (Grind 2 → 1) is now version 2 of
+  this Set."
+- **The agent can no longer propose switching to a profile the machine does not
+  have.** Nothing in the app can put an existing profile version on the machine
+  (only drafts are pushed), so a version naming one could not be brewed; the
+  agent is told to make a profile draft instead. `list_profiles` now says which
+  profiles are on the machine (`on_machine`).
+
 ### Chat about a Set from the shots table
 
 - **A "Chat about" bar above the shots table** has one button per Set you are

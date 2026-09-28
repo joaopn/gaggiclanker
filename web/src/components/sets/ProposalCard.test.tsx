@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { TellAgentContext } from "@/components/chat/tellAgent";
-import { designRecipe, ProposalCard } from "@/components/sets/ProposalCard";
+import { acceptHint, designRecipe, handSteps, ProposalCard } from "@/components/sets/ProposalCard";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { designProposal, proposal } from "@/test/setsFixtures";
 
@@ -88,7 +88,7 @@ describe("ProposalCard", () => {
     // The Set prompt recognises the turn by its first word.
     await waitFor(() =>
       expect(tell).toHaveBeenCalledWith(
-        "Accepted: your proposed change is now version 3 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 3 of this Set.",
       ),
     );
     expect(tell).toHaveBeenCalledTimes(1);
@@ -598,5 +598,142 @@ describe("ProposalCard, a change, after this feature", () => {
     await user.click(screen.getByRole("button", { name: /Accept/ }));
 
     expect(await screen.findByTestId("proposal-decided")).toHaveTextContent("Accepted as v3");
+  });
+});
+
+/**
+ * A grind change was accepted in production and the card said only "Accepted
+ * as v2": no push appeared, because none was needed, and nothing said so. The
+ * agent, asked, invented a profile push and a staging queue. The card is where
+ * the next step is said, from the change it shows.
+ */
+describe("the next step after an accept", () => {
+  const grind = [
+    { field: "grind_setting", label: "Grind", before: "2", after: "1", from_profile: false },
+    { field: "grind_value", label: "Grind value", before: "2", after: "1", from_profile: false },
+  ];
+  const accepted = (overrides: Partial<Parameters<typeof proposal>[0]> = {}) =>
+    proposal({
+      status: "accepted",
+      resulting_version_no: 2,
+      decided_at: "2026-03-02T09:00:00.000Z",
+      changes: grind,
+      changed: ["the grind"],
+      ...overrides,
+    });
+
+  it("says a grind change needs nothing on the machine, and what to do instead", () => {
+    renderWithQueryClient(<ProposalCard setId={3} proposal={accepted()} />);
+
+    const decided = screen.getByTestId("proposal-decided");
+    expect(decided).toHaveTextContent("Accepted as v2");
+    const step = screen.getByTestId("proposal-next-step");
+    expect(step).toHaveTextContent(
+      "Nothing goes to the machine: the profile is unchanged, so there is nothing to push.",
+    );
+    expect(step).toHaveTextContent("Set the grinder to 1 and brew");
+    expect(step).toHaveTextContent("filed under v2 by themselves");
+    // The words are the grind, once: not "set the grinder to 1 and 1".
+    expect(step).not.toHaveTextContent("1 and 1");
+  });
+
+  it("says a profile change is selected on the machine, and never that nothing is to be done", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        setId={3}
+        proposal={accepted({
+          changes: [
+            {
+              field: "profile_version_id",
+              label: "Profile",
+              before: "Baseline [AI]",
+              after: "Hotter [AI]",
+              from_profile: false,
+            },
+            {
+              field: "profile_temperature_c",
+              label: "Temperature",
+              before: "93 °C",
+              after: "94 °C",
+              from_profile: true,
+            },
+          ],
+          changed: ["the profile"],
+        })}
+      />,
+    );
+
+    const step = screen.getByTestId("proposal-next-step");
+    expect(step).toHaveTextContent(
+      "Nothing was sent to the machine. Select Hotter [AI] on the machine and brew",
+    );
+    expect(step).not.toHaveTextContent("nothing to push");
+  });
+
+  it("names every hand step of a change that moves two things", () => {
+    expect(
+      handSteps([
+        { field: "dose_g", label: "Dose", before: "18 g", after: "18.5 g", from_profile: false },
+        {
+          field: "target_yield_g",
+          label: "Target yield",
+          before: "36 g",
+          after: "38 g",
+          from_profile: false,
+        },
+      ]),
+    ).toEqual(["dose 18.5 g", "stop at 38 g out"]);
+    // A grind with only a number still names the number.
+    expect(
+      handSteps([
+        {
+          field: "grind_value",
+          label: "Grind value",
+          before: "22",
+          after: "21",
+          from_profile: false,
+        },
+      ]),
+    ).toEqual(["set the grinder to 21"]);
+    // A cleared field is nothing to do by hand.
+    expect(
+      handSteps([
+        { field: "dose_g", label: "Dose", before: "18 g", after: null, from_profile: false },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("says before the press what the person does, and that nothing is pushed", () => {
+    renderWithQueryClient(
+      <ProposalCard setId={3} proposal={proposal({ changes: grind, changed: ["the grind"] })} />,
+    );
+    expect(screen.getByTestId("proposal-card")).toHaveTextContent(
+      "Nothing is sent to the machine either way: to brew it, you set the grinder to 1 yourself — the profile stays as it is, so there is nothing to push.",
+    );
+    expect(acceptHint([])).toBe(
+      "Accepting records a new version of this Set. Nothing is sent to the machine either way.",
+    );
+  });
+
+  it("names the accepted change to the agent", async () => {
+    const user = setupUser();
+    const tell = vi.fn();
+    acceptSetProposal.mockResolvedValue({
+      proposal: accepted(),
+      version: { version_no: 2 },
+    });
+    renderWithQueryClient(
+      <TellAgentContext.Provider value={tell}>
+        <ProposalCard setId={3} proposal={proposal({ changes: grind, changed: ["the grind"] })} />
+      </TellAgentContext.Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+    await waitFor(() =>
+      expect(tell).toHaveBeenCalledWith(
+        "Accepted: your proposed change (Grind 2 → 1; Grind value 2 → 1) is now version 2 of this Set.",
+      ),
+    );
   });
 });
