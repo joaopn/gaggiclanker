@@ -22,6 +22,11 @@ export const queryKeys = {
   settings: {
     all: ["settings"] as const,
     current: () => ["settings", "current"] as const,
+    /**
+     * Under `settings` on purpose: its token estimates are multiplied by the
+     * `chatRecentShots` setting, and saving any setting invalidates this prefix.
+     */
+    shotInformation: () => ["settings", "shot-information"] as const,
   },
   shots: {
     all: ["shots"] as const,

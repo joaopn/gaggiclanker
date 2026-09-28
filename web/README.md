@@ -332,6 +332,27 @@ wrote is a large attack surface for a small gain. Paragraphs, bullets and fenced
 code are handled; a shot id and a `heading_path` become links, and nothing else
 is linkified — a citation that goes nowhere is worse than plain text.
 
+What a chat is told about each shot is chosen on a settings page of its own:
+
+```
+src/
+  hooks/
+    useShotInformation.ts    the document, moving one item, the reset
+  pages/settings/
+    ShotInformationPage.tsx  the tiers explained, the example shot, the estimates,
+                             then one table per group: item, tier control, example
+```
+
+**The server answers the whole document to every write**, estimates included,
+and the page puts that answer in the cache: the estimates are measured on a
+real shot by the server's renderer and are never recomputed here. The writes
+share one mutation scope, so they run in the order they were clicked and the
+last answer carries every change. A write is not optimistic: the tier being
+saved shows pending on its row, and a refusal leaves the cache alone, so the
+control is back on the stored tier with the reason under it. The query key sits
+under `settings` because the autoload estimate multiplies by `chatRecentShots`,
+and saving any setting invalidates that prefix.
+
 Auth adds a sixth, and it is small because the plumbing was already here:
 
 ```

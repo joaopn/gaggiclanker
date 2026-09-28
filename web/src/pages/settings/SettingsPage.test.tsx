@@ -15,15 +15,23 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getSettings, patchSettings, getHealth, createBackup, getLlmStatus, getPrompts } =
-  vi.hoisted(() => ({
-    getSettings: vi.fn(),
-    patchSettings: vi.fn(),
-    getHealth: vi.fn(),
-    createBackup: vi.fn(),
-    getLlmStatus: vi.fn(),
-    getPrompts: vi.fn(),
-  }));
+const {
+  getSettings,
+  patchSettings,
+  getHealth,
+  createBackup,
+  getLlmStatus,
+  getPrompts,
+  getShotInformation,
+} = vi.hoisted(() => ({
+  getSettings: vi.fn(),
+  patchSettings: vi.fn(),
+  getHealth: vi.fn(),
+  createBackup: vi.fn(),
+  getLlmStatus: vi.fn(),
+  getPrompts: vi.fn(),
+  getShotInformation: vi.fn(),
+}));
 // Partial: the page pulls ApiClientError in through useQueryErrorToast, and a
 // factory that enumerates exports would have to be edited every time the client
 // grows one.
@@ -35,6 +43,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   createBackup,
   getLlmStatus,
   getPrompts,
+  getShotInformation,
 }));
 
 /** Shaped exactly like `ResolvedSetting.to_api()` in gaggiclanker/settings.py. */
@@ -366,6 +375,26 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith("Backup written: gaggiclanker-20260101.db"),
     );
+  });
+
+  it("gives shot information a page of its own, not a registry form", async () => {
+    getShotInformation.mockResolvedValue({
+      groups: [{ name: "Outcome", note: null, items: [] }],
+      example_shot: null,
+      estimates: {
+        base_per_shot: null,
+        extended_per_shot: null,
+        full_per_shot: null,
+        glossary: 1200,
+        autoload: null,
+        recent_shots: 20,
+      },
+    });
+    renderAt("/settings/shot-information");
+
+    expect(await screen.findByRole("heading", { name: "Shot information" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Outcome" })).toBeInTheDocument();
+    expect(getSettings).not.toHaveBeenCalled();
   });
 
   it("opens the import page's only card", () => {

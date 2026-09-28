@@ -1,11 +1,21 @@
 import type { LucideIcon } from "lucide-react";
-import { Bot, Gauge, KeyRound, ScrollText, Server, ShieldCheck, Upload } from "lucide-react";
+import {
+  Bot,
+  Gauge,
+  KeyRound,
+  Layers,
+  ScrollText,
+  Server,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 
 export type SettingsPageId =
   | "machine"
   | "safety"
   | "llm"
   | "prompts"
+  | "shot-information"
   | "auth"
   | "import"
   | "system";
@@ -26,8 +36,9 @@ export type SettingsPageInfo = {
  * come first because nothing works until they are filled in: the machine's
  * address, and a provider with its credential. Sign-in next, for anybody whose
  * box is reachable by others; then what gets tuned now and then (the knowledge
- * base, listed in the sidebar just before Prompts, and the prompts); then what
- * most people never change (the safety bounds) or do once (a backup, an import).
+ * base, listed in the sidebar just before Prompts, the prompts, and what a chat
+ * is told about each shot); then what most people never change (the safety
+ * bounds) or do once (a backup, an import).
  *
  * "Machine access" rather than "Machine": the sidebar has a Machine group of
  * its own, and the page is about how gaggiclanker reaches the machine and what
@@ -61,6 +72,13 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     icon: ScrollText,
     description:
       "The text every LLM call renders. Edits take effect on the next call - no restart.",
+  },
+  {
+    id: "shot-information",
+    label: "Shot information",
+    icon: Layers,
+    description:
+      "What a chat is told about every shot: what it sees without asking (base), what it asks for (extended), and what is left out. Every click saves, and applies from the next chat turn.",
   },
   {
     id: "safety",

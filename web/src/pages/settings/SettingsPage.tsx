@@ -4,6 +4,7 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ImportPage } from "@/pages/settings/ImportPage";
 import { PromptsPage } from "@/pages/settings/PromptsPage";
 import { RegistryPage } from "@/pages/settings/RegistryPage";
+import { ShotInformationPage } from "@/pages/settings/ShotInformationPage";
 import { SystemPage } from "@/pages/settings/SystemPage";
 
 /**
@@ -29,6 +30,8 @@ export function SettingsPage() {
   switch (page.id) {
     case "prompts":
       return <PromptsPage key={page.id} page={page} />;
+    case "shot-information":
+      return <ShotInformationPage key={page.id} page={page} />;
     case "import":
       return <ImportPage key={page.id} page={page} />;
     case "system":

@@ -93,6 +93,8 @@ import type {
   SetVersionRow,
   ShotDetailData,
   ShotDetailRow,
+  ShotInformation,
+  ShotInfoTier,
   ShotJudgement,
   ShotListData,
   ShotListParams,
@@ -735,6 +737,25 @@ export async function getFlavorPicks(): Promise<FlavorPicks> {
 /** Both lists, whole: the server de-duplicates and puts them in wheel order. */
 export async function putFlavorPicks(body: FlavorPicks): Promise<FlavorPicks> {
   return fetchApi<FlavorPicks>("/flavor-picks", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function getShotInformation(): Promise<ShotInformation> {
+  return fetchApi<ShotInformation>("/shot-information");
+}
+
+/** One item to a tier. The server answers the whole document, estimates and all. */
+export async function putShotInformationTier(
+  key: string,
+  tier: ShotInfoTier,
+): Promise<ShotInformation> {
+  return fetchApi<ShotInformation>(`/shot-information/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ tier }),
+  });
+}
+
+export async function resetShotInformation(): Promise<ShotInformation> {
+  return fetchApi<ShotInformation>("/shot-information/reset", { method: "POST" });
 }
 
 export async function getBeans(includeArchived = false): Promise<{ items: BeanRow[] }> {

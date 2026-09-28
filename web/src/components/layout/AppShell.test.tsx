@@ -213,6 +213,7 @@ describe("AppShell", () => {
         "Authentication",
         "Knowledge",
         "Prompts",
+        "Shot information",
         "Profile safety",
         "System",
         "Import",

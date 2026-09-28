@@ -179,6 +179,7 @@ async def test_every_client_route_deep_links_to_index(env: EnvSettings, web_dist
         "/settings/safety",
         "/settings/llm",
         "/settings/prompts",
+        "/settings/shot-information",
         "/settings/auth",
         "/settings/general",
         "/settings/import",
