@@ -107,6 +107,16 @@ async def test_the_settings_table_is_invisible(archive: Fixture) -> None:
         await run_query(archive.db.path, "SELECT key, value FROM settings")
 
 
+@pytest.mark.parametrize(
+    "statement",
+    ["SELECT item_key, tier FROM shot_info_tiers", "SELECT COUNT(*) FROM shot_info_tiers"],
+)
+async def test_the_shot_information_choices_are_invisible(archive: Fixture, statement: str) -> None:
+    """Configuration, not archive: the glossary already tells the model each item's tier."""
+    with pytest.raises(SqlRefused):
+        await run_query(archive.db.path, statement)
+
+
 async def test_sqlite_master_is_invisible(archive: Fixture) -> None:
     with pytest.raises(SqlRefused):
         await run_query(archive.db.path, "SELECT name FROM sqlite_master")
