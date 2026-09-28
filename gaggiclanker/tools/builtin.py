@@ -1,12 +1,12 @@
 """The tools themselves. One module, because the set is small and domain-bound.
 
-Twenty-two tools in two permission classes, and the third is empty on purpose.
+Twenty-one tools in two permission classes, and the third is empty on purpose.
 The read tools answer questions about the archive; the propose tools turn a
-conclusion into a row somebody still has to confirm, or queue work that costs
-money; there are no device-write tools here at all, and that is the feature —
+conclusion into a row somebody still has to confirm; there are no device-write
+tools here at all, and that is the feature —
 pushing a profile and deleting a shot off the machine stay buttons in the UI.
 
-Which of the twenty-two a conversation *has* is not decided here:
+Which of the twenty-one a conversation *has* is not decided here:
 :mod:`gaggiclanker.tools.scope` decides it from the conversation's kind. What
 is decided here is what a tool does when it is called inside a Set's
 conversation — the Set is the conversation's and another one is refused, and a
@@ -15,9 +15,9 @@ shot filed elsewhere is refused in words that do not say whether it exists.
 Two shapes recur and are worth stating once. **Every output is a pydantic model**,
 so the JSON the model reads is the JSON the schema promised and `mypy --strict`
 checks the middle. And **a missing service is an ordinary error**, not an
-exception: the stdio MCP entry point opens a database and nothing else, so
-`run_analysis` over stdio has to say "this needs the running application" rather
-than raise `AttributeError` at the bottom of a stack the caller cannot see.
+exception: the stdio MCP entry point opens a database and nothing else, so a
+tool that needs more has to say so rather than raise `AttributeError` at the
+bottom of a stack the caller cannot see.
 """
 
 from __future__ import annotations
@@ -50,8 +50,7 @@ from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value
 from gaggiclanker.domain.vocab import Balance
-from gaggiclanker.infra.errors import TooManyRequests, Unprocessable
-from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, ANALYSIS_WINDOW_SECONDS
+from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
 from gaggiclanker.shotinfo.facts import ShotFacts
@@ -1074,72 +1073,6 @@ def _insight_out(insight: Any, only: set[int] | None = None) -> InsightOut:
         ),
         source=insight.source,
         confirmed=insight.confirmed,
-    )
-
-
-# ── run_analysis ─────────────────────────────────────────────────────
-
-
-class RunAnalysisInput(_Model):
-    shot_id: int = Field(gt=0)
-
-
-class RunAnalysisOutput(_Model):
-    analysis_id: int
-    shot_id: int
-    status: str
-    started: bool = False
-    output: dict[str, Any] | None = None
-    error: str | None = None
-
-
-@tool(
-    "run_analysis",
-    permission="propose",
-    description=(
-        "Queue the deterministic per-shot analysis for a shot that has none, and return "
-        "the row. It runs in the background, and its result appears on the shot's page. "
-        "Idempotent: a shot already being analysed returns the running row. It spends "
-        "provider tokens, so it is rate limited."
-    ),
-)
-async def run_analysis(ctx: ToolContext, args: RunAnalysisInput) -> RunAnalysisOutput:
-    """Propose-class, and limited, because it is the one tool that spends money.
-
-    ``read`` would have been the tidy answer — it creates nothing a person has
-    to decide about — but the permission class is what a caller is handed, and
-    handing a read-only agent a button that queues provider calls is not a read.
-    The limiter is the analysis route's own bucket at the analysis route's own
-    limit: a model that decides to analyse a year of shots is the loop that
-    rate limit exists for, and going through a tool rather than the route must
-    not be a way around it.
-    """
-    if ctx.rate_limits is not None:
-        try:
-            ctx.rate_limits.check(
-                "analysis",
-                f"tool:{ctx.user or ctx.caller}",
-                limit=ANALYSIS_RATE_LIMIT,
-                window=ANALYSIS_WINDOW_SECONDS,
-            )
-        except TooManyRequests as exc:
-            raise ValueError(str(exc)) from None
-    if ctx.analyzer is None or ctx.tasks is None:
-        raise ValueError(
-            "run_analysis needs the running gaggiclanker application; this connection has "
-            "database access only."
-        )
-    try:
-        row, started = await ctx.analyzer.start(args.shot_id, tasks=ctx.tasks)
-    except LookupError:
-        raise ValueError(f"No shot {args.shot_id} in the archive.") from None
-    return RunAnalysisOutput(
-        analysis_id=row.id,
-        shot_id=row.shot_id,
-        status=row.status,
-        started=started,
-        output=row.output if isinstance(row.output, dict) else None,
-        error=row.error,
     )
 
 

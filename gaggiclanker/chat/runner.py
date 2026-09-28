@@ -163,25 +163,21 @@ class ChatRunner:
         *,
         tools: ToolRegistry,
         bus: SseEventBus | None = None,
-        analyzer: Any = None,
         drafts: DraftProposals | None = None,
         knowledge: Any = None,
         tasks: TaskRegistry | None = None,
-        rate_limits: Any = None,
     ) -> None:
         self.db = db
         self.llm = llm
         self.prompts = prompts
         self.tools = tools
         self.bus = bus
-        self.analyzer = analyzer
         #: The proposal half of drafts. It does not hold the machine connection:
         #: this runner hands it to tools a model drives, and pushing stays with
         #: the routes.
         self.drafts = drafts
         self.knowledge = knowledge
         self.tasks = tasks
-        self.rate_limits = rate_limits
         self.repo = ChatRepository(db)
         self.events = ChatEventsRepository(db)
         self._running: dict[int, _RunState] = {}
@@ -469,10 +465,8 @@ class ChatRunner:
             db=self.db,
             settings=self.llm.settings,
             knowledge=self.knowledge,
-            analyzer=self.analyzer,
             drafts=self.drafts,
             tasks=self.tasks,
-            rate_limits=self.rate_limits,
             scope=scope,
             run_id=run_id,
             thread_id=thread_id,

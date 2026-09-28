@@ -31,19 +31,14 @@ under.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
-from contextlib import suppress
-from dataclasses import asdict, replace
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.analyzer.service import BATCH_ACKNOWLEDGE_ABOVE, BatchResult, LargeBatch
 from gaggiclanker.api.deps import (
-    AnalyzerServiceDep,
     BeansRepoDep,
     DatabaseDep,
     GrindersRepoDep,
@@ -99,7 +94,6 @@ from gaggiclanker.domain.spread import (
 )
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import AppError, Conflict, NotFound, Unprocessable
-from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, rate_limit
 
 __all__ = ["router"]
 
@@ -113,22 +107,6 @@ SHOTS_PER_SET = 500
 #: beside the proposal and quoted to the next conversation, both of which
 #: are places a paragraph would be in the way.
 DECLINE_NOTE_MAX = 500
-
-
-class SetAnalyseRequest(BaseModel):
-    """`POST /api/sets/{id}/analyse`: the batch, and how much of it to do."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: Skip shots that already have a *successful* analysis. A failed or
-    #: interrupted one does not count as analysed: picking up what the rate
-    #: limit or a restart dropped is what this default is for.
-    only_unanalysed: bool = True
-    model: str = ""
-    #: Required — and refused without — when the batch would queue more than
-    #: ten shots. Named for what it acknowledges rather than `confirm`, so a
-    #: client that sets every boolean to true has still said something specific.
-    acknowledge_large_batch: bool = False
 
 
 class SetCreate(BaseModel):
@@ -1071,79 +1049,3 @@ async def list_suggestions(
     return envelope_response(
         SuggestionListData(items=await suggestions.for_set(set_id)).model_dump(mode="json")
     )
-
-
-@router.post(
-    "/{set_id}/analyse",
-    response_model=ApiResponse[BatchResult],
-    status_code=202,
-    summary="Queue an analysis of every un-analysed shot in this Set",
-    # The other money-spending route. Same bucket as the per-shot one on
-    # purpose: a caller alternating between the two would otherwise get twice
-    # the allowance for the same provider account.
-    dependencies=[Depends(rate_limit("analysis", ANALYSIS_RATE_LIMIT))],
-)
-async def analyse_set(
-    set_id: int,
-    body: SetAnalyseRequest,
-    request: Request,
-    sets: SetsRepoDep,
-    analyzer: AnalyzerServiceDep,
-    wait: Annotated[bool, Query()] = False,
-) -> JSONResponse:
-    """Queue the batch and answer with what it is about to do.
-
-    A Set of fifty un-analysed shots is twenty-five minutes of provider time, so
-    it runs as one registered background task rather than inside this request —
-    which also means shutdown cancels it in one place instead of leaving sixty
-    futures nobody is holding. The response carries real numbers rather than a
-    bare "accepted": `requested` is what was queued and `skipped` is how many
-    shots something else is already analysing.
-
-    One batch per Set at a time. A second press while one is running is a 409:
-    the first batch is already working through exactly the shots the second
-    would pick.
-
-    More than ten shots is a 409 `LARGE_BATCH` until the body says
-    `acknowledge_large_batch`, and nothing is queued. `details.count` is how
-    many shots it would queue, so a client can show the person exactly what
-    they are agreeing to before sending it again.
-
-    ``?wait=1`` blocks until the batch is done. For tests and `curl`; a browser
-    follows the LLM stream, which carries an event per shot.
-    """
-    if await sets.get(set_id) is None:
-        raise NotFound(f"No Set {set_id}")
-    try:
-        result = await analyzer.start_set(
-            set_id,
-            tasks=request.app.state.tasks,
-            only_unanalysed=body.only_unanalysed,
-            model=body.model or None,
-            acknowledge_large_batch=body.acknowledge_large_batch,
-        )
-    except LargeBatch as exc:
-        raise Conflict(
-            f"This would analyse {exc.count} shots, one provider call each",
-            code="LARGE_BATCH",
-            details={
-                "field": "acknowledge_large_batch",
-                "message": f"more than {BATCH_ACKNOWLEDGE_ABOVE} shots must be acknowledged",
-                "count": exc.count,
-                "limit": BATCH_ACKNOWLEDGE_ABOVE,
-            },
-        ) from exc
-    except RuntimeError as exc:
-        raise Conflict(
-            f"Set {set_id} is already being analysed",
-            details={"field": "set_id", "message": "wait for the running batch to finish"},
-        ) from exc
-
-    if wait and result.task:
-        task = request.app.state.tasks.get(result.task)
-        if task is not None:
-            with suppress(asyncio.CancelledError):
-                finished = await asyncio.shield(task)
-            if isinstance(finished, BatchResult):
-                result = replace(finished, skipped=result.skipped)
-    return envelope_response(asdict(result), status_code=202)

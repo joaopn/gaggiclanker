@@ -45,7 +45,7 @@ writes nothing to the device.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -65,7 +65,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
 )
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
-from gaggiclanker.infra.tasks import TaskRegistry, TaskSpawner
+from gaggiclanker.infra.tasks import TaskSpawner
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import LlmMessage, LlmRequest, Ok
@@ -74,13 +74,8 @@ __all__ = [
     "ANALYSIS_EVENTS",
     "ANALYSIS_PROMPT",
     "ANALYSIS_USER_PROMPT",
-    "BATCH_ACKNOWLEDGE_ABOVE",
-    "BATCH_CONCURRENCY",
     "AnalyzerService",
-    "BatchResult",
-    "LargeBatch",
     "analysis_task_name",
-    "set_task_name",
 ]
 
 log = structlog.get_logger(__name__)
@@ -94,20 +89,6 @@ ANALYSIS_USER_PROMPT = "analysis-user"
 #: indicator is already watching that stream, so an analysis started from a
 #: batch shows up in a tab that is looking at something else entirely.
 ANALYSIS_EVENTS = ("analysis.started", "analysis.finished", "analysis.failed")
-
-#: How many analyses run at once in a batch. Two, not ten: each call is a
-#: minute of a provider's attention, the rate-limit budget is process-wide
-#: (`gaggiclanker/llm/budget.py`), and a wide pool's only achievement would be
-#: hitting the limit sooner and latching the whole app.
-BATCH_CONCURRENCY = 2
-
-#: A queued batch larger than this is refused until the caller acknowledges
-#: its size. Every shot is a provider call, and a Set that has collected shots
-#: for weeks turns one press of "analyse the un-analysed" into dozens of them:
-#: real money and most of an hour of the rate-limit budget. Ten is roughly five
-#: minutes at the pool's width; past that the person should see the number
-#: before it is spent.
-BATCH_ACKNOWLEDGE_ABOVE = 10
 
 #: Linear backoff between this call's own retries. A real wait in production —
 #: a provider that just 429'd wants a moment — and the one thing in an analysis
@@ -138,51 +119,6 @@ class _Prepared:
 def analysis_task_name(shot_id: int) -> str:
     """The registry name that makes one analysis per shot an invariant."""
     return f"analysis:{shot_id}"
-
-
-def set_task_name(set_id: int) -> str:
-    """The registry name for a Set batch. One batch per Set at a time."""
-    return f"analyse_set:{set_id}"
-
-
-@dataclass(frozen=True, slots=True)
-class BatchResult:
-    """What a Set batch was asked to do, and — once it has run — what it did.
-
-    Counts, not rows: a Set can hold hundreds. The route answers with this
-    before the work happens, so `requested` and `skipped` are the useful fields
-    there and the rest fill in as the task runs; `analyse_set` returns the same
-    shape fully populated for a caller that ran it directly.
-    """
-
-    set_id: int
-    requested: int
-    #: Shots left alone because an analysis of them is already running. Not an
-    #: error: two overlapping batches, or a batch and somebody pressing the
-    #: button on one shot, are both ordinary.
-    skipped: int = 0
-    succeeded: int = 0
-    failed: int = 0
-    #: Set when the rate-limit latch stopped the batch part-way. The remaining
-    #: shots were not attempted at all, which is the latch working as designed.
-    stopped: bool = False
-    #: The registry name, so a caller can tell that work was queued and, in a
-    #: test, wait for it.
-    task: str = ""
-    analysis_ids: list[int] = field(default_factory=list)
-
-
-class LargeBatch(Exception):
-    """A Set batch bigger than :data:`BATCH_ACKNOWLEDGE_ABOVE`, not acknowledged.
-
-    Its own type rather than a ``RuntimeError``: the route already turns that
-    into "a batch is running", and this is a different answer to act on.
-    """
-
-    def __init__(self, set_id: int, count: int) -> None:
-        super().__init__(f"Set {set_id} batch of {count} shots needs acknowledging")
-        self.set_id = set_id
-        self.count = count
 
 
 class AnalyzerService:
@@ -498,138 +434,6 @@ class AnalyzerService:
         system = await self.prompts.load(ANALYSIS_PROMPT)
         user = await self.prompts.load(ANALYSIS_USER_PROMPT, variables)
         return system.system, user.user, f"{system.version}+{user.version}"
-
-    # ── a Set at a time ──────────────────────────────────────────────
-
-    async def start_set(
-        self,
-        set_id: int,
-        *,
-        tasks: TaskRegistry,
-        only_unanalysed: bool = True,
-        model: str | None = None,
-        acknowledge_large_batch: bool = False,
-    ) -> BatchResult:
-        """Queue a Set batch. Returns what it is about to do, not what it did.
-
-        The shot list is resolved here rather than inside the task so the caller
-        gets real numbers back with its 202 — "47 queued, 2 already running" is
-        an answer; "accepted" is not.
-
-        One batch per Set at a time, by the registry name. A second press while
-        one is running is refused rather than doubled: the first batch is
-        already working through exactly the shots the second one would pick.
-
-        More than :data:`BATCH_ACKNOWLEDGE_ABOVE` shots raises
-        :class:`LargeBatch` unless ``acknowledge_large_batch`` says the caller
-        has seen the size. The count is what would actually be queued, after
-        the running ones are left out, so the number a person is asked about
-        is the number of calls they are agreeing to. The direct
-        :meth:`analyse_set` is not gated: its callers wait for the result and
-        chose the Set in code, not with a button.
-        """
-        shot_ids, skipped = await self._batch_shots(set_id, only_unanalysed=only_unanalysed)
-        if not shot_ids:
-            return BatchResult(set_id=set_id, requested=0, skipped=skipped)
-        if len(shot_ids) > BATCH_ACKNOWLEDGE_ABOVE and not acknowledge_large_batch:
-            log.info("analyse_set_refused_large", set_id=set_id, requested=len(shot_ids))
-            raise LargeBatch(set_id, len(shot_ids))
-        name = set_task_name(set_id)
-        tasks.spawn(name, self._run_batch(set_id, shot_ids, model))
-        return BatchResult(set_id=set_id, requested=len(shot_ids), skipped=skipped, task=name)
-
-    async def analyse_set(
-        self,
-        set_id: int,
-        *,
-        only_unanalysed: bool = True,
-        model: str | None = None,
-    ) -> BatchResult:
-        """Analyse every shot in a Set and wait for it. The direct form.
-
-        ``only_unanalysed`` skips shots that already have a successful analysis.
-        A *failed* one does not count as analysed: the whole point of the
-        default is to pick up what the rate limit or a restart dropped. A shot
-        whose analysis is already *running* is skipped either way — something
-        else is doing it.
-        """
-        shot_ids, skipped = await self._batch_shots(set_id, only_unanalysed=only_unanalysed)
-        if not shot_ids:
-            return BatchResult(set_id=set_id, requested=0, skipped=skipped)
-        result = await self._run_batch(set_id, shot_ids, model)
-        return replace(result, skipped=skipped)
-
-    async def _batch_shots(self, set_id: int, *, only_unanalysed: bool) -> tuple[list[int], int]:
-        """The shots to analyse, and how many were left alone because they are running."""
-        candidates = (
-            await self.analyses.unanalysed_in_set(set_id)
-            if only_unanalysed
-            else await self.analyses.shots_in_set(set_id)
-        )
-        running = await self.analyses.running_shot_ids()
-        wanted = [shot_id for shot_id in candidates if shot_id not in running]
-        return wanted, len(candidates) - len(wanted)
-
-    async def _run_batch(self, set_id: int, shot_ids: list[int], model: str | None) -> BatchResult:
-        """The work itself, through a pool two wide.
-
-        ``gather(return_exceptions=True)`` rather than a ``TaskGroup``: a task
-        group cancels its siblings the moment one raises, and losing
-        fifty-nine shots because the eleventh hit a bug is not a trade worth
-        making. Each shot has already recorded its own outcome by the time an
-        exception gets here (`_complete` stores a `failed` row before it
-        re-raises), so this only has to count it and carry on.
-
-        The rate-limit latch is respected between shots: once the process is
-        stopped, the remaining shots are not attempted at all. Sixty calls each
-        failing after three retries is eleven minutes of nothing, which is
-        exactly what the latch exists to prevent (`gaggiclanker/llm/budget.py`).
-        """
-        semaphore = asyncio.Semaphore(BATCH_CONCURRENCY)
-        succeeded = 0
-        failed = 0
-        ids: list[int] = []
-
-        async def one(shot_id: int) -> None:
-            nonlocal succeeded, failed
-            async with semaphore:
-                if self.llm.budget.stopped:
-                    return
-                try:
-                    row = await self.run_analysis(shot_id, model=model)
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    # Already stored as a failed row by `_complete`; logged
-                    # there too. Nothing to do here but let the siblings run.
-                    failed += 1
-                    return
-                ids.append(row.id)
-                if row.status == "ok":
-                    succeeded += 1
-                else:
-                    failed += 1
-
-        await asyncio.gather(*(one(shot_id) for shot_id in shot_ids), return_exceptions=False)
-
-        stopped = self.llm.budget.stopped
-        log.info(
-            "analyse_set_finished",
-            set_id=set_id,
-            requested=len(shot_ids),
-            succeeded=succeeded,
-            failed=failed,
-            stopped=stopped,
-        )
-        return BatchResult(
-            set_id=set_id,
-            requested=len(shot_ids),
-            succeeded=succeeded,
-            failed=failed,
-            stopped=stopped,
-            task=set_task_name(set_id),
-            analysis_ids=sorted(ids),
-        )
 
     # ── events ───────────────────────────────────────────────────────
 

@@ -206,60 +206,6 @@ class AnalysesRepository(Repository):
         rows = await self.for_shot(shot_id)
         return rows[0] if rows else None
 
-    async def running_shot_ids(self) -> set[int]:
-        """Every shot with an analysis in flight right now.
-
-        The batch's own guard against doubling work: the registry name stops
-        two *requests* colliding on one shot, but a batch runs its shots inside
-        its own task where the registry cannot see them, so the row is what the
-        two paths agree on.
-        """
-        rows = await self.db.fetch_all(
-            "SELECT DISTINCT shot_id FROM shot_analyses WHERE status = 'running'"
-        )
-        return {int(row["shot_id"]) for row in rows}
-
-    async def unanalysed_in_set(self, set_id: int) -> list[int]:
-        """Shots in this Set with no successful analysis, oldest first.
-
-        A failed or interrupted run does not count as analysed: the whole point
-        of "analyse the un-analysed" is to pick up what the rate limit or the
-        restart dropped.
-
-        A run that is still *going* is **not** filtered here. The batch does
-        that itself (`AnalyzerService._batch_shots`), because it has to report
-        how many it left alone and a row that vanished from this query cannot
-        be counted.
-        """
-        rows = await self.db.fetch_all(
-            """
-            SELECT sh.id
-              FROM shots sh
-              JOIN set_versions v ON v.id = sh.set_version_id
-             WHERE v.set_id = ?
-               AND sh.quarantined = 0
-               AND NOT EXISTS (
-                     SELECT 1 FROM shot_analyses a
-                      WHERE a.shot_id = sh.id AND a.status = 'ok')
-             ORDER BY COALESCE(sh.started_at, ''), sh.id
-            """,
-            (set_id,),
-        )
-        return [int(row["id"]) for row in rows]
-
-    async def shots_in_set(self, set_id: int) -> list[int]:
-        rows = await self.db.fetch_all(
-            """
-            SELECT sh.id
-              FROM shots sh
-              JOIN set_versions v ON v.id = sh.set_version_id
-             WHERE v.set_id = ? AND sh.quarantined = 0
-             ORDER BY COALESCE(sh.started_at, ''), sh.id
-            """,
-            (set_id,),
-        )
-        return [int(row["id"]) for row in rows]
-
     async def reconcile_running(self) -> int:
         """Mark every `running` row `interrupted`. Runs once, at boot.
 

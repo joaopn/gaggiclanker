@@ -6,21 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  acceptSuggestion,
-  analyseSet,
-  getSetSuggestions,
-  largeBatchCount,
-  rejectSuggestion,
-  runAnalysis,
-} from "@/api/client";
-import type {
-  AcceptedSuggestion,
-  Analysis,
-  BatchResult,
-  Suggestion,
-  SuggestionListData,
-} from "@/api/types";
+import { acceptSuggestion, getSetSuggestions, rejectSuggestion, runAnalysis } from "@/api/client";
+import type { AcceptedSuggestion, Analysis, Suggestion, SuggestionListData } from "@/api/types";
 import { invalidateAnalyses, invalidateSets, invalidateShots } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -81,45 +68,6 @@ export function useRunAnalysis(): UseMutationResult<
       void invalidateAnalyses(queryClient);
       void invalidateShots(queryClient, String(variables.shotId));
       void invalidateShots(queryClient);
-    },
-  });
-}
-
-export function useAnalyseSet(): UseMutationResult<
-  BatchResult,
-  Error,
-  { setId: number; onlyUnanalysed?: boolean; model?: string; acknowledgeLargeBatch?: boolean }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ setId, onlyUnanalysed, model, acknowledgeLargeBatch }) =>
-      analyseSet(setId, { onlyUnanalysed, model, acknowledgeLargeBatch }),
-    onSuccess: (result) => {
-      // The batch is queued, not done: the counts that mean anything at this
-      // point are what it will attempt and what it left to somebody else.
-      if (result.requested === 0) {
-        toast.info(
-          result.skipped > 0
-            ? `Already being analysed (${result.skipped} shot${result.skipped === 1 ? "" : "s"})`
-            : "Every shot in this Set has already been analysed",
-        );
-      } else {
-        toast.info(
-          `Analysing ${result.requested} shot${result.requested === 1 ? "" : "s"}` +
-            (result.skipped > 0 ? `, ${result.skipped} already running` : ""),
-        );
-      }
-    },
-    onError: (error) => {
-      // Not a failure: a question the page asks from the mutation's error,
-      // with the size and a button to go ahead.
-      if (largeBatchCount(error) !== null) return;
-      toast.error(`Could not analyse the Set: ${error.message}`);
-    },
-    onSettled: () => {
-      void invalidateAnalyses(queryClient);
-      void invalidateShots(queryClient);
-      void invalidateSets(queryClient);
     },
   });
 }

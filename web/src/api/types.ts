@@ -122,8 +122,6 @@ export type KnowledgeInsightListData = components["schemas"]["InsightListData"];
 export type KnowledgeInsightCreate = components["schemas"]["InsightCreate"];
 export type KnowledgeInsightPatch = components["schemas"]["InsightPatch"];
 export type KnowledgeInsightScope = components["schemas"]["InsightScope"];
-export type SetAnalyseRequest = components["schemas"]["SetAnalyseRequest"];
-export type BatchResult = components["schemas"]["BatchResult"];
 
 /**
  * The analysis document the model returns, as stored on `Analysis.output`.

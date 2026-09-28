@@ -297,13 +297,6 @@ async def test_the_analysis_route_is_rate_limited(app: FastAPI, client: httpx.As
     assert body["error"]["details"]["limit"] == ANALYSIS_RATE_LIMIT
 
 
-async def test_both_analysis_routes_share_one_bucket(client: httpx.AsyncClient) -> None:
-    """Alternating between them must not buy twice the provider spend."""
-    for _ in range(ANALYSIS_RATE_LIMIT):
-        await client.post("/api/shots/999999/analyses", json={})
-    assert (await client.post("/api/sets/999999/analyse", json={})).status_code == 429
-
-
 async def test_the_limit_is_per_user_when_auth_is_on(
     secured_client: httpx.AsyncClient, bearer: dict[str, str]
 ) -> None:

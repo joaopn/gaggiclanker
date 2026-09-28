@@ -63,8 +63,7 @@ type ChatKind = Literal["general", "set"]
 #: What is deliberately absent is as much of the design as what is here.
 #: ``query_shots`` and ``describe_schema`` would be a way around the scope in
 #: one SELECT; ``list_sets``, ``list_beans`` and ``list_grinders`` would name
-#: other coffees; ``run_analysis`` is a second adviser that owes no
-#: prediction.
+#: other coffees.
 SET_TOOLS: frozenset[str] = frozenset(
     {
         "compare_shots",
@@ -115,8 +114,8 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
 #:
 #: Absent: ``propose_set_version`` and ``record_insight``, because a Set is
 #: changed and learned about in its own folder, where the ledger and the
-#: evidence are in front of the model; ``run_analysis``, which is the per-shot
-#: adviser; and ``list_set_shots``, which has no Set to list.
+#: evidence are in front of the model; and ``list_set_shots``, which has no
+#: Set to list.
 GENERAL_TOOLS: frozenset[str] = frozenset(
     {
         "compare_shots",
@@ -154,10 +153,6 @@ DESIGN_RULE = (
 #: something untrue. Keyed by name because each of these is refused for the
 #: same reason wherever it is called.
 _REASONS: dict[str, str] = {
-    "run_analysis": (
-        "The per-shot analysis is not something a conversation queues: a Set's chat grades "
-        "its own prediction, and a general one is not about a shot."
-    ),
     "list_set_shots": (
         "It lists the shots of the one Set a conversation is about, and this one is about "
         "the archive. query_shots reads any Set's shots here."
@@ -244,10 +239,9 @@ class ToolScope:
         It says nothing about any other Set: which Sets exist is exactly what a
         Set conversation does not get to learn.
 
-        Two tools get a reason of their own rather than the rule of the kind
-        they were called in, because the rule would be the wrong sentence: the
-        per-shot analysis belongs to no conversation at all, and a tool that
-        lists one Set's shots is not missing from a general conversation
+        One tool gets a reason of its own rather than the rule of the kind it
+        was called in, because the rule would be the wrong sentence: a tool
+        that lists one Set's shots is not missing from a general conversation
         because of anything to do with changing a Set.
         """
         offered = ", ".join(sorted(self.tools))

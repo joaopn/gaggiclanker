@@ -188,48 +188,6 @@ async def test_an_interrupted_row_reads_as_failed_in_a_list(fixture: Fixture) ->
     assert states["000104"] == "none"
 
 
-async def test_a_batch_runs_every_unanalysed_shot(
-    analyzer: AnalyzerService, fixture: Fixture
-) -> None:
-    result = await analyzer.analyse_set(fixture.set_id)
-
-    # Six shots; four of the five earlier ones already carry a fixture analysis.
-    assert result.requested == 2
-    assert result.succeeded == 2
-    assert result.failed == 0
-    assert result.stopped is False
-
-    # And a second pass has nothing left to do.
-    assert (await analyzer.analyse_set(fixture.set_id)).requested == 0
-
-
-async def test_a_batch_can_be_told_to_redo_everything(
-    analyzer: AnalyzerService, fixture: Fixture
-) -> None:
-    result = await analyzer.analyse_set(fixture.set_id, only_unanalysed=False)
-    assert result.requested == 6
-    assert result.succeeded == 6
-
-
-async def test_a_batch_is_bounded_and_stops_at_the_latch(
-    analyzer: AnalyzerService, fixture: Fixture, provider: FakeProvider, budget: RateLimitBudget
-) -> None:
-    """Two at a time, and once the latch is set the rest are never attempted."""
-    provider.script = [api_error(429, "slow down")]
-
-    result = await analyzer.analyse_set(fixture.set_id, only_unanalysed=False)
-
-    assert budget.stopped is True
-    assert result.stopped is True
-    assert result.requested == 6
-    # The two that were already in flight failed; the other four were never
-    # attempted at all. That is the latch working: "one shot failed and the LLM
-    # is stopped" rather than "six shots each failed after three retries".
-    assert result.failed == 2
-    assert result.succeeded == 0
-    assert result.failed + result.succeeded < result.requested
-
-
 async def test_a_shot_that_does_not_exist_is_the_callers_mistake(
     analyzer: AnalyzerService,
 ) -> None:

@@ -1476,45 +1476,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sets/{set_id}/analyse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Queue an analysis of every un-analysed shot in this Set
-         * @description Queue the batch and answer with what it is about to do.
-         *
-         *     A Set of fifty un-analysed shots is twenty-five minutes of provider time, so
-         *     it runs as one registered background task rather than inside this request —
-         *     which also means shutdown cancels it in one place instead of leaving sixty
-         *     futures nobody is holding. The response carries real numbers rather than a
-         *     bare "accepted": `requested` is what was queued and `skipped` is how many
-         *     shots something else is already analysing.
-         *
-         *     One batch per Set at a time. A second press while one is running is a 409:
-         *     the first batch is already working through exactly the shots the second
-         *     would pick.
-         *
-         *     More than ten shots is a 409 `LARGE_BATCH` until the body says
-         *     `acknowledge_large_batch`, and nothing is queued. `details.count` is how
-         *     many shots it would queue, so a client can show the person exactly what
-         *     they are agreeing to before sending it again.
-         *
-         *     ``?wait=1`` blocks until the batch is done. For tests and `curl`; a browser
-         *     follows the LLM stream, which carries an event per shot.
-         */
-        post: operations["analyse_set_api_sets__set_id__analyse_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/sets/{set_id}/archive": {
         parameters: {
             query?: never;
@@ -2538,14 +2499,6 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiResponse[BatchResult] */
-        ApiResponse_BatchResult_: {
-            data?: components["schemas"]["BatchResult"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
         /** ApiResponse[BeanListData] */
         ApiResponse_BeanListData_: {
             data?: components["schemas"]["BeanListData"] | null;
@@ -3215,48 +3168,6 @@ export interface components {
         };
         /** @enum {string} */
         Balance: "sour" | "balanced" | "bitter";
-        /**
-         * BatchResult
-         * @description What a Set batch was asked to do, and — once it has run — what it did.
-         *
-         *     Counts, not rows: a Set can hold hundreds. The route answers with this
-         *     before the work happens, so `requested` and `skipped` are the useful fields
-         *     there and the rest fill in as the task runs; `analyse_set` returns the same
-         *     shape fully populated for a caller that ran it directly.
-         */
-        BatchResult: {
-            /** Analysis Ids */
-            analysis_ids?: number[];
-            /**
-             * Failed
-             * @default 0
-             */
-            failed: number;
-            /** Requested */
-            requested: number;
-            /** Set Id */
-            set_id: number;
-            /**
-             * Skipped
-             * @default 0
-             */
-            skipped: number;
-            /**
-             * Stopped
-             * @default false
-             */
-            stopped: boolean;
-            /**
-             * Succeeded
-             * @default 0
-             */
-            succeeded: number;
-            /**
-             * Task
-             * @default
-             */
-            task: string;
-        };
         /** BeanListData */
         BeanListData: {
             /** Items */
@@ -5428,27 +5339,6 @@ export interface components {
         SendResult: {
             message: components["schemas"]["ChatMessageRow"];
             run: components["schemas"]["ChatRunRow"];
-        };
-        /**
-         * SetAnalyseRequest
-         * @description `POST /api/sets/{id}/analyse`: the batch, and how much of it to do.
-         */
-        SetAnalyseRequest: {
-            /**
-             * Acknowledge Large Batch
-             * @default false
-             */
-            acknowledge_large_batch: boolean;
-            /**
-             * Model
-             * @default
-             */
-            model: string;
-            /**
-             * Only Unanalysed
-             * @default true
-             */
-            only_unanalysed: boolean;
         };
         /**
          * SetCreate
@@ -9810,43 +9700,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetDetailData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    analyse_set_api_sets__set_id__analyse_post: {
-        parameters: {
-            query?: {
-                wait?: boolean;
-            };
-            header?: never;
-            path: {
-                set_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetAnalyseRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_BatchResult_"];
                 };
             };
             /** @description Validation Error */

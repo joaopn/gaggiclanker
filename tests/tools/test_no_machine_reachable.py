@@ -527,7 +527,6 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
         "propose_initial_recipe",
         "propose_set_version",
         "record_insight",
-        "run_analysis",
     }
 
     drafted = await registry.dispatch(

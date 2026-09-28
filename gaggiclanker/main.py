@@ -427,19 +427,17 @@ async def _start(app: FastAPI, db: Database) -> None:
 
     # App-scoped for the reason the analyzer is: it holds the cancel event of
     # every run in flight, and a per-request copy would make the cancel button a
-    # no-op. It reaches into the analyzer and the draft proposals for the
-    # tools that queue or create work.
+    # no-op. It reaches into the draft proposals for the tool that creates
+    # work.
     app.state.chat = ChatRunner(
         db,
         app.state.llm,
         PromptService(PromptsRepository(db)),
         tools=tool_registry,
         bus=app.state.events,
-        analyzer=app.state.analyzer,
         drafts=app.state.draft_proposals,
         knowledge=app.state.knowledge,
         tasks=app.state.tasks,
-        rate_limits=app.state.rate_limits,
     )
 
     app.state.connection = build_device_connection(app, settings_service, db)

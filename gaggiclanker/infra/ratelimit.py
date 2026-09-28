@@ -1,8 +1,8 @@
 """A small in-memory rate limiter for the routes that spend money.
 
-Only two routes need one, and they are the two that queue LLM work:
-``POST /api/shots/{id}/analyses`` and ``POST /api/sets/{id}/analyse``. Everything
-else here reads SQLite. The failure this guards against is not an attacker — it
+The routes that queue LLM work need one (the per-shot analysis, the chat and
+the starting point, each in its own bucket). Everything else here reads
+SQLite. The failure this guards against is not an attacker — it
 is a browser tab with a retry loop, or a script, turning into a provider bill
 while nobody is watching.
 
@@ -41,8 +41,7 @@ __all__ = [
 log = structlog.get_logger(__name__)
 
 #: Ten analyses a minute. A single analysis takes a provider tens of seconds, so
-#: anything faster than this is a loop rather than a person, and the batch route
-#: (`POST /api/sets/{id}/analyse`) is the supported way to ask for fifty.
+#: anything faster than this is a loop rather than a person.
 ANALYSIS_RATE_LIMIT = 10
 ANALYSIS_WINDOW_SECONDS = 60.0
 

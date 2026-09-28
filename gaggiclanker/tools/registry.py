@@ -95,8 +95,8 @@ CHAT_PERMISSIONS: frozenset[str] = frozenset({"read", "propose"})
 class ToolContext:
     """Everything a tool is allowed to reach, and who is asking.
 
-    Services are optional because the two callers differ: the app has an
-    analyzer on ``app.state``, the stdio MCP entry
+    Services are optional because the two callers differ: the app has a task
+    registry and the draft proposals on ``app.state``, the stdio MCP entry
     point opens a database and nothing else. A tool that needs one it was not
     given says so as an error value rather than raising ``AttributeError`` at
     the bottom of a stack the model cannot read.
@@ -111,8 +111,8 @@ class ToolContext:
 
     **The guarantee comes from what is put in, not from the types here.**
     ``tasks`` is typed :class:`~gaggiclanker.infra.tasks.TaskSpawner` because
-    the two tools that queue work only ever call ``spawn`` — but a narrower type
-    stops nobody: whatever object is passed still answers ``get()`` and
+    a tool that queued work would only ever call ``spawn`` (none does today)
+    — but a narrower type stops nobody: whatever object is passed still answers ``get()`` and
     ``cancel()`` if it has them, and a task hands out its own coroutine frame,
     where the ``self`` it was called on is sitting. What makes this safe is that
     the registry wired in holds no task that talks to the machine; the sync
@@ -123,9 +123,8 @@ class ToolContext:
     db: Database
     settings: SettingsService
     #: :class:`~gaggiclanker.knowledge.service.KnowledgeService`. Untyped to
-    #: keep this module free of an import cycle through the analyzer.
+    #: keep this module free of an import cycle.
     knowledge: Any = None
-    analyzer: Any = None
     #: Creates drafts and nothing else. Typed, and only under ``TYPE_CHECKING``,
     #: so the wiring cannot hand a tool the draft service that pushes.
     drafts: DraftProposals | None = None
@@ -134,10 +133,6 @@ class ToolContext:
     #: barrier. ``None`` over stdio MCP, where there is no application to queue
     #: work on.
     tasks: TaskSpawner | None = None
-    #: :class:`~gaggiclanker.infra.ratelimit.RateLimiter`. The one tool that
-    #: spends provider tokens checks it, so a model in a loop cannot do what the
-    #: route it shortcuts is already stopped from doing.
-    rate_limits: Any = None
     #: What this conversation is: the whole archive read-only, or one Set. It
     #: decides which tools exist (the schemas, the dispatcher and the MCP
     #: server all read it) and it is what tools taking a ``set_id`` resolve

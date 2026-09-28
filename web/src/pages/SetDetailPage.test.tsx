@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
-import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "@/api/client";
 import { SetDetailPage } from "@/pages/SetDetailPage";
@@ -68,7 +67,6 @@ const {
   addSetVersion,
   archiveSet,
   getSetSuggestions,
-  analyseSet,
   getVocabulary,
   getKnowledgeInsights,
   rollbackSet,
@@ -83,7 +81,6 @@ const {
   addSetVersion: vi.fn(),
   archiveSet: vi.fn(),
   getSetSuggestions: vi.fn(),
-  analyseSet: vi.fn(),
   getVocabulary: vi.fn(),
   getKnowledgeInsights: vi.fn(),
   rollbackSet: vi.fn(),
@@ -106,7 +103,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   addSetVersion,
   archiveSet,
   getSetSuggestions,
-  analyseSet,
   getVocabulary,
   getKnowledgeInsights,
   rollbackSet,
@@ -125,14 +121,6 @@ beforeEach(() => {
   addSetVersion.mockResolvedValue(setDetail().versions[0].version);
   archiveSet.mockResolvedValue({ ...setDetail().set, archived: true, automatch: false });
   getSetSuggestions.mockResolvedValue({ items: [] });
-  analyseSet.mockResolvedValue({
-    set_id: 3,
-    requested: 2,
-    succeeded: 2,
-    failed: 0,
-    stopped: false,
-    analysis_ids: [1, 2],
-  });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
@@ -539,110 +527,14 @@ describe("SetDetailPage suggestions", () => {
     expect(group).toHaveTextContent("about v2");
   });
 
-  it("runs the batch over the un-analysed shots", async () => {
-    const user = setupUser();
+  it("offers no batch analysis of the Set", async () => {
+    // A model reads a shot only when a person presses Review on that shot's
+    // page: nothing on the Set page queues provider calls.
     renderWithQueryClient(<SetDetailPage />);
 
-    await user.click(await screen.findByTestId("analyse-set"));
-
-    await waitFor(() => expect(analyseSet.mock.calls[0]?.[0]).toBe(3));
-    expect(analyseSet.mock.calls[0]?.[1]?.acknowledgeLargeBatch).toBeFalsy();
-  });
-
-  function largeBatchRefusal(count: number): ApiClientError {
-    return new ApiClientError(`This would analyse ${count} shots, one provider call each`, {
-      status: 409,
-      code: "LARGE_BATCH",
-      details: {
-        field: "acknowledge_large_batch",
-        message: "more than 10 shots must be acknowledged",
-        count,
-        limit: 10,
-      },
-    });
-  }
-
-  it("asks before a batch over the limit, with the server's count, and runs it on yes", async () => {
-    analyseSet.mockRejectedValueOnce(largeBatchRefusal(23));
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByTestId("analyse-set"));
-
-    const warning = await screen.findByTestId("large-batch-warning");
-    expect(warning).toHaveAttribute("role", "status");
-    expect(warning).toHaveTextContent("This would run 23 analyses");
-    expect(warning).toHaveTextContent("about 12 minutes");
-    expect(toast.error).not.toHaveBeenCalled();
-
-    // Held open so the page can be seen mid-request: the question goes away
-    // the moment it is answered, not when the server replies, so a second
-    // click cannot queue the batch twice.
-    let release: (value: unknown) => void = () => undefined;
-    analyseSet.mockReturnValueOnce(
-      new Promise((resolve) => {
-        release = resolve;
-      }),
-    );
-    await user.click(within(warning).getByRole("button", { name: "Analyse all 23" }));
-
-    await waitFor(() => expect(analyseSet).toHaveBeenCalledTimes(2));
-    // Exactly the refused request, acknowledged: nothing else may ride along.
-    expect(analyseSet.mock.calls[1]).toEqual([
-      3,
-      { onlyUnanalysed: undefined, model: undefined, acknowledgeLargeBatch: true },
-    ]);
-    await waitFor(() => expect(screen.queryByTestId("large-batch-warning")).toBeNull());
-    release({ set_id: 3, requested: 23, skipped: 0, task: "analyse_set:3" });
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith("Analysing 23 shots"));
-    expect(screen.queryByTestId("large-batch-warning")).toBeNull();
-  });
-
-  it("does not carry the question to another Set", async () => {
-    analyseSet.mockRejectedValueOnce(largeBatchRefusal(23));
-    const user = setupUser();
-    const { rerender } = renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByTestId("analyse-set"));
-    expect(await screen.findByTestId("large-batch-warning")).toHaveTextContent("23 analyses");
-
-    // The route moved to another Set: the same page instance, new param.
-    setId = "4";
-    getSet.mockResolvedValue(setDetail({ set: { ...setDetail().set, id: 4 } }));
-    rerender(<SetDetailPage />);
-
-    await screen.findByTestId("analyse-set");
-    expect(screen.queryByTestId("large-batch-warning")).toBeNull();
-    expect(analyseSet).toHaveBeenCalledTimes(1);
-  });
-
-  it("drops the question on cancel without analysing anything", async () => {
-    analyseSet.mockRejectedValueOnce(largeBatchRefusal(11));
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByTestId("analyse-set"));
-    const warning = await screen.findByTestId("large-batch-warning");
-    await user.click(within(warning).getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => expect(screen.queryByTestId("large-batch-warning")).toBeNull());
-    expect(analyseSet).toHaveBeenCalledTimes(1);
-  });
-
-  it("still reports any other refusal as an error", async () => {
-    analyseSet.mockRejectedValueOnce(
-      new ApiClientError("Set 3 is already being analysed", { status: 409, code: "CONFLICT" }),
-    );
-    const user = setupUser();
-    renderWithQueryClient(<SetDetailPage />);
-
-    await user.click(await screen.findByTestId("analyse-set"));
-
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(
-        "Could not analyse the Set: Set 3 is already being analysed",
-      ),
-    );
+    await screen.findByTestId("no-suggestions");
+    expect(screen.queryByTestId("analyse-set")).toBeNull();
+    expect(screen.queryByRole("button", { name: /analyse/i })).toBeNull();
     expect(screen.queryByTestId("large-batch-warning")).toBeNull();
   });
 });

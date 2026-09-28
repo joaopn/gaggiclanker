@@ -19,11 +19,6 @@ from gaggiclanker.tools.registry import ToolContext, registry
 from gaggiclanker.tools.scope import DESIGN_RULE, DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS, ToolScope
 from tests.analyzer.conftest import Fixture
 
-#: Registered, offered nowhere, and deliberately so: the per-shot analysis is a
-#: second adviser that owes no prediction, so no conversation can queue one. The
-#: tool itself goes with the rest of the analysis.
-OFFERED_NOWHERE = {"run_analysis"}
-
 
 def test_a_set_conversation_has_exactly_these_tools() -> None:
     assert ToolScope.for_thread(3).tools == frozenset(
@@ -92,7 +87,9 @@ def test_no_scope_names_a_tool_that_does_not_exist() -> None:
     assert SET_TOOLS <= registered
     assert GENERAL_TOOLS <= registered
     assert DESIGN_TOOLS <= registered
-    assert registered - SET_TOOLS - GENERAL_TOOLS - DESIGN_TOOLS == OFFERED_NOWHERE
+    # Every registered tool is offered somewhere: a tool no conversation has
+    # is dead code that the stdio server would still register.
+    assert registered == SET_TOOLS | GENERAL_TOOLS | DESIGN_TOOLS
 
 
 def test_the_design_flag_means_nothing_outside_a_set() -> None:
@@ -378,16 +375,13 @@ async def test_record_insight_refuses_a_scope_that_is_not_this_set_s(
 async def test_the_refusal_names_what_the_tool_is_rather_than_the_wrong_rule(
     ctx: ToolContext, set_ctx: ToolContext
 ) -> None:
-    """Two tools are absent for their own reasons, not for the kind's rule."""
-    analysis = await registry.dispatch(ctx, "run_analysis", {"shot_id": 1})
+    """A tool absent for its own reason says that reason, not the kind's rule."""
     shots = await registry.dispatch(ctx, "list_set_shots", {})
-    in_a_set = await registry.dispatch(set_ctx, "run_analysis", {"shot_id": 1})
+    in_a_set = await registry.dispatch(set_ctx, "query_shots", {"sql": "SELECT 1"})
 
-    assert "per-shot analysis" in analysis.error
-    assert "Changing a Set" not in analysis.error
     assert "one Set a conversation is about" in shots.error
     assert "Changing a Set" not in shots.error
-    assert "per-shot analysis" in in_a_set.error
+    assert "can see this Set only" in in_a_set.error
 
 
 # -- a Set being designed --------------------------------------------------

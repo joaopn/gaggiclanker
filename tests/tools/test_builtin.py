@@ -851,45 +851,6 @@ async def test_the_propose_tools_are_refused_for_a_read_only_caller(
 # -- the tools that need the running application ---------------------------
 
 
-async def test_run_analysis_is_propose_class_because_it_spends_money(
-    ctx: ToolContext,
-) -> None:
-    """It creates nothing to confirm, and it is still not a read.
-
-    The permission class is what a caller is handed, and handing a read-only
-    agent a button that queues provider calls is not handing it a read.
-    """
-    spec = registry.get("run_analysis")
-    assert spec is not None
-    assert spec.permission == "propose"
-    assert "run_analysis" not in {tool.name for tool in registry.specs(READ_ONLY)}
-
-
-async def test_run_analysis_shares_the_analysis_rate_limit(
-    ctx: ToolContext, archive: Fixture
-) -> None:
-    """Going through a tool must not be a way around the route's own limit.
-
-    Called rather than dispatched, unlike everything else in this file: no
-    conversation offers `run_analysis` any more — a Set's chat grades its own
-    prediction and a general one is not about a shot — so the dispatcher would
-    refuse it for being out of scope before the limiter it is about. That
-    refusal is asserted in `tests/tools/test_scope.py`; this is the tool.
-    """
-    from gaggiclanker.infra.ratelimit import ANALYSIS_RATE_LIMIT, RateLimiter
-    from gaggiclanker.tools.builtin import RunAnalysisInput, run_analysis
-
-    ctx.rate_limits = RateLimiter()
-    # No analyzer is wired, so every permitted call stops at "needs the running
-    # application" — which is after the limiter, and is the point.
-    for _ in range(ANALYSIS_RATE_LIMIT):
-        with pytest.raises(ValueError, match="running gaggiclanker application"):
-            await run_analysis(ctx, RunAnalysisInput(shot_id=archive.shots[0]))
-
-    with pytest.raises(ValueError, match="Rate limit reached"):
-        await run_analysis(ctx, RunAnalysisInput(shot_id=archive.shots[0]))
-
-
 async def test_a_tool_that_needs_a_service_says_so_rather_than_crashing(
     ctx: ToolContext, archive: Fixture
 ) -> None:

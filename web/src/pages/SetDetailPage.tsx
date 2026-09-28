@@ -1,16 +1,7 @@
-import {
-  AlertTriangle,
-  Archive,
-  ArrowLeft,
-  Coffee,
-  GitBranch,
-  Sparkles,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, Coffee, GitBranch, Trash2, Undo2 } from "lucide-react";
 import { useId, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiClientError, largeBatchCount } from "@/api/client";
+import { ApiClientError } from "@/api/client";
 import type { SetDetailData, SetRow, Suggestion } from "@/api/types";
 import { SuggestionCard } from "@/components/analysis/SuggestionCard";
 import { SetTrendChart } from "@/components/charts/SetTrendChart";
@@ -34,7 +25,7 @@ import { VersionTimeline } from "@/components/sets/VersionTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAnalyseSet, useSetSuggestions } from "@/hooks/useAnalysis";
+import { useSetSuggestions } from "@/hooks/useAnalysis";
 import { useProfileVersions } from "@/hooks/useArchive";
 import { useKnowledgeInsights } from "@/hooks/useKnowledge";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
@@ -110,15 +101,6 @@ export function SetDetailPage() {
   const detail = useSet(valid ? setId : undefined);
   const trends = useSetTrends(valid ? setId : undefined);
   const suggestions = useSetSuggestions(valid ? setId : undefined);
-  const analyse = useAnalyseSet();
-  // Read from the refusal itself rather than copied into state: the next
-  // press, the acknowledged one included, clears the error the moment it is
-  // sent, and Cancel is `reset()`, so the strip cannot outlive the question it
-  // asks or be answered twice. The page is not remounted when the route moves
-  // to another Set, so the mutation (and its refusal) survives that; the
-  // question belongs only to the Set it was asked about.
-  const refused = analyse.variables;
-  const largeBatch = refused?.setId === setId ? largeBatchCount(analyse.error) : null;
   const automatch = useSetAutomatch();
   const archive = useArchiveSet();
   const [versioning, setVersioning] = useState(false);
@@ -298,28 +280,7 @@ export function SetDetailPage() {
       <SectionCard
         title="Suggestions"
         description="Every piece of advice an analysis has given about a shot in this Set, newest first, grouped by the version it was about. Accepting one records a new version; the acceptance history is the answer to 'did following the model help'."
-        actions={
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={analyse.isPending}
-            data-testid="analyse-set"
-            onClick={() => analyse.mutate({ setId: row.id })}
-          >
-            <Sparkles className="size-3.5" aria-hidden="true" />
-            {analyse.isPending ? "Analysing…" : "Analyse the un-analysed"}
-          </Button>
-        }
       >
-        {largeBatch !== null ? (
-          <LargeBatchWarning
-            count={largeBatch}
-            // The refused request itself, acknowledged: nothing else about it
-            // may change between the question and the answer.
-            onConfirm={() => refused && analyse.mutate({ ...refused, acknowledgeLargeBatch: true })}
-            onCancel={() => analyse.reset()}
-          />
-        ) : null}
         {suggestions.isPending ? (
           <Skeleton className="h-24 w-full" />
         ) : (
@@ -331,47 +292,6 @@ export function SetDetailPage() {
           />
         )}
       </SectionCard>
-    </div>
-  );
-}
-
-/**
- * The question a Set batch over the server's limit asks before it spends.
- *
- * The count is the server's (what it would actually queue, running shots left
- * out), never one worked out here. The time is the batch's own arithmetic: two
- * calls at a time, about a minute each.
- */
-function LargeBatchWarning({
-  count,
-  onConfirm,
-  onCancel,
-}: {
-  count: number;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const minutes = Math.max(1, Math.round(count / 2));
-  return (
-    <div
-      // A polite live region, not an alert: this is a question about to be
-      // answered, not a fault that should interrupt what is being read.
-      role="status"
-      className="mb-3 space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3"
-      data-testid="large-batch-warning"
-    >
-      <p className="text-sm">
-        This would run <strong>{count} analyses</strong>, one provider call per shot, for about{" "}
-        {minutes} minute{minutes === 1 ? "" : "s"}.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" data-testid="large-batch-confirm" onClick={onConfirm}>
-          Analyse all {count}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
     </div>
   );
 }
