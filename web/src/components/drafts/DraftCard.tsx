@@ -72,7 +72,12 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
   // The generated type leaves these optional; absent and null mean the same.
   const forSet =
     draft.set_id != null && draft.set_name != null
-      ? { id: draft.set_id, name: draft.set_name, nextVersionNo: draft.set_next_version_no ?? null }
+      ? {
+          id: draft.set_id,
+          name: draft.set_name,
+          // A pushed draft is a minor version unless the person says otherwise.
+          nextLabel: draft.set_next_minor_label ?? null,
+        }
       : null;
 
   return (
@@ -108,7 +113,9 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
         >
           <p className="text-muted-foreground text-xs">
             Prediction for {draft.set_name ?? "its Set"}
-            {draft.compares_to_version_no ? ` · compared to v${draft.compares_to_version_no}` : ""}
+            {draft.compares_to_version_label
+              ? ` · compared to ${draft.compares_to_version_label}`
+              : ""}
           </p>
           <p className="text-sm">{draft.prediction}</p>
           <PredictionLanding draft={draft} />
@@ -248,8 +255,7 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
               }
             >
               <Upload className="size-3.5" aria-hidden="true" />
-              Push to the machine and record it as{" "}
-              {forSet.nextVersionNo !== null ? `v${forSet.nextVersionNo}` : "a new version"} of{" "}
+              Push to the machine and record it as {forSet.nextLabel ?? "a new version"} of{" "}
               {forSet.name}
             </Button>
             <Button
@@ -371,10 +377,10 @@ function PredictionLanding({ draft }: { draft: ProfileDraft }) {
   const where = draft.set_name ?? "the Set";
   let line: string | null = null;
   if (draft.status === "pushed") {
-    const recorded = draft.recorded_version_no ?? null;
+    const recorded = draft.recorded_version_label ?? null;
     line =
       recorded !== null
-        ? `Recorded as v${recorded} of ${where} when this was pushed for it.`
+        ? `Recorded as ${recorded} of ${where} when this was pushed for it.`
         : `Pushed without recording it on ${where}, so this prediction was not recorded.`;
   } else if (draft.status === "draft" || draft.status === "approved") {
     line = "It is recorded on the Set when you push this draft for that Set, and not before.";

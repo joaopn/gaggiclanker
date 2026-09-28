@@ -275,12 +275,12 @@ function Folder({
                         aria-hidden="true"
                       />
                       {/* The version leads the row: a folder holds one
-                          conversation per change, and "v6" is what tells two of
+                          conversation per change, and "v1.2" is what tells two of
                           them apart. Not truncated with the title, because it is
                           the half that never gets long. */}
-                      {thread.set_version_no ? (
+                      {thread.set_version_label ? (
                         <span className="shrink-0 font-medium text-sm tabular-nums">
-                          v{thread.set_version_no}
+                          {thread.set_version_label}
                         </span>
                       ) : null}
                       <span

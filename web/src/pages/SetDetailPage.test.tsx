@@ -10,6 +10,7 @@ import {
   designingSet,
   designProposal,
   labelCounts,
+  minorDetail,
   proposal,
   setDetail,
   trackRecord,
@@ -130,6 +131,17 @@ beforeEach(() => {
 });
 
 describe("SetDetailPage", () => {
+  it("names a minor version by its name, never by its ordinal", async () => {
+    getSet.mockResolvedValue(minorDetail());
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(await screen.findByText("Now brewing: v1.2")).toBeInTheDocument();
+    const page = document.body;
+    expect(page).toHaveTextContent("v1.1");
+    expect(page).not.toHaveTextContent(/\bv3\b/);
+    expect(page).not.toHaveTextContent(/\bv2\b/);
+  });
+
   it("puts a waiting change above the log, with both answers", async () => {
     getSet.mockResolvedValue(setDetail({ proposal: proposal() }));
     renderWithQueryClient(<SetDetailPage />);
@@ -186,7 +198,7 @@ describe("SetDetailPage", () => {
     expect(summary).toHaveTextContent("Execution score: 4 points");
     // A shot with no rating is a gap, not a zero.
     expect(summary).toHaveTextContent("Your rating: 3 points");
-    expect(summary).toHaveTextContent("Version 2 begins at shot 3");
+    expect(summary).toHaveTextContent("v2 begins at shot 3");
   });
 
   it("shows the current recipe and the version history", async () => {

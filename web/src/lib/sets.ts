@@ -162,14 +162,14 @@ export function evidenceSideSummary(side: EvidenceCounts): string {
   return parts.join(" · ");
 }
 
-/** The Set's identity on one line: bean · grinder · profile vN. */
+/** The Set's identity on one line: bean · grinder · profile and the current version's name. */
 export function setSummary(row: SetRow): string {
   const parts = [row.bean_name ?? `bean #${row.bean_id}`];
   if (row.grinder_name) parts.push(row.grinder_name);
   parts.push(
     row.profile_label
-      ? `${row.profile_label} v${row.current_version_no}`
-      : `v${row.current_version_no}`,
+      ? `${row.profile_label} ${row.current_version_label}`
+      : row.current_version_label,
   );
   return parts.join(" · ");
 }

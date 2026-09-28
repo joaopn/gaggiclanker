@@ -64,6 +64,7 @@ const THREAD = {
   set_name: "Guji on the Niche",
   set_version_id: 30,
   set_version_no: 4,
+  set_version_label: "v4",
   dead_end: false,
   message_count: 2,
   created_at: "2026-03-01T10:00:00.000Z",
@@ -72,13 +73,27 @@ const THREAD = {
 
 /** Another conversation, with whatever the test needs changed. */
 function thread(over: Partial<typeof THREAD> & { id: number }) {
-  return { ...THREAD, title: `Conversation ${over.id}`, ...over };
+  // A test that names only the ordinal gets the name a pre-minor version has.
+  const label = over.set_version_no ? `v${over.set_version_no}` : THREAD.set_version_label;
+  return { ...THREAD, title: `Conversation ${over.id}`, set_version_label: label, ...over };
 }
 
 /** The two Sets the Sets list serves, in the order the API sorts them. */
 const SETS = [
-  { id: 3, name: "Guji on the Niche", current_version_id: 30, current_version_no: 4 },
-  { id: 4, name: "Kenya AA on the Niche", current_version_id: 40, current_version_no: 1 },
+  {
+    id: 3,
+    name: "Guji on the Niche",
+    current_version_id: 30,
+    current_version_no: 4,
+    current_version_label: "v4",
+  },
+  {
+    id: 4,
+    name: "Kenya AA on the Niche",
+    current_version_id: 40,
+    current_version_no: 1,
+    current_version_label: "v1",
+  },
 ];
 
 /**
@@ -197,6 +212,30 @@ describe("ChatPage folders", () => {
     // brewed any more.
     expect(rows[1]).toHaveAttribute("data-dead-end", "yes");
     expect(rows[1]).toHaveTextContent("dead end");
+  });
+
+  it("names a minor version by its name, never by its ordinal", async () => {
+    // The Set's third version is v1.2: two dial-in changes after v1.
+    getChatThreads.mockResolvedValue([
+      thread({ id: 1, title: "the live one", set_version_no: 3, set_version_label: "v1.2" }),
+    ]);
+    getChatThread.mockResolvedValue({
+      ...DETAIL,
+      thread: thread({
+        id: 1,
+        title: "the live one",
+        set_version_no: 3,
+        set_version_label: "v1.2",
+      }),
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    const row = within(region("Guji on the Niche")).getAllByTestId("thread-row")[0];
+    expect(row).toHaveTextContent("v1.2");
+    expect(row).not.toHaveTextContent(/\bv3/);
+    expect(await screen.findByText(/About Guji on the Niche v1\.2/)).toBeInTheDocument();
+    expect(screen.queryByText(/Guji on the Niche v3/)).not.toBeInTheDocument();
   });
 
   it("draws General and a folder per Set, including a Set nobody has asked about", async () => {
@@ -519,6 +558,7 @@ describe("ChatPage, a Set being designed", () => {
       designing: true,
       current_version_id: 60,
       current_version_no: 1,
+      current_version_label: "v1",
     },
   ];
   const DESIGN_THREAD = thread({
@@ -648,6 +688,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     thread_id: 1,
     base_version_id: 30,
     base_version_no: 4,
+    base_version_label: "v4",
     base_is_current: true,
     changes: [
       { field: "dose_g", label: "Dose", before: "18 g", after: "18.5 g", from_profile: false },
@@ -658,6 +699,12 @@ describe("ChatPage, accepting a card in the conversation", () => {
     prediction: "Compared to v4, a touch more body.",
     compares_to_version_id: 30,
     compares_to_version_no: 4,
+    compares_to_version_label: "v4",
+    suggest_major: false,
+    major_reason: "",
+    major_by_default: false,
+    next_minor_label: "v4.1",
+    next_major_label: "v5",
     status: "proposed",
     readable: true,
     draft_id: null,
@@ -672,8 +719,13 @@ describe("ChatPage, accepting a card in the conversation", () => {
     getChatThread.mockResolvedValue(PROPOSED);
     getSetProposals.mockResolvedValue({ items: [WAITING] });
     acceptSetProposal.mockResolvedValue({
-      proposal: { ...WAITING, status: "accepted", resulting_version_no: 5 },
-      version: { version_no: 5 },
+      proposal: {
+        ...WAITING,
+        status: "accepted",
+        resulting_version_no: 5,
+        resulting_version_label: "v4.1",
+      },
+      version: { version_no: 5, version_label: "v4.1" },
     });
   });
 
@@ -688,7 +740,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 5 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Set.",
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
@@ -742,7 +794,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 5 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Set.",
       ),
     );
 
@@ -789,7 +841,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     await waitFor(() =>
       expect(sendChatMessage).toHaveBeenCalledWith(
         1,
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 5 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v4.1 of this Set.",
       ),
     );
     expect(sendChatMessage).toHaveBeenCalledTimes(1);

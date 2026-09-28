@@ -175,7 +175,7 @@ export function usePushDraft(): UseMutationResult<
       if (result.draft.status === "pushed") {
         toast.success(
           result.set_version
-            ? `On the machine as ${result.draft.pushed_device_profile_id}, recorded as v${result.set_version.version_no} of ${result.draft.set_name ?? "its Set"}`
+            ? `On the machine as ${result.draft.pushed_device_profile_id}, recorded as ${result.set_version.version_label} of ${result.draft.set_name ?? "its Set"}`
             : `On the machine as ${result.draft.pushed_device_profile_id}`,
         );
       } else {

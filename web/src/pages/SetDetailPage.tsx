@@ -194,7 +194,7 @@ export function SetDetailPage() {
         title={
           row.designing
             ? "No recipe yet: v1 is being designed"
-            : `Now brewing: v${row.current_version_no}`
+            : `Now brewing: ${row.current_version_label}`
         }
         description={
           row.designing
@@ -449,8 +449,8 @@ function TrackRecord({ detail, setId }: { detail: SetDetailData; setId: number }
         <RollbackButton
           setId={setId}
           versionId={target.version.id}
-          versionNo={target.version.version_no}
-          label={`Roll back to v${target.version.version_no}, the last version with Keep shots`}
+          versionLabel={target.version.version_label}
+          label={`Roll back to ${target.version.version_label}, the last version with Keep shots`}
           icon={<Undo2 className="size-3.5" aria-hidden="true" />}
         />
       ) : null}
@@ -680,7 +680,7 @@ function NewVersionForm({
               <option value="">Nothing — grade it on its own numbers</option>
               {versions.map((entry) => (
                 <option key={entry.version.id} value={String(entry.version.id)}>
-                  v{entry.version.version_no}
+                  {entry.version.version_label}
                 </option>
               ))}
             </select>

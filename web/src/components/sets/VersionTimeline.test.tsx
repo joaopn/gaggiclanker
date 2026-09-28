@@ -8,6 +8,7 @@ import {
   evidence,
   judgement,
   labelCounts,
+  minorDetail,
   setDetail,
   version,
   vocabulary,
@@ -89,7 +90,7 @@ describe("VersionTimeline", () => {
 
     const disclosures = screen.getAllByTestId("version-evidence");
     expect(disclosures).toHaveLength(1);
-    expect(disclosures[0].dataset.version).toBe("2");
+    expect(disclosures[0].dataset.version).toBe("v2");
   });
 
   it("opens the evidence of a prediction nobody has graded yet", () => {
@@ -690,6 +691,27 @@ describe("VersionTimeline", () => {
       3,
       { to_version_id: 21, intent: "", prediction: "" },
     ]);
+  });
+});
+
+describe("VersionTimeline, minor versions", () => {
+  it("names each version by its name, never by its ordinal", () => {
+    const detail = minorDetail();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    const entries = screen.getAllByTestId("version-entry");
+    expect(entries.map((entry) => entry.querySelector(".font-medium")?.textContent)).toEqual([
+      "v1.2",
+      "v1.1",
+      "v1",
+    ]);
+    const timeline = screen.getByTestId("version-timeline");
+    expect(timeline).toHaveTextContent("compared to v1.1");
+    expect(timeline).toHaveTextContent("Chat about v1.2");
+    expect(timeline).not.toHaveTextContent(/\bv3\b/);
+    expect(timeline).not.toHaveTextContent(/\bv2\b/);
   });
 });
 

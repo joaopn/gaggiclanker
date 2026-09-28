@@ -166,7 +166,7 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
               key={row.id}
               value={row.current_version_id ? String(row.current_version_id) : ""}
             >
-              {row.name} — v{row.current_version_no}
+              {row.name} — {row.current_version_label}
               {row.automatch ? " (automatch)" : ""}
             </option>
           ))}
@@ -175,7 +175,7 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
               silently show the wrong thing. */}
           {shot.set_badge && !rows.some((row) => row.current_version_id === shot.set_version_id) ? (
             <option value={String(shot.set_version_id)}>
-              {shot.set_badge.set_name} — v{shot.set_badge.version_no} (where it is now)
+              {shot.set_badge.set_name} — {shot.set_badge.version_label} (where it is now)
             </option>
           ) : null}
         </select>

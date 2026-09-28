@@ -167,7 +167,7 @@ export function useDecideProposal(): UseMutationResult<
             ? "Version 1 is set. Its profile is a draft on the Profiles page, waiting for you to approve and push it."
             : "First recipe declined, and its draft discarded"
           : result.version
-            ? `Version ${result.version.version_no} recorded. Nothing was sent to the machine.`
+            ? `${result.version.version_label} recorded. Nothing was sent to the machine.`
             : "Proposal declined",
       ),
     onError: (error) => toast.error(error.message),
@@ -264,7 +264,7 @@ export function useAddSetVersion(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ setId, patch }) => addSetVersion(setId, patch),
-    onSuccess: (version) => toast.success(`Version ${version.version_no} recorded`),
+    onSuccess: (version) => toast.success(`${version.version_label} recorded`),
     onError: (error) => toast.error(`Could not add the version: ${error.message}`),
     onSettled: () => invalidateSets(queryClient),
   });
@@ -292,7 +292,9 @@ export function useSetVersionPrediction(): UseMutationResult<
     mutationFn: ({ setId, versionId, body }) => setVersionPrediction(setId, versionId, body),
     onSuccess: (version) =>
       toast.success(
-        version.prediction ? `Prediction recorded on v${version.version_no}` : "Prediction removed",
+        version.prediction
+          ? `Prediction recorded on ${version.version_label}`
+          : "Prediction removed",
       ),
     onError: (error) => toast.error(`Could not save the prediction: ${error.message}`),
     onSettled: (_data, _error, variables) => {
@@ -334,7 +336,7 @@ export function useRollbackSet(): UseMutationResult<
     mutationFn: ({ setId, body }) => rollbackSet(setId, body),
     onSuccess: (version) =>
       toast.success(
-        `Version ${version.version_no} brings v${version.restores_version_no} back. Nothing was sent to the machine.`,
+        `${version.version_label} brings ${version.restores_version_label ?? "the earlier recipe"} back. Nothing was sent to the machine.`,
       ),
     onError: (error) => toast.error(`Could not roll back: ${error.message}`),
     onSettled: () => {
@@ -526,7 +528,7 @@ export function useAssignShot(): UseMutationResult<
     onSuccess: (row) =>
       toast.success(
         row.set_badge
-          ? `Filed under ${row.set_badge.set_name} v${row.set_badge.version_no}`
+          ? `Filed under ${row.set_badge.set_name} ${row.set_badge.version_label}`
           : "Detached from its Set",
       ),
     onError: (error) => toast.error(`Could not assign: ${error.message}`),

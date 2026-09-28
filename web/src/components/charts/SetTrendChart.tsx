@@ -35,7 +35,7 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
     // The x position where each version after the first begins. Computed from
     // the ordered points rather than from timestamps, because the points are
     // what the axis is indexed by.
-    const marks: Array<{ at: number; version: number; intent: string }> = [];
+    const marks: Array<{ at: number; version: string; intent: string }> = [];
     trends.shots.forEach((point, index) => {
       const previous = trends.shots[index - 1];
       if (previous && previous.set_version_id !== point.set_version_id) {
@@ -44,7 +44,7 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
         );
         marks.push({
           at: index,
-          version: point.version_no,
+          version: point.version_label,
           intent: summary?.intent ?? "",
         });
       }
@@ -101,7 +101,7 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
           annotation: {
             annotations: Object.fromEntries(
               marks.map((mark) => [
-                `v${mark.version}`,
+                mark.version,
                 {
                   type: "line" as const,
                   xMin: mark.at - 0.5,
@@ -111,7 +111,7 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
                   borderDash: [3, 3],
                   label: {
                     display: true,
-                    content: `v${mark.version}`,
+                    content: mark.version,
                     position: "start" as const,
                     color: palette.text,
                     backgroundColor: "transparent",
@@ -173,7 +173,7 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
           </li>
         ))}
         {boundaries.map((mark) => (
-          <li key={mark.version}>{`Version ${mark.version} begins at shot ${mark.at + 1}`}</li>
+          <li key={mark.version}>{`${mark.version} begins at shot ${mark.at + 1}`}</li>
         ))}
       </ul>
     </div>

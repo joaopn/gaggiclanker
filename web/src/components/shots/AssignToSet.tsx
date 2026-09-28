@@ -79,7 +79,7 @@ export function AssignToSet({
             <>
               <Layers className="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />
               <span className="font-medium">
-                {assignedSet?.name ?? "this Set"} v{setVersion.version_no}
+                {assignedSet?.name ?? "this Set"} {setVersion.version_label}
               </span>
               <span className="text-muted-foreground"> — {versionSummary(setVersion)}</span>
             </>
@@ -111,7 +111,7 @@ export function AssignToSet({
                   select would silently show the wrong thing. */}
               {setVersion && !rows.some((row) => row.current_version_id === setVersion.id) ? (
                 <option value={String(setVersion.id)}>
-                  {assignedSet?.name ?? "This Set"} — v{setVersion.version_no} (where it is now)
+                  {assignedSet?.name ?? "This Set"} — {setVersion.version_label} (where it is now)
                 </option>
               ) : null}
             </select>
@@ -147,9 +147,10 @@ export function AssignToSet({
             data-testid="branch-form"
           >
             <p className="text-muted-foreground text-xs">
-              Records what you actually pulled — the grind and doses from your judgement — as
-              version {branchTarget.current_version_no + 1} of {branchTarget.name}, and files this
-              shot under it.
+              Records what you actually pulled — the grind and doses from your judgement — as{" "}
+              {/* A grind, dose or yield change is a minor version by the shared
+                  rule, and this form sends nothing else. */}
+              {branchTarget.next_minor_label} of {branchTarget.name}, and files this shot under it.
             </p>
             <CopiedValues judgement={judgement} />
             <div>
@@ -210,7 +211,7 @@ export function AssignToSet({
 function SetOption({ row }: { row: SetRow }) {
   return (
     <option value={row.current_version_id ? String(row.current_version_id) : ""}>
-      {row.name} — v{row.current_version_no}
+      {row.name} — {row.current_version_label}
       {row.automatch ? " (automatch)" : ""}
     </option>
   );

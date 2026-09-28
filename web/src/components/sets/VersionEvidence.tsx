@@ -25,11 +25,12 @@ import { differenceCell, evidenceSideSummary, meanCell, verdictSentence } from "
  */
 export function VersionEvidence({
   evidence,
-  versionNo,
+  versionLabel,
   defaultOpen = false,
 }: {
   evidence: Evidence;
-  versionNo: number;
+  /** The version's name, "v1.1", as the server serves it. */
+  versionLabel: string;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -39,7 +40,7 @@ export function VersionEvidence({
   const other = evidence.other ?? null;
 
   return (
-    <div data-testid="version-evidence" data-version={versionNo}>
+    <div data-testid="version-evidence" data-version={versionLabel}>
       <Button
         type="button"
         size="sm"
@@ -56,8 +57,8 @@ export function VersionEvidence({
             <table className="w-full text-left text-sm" data-testid="evidence-table">
               <caption className="sr-only">
                 {other
-                  ? `What v${versionNo}'s shots did, beside v${other.version_no}'s`
-                  : `What v${versionNo}'s shots did. This prediction compares against nothing.`}
+                  ? `What ${versionLabel}'s shots did, beside ${other.version_label}'s`
+                  : `What ${versionLabel}'s shots did. This prediction compares against nothing.`}
               </caption>
               <thead>
                 <tr className="text-muted-foreground text-xs">
@@ -65,12 +66,12 @@ export function VersionEvidence({
                     Measure
                   </th>
                   <th scope="col" className="py-1 pr-3 font-normal">
-                    v{versionNo}
+                    {versionLabel}
                   </th>
                   {other ? (
                     <>
                       <th scope="col" className="py-1 pr-3 font-normal">
-                        v{other.version_no}
+                        {other.version_label}
                       </th>
                       <th scope="col" className="py-1 pr-3 font-normal">
                         Difference
@@ -122,11 +123,11 @@ export function VersionEvidence({
                 a verdict on them would be arithmetic pretending. */}
             <ul className="text-muted-foreground text-xs" data-testid="evidence-counts">
               <li data-side="this">
-                v{evidence.this.version_no}: {evidenceSideSummary(evidence.this)}
+                {evidence.this.version_label}: {evidenceSideSummary(evidence.this)}
               </li>
               {other ? (
                 <li data-side="other">
-                  v{other.version_no}: {evidenceSideSummary(other)}
+                  {other.version_label}: {evidenceSideSummary(other)}
                 </li>
               ) : (
                 <li data-side="none">

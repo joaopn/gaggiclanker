@@ -115,7 +115,7 @@ export function VersionPredictionEditor({
             .filter((other) => other.version_no < version.version_no)
             .map((other) => (
               <option key={other.id} value={String(other.id)}>
-                v{other.version_no}
+                {other.version_label}
               </option>
             ))}
         </select>

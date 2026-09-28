@@ -2581,7 +2581,7 @@ describe("ShotsPage bar of Set conversations", () => {
     expect(Object.fromEntries(landed.searchParams)).toEqual({
       set: "5",
       version: "51",
-      ask: setChatQuestion(4),
+      ask: setChatQuestion("v4"),
     });
   });
 });

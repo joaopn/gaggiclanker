@@ -132,7 +132,7 @@ export function VersionTimeline({
             <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b px-3 py-2">
               <div className="flex items-baseline gap-2">
                 <span className="font-medium text-sm tabular-nums">
-                  v{entry.version.version_no}
+                  {entry.version.version_label}
                 </span>
                 <span className="text-muted-foreground text-sm">
                   {versionSummary(entry.version)}
@@ -213,8 +213,8 @@ export function VersionTimeline({
                   <p className="text-sm">
                     <span className="text-muted-foreground text-xs">
                       Version prediction
-                      {entry.version.compares_to_version_no
-                        ? ` · compared to v${entry.version.compares_to_version_no}`
+                      {entry.version.compares_to_version_label
+                        ? ` · compared to ${entry.version.compares_to_version_label}`
                         : ""}
                     </span>
                     <br />
@@ -242,9 +242,9 @@ export function VersionTimeline({
                 ) : null}
               </div>
 
-              {entry.version.restores_version_no ? (
+              {entry.version.restores_version_label ? (
                 <p className="text-muted-foreground text-xs" data-testid="version-restores">
-                  Restores v{entry.version.restores_version_no}. Nothing was sent to the machine.
+                  Restores {entry.version.restores_version_label}. Nothing was sent to the machine.
                 </p>
               ) : null}
 
@@ -256,7 +256,7 @@ export function VersionTimeline({
                   to={`/chat?set=${setId}&version=${entry.version.id}`}
                   className="text-muted-foreground underline underline-offset-2"
                 >
-                  Chat about v{entry.version.version_no}
+                  Chat about {entry.version.version_label}
                 </Link>
               </p>
 
@@ -323,7 +323,7 @@ export function VersionTimeline({
               {entry.evidence ? (
                 <VersionEvidence
                   evidence={entry.evidence}
-                  versionNo={entry.version.version_no}
+                  versionLabel={entry.version.version_label}
                   defaultOpen={
                     entry.version.outcome_state === "open" && entry.evidence.this.shots > 0
                   }
@@ -340,7 +340,7 @@ export function VersionTimeline({
                 <RollbackButton
                   setId={setId}
                   versionId={entry.version.id}
-                  versionNo={entry.version.version_no}
+                  versionLabel={entry.version.version_label}
                   label="Roll back to this version"
                   icon={<Undo2 className="size-3.5" aria-hidden="true" />}
                 />
@@ -370,7 +370,7 @@ function BeingDesigned({ setId, entry }: { setId: number; entry: SetVersionDetai
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-border border-b border-dashed px-3 py-2">
         <div className="flex items-baseline gap-2">
-          <span className="font-medium text-sm tabular-nums">v{entry.version.version_no}</span>
+          <span className="font-medium text-sm tabular-nums">{entry.version.version_label}</span>
           <span className="text-muted-foreground text-sm" data-testid="version-being-designed">
             being designed — no recipe yet
           </span>
@@ -389,7 +389,7 @@ function BeingDesigned({ setId, entry }: { setId: number; entry: SetVersionDetai
             to={`/chat?set=${setId}&version=${entry.version.id}`}
             className="text-muted-foreground underline underline-offset-2"
           >
-            Continue designing v{entry.version.version_no}
+            Continue designing {entry.version.version_label}
           </Link>
         </p>
         {entry.version.shot_count > 0 ? (

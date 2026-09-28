@@ -136,7 +136,7 @@ export function ShotsPage() {
     const name =
       scopedSet.data?.set.name ?? sets.data?.items.find((row) => row.id === filteredSetId)?.name;
     if (!name) return null;
-    return entry ? `${name} v${entry.version.version_no}` : name;
+    return entry ? `${name} ${entry.version.version_label}` : name;
   }, [filters.version, filteredSetId, scopedSet.data, sets.data]);
   useQueryErrorToast(shots.error, "Could not load shots");
 

@@ -288,13 +288,13 @@ export function ChatPage() {
           description={
             selected !== null
               ? thread.data?.thread.set_name
-                ? `About ${thread.data.thread.set_name} v${thread.data.thread.set_version_no}` +
+                ? `About ${thread.data.thread.set_name} ${thread.data.thread.set_version_label ?? ""}` +
                   (thread.data.thread.dead_end ? " — a dead end a later roll back went past" : "")
                 : "General"
               : // Nothing selected: the first question creates the conversation,
                 // and this is the only place that says where it will land.
                 scopeSet
-                ? `A new conversation about ${scopeSet.name} v${scopeSet.current_version_no}`
+                ? `A new conversation about ${scopeSet.name} ${scopeSet.current_version_label}`
                 : "General"
           }
         >

@@ -27,8 +27,8 @@ describe("activeSets", () => {
 
 describe("setChatQuestion", () => {
   it("names the version and asks what the judged shots show", () => {
-    expect(setChatQuestion(4)).toBe(
-      "I've judged my latest shots on v4. What do they show, and what should I change next?",
+    expect(setChatQuestion("v1.2")).toBe(
+      "I've judged my latest shots on v1.2. What do they show, and what should I change next?",
     );
   });
 });
@@ -58,8 +58,32 @@ describe("SetChatBar", () => {
     ]);
     // The version is what makes the Chat page open or continue that version's
     // own conversation rather than only pointing at the Set.
-    expect(linkParams(links[0])).toEqual({ set: "5", version: "51", ask: setChatQuestion(4) });
-    expect(linkParams(links[1])).toEqual({ set: "2", version: "21", ask: setChatQuestion(1) });
+    expect(linkParams(links[0])).toEqual({ set: "5", version: "51", ask: setChatQuestion("v4") });
+    expect(linkParams(links[1])).toEqual({ set: "2", version: "21", ask: setChatQuestion("v1") });
+  });
+
+  it("names a minor version by its name, never by its ordinal", () => {
+    renderWithQueryClient(
+      <SetChatBar
+        sets={[
+          setRow({
+            id: 5,
+            name: "Guji on the Niche",
+            current_version_id: 53,
+            current_version_no: 3,
+            current_version_label: "v1.2",
+          }),
+        ]}
+      />,
+    );
+
+    const link = within(screen.getByRole("navigation", { name: "Chat about a Set" })).getByRole(
+      "link",
+    );
+    expect(link).toHaveTextContent("Guji on the Niche · v1.2");
+    expect(link).not.toHaveTextContent(/\bv3/);
+    expect(linkParams(link).ask).toBe(setChatQuestion("v1.2"));
+    expect(linkParams(link).ask).toContain("my latest shots on v1.2.");
   });
 
   it("draws nothing when no Set is active", () => {

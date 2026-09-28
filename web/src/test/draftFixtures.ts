@@ -41,6 +41,9 @@ export function draftProfile(overrides: Record<string, unknown> = {}): Record<st
 }
 
 export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
+  // A test that states only an ordinal gets the name a version made before
+  // minor versions existed has; a test about minor names states the label.
+  const named = (no: number | null | undefined) => (no ? `v${no}` : null);
   return {
     id: 1,
     base_version_id: 7,
@@ -55,14 +58,14 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     prediction: "",
     compares_to_version_id: null,
     compares_to_version_no: null,
-    compares_to_version_label: null,
+    compares_to_version_label: named(overrides.compares_to_version_no),
     suggest_major: false,
     major_reason: "",
     set_next_version_no: null,
     set_next_minor_label: null,
     set_next_major_label: null,
     recorded_version_no: null,
-    recorded_version_label: null,
+    recorded_version_label: named(overrides.recorded_version_no),
     change_summary: "Dropped the peak to 8 bar.",
     stop_condition_changes: [],
     clamp_changes: [],

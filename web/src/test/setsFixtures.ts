@@ -259,6 +259,9 @@ export function grinder(overrides: Partial<GrinderRow> = {}): GrinderRow {
 }
 
 export function setRow(overrides: Partial<SetRow> = {}): SetRow {
+  // A test that states the current ordinal gets the name a version made before
+  // minor versions existed has; a test about minor names states the label.
+  const current = overrides.current_version_no ?? 2;
   return {
     id: 3,
     name: "Guji on the Niche",
@@ -272,9 +275,9 @@ export function setRow(overrides: Partial<SetRow> = {}): SetRow {
     created_at: "2026-04-02T00:00:00.000Z",
     current_version_id: 22,
     current_version_no: 2,
-    current_version_label: "v2",
-    next_minor_label: "v2.1",
-    next_major_label: "v3",
+    current_version_label: current > 0 ? labelOf(current, 0) : "",
+    next_minor_label: `${labelOf(current, 0)}.1`,
+    next_major_label: labelOf(current + 1, 0),
     version_count: 2,
     shot_count: 4,
     profile_version_id: 7,
@@ -296,6 +299,9 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
   // ordinal, as every version made before minor versions existed is.
   const major = overrides.version_major ?? overrides.version_no ?? 1;
   const minor = overrides.version_minor ?? 0;
+  // The same for the two versions a row names: a fixture that states only
+  // their ordinals gets the names a pre-minor version would have.
+  const named = (no: number | null | undefined) => (no ? labelOf(no, 0) : null);
   return {
     id: 21,
     set_id: 3,
@@ -317,10 +323,10 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
     prediction: "",
     compares_to_version_id: null,
     compares_to_version_no: null,
-    compares_to_version_label: null,
+    compares_to_version_label: named(overrides.compares_to_version_no),
     restores_version_id: null,
     restores_version_no: null,
-    restores_version_label: null,
+    restores_version_label: named(overrides.restores_version_no),
     prediction_at: null,
     outcome: null,
     outcome_note: "",
@@ -390,6 +396,9 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
 }
 
 export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
+  // Names for the ordinals a test states, as a version made before minor
+  // versions existed has them; a test about minor names states the labels.
+  const named = (no: number | null | undefined) => (no ? labelOf(no, 0) : null);
   return {
     id: 5,
     set_id: 3,
@@ -397,7 +406,7 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
     thread_id: 9,
     base_version_id: 22,
     base_version_no: 2,
-    base_version_label: "v2",
+    base_version_label: named(overrides.base_version_no ?? 2),
     base_is_current: true,
     changes: [
       { field: "dose_g", label: "Dose", before: "18 g", after: "18.5 g", from_profile: false },
@@ -408,7 +417,9 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
     prediction: "Compared to v2: a touch more body and no slower.",
     compares_to_version_id: 22,
     compares_to_version_no: 2,
-    compares_to_version_label: "v2",
+    compares_to_version_label: named(
+      "compares_to_version_no" in overrides ? overrides.compares_to_version_no : 2,
+    ),
     combined_reason: "",
     suggest_major: false,
     major_reason: "",
@@ -419,7 +430,7 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
     decline_note: "",
     resulting_version_id: null,
     resulting_version_no: null,
-    resulting_version_label: null,
+    resulting_version_label: named(overrides.resulting_version_no),
     created_at: "2026-03-01T09:00:00.000Z",
     decided_at: null,
     ...overrides,
@@ -847,4 +858,58 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
     finished_at: "2026-04-02T00:00:30.000Z",
     ...overrides,
   };
+}
+
+/**
+ * A Set whose current version is v1.2 but is its third version: two dial-in
+ * changes after v1. The screens that name versions are tested against it, so a
+ * screen that still counted versions would say "v3" and fail.
+ */
+export function minorDetail(): SetDetailData {
+  const one = version({ id: 21, version_no: 1 });
+  const oneOne = version({
+    id: 22,
+    version_no: 2,
+    version_major: 1,
+    version_minor: 1,
+    parent_version_id: 21,
+    grind_setting: "21",
+    grind_value: 21,
+  });
+  const oneTwo = version({
+    id: 23,
+    version_no: 3,
+    version_major: 1,
+    version_minor: 2,
+    parent_version_id: 22,
+    grind_setting: "20",
+    grind_value: 20,
+    prediction: "Compared to v1.1: a second longer, less sour.",
+    compares_to_version_id: 22,
+    compares_to_version_no: 2,
+    compares_to_version_label: "v1.1",
+    outcome_state: "open",
+    shot_count: 0,
+  });
+  const entry = (row: SetVersionRow, before: string | null, after: string | null) => ({
+    version: row,
+    changes:
+      before === null
+        ? []
+        : [{ field: "grind_setting", label: "Grind", before, after, from_profile: false }],
+    shots: [],
+    dead_end: false,
+    labels: labelCounts(),
+  });
+  return setDetail({
+    set: setRow({
+      current_version_id: 23,
+      current_version_no: 3,
+      current_version_label: "v1.2",
+      next_minor_label: "v1.3",
+      next_major_label: "v2",
+      version_count: 3,
+    }),
+    versions: [entry(oneTwo, "21", "20"), entry(oneOne, "22", "21"), entry(one, null, null)],
+  });
 }

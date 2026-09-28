@@ -35,14 +35,14 @@ export function acceptedMessage(decision: SetProposalDecision): string | null {
   const version = decision.version;
   if (!version) return null;
   if (decision.proposal.kind === "design") {
-    return `Accepted: your first recipe is now version ${version.version_no} of this Set.`;
+    return `Accepted: your first recipe is now ${version.version_label} of this Set.`;
   }
   const changes = decision.proposal.changes
     .map((change) => `${change.label} ${change.before ?? "not set"} → ${change.after ?? "cleared"}`)
     .join("; ");
   return changes
-    ? `Accepted: your proposed change (${changes}) is now version ${version.version_no} of this Set.`
-    : `Accepted: your proposed change is now version ${version.version_no} of this Set.`;
+    ? `Accepted: your proposed change (${changes}) is now ${version.version_label} of this Set.`
+    : `Accepted: your proposed change is now ${version.version_label} of this Set.`;
 }
 
 /**

@@ -252,7 +252,7 @@ function draftClosed(error: Error | null): boolean {
 function Decided({ proposal }: { proposal: SetProposal }) {
   if (proposal.status === "accepted") {
     const steps = handSteps(proposal.changes);
-    const version = `v${proposal.resulting_version_no}`;
+    const version = proposal.resulting_version_label ?? "a new version";
     return (
       <div className="space-y-1 text-sm" data-testid="proposal-decided">
         <p>
@@ -396,8 +396,8 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
         <p className="mb-2 text-sm" data-testid="proposal-prediction">
           <span className="text-muted-foreground text-xs">
             Prediction
-            {proposal.compares_to_version_no
-              ? ` · compared to v${proposal.compares_to_version_no}`
+            {proposal.compares_to_version_label
+              ? ` · compared to ${proposal.compares_to_version_label}`
               : " · compared to nothing"}
           </span>
           <br />

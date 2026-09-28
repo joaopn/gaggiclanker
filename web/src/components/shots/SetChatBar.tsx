@@ -19,8 +19,8 @@ export function activeSets(sets: SetRow[]): SetRow[] {
  * front of the model, so pressing Enter is enough. It is typed, not sent, so it
  * can be replaced with a question of their own.
  */
-export function setChatQuestion(versionNo: number): string {
-  return `I've judged my latest shots on v${versionNo}. What do they show, and what should I change next?`;
+export function setChatQuestion(versionLabel: string): string {
+  return `I've judged my latest shots on ${versionLabel}. What do they show, and what should I change next?`;
 }
 
 /**
@@ -47,8 +47,8 @@ export function SetChatBar({ sets, className }: { sets: SetRow[]; className?: st
           key={row.id}
           setId={row.id}
           versionId={row.current_version_id}
-          label={`${row.name} · v${row.current_version_no}`}
-          question={setChatQuestion(row.current_version_no)}
+          label={`${row.name} · ${row.current_version_label}`}
+          question={setChatQuestion(row.current_version_label)}
         />
       ))}
     </nav>

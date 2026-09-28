@@ -159,7 +159,9 @@ function MenuBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void }) {
           >
             <span className="flex items-center gap-1.5 text-sm">
               <span className="min-w-0 truncate font-medium">{row.name}</span>
-              <span className="text-muted-foreground tabular-nums">v{row.current_version_no}</span>
+              <span className="text-muted-foreground tabular-nums">
+                {row.current_version_label}
+              </span>
               {row.automatch ? (
                 <Badge variant="secondary" className="ml-auto">
                   automatch

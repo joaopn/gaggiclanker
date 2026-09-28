@@ -58,8 +58,12 @@ describe("ProposalCard", () => {
   it("accepts on a press and says what was recorded", async () => {
     const user = setupUser();
     acceptSetProposal.mockResolvedValue({
-      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
-      version: { version_no: 3 },
+      proposal: proposal({
+        status: "accepted",
+        resulting_version_no: 3,
+        resulting_version_label: "v2.1",
+      }),
+      version: { version_no: 3, version_label: "v2.1" },
     });
     renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
 
@@ -67,15 +71,20 @@ describe("ProposalCard", () => {
 
     expect(acceptSetProposal).toHaveBeenCalledWith(3, 5);
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
-    expect(String(toastSuccess.mock.calls[0][0])).toContain("Version 3 recorded");
+    expect(String(toastSuccess.mock.calls[0][0])).toContain("v2.1 recorded");
+    expect(String(toastSuccess.mock.calls[0][0])).not.toContain("3");
   });
 
   it("tells the agent in the conversation which version the accepted change became", async () => {
     const user = setupUser();
     const tell = vi.fn();
     acceptSetProposal.mockResolvedValue({
-      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
-      version: { version_no: 3 },
+      proposal: proposal({
+        status: "accepted",
+        resulting_version_no: 3,
+        resulting_version_label: "v2.1",
+      }),
+      version: { version_no: 3, version_label: "v2.1" },
     });
     renderWithQueryClient(
       <TellAgentContext.Provider value={tell}>
@@ -85,10 +94,11 @@ describe("ProposalCard", () => {
 
     await user.click(screen.getByRole("button", { name: /Accept/ }));
 
-    // The Set prompt recognises the turn by its first word.
+    // The Set prompt recognises the turn by its first word, and the version is
+    // named as the person sees it — never by its ordinal.
     await waitFor(() =>
       expect(tell).toHaveBeenCalledWith(
-        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now version 3 of this Set.",
+        "Accepted: your proposed change (Dose 18 g → 18.5 g) is now v2.1 of this Set.",
       ),
     );
     expect(tell).toHaveBeenCalledTimes(1);
@@ -99,7 +109,7 @@ describe("ProposalCard", () => {
     const tell = vi.fn();
     acceptSetProposal.mockResolvedValue({
       proposal: designProposal({ status: "accepted" }),
-      version: { version_no: 1 },
+      version: { version_no: 1, version_label: "v1" },
     });
     renderWithQueryClient(
       <TellAgentContext.Provider value={tell}>
@@ -110,9 +120,7 @@ describe("ProposalCard", () => {
     await user.click(screen.getByRole("button", { name: /Accept/ }));
 
     await waitFor(() =>
-      expect(tell).toHaveBeenCalledWith(
-        "Accepted: your first recipe is now version 1 of this Set.",
-      ),
+      expect(tell).toHaveBeenCalledWith("Accepted: your first recipe is now v1 of this Set."),
     );
   });
 
@@ -391,6 +399,33 @@ describe("ProposalCard", () => {
  * no recipe yet. What it must get right is what the person is agreeing to — a
  * whole recipe, a profile that is only a draft — and what happens after.
  */
+describe("ProposalCard, minor versions", () => {
+  it("names the versions it talks about, never by their ordinals", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        setId={3}
+        proposal={proposal({
+          status: "accepted",
+          prediction: "Compared to v1.1: a touch more body and no slower.",
+          base_version_no: 2,
+          base_version_label: "v1.1",
+          compares_to_version_no: 2,
+          compares_to_version_label: "v1.1",
+          resulting_version_no: 3,
+          resulting_version_label: "v1.2",
+          decided_at: "2026-03-01T10:00:00.000Z",
+        })}
+      />,
+    );
+
+    const card = screen.getByTestId("proposal-card");
+    expect(screen.getByTestId("proposal-decided")).toHaveTextContent("Accepted as v1.2");
+    expect(screen.getByTestId("proposal-prediction")).toHaveTextContent("compared to v1.1");
+    expect(card).not.toHaveTextContent(/\bv3\b/);
+    expect(card).not.toHaveTextContent(/\bv2\b/);
+  });
+});
+
 describe("ProposalCard, a first recipe", () => {
   it("renders the recipe, the draft it carries and no prediction", () => {
     renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
@@ -720,7 +755,7 @@ describe("the next step after an accept", () => {
     const tell = vi.fn();
     acceptSetProposal.mockResolvedValue({
       proposal: accepted(),
-      version: { version_no: 2 },
+      version: { version_no: 2, version_label: "v1.1" },
     });
     renderWithQueryClient(
       <TellAgentContext.Provider value={tell}>
@@ -732,7 +767,7 @@ describe("the next step after an accept", () => {
 
     await waitFor(() =>
       expect(tell).toHaveBeenCalledWith(
-        "Accepted: your proposed change (Grind 2 → 1; Grind value 2 → 1) is now version 2 of this Set.",
+        "Accepted: your proposed change (Grind 2 → 1; Grind value 2 → 1) is now v1.1 of this Set.",
       ),
     );
   });

@@ -79,6 +79,30 @@ describe("DraftCard", () => {
     expect(screen.getAllByTestId("draft-card")[1]).not.toHaveTextContent("from an analysis");
   });
 
+  it("names the versions of its Set, never by their ordinals", () => {
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({
+          set_id: 3,
+          set_name: "Guji on the Niche",
+          status: "approved",
+          prediction: "Compared to v1.2: less of the dry finish, and no slower.",
+          compares_to_version_no: 3,
+          compares_to_version_label: "v1.2",
+          set_next_version_no: 4,
+          set_next_minor_label: "v1.3",
+          set_next_major_label: "v2",
+        })}
+      />,
+    );
+
+    const card = screen.getByTestId("draft-card");
+    expect(screen.getByTestId("draft-prediction")).toHaveTextContent("compared to v1.2");
+    expect(screen.getByTestId("push-draft-for-set")).toHaveTextContent("record it as v1.3");
+    expect(card).not.toHaveTextContent(/\bv3\b/);
+    expect(card).not.toHaveTextContent(/\bv4\b/);
+  });
+
   it("shows no prediction block on a draft nobody predicted anything about", () => {
     renderWithQueryClient(<DraftCard draft={draft()} />);
     expect(screen.queryByTestId("draft-prediction")).not.toBeInTheDocument();
@@ -167,8 +191,11 @@ describe("DraftCard", () => {
       set_id: 3,
       set_name: "Guji on the Niche",
       set_next_version_no: 4,
-      prediction: "Compared to v3: less of the dry finish, and no slower.",
+      set_next_minor_label: "v2.2",
+      set_next_major_label: "v3",
+      prediction: "Compared to v2.1: less of the dry finish, and no slower.",
       compares_to_version_no: 3,
+      compares_to_version_label: "v2.1",
     };
 
     it("pushes it for its Set by default, and says which version it records", async () => {
@@ -176,9 +203,12 @@ describe("DraftCard", () => {
       renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
 
       const button = screen.getByTestId("push-draft-for-set");
+      // A pushed draft is a minor version by default, and the name is the
+      // server's, never the ordinal: this is the Set's fourth version.
       expect(button).toHaveTextContent(
-        "Push to the machine and record it as v4 of Guji on the Niche",
+        "Push to the machine and record it as v2.2 of Guji on the Niche",
       );
+      expect(button).not.toHaveTextContent("v4");
       await user.click(button);
 
       // The Set in the body is what makes the server record the version and
@@ -231,10 +261,12 @@ describe("DraftCard", () => {
     it("says the prediction was recorded only when the push recorded it", () => {
       const pushed = { ...forGuji, status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" };
       const { rerender } = renderWithQueryClient(
-        <DraftCard draft={draft({ ...pushed, recorded_version_no: 4 })} />,
+        <DraftCard
+          draft={draft({ ...pushed, recorded_version_no: 4, recorded_version_label: "v2.2" })}
+        />,
       );
       expect(screen.getByTestId("draft-prediction-landing")).toHaveTextContent(
-        "Recorded as v4 of Guji on the Niche when this was pushed for it.",
+        "Recorded as v2.2 of Guji on the Niche when this was pushed for it.",
       );
 
       rerender(<DraftCard draft={draft({ ...pushed, recorded_version_no: null })} />);

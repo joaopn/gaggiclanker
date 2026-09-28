@@ -86,8 +86,10 @@ export function VersionPrediction({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-muted-foreground text-xs">
-          Version prediction for v{version.version_no}
-          {version.compares_to_version_no ? `, compared to v${version.compares_to_version_no}` : ""}
+          Version prediction for {version.version_label}
+          {version.compares_to_version_label
+            ? `, compared to ${version.compares_to_version_label}`
+            : ""}
         </span>
         {shown ? null : (
           <Button

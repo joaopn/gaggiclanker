@@ -21,13 +21,14 @@ import { attempt } from "@/lib/mutations";
 export function RollbackButton({
   setId,
   versionId,
-  versionNo,
+  versionLabel,
   label,
   icon,
 }: {
   setId: number;
   versionId: number;
-  versionNo: number;
+  /** The name of the version gone back to, "v1.2". */
+  versionLabel: string;
   label: string;
   icon?: ReactNode;
 }) {
@@ -56,7 +57,7 @@ export function RollbackButton({
         {open ? (
           <>
             <p className="text-sm" data-testid="rollback-confirm">
-              This records a new version with v{versionNo}'s recipe — the grind, the dose, the
+              This records a new version with {versionLabel}'s recipe — the grind, the dose, the
               target and the profile it named. Nothing is sent to the machine.
             </p>
             <div className="flex gap-2">
@@ -77,7 +78,7 @@ export function RollbackButton({
                   if (done) setOpen(false);
                 }}
               >
-                Roll back to v{versionNo}
+                Roll back to {versionLabel}
               </Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
                 Cancel

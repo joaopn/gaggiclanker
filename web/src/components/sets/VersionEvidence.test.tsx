@@ -24,7 +24,7 @@ function row(measure: string) {
 
 describe("VersionEvidence", () => {
   it("is closed by default, and the region it names exists anyway", () => {
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" />);
 
     const button = screen.getByRole("button", { name: "Evidence" });
     expect(button).toHaveAttribute("aria-expanded", "false");
@@ -35,7 +35,7 @@ describe("VersionEvidence", () => {
   });
 
   it("opens without a click when it is told to", () => {
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} defaultOpen />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" defaultOpen />);
 
     expect(screen.getByRole("button", { name: "Evidence" })).toHaveAttribute(
       "aria-expanded",
@@ -46,7 +46,7 @@ describe("VersionEvidence", () => {
 
   it("lays both sides out in a table with headers", async () => {
     const user = setupUser();
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     const table = screen.getByRole("table");
@@ -71,7 +71,7 @@ describe("VersionEvidence", () => {
 
   it("says each verdict in words, with what it was held against", async () => {
     const user = setupUser();
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     expect(screen.getAllByTestId("evidence-verdict").map((cell) => cell.textContent)).toEqual([
@@ -86,7 +86,7 @@ describe("VersionEvidence", () => {
 
   it("marks a side that recorded nothing rather than printing a dash", async () => {
     const user = setupUser();
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     const cells = within(row("peak_pressure_bar"))
@@ -97,7 +97,7 @@ describe("VersionEvidence", () => {
 
   it("shows the balance and label counts for both sides, with no verdict", async () => {
     const user = setupUser();
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     const counts = screen.getByTestId("evidence-counts");
@@ -118,7 +118,7 @@ describe("VersionEvidence", () => {
       yardstick: 2.0,
       verdict: "beyond",
     };
-    renderWithQueryClient(<VersionEvidence evidence={near} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={near} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     // "+2 s … held against 2 s … beyond the spread" would read as a row
@@ -136,7 +136,7 @@ describe("VersionEvidence", () => {
 
   it("says what a difference is held against, in the region itself", async () => {
     const user = setupUser();
-    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={evidence()} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     const sentence = screen.getByTestId("evidence-yardstick");
@@ -167,7 +167,7 @@ describe("VersionEvidence", () => {
         unlabelled: 0,
       },
     });
-    renderWithQueryClient(<VersionEvidence evidence={empty} versionNo={2} />);
+    renderWithQueryClient(<VersionEvidence evidence={empty} versionLabel="v2" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     // There is a compared version, so there is a compared column — it is the
@@ -199,7 +199,7 @@ describe("VersionEvidence", () => {
         verdict: "no_data" as const,
       })),
     });
-    renderWithQueryClient(<VersionEvidence evidence={own} versionNo={1} />);
+    renderWithQueryClient(<VersionEvidence evidence={own} versionLabel="v1" />);
     await user.click(screen.getByRole("button", { name: "Evidence" }));
 
     const headers = within(screen.getByRole("table"))
