@@ -338,7 +338,7 @@ def _sibling_version(
         )
     rating = ratings.get(version.id)
     parts = [
-        f"v{version.version_no}: {_recipe(version)}",
+        f"{version.version_label}: {_recipe(version)}",
         shots,
         f"mean rating {rating:.1f}" if rating is not None else "no rating",
         f"outcome {_OUTCOMES[version.outcome_state].split(' —')[0]}",

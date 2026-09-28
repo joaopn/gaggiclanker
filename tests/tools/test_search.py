@@ -39,6 +39,11 @@ async def search(ctx: ToolContext, **arguments: Any) -> dict[str, Any]:
     return outcome.data
 
 
+async def dispatch_search(ctx: ToolContext, **arguments: Any) -> Any:
+    """The raw outcome, for the searches that are meant to be refused."""
+    return await registry.dispatch(ctx, "list_set_shots", arguments)
+
+
 def ids(data: dict[str, Any]) -> list[int]:
     return [shot["shot_id"] for shot in data["shots"]]
 
@@ -121,8 +126,9 @@ async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_sample
         ({"since": "2026-03-03"}, (3, 4, 5)),
         ({"until": "2026-03-02"}, (0, 1, 2)),
         ({"since": "2026-03-02", "until": "2026-03-02"}, (0, 1, 2)),
-        ({"version_no": 1}, (0, 1, 2, 3, 4, 5)),
-        ({"version_no": 2}, ()),
+        ({"version": "v1"}, (0, 1, 2, 3, 4, 5)),
+        ({"version": "1"}, (0, 1, 2, 3, 4, 5)),
+        ({"version": 1}, (0, 1, 2, 3, 4, 5)),
         ({"balance": "sour", "shot_time": {"min": 24}}, (2, 4, 5)),
     ],
 )
@@ -220,10 +226,30 @@ async def test_a_version_filter_finds_the_shots_of_that_version(
     assert newer is not None
     assert await sets.assign_shot(archive.shots[0], newer.id)
 
-    data = await search(set_ctx, version_no=newer.version_no)
+    assert (newer.version_no, newer.version_label) == (2, "v1.1")
 
-    assert ids(data) == [archive.shots[0]]
-    assert f"Set version: v{newer.version_no} of Set {archive.set_id}" in data["shots"][0]["text"]
+    for name in ("v1.1", "1.1", "V1.1", 1.1):
+        data = await search(set_ctx, version=name)
+        assert ids(data) == [archive.shots[0]], name
+        assert f"Set version: v1.1 of Set {archive.set_id}" in data["shots"][0]["text"]
+    # "2" is v2, which this Set does not have — never the second version.
+    outcome = await dispatch_search(set_ctx, version="2")
+    assert not outcome.ok
+    assert outcome.data["detail"] == (
+        "This Set has no version called '2'. Its versions are v1, v1.1; name one of them as "
+        "'v1.1', '1.1' or '2', or leave version out."
+    )
+
+
+@pytest.mark.parametrize("name", ["v7", "v1.9", "banana", "0", "v", ""])
+async def test_a_version_the_set_does_not_have_is_refused_in_words(
+    set_ctx: ToolContext, archive: Fixture, name: str
+) -> None:
+    outcome = await dispatch_search(set_ctx, version=name)
+
+    assert not outcome.ok
+    assert outcome.data["detail"].startswith(f"This Set has no version called {name!r}.")
+    assert "Its versions are v1;" in outcome.data["detail"]
 
 
 async def test_a_shot_that_does_not_count_is_found_and_says_so(
@@ -263,7 +289,7 @@ def test_the_band_arguments_are_the_engine_s_labels() -> None:
 
 
 #: Every search argument that reads an item, with a value that uses it, and the
-#: item it reads. `version_no` reads the Set version, which is locked to base.
+#: item it reads. `version` reads the Set version, which is locked to base.
 _FILTERS: tuple[tuple[str, dict[str, Any], str], ...] = (
     ("label", {"label": "keep"}, "label"),
     ("balance", {"balance": "sour"}, "balance"),

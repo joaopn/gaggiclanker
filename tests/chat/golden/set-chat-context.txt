@@ -3,11 +3,11 @@ THIS CONVERSATION IS ABOUT ONE VERSION OF ONE SET
 Set 1: Guji natural on the Niche. Bean: Ethiopia Guji, light roast, natural process; taste acidity 4 (1 low to 5 high). Grinder: Niche Zero, adjusted in numbers.
 5 versions, 9 shots. In use. New shots on its profile are filed here.
 
-THIS VERSION IS v5 — the current version of this Set
+THIS VERSION IS v2.2 — the current version of this Set
 Recipe: grind 21, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar.
-Changed against v4: Grind 22 → 21.
+Changed against v2.1: Grind 22 → 21.
 What you are trying: One number finer than the Keep recipe, for a little more body.
-Prediction (compared to v4): Shot time up by 2 to 3 s against v4, yield the same, and no more bitterness.
+Prediction (compared to v2.1): Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness.
 Outcome: open — nobody has graded it yet.
 
 PROPOSALS
@@ -15,10 +15,10 @@ Nothing has been proposed to the person on this Set yet.
 
 THE EXPERIMENT SO FAR (oldest first)
 - v1 · grind 22, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar · 2 shots (2 Keep, 0 Improve, 0 Discard) · no prediction
-- v2 (dead end) · Grind 22 → 20 · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1: Shot time up by about 4 s and less sour. → failed — "It went slower and turned bitter rather than sweeter."
-- v3 (dead end) · Dose 18 g → 18.5 g · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v2: Shot time up by 2 s against v2. → inconclusive — "One shot, and the difference is inside the spread."
-- v4 ← what v5 is compared against · Grind 20 → 22; Dose 18.5 g → 18 g · restores v1 · 3 shots (3 Keep, 0 Improve, 0 Discard) · predicted against v3: Back within the usual spread of v1. → held — "Straight back where it was."
-- v5 ← this version · Grind 22 → 21 · 2 shots (0 Keep, 1 Improve, 1 Discard) · predicted against v4: Shot time up by 2 to 3 s against v4, yield the same, and no more bitterness. → open — nobody has graded it yet
+- v1.1 (dead end) · Grind 22 → 20 · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1: Shot time up by about 4 s and less sour. → failed — "It went slower and turned bitter rather than sweeter."
+- v2 (dead end) · Dose 18 g → 18.5 g · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1.1: Shot time up by 2 s against v1.1. → inconclusive — "One shot, and the difference is inside the spread."
+- v2.1 ← what v2.2 is compared against · Grind 20 → 22; Dose 18.5 g → 18 g · restores v1 · 3 shots (3 Keep, 0 Improve, 0 Discard) · predicted against v2: Back within the usual spread of v1. → held — "Straight back where it was."
+- v2.2 ← this version · Grind 22 → 21 · 2 shots (0 Keep, 1 Improve, 1 Discard) · predicted against v2.1: Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness. → open — nobody has graded it yet
 Track record: 1 of 3 graded predictions held (0 partly, 1 failed, 1 inconclusive); 1 open, 1 with no prediction.
 
 HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED
@@ -30,10 +30,10 @@ This is the yardstick. A difference smaller than it is not a result.
 - Average brew flow: ±0.06 ml/s, from 5 repeat shots of 1 recipe.
 - Rating: ±0.4, from 5 repeat shots of 1 recipe.
 
-THE EVIDENCE FOR v5 AGAINST v4
+THE EVIDENCE FOR v2.2 AGAINST v2.1
 Every counted shot of both versions, never a chosen one.
 
-| measure | v5 | v4 | difference | verdict |
+| measure | v2.2 | v2.1 | difference | verdict |
 | --- | --- | --- | --- | --- |
 | Shot time | 36.0 s over 1 shot | 33.5 s over 3 shots | +2.50 s | beyond the spread (held against 2.00 s) |
 | Time to first drip | 8.0 s over 1 shot | 7.2 s over 3 shots | +0.77 s | inside the spread (held against 1.00 s) |
@@ -42,16 +42,16 @@ Every counted shot of both versions, never a chosen one.
 | Average brew flow | 1.70 ml/s over 1 shot | 1.88 ml/s over 3 shots | -0.177 ml/s | inside the spread (held against 0.200 ml/s) |
 | Rating | 3.0 over 1 shot | 4.3 over 3 shots | -1.33 | beyond the spread (held against 1.03) |
 
-v5: 1 counted shot — 0 sour, 1 balanced, 0 bitter; 0 Keep, 1 Improve, 0 unlabelled.
-v4: 3 counted shots — 0 sour, 3 balanced, 0 bitter; 3 Keep, 0 Improve, 0 unlabelled.
+v2.2: 1 counted shot — 0 sour, 1 balanced, 0 bitter; 0 Keep, 1 Improve, 0 unlabelled.
+v2.1: 3 counted shots — 0 sour, 3 balanced, 0 bitter; 3 Keep, 0 Improve, 0 unlabelled.
 
-ALL 2 SHOTS OF v5 (newest first)
+ALL 2 SHOTS OF v2.2 (newest first)
 Each in its base information. Every other version's shots are a list_set_shots search away; get_shot_extended adds any one shot's diagnostics, phases and curve.
 
 shot 9
 [Identity and status]
 Date and time: 2026-04-05 08:10
-Set version: v5 of Set 1
+Set version: v2.2 of Set 1
 Label: Discard
 Counted: not counted: discarded
 Machine's shot number: 000007
@@ -70,7 +70,7 @@ Notes: "Knocked the cup."
 shot 8
 [Identity and status]
 Date and time: 2026-04-05 08:00
-Set version: v5 of Set 1
+Set version: v2.2 of Set 1
 Label: Improve
 Counted: counted
 Machine's shot number: 000006
@@ -90,7 +90,7 @@ Taste notes: Sweet › Brown sugar
 Notes: "Sweeter, but the finish is drying."
 
 THE GOLD STANDARD
-5 Keep shots on the line being brewed, on v1, v4. Their averages: shot time 33.5 s, time to first drip 7.2 s, yield 36.1 g, peak pressure 9.15 bar, average brew flow 1.88 ml/s, rating 4.2.
+5 Keep shots on the line being brewed, on v1, v2.1. Their averages: shot time 33.5 s, time to first drip 7.2 s, yield 36.1 g, peak pressure 9.15 bar, average brew flow 1.88 ml/s, rating 4.2.
 That is what good has tasted like here. An Improve shot is compared with it.
 
 CONFIRMED INSIGHTS THAT APPLY HERE

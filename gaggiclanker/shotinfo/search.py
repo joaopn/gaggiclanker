@@ -66,7 +66,9 @@ SEARCH_BANDS: Mapping[str, Callable[[ShotFacts], str | None]] = {
 class ShotQuery:
     """What to find. Every filter is optional; none at all is "the newest"."""
 
-    version_no: int | None = None
+    #: One version of the Set, by row id: the tool resolves the name the agent
+    #: typed ("v1.1") into this, and refuses a name the Set does not have.
+    version_id: int | None = None
     label: Decision | None = None
     balance: str | None = None
     #: ``YYYY-MM-DD``, inclusive, of the shot's UTC start.
@@ -93,7 +95,7 @@ async def search_shots(db: Database, set_id: int, query: ShotQuery) -> SearchRes
     """This Set's shots that match, in order, at most ``query.limit`` of them."""
     ids = await SetsRepository(db).search_shot_ids(
         set_id,
-        version_no=query.version_no,
+        version_id=query.version_id,
         decision=query.label,
         balance=query.balance,
         since=query.since,

@@ -389,7 +389,7 @@ async def planned_style(db: Database, similar: list[SimilarSet]) -> tuple[str, s
         if verdict.style not in ("unknown", "utility"):
             return verdict.style, (
                 f"the profile of the closest similar Set "
-                f"({entry.set_name} v{entry.version_no}, {version.label})"
+                f"({entry.set_name} {entry.version_label}, {version.label})"
             )
     return DEFAULT_STYLE, "nothing comparable has been brewed on this kit yet"
 
@@ -568,7 +568,7 @@ def render_similar(similar: list[SimilarSet]) -> str:
         blocks.append(
             _block(
                 [
-                    f"[set_version {entry.set_version_id}] {entry.set_name} v{entry.version_no} "
+                    f"[set_version {entry.set_version_id}] {entry.set_name} {entry.version_label} "
                     f"— {entry.bean_name}",
                     _line("  why it is similar", ", ".join(match)),
                     _line(

@@ -1594,6 +1594,19 @@ class SetsRepository(Repository):
         )
         return self.to_model(SetVersionRow, row)
 
+    async def version_named(self, set_id: int, major: int, minor: int) -> SetVersionRow | None:
+        """This Set's version called v<major>.<minor>, if it has one.
+
+        For a name somebody typed — the agent's search takes "v1.1" — which is
+        only ever a name within one Set, never an ordinal and never another
+        Set's version.
+        """
+        row = await self.db.fetch_one(
+            f"{_VERSION_SELECT} WHERE v.set_id = ? AND v.version_major = ? AND v.version_minor = ?",
+            (set_id, major, minor),
+        )
+        return self.to_model(SetVersionRow, row)
+
     async def _has_gradable_shot(self, version_id: int) -> bool:
         found = await self.db.fetch_value(
             """
@@ -1994,7 +2007,7 @@ class SetsRepository(Repository):
         self,
         set_id: int,
         *,
-        version_no: int | None = None,
+        version_id: int | None = None,
         decision: Decision | None = None,
         balance: str | None = None,
         since: str | None = None,
@@ -2013,9 +2026,9 @@ class SetsRepository(Repository):
         """
         where = ["v.set_id = :set_id"]
         params: dict[str, Any] = {"set_id": set_id}
-        if version_no is not None:
-            where.append("v.version_no = :version_no")
-            params["version_no"] = version_no
+        if version_id is not None:
+            where.append("v.id = :version_id")
+            params["version_id"] = version_id
         if decision is not None:
             where.append("j.decision = :decision")
             params["decision"] = decision

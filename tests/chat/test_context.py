@@ -61,7 +61,12 @@ GOLDEN = Path(__file__).resolve().parent / "golden" / "set-chat-context.txt"
 
 @dataclass(slots=True)
 class Experiment:
-    """A Set with a history: five versions, a roll back, and shots to grade."""
+    """A Set with a history: five versions, a roll back, and shots to grade.
+
+    The attributes count the versions in the order they were recorded; their
+    names are v1, v1.1, v2 (the dose change was marked major), v2.1 (the roll
+    back, on the same profile) and v2.2.
+    """
 
     db: Database
     set_id: int
@@ -215,14 +220,16 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         )
         assert graded.version is not None
 
-        # v3: half a gram more dose, one shot, nothing conclusive.
+        # v3: half a gram more dose, one shot, nothing conclusive. Marked a
+        # major version, so the record carries both kinds of name: v2.
         version = await sets.add_version(
             set_id,
             SetVersionPatch(
                 dose_g=18.5,
                 intent="See whether a bigger dose slows the gusher down.",
-                prediction="Shot time up by 2 s against v2.",
+                prediction="Shot time up by 2 s against v1.1.",
             ),
+            major=True,
         )
         assert version is not None
         v3 = version.id
@@ -307,7 +314,7 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
                 grind_setting="21",
                 intent="One number finer than the Keep recipe, for a little more body.",
                 prediction=(
-                    "Shot time up by 2 to 3 s against v4, yield the same, and no more bitterness."
+                    "Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness."
                 ),
             ),
         )
@@ -362,17 +369,21 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         await db.close()
 
 
-def _claimed(summary: str) -> set[int]:
-    """The version numbers a summary line says it stands for, spans expanded."""
+def _claimed(summary: str, ordinals: dict[str, int]) -> set[int]:
+    """The versions a summary line says it stands for, as ordinals, spans expanded.
+
+    A span runs from one name to another over every version recorded between
+    them, so ``ordinals`` (name → ordinal) is what expands it.
+    """
     listed = summary.split("Not written out here:", 1)[1].split("(")[0]
     numbers: set[int] = set()
     for part in listed.split(","):
-        span = re.fullmatch(r"\s*v(\d+) to v(\d+)\s*", part)
-        one = re.fullmatch(r"\s*v(\d+)\s*", part)
+        span = re.fullmatch(r"\s*(v[\d.]+) to (v[\d.]+)\s*", part)
+        one = re.fullmatch(r"\s*(v[\d.]+)\s*", part)
         if span is not None:
-            numbers |= set(range(int(span.group(1)), int(span.group(2)) + 1))
+            numbers |= set(range(ordinals[span.group(1)], ordinals[span.group(2)] + 1))
         elif one is not None:
-            numbers.add(int(one.group(1)))
+            numbers.add(ordinals[one.group(1)])
     assert numbers, summary
     return numbers
 
@@ -428,18 +439,18 @@ async def test_a_general_conversation_gets_no_block(experiment: Experiment) -> N
 async def test_it_is_about_the_thread_s_version_not_the_current_one(
     experiment: Experiment,
 ) -> None:
-    """A conversation opened on v2 is still about v2 three versions later."""
+    """A conversation opened on v1.1 is still about v1.1 three versions later."""
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
     )
 
-    assert "THIS VERSION IS v2" in rendered
+    assert "THIS VERSION IS v1.1" in rendered
     assert "(a dead end" in rendered
-    assert "THE EVIDENCE FOR v2 AGAINST v1" in rendered
+    assert "THE EVIDENCE FOR v1.1 AGAINST v1" in rendered
 
 
 async def _graded(experiment: Experiment) -> SetProposalsRepository:
-    """Grade v5, so a change can be proposed against it at all."""
+    """Grade v2.2, so a change can be proposed against it at all."""
     await SetsRepository(experiment.db).set_outcome(
         experiment.set_id,
         experiment.v5,
@@ -454,7 +465,7 @@ async def _propose(experiment: Experiment, proposals: SetProposalsRepository) ->
         ProposalWrite(
             patch=SetVersionPatch(dose_g=18.5),
             reason="Half a gram more, to carry the finish.",
-            prediction="Compared to v5: a touch more body and no slower.",
+            prediction="Compared to v2.2: a touch more body and no slower.",
         ),
     )
     assert result.proposal is not None, result.refused
@@ -475,8 +486,8 @@ async def test_a_waiting_proposal_is_in_front_of_the_agent_before_it_speaks(
     assert "A PROPOSAL IS WAITING FOR THE PERSON" in rendered
     assert "Dose 18 g → 18.5 g" in rendered
     assert "Half a gram more, to carry the finish." in rendered
-    assert "Prediction (compared to v5)" in rendered
-    assert "It has changed nothing: the Set is still on v5" in rendered
+    assert "Prediction (compared to v2.2)" in rendered
+    assert "It has changed nothing: the Set is still on v2.2" in rendered
     assert "do not propose another change while it waits" in rendered
 
 
@@ -509,7 +520,8 @@ async def test_an_accepted_proposal_names_the_version_it_became(
     )
 
     assert "THE LAST PROPOSAL" in rendered
-    assert f"They accepted it; it is v{accepted.version.version_no}." in rendered
+    assert accepted.version.version_label == "v2.3"
+    assert "They accepted it; it is v2.3." in rendered
 
 
 async def test_a_proposal_the_set_overtook_says_so_and_frees_the_agent(
@@ -530,8 +542,36 @@ async def test_a_proposal_the_set_overtook_says_so_and_frees_the_agent(
 
     assert "A PROPOSAL IS WAITING" not in rendered
     assert "THE LAST PROPOSAL" in rendered
-    assert f"the Set moved on to v{versions[0].version_no} before they did" in rendered
+    assert versions[0].version_label == "v2.3"
+    assert "the Set moved on to v2.3 before they did" in rendered
     assert "Propose afresh" in rendered
+
+
+async def test_a_waiting_proposal_says_the_agent_suggested_a_major_version(
+    experiment: Experiment,
+) -> None:
+    """The next conversation knows what it suggested, and that the person decides."""
+    proposals = await _graded(experiment)
+    result = await proposals.create(
+        experiment.set_id,
+        ProposalWrite(
+            patch=SetVersionPatch(dose_g=18.5),
+            reason="Half a gram more, to carry the finish.",
+            prediction="Compared to v2.2: a touch more body and no slower.",
+            suggest_major=True,
+            major_reason="A heavier dose changes what this recipe is for.",
+        ),
+    )
+    assert result.proposal is not None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+
+    assert (
+        'You suggested recording it as a major version: "A heavier dose changes what this '
+        'recipe is for." They decide on the card.'
+    ) in rendered
 
 
 async def test_a_reason_that_ends_in_a_full_stop_is_not_given_a_second_one(
@@ -565,10 +605,10 @@ async def test_the_ledger_carries_the_dead_ends_and_the_track_record(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
     )
 
+    assert "- v1.1 (dead end) ·" in rendered
     assert "- v2 (dead end) ·" in rendered
-    assert "- v3 (dead end) ·" in rendered
     assert "← this version" in rendered
-    assert "← what v5 is compared against" in rendered
+    assert "← what v2.2 is compared against" in rendered
     assert "Track record: 1 of 3 graded predictions held" in rendered
 
 
@@ -577,7 +617,7 @@ async def test_the_evidence_and_the_spread_are_the_page_s_own(experiment: Experi
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
     )
 
-    assert "THE EVIDENCE FOR v5 AGAINST v4" in rendered
+    assert "THE EVIDENCE FOR v2.2 AGAINST v2.1" in rendered
     assert "HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED" in rendered
     # The yardstick is stated with what it was held against, in both forms.
     assert "held against" in rendered
@@ -611,7 +651,7 @@ async def test_the_shots_are_this_version_s_newest_in_base_and_no_other_version_
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
     )
 
-    assert "ALL 2 SHOTS OF v5 (newest first)" in rendered
+    assert "ALL 2 SHOTS OF v2.2 (newest first)" in rendered
     assert _shot_headers(rendered) == mine, "newest first, as the Set page lists them"
     assert not set(_shot_headers(rendered)) & compared
     # Base only: the extended lines are a tool call away.
@@ -629,8 +669,8 @@ async def test_the_number_of_shots_follows_what_the_caller_asks_for(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4), recent_shots=1
     )
 
-    assert "THE LAST 1 OF 3 SHOTS OF v4 (newest first)" in rendered
-    assert "The other 2 of v4's shots, and every other version's, are a list_set_shots" in (
+    assert "THE LAST 1 OF 3 SHOTS OF v2.1 (newest first)" in rendered
+    assert "The other 2 of v2.1's shots, and every other version's, are a list_set_shots" in (
         rendered
     )
     assert _shot_headers(rendered) == [newest]
@@ -646,7 +686,8 @@ async def test_a_version_with_no_shots_says_so(experiment: Experiment) -> None:
         experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
     )
 
-    assert f"THE SHOTS OF v{version.version_no}\n- none yet." in rendered
+    assert version.version_label == "v2.3"
+    assert "THE SHOTS OF v2.3\n- none yet." in rendered
 
 
 def test_the_default_number_of_shots_is_the_setting_s_default() -> None:
@@ -670,8 +711,8 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
     )
 
     gold = next(line for line in rendered.splitlines() if "Keep shot" in line)
-    assert "v2" not in gold
-    assert "on v1, v4" in gold
+    assert "v1.1" not in gold
+    assert "on v1, v2.1" in gold
 
 
 async def test_a_set_with_no_shots_says_the_spread_is_not_measured_and_names_the_floors(
@@ -728,7 +769,7 @@ async def test_the_gold_standard_is_the_keep_shots_still_on_the_line(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
     )
 
-    assert "5 Keep shots on the line being brewed, on v1, v4" in rendered
+    assert "5 Keep shots on the line being brewed, on v1, v2.1" in rendered
 
 
 async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_matter(
@@ -746,14 +787,14 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
             experiment.set_id, SetVersionPatch(intent=f"Filler {number}.")
         )
         assert version is not None
-    # The newest version, predicting against v5 — which is by now far enough
+    # The newest version, predicting against v2.2 — which is by now far enough
     # back that the budget would otherwise have summarised it away.
     argued = await sets.add_version(
         experiment.set_id,
         SetVersionPatch(
             grind_setting="20.5",
             intent="Split the difference.",
-            prediction="Between v4 and v5 on shot time.",
+            prediction="Between v2.1 and v2.2 on shot time.",
             compares_to_version_id=experiment.v5,
         ),
     )
@@ -765,16 +806,20 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
 
     assert "Not written out here:" in rendered
     assert "- v1 ·" not in rendered, "the oldest versions are summarised, not written out"
-    assert f"- v{argued.version_no} ← this version ·" in rendered
-    assert "- v5 ← what v" in rendered
-    # The summary names what it summarised and nothing else: v5 is written out
-    # three lines below it, so a span that swallowed it would be a lie.
+    assert f"- {argued.version_label} ← this version ·" in rendered
+    assert "- v2.2 ← what v" in rendered
+    # The summary names what it summarised and nothing else: v2.2 is written
+    # out three lines below it, so a span that swallowed it would be a lie.
+    ordinals = {
+        version.version_label: version.version_no
+        for version in await sets.versions(experiment.set_id)
+    }
     ledger = [line for line in rendered.splitlines() if line.startswith("- v")]
     summary = next(line for line in rendered.splitlines() if "Not written out here:" in line)
-    written = {int(line.split("v", 1)[1].split(" ")[0].rstrip(":")) for line in ledger}
+    written = {ordinals[line[2:].split(" ")[0]] for line in ledger}
 
-    assert _claimed(summary) & written == set(), summary
-    assert 1 in _claimed(summary), "the oldest versions are what it stands for"
+    assert _claimed(summary, ordinals) & written == set(), summary
+    assert 1 in _claimed(summary, ordinals), "the oldest versions are what it stands for"
 
 
 async def test_the_version_being_argued_survives_the_budget_however_old_it_is(
@@ -791,7 +836,7 @@ async def test_the_version_being_argued_survives_the_budget_however_old_it_is(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
     )
 
-    assert "THIS VERSION IS v2" in rendered
-    assert "- v2 (dead end) ← this version ·" in rendered
+    assert "THIS VERSION IS v1.1" in rendered
+    assert "- v1.1 (dead end) ← this version ·" in rendered
     # And the version it is compared against comes with it.
-    assert "- v1 ← what v2 is compared against ·" in rendered
+    assert "- v1 ← what v1.1 is compared against ·" in rendered

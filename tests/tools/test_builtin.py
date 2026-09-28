@@ -304,9 +304,15 @@ async def test_propose_set_version_creates_a_proposal_and_no_version(
     assert data["changed"] == ["the grind"]
     assert data["change_summary"].startswith("Grind ")
     assert data["prediction"] == PREDICTION
-    assert data["compares_to_version_no"] == before.version_no
+    assert data["compares_to_version"] == before.version_label
+    # Named, never counted: no ordinal reaches the model.
+    assert "compares_to_version_no" not in data
     # The whole point: the Set is where it was, and the answer says so.
     assert "Nothing has changed yet" in data["note"]
+    # The person names the version on the card; the answer says both names.
+    assert (data["would_be_minor"], data["would_be_major"]) == ("v1.1", "v2")
+    assert "a minor version (v1.1) or a major one (v2); by default it is minor" in data["note"]
+    assert data["suggest_major"] is False
     after = await sets.current_version(archive.set_id)
     assert after is not None and after.id == before.id
 
@@ -462,7 +468,7 @@ async def test_an_ungraded_prediction_blocks_the_next_proposal(
         grind_setting="20",
         prediction=PREDICTION,
     )
-    assert f"v{current.version_no}'s prediction has not been graded" in data["detail"]
+    assert f"{current.version_label}'s prediction has not been graded" in data["detail"]
     assert "another shot on the same recipe" in data["detail"]
 
 
@@ -740,8 +746,9 @@ async def test_a_set_conversation_s_draft_carries_its_set_and_its_prediction(
     )
 
     assert data["prediction"].startswith("Compared to v1")
-    assert data["compares_to_version_no"] == current.version_no
+    assert data["compares_to_version"] == current.version_label
     assert "the Set is where it was" in data["note"]
+    assert "a minor version (v1.1, the default for a draft) or a major one (v2)" in data["note"]
 
     stored = await ProfileDraftsRepository(archive.db).get(data["draft_id"])
     assert stored is not None
@@ -775,7 +782,7 @@ async def test_a_profile_draft_is_blocked_while_a_prediction_is_ungraded(
         reason="A degree cooler.",
         prediction="Compared to v2: less of the dry finish.",
     )
-    assert f"v{current.version_no}'s prediction has not been graded" in data["detail"]
+    assert f"{current.version_label}'s prediction has not been graded" in data["detail"]
 
 
 async def test_a_profile_draft_is_blocked_while_a_proposal_is_waiting(
@@ -860,3 +867,142 @@ async def test_a_tool_that_needs_a_service_says_so_rather_than_crashing(
     )
 
     assert "running gaggiclanker application" in data["detail"]
+
+
+# -- version names -------------------------------------------------------------
+
+MAJOR_REASON = "Two clicks is a new direction for this Set, not a nudge on the old one."
+
+
+async def test_a_proposal_stores_the_agent_s_major_suggestion_and_its_reason(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer, to chase the sour finish.",
+        grind_setting="20",
+        prediction=PREDICTION,
+        suggest_major=True,
+        major_reason=f"  {MAJOR_REASON}  ",
+    )
+
+    assert data["suggest_major"] is True
+    assert "your suggestion of major is shown with your reason" in data["note"]
+    # Only a suggestion: the default for a grind change is still minor.
+    assert "by default it is minor" in data["note"]
+    stored = await SetProposalsRepository(archive.db).get(archive.set_id, data["proposal_id"])
+    assert stored is not None
+    assert (stored.suggest_major, stored.major_reason) == (True, MAJOR_REASON)
+
+
+@pytest.mark.parametrize("reason", ["", "   ", "It is bigger."])
+async def test_a_major_suggestion_without_a_reason_is_refused_in_its_own_words(
+    set_ctx: ToolContext, archive: Fixture, reason: str
+) -> None:
+    data = await refuse(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer, to chase the sour finish.",
+        grind_setting="20",
+        prediction=PREDICTION,
+        suggest_major=True,
+        major_reason=reason,
+    )
+
+    assert data["detail"].startswith("suggest_major needs major_reason")
+    assert await SetProposalsRepository(archive.db).waiting(archive.set_id) is None
+
+
+async def test_a_reason_without_a_suggestion_is_not_stored(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await call(
+        set_ctx,
+        "propose_set_version",
+        reason="Two clicks finer, to chase the sour finish.",
+        grind_setting="20",
+        prediction=PREDICTION,
+        major_reason=MAJOR_REASON,
+    )
+
+    stored = await SetProposalsRepository(archive.db).get(archive.set_id, data["proposal_id"])
+    assert stored is not None
+    assert (stored.suggest_major, stored.major_reason) == (False, "")
+
+
+async def test_a_set_draft_stores_the_agent_s_major_suggestion(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await call(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+        prediction=PREDICTION,
+        suggest_major=True,
+        major_reason=MAJOR_REASON,
+    )
+
+    assert data["suggest_major"] is True
+    stored = await ProfileDraftsRepository(archive.db).get(data["draft_id"])
+    assert stored is not None
+    assert (stored.suggest_major, stored.major_reason) == (True, MAJOR_REASON)
+    assert (stored.set_next_minor_label, stored.set_next_major_label) == ("v1.1", "v2")
+
+
+async def test_a_set_draft_refuses_a_major_suggestion_without_a_reason(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await refuse(
+        _with_drafts(set_ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+        prediction=PREDICTION,
+        suggest_major=True,
+    )
+
+    assert data["detail"].startswith("suggest_major needs major_reason")
+
+
+async def test_a_draft_outside_a_set_cannot_suggest_a_major_version(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    data = await refuse(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"temperature": 92},
+        reason="A degree cooler.",
+        suggest_major=True,
+        major_reason=MAJOR_REASON,
+    )
+
+    assert "only means something in a conversation about one Set" in data["detail"]
+
+
+async def test_the_set_tools_name_versions_and_never_count_them(
+    set_ctx: ToolContext, ctx: ToolContext, archive: Fixture
+) -> None:
+    """A model shown "version_no": 3 beside "v1.2" says "v3" sooner or later."""
+    sets = SetsRepository(archive.db)
+    await sets.add_version(archive.set_id, SetVersionPatch(grind_setting="21"))
+    await sets.add_version(
+        archive.set_id,
+        SetVersionPatch.model_validate(
+            {"grind_setting": "20", "prediction": PREDICTION, "compares_to_version_id": None}
+        ),
+    )
+
+    got = await call(set_ctx, "get_set")
+    listed = await call(ctx, "list_sets")
+
+    assert got["set"]["current_version_label"] == "v1.2"
+    assert [version["version_label"] for version in got["versions"]] == ["v1.2", "v1.1", "v1"]
+    assert [version["version_label"] for version in got["trajectory"]] == ["v1", "v1.1", "v1.2"]
+    rows = [got["set"], *got["versions"], *got["trajectory"], *listed["items"]]
+    for row in rows:
+        assert not {"version_no", "current_version_no", "compares_to_version_no"} & set(row)

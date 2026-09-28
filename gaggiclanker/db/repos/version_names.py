@@ -15,11 +15,37 @@ repository itself imports — read the same numbers for their cards.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.domain.sets import next_version_name, version_label
 
-__all__ = ["NextNames", "NextNumbers", "label_sql", "next_names", "next_numbers"]
+__all__ = [
+    "ORDINAL_FIELDS",
+    "NextNames",
+    "NextNumbers",
+    "label_sql",
+    "named_dump",
+    "next_names",
+    "next_numbers",
+]
+
+#: The ordinals a row carries beside each version's name. A model handed both
+#: "version_no": 3 and "version_label": "v1.2" says "v3" sooner or later, and a
+#: person reading that looks for a version that does not exist. What the agent
+#: is handed keeps the ids, for anything that refers to a version, and the
+#: names; the ordinal only ever ordered the rows, which come in order anyway.
+ORDINAL_FIELDS = frozenset(
+    {"version_no", "current_version_no", "compares_to_version_no", "restores_version_no"}
+)
+
+
+def named_dump(row: BaseModel) -> dict[str, Any]:
+    """A row as the agent is handed it: its versions by name, never by ordinal."""
+    dumped: dict[str, Any] = row.model_dump(mode="json")
+    return {key: value for key, value in dumped.items() if key not in ORDINAL_FIELDS}
 
 
 def label_sql(alias: str) -> str:

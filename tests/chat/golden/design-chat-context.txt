@@ -98,7 +98,7 @@ It has created nothing yet. Talk about this one; a newer propose_initial_recipe 
 
 THIS BEAN'S OTHER SETS (newest first)
 - Set 6: Kenya AA on the Mazzer — on Mazzer Philos, 0 shots.
-  - v2: grind 6.5, 20 g in, 44 g out, 93 °C from its profile, profile Medium 18g 1:2 · 0 shots · no rating · outcome open · trying: A touch finer.
+  - v1.1: grind 6.5, 20 g in, 44 g out, 93 °C from its profile, profile Medium 18g 1:2 · 0 shots · no rating · outcome open · trying: A touch finer.
   - v1: grind 7, 20 g in, 44 g out, 93 °C from its profile, profile Medium 18g 1:2 · 0 shots · no rating · outcome no prediction · trying: Same bag, flat burrs.
 - Set 1: Kenya AA on the niche — on Niche Zero, 5 shots.
   - v1: grind 21, 18 g in, 45 g out, 93 °C from its profile, profile Medium 18g 1:2 · 5 shots (0 Keep, 0 Improve, 0 Discard, 5 unlabelled) · mean rating 4.4 · outcome no prediction · trying: Baseline for this bag.

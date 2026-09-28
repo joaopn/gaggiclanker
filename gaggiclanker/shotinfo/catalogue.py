@@ -695,8 +695,8 @@ def _items() -> tuple[Item, ...]:
             default_tier="base",
             locked=True,
             shot=lambda f: (
-                f"v{f.version_no} of Set {f.set_id}"
-                if f.version_no is not None
+                f"{f.version_label} of Set {f.set_id}"
+                if f.version_label is not None
                 else "not filed in a Set"
             ),
         ),

@@ -46,9 +46,10 @@ from gaggiclanker.db.repos.set_proposals import (
     change_groups,
 )
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, version_changes
+from gaggiclanker.db.repos.version_names import named_dump, next_names
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_recipe import profile_recipe
-from gaggiclanker.domain.sets import grind_value
+from gaggiclanker.domain.sets import grind_value, parse_version_label
 from gaggiclanker.domain.vocab import Balance
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -84,15 +85,16 @@ class _Model(BaseModel):
 EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
     (
         "The ten most recent shots in one Set, newest first",
-        "SELECT shot_id, started_at, set_version_no, execution_score, rating, ratio\n"
+        "SELECT shot_id, started_at, set_version_label, execution_score, rating, ratio\n"
         "  FROM v_shots WHERE set_id = 3 ORDER BY started_at DESC LIMIT 10",
     ),
     (
-        "Average execution score and rating per version of a Set",
-        "SELECT set_version_no, COUNT(*) AS shots,\n"
+        "Average execution score and rating per version of a Set, oldest version first",
+        "SELECT set_version_label, COUNT(*) AS shots,\n"
         "       ROUND(AVG(execution_score), 1) AS avg_score,\n"
         "       ROUND(AVG(rating), 2) AS avg_rating\n"
-        "  FROM v_shots WHERE set_id = 3 GROUP BY set_version_no ORDER BY set_version_no",
+        "  FROM v_shots WHERE set_id = 3\n"
+        " GROUP BY set_version_no, set_version_label ORDER BY set_version_no",
     ),
     (
         "Shots where a review's blind taste prediction disagreed with the person",
@@ -134,7 +136,11 @@ SCHEMA_NOTES = (
     "centre joined by dots (fruity.berry.blackberry), so json_each with LIKE "
     "'sour_fermented.sour%' finds every sour note. profile_temperature_c is the brew "
     "temperature the profile states — a Set version records none of its own, so two "
-    "versions differ in temperature only when they name different profiles."
+    "versions differ in temperature only when they name different profiles. A Set version "
+    "is named v<major>.<minor>: version_label (set_version_label in v_shots) is the name to "
+    "say, 'v1.1'; version_major and version_minor are its parts; version_no is only the "
+    "order the versions were recorded in (v1.2 may be the 3rd), so sort by it and never "
+    "call a version by it."
 )
 
 
@@ -414,9 +420,9 @@ async def get_set(ctx: ToolContext, args: GetSetInput) -> SetOutput:
     trends = await sets.trends(set_id)
     insights = await _set_insights(ctx, row)
     return SetOutput(
-        set=row.model_dump(mode="json"),
-        versions=[version.model_dump(mode="json") for version in versions],
-        trajectory=[version.model_dump(mode="json") for version in trends.versions],
+        set=named_dump(row),
+        versions=[named_dump(version) for version in versions],
+        trajectory=[named_dump(version) for version in trends.versions],
         insights=[insight.render() for insight in insights],
     )
 
@@ -470,8 +476,12 @@ _ORDER_KEYS: dict[str, str] = {
 
 
 class SearchShotsInput(_Model):
-    version_no: int | None = Field(
-        default=None, gt=0, description="Only the shots pulled under this version of the Set."
+    version: str | int | float | None = Field(
+        default=None,
+        description=(
+            "Only the shots pulled under this version of the Set, by its name: 'v1.1', "
+            "'1.1' or '2' (which is v2, not the second version)."
+        ),
     )
     label: Literal["keep", "improve", "discard"] | None = Field(
         default=None,
@@ -537,7 +547,7 @@ class SearchShotsOutput(_Model):
 #: Which catalogue item each search argument reads, beyond the ranges and bands
 #: whose argument names already are (or map through `_ORDER_KEYS` to) the key.
 _ARGUMENT_ITEMS: dict[str, str] = {
-    "version_no": "set_version",
+    "version": "set_version",
     "label": "label",
     "balance": "balance",
     "since": "started_at",
@@ -605,6 +615,7 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
     tiers = await effective_tiers(ctx.db)
     order = _order(args, tiers)
     _refuse_excluded(args, tiers, order)
+    version_id = None if args.version is None else await _named_version(ctx, set_id, args.version)
     ranges = {
         _ORDER_KEYS[name]: (bounds.min, bounds.max)
         for name in (
@@ -630,7 +641,7 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
         ctx.db,
         set_id,
         ShotQuery(
-            version_no=args.version_no,
+            version_id=version_id,
             label=args.label,
             balance=args.balance,
             since=args.since.isoformat() if args.since is not None else None,
@@ -659,6 +670,25 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
     )
 
 
+async def _named_version(ctx: ToolContext, set_id: int, name: str | float) -> int:
+    """The id of this Set's version called ``name``, or a refusal saying which names exist.
+
+    The name is what the agent reads everywhere ("v1.1"); an ordinal is never
+    accepted as one — "2" is v2. The list in the refusal is this Set's own
+    versions only, which the conversation can see anyway.
+    """
+    parsed = parse_version_label(str(name))
+    sets = SetsRepository(ctx.db)
+    found = None if parsed is None else await sets.version_named(set_id, *parsed)
+    if found is not None:
+        return found.id
+    names = [version.version_label for version in reversed(await sets.versions(set_id))]
+    raise ValueError(
+        f"This Set has no version called {str(name)!r}. Its versions are "
+        f"{', '.join(names)}; name one of them as 'v1.1', '1.1' or '2', or leave version out."
+    )
+
+
 class ListSetsInput(_Model):
     include_archived: bool = False
 
@@ -675,7 +705,7 @@ class ListOutput(_Model):
 )
 async def list_sets(ctx: ToolContext, args: ListSetsInput) -> ListOutput:
     rows = await SetsRepository(ctx.db).list_sets(include_archived=args.include_archived)
-    items = [row.model_dump(mode="json") for row in rows]
+    items = [named_dump(row) for row in rows]
     return ListOutput(items=items, count=len(items))
 
 
@@ -1088,6 +1118,40 @@ def _insight_out(insight: Any, only: set[int] | None = None) -> InsightOut:
 #: only refuses the absence.
 PREDICTION_MIN_CHARS = 20
 
+#: What a major version is, in the maintainer's words, for both tools that may
+#: suggest one. The person decides on the card; the agent only suggests.
+MAJOR_MEANING = (
+    "A Set version is named v<major>.<minor>. A major version (v1.2 → v2) is a functional "
+    "change to what the profile wants to do, and the person triggers it; dial-in technical "
+    "changes stay minor (v1.2 → v1.3): grind, dose, yield, or a draft that only tunes a "
+    "parameter such as a degree of temperature. By default a switch to a different profile "
+    "is major and everything else is minor. You may suggest major with suggest_major and "
+    "major_reason; the card shows your reason and the person decides."
+)
+
+MAJOR_REASON_REFUSAL = (
+    "suggest_major needs major_reason: say in at least {chars} characters why this change is "
+    "a functional change to what the profile does rather than dialling in. The person reads "
+    "it beside the Major change box and decides; leave suggest_major out to let the default "
+    "stand."
+)
+
+
+def _major_suggestion(suggest_major: bool, major_reason: str) -> tuple[bool, str]:
+    """The agent's major suggestion as stored, or its refusal.
+
+    A suggestion without a reason is refused, like a change without a
+    prediction: the person decides on the card, and a bare "major" gives them
+    nothing to decide with. A reason with no suggestion is dropped — it would
+    be a reason for something nobody suggested.
+    """
+    reason = major_reason.strip()
+    if not suggest_major:
+        return False, ""
+    if len(reason) < PREDICTION_MIN_CHARS:
+        raise ValueError(MAJOR_REASON_REFUSAL.format(chars=PREDICTION_MIN_CHARS))
+    return True, reason
+
 
 class ProposeVersionInput(_Model):
     set_id: int | None = None
@@ -1129,6 +1193,19 @@ class ProposeVersionInput(_Model):
     dose_g: float | None = Field(default=None, gt=0, le=100)
     target_yield_g: float | None = Field(default=None, gt=0, le=500)
     profile_version_id: int | None = None
+    suggest_major: bool = Field(
+        default=False,
+        description=(
+            "Suggest that the person record this as a major version (the next vN) rather "
+            "than a minor one (vN.M+1). Only for a functional change to what the profile "
+            "does; requires major_reason. The person decides."
+        ),
+    )
+    major_reason: str = Field(
+        default="",
+        max_length=500,
+        description=f"With suggest_major: why, in at least {PREDICTION_MIN_CHARS} characters.",
+    )
 
 
 class ProposeVersionOutput(_Model):
@@ -1142,7 +1219,14 @@ class ProposeVersionOutput(_Model):
     #: The same change with its numbers: "Grind 22 → 21".
     change_summary: str = ""
     prediction: str = ""
-    compares_to_version_no: int | None = None
+    #: The compared-to version's name, "v1.1".
+    compares_to_version: str | None = None
+    #: Whether the agent suggested a major version; the person decides.
+    suggest_major: bool = False
+    #: What the version would be called if they accept it as a minor and as a
+    #: major, so the model can say both without numbering anything itself.
+    would_be_minor: str = ""
+    would_be_major: str = ""
     #: What the model should tell the person, in the tool's own words, because
     #: "I have created v6" is exactly the sentence this whole change exists to
     #: stop being true.
@@ -1162,7 +1246,7 @@ class ProposeVersionOutput(_Model):
         "graded, and while another proposal is already waiting. There is no temperature "
         "here: the machine brews at the temperature the profile states, so a temperature "
         "change is a profile change — use draft_profile, and the person approves and "
-        "pushes it."
+        "pushes it. " + MAJOR_MEANING
     ),
 )
 async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> ProposeVersionOutput:
@@ -1189,6 +1273,7 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
             "differ, by roughly how much, on which measure the archive records, and compared "
             "with which version — then call this again."
         )
+    suggest_major, major_reason = _major_suggestion(args.suggest_major, args.major_reason)
 
     fields = {
         name: getattr(args, name)
@@ -1247,6 +1332,8 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         "reason": args.reason,
         "prediction": prediction,
         "combined_reason": combined,
+        "suggest_major": suggest_major,
+        "major_reason": major_reason,
     }
     # Omitted means "against the version this is a change to", which is what the
     # repository defaults to; passing None through would mean "against nothing".
@@ -1268,12 +1355,17 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         if preview is not None and base is not None
         else ""
     )
+    names = await next_names(ctx.db, set_id)
+    default = "major" if await proposals.default_major(stored) else "minor"
     note = (
         "Nothing has changed yet. This is waiting for the person: the next shot is still "
-        f"filed under v{stored.base_version_no}, and it becomes a version only if they "
+        f"filed under {stored.base_version_label}, and it becomes a version only if they "
         "accept it. Tell them what you are proposing and why, and say what you expect it to "
         "do. If they decline it, that is information about what they want — not a reason to "
-        "propose it again."
+        "propose it again. On the card they choose whether it is a minor version "
+        f"({names.minor}) or a major one ({names.major}); by default it is {default}"
+        + (", and your suggestion of major is shown with your reason" if suggest_major else "")
+        + ". Do not name the new version as if it were decided."
     )
     if len(groups) > 1:
         note += (
@@ -1287,7 +1379,10 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
         changed=stored.changed,
         change_summary=summary,
         prediction=stored.prediction,
-        compares_to_version_no=stored.compares_to_version_no,
+        compares_to_version=stored.compares_to_version_label,
+        suggest_major=stored.suggest_major,
+        would_be_minor=names.minor,
+        would_be_major=names.major,
         note=note,
     )
 
@@ -1316,7 +1411,7 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
         )
     if result.refused == "outcome_open":
         current = await sets.current_version(set_id)
-        number = f"v{current.version_no}" if current is not None else "this version"
+        number = current.version_label if current is not None else "this version"
         return (
             f"{number}'s prediction has not been graded yet, so there is nothing settled to "
             "build the next change on. Grade it with the person on the Set page first, or "
@@ -1385,6 +1480,20 @@ class DraftProfileInput(_Model):
             "Set's current version, which is what this change would be a change to."
         ),
     )
+    suggest_major: bool = Field(
+        default=False,
+        description=(
+            "In a conversation about one Set only: suggest that pushing this draft for the Set "
+            "records a major version rather than a minor one. A draft that tunes a parameter "
+            "is dialling in and stays minor; suggest major only for a functional change to "
+            "what the profile does, with major_reason. The person decides."
+        ),
+    )
+    major_reason: str = Field(
+        default="",
+        max_length=500,
+        description=f"With suggest_major: why, in at least {PREDICTION_MIN_CHARS} characters.",
+    )
 
 
 class DraftProfileOutput(_Model):
@@ -1396,7 +1505,10 @@ class DraftProfileOutput(_Model):
     #: What this draft is expected to do, and against which version — empty
     #: outside a Set's conversation.
     prediction: str = ""
-    compares_to_version_no: int | None = None
+    #: The compared-to version's name, "v1.1".
+    compares_to_version: str | None = None
+    #: Whether the agent suggested a major version for the push; the person decides.
+    suggest_major: bool = False
     #: What the model should tell the person. A draft is further from the
     #: machine than a proposal is from the Set: somebody has to approve it, push
     #: it, and say which Set it is for.
@@ -1429,7 +1541,7 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
         "conversation about one Set a profile change IS a change to the experiment, so a "
         "prediction is required and the same rules apply as to any other change: not while "
         "this version's own prediction is ungraded, and not while a proposal is already "
-        "waiting."
+        "waiting. " + MAJOR_MEANING
     ),
     timeout_s=30.0,
 )
@@ -1458,6 +1570,12 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     set_id: int | None = None
     prediction = args.prediction.strip()
     compares_to: int | None = None
+    if args.suggest_major and ctx.scope.kind != "set":
+        raise ValueError(
+            "suggest_major only means something in a conversation about one Set: it is about "
+            "which version the push records there. Leave it out here."
+        )
+    suggest_major, major_reason = _major_suggestion(args.suggest_major, args.major_reason)
     note = (
         "Nothing has been sent to the machine. This is a draft on the Profiles page: the "
         "person reads the diff, approves it and pushes it, and only then does the machine "
@@ -1466,10 +1584,15 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     if ctx.scope.kind == "set":
         set_id = _resolve_set(ctx, None)
         compares_to = await _draft_experiment(ctx, set_id, args, prediction)
+        names = await next_names(ctx.db, set_id)
         note += (
             " It is also a change to this experiment, so your prediction is recorded on the "
             "Set as a new version when they push it for this Set — and not before. Say that: "
-            "until they push it, the Set is where it was."
+            "until they push it, the Set is where it was. When they push it they choose "
+            f"whether it is a minor version ({names.minor}, the default for a draft) or a "
+            f"major one ({names.major})"
+            + (", and your suggestion of major is shown with your reason" if suggest_major else "")
+            + "."
         )
 
     document = _merge(dict(version.profile or {}), args.patch)
@@ -1481,6 +1604,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         set_id=set_id,
         prediction=prediction if set_id is not None else "",
         compares_to_version_id=compares_to,
+        suggest_major=suggest_major,
+        major_reason=major_reason,
     )
     return DraftProfileOutput(
         draft_id=draft.id,
@@ -1489,7 +1614,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         clamp_changes=[_as_dict(change) for change in draft.clamp_changes or []],
         stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes or []],
         prediction=draft.prediction,
-        compares_to_version_no=draft.compares_to_version_no,
+        compares_to_version=draft.compares_to_version_label,
+        suggest_major=draft.suggest_major,
         note=note,
     )
 
@@ -1516,7 +1642,7 @@ async def _draft_experiment(
     current = await sets.current_version(set_id)
     if current is not None and current.outcome_state == "open":
         raise ValueError(
-            f"v{current.version_no}'s prediction has not been graded yet, so there is nothing "
+            f"{current.version_label}'s prediction has not been graded yet, so there is nothing "
             "settled to build the next change on. Grade it with the person on the Set page "
             "first, or ask for another shot on the same recipe and say what you expect from it."
         )

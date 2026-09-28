@@ -40,6 +40,7 @@ from pydantic.fields import FieldInfo
 from gaggiclanker import __version__
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.version_names import named_dump
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.tools.registry import (
     CHAT_PERMISSIONS,
@@ -306,8 +307,8 @@ def _add_resources(
         versions = await repo.versions(identifier)
         return json.dumps(
             {
-                "set": row.model_dump(mode="json"),
-                "versions": [version.model_dump(mode="json") for version in versions],
+                "set": named_dump(row),
+                "versions": [named_dump(version) for version in versions],
             },
             indent=2,
             default=str,

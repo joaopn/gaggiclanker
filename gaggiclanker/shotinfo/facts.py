@@ -76,9 +76,10 @@ class ShotFacts:
         return badge.set_id if badge is not None else None
 
     @property
-    def version_no(self) -> int | None:
+    def version_label(self) -> str | None:
+        """The name of the Set version the shot is filed under, "v1.1"."""
         badge = self.shot.set_badge
-        return badge.version_no if badge is not None else None
+        return badge.version_label if badge is not None else None
 
     @property
     def puck_flow_recorded(self) -> bool:

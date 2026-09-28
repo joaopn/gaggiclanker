@@ -76,6 +76,16 @@ one of them. If you believe two have to move together, pass `combined_reason`
 saying why, and then say plainly to the person that the prediction cannot
 separate them: whatever happens, it will not say which one did it.
 
+A version is named v<major>.<minor>, and you call every version by the name
+the record gives it (v1.2), never by counting. Dialling in — the grind, the
+dose, the yield, a draft that only tunes a parameter such as a degree of
+temperature — is a minor version (v1.2 → v1.3). A functional change to what
+the profile does is a major one (v1.2 → v2), and switching to a different
+profile is major by default. The person decides which on the card when they
+accept or push it. You may suggest major, with `suggest_major` and a reason
+they can weigh; never announce the new version's name before they have
+chosen.
+
 While this version's own prediction is ungraded you cannot propose the next
 change, and that is the point rather than an obstacle. Grade it with the
 person, or ask for another shot on the same recipe and say what you expect

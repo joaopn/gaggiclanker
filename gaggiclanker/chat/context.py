@@ -268,11 +268,11 @@ async def _heading(
         + ("Archived." if row.archived else "In use.")
         + (" New shots on its profile are filed here." if row.automatch else ""),
         "",
-        f"THIS VERSION IS v{version.version_no}"
+        f"THIS VERSION IS {version.version_label}"
         + (" (a dead end: a later roll back went back past it)" if version.id in dead_ends else "")
         + (" — the current version of this Set" if version.id == versions[0].id else ""),
         f"Recipe: {_recipe(version)}.",
-        f"Changed against v{parent.version_no}: {_changes(changes)}."
+        f"Changed against {parent.version_label}: {_changes(changes)}."
         if parent is not None
         else "It is the Set's first version: a baseline, not a change to anything.",
     ]
@@ -304,8 +304,8 @@ def _prediction_line(version: SetVersionRow) -> str:
     if not version.prediction:
         return "Prediction: none was written for this version, so there is nothing to grade."
     against = (
-        f" (compared to v{version.compares_to_version_no})"
-        if version.compares_to_version_no
+        f" (compared to {version.compares_to_version_label})"
+        if version.compares_to_version_label
         else " (compared to nothing: grade it on the numbers it states)"
     )
     note = f" Note: {version.outcome_note}" if version.outcome_note else ""
@@ -363,8 +363,14 @@ async def _proposal_block(
             f"It changes {await _proposal_change(proposals, waiting, profile_labels)}. "
             f"Reason: {_quote(waiting.reason)} {_proposal_prediction(waiting)}",
             "It has changed nothing: the Set is still on "
-            f"v{waiting.base_version_no} until they accept it. Talk about this one — do not "
-            "propose another change while it waits.",
+            f"{waiting.base_version_label} until they accept it. Talk about this one — do not "
+            "propose another change while it waits."
+            + (
+                f" You suggested recording it as a major version: {_quote(waiting.major_reason)}"
+                " They decide on the card."
+                if waiting.suggest_major
+                else ""
+            ),
         ]
     last = await proposals.last_decided(set_id)
     if last is None:
@@ -394,7 +400,7 @@ async def _design_line(proposals: SetProposalsRepository, row: Any) -> str:
     if row.status == "accepted":
         return (
             f"This Set was designed in conversation, and its initial recipe was accepted as "
-            f"v{row.resulting_version_no}: {recipe}. Reason: {_quote(row.reason)} It is the "
+            f"{row.resulting_version_label}: {recipe}. Reason: {_quote(row.reason)} It is the "
             "baseline; every change since is in the ledger below."
         )
     return (
@@ -440,8 +446,8 @@ async def _proposal_change(
 
 def _proposal_prediction(row: Any) -> str:
     against = (
-        f" (compared to v{row.compares_to_version_no})"
-        if row.compares_to_version_no
+        f" (compared to {row.compares_to_version_label})"
+        if row.compares_to_version_label
         else " (compared to nothing)"
     )
     combined = (
@@ -457,7 +463,7 @@ def _decided_line(row: Any, current: SetVersionRow) -> str:
     """How it was answered, in the words that are useful next time."""
     if row.status == "accepted":
         return (
-            f"They accepted it; it is v{row.resulting_version_no}. Its own prediction is in the "
+            f"They accepted it; it is {row.resulting_version_label}. Its own prediction is in the "
             "ledger below."
         )
     if row.status == "declined":
@@ -471,7 +477,7 @@ def _decided_line(row: Any, current: SetVersionRow) -> str:
             "not something to send again."
         )
     return (
-        f"Nobody answered it: the Set moved on to v{current.version_no} before they did, so it "
+        f"Nobody answered it: the Set moved on to {current.version_label} before they did, so it "
         "was never applied and it is not waiting for anything. Propose afresh if the change "
         "still makes sense against what is being brewed now."
     )
@@ -497,6 +503,8 @@ def _ledger(
     summarised as counts. A Set that has not run past the budget reads as the
     whole ledger, which is the ordinary case.
     """
+    # Oldest first by the ordinal, which is the order they were recorded in;
+    # every one is written out by its name.
     oldest_first = sorted(versions, key=lambda version: version.version_no)
     kept = {version.id for version in oldest_first[-LEDGER_VERSIONS:]}
     kept.add(this.id)
@@ -530,21 +538,33 @@ def _dropped_line(dropped: Sequence[SetVersionRow]) -> str:
         f"{count} {_OUTCOMES[state].split(' —')[0]}" for state, count in sorted(counted.items())
     )
     return (
-        f"- Not written out here: {_ranges(version.version_no for version in dropped)} "
+        f"- Not written out here: {_ranges(dropped)} "
         f"({len(dropped)} versions: {states}). get_set has them all."
     )
 
 
-def _ranges(numbers: Iterable[int]) -> str:
-    """ "v1, v4 to v7, v9" — consecutive version numbers collapsed, in order."""
-    ordered = sorted(set(numbers))
-    spans: list[tuple[int, int]] = []
-    for number in ordered:
-        if spans and number == spans[-1][1] + 1:
-            spans[-1] = (spans[-1][0], number)
+def _ranges(versions: Iterable[SetVersionRow]) -> str:
+    """ "v1, v1.3 to v2.1, v3" — versions recorded one after another collapsed, in order.
+
+    "One after another" is by the ordinal, the order they were recorded in, so
+    a span reads from its first version's name to its last's and covers every
+    version recorded between them, minor or major.
+    """
+    ordered = sorted({version.version_no: version for version in versions}.values(), key=_ordinal)
+    spans: list[tuple[SetVersionRow, SetVersionRow]] = []
+    for version in ordered:
+        if spans and version.version_no == spans[-1][1].version_no + 1:
+            spans[-1] = (spans[-1][0], version)
         else:
-            spans.append((number, number))
-    return ", ".join(f"v{start}" if start == end else f"v{start} to v{end}" for start, end in spans)
+            spans.append((version, version))
+    return ", ".join(
+        start.version_label if start is end else f"{start.version_label} to {end.version_label}"
+        for start, end in spans
+    )
+
+
+def _ordinal(version: SetVersionRow) -> int:
+    return version.version_no
 
 
 def _ledger_line(
@@ -589,7 +609,7 @@ def _ledger_line(
         [
             " (dead end)" if version.id in dead_ends else "",
             " ← this version" if version.id == this.id else "",
-            f" ← what v{this.version_no} is compared against"
+            f" ← what {this.version_label} is compared against"
             if version.id == this.compares_to_version_id
             else "",
         ]
@@ -601,9 +621,9 @@ def _ledger_line(
         else _recipe(version)
     )
     parts = [
-        f"v{version.version_no}{marks}",
+        f"{version.version_label}{marks}",
         changed,
-        *([f"restores v{version.restores_version_no}"] if version.restores_version_no else []),
+        *([f"restores {version.restores_version_label}"] if version.restores_version_label else []),
         shots,
         prediction,
     ]
@@ -614,7 +634,9 @@ def _ledger_line(
 
 
 def _against(version: SetVersionRow) -> str:
-    return f" against v{version.compares_to_version_no}" if version.compares_to_version_no else ""
+    return (
+        f" against {version.compares_to_version_label}" if version.compares_to_version_label else ""
+    )
 
 
 def _track_record_line(versions: Sequence[SetVersionRow]) -> str:
@@ -672,10 +694,10 @@ def _evidence_block(
     evidence: VersionEvidence, version: SetVersionRow, compared: SetVersionRow | None
 ) -> list[str]:
     """This version's shots against the compared version's, measure by measure."""
-    this_label = f"v{version.version_no}"
-    other_label = f"v{compared.version_no}" if compared is not None else "nothing"
+    this_label = version.version_label
+    other_label = compared.version_label if compared is not None else "nothing"
     lines = [
-        f"THE EVIDENCE FOR v{version.version_no} AGAINST {other_label}",
+        f"THE EVIDENCE FOR {this_label} AGAINST {other_label}",
         "Every counted shot of both versions, never a chosen one.",
         "",
         f"| measure | {this_label} | {other_label} | difference | verdict |",
@@ -684,7 +706,7 @@ def _evidence_block(
     lines += [_evidence_row(row) for row in evidence.measures]
     lines += ["", _counts_line(this_label, evidence.this)]
     if evidence.other is not None:
-        lines.append(_counts_line(f"v{evidence.other.version_no}", evidence.other))
+        lines.append(_counts_line(evidence.other.version_label, evidence.other))
     else:
         lines.append(
             "This version is compared against nothing: grade its prediction on the numbers "
@@ -751,7 +773,7 @@ async def _shots_block(
     shots = await load_shots(
         db, [row.shot_id for row in rows], samples=needs_samples("base", tiers)
     )
-    number = f"v{version.version_no}"
+    number = version.version_label
     if not shots:
         return [f"THE SHOTS OF {number}", "- none yet."]
     total = max(version.shot_count, len(shots))
@@ -799,7 +821,8 @@ def _gold_standard(
             "No shot on the line being brewed has been labelled Keep yet, so there is no "
             "target to compare an Improve shot against.",
         ]
-    numbers = sorted({shot.version_no for shot in keeps})
+    # In the order they were recorded, each by its name.
+    names = [label for _, label in sorted({(s.version_no, s.version_label) for s in keeps})]
     averages = [
         f"{_MEASURES[measure].label.lower()} {_number(measure, _mean(keeps, measure))}"
         f"{_unit(measure)}"
@@ -809,7 +832,7 @@ def _gold_standard(
     return [
         "THE GOLD STANDARD",
         f"{_plural(len(keeps), 'Keep shot')} on the line being brewed, on "
-        f"{', '.join(f'v{number}' for number in numbers)}. "
+        f"{', '.join(names)}. "
         f"Their averages: {', '.join(averages)}.",
         "That is what good has tasted like here. An Improve shot is compared with it.",
     ]
