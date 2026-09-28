@@ -28,7 +28,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from gaggiclanker.api.deps import DraftServiceDep, SetsRepoDep
 from gaggiclanker.api.sets import version_refused
@@ -108,6 +108,12 @@ class DraftPush(BaseModel):
     #: display since. Refused without it, because the diff that was approved is
     #: then a diff against something the machine no longer holds.
     allow_stale_base: bool = False
+    #: With ``set_id``: whether the version recorded on that Set is a major one
+    #: (v1.2 → v2) rather than a minor one (v1.2 → v1.3). Left out, a pushed
+    #: draft is a minor version — it tunes a profile — and the person's answer
+    #: on the card always wins. Ignored without ``set_id``: a push that records
+    #: nothing on a Set names no version.
+    major: StrictBool | None = None
 
 
 class DraftPreviewRequest(BaseModel):
@@ -259,7 +265,7 @@ async def push_draft(
         if refusal is not None:
             raise version_refused(VersionRefused(refusal))
     row, version = await drafts.push(
-        draft_id, set_id=body.set_id, allow_stale_base=body.allow_stale_base
+        draft_id, set_id=body.set_id, allow_stale_base=body.allow_stale_base, major=body.major
     )
     return envelope_response(PushedData(draft=row, set_version=version).model_dump(mode="json"))
 

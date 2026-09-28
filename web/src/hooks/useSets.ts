@@ -44,7 +44,7 @@ import type {
   SetProposalListData,
   SetRow,
   SetTrends,
-  SetVersionPatch,
+  SetVersionAdd,
   SetVersionRow,
   ShotDetailRow,
   ShotJudgement,
@@ -259,7 +259,7 @@ export function useDiscardDesign(): UseMutationResult<SetDesignDiscarded, Error,
 export function useAddSetVersion(): UseMutationResult<
   SetVersionRow,
   Error,
-  { setId: number; patch: SetVersionPatch }
+  { setId: number; patch: SetVersionAdd }
 > {
   const queryClient = useQueryClient();
   return useMutation({

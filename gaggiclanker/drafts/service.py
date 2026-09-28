@@ -226,6 +226,10 @@ class ProfileDraftService:
             set_id=parent.set_id if parent is not None else None,
             prediction=parent.prediction if parent is not None else "",
             compares_to_version_id=(parent.compares_to_version_id if parent is not None else None),
+            # And so does the agent's suggestion that it is a major version:
+            # refining the same idea does not make it a smaller change.
+            suggest_major=parent.suggest_major if parent is not None else False,
+            major_reason=parent.major_reason if parent is not None else "",
         )
         if parent is not None:
             await self.drafts.supersede(parent.id)
@@ -305,7 +309,12 @@ class ProfileDraftService:
     # ── pushing ──────────────────────────────────────────────────────
 
     async def push(
-        self, draft_id: int, *, set_id: int | None = None, allow_stale_base: bool = False
+        self,
+        draft_id: int,
+        *,
+        set_id: int | None = None,
+        allow_stale_base: bool = False,
+        major: bool | None = None,
     ) -> tuple[ProfileDraftRow, SetVersionRow | None]:
         """Save the draft to the machine as a new profile, then read it back.
 
@@ -328,6 +337,10 @@ class ProfileDraftService:
         draft whose base profile has been edited on the display since is
         **stale**, and pushing it would silently propose undoing that edit.
         ``allow_stale_base`` is the deliberate override.
+
+        ``major`` only matters with ``set_id``: whether the version the push
+        records on that Set is a major one. Left out, a pushed draft is a
+        minor version (it tunes a profile); the person's answer wins.
         """
         draft = await self._require(draft_id)
         if draft.status != "approved":
@@ -365,7 +378,7 @@ class ProfileDraftService:
         async with machine_operation(self.connection, "a profile push") as maybe_client:
             client = _require_client(maybe_client)
             profile = await self._draft_profile(draft)
-            return await self._push_to(client, draft_id, profile, set_id)
+            return await self._push_to(client, draft_id, profile, set_id, major)
 
     async def _push_to(
         self,
@@ -373,6 +386,7 @@ class ProfileDraftService:
         draft_id: int,
         profile: Profile,
         set_id: int | None,
+        major: bool | None = None,
     ) -> tuple[ProfileDraftRow, SetVersionRow | None]:
         """The push itself, on the client the connection handed out for it."""
         stored = await client.save_profile(profile)
@@ -423,7 +437,7 @@ class ProfileDraftService:
             ),
             draft_id,
         )
-        version = await self.attach_to_set(row, set_id) if set_id is not None else None
+        version = await self.attach_to_set(row, set_id, major=major) if set_id is not None else None
         if version is not None:
             # Read again so the answer already says which version of its Set the
             # push recorded, rather than leaving that to the next list read.
@@ -472,7 +486,9 @@ class ProfileDraftService:
             await self.drafts.set_status(draft_id, "discarded")
         return _require_row(await self.drafts.clear_pushed_profile(draft_id), draft_id)
 
-    async def attach_to_set(self, draft: ProfileDraftRow, set_id: int) -> SetVersionRow | None:
+    async def attach_to_set(
+        self, draft: ProfileDraftRow, set_id: int, *, major: bool | None = None
+    ) -> SetVersionRow | None:
         """Record a new Set version pointing at what was just pushed.
 
         Optional and opt-in: a person may push a draft to try it without saying
@@ -489,6 +505,11 @@ class ProfileDraftService:
         the prediction is left off — it was about the other experiment and says
         nothing about this one — and a draft nobody predicted anything about
         records what it always did.
+
+        **Its name** is a minor version unless the person marks it major: a
+        pushed draft is a tuned copy of a profile, which is dialling in
+        (``path="draft"`` in :func:`~gaggiclanker.domain.sets.change_is_major`).
+        The agent's suggestion only preselects the box on the card.
         """
         if draft.draft_version_id is None:  # pragma: no cover - a pushed draft has one
             return None
@@ -519,6 +540,7 @@ class ProfileDraftService:
             ),
             # A pushed draft is a tuned copy of a profile — dialling in — so its
             # default is a minor version; the person can say otherwise.
+            major=major,
             path="draft",
         )
 

@@ -112,13 +112,16 @@ class DraftProposals:
         set_id: int | None = None,
         prediction: str = "",
         compares_to_version_id: int | None = None,
+        suggest_major: bool = False,
+        major_reason: str = "",
         new_profile_only: bool = False,
         reusable_version_ids: Collection[int] = (),
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
 
         ``set_id``, ``prediction`` and ``compares_to_version_id`` are the
-        experiment half and travel together: a draft proposed inside one Set's
+        experiment half and travel together (with the agent's ``suggest_major``
+        and its ``major_reason``, which the push card shows): a draft proposed inside one Set's
         conversation says which Set it is for and what it is expected to do
         differently, and the push records that on the Set version it creates. A
         draft with none of them — typed by hand, or proposed where there is no
@@ -162,6 +165,8 @@ class DraftProposals:
             set_id=set_id,
             prediction=prediction,
             compares_to_version_id=compares_to_version_id,
+            suggest_major=suggest_major,
+            major_reason=major_reason,
         )
 
     async def store(
@@ -175,6 +180,8 @@ class DraftProposals:
         set_id: int | None = None,
         prediction: str = "",
         compares_to_version_id: int | None = None,
+        suggest_major: bool = False,
+        major_reason: str = "",
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document."""
         version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
@@ -193,6 +200,8 @@ class DraftProposals:
                 set_id=set_id,
                 prediction=prediction,
                 compares_to_version_id=compares_to_version_id,
+                suggest_major=suggest_major,
+                major_reason=major_reason,
                 change_summary=change_summary,
                 stop_condition_changes=[
                     change.model_dump(mode="json") for change in prepared.stop_condition_changes

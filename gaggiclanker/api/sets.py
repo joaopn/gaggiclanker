@@ -36,7 +36,7 @@ from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from gaggiclanker.api.deps import (
     BeansRepoDep,
@@ -123,6 +123,33 @@ class SetCreate(BaseModel):
     #: that did not collect the shots pulled on its profile would look broken.
     #: It takes nothing away from any other Set.
     automatch: bool = True
+
+
+class SetVersionAdd(SetVersionPatch):
+    """`POST /api/sets/{id}/versions`: the change, and whether it is a major one.
+
+    ``major`` is the person's answer to the form's "Major change" box: true
+    starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
+    Left out, the shared rule decides — a different profile is a major, grind,
+    dose and yield are minor. It is not part of the recipe, so it is split off
+    before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
+    a request somebody should look at, not a guess this route makes.
+    """
+
+    major: StrictBool | None = None
+
+
+class ProposalAccept(BaseModel):
+    """`POST .../accept`: the person's answer to the card's "Major change" box.
+
+    Optional, as the body itself is: left out, the shared rule decides (a
+    different profile is a major, anything else a minor). The agent's
+    suggestion is never the default — it only preselects the box.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    major: StrictBool | None = None
 
 
 class SetDesignCreate(DesignBrief):
@@ -229,6 +256,7 @@ class SetProposalDetail(BaseModel):
     thread_id: int | None = None
     base_version_id: int
     base_version_no: int | None = None
+    base_version_label: str | None = None
     #: Whether the Set is still on the version this was proposed against.
     #: ``False`` means Accept will refuse: the change was argued against a
     #: recipe nobody is brewing any more.
@@ -242,9 +270,25 @@ class SetProposalDetail(BaseModel):
     prediction: str = ""
     compares_to_version_id: int | None = None
     compares_to_version_no: int | None = None
+    compares_to_version_label: str | None = None
     #: Why two things had to move together, when the agent said they did. Empty
     #: for the ordinary one-change proposal.
     combined_reason: str = ""
+    #: The agent suggests recording this as a major version, and why. Shown
+    #: beside the card's "Major change" box, which it preselects; the person
+    #: decides.
+    suggest_major: bool = False
+    major_reason: str = ""
+    #: What the shared rule says when nobody decides: a change that switches
+    #: profile is a major. The card preselects the box when this or the
+    #: agent's suggestion says major.
+    major_by_default: bool = False
+    #: What Accept would name the version as a minor and as a major — the
+    #: button says one of them, whichever the box says. Worked out by the same
+    #: query the insert numbers with, so the web never numbers anything; both
+    #: v1 on a first recipe, which fills version 1.
+    next_minor_label: str = ""
+    next_major_label: str = ""
     #: False when the stored change cannot be read back as a patch, which
     #: only a hand-edited row can produce. `changes` is then empty and
     #: Accept is refused; Decline still works, because getting rid of it
@@ -254,6 +298,7 @@ class SetProposalDetail(BaseModel):
     decline_note: str = ""
     resulting_version_id: int | None = None
     resulting_version_no: int | None = None
+    resulting_version_label: str | None = None
     created_at: str
     decided_at: str | None = None
 
@@ -316,6 +361,11 @@ class SetDetailData(BaseModel):
     #: per Set, and it has changed nothing: the next shot is still filed under
     #: the recipe in the hopper until somebody presses Accept.
     proposal: SetProposalDetail | None = None
+    #: What the next version would be called as a minor ("v1.3") and as a
+    #: major ("v2"), for the Add a version form to say which it will record.
+    #: Both v1 while the Set is being designed: the next write fills v1.
+    next_minor_label: str
+    next_major_label: str
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -539,6 +589,7 @@ async def _proposal_detail(
     changes = (
         version_changes(preview, base, labels) if base is not None and preview is not None else []
     )
+    names = await proposals.next_names(row.set_id)
     return SetProposalDetail(
         id=row.id,
         set_id=row.set_id,
@@ -547,6 +598,7 @@ async def _proposal_detail(
         thread_id=row.thread_id,
         base_version_id=row.base_version_id,
         base_version_no=row.base_version_no,
+        base_version_label=row.base_version_label,
         base_is_current=row.base_is_current,
         changes=changes,
         changed=row.changed,
@@ -555,11 +607,18 @@ async def _proposal_detail(
         prediction=row.prediction,
         compares_to_version_id=row.compares_to_version_id,
         compares_to_version_no=row.compares_to_version_no,
+        compares_to_version_label=row.compares_to_version_label,
         combined_reason=row.combined_reason,
+        suggest_major=row.suggest_major,
+        major_reason=row.major_reason,
+        major_by_default=await proposals.default_major(row),
+        next_minor_label=names.minor,
+        next_major_label=names.major,
         status=row.status,
         decline_note=row.decline_note,
         resulting_version_id=row.resulting_version_id,
         resulting_version_no=row.resulting_version_no,
+        resulting_version_label=row.resulting_version_label,
         created_at=row.created_at,
         decided_at=row.decided_at,
     )
@@ -790,6 +849,7 @@ async def get_set(
     ]
     verdicts = await judgements.for_shots([shot.id for shot in page.items])
     waiting = await proposals.waiting(set_id)
+    names = await proposals.next_names(set_id)
     return envelope_response(
         SetDetailData(
             set=row,
@@ -799,6 +859,8 @@ async def get_set(
             spread=spread_report(spreads),
             rollback_target_version_id=await sets.rollback_target(set_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
+            next_minor_label=names.minor,
+            next_major_label=names.major,
         ).model_dump(mode="json")
     )
 
@@ -809,13 +871,17 @@ async def get_set(
     status_code=201,
     summary="Change something: a new version, with its parent and its intent",
 )
-async def add_version(set_id: int, body: SetVersionPatch, sets: SetsRepoDep) -> JSONResponse:
+async def add_version(set_id: int, body: SetVersionAdd, sets: SetsRepoDep) -> JSONResponse:
     """Append a version made of the current one plus the fields that were sent.
 
     Omitting a field inherits it; sending it as `null` clears it. That
     distinction is the reason the body is read with ``exclude_unset`` rather
     than compared against defaults — "no dose" and "same dose as before" are
     different statements about the coffee.
+
+    ``major`` names it: true is the next major, false the next minor, left out
+    the shared rule (a different profile is a major). The answer carries the
+    name it was given (`version_label`).
     """
     # The Set first: a comparison check against a Set that is not there would
     # answer "that is not a version of this Set", which is true and useless
@@ -832,8 +898,11 @@ async def add_version(set_id: int, body: SetVersionPatch, sets: SetsRepoDep) -> 
     if body.prediction and compare is not None:
         if await sets.version_of_set(set_id, compare) is None:
             raise _refusal_bad_compare(set_id, None)
+    # The recipe half only: `major` is how to name the version, not part of it,
+    # and the fields actually sent are kept as sent (inherit versus clear).
+    patch = SetVersionPatch.model_validate(body.model_dump(exclude_unset=True, exclude={"major"}))
     try:
-        version = await sets.add_version(set_id, body)
+        version = await sets.add_version(set_id, patch, major=body.major)
     except VersionRefused as exc:
         raise version_refused(exc) from None
     if version is None:  # pragma: no cover - the Set was checked above
@@ -909,7 +978,10 @@ async def list_proposals(
     summary="Accept a proposed change: record it as this Set's next version",
 )
 async def accept_proposal(
-    set_id: int, proposal_id: int, proposals: SetProposalsRepoDep
+    set_id: int,
+    proposal_id: int,
+    proposals: SetProposalsRepoDep,
+    body: ProposalAccept | None = None,
 ) -> JSONResponse:
     """A person's press, and the only way a proposal becomes a version.
 
@@ -921,9 +993,16 @@ async def accept_proposal(
     profile records that this Set now brews with that profile, exactly as the
     Add a version form does. Putting a profile on the display stays a separate
     act on the Profiles page.
+
+    The body is optional. ``major`` is the card's "Major change" box; left
+    out, the shared rule names the version, never the agent's suggestion.
     """
+    major = body.major if body is not None else None
     return await _decided(
-        proposals, await proposals.accept(set_id, proposal_id), set_id, proposal_id
+        proposals,
+        await proposals.accept(set_id, proposal_id, major=major),
+        set_id,
+        proposal_id,
     )
 
 

@@ -471,6 +471,113 @@ async def test_a_set_s_draft_says_which_version_a_push_for_it_records(
     assert reread["set_next_version_no"] == 3
 
 
+async def test_a_push_for_a_set_records_a_minor_version_unless_marked_major(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    """A pushed draft tunes a profile, so it is a minor version by default.
+
+    The card is served both names before the push, from the query the insert
+    numbers with, and the answer and the re-read say which one was recorded.
+    The person's box wins in both directions; the agent's suggestion rides on
+    the draft for the card to show and changes nothing by itself.
+    """
+    app, client = writes_on
+    profile = await base_profile(app)
+    first = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document=lower_pressure(profile, 8.0),
+        change_summary="Down to 8 bar.",
+        set_id=a_set,
+        prediction="Compared to v1: less of the dry finish, and no slower.",
+        suggest_major=True,
+        major_reason="Eight bar is a different kind of shot from nine, not a nudge.",
+    )
+    assert (first.suggest_major, first.major_reason) == (
+        True,
+        "Eight bar is a different kind of shot from nine, not a nudge.",
+    )
+    assert (first.set_next_minor_label, first.set_next_major_label) == ("v1.1", "v2")
+    await client.post(f"/api/profile-drafts/{first.id}/approve", json={})
+
+    body = data(await client.post(f"/api/profile-drafts/{first.id}/push", json={"set_id": a_set}))
+
+    assert body["set_version"]["version_label"] == "v1.1"
+    assert body["draft"]["recorded_version_label"] == "v1.1"
+
+    second = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document=lower_pressure(profile, 7.0),
+        change_summary="Down to 7 bar.",
+        set_id=a_set,
+        prediction="Compared to v1.1: softer still, a second or two slower.",
+    )
+    reread = data(await client.get(f"/api/profile-drafts/{second.id}"))["draft"]
+    assert (reread["set_next_minor_label"], reread["set_next_major_label"]) == ("v1.2", "v2")
+    await client.post(f"/api/profile-drafts/{second.id}/approve", json={})
+
+    body = data(
+        await client.post(
+            f"/api/profile-drafts/{second.id}/push", json={"set_id": a_set, "major": True}
+        )
+    )
+
+    assert body["set_version"]["version_label"] == "v2"
+    assert body["draft"]["recorded_version_label"] == "v2"
+    # The first draft still says where its own push landed.
+    assert (
+        data(await client.get(f"/api/profile-drafts/{first.id}"))["draft"]["recorded_version_label"]
+        == "v1.1"
+    )
+
+
+async def test_a_push_refuses_a_major_that_is_not_a_boolean(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+) -> None:
+    app, client = writes_on
+    draft = await _drafted_for(app, a_set)
+    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+
+    response = await client.post(
+        f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set, "major": "yes"}
+    )
+
+    assert response.status_code == 400
+    assert error(response)["code"] == "INVALID_REQUEST"
+    # Refused before the machine was touched: the draft is still approved.
+    assert (
+        data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]["status"]
+        == "approved"
+    )
+
+
+async def test_a_refinement_keeps_the_agent_s_major_suggestion(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
+) -> None:
+    """The next attempt at the same idea is no smaller a change than the first."""
+    app, client = live
+    profile = await base_profile(app)
+    parent = await app.state.draft_proposals.create_manual(
+        base_version_id=await base_version_id(app),
+        document=lower_pressure(profile, 8.0),
+        change_summary="Down to 8 bar.",
+        set_id=a_set,
+        prediction="Compared to v1: less of the dry finish, and no slower.",
+        suggest_major=True,
+        major_reason="Eight bar is a different kind of shot from nine, not a nudge.",
+    )
+    document = lower_pressure(profile, 7.5)
+    provider.script = [json.dumps({"profile": document, "change_summary": "7.5 bar instead."})]
+
+    refined = data(
+        await client.post(f"/api/profile-drafts/{parent.id}/refine", json={"notes": "Softer."})
+    )
+
+    assert (refined["suggest_major"], refined["major_reason"]) == (
+        True,
+        "Eight bar is a different kind of shot from nine, not a nudge.",
+    )
+
+
 async def test_two_drafts_of_one_profile_each_find_the_version_their_own_push_recorded(
     writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
 ) -> None:

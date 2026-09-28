@@ -86,7 +86,7 @@ import type {
   SetTrends,
   SettingsMap,
   SettingsPatch,
-  SetVersionPatch,
+  SetVersionAdd,
   SetVersionRow,
   ShotDetailData,
   ShotDetailRow,
@@ -851,7 +851,7 @@ export async function discardDesign(id: number): Promise<SetDesignDiscarded> {
  * sending `null` clears it, so building this body from a whole form would
  * record every field as changed.
  */
-export async function addSetVersion(id: number, patch: SetVersionPatch): Promise<SetVersionRow> {
+export async function addSetVersion(id: number, patch: SetVersionAdd): Promise<SetVersionRow> {
   return fetchApi<SetVersionRow>(`/sets/${id}/versions`, {
     method: "POST",
     body: JSON.stringify(patch),

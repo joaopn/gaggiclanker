@@ -1591,6 +1591,9 @@ export interface paths {
          *     profile records that this Set now brews with that profile, exactly as the
          *     Add a version form does. Putting a profile on the display stays a separate
          *     act on the Profiles page.
+         *
+         *     The body is optional. ``major`` is the card's "Major change" box; left
+         *     out, the shared rule names the version, never the agent's suggestion.
          */
         post: operations["accept_proposal_api_sets__set_id__proposals__proposal_id__accept_post"];
         delete?: never;
@@ -1684,6 +1687,10 @@ export interface paths {
          *     distinction is the reason the body is read with ``exclude_unset`` rather
          *     than compared against defaults — "no dose" and "same dose as before" are
          *     different statements about the coffee.
+         *
+         *     ``major`` names it: true is the next major, false the next minor, left out
+         *     the shared rule (a different profile is a major). The answer carries the
+         *     name it was given (`version_label`).
          */
         post: operations["add_version_api_sets__set_id__versions_post"];
         delete?: never;
@@ -3886,6 +3893,8 @@ export interface components {
              * @default false
              */
             allow_stale_base: boolean;
+            /** Major */
+            major?: boolean | null;
             /** Set Id */
             set_id?: number | null;
         };
@@ -5005,6 +5014,18 @@ export interface components {
             }[];
         };
         /**
+         * ProposalAccept
+         * @description `POST .../accept`: the person's answer to the card's "Major change" box.
+         *
+         *     Optional, as the body itself is: left out, the shared rule decides (a
+         *     different profile is a major, anything else a minor). The agent's
+         *     suggestion is never the default — it only preselects the box.
+         */
+        ProposalAccept: {
+            /** Major */
+            major?: boolean | null;
+        };
+        /**
          * ProposalDecline
          * @description `POST .../decline`: the turn-down, and optionally why.
          *
@@ -5300,6 +5321,10 @@ export interface components {
             judgements: {
                 [key: string]: components["schemas"]["ShotJudgementRow"];
             };
+            /** Next Major Label */
+            next_major_label: string;
+            /** Next Minor Label */
+            next_minor_label: string;
             proposal?: components["schemas"]["SetProposalDetail"] | null;
             /** Rollback Target Version Id */
             rollback_target_version_id?: number | null;
@@ -5356,6 +5381,8 @@ export interface components {
             base_is_current: boolean;
             /** Base Version Id */
             base_version_id: number;
+            /** Base Version Label */
+            base_version_label?: string | null;
             /** Base Version No */
             base_version_no?: number | null;
             /**
@@ -5375,6 +5402,8 @@ export interface components {
             combined_reason: string;
             /** Compares To Version Id */
             compares_to_version_id?: number | null;
+            /** Compares To Version Label */
+            compares_to_version_label?: string | null;
             /** Compares To Version No */
             compares_to_version_no?: number | null;
             /** Created At */
@@ -5393,6 +5422,26 @@ export interface components {
             /** @default change */
             kind: components["schemas"]["ProposalKind"];
             /**
+             * Major By Default
+             * @default false
+             */
+            major_by_default: boolean;
+            /**
+             * Major Reason
+             * @default
+             */
+            major_reason: string;
+            /**
+             * Next Major Label
+             * @default
+             */
+            next_major_label: string;
+            /**
+             * Next Minor Label
+             * @default
+             */
+            next_minor_label: string;
+            /**
              * Prediction
              * @default
              */
@@ -5409,12 +5458,19 @@ export interface components {
             reason: string;
             /** Resulting Version Id */
             resulting_version_id?: number | null;
+            /** Resulting Version Label */
+            resulting_version_label?: string | null;
             /** Resulting Version No */
             resulting_version_no?: number | null;
             /** Set Id */
             set_id: number;
             /** @default proposed */
             status: components["schemas"]["ProposalStatus"];
+            /**
+             * Suggest Major
+             * @default false
+             */
+            suggest_major: boolean;
             /** Thread Id */
             thread_id?: number | null;
         };
@@ -5625,6 +5681,49 @@ export interface components {
             version_no: number;
         };
         /**
+         * SetVersionAdd
+         * @description `POST /api/sets/{id}/versions`: the change, and whether it is a major one.
+         *
+         *     ``major`` is the person's answer to the form's "Major change" box: true
+         *     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
+         *     Left out, the shared rule decides — a different profile is a major, grind,
+         *     dose and yield are minor. It is not part of the recipe, so it is split off
+         *     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
+         *     a request somebody should look at, not a guess this route makes.
+         */
+        SetVersionAdd: {
+            /** Compares To Version Id */
+            compares_to_version_id?: number | null;
+            /** Dose G */
+            dose_g?: number | null;
+            /** Grind Setting */
+            grind_setting?: string | null;
+            /** Grind Value */
+            grind_value?: number | null;
+            /**
+             * Intent
+             * @default
+             */
+            intent: string;
+            /** Major */
+            major?: boolean | null;
+            /** @default manual */
+            origin: components["schemas"]["SetVersionOrigin"];
+            /** Origin Analysis Id */
+            origin_analysis_id?: number | null;
+            /**
+             * Prediction
+             * @default
+             */
+            prediction: string;
+            /** Profile Version Id */
+            profile_version_id?: number | null;
+            /** Pushed Device Profile Id */
+            pushed_device_profile_id?: string | null;
+            /** Target Yield G */
+            target_yield_g?: number | null;
+        };
+        /**
          * SetVersionAssignment
          * @description `PUT /api/shots/{id}/set-version`: which Set version this shot belongs to.
          *
@@ -5666,45 +5765,6 @@ export interface components {
         };
         /** @enum {string} */
         SetVersionOrigin: "manual" | "analysis" | "chat" | "starting_point";
-        /**
-         * SetVersionPatch
-         * @description The body of `POST /api/sets/{id}/versions`: only what changed.
-         *
-         *     Every field is optional *and* "not sent" is distinguishable from "sent as
-         *     null", which is the whole point — omitting `dose_g` inherits the parent's
-         *     dose, sending `null` clears it. That is what ``exclude_unset`` in
-         *     :meth:`SetsRepository.add_version` reads.
-         */
-        SetVersionPatch: {
-            /** Compares To Version Id */
-            compares_to_version_id?: number | null;
-            /** Dose G */
-            dose_g?: number | null;
-            /** Grind Setting */
-            grind_setting?: string | null;
-            /** Grind Value */
-            grind_value?: number | null;
-            /**
-             * Intent
-             * @default
-             */
-            intent: string;
-            /** @default manual */
-            origin: components["schemas"]["SetVersionOrigin"];
-            /** Origin Analysis Id */
-            origin_analysis_id?: number | null;
-            /**
-             * Prediction
-             * @default
-             */
-            prediction: string;
-            /** Profile Version Id */
-            profile_version_id?: number | null;
-            /** Pushed Device Profile Id */
-            pushed_device_profile_id?: string | null;
-            /** Target Yield G */
-            target_yield_g?: number | null;
-        };
         /**
          * SetVersionRow
          * @description One row of `set_versions`, with the labels a reader needs beside it.
@@ -9768,7 +9828,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProposalAccept"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -9903,7 +9967,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetVersionPatch"];
+                "application/json": components["schemas"]["SetVersionAdd"];
             };
         };
         responses: {
