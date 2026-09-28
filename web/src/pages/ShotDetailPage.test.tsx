@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShotDetailData, ShotSamplesData } from "@/api/types";
 import { ShotDetailPage } from "@/pages/ShotDetailPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { version, vocabulary } from "@/test/setsFixtures";
+import { review } from "@/test/reviewFixtures";
+import { judgement, version, vocabulary } from "@/test/setsFixtures";
 import {
   SHOT_129_SAMPLE_COUNT,
   shot129,
@@ -18,21 +19,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getShot, getShotSamples, getLlmCalls, getVocabulary, getKnowledgeInsights } = vi.hoisted(
-  () => ({
+const { getShot, getShotSamples, getLlmCalls, getVocabulary, getKnowledgeInsights, runReview } =
+  vi.hoisted(() => ({
     getShot: vi.fn(),
     getShotSamples: vi.fn(),
     getLlmCalls: vi.fn(),
     getVocabulary: vi.fn(),
     getKnowledgeInsights: vi.fn(),
-  }),
-);
+    runReview: vi.fn(),
+  }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getShot,
   getShotSamples,
   getLlmCalls,
   getVocabulary,
+  runReview,
   // Mocked rather than left to the real fetch: an unmocked call is a rejected
   // promise and a console full of noise that hides a real failure.
   getKnowledgeInsights,
@@ -62,6 +64,7 @@ beforeEach(() => {
   getLlmCalls.mockResolvedValue({ calls: [], running: 0 });
   getVocabulary.mockResolvedValue(vocabulary);
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
+  runReview.mockResolvedValue(review({ status: "running", finished_at: null }));
 });
 
 describe("ShotDetailPage version prediction", () => {
@@ -406,6 +409,64 @@ describe("ShotDetailPage render budget", () => {
 
     expect(screen.getByTestId("chart-series")).toHaveTextContent("240 points");
     expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe("ShotDetailPage Review card", () => {
+  it("sits after the Set panel, offers Review, and renders what comes back", async () => {
+    const user = setupUser();
+    renderShot();
+
+    const card = await screen.findByTestId("review-card");
+    const assign = screen.getByTestId("assign-to-set");
+    expect(assign.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(card).getByTestId("review-empty")).toHaveTextContent("without your judgement");
+
+    getShot.mockResolvedValue({
+      ...shot129,
+      judgement: judgement({ shot_id: shot129.shot.id, balance: "balanced" }),
+      reviews: [review({ shot_id: shot129.shot.id })],
+    });
+    await user.click(within(card).getByRole("button", { name: "Review" }));
+
+    await waitFor(() => expect(runReview.mock.calls[0]?.[0]).toBe(shot129.shot.id));
+    expect(await screen.findByTestId("review-summary")).toHaveTextContent(
+      "Slow start, thin middle; likely sour.",
+    );
+    // The person's own balance, from their judgement, beside the prediction.
+    expect(screen.getByTestId("review-yours")).toHaveTextContent("Balanced");
+    // Discuss stays on the page.
+    expect(screen.getByTestId("discuss-in-chat")).toBeInTheDocument();
+  });
+
+  it("is not offered for a quarantined shot", async () => {
+    // Its bytes never parsed, so there is nothing to read.
+    getShot.mockResolvedValue(detail({ quarantined: true, quarantine_reason: "bad magic" }));
+
+    renderShot();
+
+    expect(await screen.findByTestId("quarantine-reason")).toBeInTheDocument();
+    expect(screen.queryByTestId("review-card")).not.toBeInTheDocument();
+  });
+
+  it("scrolls to the review when the link asks for it", async () => {
+    const scrolled: string[] = [];
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function scrollIntoView(
+      this: Element,
+    ) {
+      scrolled.push(this.id);
+    });
+
+    renderWithQueryClient(
+      <Routes>
+        <Route path="/shots/:shotId" element={<ShotDetailPage />} />
+      </Routes>,
+      { initialEntries: [`/shots/${shot129.shot.id}#review`] },
+    );
+
+    expect(await screen.findByTestId("review-card")).toBeInTheDocument();
+    await waitFor(() => expect(scrolled).toContain("review"));
+    expect(document.getElementById("review")).toContainElement(screen.getByTestId("review-card"));
   });
 });
 

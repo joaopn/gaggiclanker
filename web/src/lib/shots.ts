@@ -19,6 +19,12 @@ import type { ShotListRow } from "@/api/types";
  */
 export const ASSIGN_ANCHOR = "set";
 
+/**
+ * The shot page's Review card, as a fragment, for a link that promises the
+ * review: landing at the top of a long page would leave the reader to find it.
+ */
+export const REVIEW_ANCHOR = "review";
+
 // ── numbers ──────────────────────────────────────────────────────────
 
 export function formatTime(value: string | null | undefined): string {

@@ -15,6 +15,7 @@ import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { ShotsPage } from "@/pages/ShotsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { review } from "@/test/reviewFixtures";
 import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
 import { shot129, syntheticSamples } from "@/test/shotFixture";
 
@@ -808,6 +809,28 @@ describe("ShotsPage open rows", () => {
       shot({ id: 1, device_id: "000101" }),
       shot({ id: 2, device_id: "000102", started_at: "2026-03-04T09:15:00.000Z" }),
     ]);
+
+  it("shows nothing of a shot's review in the open row", async () => {
+    // A review lives on the shot page only: the row is the judgement and the
+    // curves, whatever the shot's detail carries.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, id: 1 },
+      reviews: [review({ shot_id: 1, summary: "A model's one-line reading." })],
+    });
+    renderList();
+    await listed();
+
+    await user.click(toggle());
+
+    const panel = await screen.findByTestId("shot-panel");
+    await within(panel).findByTestId("judgement-form");
+    expect(within(panel).queryByTestId("review-card")).toBeNull();
+    expect(within(panel).queryByText("A model's one-line reading.")).toBeNull();
+    expect(within(panel).queryByRole("button", { name: /review/i })).toBeNull();
+  });
 
   it("opens the shot page's judgement, and the curves on their own row below it", async () => {
     const user = setupUser();

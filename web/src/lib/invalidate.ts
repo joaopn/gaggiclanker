@@ -186,6 +186,12 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "notes.writeback": [queryKeys.device.all, queryKeys.shots.all],
   "settings.changed": [queryKeys.settings.all],
   "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all],
+  // A shot's review, carried on the LLM stream. Only the shot page shows one
+  // (its detail carries the reviews), so only shot details are re-read: the
+  // shots list carries nothing about a review.
+  "review.started": [[...queryKeys.shots.all, "detail"]],
+  "review.finished": [[...queryKeys.shots.all, "detail"]],
+  "review.failed": [[...queryKeys.shots.all, "detail"]],
   // The starting-point wizard follows its own run by polling the row, so `started`
   // buys nothing there — but a run started from the chat, or in another tab,
   // has to reach the wizard too, and the key is what does it.

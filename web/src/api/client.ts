@@ -95,6 +95,7 @@ import type {
   ShotJudgement,
   ShotListData,
   ShotListParams,
+  ShotReview,
   ShotSamplesData,
   SimilarSetsData,
   StartingPointAccepted,
@@ -978,6 +979,29 @@ export async function matchShotsByProfile(shotIds?: number[]): Promise<ProfileMa
   return fetchApi<ProfileMatchSummary>("/shots/profile-match", {
     method: "POST",
     body: JSON.stringify(shotIds ? { shot_ids: shotIds } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// A shot's review.
+//
+// `runReview` answers as soon as the work is queued: 202 with a `running` row,
+// and the LLM stream reports `review.started` and `review.finished` while the
+// call runs. It resolves with the stored row whatever happened — a provider
+// failure is a `failed` row, not an exception — so a caller renders the
+// outcome rather than a toast.
+//
+// There is no wrapper for `GET /shots/{id}/reviews`: the shot detail already
+// carries them, newest first. The route exists for API users.
+// ---------------------------------------------------------------------------
+
+export async function runReview(
+  shotId: number,
+  options: { model?: string } = {},
+): Promise<ShotReview> {
+  return fetchApi<ShotReview>(`/shots/${shotId}/reviews`, {
+    method: "POST",
+    body: JSON.stringify({ model: options.model ?? "" }),
   });
 }
 

@@ -21,6 +21,7 @@ import {
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
+import { ReviewCard } from "@/components/shots/ReviewCard";
 import { ScoreBadge } from "@/components/shots/ScoreBadge";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import {
   formatTime,
   humanizeKey,
   profileName,
+  REVIEW_ANCHOR,
 } from "@/lib/shots";
 
 /**
@@ -43,7 +45,7 @@ import {
  *
  * Composed top to bottom in the order somebody works through a shot: what it
  * was, what you thought of it, what the curves did, how cleanly it was
- * executed, which Set it belongs to, what each
+ * executed, which Set it belongs to and what a model's review read in it, what each
  * diagnostic says, which phase it happened in, what the machine's own notes
  * recorded, and finally the raw header for anybody checking the archive
  * against the device.
@@ -65,13 +67,14 @@ export function ShotDetailPage() {
   const { hash } = useLocation();
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
-  // rest here with `#set`. The panel is far down a long page, and landing at
-  // the top of it would leave the reader to find the thing the link promised.
-  // It waits for the shot, because until then the panel does not exist.
+  // rest here with `#set`, and a link to a shot's review comes here with
+  // `#review`. Both panels are far down a long page, and landing at the top of
+  // it would leave the reader to find the thing the link promised. It waits
+  // for the shot, because until then the panels do not exist.
   const arrived = shot.isSuccess;
   useEffect(() => {
     const anchor = hash.slice(1);
-    if (!arrived || anchor !== ASSIGN_ANCHOR) return;
+    if (!arrived || (anchor !== ASSIGN_ANCHOR && anchor !== REVIEW_ANCHOR)) return;
     document.getElementById(anchor)?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [arrived, hash]);
 
@@ -156,7 +159,9 @@ export function ShotDetailPage() {
 
       {/* What you thought comes first, straight under the facts: recording it
           is what a shot page is opened for, and it should not wait below a
-          chart. The Set comes after the curves and the score. */}
+          chart. The Set and the review come after the curves and the score,
+          and the review last: it is a model's reading of the numbers above,
+          made without your judgement. */}
       {/* Keyed by the shot: this route is reused across `/shots/:shotId`, and
           a revealed prediction must not survive the change of subject. */}
       <VersionPrediction
@@ -189,6 +194,15 @@ export function ShotDetailPage() {
           judgement={shot.data.judgement}
         />
       </section>
+      {!row.quarantined ? (
+        <section id={REVIEW_ANCHOR} className="scroll-mt-20">
+          <ReviewCard
+            shotId={row.id}
+            reviews={shot.data.reviews ?? []}
+            balance={shot.data.judgement?.balance}
+          />
+        </section>
+      ) : null}
 
       {!row.quarantined ? (
         <div className="grid gap-4 md:grid-cols-2">
