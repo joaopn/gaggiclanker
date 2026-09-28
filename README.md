@@ -735,6 +735,18 @@ agent's instructions carry a glossary of every field it can be shown: what it
 measures, its unit, which way is better, and every band label with the threshold
 behind it, read from the diagnostics engine itself.
 
+**Which item sits in which tier is yours to choose**, under **Settings → Shot
+information**: one table per group, each item with what it means, a base |
+extended | excluded control and its value on your newest judged shot, written by
+the same renderer the agent reads. An excluded item is left out of the opening
+context, the shot tools, the search and the glossary; a General chat's SQL tool
+can still read the archive's views. Shot id, Set version and whether a shot counts stay in base, since
+the agent cannot search or cite without them. The page shows the cost in
+approximate tokens (base and extended per shot, the glossary, and the opening
+context's shots at `chatRecentShots`), a change applies from the next turn, and
+**Reset to defaults** puts every item back. Only the items you moved are stored,
+so an item a later release adds arrives at its default.
+
 **Fifteen tools in a Set's conversation** — twelve reads and three that propose:
 one change to this Set, waiting for you, with the prediction that makes it
 gradable (the grind, the dose, the yield or the profile: a temperature change is

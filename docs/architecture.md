@@ -361,11 +361,13 @@ shot in a Set conversation's opening context (the version's newest
 `get_shot_full` and `compare_shots` are both). One renderer writes all of them,
 so a number the model quotes from the search is the number `get_shot` gives,
 and a value the machine did not record is left out rather than written as
-zero. The tiers are read once per turn through `effective_tiers`, by the runner
-and the stdio server alike. The glossary in the Set and General prompts is
-generated from the same entries — every item that is not excluded, with its
-tier and its meaning, the band thresholds read from the vendored tables — so an
-item and its explanation cannot drift apart.
+zero. The tiers are the catalogue's defaults with the person's choices laid
+over them (`shot_info_tiers` holds only the items moved, from Settings → Shot
+information), read once per turn through `effective_tiers`, by the runner and
+the stdio server alike, so a change applies from the next turn. The glossary
+in the Set and General prompts is generated from the same entries — every item
+that is not excluded, with its tier and its meaning, the band thresholds read
+from the vendored tables — so an item and its explanation cannot drift apart.
 
 **A Set being designed is the third surface.** A Set created by the design
 route has a version 1 with no recipe and a `designing` flag, and while the flag

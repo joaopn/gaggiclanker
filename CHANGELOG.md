@@ -45,6 +45,29 @@ first (`POST /api/backup`), because there is no down-migration.
   add `{{shot_fields}}` after `{{> chat-rules}}` in the first two and copy the two
   rules into the third.
 
+### Settings → Shot information: choose what the chat is told about each shot
+
+- **A new settings page, Settings → Shot information**, lists every item a
+  shot carries, one table per group, with what it means, a **base | extended |
+  excluded** control (the default marked) and its value on a real shot of your
+  archive: the newest shot you judged, else the newest shot. The value is
+  written by the same renderer the chat reads, so the page shows exactly what
+  the agent sees. Shot id, Set version and "counted" are locked in base: the
+  agent cannot search or cite a shot without them.
+- **Every click saves, and applies from the next chat turn**: the opening
+  context, the three shot tools, the shot search and the glossary all read the
+  tiers per turn, in the chat and in the `claude_code` provider's tool server
+  alike. An excluded item is left out of all four; a General chat's SQL tool
+  can still read the archive's views.
+- **The page shows what a choice costs** in approximate tokens, measured on
+  that shot: base and extended per shot, the glossary, and what a Set
+  conversation spends on every turn opening with its newest shots (base times
+  `chatRecentShots`, which links to Settings → LLM → Chat). **Reset to defaults**
+  puts every item back, after an inline confirm.
+- Only the items you moved are stored (a new migration adds one table and
+  changes nothing that exists: no reset), so an item a later release adds, or a
+  default it changes, reaches you unless you chose otherwise.
+
 ### The agent hears when you accept or decline its card
 
 - **Accept on a card in the chat now tells the agent.** It used to record the
