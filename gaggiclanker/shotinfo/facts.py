@@ -2,10 +2,10 @@
 
 A :class:`ShotFacts` is the rows a shot is made of — the shot itself, the
 person's judgement, the version it was filed under, the note typed on the
-machine and, when asked for, its samples — held side by side and never
-re-queried. Every catalogue item is a function of one of these, so the opening
-context, the search and the three shot tools can only ever render the same shot
-the same way.
+machine, its newest finished review and, when asked for, its samples — held
+side by side and never re-queried. Every catalogue item is a function of one of
+these, so the opening context, the search and the three shot tools can only
+ever render the same shot the same way.
 
 The diagnostics blob comes in **two shapes**, and both are real archive data.
 Ingest stores the full block (`per_phase`: nested `resistance`, `channeling`,
@@ -24,6 +24,7 @@ from typing import Any
 
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
+from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotSampleRow
 from gaggiclanker.domain.slog import FIELD_DEFS
@@ -58,6 +59,9 @@ class ShotFacts:
     version: SetVersionRow | None = None
     #: What was typed on the machine's own notes card, when it was pulled.
     note: DeviceShotNotesRow | None = None
+    #: The newest finished review of the shot: a model's reading of its data,
+    #: made without the person's judgement. ``None`` for a shot never reviewed.
+    review: ShotReviewRow | None = None
     #: Every stored sample in time order, or ``None`` when they were not
     #: loaded — which is a different thing from a shot with no samples (``()``).
     samples: tuple[ShotSampleRow, ...] | None = None

@@ -73,6 +73,7 @@ __all__ = [
     "GROUPS",
     "GROUP_NOTES",
     "ITEMS",
+    "REVIEW_GROUP",
     "SHARED_BANDS",
     "TIERS",
     "BandTable",
@@ -577,6 +578,10 @@ def _shared(name: str, unit: str = "") -> str:
     return f"the {name} bands, in {unit}" if unit else f"the {name} bands"
 
 
+#: The group a shot's review is rendered under. Named once because Review's own
+#: input leaves it out: a review is never shown an earlier review.
+REVIEW_GROUP = "Review"
+
 #: What a group says once for all its rows: a condition every row shares, or
 #: a layout that is not the ordinary ``label: value``. Part of each row's
 #: meaning as a reader meets it (the glossary writes it under the heading).
@@ -604,6 +609,12 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence "
             "need a pressure sensor."
         ),
+        REVIEW_GROUP: (
+            "The newest finished review of the shot, or nothing when it was never reviewed. A "
+            "review is a model's reading of this one shot's data, made without the person's "
+            "judgement, the Set or any other shot: weigh it below the measured numbers and "
+            "below the person's judgement."
+        ),
         "Curve": (
             "One table: a line saying how many of the shot's samples it holds, a header naming "
             "each column and its unit, then one comma-separated row per sample in time order. A "
@@ -615,6 +626,14 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "not record is left out."
         ),
     }
+)
+
+
+#: What every Review item's meaning says, so a model reading the glossary never
+#: mistakes one for a measurement or for the person's own view.
+_MODEL_WRITTEN = (
+    "Written by a model from this shot's data, without the person's judgement: a reading, "
+    "not a measurement."
 )
 
 
@@ -636,6 +655,7 @@ def _items() -> tuple[Item, ...]:
     judgement = "Your judgement"
     recipe = "The version's recipe"
     note = "The note typed on the machine"
+    review = REVIEW_GROUP
 
     return (
         # ── identity and status ──────────────────────────────────────
@@ -1925,6 +1945,84 @@ def _items() -> tuple[Item, ...]:
             meaning="The free text typed on the machine's notes card.",
             default_tier="excluded",
             shot=lambda f: _quote(f.note.notes) if f.note is not None else None,
+        ),
+        # ── the review ───────────────────────────────────────────────
+        Item(
+            key="review_taste_balance",
+            group=review,
+            name="Review's predicted balance",
+            label="Predicted balance",
+            meaning=(
+                "What a review expects the cup's balance to be: Sour, Balanced or Bitter. "
+                + _MODEL_WRITTEN
+            ),
+            default_tier="extended",
+            shot=lambda f: (
+                _BALANCES.get(f.review.taste_balance)
+                if f.review is not None and f.review.taste_balance
+                else None
+            ),
+        ),
+        Item(
+            key="review_taste_body",
+            group=review,
+            name="Review's predicted body",
+            label="Predicted body",
+            meaning="What a review expects the cup's body to be: thin, medium or heavy. "
+            + _MODEL_WRITTEN,
+            default_tier="extended",
+            shot=lambda f: f.review.taste_body if f.review is not None else None,
+        ),
+        Item(
+            key="review_taste_confidence",
+            group=review,
+            name="Review's confidence in its prediction",
+            label="Prediction confidence",
+            meaning="How sure the review said it was of its taste prediction: low, medium or "
+            "high. " + _MODEL_WRITTEN,
+            default_tier="extended",
+            shot=lambda f: f.review.taste_confidence if f.review is not None else None,
+        ),
+        Item(
+            key="review_description",
+            group=review,
+            name="Review's description",
+            label="Review description",
+            meaning="A paragraph on what the shot's telemetry shows and why, with its figures. "
+            + _MODEL_WRITTEN,
+            default_tier="extended",
+            shot=lambda f: _quote(f.review.description) if f.review is not None else None,
+        ),
+        Item(
+            key="review_summary",
+            group=review,
+            name="Review's one-line summary",
+            label="Review summary",
+            meaning="The review in one sentence. " + _MODEL_WRITTEN,
+            default_tier="extended",
+            shot=lambda f: _quote(f.review.summary) if f.review is not None else None,
+        ),
+        Item(
+            key="review_written_at",
+            group=review,
+            name="When the review was written",
+            label="Review written",
+            meaning="When the review finished, in UTC, to the minute. " + _MODEL_WRITTEN,
+            default_tier="extended",
+            shot=lambda f: (
+                str(f.review.finished_at or f.review.created_at)[:16].replace("T", " ")
+                if f.review is not None
+                else None
+            ),
+        ),
+        Item(
+            key="review_model",
+            group=review,
+            name="Which model wrote the review",
+            label="Review model",
+            meaning="The model that wrote the review, as the provider named it. " + _MODEL_WRITTEN,
+            default_tier="extended",
+            shot=lambda f: (f.review.model or None) if f.review is not None else None,
         ),
     )
 

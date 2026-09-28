@@ -134,3 +134,13 @@ One table: a line saying how many of the shot's samples it holds, a header namin
 - Dose out [base]: The beverage weight the person recorded, in grams. Where it differs from the scale's yield, it is the person correcting the scale.
 - Ratio [base]: Dose out divided by dose in, written 1:2.00. Longer ratios extract more.
 - Grind as brewed [base]: The grind setting the person says this shot was actually ground at, in the grinder's own units. It can differ from the recipe's.
+
+[Review]
+The newest finished review of the shot, or nothing when it was never reviewed. A review is a model's reading of this one shot's data, made without the person's judgement, the Set or any other shot: weigh it below the measured numbers and below the person's judgement.
+- Predicted balance [extended]: What a review expects the cup's balance to be: Sour, Balanced or Bitter. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
+- Predicted body [extended]: What a review expects the cup's body to be: thin, medium or heavy. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
+- Prediction confidence [extended]: How sure the review said it was of its taste prediction: low, medium or high. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
+- Review description [extended]: A paragraph on what the shot's telemetry shows and why, with its figures. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
+- Review summary [extended]: The review in one sentence. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
+- Review written [extended]: When the review finished, in UTC, to the minute. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
+- Review model [extended]: The model that wrote the review, as the provider named it. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.

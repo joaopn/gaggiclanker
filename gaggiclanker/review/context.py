@@ -13,7 +13,8 @@ What goes in, and nothing else:
    item in it except the ones listed in :data:`REVIEW_EXCLUDED_KEYS` and the
    groups named by :data:`REVIEW_EXCLUDED_GROUP_MEMBERS`: the person's
    judgement, the note typed on the machine (which seeds the judgement), the
-   Set version's recipe and the shot's Set, label and counted state. The tiers
+   Set version's recipe, the shot's earlier reviews, and the shot's Set, label
+   and counted state. The tiers
    a person set on Settings → Shot information govern what a chat is handed,
    never what a review reads;
 2. **the profile the shot brewed**, the whole document of the profile version
@@ -23,11 +24,11 @@ What goes in, and nothing else:
    selection picks from the shot's telemetry.
 
 **Blind and independent by construction.** Nothing here reads the judgement,
-the Set, its versions, another shot or an insight: the loader's judgement,
-version and note are dropped before rendering, rule selection is given no Set
-attributes, and retrieval no taste. So the taste prediction needs no
-withholding trick, and a review of one shot cannot be told what the Set is
-trying or what another shot did.
+the Set, its versions, another shot, an insight or an earlier review: the
+loader's judgement, version, note and review are dropped before rendering,
+rule selection is given no Set attributes, and retrieval no taste. So the
+taste prediction needs no withholding trick, and a review of one shot cannot
+be told what the Set is trying or what another shot did.
 
 Determinism is the property everything here is arranged around. Nothing reads
 the clock, nothing iterates a set, every list is sorted: two builds of the same
@@ -77,9 +78,15 @@ REVIEW_CURVE_POINTS = 60
 #: Catalogue groups a review never reads, each named by one of its items so a
 #: renamed group heading cannot quietly let the group back in: the person's
 #: judgement (`rating`), the note typed on the machine (`note_text`: its rating,
-#: balance and notes are the judgement typed somewhere else) and the Set
-#: version's recipe (`recipe_grind`).
-REVIEW_EXCLUDED_GROUP_MEMBERS: tuple[str, ...] = ("rating", "note_text", "recipe_grind")
+#: balance and notes are the judgement typed somewhere else), the Set version's
+#: recipe (`recipe_grind`) and the shot's own review (`review_summary`: a
+#: review is never shown an earlier one).
+REVIEW_EXCLUDED_GROUP_MEMBERS: tuple[str, ...] = (
+    "rating",
+    "note_text",
+    "recipe_grind",
+    "review_summary",
+)
 
 #: Single items a review never reads, from groups it otherwise does: the
 #: person's label (their verdict), whether the shot is counted (which says
@@ -178,10 +185,10 @@ async def build_review_input(
     if not loaded:
         raise LookupError(f"no shot {shot_id}")
     # Blind by construction: whatever the loader read about the person's
-    # verdict, the Set version and the machine's notes card is dropped here,
-    # before anything renders, and the exclusions below keep the lines that
-    # would describe them out as well.
-    facts = dataclasses.replace(loaded[0], judgement=None, version=None, note=None)
+    # verdict, the Set version, the machine's notes card and an earlier review
+    # is dropped here, before anything renders, and the exclusions below keep
+    # the lines that would describe them out as well.
+    facts = dataclasses.replace(loaded[0], judgement=None, version=None, note=None, review=None)
 
     profile_label = ""
     profile: dict[str, Any] | None = None

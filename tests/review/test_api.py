@@ -22,6 +22,8 @@ from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.review.service import ReviewService, review_task_name
 from gaggiclanker.settings import EnvSettings
+from gaggiclanker.tools.registry import registry
+from gaggiclanker.tools.scope import ToolScope
 from tests.conftest import running_app
 from tests.llm.conftest import FakeProvider, api_error
 from tests.review.conftest import GOOD_REVIEW, Fixture, build_fixture
@@ -115,6 +117,37 @@ async def test_reviewing_a_shot_over_http(
     detail = await client.get(f"/api/shots/{shot_id}")
     assert [row["id"] for row in detail.json()["data"]["reviews"]] == [body["id"]]
     assert "analyses" not in detail.json()["data"]
+
+
+async def test_a_reviewed_shot_is_read_back_by_the_chat_through_get_shot_full(
+    api: tuple[FastAPI, httpx.AsyncClient, FakeProvider],
+) -> None:
+    """End to end: the button's route, a mocked provider, then the chat's shot tool.
+
+    The review's three things reach the chat as shot information, through the
+    one renderer, and nothing else about the shot changed on the way.
+    """
+    app, client, _ = api
+    data = await _build_fixture(app)
+    shot_id = data.shots[-1]
+    judged = (await client.get(f"/api/shots/{shot_id}")).json()["data"]["judgement"]
+
+    reviewed = (await client.post(f"/api/shots/{shot_id}/reviews?wait=1", json={})).json()
+    assert reviewed["data"]["status"] == "ok"
+
+    ctx = app.state.chat.tool_context(scope=ToolScope.for_thread(data.set_id), run_id=None)
+    outcome = await registry.dispatch(ctx, "get_shot_full", {"shot_id": shot_id})
+    assert outcome.ok, outcome.data
+    text = outcome.data["text"]
+    assert "[Review]" in text
+    assert f'Review summary: "{GOOD_REVIEW["summary"]}"' in text
+    assert f'Review description: "{GOOD_REVIEW["description"]}"' in text
+    assert "Predicted balance: Sour" in text
+    assert "Predicted body: thin" in text
+    assert "Prediction confidence: medium" in text
+    # The person's own judgement is still theirs, untouched by the review.
+    assert (await client.get(f"/api/shots/{shot_id}")).json()["data"]["judgement"] == judged
+    assert "Balance: Sour" in text
 
 
 async def test_a_second_press_after_one_finished_is_a_fresh_review(

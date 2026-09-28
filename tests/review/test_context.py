@@ -20,6 +20,7 @@ import json
 from pathlib import Path
 
 from gaggiclanker.db.repos.notes import NotesRepository
+from gaggiclanker.db.repos.reviews import ReviewOutcome, ReviewStart, ShotReviewsRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -98,6 +99,18 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
             }
         ),
     )
+    # And an earlier review of the same shot: a review is never shown another.
+    earlier = ShotReviewsRepository(db)
+    earlier_id = await earlier.start(ReviewStart(shot_id=subject, model="earlier-model"))
+    await earlier.finish(
+        earlier_id,
+        ReviewOutcome(
+            status="ok",
+            taste_balance="bitter",
+            description="An earlier reading of this shot.",
+            summary="An earlier one-line reading.",
+        ),
+    )
     # Every row the leak test looks for is really there to leak.
     stored = await db.fetch_one(
         "SELECT rating, balance, notes, decision FROM shot_judgements WHERE shot_id = ?",
@@ -124,6 +137,9 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
         "Naturals on this grinder",  # the confirmed insight
         "drifts coarser as it warms up",  # the other two
         "An unconfirmed proposal",
+        "An earlier reading of this shot.",  # an earlier review of it
+        "An earlier one-line reading.",
+        "earlier-model",
         "peach, jasmine, lemon",  # the Set's bean
         "Niche Zero",  # and its grinder
     ]
@@ -151,6 +167,8 @@ async def test_a_review_is_blind_and_reads_nothing_but_the_shot(fixture: Fixture
         "Set version:",
         "Recipe ",
         "Machine note",
+        "Predicted balance",
+        "Review summary",
         "Improve",
         "3/5",
         "Citric acid",
@@ -178,14 +196,19 @@ async def test_the_person_s_tiers_do_not_narrow_what_a_review_reads(fixture: Fix
     assert "Execution score: 8.3" in after.shot
 
 
-def test_a_review_reads_every_item_but_the_judgement_the_note_the_recipe_and_the_set() -> None:
+def test_a_review_reads_every_item_but_the_judgement_the_note_the_recipe_the_set_and_itself() -> (
+    None
+):
     keys = review_keys()
-    groups_left_out = {ITEMS[key].group for key in ("rating", "note_text", "recipe_grind")}
+    groups_left_out = {
+        ITEMS[key].group for key in ("rating", "note_text", "recipe_grind", "review_summary")
+    }
 
     assert REVIEW_EXCLUDED_KEYS == {"label", "counted", "set_version"}
     for item in CATALOGUE:
         excluded = item.group in groups_left_out or item.key in REVIEW_EXCLUDED_KEYS
         assert (item.key not in keys) == excluded, item.key
+    assert not [key for key in keys if key.startswith("review_")]
     # Excluded-by-default items are read too: the curve's extra channels.
     assert {"curve_pump_flow", "curve_target_temperature", "machine_shot_number"} <= keys
 

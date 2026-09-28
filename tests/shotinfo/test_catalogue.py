@@ -49,6 +49,7 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Your judgement", 9),
     ("The version's recipe", 5),
     ("The note typed on the machine", 6),
+    ("Review", 7),
 )
 
 #: Every key, in catalogue order. A key is what a person's choice is stored
@@ -163,6 +164,13 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "note_grind",
     "note_bean",
     "note_text",
+    "review_taste_balance",
+    "review_taste_body",
+    "review_taste_confidence",
+    "review_description",
+    "review_summary",
+    "review_written_at",
+    "review_model",
 )
 
 #: The items a chat sees without asking.
