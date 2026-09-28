@@ -643,13 +643,16 @@ async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShot
         ),
     )
     points = await _curve_points(ctx)
+    # The samples of the results only, in one query, and only when a person
+    # moved a curve channel into base: the search itself reads none.
+    shots = await with_samples(ctx.db, found.shots) if needs_samples("base", tiers) else found.shots
     return SearchShotsOutput(
         shots=[
             ShotHit(
                 shot_id=facts.shot_id,
                 text=render_shot(facts, "base", tiers, curve_points=points),
             )
-            for facts in found.shots
+            for facts in shots
         ],
         count=len(found.shots),
         truncated=found.truncated,

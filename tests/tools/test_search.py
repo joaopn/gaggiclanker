@@ -24,6 +24,7 @@ import pytest
 
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionWrite, SetWrite
+from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.domain import diagnostics as engine
 from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers
@@ -58,6 +59,39 @@ async def test_no_filter_is_the_newest_first_in_base(
     assert newest.startswith(f"shot {archive.shots[-1]}\n")
     assert "Rating: 3/5" in newest
     assert "[Curve]" not in newest and "Score confidence" not in newest
+
+
+async def test_a_curve_in_base_reaches_the_results_and_nothing_else_reads_samples(
+    set_ctx: ToolContext, archive: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The regression `scripts/repro_base_curve_never_loaded.py` reproduces, for the search.
+
+    The search loaded its shots without samples, so a curve channel a person
+    had moved into base came out empty. It now reads the results' samples, in
+    one query, exactly when base carries a curve.
+    """
+    reads: list[list[int]] = []
+    real = ShotsRepository.samples_for
+
+    async def counted(self: ShotsRepository, shot_ids: Any) -> Any:
+        reads.append(list(shot_ids))
+        return await real(self, shot_ids)
+
+    monkeypatch.setattr(ShotsRepository, "samples_for", counted)
+    newest = archive.shots[-1]  # the fixture's one shot with samples
+
+    before = await search(set_ctx)
+    assert reads == [], "no curve in base, no samples read"
+    await ShotInfoTiersRepository(archive.db).set_tier(
+        ShotInfoTierWrite(item_key="curve_pressure", tier="base")
+    )
+    after = await search(set_ctx)
+
+    text = {hit["shot_id"]: hit["text"] for hit in after["shots"]}
+    assert "[Curve]" not in {hit["shot_id"]: hit["text"] for hit in before["shots"]}[newest]
+    table = text[newest].split("[Curve]\n", 1)[1].splitlines()
+    assert table[1] == "t (s),pressure (bar)"
+    assert len(reads) == 1 and sorted(reads[0]) == sorted(ids(after)), "one query, the results"
 
 
 @pytest.mark.parametrize(

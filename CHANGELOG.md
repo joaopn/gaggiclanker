@@ -97,6 +97,10 @@ first (`POST /api/backup`), because there is no down-migration.
   it is, so a shot can come to a few rows more. Settings → Shot information shows
   it beside the extended estimate, and its estimates and curve examples follow
   it.
+- **A curve channel moved into base now reaches a Set conversation's opening
+  context and the shot search.** Both used to leave it out while the settings
+  page counted it in their estimates; they now read the shots' samples exactly
+  when base carries a curve, and not otherwise.
 
 ### Settings → Shot information: choose what the chat is told about each shot
 

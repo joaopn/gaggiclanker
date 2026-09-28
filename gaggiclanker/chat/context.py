@@ -61,7 +61,7 @@ from gaggiclanker.domain.spread import (
 from gaggiclanker.domain.vocab import SPREAD_MEASURES, MeasureTerm, SpreadMeasure, vocabulary
 from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
-from gaggiclanker.shotinfo.render import load_shots, render_shot
+from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot
 from gaggiclanker.tools.scope import ToolScope
 
 __all__ = [
@@ -744,7 +744,11 @@ async def _shots_block(
     answer to — and says so on its own line.
     """
     rows = await SetsRepository(db).set_shots(set_id, version_no=version.version_no, limit=recent)
-    shots = await load_shots(db, [row.shot_id for row in rows])
+    # The samples only when a person moved a curve channel into base: at the
+    # default tiers the opening context carries no curve and reads none.
+    shots = await load_shots(
+        db, [row.shot_id for row in rows], samples=needs_samples("base", tiers)
+    )
     number = f"v{version.version_no}"
     if not shots:
         return [f"THE SHOTS OF {number}", "- none yet."]

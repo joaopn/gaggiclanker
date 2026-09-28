@@ -19,6 +19,7 @@ from gaggiclanker.chat.runner import ChatRunner, _to_chat_message, run_task_name
 from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
@@ -449,6 +450,64 @@ async def test_the_set_scope_opens_with_as_many_shots_as_the_setting_says(
     assert f"shot {archive.shots[-1]}\n" in second
     assert f"shot {archive.shots[-2]}\n" in second
     assert f"shot {archive.shots[-3]}\n" not in second
+
+
+async def test_a_curve_in_base_reaches_the_context_cut_to_the_setting_s_rows(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The regression `scripts/repro_base_curve_never_loaded.py` reproduces, for the context.
+
+    The opening context loaded its shots without samples, so a curve channel
+    moved into base never reached it. It now reads them exactly when base
+    carries a curve, and cuts the curve to `chatCurvePoints` read that turn.
+    """
+    reads: list[list[int]] = []
+    real = ShotsRepository.samples_for
+
+    async def counted(self: ShotsRepository, shot_ids: Any) -> Any:
+        reads.append(list(shot_ids))
+        return await real(self, shot_ids)
+
+    monkeypatch.setattr(ShotsRepository, "samples_for", counted)
+    chat_provider.chat_script = [ChatTurn(text="ok")]
+    await send(runner, tasks, thread)
+    assert reads == [], "at the default tiers the opening context reads no samples"
+    await ShotInfoTiersRepository(archive.db).set_tier(
+        ShotInfoTierWrite(item_key="curve_pressure", tier="base")
+    )
+    await runner.llm.settings.store("chatCurvePoints", 10)
+    await send(runner, tasks, thread, "and now?")
+    await runner.llm.settings.store("chatCurvePoints", 30)
+    await send(runner, tasks, thread, "and now?")
+
+    first, second, third = (call.system for call in chat_provider.chat_calls)
+    assert len(reads) == 2, "one query per turn for every shot"
+
+    def shot(system: str) -> str:
+        """The newest shot's rendering in the opening context, up to the blank line after it."""
+        return system.split(f"\nshot {archive.shots[-1]}\n", 1)[1].split("\n\n", 1)[0]
+
+    def curve(system: str) -> list[str]:
+        """The curve group's lines, up to the next group."""
+        lines = shot(system).split("[Curve]\n", 1)[1].splitlines()
+        return lines[: next((i for i, x in enumerate(lines) if x.startswith("[")), len(lines))]
+
+    assert "[Curve]" not in shot(first)
+    ten, thirty = curve(second), curve(third)
+    assert ten[0].startswith(tuple(f"{n} of 112 samples" for n in range(1, 30)))
+    assert ten[1] == "t (s),pressure (bar)"
+    rows_ten = int(ten[0].split()[0])
+    rows_thirty = int(thirty[0].split()[0])
+    # A target, plus the moments that are always kept (at most eleven here:
+    # the ends, three phases' edges, peak, drip and the drop's two samples).
+    assert rows_ten <= 10 + 11
+    assert rows_ten < rows_thirty <= 30
+    assert len(ten) == 2 + rows_ten and len(thirty) == 2 + rows_thirty
 
 
 async def test_a_tier_moved_between_turns_reaches_the_next_turn_s_context_and_glossary(
