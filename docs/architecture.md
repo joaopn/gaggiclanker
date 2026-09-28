@@ -23,8 +23,8 @@ has forgotten how it works.
          │                                  │
          ▼                                  ▼
   ┌──────────────┐   diagnostics ┌─────────────────────────────┐
-  │ domain/      │◀─────────────▶│ analyzer/ ──▶ llm/ ──▶ model │
-  │  slog, index │               │  context, accept            │
+  │ domain/      │◀─────────────▶│ review/ ──▶ llm/ ──▶ model   │
+  │  slog, index │               │  chat/, the shot renderer   │
   └──────┬───────┘               └───────────┬─────────────────┘
          │                                   │
          ▼                                   ▼
@@ -70,7 +70,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | Layer | What it owns |
 |---|---|
 | `api/` | One router per resource. Routes parse input and call services; they never build a response by hand. |
-| `analyzer/`, `llm/`, `knowledge/` | One structured LLM call per shot, the context it is given, and the three tiers it is told: the rules, a few retrieved passages of prose, and the insights you have confirmed. |
+| `review/`, `llm/`, `knowledge/` | A shot's review: one structured LLM call about one shot, started only by the shot page's button, given the shot's own information (never the judgement, the Set or another shot), the profile it brewed and the rules and passages its telemetry selects, and writing a blind taste prediction, a description and a summary to one `shot_reviews` row and nothing else. The knowledge base's three tiers: the rules, the prose, and the insights you have confirmed. |
 | `drafts/` | Profile drafts: the write gate, generation from advice, the four safety layers, the push and its rollback. Holds the gate every write to a machine passes. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and only the route-facing service holds the machine connection. |
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `cleanup/` | Device storage: which shots are eligible to delete off the machine, the plan the Sync page shows, and the run of a plan a person confirmed. |
@@ -305,8 +305,8 @@ version through `SetsRepository.append_version`, which exists so that append can
 be part of somebody else's transaction rather than opening its own.
 
 **A proposal stops waiting when the Set moves on.** Every path that appends a
-version — the Add a version form, a roll back, a pushed profile draft, an
-accepted analysis suggestion, and accepting a proposal itself — goes through
+version — the Add a version form, a roll back, a pushed profile draft, and
+accepting a proposal itself — goes through
 `SetsRepository._insert_version` (or, on a Set being designed, the fill of its
 version 1), and that is where a waiting proposal of the same Set is marked
 `stale`, in the same transaction, with the proposal being accepted as the one
@@ -352,7 +352,8 @@ conversation has.
 
 **A shot reaches a model in two tiers, from one catalogue.** Every item a shot
 carries — the execution score, each diagnostic with its band, each phase's
-metrics, each curve channel, the person's judgement — is one entry in
+metrics, each curve channel, the person's judgement, the shot's newest
+finished review — is one entry in
 `shotinfo/catalogue.py` with a stable key, what it means, a default tier and the
 function that renders it. **Base** is what the model sees without asking: every
 shot in a Set conversation's opening context (the version's newest
@@ -372,6 +373,10 @@ the stdio server alike, so a change applies from the next turn. The glossary
 in the Set and General prompts is generated from the same entries — every item
 that is not excluded, with its tier and its meaning, the band thresholds read
 from the vendored tables — so an item and its explanation cannot drift apart.
+A shot's review reads the same renderer with a fixed layout of its own: every
+item but the judgement, the machine's note, the version's recipe, the shot's
+Set, label and counted state, and earlier reviews, whatever the person's tiers
+say — the tiers govern what a chat is handed, never what a review reads.
 
 **A Set being designed is the third surface.** A Set created by the design
 route has a version 1 with no recipe and a `designing` flag, and while the flag
@@ -416,7 +421,7 @@ no tool a model calls starts one. See [`safety-layers.md`](safety-layers.md).
   tasks. Shutdown is the reverse, and it cancels the task registry
   before closing the database so nothing is mid-write when the file is released.
 * **In a background task**: the device supervisor, the sync loops — which do
-  nothing until something pokes them — and every analysis.
+  nothing until something pokes them — every chat turn and every review.
 * **In the request**: everything else, which is all SQLite reads a millisecond
   wide.
 

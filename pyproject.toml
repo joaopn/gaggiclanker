@@ -1,7 +1,7 @@
 [project]
 name = "gaggiclanker"
 version = "0.1.0"
-description = "Archive, diagnose and analyse espresso shots from a GaggiMate machine."
+description = "Archive, diagnose and review espresso shots from a GaggiMate machine."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

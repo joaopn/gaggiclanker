@@ -10,6 +10,60 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Review replaces the per-shot analysis
+
+- **Review on a shot's page** asks a model to read that one shot, and nothing
+  else starts one: no chat tool, batch, timer or sync step. It is handed the
+  shot's own information (everything the shot tools can show, whatever your
+  Settings → Shot information choices, except your judgement, the note typed on
+  the machine, the Set version's recipe and which Set the shot is in), the
+  profile it brewed, its detected style, and the knowledge rules and excerpts
+  its telemetry selects. It never sees your judgement, the Set, its versions,
+  another shot or an insight, so its taste prediction is blind.
+- **It writes three things to the shot and does nothing else**: what it expects
+  the cup to taste like (balance, body, confidence), one paragraph describing
+  what the telemetry shows and why, and a one-sentence summary. It proposes no
+  change, insight, profile edit or question. The card shows the summary first,
+  the prediction beside your own balance, the description, the rules and
+  excerpts it cited (linked to the Knowledge page), the model and the time, and
+  **Review again**, which keeps the earlier reviews stored and shows the newest.
+  Nothing about a review appears in the shots table, its open row or the Set
+  page.
+- **The chat reads a review as shot information.** A new **Review** group under
+  Settings → Shot information (predicted balance, body and confidence, the
+  description, the summary, when it was written and by which model), all at the
+  extended tier, so `get_shot_extended`, `get_shot_full` and `compare_shots`
+  carry it and you can move it like any other item. The glossary says each line
+  was written by a model from the shot's data without your judgement, and the
+  chat's rules gain one: weigh a review below the measured numbers and your
+  judgement, and never treat it as evidence for a Set change on its own.
+- **Settings**: `modelAnalysis` is now `modelReview`, and the knowledge budget
+  `analysisChunkTokenBudget` is now `knowledgeChunkTokenBudget` (the starting
+  point reads it too); a value you had set moves with it. The LLM page's
+  budget card is called Knowledge.
+- **The API**: `POST /api/shots/{id}/reviews` (202 with a `running` row;
+  `?wait=1` for scripts), `GET /api/shots/{id}/reviews`, `GET /api/reviews/{id}`
+  with the input the model was given, and `reviews` on the shot detail. The SQL
+  tool reads `v_reviews`. A draft is made from notes (or a whole document);
+  `analysis_id` and `suggestion_id` are no longer accepted.
+- **Breaking: the per-shot analysis is gone, and so is what only it used.** A
+  new migration carries every finished analysis into a review with the same id
+  (its taste prediction as it was, its diagnosis as the description, an empty
+  summary) and drops the rest: every suggestion (open, accepted or rejected)
+  with its accept and reject routes, the execution notes, profile patches,
+  questions and the rest of each analysis's answer, failed and interrupted
+  analyses, and the `analysis` and `analysis-user` prompts — **a prompt you had
+  edited is lost**; the new `review` and `review-user` prompts start from their
+  shipped text. Also gone: the Set page's **Analyse the un-analysed** with its
+  large-batch question and its Suggestions card, the `run_analysis` chat tool,
+  drafting a profile from an analysis, the analysis state in the shots list and
+  its Flags badge, and the shot page's analysis panel. Set versions an accepted
+  suggestion made still say "From an analysis", insights an analysis proposed
+  keep saying so, and older drafts keep their link; no reset is needed.
+- **If you edited `fragments/chat-rules`, your text is kept and the new rule on
+  weighing a review never reaches the chat.** Reset it under Settings → Prompts,
+  or copy the paragraph that starts "A SHOT'S REVIEW IS A MODEL'S READING".
+
 ### An accepted change says what to do at the machine
 
 - **The accepted change card names the next step.** It used to say only

@@ -70,7 +70,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Stage 3: the Claude Code CLI, for the default LLM provider.
 #
 # `claude_code` is the default provider and it runs `claude` as a subprocess,
-# so an image without the CLI cannot answer a single analysis: every call and
+# so an image without the CLI cannot answer a single review: every call and
 # every Validate said "not found on PATH". The npm package is a thin wrapper
 # whose postinstall picks the platform's native binary (glibc x64 or arm64
 # here, matching the bookworm runtime), so npm does the platform choice and

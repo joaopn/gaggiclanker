@@ -5,8 +5,9 @@ espresso machine. Press a button and it pulls in every shot the machine holds �
 raw `.slog` bytes, every sample, phases, the device's own notes and profiles —
 shows them with curves and deterministic diagnostics, lets you judge each shot
 from the list and group shots into versioned **Sets** (bean + hardware + profile
-+ grind/dose/yield), and runs a per-shot LLM analysis through whichever provider
-you point it at.
++ grind/dose/yield), reviews a shot with a language model when you ask it to, and
+talks the Sets through with a tool-using chat, through whichever provider you
+point it at.
 
 It does not watch the machine. Nothing leaves the GaggiMate until you ask for
 it: the machine's own web UI already draws the shot that is happening now, and
@@ -16,8 +17,8 @@ The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
 > **Status: 0.1.0, the prototype, plus profile drafts and push.** Everything in this README
-> works: sync, the shots UI, Sets and judgement, the LLM layer, the per-shot
-> analyzer, optional authentication and the container. It can now
+> works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's review,
+> the chat, optional authentication and the container. It can now
 > also put a profile *on* the machine — as a new `[AI]`-suffixed file, never
 > over an existing one, never selected for you, behind a switch that is off by
 > default and through the four layers in `docs/safety-layers.md`.
@@ -71,7 +72,7 @@ an IP for the machine's host.
 4. **Turn on authentication** if this box is reachable by anything you do not
    trust — see below. Off by default, and that is the right default for a
    machine only your own LAN can reach.
-5. **Set up the model.** The analyzer needs one provider. The cheapest to get
+5. **Set up the model.** A review and the chat need one provider. The cheapest to get
    working is `claude_code`, which spends a Claude subscription you may already
    have: run `claude setup-token` on any machine with the CLI installed and
    paste the token into **Settings → LLM**.
@@ -96,7 +97,7 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. An analysis is started from the shot page. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The pull button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The pull button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
 | **Chat** | `g c` | The tool-using conversation, in a folder per Set. New inside a folder starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
@@ -105,8 +106,8 @@ pages, in the order the sidebar lists them:
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
 | **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
-| **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the analysis and chat budgets. |
-| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights an analysis proposes are confirmed on that analysis. |
+| **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
+| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights the chat proposes wait there for you to confirm. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
 to an icon rail and back; the choice is remembered in the browser. Folded, every
@@ -279,8 +280,8 @@ Nothing reaches the machine without passing through the **Staged for the
 machine** section of the Profiles page. A version gets there in one of three
 ways: **Stage as is**, for a profile that is already right and only needs to be
 on the machine; **Edit**, which opens the JSON editor and validates what you
-type against the strict schema and the safety policy; or an analysis, the chat
-or the starting-point wizard proposing one, which lands in the same place with
+type against the strict schema and the safety policy; or the chat or the
+starting-point wizard proposing one, which lands in the same place with
 the same buttons on it.
 
 A staged profile is then approved and pushed, and the push is refused before
@@ -553,7 +554,7 @@ one does not sign everybody out.
 
 ### LLM settings
 
-Per-shot analysis goes through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:
+A review, the chat and the drafts go through one provider, chosen with `GAGGICLANKER_LLM_PROVIDER`:
 `claude_code` (the default — it runs the Claude Code CLI against a Claude
 subscription, so there is no API key to buy), `anthropic`, `openrouter`,
 `openai`, `ollama`, `lmstudio`, or `openai_compatible` for any other gateway.
@@ -579,8 +580,8 @@ token can be checked before it is saved, and for `claude_code` it makes one
 one-word call to haiku: presence alone (`claude auth status`) cannot tell a
 working token from a revoked one.
 
-`GAGGICLANKER_MODEL` is the default model; `..._MODEL_ANALYSIS`, `..._MODEL_DRAFT`
-and `..._MODEL_CHAT` override it per kind of call, and an empty value lets the
+`modelDefault` is the default model; `modelReview`, `modelDraft`, `modelChat`
+and `modelStartingPoint` override it per kind of call, and an empty value lets the
 provider choose. `GAGGICLANKER_LLM_TIMEOUT_S` bounds one attempt, and
 `GAGGICLANKER_LLM_RATE_LIMIT_RETRIES` is a process-wide budget: when the provider
 throttles the account the whole app stops rather than failing every queued shot
@@ -589,55 +590,58 @@ Prompts edits the prompts themselves — they are rows in the database, seeded
 from the YAML files in `gaggiclanker/prompts/`, and an edit takes effect on the
 next call without a restart.
 
-### The analysis
+### Review
 
-One structured call per shot. It is handed the diagnostics with their band
-labels, the Set (the bean with whatever of its roast level, process and taste scales you recorded, the grinder with its
-own step unit, the profile JSON, the grind/dose/yield targets), the previous five shots in the same
-Set with your verdict on each and the advice that followed them, your verdict on
-this one — marked as ground truth for taste — and the knowledge rules that match.
-It answers with a diagnosis and prioritised suggestions, and accepting one
-records a new Set version with that single field changed, so "did following the
-advice help" is a question the trend chart answers. Three of them can be
-accepted that way — grind, dose and yield, the numbers a Set version records.
-Advice about the temperature, the pressure, the flow or the pre-infusion is
-about the profile: the refusal says so and points at drafting one from the
-analysis, which you then review and push yourself.
+**Review** on a shot's page asks a model to read that one shot. It is one
+structured call, started only by that button: no chat tool, batch, timer or
+sync step starts one. The model is handed the shot's own information (every
+line the shot tools can show, whatever you set under Settings → Shot
+information, except your judgement, the note typed on the machine, the Set
+version's recipe and which Set the shot is filed under), the profile the shot
+brewed, the detected shot style, and the knowledge rules and reference excerpts
+its telemetry selects. It is never shown your judgement, the Set, its versions,
+another shot or an insight, so its taste prediction is blind.
+
+It writes three things to the shot and nothing else: what it expects the cup to
+taste like (sour, balanced or bitter; thin, medium or heavy body; low, medium
+or high confidence), one paragraph describing what the telemetry shows and why,
+with its figures, and a one-sentence summary. It proposes no change, no insight
+and no question. The Review card shows the summary first, the prediction beside
+your own balance, the description, the rules and excerpts it cited (each links
+to the Knowledge page, which is how a rule that misleads gets found and turned
+off), the model and the time. **Review again** writes a fresh one; the newest
+finished review is the one shown and served, and the earlier ones stay stored,
+each with exactly what it was told.
+
+What a review writes is shot information: seven items in a **Review** group
+under Settings → Shot information, all at the extended tier, so the chat reads
+them through `get_shot_extended`, `get_shot_full` and `compare_shots` and you
+can move them like any other item. The glossary and the chat's rules both say
+what they are: a model's reading of one shot, weighed below the measured numbers
+and your judgement, never on its own a reason to change a Set.
 
 The knowledge rules are on the **Knowledge** page: a small tier of dial-in
 heuristics — temperature by roast, the pressure matrix by roast and process,
 ratio and time by style, what each diagnostic band means,
 taste → suspect, telemetry → cause — each with its source and confidence, each
-editable, each with a switch. The model is asked to name the rules it used and
-the analysis links them back here, which is how a rule that misleads gets found
-and turned off. They are adapted from
+editable, each with a switch. They are adapted from
 [gaggimate-barista](https://github.com/chall-tech/gaggimate-barista) (Charlie
 Hall, MIT) by way of gaggimate-mcp; the attribution is in the seed file.
 
 The call runs as a background task rather than inside the request: pressing the
 button answers at once with a `running` row and the page follows the event
-stream, so a restart cannot kill an analysis with the browser still waiting on
-it. Pressing it twice, or in two tabs, gets the same run back rather than paying
+stream, so a restart cannot kill a review with the browser still waiting on
+it. Pressing it twice while one runs gets the same run back rather than paying
 for two.
 
-A Set's **Analyse the un-analysed** runs the same call over every shot in the
-Set that has no successful analysis yet, two at a time. More than ten shots is
-dozens of provider calls from one click, so the server refuses such a batch
-until the request acknowledges its size (`acknowledge_large_batch`; the refusal
-is a 409 `LARGE_BATCH` whose `details.count` says how many), and the Set page
-asks first: how many analyses it would run and roughly how long, with a button
-to go ahead. Shots already being analysed are not counted.
-
-A failed analysis is a stored row carrying the provider's error code rather than
+A failed review is a stored row carrying the provider's error code rather than
 an exception, and a run cut off by a restart is marked `interrupted` at the next
-boot — neither silently disappears. Token usage is recorded per analysis; the
-`cost_estimate` column stays empty until there are pricing tables to fill it
-from, because a made-up number in a money column is worse than a blank one.
+boot — neither silently disappears.
 
 ### The chat
 
 The **Chat** page (`g c`) is the other half of the LLM layer, and it is the
-opposite shape from the analysis: instead of one call with everything in front
+opposite shape from a review: instead of one call with everything in front
 of it, the model is given a set of tools and asks the archive its own questions.
 
 **A folder is a scope, not a filing cabinet.** The list is **General** first,
@@ -681,8 +685,8 @@ another shot on the same recipe, which needs no version. Only one proposal waits
 at a time.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
-version on the form, roll back, push a profile draft for the Set, accept an
-analysis's suggestion — whichever it is, a change that was argued against the
+version on the form, roll back, push a profile draft for the Set — whichever it
+is, a change that was argued against the
 recipe you have just left is retired unanswered rather than sitting there with
 an Accept button that could only refuse. The log says so, and the next
 conversation is told, so the agent can propose afresh against what you are
@@ -774,10 +778,9 @@ their base information (filters, ranges, bands, a sort, at most ten back).
 new bag is not worked out there: the General chat sends you to New Set →
 **Design it with the agent**, whose conversation ends in a first recipe you
 accept. **Eight while a Set is being designed** (below). The registry holds
-twenty-two in total: twelve both kinds have, eight that belong to one kind or the
-other, `propose_initial_recipe`, which only a design has, and
-`run_analysis`, which no conversation is offered at all — the per-shot analysis
-is the other adviser, and it is on its way out. Nothing in the chat can touch
+twenty-one in total: twelve both kinds have, eight that belong to one kind or the
+other, and `propose_initial_recipe`, which only a design has. None of them
+starts a shot's review: only its button does. Nothing in the chat can touch
 the machine — pushing a profile and deleting a shot off the display stay
 buttons you press.
 
@@ -795,7 +798,7 @@ decline. The profile starts from the one you picked to fork, or, when you
 picked none, from nothing: the agent writes it whole, and never builds on a
 profile of yours you did not choose. A newer card replaces the waiting one. Accepting fills
 version 1 in place and ends the design conversation: the agent is told, and
-tells you to analyse version 1's shots in a new conversation (Discuss in chat on
+tells you to talk version 1's shots through in a new conversation (Discuss in chat on
 the Set page opens one rather than the design); the profile waits on the
 Profiles page for you to approve and push. Writing a version by hand, or pushing a draft for the Set, ends the design
 the same way. A design nobody brewed anything under can be discarded
@@ -871,7 +874,7 @@ proposes the whole first recipe as one card — a profile of its own, the grind
 (said to be relative when nothing anchors a number on your dial), the dose and
 the yield. Nothing exists until you accept it, in the conversation or on the
 Set page. Accepting makes it version 1 and ends the design: the agent tells you
-to start a new conversation to analyse the shots, since one conversation is one
+to start a new conversation about the shots, since one conversation is one
 version; the profile is then a draft on the Profiles page for you to approve and push,
 and once it is on the machine, shots brewed on it are filed under the new Set.
 
@@ -954,7 +957,7 @@ Docker created the bind-mount source as `root:root` and the app runs as uid
 `user:` in compose, either `chown $(id -u):$(id -g) ./data` or set `APP_UID` and
 `APP_GID` to your own.
 
-**An analysis spins for ever / says `interrupted`.**
+**A review spins for ever / says `interrupted`.**
 `interrupted` means the process stopped mid-call — a restart, an OOM, a power
 cut — and the next boot said so rather than leaving a spinner. Press the button
 again. If it fails instead, the row carries the provider's error; a rate limit

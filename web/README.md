@@ -142,7 +142,8 @@ cannot widen the table. The default row is Set, Time, Profile,
 Duration, Yield, Score, Rating, Decision; Curve, Notes and Flags wait to be
 asked for. A stored column choice that is exactly one of the previous defaults
 (`PREVIOUS_DEFAULT_SHOT_COLUMNS`, one entry per generation, newest first) reads
-as the current default, a stored Analyse column reads as Decision, and any
+as the current default, a stored Analyse column (from before the per-shot
+analysis was retired) reads as Decision, and any
 other stored choice is kept.
 
 **Every write to a verdict merges and queues.** The stars, the Decision column,
@@ -236,22 +237,22 @@ segments would be a hundred and ten tab stops — so the "All notes" list of
 checkboxes, each named by its path ("Fruity › Berry › Blackberry"), is the
 control a keyboard, a screen reader and the tests use.
 
-The analyzer adds a fifth:
+A shot's review and the rule tier add a fifth:
 
 ```
 src/
   hooks/
-    useAnalysis.ts    run one, run a Set, accept or reject a suggestion
+    useReview.ts      ask for a shot's review (the one way one starts)
     useKnowledge.ts   the rule tier: list, toggle, edit, reload
-  components/analysis/
-    AnalysisPanel.tsx   the shot page's panel: result, suggestions, rules used
-    SuggestionCard.tsx  one suggestion and the two buttons that resolve it
+  components/shots/
+    ReviewCard.tsx    the shot page's Review card: the button, the running state,
+                      the reading (summary, prediction beside your balance,
+                      description, citations) and a failed run's error
   pages/
     KnowledgePage.tsx   the rules by category, with a switch and an editor
 ```
 
-Knowledge tiers 2 and 3 extend the analyzer's slice rather than
-adding one of their own:
+Knowledge tiers 2 and 3 extend that slice rather than adding one of their own:
 
 ```
 src/
@@ -270,7 +271,7 @@ parameters select the tab**: `?rule=<key>` lands on Rules,
 `?doc=<slug>&chunk=<heading path>` on Docs with the passage marked, and a `?doc=`
 that forgot its `?tab=` still lands on Docs — a citation link must never land on
 a different tier. And **the doc view shows the chunks, not only the markdown**,
-because retrieval sees chunks and an analysis cites one by `heading_path`; a page
+because retrieval sees chunks and a review cites one by `heading_path`; a page
 that showed only the source would leave "why did my edit split that section in
 two" unanswerable.
 
@@ -282,7 +283,7 @@ because `#` and `/` are legal in an `id` and unusable in a selector built from
 one; `data-chunk` keeps the real path.
 
 The Set page's insights come from `GET /api/knowledge/insights?set_id=` — the
-server does the scope matching through the same `select_insights` an analysis
+server does the scope matching through the same `select_insights` the chat
 uses, so the page cannot show a different answer from the prompt. Do not
 reimplement the matching rule in TypeScript.
 
@@ -383,25 +384,26 @@ lets the app know auth is on before it has a token, which is the difference
 between showing a sign-in form and flashing a page of empty tables on the way to
 a 401.
 
-Two of its behaviours are worth knowing before editing. **Running an analysis
+Two of its behaviours are worth knowing before editing. **Asking for a review
 resolves as soon as it is queued**: the server answers 202 with a `running` row
-and the work happens in a background task, so `useRunAnalysis` resolving means
-"queued", not "analysed" — and a failed analysis resolves too, with a `failed`
+and the work happens in a background task, so `useRunReview` resolving means
+"queued", not "reviewed" — and a failed review resolves too, with a `failed`
 row carrying the error code, because a 502 would leave the caller an error and
 no id. And **the in-flight state comes from the row, not from `isPending`**:
-`analysis.started|finished|failed` on the LLM stream are mapped in
-`EVENT_INVALIDATIONS`, so the row is re-read within a frame of the server moving
-it, a run started by another tab shows up here, and one shot's batch does not
-disable another shot's button.
+`review.started|finished|failed` on the event stream are mapped in
+`EVENT_INVALIDATIONS` to the shot details (never the shots list, which shows
+nothing of a review), and the card re-reads its shot every few seconds while
+one runs, since the stream is lossy. A run started by another tab shows up
+here.
 
-`?rule=<key>` on the Knowledge page deep-links from an analysis's "rules it
+`?rule=<key>` on the Knowledge page deep-links from a review's "rules it
 leaned on" list. That link is the whole point of asking the model to cite: it is
 how a rule that misleads gets found and turned off.
 
 Nothing in `src/` types a coffee word. Roast levels, processes, burr types,
 grind step units, balance, the flavour wheel, the
-decisions, the Set-version origins, the shot styles, the suggestion variables,
-directions, units and statuses, and the rule categories and confidences all come
+decisions, the Set-version origins, the shot styles, and the rule categories and
+confidences all come
 from `GET /api/vocab`
 (`useVocabulary`, cached for the session because they change with a redeploy and
 nothing else). A UI that hard-codes an enum drifts from the CHECK constraint
@@ -418,12 +420,12 @@ naming three keys per call site is how one of them gets forgotten.
 
 `LlmSection` exists because a form generated from the registry cannot know that
 `llmBaseUrl` is meaningless for OpenRouter, that `anthropicApiKey` belongs to
-exactly one provider, or that a credential is worth testing before an analysis
+exactly one provider, or that a credential is worth testing before a review
 fails at midnight. Everything it renders still goes through `SettingField` and
 the shared form, so "only send what changed" keeps working.
 
 `useLlmCalls` seeds from `GET /api/llm/calls` and then follows
-`/api/llm/calls/stream`: the fetch is what makes a tab that opened mid-analysis
+`/api/llm/calls/stream`: the fetch is what makes a tab that opened mid-review
 correct, the stream is what keeps it correct without polling a page that is
 usually idle.
 
