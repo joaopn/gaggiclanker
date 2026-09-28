@@ -736,8 +736,11 @@ Set 3 is. Beside the composer, the page lists exactly what the agent can do in
 the headline diagnostics and your judgement — is what the agent sees for every
 shot in the opening context and in its search; the *extended* information — the
 execution score's working, the temperature, pressure and flow statistics, every
-channeling indicator, profile compliance, one line per phase and the whole
-curve — is what it asks for, one shot at a time. A value the machine did not
+channeling indicator, profile compliance, one line per phase and the curve —
+is what it asks for, one shot at a time. The curve comes as about sixty rows
+(`chatCurvePoints`) chosen to keep its shape, and it always keeps the moments
+the diagnostics are about: each phase's start and end, peak pressure, first
+drip and the largest pressure drop. A value the machine did not
 record (no scale, no pressure sensor) is left out, never shown as zero. The
 agent's instructions carry a glossary of every field it can be shown: what it
 measures, its unit, which way is better, and every band label with the threshold
@@ -750,8 +753,9 @@ the same renderer the agent reads. An excluded item is left out of the opening
 context, the shot tools, the search and the glossary; a General chat's SQL tool
 can still read the archive's views. Shot id, Set version and whether a shot counts stay in base, since
 the agent cannot search or cite without them. The page shows the cost in
-approximate tokens (base and extended per shot, the glossary, and the opening
-context's shots at `chatRecentShots`), a change applies from the next turn, and
+approximate tokens (base and extended per shot, the curve at `chatCurvePoints`,
+the glossary, and the opening context's shots at `chatRecentShots`), a change
+applies from the next turn, and
 **Reset to defaults** puts every item back. Only the items you moved are stored,
 so an item a later release adds arrives at its default.
 

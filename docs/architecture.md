@@ -358,7 +358,11 @@ function that renders it. **Base** is what the model sees without asking: every
 shot in a Set conversation's opening context (the version's newest
 `chatRecentShots`), every result of the shot search (`list_set_shots`), and
 `get_shot`. **Extended** is what it asks for (`get_shot_extended`;
-`get_shot_full` and `compare_shots` are both). One renderer writes all of them,
+`get_shot_full` and `compare_shots` are both). A curve is written as one table
+of about `chatCurvePoints` rows (`shotinfo/downsample.py`): every sample the
+diagnostics are about, found by the engine's own rules, then
+largest-triangle-three-buckets on pressure and puck flow for the shape, the
+same timestamps for every channel. One renderer writes all of them,
 so a number the model quotes from the search is the number `get_shot` gives,
 and a value the machine did not record is left out rather than written as
 zero. The tiers are the catalogue's defaults with the person's choices laid

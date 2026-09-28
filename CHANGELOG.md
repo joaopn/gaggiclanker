@@ -55,7 +55,7 @@ first (`POST /api/backup`), because there is no down-migration.
 - **Three shot tools.** `get_shot` returns a shot's base information,
   `get_shot_extended` everything else (the execution score's working,
   temperature, pressure, flow and weight statistics, every channeling indicator,
-  profile compliance, one line per phase and every sample of the curve) and
+  profile compliance, one line per phase and the curve) and
   `get_shot_full` both. `get_shot`'s `detail` argument and the analysis it used
   to carry are gone. `compare_shots` renders each of its shots in full, in the
   order given.
@@ -76,6 +76,27 @@ first (`POST /api/backup`), because there is no down-migration.
   the chat.** Reset the prompt under Settings → Prompts to take the new text, or
   add `{{shot_fields}}` after `{{> chat-rules}}` in the first two and copy the two
   rules into the third.
+
+### The curve the chat reads keeps its shape in about sixty rows
+
+- **A shot's curve is no longer handed to the chat sample by sample.** The
+  machine logs four samples a second, so a shot's curve was some two hundred
+  rows and over 2,000 tokens for the default channels. The chat now reads about
+  sixty rows chosen to keep the curve's shape (largest-triangle-three-buckets on
+  pressure and puck flow), and whatever that number, it always keeps the first
+  and last sample, each phase's first and last, peak pressure, first drip and
+  both ends of the largest pressure drop, each found by the diagnostics
+  engine's own rule, so a short pressure drop is never stepped over. Every
+  channel is cut at the same moments. The table says how many of how many
+  samples it holds and what was kept; a shot no longer than the budget is sent
+  whole. On a typical 213-sample shot the curve drops from about 2,200 tokens to
+  about 620, and the shot's whole extended information from about 2,900 to
+  about 1,400.
+- **How many rows is a new setting, `chatCurvePoints`** (Settings → LLM → Chat;
+  default 60, at least 10). It is a target: the moments above are kept whatever
+  it is, so a shot can come to a few rows more. Settings → Shot information shows
+  it beside the extended estimate, and its estimates and curve examples follow
+  it.
 
 ### Settings → Shot information: choose what the chat is told about each shot
 
