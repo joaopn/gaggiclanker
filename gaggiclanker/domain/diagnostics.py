@@ -1192,7 +1192,7 @@ def compute_shot_diagnostics(
     profile_compliance: ProfileComplianceMetrics | None = None
 
     if pressure_ok:
-        resistance = _build_resistance(brew_pressures, brew_flows, dt)
+        resistance = _build_resistance(brew_samples, dt)
         channeling = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)
         profile_compliance = _compute_profile_compliance(samples)
 
@@ -1284,16 +1284,16 @@ _NO_PRESSURE_NOTE = (
 )
 
 
-def _build_resistance(
-    brew_pressures: list[float], brew_flows: list[float], dt: float
-) -> ResistanceDiagnostics:
-    """Puck resistance R = P / F² and its shape over the brew phase.
+def _build_resistance(window: list[SampleDict], dt: float) -> ResistanceDiagnostics:
+    """Puck resistance R = P / F² and its shape over a window of samples.
 
-    Samples below 0.1 ml/s are skipped: dividing by a near-zero flow produces
-    an arbitrarily large number that says nothing about the puck.
+    The one place the quantity is computed: the full block, the summary and each
+    brew phase all call it, so they cannot drift apart. Samples below 0.1 ml/s
+    are skipped: dividing by a near-zero flow produces an arbitrarily large
+    number that says nothing about the puck.
     """
     resistance_values = [
-        p / (f * f) for p, f in zip(brew_pressures, brew_flows, strict=True) if f > 0.1
+        s.get("cp", 0.0) / (flow * flow) for s in window if (flow := s.get("pf", 0.0)) > 0.1
     ]
 
     r_avg = _round2(_safe_mean(resistance_values))
@@ -1398,9 +1398,9 @@ def compute_summary_diagnostics(
     annotations: dict[str, str] = {}
 
     if pressure_ok:
-        r_values = [p / (f * f) for p, f in zip(brew_pressures, brew_flows, strict=True) if f > 0.1]
-        r_avg = _round2(_safe_mean(r_values))
-        r_slope = _round2(_linear_slope(r_values, dt))
+        resistance = _build_resistance(brew_samples, dt)
+        r_avg = resistance["avg"]
+        r_slope = resistance["slope"]
         risk = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)["channeling_risk"]
 
         p_rmse = 0.0
@@ -1510,9 +1510,9 @@ def _compute_phase_diagnostics(
         annotations["ramp_rate"] = _annotate_ascending(abs(ramp_rate), _RAMP_RATE_BANDS)
 
     elif phase_type == "brew":
-        r_values = [p / (f * f) for p, f in zip(pressures, flows, strict=True) if f > 0.1]
-        r_avg = _round2(_safe_mean(r_values))
-        r_slope = _round2(_linear_slope(r_values, dt))
+        resistance = _build_resistance(phase_samples, dt)
+        r_avg = resistance["avg"]
+        r_slope = resistance["slope"]
 
         ch = _build_channeling(pressures, flows, phase_samples, dt)
 
