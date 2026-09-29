@@ -282,6 +282,9 @@ export type ProfileVersionParams = {
   source?: "device" | "import";
 };
 
+/** The machine's own puck resistance (squared), or ours computed as pressure / flow². */
+export type ResistanceSource = "machine" | "computed";
+
 /**
  * The derived blobs on a shot detail row.
  *
@@ -313,6 +316,7 @@ export type ShotPhase = {
     saturation_time_s?: number;
     resistance_avg?: number;
     resistance_slope?: number;
+    resistance_source?: ResistanceSource;
     channeling_risk?: string;
     flow_jitter_ml_s?: number;
     pressure_jitter_bar?: number;
@@ -346,6 +350,8 @@ export type ShotDiagnosticsBlob = {
   diagnostics?: {
     has_pressure?: boolean;
     resistance?: {
+      /** Where R came from; absent on a shot stored before the source was recorded. */
+      source?: ResistanceSource;
       avg: number;
       std: number;
       slope: number;

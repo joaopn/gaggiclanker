@@ -1,4 +1,4 @@
-import type { ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
+import type { ResistanceSource, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import {
   bandMeaning,
@@ -57,15 +57,28 @@ export function BandRow({
   );
 }
 
+/** How the card says where R came from: the same two wordings as the shot information. */
+export function resistanceSourceText(source: ResistanceSource | undefined): string | null {
+  if (source === "machine") return "from the machine";
+  if (source === "computed") return "computed from pressure and flow";
+  return null;
+}
+
 export function ResistanceCard({ diagnostics }: { diagnostics: ShotDiagnosticsBlob }) {
   const resistance = diagnostics.diagnostics?.resistance;
   if (!resistance) return null;
   const annotations = resistance.annotations ?? {};
+  const source = resistanceSourceText(resistance.source);
   return (
     <SectionCard
       title="Puck resistance"
-      description="R = pressure / flow². One number that folds grind, dose and puck prep together — its shape over the shot is the part worth reading."
+      description="One number that folds grind, dose and puck prep together — its shape over the shot is the part worth reading."
     >
+      {source ? (
+        <p className="mb-1 text-muted-foreground text-xs" data-testid="resistance-source">
+          Resistance source: {source}.
+        </p>
+      ) : null}
       <BandRow
         label="Average"
         value={formatNumber(resistance.avg)}
