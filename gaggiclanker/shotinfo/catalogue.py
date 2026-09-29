@@ -552,6 +552,40 @@ def _phase_resistance(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
     )
 
 
+def _firmware_stats(block: object) -> str | None:
+    """The firmware analyzer's five numbers for one stream, its average first.
+
+    Two decimals: the machine's own ``pr`` has a resolution of 0.01.
+    """
+    if not isinstance(block, dict):
+        return None
+    values = {key: number(block.get(key)) for key in ("avg", "start", "end", "min", "max")}
+    text = {key: _fixed(value, 2) for key, value in values.items() if value is not None}
+    if len(text) != len(values):
+        return None
+    return (
+        f"avg {text['avg']} (start {text['start']}, end {text['end']}, "
+        f"min {text['min']}, max {text['max']})"
+    )
+
+
+def _firmware_whole(f: ShotFacts, stream: str) -> str | None:
+    return _firmware_stats(f.firmware.get(stream))
+
+
+def _firmware_phase(f: ShotFacts, phase: Mapping[str, Any], stream: str) -> str | None:
+    """A phase's stream from the firmware block, found by the phase's number."""
+    number_ = number(phase.get("phase_number"))
+    for entry in f.firmware.get("phases") or []:
+        if isinstance(entry, dict) and number(entry.get("phase_number")) == number_:
+            return _firmware_stats(entry.get(stream))
+    return None
+
+
+def _firmware_water(f: ShotFacts, key: str, unit: str) -> str | None:
+    return _qty(number(f.firmware.get(key)), 1, unit)
+
+
 def _phase_channeling(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
     risk = _phase_diag(phase).get("channeling_risk")
     if not isinstance(risk, str) or not risk:
@@ -622,7 +656,9 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "and pressure / flow² from the logged pressure and flow otherwise; the level says "
             "which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a "
             "unitless number. When the source is the machine, peak and its timing follow its "
-            "estimate, ramp spikes included. None of it exists without a pressure sensor."
+            "estimate, ramp spikes included. None of it exists without a pressure sensor. "
+            "The machine puck resistance and liquid resistance are the firmware analyzer's, in "
+            "its units and unbanded: not comparable with R."
         ),
         "Channeling": (
             "The indicators are measured over the steady-state window: the brew phases from where "
@@ -1165,6 +1201,18 @@ def _items() -> tuple[Item, ...]:
             shot=lambda f: _qty(_flow_summary(f, "total_volume_ml"), 1, "ml"),
         ),
         Item(
+            key="water_pumped",
+            group=flow,
+            name="Water pumped (the pump's own count)",
+            label="Water pumped",
+            meaning=(
+                "The water the pump moved, in ml, from the machine's own count; only for machines "
+                "whose pump counts it."
+            ),
+            default_tier="extended",
+            shot=lambda f: _firmware_water(f, "water_pumped_ml", "ml"),
+        ),
+        Item(
             key="flow_slope",
             group=flow,
             name="Flow slope during brew, with trend band",
@@ -1184,6 +1232,15 @@ def _items() -> tuple[Item, ...]:
             ),
         ),
         # ── weight ───────────────────────────────────────────────────
+        Item(
+            key="water_minus_weight",
+            group=weight,
+            name="Water pumped minus beverage weight",
+            label="Water pumped minus beverage weight",
+            meaning=("Water pumped less the beverage weight, in g; needs both."),
+            default_tier="extended",
+            shot=lambda f: _firmware_water(f, "water_minus_weight_g", "g"),
+        ),
         Item(
             key="weight_rate",
             group=weight,
@@ -1289,6 +1346,31 @@ def _items() -> tuple[Item, ...]:
                 f.section_band("resistance", "saturation"),
             ),
             bands=(engine._RESISTANCE_PEAK_TIMING_BANDS,),
+        ),
+        Item(
+            key="machine_puck_resistance",
+            group=resistance,
+            name="Machine puck resistance (firmware analyzer), whole shot",
+            label="Machine puck resistance (s·√bar/mL)",
+            meaning=(
+                "The firmware analyzer's machine puck resistance pr (s·√bar/mL): average, then "
+                "first, last, lowest, highest. Unbanded, and the square root of the level's "
+                "quantity, so not comparable with it."
+            ),
+            default_tier="extended",
+            shot=lambda f: _firmware_whole(f, "pr"),
+        ),
+        Item(
+            key="liquid_resistance",
+            group=resistance,
+            name="Liquid resistance (firmware analyzer), whole shot",
+            label="Liquid resistance (bar·s/mL)",
+            meaning=(
+                "The firmware analyzer's liquid resistance, pr · √pressure (bar·s/mL): average, "
+                "then first, last, lowest, highest. Unbanded."
+            ),
+            default_tier="extended",
+            shot=lambda f: _firmware_whole(f, "lr"),
         ),
         # ── channeling ───────────────────────────────────────────────
         Item(
@@ -1735,6 +1817,27 @@ def _items() -> tuple[Item, ...]:
             default_tier="extended",
             phase=_phase_resistance,
             bands=(engine._RESISTANCE_LEVEL_BANDS, engine._RESISTANCE_SLOPE_BANDS),
+        ),
+        Item(
+            key="phase_machine_resistance",
+            group=phases,
+            name="Phase machine puck resistance (firmware analyzer)",
+            label="machine puck resistance (s·√bar/mL)",
+            meaning=(
+                "The machine puck resistance over this phase, as the shot's: average, then first, "
+                "last, lowest, highest. Every phase; unbanded."
+            ),
+            default_tier="extended",
+            phase=lambda f, p: _firmware_phase(f, p, "pr"),
+        ),
+        Item(
+            key="phase_liquid_resistance",
+            group=phases,
+            name="Phase liquid resistance (firmware analyzer)",
+            label="liquid resistance (bar·s/mL)",
+            meaning=("The liquid resistance over this phase, as the shot's. Unbanded."),
+            default_tier="extended",
+            phase=lambda f, p: _firmware_phase(f, p, "lr"),
         ),
         Item(
             key="phase_channeling",

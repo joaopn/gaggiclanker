@@ -39,12 +39,12 @@ EXPECTED_GROUPS: tuple[tuple[str, int], ...] = (
     ("Timing", 3),
     ("Temperature", 7),
     ("Pressure", 6),
-    ("Flow and volume", 5),
-    ("Weight", 2),
-    ("Puck resistance", 5),
+    ("Flow and volume", 6),
+    ("Weight", 3),
+    ("Puck resistance", 7),
     ("Channeling", 12),
     ("Profile compliance", 6),
-    ("Phases", 16),
+    ("Phases", 18),
     ("Curve", 13),
     ("Your judgement", 9),
     ("The version's recipe", 5),
@@ -89,7 +89,9 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "average_flow",
     "peak_flow",
     "total_volume",
+    "water_pumped",
     "flow_slope",
+    "water_minus_weight",
     "weight_rate",
     "weight_rate_variability",
     "resistance_level",
@@ -97,6 +99,8 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "resistance_erosion",
     "resistance_peak",
     "saturation",
+    "machine_puck_resistance",
+    "liquid_resistance",
     "channeling_risk",
     "primary_signal",
     "flow_jitter",
@@ -129,6 +133,8 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "phase_saturation",
     "phase_taper",
     "phase_resistance",
+    "phase_machine_resistance",
+    "phase_liquid_resistance",
     "phase_channeling",
     "phase_samples",
     "curve_pressure",
@@ -264,6 +270,22 @@ def test_the_default_tiers_are_the_agreed_ones() -> None:
     assert {key for key, tier in tiers.items() if tier == "base"} == EXPECTED_BASE
     assert {key for key, tier in tiers.items() if tier == "excluded"} == EXPECTED_EXCLUDED
     assert set(tiers) == set(EXPECTED_KEYS)
+
+
+def test_the_firmware_analyzer_s_values_are_extended_never_base() -> None:
+    keys = (
+        "machine_puck_resistance",
+        "liquid_resistance",
+        "water_pumped",
+        "water_minus_weight",
+        "phase_machine_resistance",
+        "phase_liquid_resistance",
+    )
+
+    for key in keys:
+        assert ITEMS[key].default_tier == "extended", key
+        assert not ITEMS[key].locked, key
+    assert not set(keys) & keys_in("base", default_tiers())
 
 
 def test_the_locked_items_are_the_three_the_agent_cannot_work_without_and_are_base() -> None:

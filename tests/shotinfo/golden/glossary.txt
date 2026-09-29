@@ -58,20 +58,24 @@ Measured by the pressure sensor: none of these exists on a machine without one.
 - Average flow [extended]: The mean puck flow over the whole shot, pre-infusion included, in ml/s. Puck flow is the machine's estimate of the water passing through the coffee.
 - Peak flow [extended]: The highest puck flow during the shot, in ml/s.
 - Total volume [extended]: Puck flow integrated over the shot, in ml: the water that passed through the puck. More than the yield, because the puck keeps some.
+- Water pumped [extended]: The water the pump moved, in ml, from the machine's own count; only for machines whose pump counts it.
 - Flow slope during brew [extended]: The least-squares slope of puck flow over the brew phases, in ml/s². Bands: DECLINING under -0.02; STABLE -0.02 to 0.02; INCREASING from 0.02 up.
 
 [Weight]
 From the scale's readings: none of these exists without a scale.
+- Water pumped minus beverage weight [extended]: Water pumped less the beverage weight, in g; needs both.
 - Average weight rate [extended]: How fast weight arrived in the cup over the brew phases, in g/s, from the scale's readings (steps where the weight fell are left out).
 - Weight rate variability [extended]: The standard deviation of that weight rate, in g/s; lower is a steadier stream. Bands: VERY_STABLE under 0.1 g/s; STABLE 0.1 to 0.25 g/s; MODERATE_JITTER 0.25 to 0.5 g/s; JITTERY 0.5 to 0.8 g/s; VOLATILE from 0.8 g/s up.
 
 [Puck resistance]
-Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. When the source is the machine, peak and its timing follow its estimate, ramp spikes included. None of it exists without a pressure sensor.
+Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. When the source is the machine, peak and its timing follow its estimate, ramp spikes included. None of it exists without a pressure sensor. The machine puck resistance and liquid resistance are the firmware analyzer's, in its units and unbanded: not comparable with R.
 - Resistance level [base]: The puck's average resistance, with where it came from: the machine's own measurement, or computed from pressure and flow when the shot has none. It folds grind, dose and puck prep into one reading: higher is a finer grind or a tighter puck. Bands: the resistance level bands.
 - Resistance stability [extended]: The standard deviation of that resistance; lower is a more consistent puck, and VOLATILE points at uneven prep or channeling. Bands: VERY_STABLE under 0.2; STABLE 0.2 to 0.5; MODERATE 0.5 to 1; VOLATILE from 1 up.
 - Resistance erosion [extended]: The slope of the resistance over the brew phases, per second. A gentle decline is the puck eroding normally; a steep one is the bed giving way (channeling), and a rising one often a coarse grind. Bands: the slope bands, in /s.
 - Peak resistance [extended]: The highest resistance reached during the brew phases.
 - Saturation [extended]: How far into the brew phases the resistance peaked, as a percentage (0 % is the start of the brew, 100 % the end). An early peak is a puck saturated before the brew got going. Bands: EARLY under 15 %; GOOD_TIMING 15 to 35 %; MID_SHOT 35 to 60 %; LATE from 60 % up.
+- Machine puck resistance (s·√bar/mL) [extended]: The firmware analyzer's machine puck resistance pr (s·√bar/mL): average, then first, last, lowest, highest. Unbanded, and the square root of the level's quantity, so not comparable with it.
+- Liquid resistance (bar·s/mL) [extended]: The firmware analyzer's liquid resistance, pr · √pressure (bar·s/mL): average, then first, last, lowest, highest. Unbanded.
 
 [Channeling]
 The indicators are measured over the steady-state window: the brew phases from where pressure first reaches 90% of its peak, less leading and trailing samples under 0.1 ml/s of flow. None of it exists without a pressure sensor.
@@ -112,6 +116,8 @@ One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; 
 - saturation [extended]: Pre-infusion phases only: seconds into the phase until flow settled (three samples flowing over 0.1 ml/s and varying by under 0.15): when the puck was wet through. The whole phase when it never settled.
 - taper [extended]: Decline phases only: how fast pressure fell (its slope, bar/s), then how evenly (the standard deviation of its sample-to-sample rate, bar/s; lower is smoother). Smoothness bands: VERY_SMOOTH under 0.2 bar/s; SMOOTH 0.2 to 0.5 bar/s; MODERATE 0.5 to 1 bar/s; ROUGH from 1 bar/s up.
 - resistance [extended]: Brew phases only: the puck resistance level and its slope within the phase, banded as the shot's resistance level and erosion are: the resistance level bands, then the slope bands, in /s. Ends with where the phase's resistance came from, as the shot's level does.
+- machine puck resistance (s·√bar/mL) [extended]: The machine puck resistance over this phase, as the shot's: average, then first, last, lowest, highest. Every phase; unbanded.
+- liquid resistance (bar·s/mL) [extended]: The liquid resistance over this phase, as the shot's. Unbanded.
 - channeling [extended]: Brew phases only: the channeling risk assessed on this phase alone (the same labels as the shot's, INSUFFICIENT_DATA included), the indicators that fired and the flow shape. A short phase is often INSUFFICIENT_DATA, which is not a fault.
 
 [Curve]

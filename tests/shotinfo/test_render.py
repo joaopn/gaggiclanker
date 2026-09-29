@@ -16,6 +16,7 @@ import pytest
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.domain.exports import slog_to_raw
 from gaggiclanker.shotinfo import catalogue
 from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers, keys_in
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
@@ -30,6 +31,8 @@ from gaggiclanker.shotinfo.render import (
     shot_lines,
 )
 from gaggiclanker.shotinfo.service import approximate_tokens
+from gaggiclanker.sync.derive import derive_shot
+from tests.domain.helpers import slog_from_export
 from tests.shotinfo.conftest import Archive, insert_shot_129
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
@@ -563,3 +566,82 @@ async def test_an_example_is_absent_wherever_the_rendering_leaves_the_line_out(
     assert len(
         (item_example(full, "phase_name", curve_points=CURVE_POINTS) or "").splitlines()
     ) == len(full.phases)
+
+
+_FIRMWARE_KEYS = {
+    "machine_puck_resistance",
+    "liquid_resistance",
+    "water_pumped",
+    "water_minus_weight",
+    "phase_machine_resistance",
+    "phase_liquid_resistance",
+}
+
+
+def _firmware_keys(facts: ShotFacts, tier: str) -> set[str]:
+    return {line.key for line in shot_lines(facts, keys_in(tier, default_tiers()))} & _FIRMWARE_KEYS  # type: ignore[arg-type]
+
+
+async def test_the_firmware_values_render_in_extended_and_never_in_base(archive: Archive) -> None:
+    facts = await _one(archive.db, archive.shot)
+    base = render_shot(facts, "base", default_tiers(), curve_points=CURVE_POINTS)
+    extended = render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS)
+
+    assert "Machine puck resistance" not in base and "Liquid resistance" not in base
+    assert _firmware_keys(facts, "base") == set()
+    # A v5 shot: resistance yes, water no (there is no `wp` to count).
+    assert _firmware_keys(facts, "extended") == {
+        "machine_puck_resistance",
+        "liquid_resistance",
+        "phase_machine_resistance",
+        "phase_liquid_resistance",
+    }
+    lines = extended.splitlines()
+    assert (
+        "Machine puck resistance (s·√bar/mL): avg 0.98 (start 0.39, end 0.88, min 0.16, max 1.84)"
+        in lines
+    )
+    assert any(line.startswith("Liquid resistance (bar·s/mL): avg ") for line in lines)
+    assert "Water pumped" not in extended
+    # Every phase that has a valid reading says it, not only the brew phases.
+    phases = [line for line in lines if line.startswith("phase ")]
+    assert sum("machine puck resistance (s·√bar/mL) avg" in line for line in phases) == 2
+
+
+async def test_a_shot_with_the_pump_count_shows_its_water_and_its_difference_to_the_yield(
+    archive: Archive,
+) -> None:
+    slog = slog_from_export("shot-v7-synthetic.json")
+    derived = derive_shot(slog, slog_to_raw(slog), device_id="000900", source="import")
+    shot_id = await ShotsRepository(archive.db).insert(derived.shot, derived.samples)
+
+    facts = await _one(archive.db, shot_id)
+    lines = render_shot(facts, "extended", default_tiers(), curve_points=CURVE_POINTS).splitlines()
+
+    assert "Water pumped: 9.4 ml" in lines
+    assert slog.volume_g is not None
+    assert f"Water pumped minus beverage weight: {9.4 - slog.volume_g:.1f} g" in lines
+
+
+async def test_a_machine_with_no_pressure_sensor_has_no_firmware_resistance(
+    archive: Archive,
+) -> None:
+    facts = await _one(archive.db, archive.no_pressure)
+
+    assert _firmware_keys(facts, "extended") == set()
+
+
+async def test_a_shot_derived_before_the_firmware_values_existed_renders_without_them(
+    archive: Archive,
+) -> None:
+    facts = await _one(archive.db, archive.shot)
+    old = ShotFacts(
+        shot=facts.shot.model_copy(
+            update={
+                "diagnostics": {k: v for k, v in facts.blob.items() if k != "firmware"},
+            }
+        ),
+        samples=facts.samples,
+    )
+
+    assert _firmware_keys(old, "extended") == set()

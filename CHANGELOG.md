@@ -32,6 +32,15 @@ first (`POST /api/backup`), because there is no down-migration.
   Notes, judgements, Sets and the curves are untouched. A new migration records
   which version of the calculation wrote each shot, so a later change to it is
   brought to the archive the same way.
+- **The shot information also shows what the firmware's own shot analyzer
+  shows.** The machine's puck resistance (s·√bar/mL) and the liquid resistance
+  (bar·s/mL), for the whole shot and for each phase, as the firmware
+  reports them (average weighted by time, first, last, lowest, highest), and the
+  water the pump moved with its difference to the beverage weight. They are
+  informational and not banded, so they sit in the extended tier (nothing the
+  chat is told by default changes, and nothing filters or scores on them). The
+  water needs a shot file of format version 7 or later. Shots already in
+  the archive get them at the next start.
 
 ### Reviews use the resistance, temperature and channeling rules
 

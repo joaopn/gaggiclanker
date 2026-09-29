@@ -125,6 +125,16 @@ class ShotFacts:
         return value if isinstance(value, dict) else {}
 
     @property
+    def firmware(self) -> Mapping[str, Any]:
+        """The firmware analyzer's values (machine puck resistance, water pumped).
+
+        Empty for a shot derived before they existed; the boot re-derive fills
+        it in. Its own block, apart from the banded diagnostics.
+        """
+        value = self.blob.get("firmware")
+        return value if isinstance(value, dict) else {}
+
+    @property
     def full(self) -> bool:
         """True when the diagnostics are the full block rather than the summary."""
         return isinstance(self.diagnostics.get("temperature"), dict)
