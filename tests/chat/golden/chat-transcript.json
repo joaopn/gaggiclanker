@@ -1,0 +1,122 @@
+{
+  "thread_id": 7,
+  "title": "Dialling in",
+  "about": "Kenya v1.1",
+  "created_at": "2026-09-29T02:30:01.658Z",
+  "exported_at": "2026-09-29T10:00:00Z",
+  "messages": [
+    {
+      "id": 1,
+      "run_id": 1,
+      "role": "user",
+      "at": "2026-09-29T02:31:36.658Z",
+      "content": "How was the last shot?",
+      "tool_calls": [],
+      "tool_results": []
+    },
+    {
+      "id": 2,
+      "run_id": 1,
+      "role": "assistant",
+      "at": "2026-09-29T02:32:36.658Z",
+      "content": "Let me look.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "get_shot",
+          "arguments": {
+            "shot_id": 41
+          }
+        },
+        {
+          "id": "c2",
+          "name": "get_shot",
+          "arguments": {
+            "shot_id": 99
+          }
+        },
+        {
+          "id": "c3",
+          "name": "search_knowledge",
+          "arguments": {
+            "query": "use ```code``` fences"
+          }
+        }
+      ],
+      "tool_results": []
+    },
+    {
+      "id": 3,
+      "run_id": 1,
+      "role": "tool",
+      "at": "2026-09-29T02:32:40.658Z",
+      "content": "",
+      "tool_calls": [],
+      "tool_results": [
+        {
+          "id": "c1",
+          "name": "get_shot",
+          "ok": true,
+          "characters": 4796,
+          "content": null
+        },
+        {
+          "id": "c2",
+          "name": "get_shot",
+          "ok": false,
+          "characters": 67,
+          "content": "That shot is not in this Set. Ask about one of the Set's own shots."
+        },
+        {
+          "id": "c3",
+          "name": "search_knowledge",
+          "ok": true,
+          "characters": 58,
+          "content": "KNOWLEDGE-MARKER: Sour and fast usually means grind finer."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "run_id": 1,
+      "role": "assistant",
+      "at": "2026-09-29T02:33:36.658Z",
+      "content": "## Summary\n\nIt ran fast; grind finer.\n\n```\nnot closed",
+      "tool_calls": [],
+      "tool_results": []
+    },
+    {
+      "id": 5,
+      "run_id": 2,
+      "role": "user",
+      "at": "2026-09-29T02:40:36.658Z",
+      "content": "And the next?",
+      "tool_calls": [],
+      "tool_results": []
+    }
+  ],
+  "runs": [
+    {
+      "id": 1,
+      "status": "ok",
+      "provider": "anthropic",
+      "model": "claude-x",
+      "tokens_in": 1200,
+      "tokens_out": 85,
+      "error": null,
+      "started_at": "2026-09-29T02:31:36.658Z",
+      "finished_at": null
+    },
+    {
+      "id": 2,
+      "status": "failed",
+      "provider": "anthropic",
+      "model": "claude-x",
+      "tokens_in": null,
+      "tokens_out": null,
+      "error": "provider said 529 overloaded",
+      "started_at": "2026-09-29T02:40:36.658Z",
+      "finished_at": null
+    }
+  ]
+}

@@ -333,6 +333,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/threads/{thread_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a conversation's message transcript as a JSON file
+         * @description The stored messages and runs, and nothing the prompt was made of.
+         *
+         *     A file rather than the envelope, like the shot's raw bytes. It is built from
+         *     the stored rows alone: the system prompt and the context injected into it
+         *     each turn are never stored, so they are not here; a successful result of a
+         *     tool that renders shots is reduced to its size (see ``chat/transcript.py``).
+         */
+        get: operations["download_transcript_api_chat_threads__thread_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/threads/open": {
         parameters: {
             query?: never;
@@ -7844,6 +7869,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SendResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_transcript_api_chat_threads__thread_id__transcript_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

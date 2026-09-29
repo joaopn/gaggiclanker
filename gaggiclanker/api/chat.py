@@ -15,15 +15,21 @@ same as a review's: a retry loop in a tab nobody is watching.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sse_starlette.sse import EventSourceResponse
 
 from gaggiclanker.api.deps import ChatRunnerDep, DatabaseDep
 from gaggiclanker.chat.runner import CHAT_EVENT
+from gaggiclanker.chat.transcript import (
+    build_transcript,
+    render_transcript,
+    transcript_filename,
+)
 from gaggiclanker.db.repos.chat import (
     ChatMessageRow,
     ChatRepository,
@@ -33,9 +39,10 @@ from gaggiclanker.db.repos.chat import (
     ThreadRefusal,
     ThreadWriteResult,
 )
-from gaggiclanker.infra.envelope import ApiResponse, envelope_response
+from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
 from gaggiclanker.infra.errors import NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import rate_limit
+from gaggiclanker.infra.request_context import get_request_id
 from gaggiclanker.infra.sse import SseEvent, SseEventBus, sse_response
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, registry
 from gaggiclanker.tools.scope import ChatKind, ToolScope
@@ -237,6 +244,42 @@ async def get_thread(thread_id: int, db: DatabaseDep) -> JSONResponse:
             messages=messages,
             runs=sorted(seen.values(), key=lambda run: run.id),
         ).model_dump(mode="json")
+    )
+
+
+# Not called `/log`: content blockers drop `/log?…` URLs client-side (EasyPrivacy
+# has the rule `/log?format=`), and the browser then reports only "Failed to
+# fetch" while the server never sees the request. `tests/chat/test_transcript.py`
+# pins that the path has no `/log` segment and no query string.
+@router.get(
+    "/threads/{thread_id}/transcript",
+    response_class=Response,
+    responses={200: {"content": {"application/json": {}}}},
+    summary="Download a conversation's message transcript as a JSON file",
+)
+async def download_transcript(thread_id: int, db: DatabaseDep) -> Response:
+    """The stored messages and runs, and nothing the prompt was made of.
+
+    A file rather than the envelope, like the shot's raw bytes. It is built from
+    the stored rows alone: the system prompt and the context injected into it
+    each turn are never stored, so they are not here; a successful result of a
+    tool that renders shots is reduced to its size (see ``chat/transcript.py``).
+    """
+    repo = ChatRepository(db)
+    thread = await repo.get_thread(thread_id)
+    if thread is None:
+        raise NotFound(f"No chat thread {thread_id}")
+    transcript = build_transcript(
+        thread,
+        await repo.messages(thread_id, limit=1_000_000),
+        await repo.runs(thread_id),
+        exported_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    return binary_response(
+        render_transcript(transcript).encode("utf-8"),
+        media_type="application/json",
+        filename=transcript_filename(thread_id, thread.title),
+        request_id=get_request_id(),
     )
 
 

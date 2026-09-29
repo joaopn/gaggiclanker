@@ -379,6 +379,18 @@ class ChatRepository(Repository):
         data["usage"] = _loads(data.pop("usage_json", None), None)
         return ChatRunRow.model_validate(data)
 
+    async def runs(self, thread_id: int) -> list[ChatRunRow]:
+        """Every run of a thread, oldest first, including one that stored no message."""
+        rows = await self.db.fetch_all(
+            f"{_RUN_SELECT} WHERE thread_id = ? ORDER BY id", (thread_id,)
+        )
+        out: list[ChatRunRow] = []
+        for row in rows:
+            data = dict(zip(row.keys(), tuple(row), strict=True))
+            data["usage"] = _loads(data.pop("usage_json", None), None)
+            out.append(ChatRunRow.model_validate(data))
+        return out
+
     async def finish_run(
         self,
         run_id: int,
