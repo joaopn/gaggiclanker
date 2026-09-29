@@ -293,6 +293,67 @@ export async function fetchPath<T>(path: string, options?: RequestInit): Promise
   return parsed.data;
 }
 
+/** The file name a `Content-Disposition: attachment; filename="…"` header offers, if any. */
+function filenameFromDisposition(header: string | null): string | null {
+  const match = header?.match(/filename="?([^";]+)"?/i);
+  // Never a path: the name goes to the browser's save dialog.
+  const name = match?.[1]?.split(/[\\/]/).pop()?.trim();
+  return name || null;
+}
+
+/**
+ * Fetch a file from the API with the session's token and hand it to the browser
+ * as a download; returns the name it was saved under.
+ *
+ * A plain `<a href download>` cannot do this: the token is a bearer header, not
+ * a cookie, so with sign-in on the link answers 401 and the browser saves the
+ * error. The name is the server's (`Content-Disposition`), else `fallbackName`.
+ * A failed response is thrown as the `ApiClientError` its envelope describes
+ * and nothing is saved; a request that never left (a `TypeError`) is thrown as
+ * one that says so.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<string> {
+  const authHeader = getCachedAuthHeader();
+  let response: Response;
+  try {
+    response = await fetch(path, authHeader ? { headers: { Authorization: authHeader } } : {});
+  } catch (error) {
+    // `fetch` rejects with a TypeError only when the request never left: a
+    // content blocker matched the URL, or the network is down. The app cannot
+    // tell which, but "Failed to fetch" tells the person nothing.
+    if (error instanceof TypeError) {
+      throw new ApiClientError(
+        "The download was blocked before it reached the app, often by a content-blocking extension. Allow this site in it, or check the connection, and try again.",
+      );
+    }
+    throw error;
+  }
+  if (!response.ok) {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(await response.text());
+    } catch {
+      throw new ApiClientError(`Download failed (${response.status})`, { status: response.status });
+    }
+    const parsed = parseEnvelope<unknown>(payload, response.status);
+    if (!parsed.ok && parsed.error.code === "UNAUTHORIZED") {
+      clearAuthSession();
+      redirectToSignIn();
+    }
+    throw toApiError(response.status, parsed);
+  }
+  const name = filenameFromDisposition(response.headers.get("Content-Disposition")) ?? fallbackName;
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  // Deferred: some browsers start reading the blob after `click()` returns, and
+  // a URL revoked on the same tick is a download of nothing.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return name;
+}
+
 /** Every `/api/*` call. `endpoint` is relative to `/api`. */
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   return fetchPath<T>(`${API_BASE}${endpoint}`, options);
@@ -422,6 +483,16 @@ export async function getShotSamples(id: number, downsample?: number): Promise<S
 /** The stored `.slog` bytes. A download, not JSON — hence the raw path. */
 export function shotRawUrl(id: number): string {
   return `${API_BASE}/shots/${id}/raw`;
+}
+
+/**
+ * Where a conversation's message transcript (JSON) is served: a file, not the
+ * envelope. Not `/log?…`: content blockers drop that URL before it leaves the
+ * browser (EasyPrivacy has `/log?format=`), and `fetch` then only says "Failed
+ * to fetch".
+ */
+export function chatTranscriptUrl(id: number): string {
+  return `${API_BASE}/chat/threads/${id}/transcript`;
 }
 
 /**

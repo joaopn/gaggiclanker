@@ -1,6 +1,8 @@
-import { Send, Square } from "lucide-react";
+import { Download, Send, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { chatTranscriptUrl, downloadFile } from "@/api/client";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { ThreadFolders } from "@/components/chat/ThreadFolders";
 import { TellAgentContext } from "@/components/chat/tellAgent";
@@ -76,6 +78,18 @@ export function ChatPage() {
   const send = useSendChatMessage();
   const cancel = useCancelChatRun();
   const live = useChatRun(runId, selected);
+
+  const [downloading, setDownloading] = useState(false);
+  async function saveTranscript(id: number) {
+    setDownloading(true);
+    try {
+      await downloadFile(chatTranscriptUrl(id), `chat-${id}.json`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The log could not be downloaded");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   // Which surface this conversation has: the selected thread's, or — with
   // nothing selected — the one a first question would be filed under. Asked of
@@ -282,6 +296,22 @@ export function ChatPage() {
 
         <SectionCard
           className="min-w-0"
+          // The log is of what is stored, so only a stored conversation has one.
+          // A button, not a link: the token is a bearer header, so a bare href
+          // would be a 401 with sign-in on. One file, JSON, always.
+          actions={
+            selected === null ? undefined : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={downloading}
+                onClick={() => void saveTranscript(selected)}
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                Download log
+              </Button>
+            )
+          }
           title={
             selected === null ? "New conversation" : thread.data?.thread.title || "New conversation"
           }

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetApiClientAuthForTests,
   ApiClientError,
+  chatTranscriptUrl,
   createBackup,
+  downloadFile,
   fetchApi,
   getHealth,
   getSettings,
@@ -248,5 +250,150 @@ describe("the auth endpoints", () => {
     await logout();
     expect(hasAuthenticatedSession()).toBe(false);
     expect(window.localStorage.getItem("gaggiclanker.token")).toBeNull();
+  });
+});
+
+describe("chatTranscriptUrl", () => {
+  it("names the conversation, with no /log segment and no query string", () => {
+    // A blocker rule (EasyPrivacy `/log?format=`) drops such URLs before they
+    // leave the browser; this is the path the server registers.
+    expect(chatTranscriptUrl(12)).toBe("/api/chat/threads/12/transcript");
+  });
+});
+
+describe("downloadFile", () => {
+  let click: ReturnType<typeof vi.spyOn>;
+  let saved: { name: string; href: string }[];
+
+  beforeEach(() => {
+    __resetApiClientAuthForTests(null);
+    redirectToSignIn.mockClear();
+    saved = [];
+    // jsdom has neither object URLs nor navigation: what is saved is what the
+    // anchor was told to save, at the moment it is clicked.
+    URL.createObjectURL = vi.fn(() => "blob:log");
+    URL.revokeObjectURL = vi.fn();
+    click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      saved.push({ name: this.download, href: this.href });
+    });
+  });
+
+  function file(disposition?: string): Response {
+    return new Response("# log", {
+      status: 200,
+      headers: {
+        "Content-Type": "text/markdown",
+        ...(disposition ? { "Content-Disposition": disposition } : {}),
+      },
+    });
+  }
+
+  it("sends the bearer token, which a plain link cannot", async () => {
+    setAuthToken("tok");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(file());
+
+    await downloadFile("/api/chat/threads/3/transcript", "chat-3.md");
+
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("/api/chat/threads/3/transcript");
+    expect((init as RequestInit).headers).toEqual({ Authorization: "Bearer tok" });
+  });
+
+  it("sends no Authorization header when nobody is signed in", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(file());
+
+    await downloadFile("/api/x", "x.md");
+
+    const init = (fetchSpy.mock.calls[0]?.[1] ?? {}) as RequestInit;
+    expect(init.headers).toBeUndefined();
+  });
+
+  it("saves the blob under the name the server gave it", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      file('attachment; filename="chat-3-dialling-in.md"'),
+    );
+
+    await expect(downloadFile("/api/x", "chat-3.md")).resolves.toBe("chat-3-dialling-in.md");
+
+    expect(saved).toEqual([{ name: "chat-3-dialling-in.md", href: "blob:log" }]);
+    expect(click).toHaveBeenCalledTimes(1);
+    // Not on the same tick as the click; a moment later.
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:log"));
+  });
+
+  it("never lets the server's name be a path", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      file('attachment; filename="../../etc/passwd"'),
+    );
+
+    await downloadFile("/api/x", "fallback.md");
+
+    expect(saved[0]?.name).toBe("passwd");
+  });
+
+  it("falls back to the given name when there is no Content-Disposition", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(file());
+
+    await downloadFile("/api/x", "chat-3.md");
+
+    expect(saved[0]?.name).toBe("chat-3.md");
+  });
+
+  it("saves nothing and throws the envelope's error on a 404", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(404, failure("NOT_FOUND", "No chat thread 3")),
+    );
+
+    await expect(downloadFile("/api/x", "x.md")).rejects.toMatchObject({
+      message: "No chat thread 3 (request req-9)",
+      code: "NOT_FOUND",
+      status: 404,
+    });
+
+    expect(click).not.toHaveBeenCalled();
+    expect(saved).toEqual([]);
+  });
+
+  it("saves nothing, drops the session and goes to sign-in on a 401", async () => {
+    setAuthToken("stale");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(401, failure("UNAUTHORIZED", "Sign in first")),
+    );
+
+    await expect(downloadFile("/api/x", "x.md")).rejects.toMatchObject({ status: 401 });
+
+    expect(click).not.toHaveBeenCalled();
+    expect(hasAuthenticatedSession()).toBe(false);
+    expect(redirectToSignIn).toHaveBeenCalled();
+  });
+
+  it("says the download was blocked when fetch itself throws, and saves nothing", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const error = await downloadFile("/api/x", "x.json").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect((error as Error).message).toMatch(/blocked before it reached the app/);
+    expect((error as Error).message).toMatch(/content-blocking extension/);
+    expect((error as Error).message).not.toMatch(/Failed to fetch/);
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it("lets any other failure of fetch through untouched", async () => {
+    const boom = new Error("aborted");
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(boom);
+
+    await expect(downloadFile("/api/x", "x.json")).rejects.toBe(boom);
+  });
+
+  it("saves nothing when the error is not an envelope either", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(htmlResponse(502));
+
+    await expect(downloadFile("/api/x", "x.md")).rejects.toThrow("Download failed (502)");
+
+    expect(click).not.toHaveBeenCalled();
   });
 });

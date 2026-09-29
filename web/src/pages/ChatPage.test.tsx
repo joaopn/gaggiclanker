@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "@/pages/ChatPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
@@ -27,6 +28,7 @@ const {
   getSetProposals,
   acceptSetProposal,
   declineSetProposal,
+  downloadFile,
 } = vi.hoisted(() => ({
   getChatThreads: vi.fn(),
   getChatThread: vi.fn(),
@@ -40,6 +42,7 @@ const {
   getSetProposals: vi.fn(),
   acceptSetProposal: vi.fn(),
   declineSetProposal: vi.fn(),
+  downloadFile: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -55,6 +58,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSetProposals,
   acceptSetProposal,
   declineSetProposal,
+  downloadFile,
 }));
 
 const THREAD = {
@@ -388,6 +392,51 @@ describe("ChatPage folders", () => {
 });
 
 describe("ChatPage", () => {
+  it("offers one download of the selected conversation, and nothing before one is open", async () => {
+    const user = setupUser();
+    downloadFile.mockResolvedValue("saved.json");
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByText("Why is Guji sour?");
+    expect(screen.queryByRole("button", { name: /Download log/ })).toBeNull();
+
+    await user.click(screen.getByText("Why is Guji sour?"));
+    await user.click(await screen.findByRole("button", { name: /Download log/ }));
+
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    expect(downloadFile).toHaveBeenCalledWith("/api/chat/threads/1/transcript", "chat-1.json");
+    // One file, one button: no second format to choose.
+    expect(screen.queryByRole("button", { name: "JSON" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Download|JSON/ })).toHaveLength(1);
+  });
+
+  it("disables the button while a download is in flight", async () => {
+    const user = setupUser();
+    let finish: (name: string) => void = () => {};
+    downloadFile.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)));
+    renderWithQueryClient(<ChatPage />);
+
+    await user.click(await screen.findByText("Why is Guji sour?"));
+    await user.click(await screen.findByRole("button", { name: /Download log/ }));
+
+    expect(screen.getByRole("button", { name: /Download log/ })).toBeDisabled();
+
+    await act(async () => finish("chat-1.json"));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Download log/ })).toBeEnabled());
+  });
+
+  it("says so when the log cannot be downloaded", async () => {
+    const user = setupUser();
+    downloadFile.mockRejectedValue(new Error("No chat thread 1"));
+    renderWithQueryClient(<ChatPage />);
+
+    await user.click(await screen.findByText("Why is Guji sour?"));
+    await user.click(await screen.findByRole("button", { name: /Download log/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No chat thread 1"));
+  });
+
   it("opens a thread and shows its transcript and usage", async () => {
     const user = setupUser();
     renderWithQueryClient(<ChatPage />);
