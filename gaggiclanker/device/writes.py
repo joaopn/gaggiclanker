@@ -54,8 +54,8 @@ __all__ = [
 #: Still absent, and still a design decision to add: `req:profiles:reorder` (it
 #: rewrites the display's whole ordering for a cosmetic gain),
 #: `req:history:rebuild` (it regenerates `index.bin` for every shot at once),
-#: and `POST /api/settings` (it clears every boolean key the body omits, and it
-#: can change WiFi and PID).
+#: and `POST /api/settings` (it can change WiFi and PID, and up to firmware
+#: v1.8.x it cleared every boolean key the body omits).
 type WriteKind = Literal[
     "profile_save",
     "profile_delete",

@@ -16,10 +16,11 @@ entry between those two lists is the edit that admits the surface has grown; a
 rule that let a write appear *without* that edit would be a rule that does not
 hold.
 
-The stakes have not changed. `POST /api/settings` clears every checkbox-style
-boolean key the body omits (so a partial write turns off HomeKit, boiler fill
-and the momentary buttons), `req:profiles:save` with a float `pump` leaves a
-profile that never runs the pump, `req:history:delete` is unrecoverable — the
+The stakes have not changed. `POST /api/settings` changes WiFi and PID and, up to
+firmware v1.8.x, cleared every checkbox-style boolean key the body omits (a
+partial write turned off HomeKit, boiler fill and the momentary buttons),
+`req:profiles:save` with a float `pump` leaves a profile that never runs the
+pump, `req:history:delete` is unrecoverable — the
 machine is the only copy until we have synced it, which is exactly why the gate
 refuses it for any shot the archive does not already hold intact — and a profile
 with zero phases crashes brew start on the display.

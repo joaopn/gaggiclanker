@@ -78,9 +78,11 @@ Deleting leaves the index row behind with the DELETED flag set and removes the
 files, which is why the reconcile treats the flag rather than the absence as the
 signal — and why `gaggiclanker/device/fake.py` reproduces exactly that.
 
-**10. `POST /api/settings` on the device clears any boolean key you omit.**
-It is the one endpoint that can change WiFi and PID, and a partial write turns
-off HomeKit, boiler fill and the momentary buttons. gaggiclanker never writes
+**10. `POST /api/settings` changes WiFi and PID, and up to v1.8.x it cleared any boolean key you omit.**
+It is the one endpoint that can change WiFi and PID. Up to firmware v1.8.x a
+partial write also turned off HomeKit, boiler fill and the momentary buttons;
+v1.9.0 made it a partial update that leaves an omitted boolean alone, so the
+clearing is not something to rely on either way. gaggiclanker never writes
 device settings — the seven writes it *can* make are five `req:profiles:*`
 frames plus `req:history:delete` and `req:history:notes:save`, and every one of
 them is off by default (`docs/safety-layers.md`).

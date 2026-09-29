@@ -341,7 +341,8 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     assert public == set(READ_ONLY_METHODS) | set(GATED_WRITE_METHODS) | lifecycle
     # Nothing that writes anything but a profile, and nothing named as though
     # it might: `set_` would catch `set_settings`, which is the endpoint that
-    # clears every boolean key it omits.
+    # changes WiFi and PID (and, up to firmware v1.8.x, cleared every boolean
+    # key it omits).
     assert all(not name.startswith(("write", "set_")) for name in public - set(GATED_WRITE_METHODS))
     # And the seven are exactly the seven, named rather than counted: a count
     # would survive a swap.

@@ -775,7 +775,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "already holds intact. Off by default, and it is the only thing standing between "
             "a bug and a display that will not brew — a profile with zero phases crashes brew "
             "start, and recovering one means a reflash plus a filesystem erase. Device "
-            "settings are never written (POST /api/settings clears every boolean key it omits)."
+            "settings are never written (POST /api/settings also changes WiFi and PID)."
         ),
     ),
     SettingDefinition(

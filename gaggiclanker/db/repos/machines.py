@@ -85,7 +85,8 @@ class MachineRow(BaseModel):
     #: `res:ota-settings` verbatim, as the machine sent it.
     identity: JsonObject = Field(default=None, validation_alias="identity_json")
     #: `GET /api/settings` verbatim. Read-only here and always will be: the POST
-    #: counterpart clears every boolean key absent from its body.
+    #: counterpart changes WiFi and PID (and, up to firmware v1.8.x, cleared every
+    #: boolean key absent from its body).
     settings: JsonObject = Field(default=None, validation_alias="settings_json")
     notes: str = ""
     first_seen_at: str

@@ -99,8 +99,8 @@ DEFAULT_DEVICE_SETTINGS: dict[str, Any] = {
     "pid": "58.397,1.027,249.055,0.0",
     # The predictive brew delay a shot runs with, mirrored into every `.slog`
     # header, and the boiler probe offset. Both are read by the sync engine's
-    # identity pass; neither is ever written back — POST /api/settings clears
-    # every boolean key it omits.
+    # identity pass; neither is ever written back — POST /api/settings changes
+    # WiFi and PID, and up to firmware v1.8.x cleared every boolean key it omits.
     "brewDelay": 800,
     "temperatureOffset": 2.5,
     "flushDuration": 5,
@@ -484,8 +484,9 @@ class FakeDevice:
     async def _settings_handler(self, request: web.Request) -> web.Response:
         self._record(request)
         if request.method != "GET":
-            # The real device accepts a POST here and clears every boolean key
-            # the body omits. gaggiclanker must never send one, so the fake
+            # The real device accepts a POST here (up to firmware v1.8.x it
+            # also cleared every boolean key the body omits; v1.9.0 made it a
+            # partial update). gaggiclanker must never send one, so the fake
             # refuses rather than pretending — a test that writes settings
             # fails loudly instead of passing quietly.
             return web.Response(status=405, text="the fake device is read-only")

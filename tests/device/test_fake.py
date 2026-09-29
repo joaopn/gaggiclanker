@@ -60,9 +60,10 @@ def test_the_index_it_serves_round_trips_through_our_parser(
 async def test_the_fake_refuses_to_be_written_to(fake_device: FakeDevice) -> None:
     """A test that tries to write device settings must fail loudly.
 
-    `POST /api/settings` on the real machine clears every checkbox-style
-    boolean key the body omits. gaggiclanker never sends one; the fake makes
-    sure a future version that does cannot pass its tests.
+    `POST /api/settings` on the real machine changes WiFi and PID, and up to
+    firmware v1.8.x it cleared every checkbox-style boolean key the body omits
+    (v1.9.0 made it a partial update). gaggiclanker never sends one; the fake
+    makes sure a future version that does cannot pass its tests.
     """
     async with httpx.AsyncClient(base_url=f"http://{fake_device.address}") as http:
         response = await http.post("/api/settings", data={"mdnsName": "nope"})

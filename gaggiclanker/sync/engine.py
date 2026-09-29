@@ -409,9 +409,10 @@ class SyncEngine:
         """Read what the machine is, and store it.
 
         `GET /api/settings` is read-only here and always will be: the POST
-        counterpart clears every boolean key absent from its body, which is how
-        a partial write silently turns off HomeKit and the boiler fill. The
-        client does not expose one.
+        counterpart changes WiFi and PID, and up to firmware v1.8.x it cleared
+        every boolean key absent from its body, which is how a partial write
+        silently turned off HomeKit and the boiler fill (v1.9.0 made it a
+        partial update). The client does not expose one.
         """
         async with self._lock:
             await self._ensure_machine()

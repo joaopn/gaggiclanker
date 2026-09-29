@@ -23,8 +23,8 @@ audit before a byte goes out, and the attempt is recorded either way. A client
 built without a gate gets :class:`~gaggiclanker.device.writes.DenyAllWrites` and
 can write nothing at all, so read-only is what you get by forgetting.
 
-What is *not* here, and will not be: `POST /api/settings` (it clears every
-boolean key the body omits, and it can change WiFi and PID),
+What is *not* here, and will not be: `POST /api/settings` (it can change WiFi and PID,
+and up to firmware v1.8.x it cleared every boolean key the body omits),
 `req:history:rebuild` (it regenerates the index for every shot at once), and
 `req:profiles:reorder` (it rewrites the display's whole ordering for a cosmetic
 gain). A bad `req:profiles:save` can still leave the machine with a profile that
@@ -1094,9 +1094,10 @@ class GaggimateClient:
         """`GET /api/settings` — the machine's own settings, read-only.
 
         There is deliberately no writing counterpart. `POST /api/settings`
-        clears every checkbox-style boolean key absent from the body, so a
-        partial write silently turns off HomeKit, boiler fill and the momentary
-        buttons; it is also the one endpoint that can change Wi-Fi and the PID.
+        is the one endpoint that can change Wi-Fi and the PID, and up to
+        firmware v1.8.x it also cleared every checkbox-style boolean key absent
+        from the body, so a partial write silently turned off HomeKit, boiler
+        fill and the momentary buttons (v1.9.0 made it a partial update).
         """
         return await self._get_json("/api/settings")
 

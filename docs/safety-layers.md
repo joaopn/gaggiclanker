@@ -103,8 +103,9 @@ A wedged display is recoverable by reflash plus filesystem erase, and
 gaggiclanker makes that cheap because it holds every profile — but the goal is
 never to need it.
 
-**`POST /api/settings` is the genuinely dangerous endpoint.** It clears every
-boolean key absent from its body and it can change WiFi and PID. gaggiclanker
+**`POST /api/settings` is the genuinely dangerous endpoint.** It can change WiFi and PID,
+and up to firmware v1.8.x it also cleared every boolean key absent from its body
+(v1.9.0 made it a partial update). gaggiclanker
 does not write device settings, and there is no plan for it to.
 
 **The machine is small.** About 300 KB of heap and three WebSocket clients
