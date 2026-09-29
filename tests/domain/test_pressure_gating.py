@@ -8,7 +8,11 @@ adherence EXCELLENT: three confident readings of a sensor that does not exist.
 
 from __future__ import annotations
 
+import dataclasses
+from pathlib import Path
 from typing import Any
+
+import pytest
 
 from gaggiclanker.domain.diagnostics import (
     compute_shot_diagnostics,
@@ -16,7 +20,8 @@ from gaggiclanker.domain.diagnostics import (
     transform_shot,
 )
 from gaggiclanker.domain.scoring import execution_score
-from tests.domain.helpers import make_slog
+from gaggiclanker.domain.slog import parse_slog
+from tests.domain.helpers import make_slog, standard_board
 
 
 def _samples(*, pressure: bool) -> list[dict[str, Any]]:
@@ -73,7 +78,8 @@ def test_standard_board_summary_omits_the_same_things() -> None:
     assert summary["channeling_risk"] is None
     assert summary["pressure_rmse_bar"] is None
     assert "resistance_level" not in summary["annotations"]
-    # Flow adherence needs no pressure sensor, so it survives.
+    # This synthetic board records a target flow and a puck flow (which no real
+    # Standard board does, see below), so there is a flow to grade.
     assert summary["flow_rmse_ml_s"] is not None
 
 
@@ -107,3 +113,71 @@ def test_score_on_a_standard_board_is_low_confidence() -> None:
     score = execution_score(transform_shot(_standard(), "per_phase"))
     assert score.confidence == "low"
     assert "pressure sensor" in score.reason
+
+
+SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
+FLOW = ("flow_adherence", "flow_overshoot", "flow_undershoot")
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+def test_a_real_standard_board_shot_has_no_flow_adherence_in_either_shape(path: Path) -> None:
+    """A Standard board logs `pf = 0` and `tf = 0` on every sample: no flow to grade."""
+    slog = standard_board(parse_slog(path.read_bytes()))
+    assert slog.has_pressure is False, "the gate must be inferred from the trace, not forced"
+
+    summary: Any = transform_shot(slog, "summary")["diagnostics"]
+    assert summary["has_pressure"] is False
+    assert not [k for k in summary["annotations"] if k in FLOW]
+    assert summary["flow_rmse_ml_s"] is None
+    assert summary["max_flow_overshoot_ml_s"] is None
+
+    full: Any = transform_shot(slog, "per_phase")["diagnostics"]
+    assert full["profile_compliance"] is None
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+def test_the_predicate_lets_the_summary_grade_a_no_pressure_shot_that_has_flow(
+    path: Path,
+) -> None:
+    """The predicate is about the samples, not the board: with the gate forced off, a
+    recording that carries a target and a measured flow somewhere is not refused.
+
+    These recordings command flow only in preinfusion, so the brew window the
+    summary grades holds a zero target: this tests that the summary grades at
+    all, not the quality of that grade (the synthetic board above has a real
+    target in its brew window)."""
+    slog = parse_slog(path.read_bytes())
+    summary: Any = transform_shot(slog, "summary", has_pressure=False)["diagnostics"]
+    assert summary["has_pressure"] is False
+    assert {"flow_adherence", "flow_overshoot"} <= set(summary["annotations"])
+    assert summary["flow_rmse_ml_s"] is not None
+
+
+def test_a_no_pressure_shot_needs_both_a_target_and_a_measured_flow() -> None:
+    for zeroed in ("tf", "pf"):
+        samples = [{**s, zeroed: 0.0} for s in _samples(pressure=False)]
+        slog = make_slog(samples, [(0, 0, "Preinfusion"), (6, 1, "Extraction")])
+        summary: Any = compute_summary_diagnostics(slog)
+        assert summary is not None and summary["flow_rmse_ml_s"] is None, zeroed
+
+
+def test_a_negative_puck_flow_is_still_a_measured_flow() -> None:
+    """The puck flow can go negative while the pump depressurises: still a reading."""
+    samples = [{**s, "pf": -0.1 * (i % 3 + 1)} for i, s in enumerate(_samples(pressure=False))]
+    slog = make_slog(samples, [(0, 0, "Preinfusion"), (6, 1, "Extraction")])
+    summary: Any = compute_summary_diagnostics(slog)
+    assert summary is not None and summary["flow_rmse_ml_s"] is not None
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+def test_a_pressure_shot_keeps_grading_flow_even_without_flow_targets(path: Path) -> None:
+    """A pure pressure profile on a board with a sensor: unchanged, both shapes."""
+    slog = parse_slog(path.read_bytes())
+    slog = dataclasses.replace(
+        slog, samples=[s.model_copy(update={"tf": 0.0}) for s in slog.samples]
+    )
+    assert slog.has_pressure
+    summary: Any = transform_shot(slog, "summary")["diagnostics"]
+    full: Any = transform_shot(slog, "per_phase")["diagnostics"]
+    assert summary["flow_rmse_ml_s"] is not None
+    assert full["profile_compliance"]["flow_rmse_ml_s"] is not None

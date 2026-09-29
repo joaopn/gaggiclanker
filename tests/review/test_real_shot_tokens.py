@@ -25,6 +25,7 @@ from gaggiclanker.review.context import build_review_input, signal_tokens
 from gaggiclanker.review.style import StyleVerdict
 from gaggiclanker.shotinfo import load_shots
 from gaggiclanker.sync.derive import derive_shot
+from tests.domain.helpers import standard_board
 
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
 
@@ -119,6 +120,28 @@ async def test_a_shot_without_a_pressure_sensor_gets_no_prose_token(
     tokens = signal_tokens(facts, StyleVerdict(style="unknown", tier="none", evidence=[]))
     assert not [t for t in tokens if t.startswith(("note:", "guidance:"))]
     assert all(len(t) < 60 for t in tokens)
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_standard_board_shot_gets_no_flow_adherence_token(
+    seeded: Database, path: Path
+) -> None:
+    """Its flow is not measured, so no rule that grades the grind by flow applies."""
+    slog = standard_board(parse_slog(path.read_bytes()))
+    derived = derive_shot(slog, path.read_bytes(), device_id=path.stem)
+    shot_id = await ShotsRepository(seeded).insert(derived.shot, derived.samples)
+    (facts,) = await load_shots(seeded, [shot_id])
+    tokens = signal_tokens(facts, StyleVerdict(style="unknown", tier="none", evidence=[]))
+    assert not [t for t in tokens if t.startswith(("flow_adherence:", "flow_overshoot:"))]
+    assert not [t for t in tokens if t.startswith("pressure_adherence:")]
+    review = await build_review_input(seeded, shot_id)
+    graded = {
+        rule.key
+        for rule in load_seed_rules()
+        if any(t.startswith("flow_adherence:") for t in rule.applies.get("signal") or [])
+    }
+    assert graded, "some seed rule keys on flow adherence"
+    assert not graded & set(review.rule_keys)
 
 
 class _Shot:

@@ -17,8 +17,9 @@ import pytest
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import slog_to_raw
+from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.shotinfo import catalogue
-from gaggiclanker.shotinfo.catalogue import ITEMS, default_tiers, keys_in
+from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, default_tiers, keys_in
 from gaggiclanker.shotinfo.downsample import CURVE_POINTS
 from gaggiclanker.shotinfo.facts import ShotFacts
 from gaggiclanker.shotinfo.render import (
@@ -32,7 +33,7 @@ from gaggiclanker.shotinfo.render import (
 )
 from gaggiclanker.shotinfo.service import approximate_tokens
 from gaggiclanker.sync.derive import derive_shot
-from tests.domain.helpers import slog_from_export
+from tests.domain.helpers import slog_from_export, standard_board
 from tests.shotinfo.conftest import Archive, insert_shot_129
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
@@ -645,3 +646,29 @@ async def test_a_shot_derived_before_the_firmware_values_existed_renders_without
     )
 
     assert _firmware_keys(old, "extended") == set()
+
+
+@pytest.mark.parametrize("tier", ["base", "extended", "full"])
+async def test_a_standard_board_shot_shows_no_compliance_at_any_tier(
+    archive: Archive, tier: ShotTier
+) -> None:
+    """No pressure and no flow was measured, so nothing is graded against the profile."""
+    path = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))[0]
+    raw = path.read_bytes()
+    slog = standard_board(parse_slog(raw))
+    derived = derive_shot(slog, raw, device_id="000777")
+    shot_id = await ShotsRepository(archive.db).insert(derived.shot, derived.samples)
+    facts = await _one(archive.db, shot_id)
+
+    text = render_shot(facts, tier, default_tiers(), curve_points=CURVE_POINTS)
+    keys = {line.key for line in shot_lines(facts, frozenset(ITEMS))}
+    for key in (
+        "pressure_adherence",
+        "flow_adherence",
+        "pressure_overshoot_max",
+        "pressure_undershoot_max",
+        "flow_overshoot_max",
+        "flow_undershoot_max",
+    ):
+        assert key not in keys, key
+    assert "Flow adherence" not in text

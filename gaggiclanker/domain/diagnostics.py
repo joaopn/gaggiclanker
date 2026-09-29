@@ -1458,6 +1458,30 @@ def _build_resistance(window: list[SampleDict], dt: float) -> ResistanceDiagnost
     )
 
 
+def _flow_commanded_and_measured(samples: list[SampleDict]) -> bool:
+    """Whether the samples hold a flow that was commanded and one that was measured.
+
+    A GaggiMate Standard board has no pressure sensor and no dimmed pump: the
+    controller reports zero for the puck flow unless the board has the pressure
+    capability, the display sets the target flow only when it does, and every
+    Standard revision in the firmware's board table is built without it. The
+    log records every field, so such a shot carries `pf = 0` and `tf = 0` on
+    every sample, and comparing the two would report a perfect adherence to a
+    profile nobody measured.
+
+    A no-pressure shot that does carry a real target and a real flow (a board
+    whose firmware says otherwise) is graded, but only by the summary shape,
+    which asks this. The full block, the one that is stored and shown, never
+    grades flow without pressure. That is fine: the summary shape is reached
+    only through `transform_shot("summary")`, which nothing stored or shown
+    uses. A negative puck flow (the pump depressurising) still counts as a
+    measurement, hence `!= 0` and not `> 0`.
+    """
+    return any(s.get("tf", 0.0) > 0 for s in samples) and any(
+        s.get("pf", 0.0) != 0 for s in samples
+    )
+
+
 def _compute_profile_compliance(samples: list[SampleDict]) -> ProfileComplianceMetrics | None:
     """How closely the machine followed the commanded pressure and flow."""
     p_pairs = [(s.get("cp", 0.0), s["tp"]) for s in samples if "tp" in s]
@@ -1563,7 +1587,10 @@ def compute_summary_diagnostics(
     f_rmse: float | None = None
     max_flow_overshoot: float | None = None
     f_targets = [(s.get("pf", 0.0), s["tf"]) for s in brew_samples if "tf" in s]
-    if len(f_targets) >= 3:
+    # A board without a pressure sensor has no flow to grade (see the predicate);
+    # a pressure shot keeps grading whatever its samples hold, as it always has.
+    flow_gradable = pressure_ok or _flow_commanded_and_measured(samples)
+    if flow_gradable and len(f_targets) >= 3:
         f_rmse = _round2(_compute_rmse([a for a, _ in f_targets], [t for _, t in f_targets]))
         max_flow_overshoot = _round2(max(0.0, max(a - t for a, t in f_targets)))
         annotations["flow_adherence"] = _annotate_ascending(f_rmse, _PROFILE_ADHERENCE_BANDS)

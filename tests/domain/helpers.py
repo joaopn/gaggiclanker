@@ -7,6 +7,7 @@ vendored upstream suite used, without every test having to know how a
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -135,3 +136,18 @@ def upstream_shot(
         transitions=transitions,
     )
     return Slog(header=header, samples=parsed, incomplete=incomplete, shot_id=id)
+
+
+#: What a GaggiMate Standard board logs as zero on every sample: it has no
+#: pressure sensor and no dimmed pump, and the firmware sends no target flow
+#: without the pressure capability. The temperature and the scale stay real.
+STANDARD_BOARD_ZEROED = ("cp", "tp", "pf", "tf", "fl", "pr", "wp")
+
+
+def standard_board(slog: Slog) -> Slog:
+    """The same shot as a Standard board would have logged it."""
+    samples = [
+        s.model_copy(update={f: 0.0 for f in STANDARD_BOARD_ZEROED if getattr(s, f) is not None})
+        for s in slog.samples
+    ]
+    return dataclasses.replace(slog, samples=samples)
