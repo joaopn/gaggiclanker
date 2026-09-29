@@ -43,6 +43,7 @@ from gaggiclanker.db.repos.knowledge_docs import (
     content_hash,
 )
 from gaggiclanker.db.repos.knowledge_insights import InsightRow, InsightsRepository
+from gaggiclanker.domain.diagnostics import is_healthy_band
 from gaggiclanker.domain.vocab import FLAVOR_LABELS
 from gaggiclanker.knowledge.chunker import chunk_markdown
 
@@ -92,9 +93,12 @@ MAX_EXCERPTS = 6
 #: How many hits each query contributes to the merge.
 _PER_QUERY = 3
 
-#: Band labels that mean "this was fine". A query built from one of these
-#: retrieves prose about the normal case, which is the one thing a review
-#: does not need explaining.
+#: Band labels that mean "this was fine" for every metric that carries them, and
+#: for the ones no band table names. A query built from one of these retrieves
+#: prose about the normal case, which is the one thing a review does not need
+#: explaining. A label whose meaning depends on the metric (`LOW`, `MINIMAL`,
+#: `VERY_STABLE`) is not here: `domain.diagnostics.BAND_READINGS` classifies
+#: those per metric.
 _UNREMARKABLE_BANDS = frozenset(
     {
         "NORMAL",
@@ -381,7 +385,7 @@ class KnowledgeService:
             metric, _, label = token.partition(":")
             if not label or metric in _NON_BAND_PREFIXES or not label.isupper():
                 continue
-            if label in _UNREMARKABLE_BANDS:
+            if label in _UNREMARKABLE_BANDS or is_healthy_band(metric, label):
                 continue
             add(f"{metric} {label}")
 

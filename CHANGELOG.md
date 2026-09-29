@@ -61,6 +61,19 @@ first (`POST /api/backup`), because there is no down-migration.
   for every shot, and the free-text notes and channeling guidance are no
   longer passed off as tokens. Reviews already written are unchanged; a new
   review of an old shot picks the rules up.
+- **Fixed: a shot review's background excerpts no longer chase healthy
+  readings.** With the tokens named by section, a low channeling risk, minimal
+  temperature overshoot or a very stable resistance became a search for prose
+  about the normal case, and the first of those took the one slot the
+  diagnostics reference gets, crowding out the excerpt about what does stand
+  out. Whether a reading is healthy is now decided per metric (`LOW` is fine
+  for channeling risk and worth a search for resistance level), next to the
+  band tables, and a test refuses a band label nobody has classified. Anything
+  about the puck or the recipe, such as a low or high resistance level, a
+  moderate or steep decline of resistance or a channeling risk above low, is
+  still searched for. A gradual decline of resistance (how a bed settles) and a
+  channeling window too short to judge count as unremarkable.
+  Reviews already written are unchanged.
 
 ### Tested against GaggiMate firmware v1.9.0
 

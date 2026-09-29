@@ -434,6 +434,100 @@ _RAMP_RATE_BANDS: list[tuple[float, str]] = [
     (float("inf"), "VERY_AGGRESSIVE"),
 ]
 
+# ── What a reading means, per metric ─────────────────────────────────
+#
+# A band label cannot say on its own whether it is worth writing about: `LOW` is
+# the healthy value of `channeling_risk` and the notable one of
+# `resistance_level`. The review builds its retrieval queries from the band
+# tokens it emits, and a query built from a healthy reading fetches prose about
+# the normal case and takes an excerpt slot from the section that explains what
+# does stand out. So the split lives here, beside the tables it classifies, where
+# whoever adds or renames a label in one of them sees it; a test walks the
+# tables and refuses a label that is in neither column.
+#
+# Keyed by the review's token metric (`review.context.signal_tokens`): the value
+# is (healthy, notable). "Healthy" means the reading says nothing is wrong or
+# out of the ordinary. Anything that says something about the puck or the
+# recipe stays notable, including a resistance that rises or falls moderately
+# or steeply, and any channeling risk above low. A "minor" band is healthy only
+# where the table's own vocabulary makes it so: flow deviation's `MINOR_DEVIATION`
+# is (the label was already on the retrieval's list of fine words, and a flow
+# within a few tenths of a millilitre of target is inside the machine's own
+# noise), while pressure's `MINOR_OVERSHOOT` stays notable, since an overshoot
+# is the pump exceeding a commanded pressure and the reading is worth asking
+# about. Not decided by symmetry: each label is classified on its own.
+#
+# `channeling_risk:INSUFFICIENT_DATA` is healthy for retrieval: it says the
+# steady-state window was too short to judge, which the rules and the reference
+# call "not a problem", and a query for it fetches the same field table a
+# channeling risk of LOW did.
+_BandReading = tuple[frozenset[str], frozenset[str]]
+
+
+def _reading(healthy: str, notable: str) -> _BandReading:
+    return frozenset(healthy.split()), frozenset(notable.split())
+
+
+_ADHERENCE = _reading("EXCELLENT GOOD", "FAIR POOR")
+_DEVIATION = _reading("WITHIN_TOLERANCE MINOR_DEVIATION", "NOTABLE_DEVIATION SEVERE_DEVIATION")
+# One table, two metrics, two readings. A gradual decline of puck resistance is
+# how a bed saturates and settles, which the project's rules and the reference
+# both call normal; the same slope of the pressure is the profile doing
+# something (or the pump failing to hold it), so it stays worth a query.
+_EROSION = _reading("FLAT GRADUAL_DECLINE", "INCREASING MODERATE_DECLINE STEEP_DECLINE")
+_PRESSURE_TREND = _reading("FLAT", "INCREASING GRADUAL_DECLINE MODERATE_DECLINE STEEP_DECLINE")
+_TEMP_DEVIATION = _reading("MINIMAL", "SLIGHT MODERATE SIGNIFICANT")
+
+BAND_READINGS: dict[str, _BandReading] = {
+    "resistance_level": _reading("MODERATE", "VERY_LOW LOW HIGH VERY_HIGH"),
+    "resistance_stability": _reading("VERY_STABLE STABLE", "MODERATE VOLATILE"),
+    "resistance_saturation": _reading("GOOD_TIMING", "EARLY MID_SHOT LATE"),
+    "resistance_erosion": _EROSION,
+    "pressure_trend": _PRESSURE_TREND,
+    "flow_trend": _reading("STABLE", "DECLINING INCREASING"),
+    "channeling_risk": _reading("LOW INSUFFICIENT_DATA", "MODERATE HIGH VERY_HIGH"),
+    "temperature_overshoot": _TEMP_DEVIATION,
+    "temperature_undershoot": _TEMP_DEVIATION,
+    "temperature_stability": _reading("VERY_STABLE STABLE", "MODERATE UNSTABLE"),
+    "pressure_adherence": _ADHERENCE,
+    "flow_adherence": _ADHERENCE,
+    "pressure_overshoot": _reading(
+        "WITHIN_TOLERANCE", "MINOR_OVERSHOOT NOTABLE_OVERSHOOT SEVERE_OVERSHOOT"
+    ),
+    "flow_overshoot": _DEVIATION,
+    "flow_undershoot": _DEVIATION,
+}
+
+#: The band table each table-backed metric in :data:`BAND_READINGS` is read
+#: from, so the test can hold the two to the same labels. `channeling_risk` and
+#: `flow_trend` are not tables (a scored total and a slope threshold).
+BAND_READING_TABLES: dict[str, list[tuple[float, str]]] = {
+    "resistance_level": _RESISTANCE_LEVEL_BANDS,
+    "resistance_stability": _RESISTANCE_STABILITY_BANDS,
+    "resistance_saturation": _RESISTANCE_PEAK_TIMING_BANDS,
+    "resistance_erosion": _RESISTANCE_SLOPE_BANDS,
+    "pressure_trend": _RESISTANCE_SLOPE_BANDS,
+    "temperature_overshoot": _TEMP_OVERSHOOT_BANDS,
+    "temperature_undershoot": _TEMP_OVERSHOOT_BANDS,
+    "temperature_stability": _TEMP_STABILITY_BANDS,
+    "pressure_adherence": _PROFILE_ADHERENCE_BANDS,
+    "flow_adherence": _PROFILE_ADHERENCE_BANDS,
+    "pressure_overshoot": _PRESSURE_OVERSHOOT_BANDS,
+    "flow_overshoot": _FLOW_DEVIATION_BANDS,
+    "flow_undershoot": _FLOW_DEVIATION_BANDS,
+}
+
+
+def is_healthy_band(metric: str, label: str) -> bool:
+    """Whether `label` is the unremarkable reading of `metric`.
+
+    False for a metric that is not classified, so a new one is treated as
+    worth a query until someone decides otherwise.
+    """
+    reading = BAND_READINGS.get(metric)
+    return reading is not None and label in reading[0]
+
+
 #: Fewer steady-state samples than this and channeling is not assessed at all.
 _MIN_STEADY_STATE_SAMPLES: int = 5
 

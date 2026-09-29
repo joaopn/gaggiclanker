@@ -1,83 +1,4 @@
 === knowledge_excerpts ===
-[SHOT_DIAGNOSTICS_REFERENCE#per-phase-diagnostics/brew-specific-fields] Per-Phase Diagnostics > Brew-Specific Fields
-### Brew-Specific Fields
-
-| Field | Unit | Meaning |
-|-------|------|---------|
-| `resistance_avg` | dimensionless | Puck resistance in this phase |
-| `resistance_slope` | /s | Resistance trend in this phase |
-| `channeling_risk` | string | Channeling risk for this phase (may be INSUFFICIENT_DATA — see Channeling Indicators section) |
-| `flow_jitter_ml_s` | ml/s | Per-phase flow jitter (first-difference std over steady-state window) |
-| `pressure_jitter_bar` | bar | Per-phase pressure jitter (same metric on pressure) |
-
-**Annotations:** `resistance_level`, `resistance_erosion`, `channeling` (risk label), plus the full `channeling_*` namespace mirroring the top-level Channeling Indicators annotations (`channeling_flow_jitter`, `channeling_flow_vs_target`, `channeling_pressure_drop`, `channeling_late_flow_trend`, `channeling_pressure_jitter`, `channeling_flow_shape`, `channeling_window_confidence`, `channeling_primary_signal`, `channeling_guidance`, `channeling_note` when trimming applied).
-
-### Decline-Specific Fields
-
-| Field | Unit | Meaning |
-|-------|------|---------|
-| `taper_rate_bar_s` | bar/s | Rate of pressure decline (negative values) |
-| `taper_smoothness` | bar/s | Std dev of pressure derivatives — lower = smoother taper |
-
-**Annotations:** `taper_smoothness` → VERY_SMOOTH (<0.2) · SMOOTH (<0.5) · MODERATE (<1.0) · ROUGH
-
-## Interpretation Cheat Sheet
-
-### Grind Too Fine
-
-- `max_pressure_overshoot_bar` > 1.5 (MODERATE/SIGNIFICANT_OVERSHOOT)
-- Resistance avg HIGH or VERY_HIGH
-- Flow avg below expected for style
-- Channeling risk may be elevated
-
-### Grind Too Coarse
-
-- Pressure never reaches target (`max_pressure_undershoot_bar` high)
-- Resistance avg LOW or VERY_LOW
-- Flow avg above expected for style
-- Fast extraction time
-
-### Channeling
-
-- `channeling_risk` HIGH or VERY_HIGH (ignore INSUFFICIENT_DATA — it means the phase was too short to assess)
-- Resistance slope STEEP_DECLINE
-- Pressure volatility JITTERY or VOLATILE
-- Flow acceleration in late shot
-
-### Temperature Problems
-
-- `stability_std_c` > 1.5 (UNSTABLE) → equipment issue
-- `overshoot_c` > 2.0 → thermosiphon or PID issue
-- `undershoot_c` > 2.0 → machine not heated properly
-
-### Good Shot Indicators
-
-- Resistance MODERATE, STABLE, GRADUAL_DECLINE
-- Channeling LOW
-- Temperature VERY_STABLE or STABLE
-- Profile adherence EXCELLENT or GOOD
-- Overshoot WITHIN_TOLERANCE
-
-## Detail Level Strategy
-
-```
-User says "what's wrong with my shot?"
-  → analyze_shot(shot_id)              # summary first
-
-Summary shows HIGH channeling risk?
-  → analyze_shot(shot_id, detail="per_phase")  # which phase has the problem?
-
-Per-phase shows INSUFFICIENT_DATA for channeling?
-  → Phase too short for reliable assessment. Check taste + adjacent phases.
-
-Per-phase shows brew phase channeling?
-  → analyze_shot(shot_id, detail="per_phase_detailed")  # see the curve shape
-  → Correlate with taste, recommend grind adjustment
-
-Need to see pressure/flow trend in a specific phase?
-  → analyze_shot(shot_id, detail="per_phase_detailed")  # ~5 averaged samples per phase
-```
-
 [EXAMPLES#example-2-blooming-profile] Example 2: Blooming Profile
 ## Example 2: Blooming Profile
 
@@ -289,22 +210,56 @@ Declining pressure profile mimicking manual lever machines like the La Pavoni or
 2. **Peak Pressure (up to 5s)**: Ramp to 9 bar peak
 3. **Decline (up to 30s)**: 25-second linear decline from 9 to 3 bar, mimicking spring lever
 
-[ESPRESSO_PHYSICS_AND_THRESHOLD_CALIBRATION#9-threshold-calibration-decisions/validated-no-change-needed] 9. Threshold Calibration Decisions > Validated (No Change Needed)
-### Validated (No Change Needed)
+[AUTOMATIC_PRO_PROFILE_GUIDE#automatic-pro-profile-quick-reference] Automatic Pro Profile - Quick Reference
+# Automatic Pro Profile - Quick Reference
 
-| Metric | Conclusion |
-|--------|------------|
-| Pressure stability bands | Well-calibrated. 0.15 bar jitter threshold is comfortably above sensor noise. |
-| Flow stability bands | Appropriate. 0.10 mL/s threshold accounts for flow meter resolution. |
-| Resistance bands | Reasonable P/F² ranges confirmed by cross-referencing flow and pressure style data. |
-| Resistance erosion bands | Slope thresholds validated against expected puck degradation rates. |
-| Late flow trend bands | Acceleration thresholds align with channel-opening signatures in TELEMETRY_PATTERNS.md. |
-| Temperature stability bands | Std dev bands appropriate — 0.3 °C "VERY_STABLE" matches Decent's ±1 °C spec. |
-| Profile adherence bands | RMSE thresholds reasonable against ±0.5 bar pump regulation noise. |
-| Pressure overshoot bands | 0.25 / 0.5 / 1.0 bar thresholds calibrated from practitioner input: 0.5 bar can occur occasionally, >1.0 bar is highly unlikely in normal operation. No peer-reviewed source; thresholds are expert-informed. |
-| Flow deviation bands | 0.3 / 0.7 / 1.5 ml/s thresholds calibrated from expert input and practical scenario analysis. See section below. |
-| Taper smoothness bands | R² residual thresholds in reasonable range. |
-| Channeling risk scoring | Composite scoring with point system produces sensible risk tiers. |
+> **Source**: GaggiMate Discord - modsmthng (GM#0031, GaggiMate Owner) - August 21, 2025
+> **Detailed Documentation**: [How the Automatic Pro Profile works](./How%20the%20Automatic%20Pro%20Profile%20works.md)
+
+## Overview
+
+The **Automatic Pro** profile accepts a flexible **1–9 bar** range to prioritize flavor balance, supporting low-, mid-, and high-pressure shots.
+
+**Key Behaviors**:
+- Pressure is limited to 9 bar to prevent bitter shots
+- If ground too fine, a "second blooming" phase occurs—great for **chocolatey/nutty** profiles
+
+**Available Doses**: 9g, 18g, 20g, 22g (January 14, 2026)
+
+## Quick Settings (via display)
+
+| Mode | Formula | Example (18g, 1:2) |
+|------|---------|-------------------|
+| **Weight** | `Dose × Ratio` | 2 × 18g = **36g** |
+| **Time** | `(Dose × Ratio) / Flow + 16s` | (36) / 1.8 + 16 = **36s** |
+
+## Recommendations
+
+| Roast Level | Temperature | Ratio | Time |
+|-------------|-------------|-------|------|
+| **Med-Dark** | ~91°C | 1:1.5 – 1:2.5 | ~36s |
+| **Med-Light** | ~94°C | 1:2.5 – 1:3+ | ~46s |
+
+**Pro Tip**: Italian beans + 89°C + 1:1 ratio = great high-pressure shot
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| **Sour/salty** | Higher ratio (1:2.5+), higher temp |
+| **Bitter/dry** | Lower ratio (1:1.5-), lower temp |
+| **Low/no pressure** | Grind finer or reduce Phase 2 |
+
+## Learn More
+
+For detailed phase-by-phase explanations and how to adapt the profile:
+→ **[How the Automatic Pro Profile works](./How%20the%20Automatic%20Pro%20Profile%20works.md)**
+
+## Related Resources
+
+- [Espresso Brewing Basics](../ESPRESSO_BREWING_BASICS.md)
+- [Espresso Tasting Guide](../ESPRESSO_TASTING_GUIDE.md)
+- [GaggiMate Profile Creation Guide](../GAGGIMATE_PROFILE_CREATION_GUIDE.md)
 
 === knowledge_rules ===
 dial_in_order:
