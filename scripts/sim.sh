@@ -27,16 +27,21 @@
 # there, and builds that. `scripts/sim.sh clean` removes it; nothing in the
 # reference clone is ever touched.
 #
-# One patch is needed, and it is not a local quirk:
+# No patch is needed since firmware v1.9.0, which carries its own
+# `AsyncURIMatcher::prefix()` and `setFilter` in `sim/web/ESPAsyncWebServer.*`
+# (before that the simulator's stand-in for that library lacked them and the
+# build failed on `WebUIPlugin.cpp`'s OTA filter). `scripts/sim-patches/` and
+# the loop that applies its `*.patch` files are kept for the next time the
+# firmware needs one; the directory is empty until then.
 #
-#   `WebUIPlugin.cpp:190` filters `/api/history/*` to a 503 during an OTA using
-#   `AsyncURIMatcher::prefix()`, which comes from ESPAsyncWebServer 3.12.0 — a
-#   library the simulator does not link. It substitutes its own 203-line
-#   stand-in at `sim/web/ESPAsyncWebServer.h`, and that file was never given
-#   the matcher, so `pio run -e display-sim` fails with
-#   "'AsyncURIMatcher' has not been declared". `sim-patches/0001` adds a
-#   prefix-only matcher and the `setFilter` hook it needs. It belongs upstream;
-#   until it lands there it lives here.
+# The firmware is pinned. `GAGGIMATE_FIRMWARE_REF` (default `v1.9.0`) is the tag
+# or commit the scratch tree is checked out at, so the simulator gate tests a
+# named release rather than whatever the reference checkout's head happens to
+# be, and a run says which. The reference checkout must have that ref (it may be
+# a shallow clone: `git -C <checkout> fetch --depth 50 origin tag v1.9.0`). To
+# try another release: `GAGGIMATE_FIRMWARE_REF=v1.10.0 scripts/sim.sh test`. A
+# scratch tree at any other commit is thrown away and cloned again, since its
+# generated web UI, version header and build products belong to that commit.
 #
 # Prerequisites, none of which are in the dev container image:
 #
@@ -59,6 +64,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # The reference checkout, read only. Override to seed from your own clone.
 FIRMWARE_SRC="${GAGGIMATE_FIRMWARE_DIR:-/workspace/gaggiclanker/external/gaggimate}"
+# The firmware release the simulator builds; see the header.
+FIRMWARE_REF="${GAGGIMATE_FIRMWARE_REF:-v1.9.0}"
 # Where the build actually happens.
 SIM_WORKDIR="${GAGGIMATE_SIM_WORKDIR:-/workspace/.tools/gaggimate-sim}"
 
@@ -77,14 +84,28 @@ die() { echo "sim.sh: $*" >&2; exit 1; }
 
 ensure_workdir() {
     [[ -x "$PIO_BIN" ]] || die "no PlatformIO at $PIO_BIN — see the header of this script"
+    [[ -d "$FIRMWARE_SRC" ]] ||
+        die "no firmware checkout at $FIRMWARE_SRC (set GAGGIMATE_FIRMWARE_DIR)"
+    local want have
+    want="$(git -C "$FIRMWARE_SRC" rev-parse --verify --quiet "$FIRMWARE_REF^{commit}")" ||
+        die "$FIRMWARE_REF is not in $FIRMWARE_SRC; fetch it with: git -C $FIRMWARE_SRC fetch --depth 50 origin tag $FIRMWARE_REF (or set GAGGIMATE_FIRMWARE_REF)"
+    if [[ -d "$SIM_WORKDIR/.git" ]]; then
+        have="$(git -C "$SIM_WORKDIR" rev-parse HEAD 2>/dev/null || true)"
+        if [[ "$have" != "$want" ]]; then
+            echo "sim.sh: $SIM_WORKDIR is at ${have:0:7}, not $FIRMWARE_REF (${want:0:7}); cloning it again"
+            rm -rf "$SIM_WORKDIR"
+        fi
+    fi
     if [[ ! -d "$SIM_WORKDIR/.git" ]]; then
-        [[ -d "$FIRMWARE_SRC" ]] ||
-            die "no firmware checkout at $FIRMWARE_SRC (set GAGGIMATE_FIRMWARE_DIR)"
-        echo "sim.sh: cloning $FIRMWARE_SRC -> $SIM_WORKDIR"
+        echo "sim.sh: cloning $FIRMWARE_SRC at $FIRMWARE_REF -> $SIM_WORKDIR"
         rm -rf "$SIM_WORKDIR"
         # A local clone: committed content only, so nothing the reference tree
-        # has built leaks in and the patches apply to a known state.
+        # has built leaks in and the patches apply to a known state. Detached
+        # at the pinned commit rather than at whatever the source has checked
+        # out.
         git clone --quiet "$FIRMWARE_SRC" "$SIM_WORKDIR"
+        git -C "$SIM_WORKDIR" checkout --quiet --detach "$want" ||
+            die "the clone of $FIRMWARE_SRC has no commit ${want:0:7}; fetch it into the checkout and try again"
     fi
 }
 
