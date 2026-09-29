@@ -10,6 +10,19 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Download a conversation's message log
+
+- **The Chat page can save a conversation as a file.** **Download log** in the
+  conversation's header saves one JSON file: the messages in order, the agent's
+  tool calls with their arguments, what the tools answered, and a record per run
+  with the model, tokens and error. It does not hold the context the app injects
+  into the agent each turn (the Set's ledger and recent shots, the glossary),
+  and the answer of a tool that renders shots (or one the provider could not
+  pair with its call) is replaced by its size; every other answer, including
+  refusals, stays whole. The API route is `GET /api/chat/threads/{id}/transcript`,
+  deliberately not `/log`: content blockers drop `/log?…` requests, which showed
+  as "Failed to fetch". If a blocker still stops it, the button now says so.
+
 ### Minor versions for dialling in, a new major for a new direction
 
 - **A Set's versions are named v1, v1.1, v1.2, v2.** A grind, dose or yield

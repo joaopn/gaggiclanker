@@ -665,6 +665,22 @@ yet, because an empty folder with a **New** button in it is how you start.
 Conversations about a Set you have since archived move to a last folder of their
 own and stay readable.
 
+**Keep a conversation.** With a conversation open, **Download log** in its header
+saves it as one JSON file (`chat-<id>-<title>.json`,
+`GET /api/chat/threads/{id}/transcript`, sent with your sign-in like any other
+call). It holds every message in order with its time and run, the tools the
+agent called with their arguments, what they answered, and a record per run
+with the model, its tokens and any error. It leaves out what you never typed:
+the instructions and the context the app gives the agent each turn (the Set's
+ledger and its recent shots, the shot glossary) are not stored with the
+conversation and so are not in the file. The answer of a tool that renders
+shots (`get_shot`, `get_shot_extended`, `get_shot_full`, `compare_shots`,
+`list_set_shots`), or one the provider could not pair with its call, is reduced
+to its size, since that is where whole shot renderings arrive; every other
+answer, and every refused or failed one, is kept word for word. If the button
+says the download was blocked before it reached the app, a content-blocking
+extension dropped the request: allow this site in it.
+
 A conversation in a Set's folder is about **one version of that Set** — the
 change being argued — and it can see that Set and nothing else: its versions
 with their predictions and outcomes, its shots, its spread, the knowledge base
