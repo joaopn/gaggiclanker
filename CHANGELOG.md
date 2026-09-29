@@ -10,6 +10,13 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Tested against GaggiMate firmware v1.9.0
+
+- **gaggiclanker is now tested against GaggiMate firmware v1.9.0.** Nothing
+  changes for the machine's own data: shots, profiles and notes are read and
+  written the same way. The firmware simulator behind the opt-in tests now
+  builds the v1.9.0 release, pinned by `GAGGIMATE_FIRMWARE_REF`.
+
 ### Download a conversation's message log
 
 - **The Chat page can save a conversation as a file.** **Download log** in the
