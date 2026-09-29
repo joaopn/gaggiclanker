@@ -70,6 +70,22 @@ and value for value, as do all three detail levels of the shot transform.
    alongside the values) and the rate list (`_pressure_rates`) with the third.
    The minimum sample counts are named constants. No number moved: the three
    detail levels are byte-identical on every fixture shot.
+7. **Resistance from the machine when it has it.** Upstream's resistance is
+   `R = P / F²` from the logged pressure and flow. The firmware logs its own
+   per-sample `pr = sqrt(P) / Q_puck` (a `.slog` field since before v1.9.0, which
+   only added its web UI's analyzer of it), computed from a compensated puck-flow
+   estimate, so `pr²` is the same quadratic Darcy model on the same scale. The
+   engine now uses `pr²` over the same window (brew-phase samples with flow over
+   0.1 ml/s, and `0 < pr < 100`, the firmware analyzer's own validity range) when
+   at least three samples qualify, and upstream's `P / F²` otherwise; the block
+   records which as `source`. *The plumbing changed, the numbers did not*: every
+   band edge, the erosion penalties and the rule texts stand, because the two
+   readings agree on the four real shots (mean within 8 %, level, stability and
+   erosion bands identical; the saturation band differs on one flat hold, where
+   the peak is quantisation noise). Peak and peak timing follow the machine's
+   estimate, its ramp spikes included. The formula lives in one function
+   (`_build_resistance`) that the full block, the summary and each brew phase
+   share.
 
 ---
 

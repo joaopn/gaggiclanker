@@ -43,10 +43,10 @@ Flow slope during brew: 0.10 ml/s² INCREASING
 Average weight rate: 1.07 g/s
 Weight rate variability: 0.75 g/s JITTERY
 [Puck resistance]
-Resistance level: 1.46 LOW
-Resistance stability: 0.69 MODERATE
-Resistance erosion: -0.14 /s MODERATE_DECLINE
-Peak resistance: 3.16
+Resistance level: 1.36 LOW, from the machine
+Resistance stability: 0.63 MODERATE
+Resistance erosion: -0.12 /s MODERATE_DECLINE
+Peak resistance: 3.28
 Saturation: 0 % EARLY
 [Channeling]
 Channeling risk: LOW
@@ -70,7 +70,7 @@ Largest flow undershoot: 2.00 ml/s SEVERE_DEVIATION
 phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; pressure 0.1 bar; temperature 94.9 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 2.93 bar POOR; flow error 2.00 ml/s; ramp 0.02 bar/s GENTLE; saturation 7.25 s
 phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; pressure 0.1 bar; temperature 93.9 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 0.08 bar EXCELLENT; flow error 0.00 ml/s; ramp -0.01 bar/s GENTLE; saturation 10.00 s
 phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; pressure 0.8 bar; temperature 93.1 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 3.61 bar POOR; flow error 0.00 ml/s; channeling INSUFFICIENT_DATA, signals none, flow shape FLAT
-phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; pressure 7.5 bar; temperature 91.8 °C; volume 42.2 ml; flow 1.71 ml/s; pressure adherence 2.70 bar POOR; flow error 2.12 ml/s; resistance 1.46 LOW, -0.14 /s MODERATE_DECLINE; channeling LOW, signals none, flow shape RAMPING_UP
+phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; pressure 7.5 bar; temperature 91.8 °C; volume 42.2 ml; flow 1.71 ml/s; pressure adherence 2.70 bar POOR; flow error 2.12 ml/s; resistance 1.36 LOW, -0.12 /s MODERATE_DECLINE, from the machine; channeling LOW, signals none, flow shape RAMPING_UP
 [Curve]
 47 of 188 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker

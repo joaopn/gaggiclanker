@@ -33,7 +33,10 @@ _CHANNELING_PENALTIES: dict[str, float] = {
 #: GRADUAL_DECLINE, MODERATE_DECLINE, STEEP_DECLINE. Upstream checked for
 #: "HIGH"/"VERY_HIGH" here, which are *level* labels — so the penalty never
 #: fired. A declining puck resistance is the puck eroding under pressure, and
-#: the steeper the decline the more of the bed has given way.
+#: the steeper the decline the more of the bed has given way. The slope is of
+#: the machine's own resistance (its `pr²`) when the shot has it and of
+#: `P / F²` otherwise: the same quantity on the same scale, so the penalties are
+#: unchanged.
 _EROSION_PENALTIES: dict[str, float] = {
     "MODERATE_DECLINE": 0.7,
     "STEEP_DECLINE": 1.2,

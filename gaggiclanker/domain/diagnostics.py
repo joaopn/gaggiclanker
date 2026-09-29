@@ -15,6 +15,11 @@ What changed here, and why:
   boards have no pressure sensor and record a hard zero, which would otherwise
   produce a confident VERY_LOW resistance reading and a LOW channeling risk out
   of nothing at all. A missing sensor must read as *absent*, not as *good*.
+* Puck resistance is the machine's own ``pr²`` when the shot recorded a valid
+  ``pr`` (see :func:`_build_resistance`), and upstream's ``P / F²`` otherwise.
+  The band tables did not move: ``pr²`` is the same quadratic model on the same
+  scale. Peak and peak timing follow the machine's estimate, ramp spikes
+  included.
 
 A sample's field is absent from the working dict when the firmware never
 recorded it (its `fieldsMask` bit was clear). That is why the code reads
@@ -102,6 +107,7 @@ class PhaseDiagnostics(TypedDict, total=False):
     # brew
     resistance_avg: float
     resistance_slope: float
+    resistance_source: ResistanceSource
     channeling_risk: str
     flow_jitter_ml_s: float
     pressure_jitter_bar: float
@@ -124,13 +130,21 @@ class PhaseData(TypedDict):
     diagnostics: NotRequired[PhaseDiagnostics]
 
 
+#: Where a shot's resistance samples came from: the machine's own per-sample
+#: ``pr`` (squared, so it sits on the scale of the bands), or our ``P / F²``.
+ResistanceSource = Literal["machine", "computed"]
+
+
 class ResistanceDiagnostics(TypedDict):
-    """Puck resistance, ``R = P / F²`` (quadratic Darcy model).
+    """Puck resistance ``R`` (quadratic Darcy model, ``R = P / F²``).
 
     The master diagnostic: it folds grind fineness, dose, puck prep and
     channeling into one number whose *shape over time* is the interesting part.
+    ``R`` is the machine's own ``pr²`` when the shot carries it and ``P / F²``
+    from the logged pressure and flow otherwise; ``source`` says which.
     """
 
+    source: ResistanceSource
     avg: float
     std: float
     slope: float
@@ -238,6 +252,7 @@ class SummaryDiagnostics(TypedDict):
     has_pressure: bool
     resistance_avg: float | None
     resistance_slope: float | None
+    resistance_source: ResistanceSource | None
     channeling_risk: str | None
     temperature_stability_c: float
     pressure_rmse_bar: float | None
@@ -426,6 +441,16 @@ _MIN_STEADY_STATE_SAMPLES: int = 5
 #: there are no shot diagnostics at all.
 _MIN_SHOT_SAMPLES: int = 5
 _MIN_BREW_SAMPLES: int = 3
+
+#: The machine's own resistance is used for a window only when at least this
+#: many of its samples carry a valid one; below it, a mean and a slope of the
+#: machine's values would rest on a couple of points, and ours is used instead.
+_MIN_MACHINE_RESISTANCE_SAMPLES: int = 3
+
+#: The firmware's own validity range for ``pr`` (its shot analyzer reads a sample
+#: only when ``0 < pr < 100``): zero is "not yet estimated" (a Standard board, or
+#: before the estimator started) and the top of the range is its clamp.
+_MACHINE_RESISTANCE_MAX: float = 100.0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1285,16 +1310,31 @@ _NO_PRESSURE_NOTE = (
 
 
 def _build_resistance(window: list[SampleDict], dt: float) -> ResistanceDiagnostics:
-    """Puck resistance R = P / F² and its shape over a window of samples.
+    """Puck resistance ``R`` and its shape over a window of samples.
 
     The one place the quantity is computed: the full block, the summary and each
-    brew phase all call it, so they cannot drift apart. Samples below 0.1 ml/s
-    are skipped: dividing by a near-zero flow produces an arbitrarily large
-    number that says nothing about the puck.
+    brew phase all call it, so they cannot drift apart.
+
+    The window is the samples with a flow above 0.1 ml/s: dividing by a
+    near-zero flow produces an arbitrarily large number that says nothing about
+    the puck. Over that window the machine's own value is preferred. The
+    firmware computes ``pr = sqrt(P) / Q_puck`` from its compensated puck-flow
+    estimate, so ``pr²`` is the same quadratic model as ``P / F²`` on the same
+    scale, and every band below keeps its number. A window with fewer than
+    :data:`_MIN_MACHINE_RESISTANCE_SAMPLES` valid ``pr`` samples (no such field,
+    a board without the estimator, zeros, the clamp) falls back to ``P / F²``.
     """
-    resistance_values = [
-        s.get("cp", 0.0) / (flow * flow) for s in window if (flow := s.get("pf", 0.0)) > 0.1
+    flowing = [s for s in window if s.get("pf", 0.0) > 0.1]
+    machine_values = [
+        pr * pr for s in flowing if 0.0 < (pr := s.get("pr", 0.0)) < _MACHINE_RESISTANCE_MAX
     ]
+    source: ResistanceSource
+    if len(machine_values) >= _MIN_MACHINE_RESISTANCE_SAMPLES:
+        source = "machine"
+        resistance_values = machine_values
+    else:
+        source = "computed"
+        resistance_values = [s.get("cp", 0.0) / (s["pf"] * s["pf"]) for s in flowing]
 
     r_avg = _round2(_safe_mean(resistance_values))
     r_std = _round2(_safe_std(resistance_values))
@@ -1309,6 +1349,7 @@ def _build_resistance(window: list[SampleDict], dt: float) -> ResistanceDiagnost
         r_peak_timing = 0.0
 
     return ResistanceDiagnostics(
+        source=source,
         avg=r_avg,
         std=r_std,
         slope=r_slope,
@@ -1391,6 +1432,7 @@ def compute_summary_diagnostics(
 
     r_avg: float | None = None
     r_slope: float | None = None
+    r_source: ResistanceSource | None = None
     risk: str | None = None
     p_rmse: float | None = None
     max_overshoot: float | None = None
@@ -1401,6 +1443,7 @@ def compute_summary_diagnostics(
         resistance = _build_resistance(brew_samples, dt)
         r_avg = resistance["avg"]
         r_slope = resistance["slope"]
+        r_source = resistance["source"]
         risk = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)["channeling_risk"]
 
         p_rmse = 0.0
@@ -1438,6 +1481,7 @@ def compute_summary_diagnostics(
         has_pressure=pressure_ok,
         resistance_avg=r_avg,
         resistance_slope=r_slope,
+        resistance_source=r_source,
         channeling_risk=risk,
         temperature_stability_c=t_std,
         pressure_rmse_bar=p_rmse,
@@ -1518,6 +1562,7 @@ def _compute_phase_diagnostics(
 
         result["resistance_avg"] = r_avg
         result["resistance_slope"] = r_slope
+        result["resistance_source"] = resistance["source"]
         result["channeling_risk"] = ch["channeling_risk"]
         result["flow_jitter_ml_s"] = ch["flow_jitter_ml_s"]
         result["pressure_jitter_bar"] = ch["pressure_jitter_bar"]

@@ -454,6 +454,35 @@ def _with(facts: ShotFacts, **update: Any) -> ShotFacts:
     return ShotFacts(shot=facts.shot.model_copy(update=update))
 
 
+@pytest.mark.parametrize(
+    ("source", "said"),
+    [
+        ("machine", "Resistance level: 2.10 MODERATE, from the machine"),
+        ("computed", "Resistance level: 2.10 MODERATE, computed from pressure and flow"),
+        (None, "Resistance level: 2.10 MODERATE"),
+    ],
+)
+async def test_a_summary_level_shot_says_where_its_resistance_came_from(
+    archive: Archive, source: str | None, said: str
+) -> None:
+    """The flat summary blob carries `resistance_source`; a shot stored before it has none."""
+    facts = await _one(archive.db, archive.shot, samples=False)
+    diagnostics: dict[str, Any] = {
+        "has_pressure": True,
+        "resistance_avg": 2.1,
+        "resistance_slope": -0.03,
+        "annotations": {"resistance_level": "MODERATE", "resistance_erosion": "FLAT"},
+    }
+    if source is not None:
+        diagnostics["resistance_source"] = source
+    summary = _with(facts, diagnostics={**facts.blob, "diagnostics": diagnostics})
+    assert not summary.full
+
+    rendered = render_shot(summary, "base", default_tiers(), curve_points=CURVE_POINTS)
+
+    assert said in rendered.splitlines()
+
+
 async def test_a_choked_puck_shows_its_zero_brew_flow(archive: Archive) -> None:
     """Puck flow was recorded and nothing got through: 0.00 is a reading."""
     facts = await _one(archive.db, archive.shot, samples=False)

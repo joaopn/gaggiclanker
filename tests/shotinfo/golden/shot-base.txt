@@ -17,7 +17,7 @@ Peak pressure: 8.20 bar
 [Flow and volume]
 Average brew flow: 1.42 ml/s
 [Puck resistance]
-Resistance level: 1.46 LOW
+Resistance level: 1.36 LOW, from the machine
 [Channeling]
 Channeling risk: LOW
 [Profile compliance]

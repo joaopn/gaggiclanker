@@ -66,8 +66,8 @@ From the scale's readings: none of these exists without a scale.
 - Weight rate variability [extended]: The standard deviation of that weight rate, in g/s; lower is a steadier stream. Bands: VERY_STABLE under 0.1 g/s; STABLE 0.1 to 0.25 g/s; MODERATE_JITTER 0.25 to 0.5 g/s; JITTERY 0.5 to 0.8 g/s; VOLATILE from 0.8 g/s up.
 
 [Puck resistance]
-Resistance is R = pressure / flow², from the brew phases' samples with flow over 0.1 ml/s, a unitless number. None of it exists without a pressure sensor.
-- Resistance level [base]: The puck's average resistance. It folds grind, dose and puck prep into one reading: higher is a finer grind or a tighter puck. Bands: the resistance level bands.
+Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. When the source is the machine, peak and its timing follow its estimate, ramp spikes included. None of it exists without a pressure sensor.
+- Resistance level [base]: The puck's average resistance, with where it came from: the machine's own measurement, or computed from pressure and flow when the shot has none. It folds grind, dose and puck prep into one reading: higher is a finer grind or a tighter puck. Bands: the resistance level bands.
 - Resistance stability [extended]: The standard deviation of that resistance; lower is a more consistent puck, and VOLATILE points at uneven prep or channeling. Bands: VERY_STABLE under 0.2; STABLE 0.2 to 0.5; MODERATE 0.5 to 1; VOLATILE from 1 up.
 - Resistance erosion [extended]: The slope of the resistance over the brew phases, per second. A gentle decline is the puck eroding normally; a steep one is the bed giving way (channeling), and a rising one often a coarse grind. Bands: the slope bands, in /s.
 - Peak resistance [extended]: The highest resistance reached during the brew phases.
@@ -111,7 +111,7 @@ One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; 
 - ramp [extended]: Pre-infusion phases only: how fast pressure rose over the phase (its least-squares slope), in bar/s. Banded on its size: GENTLE under 0.5 bar/s; MODERATE 0.5 to 1.5 bar/s; BRISK 1.5 to 3 bar/s; AGGRESSIVE 3 to 5 bar/s; VERY_AGGRESSIVE from 5 bar/s up.
 - saturation [extended]: Pre-infusion phases only: seconds into the phase until flow settled (three samples flowing over 0.1 ml/s and varying by under 0.15): when the puck was wet through. The whole phase when it never settled.
 - taper [extended]: Decline phases only: how fast pressure fell (its slope, bar/s), then how evenly (the standard deviation of its sample-to-sample rate, bar/s; lower is smoother). Smoothness bands: VERY_SMOOTH under 0.2 bar/s; SMOOTH 0.2 to 0.5 bar/s; MODERATE 0.5 to 1 bar/s; ROUGH from 1 bar/s up.
-- resistance [extended]: Brew phases only: the puck resistance level and its slope within the phase, banded as the shot's resistance level and erosion are: the resistance level bands, then the slope bands, in /s.
+- resistance [extended]: Brew phases only: the puck resistance level and its slope within the phase, banded as the shot's resistance level and erosion are: the resistance level bands, then the slope bands, in /s. Ends with where the phase's resistance came from, as the shot's level does.
 - channeling [extended]: Brew phases only: the channeling risk assessed on this phase alone (the same labels as the shot's, INSUFFICIENT_DATA included), the indicators that fired and the flow shape. A short phase is often INSUFFICIENT_DATA, which is not a fault.
 
 [Curve]

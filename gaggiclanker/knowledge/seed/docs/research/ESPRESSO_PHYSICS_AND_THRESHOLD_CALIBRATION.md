@@ -275,6 +275,13 @@ where P = pressure (bar) and F = flow rate (mL/s). This is a simplified Darcy's 
 analog: higher resistance means finer grind or tighter puck, lower means coarser or
 channeling.
 
+*gaggiclanker note:* the firmware computes the same quantity itself (and logs it
+per sample) as
+`pr = sqrt(P) / Q_puck`, from a compensated estimate of the flow through the
+puck, so `pr²` equals `P / Q_puck²`. gaggiclanker uses `pr²` as R whenever a shot
+carries it and P / F² from the logged flow otherwise; the thresholds below apply
+to both, since they are on the same scale.
+
 ### Noise Amplification
 
 Because flow is squared in the denominator, small flow measurement errors are amplified.

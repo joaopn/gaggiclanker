@@ -28,7 +28,7 @@ Returned as a flat object with key indicators:
 
 | Field | Type | What it tells you |
 |-------|------|-------------------|
-| `resistance_avg` | float | Average puck resistance (P/F²). Higher = finer grind or tighter puck. |
+| `resistance_avg` | float | Average puck resistance (the machine's own measurement squared, or P/F² when the shot has none; `resistance_source` says which). Higher = finer grind or tighter puck. |
 | `resistance_slope` | float | How resistance changes over the shot. Negative = erosion (normal). Steep negative = possible channeling. |
 | `channeling_risk` | string | Overall channeling risk: LOW / MODERATE / HIGH / VERY_HIGH / INSUFFICIENT_DATA |
 | `temperature_stability_c` | float | Std deviation of brew temp. Lower = more stable. |
@@ -68,6 +68,13 @@ Returned as an object with these sub-sections:
 
 The **master diagnostic metric**. Computed as R = P / F² (quadratic Darcy model).
 Captures grind fineness, puck prep quality, channeling, and erosion.
+
+*gaggiclanker note:* when the shot carries the firmware's own per-sample puck
+resistance `pr` (which is `sqrt(P) / Q_puck` on the machine's compensated puck
+flow), R is `pr²` instead: the same model on the same scale, so every band below
+applies unchanged. Ours (P / F²) is the fallback, and `source` (`machine` or
+`computed`) says which one a shot has. Peak and its timing follow the machine's
+estimate, including its ramp spikes.
 
 | Field | Unit | Meaning |
 |-------|------|---------|

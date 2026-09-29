@@ -385,6 +385,29 @@ def _resistance_avg(f: ShotFacts) -> float | None:
     return _positive(f.flat("resistance_avg"))
 
 
+#: How a resistance level says where its number came from, in the rendering the
+#: agent and the review read and (as words) on the shot page.
+_RESISTANCE_SOURCE_TEXT: Mapping[str, str] = MappingProxyType(
+    {"machine": "from the machine", "computed": "computed from pressure and flow"}
+)
+
+
+def _with_resistance_source(text: str | None, source: object) -> str | None:
+    """A level's text with its source; a shot stored before the source existed has none."""
+    said = _RESISTANCE_SOURCE_TEXT.get(source) if isinstance(source, str) else None
+    return f"{text}, {said}" if text and said else text
+
+
+def _resistance_level_text(f: ShotFacts) -> str | None:
+    text = _banded(_resistance_avg(f), 2, "", resistance_band(f))
+    if f.full:
+        block = f.section("resistance")
+        source = block.get("source") if block is not None else None
+    else:
+        source = f.diagnostics.get("resistance_source")
+    return _with_resistance_source(text, source)
+
+
 def _resistance(f: ShotFacts, key: str) -> float | None:
     return f.section_value("resistance", key) if _resistance_avg(f) is not None else None
 
@@ -524,7 +547,9 @@ def _phase_resistance(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
             _phase_band(phase, "resistance_erosion"),
         ),
     ]
-    return ", ".join(part for part in parts if part)
+    return _with_resistance_source(
+        ", ".join(part for part in parts if part), _phase_diag(phase).get("resistance_source")
+    )
 
 
 def _phase_channeling(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
@@ -592,8 +617,12 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
         ),
         "Weight": "From the scale's readings: none of these exists without a scale.",
         "Puck resistance": (
-            "Resistance is R = pressure / flow², from the brew phases' samples with flow over "
-            "0.1 ml/s, a unitless number. None of it exists without a pressure sensor."
+            "Resistance R is the machine's own puck resistance squared (the firmware's "
+            "pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, "
+            "and pressure / flow² from the logged pressure and flow otherwise; the level says "
+            "which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a "
+            "unitless number. When the source is the machine, peak and its timing follow its "
+            "estimate, ramp spikes included. None of it exists without a pressure sensor."
         ),
         "Channeling": (
             "The indicators are measured over the steady-state window: the brew phases from where "
@@ -1192,12 +1221,14 @@ def _items() -> tuple[Item, ...]:
             name="Resistance level (average), with band",
             label="Resistance level",
             meaning=(
-                "The puck's average resistance. It folds grind, dose and puck prep into one "
-                "reading: higher is a finer grind or a tighter puck. Bands: "
+                "The puck's average resistance, with where it came from: the machine's own "
+                "measurement, or computed from pressure and flow when the shot has none. It folds "
+                "grind, dose and puck prep into one reading: higher is a finer grind or a tighter "
+                "puck. Bands: "
                 f"{_shared('resistance level')}."
             ),
             default_tier="base",
-            shot=lambda f: _banded(_resistance_avg(f), 2, "", resistance_band(f)),
+            shot=_resistance_level_text,
             bands=(engine._RESISTANCE_LEVEL_BANDS,),
         ),
         Item(
@@ -1698,7 +1729,8 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "Brew phases only: the puck resistance level and its slope within the phase, "
                 "banded as the shot's resistance level and erosion are: "
-                f"{_shared('resistance level')}, then {_shared('slope', '/s')}."
+                f"{_shared('resistance level')}, then {_shared('slope', '/s')}. Ends with where "
+                "the phase's resistance came from, as the shot's level does."
             ),
             default_tier="extended",
             phase=_phase_resistance,
