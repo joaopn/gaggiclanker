@@ -326,7 +326,27 @@ export type ShotPhase = {
   };
 };
 
+/** Start, end, min, max and the time-weighted average of one firmware-analyzer stream. */
+export type FirmwareStats = { start: number; end: number; min: number; max: number; avg: number };
+
+/**
+ * What the firmware's own shot analyzer shows (`domain/firmware_values.py`): the machine's
+ * puck resistance `pr` (s·√bar/mL), liquid resistance `lr` (bar·s/mL), and water pumped.
+ * Not banded. The whole block is absent on a shot derived before it existed; each
+ * stream is null when the shot has no valid reading, and the water fields unless it
+ * recorded the pump's count (format v7).
+ */
+export type FirmwareValues = {
+  pr: FirmwareStats | null;
+  lr: FirmwareStats | null;
+  phases: Array<{ phase_number: number; pr: FirmwareStats | null; lr: FirmwareStats | null }>;
+  water_pumped_ml: number | null;
+  water_minus_weight_g: number | null;
+};
+
 export type ShotDiagnosticsBlob = {
+  /** The firmware analyzer's values; absent on a shot derived before they were kept. */
+  firmware?: FirmwareValues;
   summary?: {
     temperature?: { min_c: number; max_c: number; avg_c: number; target_avg_c: number };
     pressure?: {

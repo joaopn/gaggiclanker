@@ -32,15 +32,22 @@ first (`POST /api/backup`), because there is no down-migration.
   Notes, judgements, Sets and the curves are untouched. A new migration records
   which version of the calculation wrote each shot, so a later change to it is
   brought to the archive the same way.
-- **The shot information also shows what the firmware's own shot analyzer
-  shows.** The machine's puck resistance (s·√bar/mL) and the liquid resistance
-  (bar·s/mL), for the whole shot and for each phase, as the firmware
-  reports them (average weighted by time, first, last, lowest, highest), and the
-  water the pump moved with its difference to the beverage weight. They are
-  informational and not banded, so they sit in the extended tier (nothing the
-  chat is told by default changes, and nothing filters or scores on them). The
-  water needs a shot file of format version 7 or later. Shots already in
-  the archive get them at the next start.
+- **The shot page and the shot information also show what the firmware's own
+  shot analyzer shows.** The machine's puck resistance (s·√bar/mL) and the
+  liquid resistance (bar·s/mL), as the firmware reports them (average weighted
+  by time, with the first, last, lowest and highest reading), appear under a
+  "Firmware analyzer" heading at the bottom of the Puck resistance card for the
+  whole shot and in a column of the Phases table for each phase; the water the
+  pump moved and its difference to the beverage weight appear in the
+  Extraction and weight card. They are not banded and not the resistance level
+  above them, so nothing scores or filters on them. In the shot information
+  they sit in the extended tier: what a chat is told about a shot by default
+  does not change, and the glossary every chat carries grows by about 300
+  tokens. The water shows only for machines whose pump counts it (a shot file
+  of format version 7 or later whose counter rose; a board without a dimmed
+  pump records zero, which is left out rather than shown as 0 ml, where the
+  firmware's own page shows 0). Shots already in the archive get them at the
+  next start.
 
 ### Reviews use the resistance, temperature and channeling rules
 

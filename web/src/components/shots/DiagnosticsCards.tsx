@@ -1,4 +1,4 @@
-import type { ResistanceSource, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
+import type { FirmwareStats, ResistanceSource, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import {
   bandMeaning,
@@ -64,11 +64,43 @@ export function resistanceSourceText(source: ResistanceSource | undefined): stri
   return null;
 }
 
+/** The analyzer's five numbers, compact: the tooltip and the small line under an average. */
+function statsLine(stats: FirmwareStats): string {
+  return `start ${stats.start.toFixed(2)} · end ${stats.end.toFixed(2)} · min ${stats.min.toFixed(2)} · max ${stats.max.toFixed(2)}`;
+}
+
+/** One firmware-analyzer number: its average and unit, with the rest of its stats beneath. */
+function FirmwareRow({
+  label,
+  unit,
+  stats,
+  testId,
+}: {
+  label: string;
+  unit: string;
+  stats: FirmwareStats | null | undefined;
+  testId: string;
+}) {
+  if (!stats) return null;
+  return (
+    <div className="border-border/60 border-b py-1.5 last:border-0" data-testid={testId}>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm">{label}</span>
+        <span className="text-sm tabular-nums" title={statsLine(stats)}>
+          {stats.avg.toFixed(2)} {unit}
+        </span>
+      </div>
+      <p className="mt-0.5 text-muted-foreground text-xs tabular-nums">{statsLine(stats)}</p>
+    </div>
+  );
+}
+
 export function ResistanceCard({ diagnostics }: { diagnostics: ShotDiagnosticsBlob }) {
   const resistance = diagnostics.diagnostics?.resistance;
   if (!resistance) return null;
   const annotations = resistance.annotations ?? {};
   const source = resistanceSourceText(resistance.source);
+  const firmware = diagnostics.firmware;
   return (
     <SectionCard
       title="Puck resistance"
@@ -103,6 +135,29 @@ export function ResistanceCard({ diagnostics }: { diagnostics: ShotDiagnosticsBl
         metric="saturation"
         band={annotations.saturation}
       />
+      {firmware?.pr || firmware?.lr ? (
+        <div className="mt-3" data-testid="firmware-resistance">
+          <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            Firmware analyzer
+          </h3>
+          <p className="mb-1 text-muted-foreground text-xs">
+            The machine's own numbers in its units, as its shot analyzer shows them. Not banded, and
+            not the level above.
+          </p>
+          <FirmwareRow
+            label="Machine puck resistance"
+            unit="s·√bar/mL"
+            stats={firmware.pr}
+            testId="firmware-pr"
+          />
+          <FirmwareRow
+            label="Liquid resistance"
+            unit="bar·s/mL"
+            stats={firmware.lr}
+            testId="firmware-lr"
+          />
+        </div>
+      ) : null}
     </SectionCard>
   );
 }
@@ -234,7 +289,9 @@ export function ComplianceCard({ diagnostics }: { diagnostics: ShotDiagnosticsBl
 export function WeightCard({ diagnostics }: { diagnostics: ShotDiagnosticsBlob }) {
   const weight = diagnostics.diagnostics?.weight;
   const extraction = diagnostics.diagnostics?.extraction;
-  if (!weight && !extraction) return null;
+  const water = diagnostics.firmware?.water_pumped_ml;
+  const waterMinusWeight = diagnostics.firmware?.water_minus_weight_g;
+  if (!weight && !extraction && water == null) return null;
   return (
     <SectionCard
       title="Extraction and weight"
@@ -276,13 +333,67 @@ export function WeightCard({ diagnostics }: { diagnostics: ShotDiagnosticsBlob }
           </p>
         )
       ) : null}
+      {water != null ? (
+        <div className="mt-2" data-testid="firmware-water">
+          <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            Firmware analyzer
+          </h3>
+          <div className="flex items-baseline justify-between gap-3 py-1.5">
+            <span className="text-sm">Water pumped</span>
+            <span className="text-sm tabular-nums" data-testid="firmware-water-pumped">
+              {formatNumber(water, 1, "ml")}
+            </span>
+          </div>
+          {waterMinusWeight != null ? (
+            <div className="flex items-baseline justify-between gap-3 py-1.5">
+              <span className="text-sm">Water pumped minus beverage weight</span>
+              <span className="text-sm tabular-nums" data-testid="firmware-water-minus-weight">
+                {formatNumber(waterMinusWeight, 1, "g")}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </SectionCard>
   );
 }
 
+/** A phase's machine puck resistance and liquid resistance: the average, and beneath it the rest. */
+function FirmwarePhaseCell({
+  entry,
+}: {
+  entry: NonNullable<ShotDiagnosticsBlob["firmware"]>["phases"][number] | undefined;
+}) {
+  if (!entry || (!entry.pr && !entry.lr)) return <span className="text-muted-foreground">—</span>;
+  return (
+    <>
+      {entry.pr ? (
+        <span className="mb-1 block">
+          <span className="block">pr {entry.pr.avg.toFixed(2)} s·√bar/mL</span>
+          <span className="block text-muted-foreground">{statsLine(entry.pr)}</span>
+        </span>
+      ) : null}
+      {entry.lr ? (
+        <span className="block">
+          <span className="block">lr {entry.lr.avg.toFixed(2)} bar·s/mL</span>
+          <span className="block text-muted-foreground">{statsLine(entry.lr)}</span>
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 /** Which phase went wrong: the table the per-phase detail level exists for. */
-export function PhaseTable({ phases }: { phases: ShotPhase[] }) {
+export function PhaseTable({
+  phases,
+  firmware,
+}: {
+  phases: ShotPhase[];
+  firmware?: ShotDiagnosticsBlob["firmware"];
+}) {
   if (phases.length === 0) return null;
+  const byNumber = new Map((firmware?.phases ?? []).map((entry) => [entry.phase_number, entry]));
+  const showFirmware = (firmware?.phases ?? []).some((entry) => entry.pr || entry.lr);
   return (
     <SectionCard
       title="Phases"
@@ -297,6 +408,9 @@ export function PhaseTable({ phases }: { phases: ShotPhase[] }) {
             <th className="py-2 pr-4 text-right font-medium">Duration</th>
             <th className="py-2 pr-4 text-right font-medium">Avg pressure</th>
             <th className="py-2 pr-4 text-right font-medium">Flow</th>
+            {showFirmware ? (
+              <th className="py-2 pr-4 text-right font-medium">Firmware analyzer</th>
+            ) : null}
             <th className="py-2 font-medium">Notes</th>
           </tr>
         </thead>
@@ -325,6 +439,14 @@ export function PhaseTable({ phases }: { phases: ShotPhase[] }) {
               <td className="py-2 pr-4 text-right tabular-nums">
                 {phase.total_flow_ml.toFixed(1)} ml
               </td>
+              {showFirmware ? (
+                <td
+                  className="py-2 pr-4 text-right text-xs tabular-nums"
+                  data-testid="phase-firmware"
+                >
+                  <FirmwarePhaseCell entry={byNumber.get(phase.phase_number)} />
+                </td>
+              ) : null}
               <td className="py-2">
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                   {Object.entries(phase.diagnostics?.annotations ?? {}).map(([key, band]) => (

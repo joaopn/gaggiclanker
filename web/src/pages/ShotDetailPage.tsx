@@ -214,7 +214,7 @@ export function ShotDetailPage() {
         </div>
       ) : null}
 
-      {!row.quarantined ? <PhaseTable phases={phases} /> : null}
+      {!row.quarantined ? <PhaseTable phases={phases} firmware={diagnostics.firmware} /> : null}
 
       {notes ? <DeviceNotesCard notes={notes} /> : null}
 
