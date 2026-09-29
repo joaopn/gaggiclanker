@@ -15,6 +15,7 @@ lost shot.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -22,24 +23,39 @@ from typing import Any
 import structlog
 
 from gaggiclanker.db.repos.base import dumps, to_iso
-from gaggiclanker.db.repos.shots import ShotInsert, ShotSampleRow, ShotsRepository
+from gaggiclanker.db.repos.shots import (
+    ShotDerivationUpdate,
+    ShotInsert,
+    ShotSampleRow,
+    ShotsRepository,
+)
 from gaggiclanker.domain.diagnostics import transform_shot
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
 
 __all__ = [
+    "DERIVATION_VERSION",
     "NO_TIMESTAMP_EPOCH",
     "SI_SCALE_CONNECTED",
     "DerivedShot",
     "derive_shot",
     "epoch_to_iso",
     "index_fields",
+    "rederive_shots",
     "refill_final_weights",
     "sample_rows",
 ]
 
 log = structlog.get_logger(__name__)
+
+#: The version of what :func:`derive_shot` produces: a shot's phases, diagnostics
+#: and execution score. Written on every new derive, and the boot step
+#: (:func:`rederive_shots`) re-derives every stored shot below it from its bytes.
+#: **A change to what derive produces bumps this**, and the next start brings the
+#: archive along, so a search, a sort or a Set never compares two definitions.
+#: 1: puck resistance from the machine's own measurement when the shot has it.
+DERIVATION_VERSION = 1
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -167,6 +183,7 @@ def _attach_diagnostics(shot: ShotInsert, slog: Slog, *, has_pressure: bool | No
     )
     shot.execution_score = score.score
     shot.execution_reason = score.reason
+    shot.derivation_version = DERIVATION_VERSION
     return None
 
 
@@ -192,6 +209,70 @@ async def refill_final_weights(shots: ShotsRepository) -> int:
         log.info("shot_final_weight_refilled", shot_id=shot.id, final_weight_g=weight)
         filled += 1
     return filled
+
+
+async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
+    """Bring every shot derived by an older version up to :data:`DERIVATION_VERSION`.
+
+    Returns ``(rederived, failed)``. Run at boot, before any request: the four
+    derived columns are rewritten from ``raw_slog`` with the same code a new shot
+    goes through, and nothing else of the shot is touched (notes, judgements,
+    Set membership, samples and the device's own index fields are not derived).
+
+    The pressure gate is the one the shot was first derived with, read back from
+    its stored diagnostics, and ``None`` ("decide from the trace") when it has
+    none. Not the machine's row of today: which board a shot came off does not
+    change when the machine's settings do, and an imported shot never had a
+    machine to ask. Reusing the stored answer keeps the result a function of the
+    bytes.
+
+    A shot whose bytes no longer parse, or whose diagnostics fail, keeps what it
+    has, is logged, and is marked failed at this version so the next boot does
+    not try it again; a later version retries it. Each shot is one statement, so
+    a crash leaves every shot old or new, and a second run finds nothing to do.
+    """
+    started = time.monotonic()
+    rederived = failed = 0
+    for shot_id in await shots.pending_derivations(DERIVATION_VERSION):
+        source = await shots.derivation_source(shot_id)
+        if source is None:
+            continue
+        try:
+            slog = parse_slog(source.raw_slog, source.device_id)
+            derived = derive_shot(
+                slog,
+                source.raw_slog,
+                device_id=source.device_id,
+                has_pressure=source.has_pressure,
+            )
+            error = derived.diagnostics_error
+        except Exception as exc:  # a shot must never stop the archive booting
+            error = f"{type(exc).__name__}: {exc}"
+        if error is not None:
+            log.warning("shot_rederive_failed", shot_id=shot_id, error=error)
+            await shots.mark_derivation_failed(shot_id, DERIVATION_VERSION)
+            failed += 1
+            continue
+        shot = derived.shot
+        await shots.rewrite_derived(
+            shot_id,
+            ShotDerivationUpdate(
+                phases_json=shot.phases_json,
+                diagnostics_json=shot.diagnostics_json,
+                execution_score=shot.execution_score,
+                execution_reason=shot.execution_reason,
+                derivation_version=DERIVATION_VERSION,
+            ),
+        )
+        rederived += 1
+    log.info(
+        "shots_rederived",
+        count=rederived,
+        failed=failed,
+        derivation_version=DERIVATION_VERSION,
+        duration_ms=round((time.monotonic() - started) * 1000),
+    )
+    return rederived, failed
 
 
 def index_fields(entry: IndexEntry | None) -> dict[str, Any]:

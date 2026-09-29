@@ -74,7 +74,7 @@ from gaggiclanker.settings import (
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.starting.service import StartingPointService
 from gaggiclanker.static import mount_spa
-from gaggiclanker.sync.derive import refill_final_weights
+from gaggiclanker.sync.derive import rederive_shots, refill_final_weights
 from gaggiclanker.sync.engine import SyncEngine
 from gaggiclanker.tools import registry as tool_registry
 
@@ -366,6 +366,10 @@ async def _start(app: FastAPI, db: Database) -> None:
     # the old rule found in their bytes; re-reading the few with none brings
     # them in line (a scale that dropped to zero as the shot ended).
     final_weights_refilled = await refill_final_weights(ShotsRepository(db))
+    # Shots derived by an older version of the diagnostics are re-derived from
+    # their bytes, once: see `DERIVATION_VERSION`. Before any request, so no page
+    # ever reads two definitions of one number.
+    await rederive_shots(ShotsRepository(db))
     log.info(
         "boot_reconciled",
         reviews_interrupted=interrupted_reviews,

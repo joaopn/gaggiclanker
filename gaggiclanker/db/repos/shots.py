@@ -28,6 +28,8 @@ __all__ = [
     "SAMPLE_FIELDS",
     "ExampleShotRow",
     "ShotCounts",
+    "ShotDerivationSource",
+    "ShotDerivationUpdate",
     "ShotDetailRow",
     "ShotInsert",
     "ShotListRow",
@@ -122,6 +124,9 @@ class ShotInsert(BaseModel):
     diagnostics_json: JsonText | None = None
     execution_score: float | None = None
     execution_reason: str | None = None
+    #: The derivation version that wrote the four columns above (see
+    #: `sync/derive.py`). A shot stored without diagnostics keeps 0.
+    derivation_version: int = 0
 
     index_rating: int | None = None
     index_volume_g: float | None = None
@@ -137,6 +142,29 @@ class ShotBytes(BaseModel):
     id: int
     device_id: str
     raw_slog: bytes
+
+
+class ShotDerivationSource(BaseModel):
+    """What re-deriving one shot reads: its bytes, and the gate it was derived with."""
+
+    id: int
+    device_id: str
+    raw_slog: bytes
+    #: The `has_pressure` its stored diagnostics were derived with (the resolved
+    #: answer, never "unknown"), or ``None`` when it has no stored diagnostics.
+    has_pressure: bool | None = None
+
+
+class ShotDerivationUpdate(BaseModel):
+    """The only columns a re-derive may write, and the version that wrote them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    phases_json: JsonText | None
+    diagnostics_json: JsonText | None
+    execution_score: float | None
+    execution_reason: str | None
+    derivation_version: int
 
 
 class ShotSetBadge(BaseModel):
@@ -470,6 +498,7 @@ class ShotsRepository(Repository):
             "diagnostics_json": shot.diagnostics_json,
             "execution_score": shot.execution_score,
             "execution_reason": shot.execution_reason,
+            "derivation_version": shot.derivation_version,
             "updated_at": utc_now(),
         }
         if shot.quarantined and samples:
@@ -566,6 +595,63 @@ class ShotsRepository(Repository):
             """
         )
         return self.to_models(ShotBytes, rows)
+
+    async def pending_derivations(self, version: int) -> list[int]:
+        """Ids of the shots whose derived columns an older derivation wrote.
+
+        ``ABS`` because a failed re-derive is marked with the negative of the
+        version it failed at: it is skipped until the version moves on. A
+        quarantined shot has nothing to derive from.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT id FROM shots
+            WHERE quarantined = 0 AND ABS(derivation_version) < ?
+            ORDER BY id
+            """,
+            (version,),
+        )
+        return [int(row["id"]) for row in rows]
+
+    async def derivation_source(self, shot_id: int) -> ShotDerivationSource | None:
+        """One shot's bytes and the pressure gate its stored diagnostics used."""
+        row = await self.db.fetch_one(
+            """
+            SELECT id, device_id, raw_slog,
+                   CASE WHEN diagnostics_json IS NOT NULL AND json_valid(diagnostics_json)
+                        THEN CASE json_type(diagnostics_json, '$.has_pressure')
+                                 WHEN 'true' THEN 1 WHEN 'false' THEN 0 END
+                   END AS has_pressure
+            FROM shots WHERE id = ?
+            """,
+            (shot_id,),
+        )
+        return None if row is None else ShotDerivationSource.model_validate(dict(row))
+
+    async def rewrite_derived(self, shot_id: int, update: ShotDerivationUpdate) -> None:
+        """Replace a shot's phases, diagnostics, score and version, and nothing else.
+
+        One statement, so a crash leaves the shot as it was or as it is meant to
+        be. Samples, notes, judgements, Set membership and `updated_at` are not
+        this write's to touch: the shot itself did not change, only how it is
+        read.
+        """
+        await self.db.execute(
+            """
+            UPDATE shots SET phases_json = :phases_json, diagnostics_json = :diagnostics_json,
+                             execution_score = :execution_score,
+                             execution_reason = :execution_reason,
+                             derivation_version = :derivation_version
+            WHERE id = :id
+            """,
+            {**update.model_dump(), "id": shot_id},
+        )
+
+    async def mark_derivation_failed(self, shot_id: int, version: int) -> None:
+        """Record that this shot could not be re-derived at ``version``, so boots stop trying."""
+        await self.db.execute(
+            "UPDATE shots SET derivation_version = ? WHERE id = ?", (-version, shot_id)
+        )
 
     async def set_final_weight(self, shot_id: int, final_weight_g: float) -> None:
         """Fill a final weight that a better reading of the same bytes found."""

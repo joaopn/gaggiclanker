@@ -1,0 +1,17 @@
+-- Which version of "what deriving a shot produces" wrote a shot's phases,
+-- diagnostics and execution score.
+--
+-- Those columns are computed once, at ingest, from `raw_slog`, and were never
+-- computed again: a better diagnostic reached only the shots synced after it. A
+-- shot now carries the derivation version that wrote them, and the app
+-- re-derives every shot below the current version once at boot (the constant
+-- `DERIVATION_VERSION` in `sync/derive.py`), so a search, a sort or a Set never
+-- compares two definitions of the same number.
+--
+-- Every existing row starts at 0, "derived before versions existed", which is
+-- below every real version: the first boot after this migration re-derives it.
+-- A NOT NULL default is what SQLite needs to add the column; new shots are
+-- written at the current version by the repository. A negative value is the
+-- boot step's own mark for "this shot's bytes could not be re-derived at that
+-- version": it is not retried until the version moves again.
+ALTER TABLE shots ADD COLUMN derivation_version INTEGER NOT NULL DEFAULT 0;

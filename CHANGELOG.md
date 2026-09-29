@@ -10,6 +10,29 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Puck resistance comes from the machine
+
+- **A shot's puck resistance is now the machine's own measurement whenever the
+  shot has it.** The firmware records `pr = sqrt(P) / Q_puck` for every sample
+  (the real shots in the archive's fixtures, from older firmware, already carry
+  it); its square is the same quantity as our `pressure / flow²` on the same
+  scale, so the bands, the score's erosion penalties and the rule texts keep
+  their meaning and their numbers. Ours is the fallback, for a shot with fewer
+  than three valid machine readings (a board without a pressure sensor, or a
+  phase where the machine's estimate has not started), and the shot page and
+  the shot information now say which one a number is. On the four real shots
+  the two agree closely (level, stability and
+  erosion bands identical); peak resistance and its timing follow the machine's
+  estimate, ramp spikes included, and the saturation band of one flat hold
+  moves from good timing to early.
+- **Every stored shot is recalculated once, at the first start after the
+  update,** from the shot file the archive keeps, so a search, a sort or a Set
+  never compares two definitions of resistance and the execution score. It takes
+  a second or two per few hundred shots and is logged (`shots_rederived`).
+  Notes, judgements, Sets and the curves are untouched. A new migration records
+  which version of the calculation wrote each shot, so a later change to it is
+  brought to the archive the same way.
+
 ### Reviews use the resistance, temperature and channeling rules
 
 - **Fixed: a shot review never selected the band rules for a synced or
