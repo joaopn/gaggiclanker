@@ -29,7 +29,8 @@ from gaggiclanker.db.repos.shots import (
     ShotSampleRow,
     ShotsRepository,
 )
-from gaggiclanker.domain.diagnostics import transform_shot
+from gaggiclanker.domain.diagnostics import as_sample_dicts, transform_shot
+from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
@@ -55,7 +56,9 @@ log = structlog.get_logger(__name__)
 #: **A change to what derive produces bumps this**, and the next start brings the
 #: archive along, so a search, a sort or a Set never compares two definitions.
 #: 1: puck resistance from the machine's own measurement when the shot has it.
-DERIVATION_VERSION = 1
+#: 2: the firmware analyzer's machine puck resistance, liquid resistance and water
+#: pumped (``diagnostics_json["firmware"]``).
+DERIVATION_VERSION = 2
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -173,6 +176,11 @@ def _attach_diagnostics(shot: ShotInsert, slog: Slog, *, has_pressure: bool | No
             "diagnostics": transformed["diagnostics"],
             "detail_level": transformed["detail_level"],
             "has_pressure": transformed["has_pressure"],
+            # What the machine's own shot analyzer shows, in its units and taken
+            # its way: informational, kept apart from the banded diagnostics.
+            "firmware": compute_firmware_values(
+                as_sample_dicts(slog), slog.volume_g, has_pressure=transformed["has_pressure"]
+            ),
             # The score's own working, not just its result. `shots.execution_score`
             # and `execution_reason` are columns because the list sorts and filters
             # on them; the per-component penalties belong with the diagnostics they

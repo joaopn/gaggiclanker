@@ -349,3 +349,25 @@ async def test_the_boot_step_brings_the_archive_along(env: EnvSettings) -> None:
             stored = await _row(app.state.db, shot_id)
             assert stored["derivation_version"] == DERIVATION_VERSION
             assert stored["execution_reason"] != STALE_REASON
+
+
+async def test_a_shot_derived_at_version_one_gets_the_firmware_block(db: Database) -> None:
+    slog, raw, source = _slogs()["000300"]
+    derived = derive_shot(slog, raw, device_id="000300", source=source)
+    shot = derived.shot
+    stored = json.loads(shot.diagnostics_json or "{}")
+    assert stored["firmware"]["pr"] is not None
+    # What version 1 left: the same diagnostics without the block.
+    del stored["firmware"]
+    shot.diagnostics_json = json.dumps(stored)
+    shot.derivation_version = 1
+    shot_id = await ShotsRepository(db).insert(shot, derived.samples)
+
+    assert DERIVATION_VERSION >= 2
+    assert await rederive_shots(ShotsRepository(db)) == (1, 0)
+
+    after = await _row(db, shot_id)
+    assert after["derivation_version"] == DERIVATION_VERSION
+    block = json.loads(after["diagnostics_json"])["firmware"]
+    assert block["pr"]["avg"] > 0 and block["lr"]["avg"] > 0
+    assert [p["phase_number"] for p in block["phases"]] == [0, 1, 2]
