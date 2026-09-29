@@ -10,6 +10,19 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Reviews use the resistance, temperature and channeling rules
+
+- **Fixed: a shot review never selected the band rules for a synced or
+  imported shot.** The rules for puck resistance level and erosion, temperature
+  stability and channeling risk are chosen by signal tokens, and a real shot's
+  diagnostics named those under short keys (`level`, `erosion`, `stability`)
+  that no rule matches, so of the diagnostics band rules, reviews drew only on
+  the pressure and flow adherence ones. The tokens are now named by
+  section (`resistance_level`, `temperature_stability`, `channeling_risk`, …)
+  for every shot, and the free-text notes and channeling guidance are no
+  longer passed off as tokens. Reviews already written are unchanged; a new
+  review of an old shot picks the rules up.
+
 ### Tested against GaggiMate firmware v1.9.0
 
 - **gaggiclanker is now tested against GaggiMate firmware v1.9.0.** Nothing
