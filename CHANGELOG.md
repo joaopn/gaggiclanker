@@ -40,20 +40,27 @@ first (`POST /api/backup`), because there is no down-migration.
   the limit held throughout simply has no adherence of its own; only a shot with
   fewer than three graded samples in all is "not graded", which drops that
   penalty and lowers the score's confidence to medium.
-- **Scores of pressure-profile shots rise by up to 1.4 points.** The flow
-  penalty was fake; the pressure penalty keeps what it measured, over the right
-  samples. A profile with no flow-steered phase has nothing to grade for flow,
-  which the shot page says ("not applicable") and which neither costs points
-  nor lowers the score's confidence.
+- **Scores of pressure-profile shots rise, by up to 2.4 points.** The flow
+  penalty (up to 1.4 points) was fake, and the pressure penalty (up to 1.0) now
+  counts only the samples the target, not a limit, was steering: the export
+  fixture's shot goes from 7.7 to 9.3. A profile with no flow-steered phase has
+  nothing to grade for flow, which the shot page says ("not applicable") and
+  which neither costs points nor lowers the score's confidence.
 - **A shot with no known profile shows no adherence.** Without the profile there
   is no telling which target was real, so the shot is not graded rather than
   graded wrongly: no adherence lines, no adherence review tokens, and the score's
-  confidence drops to medium, as it does for any missing measurement. This is
-  every imported shot whose profile the archive never held, and any shot the
-  machine's profiles were not mirrored for (Sync page, Pull profiles). Profiles
-  are taken as they were mirrored: the archive does not check them against the
-  machine. When a profile is mirrored or imported and a shot gets linked to it,
-  the shot is recalculated at once.
+  confidence drops to medium, as it does for any missing measurement. Such a
+  shot loses both adherence penalties (up to 1.0 point for pressure and 1.4 for
+  flow), so its score can be up to about 2.4 points higher than the same shot
+  graded against its profile, at medium confidence: compare scores only between
+  shots that were graded. This is every imported shot whose profile the archive
+  never held, and any shot the machine's profiles were not mirrored for (Sync
+  page, Pull profiles). Profiles are taken as they were mirrored: the archive
+  does not check them against the machine. When the profile mirror links a shot
+  to a profile, or an import's profile-name match does (a shot with no profile
+  of its own, matched against the profiles the archive holds), the shot is
+  recalculated at once. Importing a profile on its own links none of the shots
+  already in the archive.
 - **Every stored shot is recalculated once, at the first start after the
   update,** as for the resistance change above: scores, verdicts and the
   Phases line move, notes, judgements, Sets and curves do not.
