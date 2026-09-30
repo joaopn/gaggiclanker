@@ -106,6 +106,13 @@ DEFAULT_DEVICE_SETTINGS: dict[str, Any] = {
     "flushDuration": 5,
     "homekit": False,
     "boilerFillActive": False,
+    # The firmware puts its credentials in this document too
+    # (`WebUIPlugin.cpp:486-495`: the Wi-Fi password outside access-point mode,
+    # the access-point password, the Home Assistant password). Served here so a
+    # test can prove the archive never keeps them.
+    "wifiPassword": "fake-wifi-password",
+    "apPassword": "fake-ap-password",
+    "haPassword": "fake-ha-password",
 }
 
 
