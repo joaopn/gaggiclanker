@@ -41,7 +41,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import dumps
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.notes import NotesRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import (
@@ -54,7 +54,7 @@ from gaggiclanker.domain.exports import (
     slog_to_raw,
 )
 from gaggiclanker.domain.slog import SlogError
-from gaggiclanker.sync.derive import derive_shot
+from gaggiclanker.sync.derive import derive_shot, rederive_shots
 
 __all__ = [
     "IMPORT_SOURCE",
@@ -366,6 +366,14 @@ class ImportService:
                 message="already in the archive; pass replace to overwrite it",
             )
 
+        # Resolved before deriving: the profile says which target each phase
+        # steered by, so the link is an input of the derivation. A replace keeps
+        # the link the shot already had when the export's id resolves to nothing
+        # (`replace_derived` COALESCEs it), so that is the profile it is derived
+        # with too.
+        version = await self._version_for(export.profile_id)
+        if version is None and existing is not None and existing.profile_version_id is not None:
+            version = await self.profiles.get_version(existing.profile_version_id)
         derived = derive_shot(
             slog,
             slog_bytes,
@@ -376,9 +384,10 @@ class ImportService:
             # trace (a Standard board writes a hard zero for pressure).
             has_pressure=None,
             incomplete=slog.incomplete,
+            profile=None if version is None else version.profile,
         )
         shot = derived.shot
-        shot.profile_version_id = await self._version_for(export.profile_id)
+        shot.profile_version_id = None if version is None else version.id
 
         status: ImportStatus = "updated"
         if existing is not None:
@@ -523,6 +532,7 @@ class ImportService:
         all for a shot whose `profileId` the machine deleted years ago, and it
         is why the link is only ever made where there is none.
         """
+        linked = 0
         for item in items:
             if item.kind != "shot" or item.shot_id is None or item.quarantined:
                 continue
@@ -533,6 +543,7 @@ class ImportService:
             if version is None:
                 continue
             await self.shots.link_profile_version(shot.id, version.id)
+            linked += 1
             # Echoed on the result so the import report can link to the version
             # it guessed, and so a wrong guess is visible rather than silent.
             item.profile_version_id = version.id
@@ -542,8 +553,13 @@ class ImportService:
                 version_id=version.id,
                 label=shot.profile_name_on_device,
             )
+        if linked:
+            # The link put each of these shots back to be derived (the profile
+            # says which target a phase steered by); do it now, with the profile
+            # in hand, rather than at the next start.
+            await rederive_shots(self.shots)
 
-    async def _version_for(self, profile_id: str) -> int | None:
+    async def _version_for(self, profile_id: str) -> ProfileVersionRow | None:
         """The mirrored profile version this shot's `profileId` points at, if any.
 
         Usually ``None`` for an import: the profile the shot was brewed with was
@@ -553,8 +569,7 @@ class ImportService:
         """
         if not profile_id:
             return None
-        version = await self.profiles.find_version_for_device_profile(profile_id)
-        return None if version is None else version.id
+        return await self.profiles.find_version_for_device_profile(profile_id)
 
     # ── profiles ─────────────────────────────────────────────────────
 

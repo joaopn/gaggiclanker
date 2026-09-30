@@ -49,7 +49,7 @@ from gaggiclanker.db.repos.base import dumps
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.machines import MachineRepository, MachineRow, identity_to_upsert
 from gaggiclanker.db.repos.notes import NotesRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository, ShotState
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunRow, SyncRunUpdate
@@ -67,7 +67,7 @@ from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry, LiveStatus
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
-from gaggiclanker.sync.derive import derive_shot, index_fields
+from gaggiclanker.sync.derive import derive_shot, index_fields, rederive_shots
 
 __all__ = [
     "LOOP_TASK_NAMES",
@@ -707,6 +707,12 @@ class SyncEngine:
             )
             return
 
+        # Resolved before deriving: which target a phase steered by is read from
+        # the profile the shot is linked to, so the link is an input of the
+        # derivation and not something added to its result. The id is the
+        # header's, which is what `derive_shot` stores (the index row's own id
+        # is not copied over it).
+        version = await self._version_for(fetch.slog.header.profile_id)
         try:
             derived = derive_shot(
                 fetch.slog,
@@ -716,6 +722,7 @@ class SyncEngine:
                 has_pressure=self._has_pressure(),
                 entry=entry,
                 incomplete=fetch.incomplete,
+                profile=None if version is None else version.profile,
             )
         except Exception as exc:
             # The bytes parsed but something downstream of the parse refused
@@ -729,7 +736,7 @@ class SyncEngine:
         if derived.diagnostics_error is not None:
             update.errors += 1
 
-        shot.profile_version_id = await self._version_for(shot.profile_id_on_device)
+        shot.profile_version_id = None if version is None else version.id
         shot_id = await self.shots.insert(shot, samples)
         # The user's half of the shot: which Set was this, and what did they
         # think of it. Both are best-effort and neither can fail an ingest —
@@ -839,11 +846,11 @@ class SyncEngine:
             return self._capabilities[0]
         return None
 
-    async def _version_for(self, profile_id: str) -> int | None:
+    async def _version_for(self, profile_id: str) -> ProfileVersionRow | None:
+        """The mirrored version this device profile id holds now, if we have one."""
         if not profile_id:
             return None
-        version = await self.profiles.find_version_for_device_profile(profile_id)
-        return None if version is None else version.id
+        return await self.profiles.find_version_for_device_profile(profile_id)
 
     async def _reconcile(
         self,
@@ -1027,6 +1034,7 @@ class SyncEngine:
             return await self._fail_run(run_id, "profiles", update, exc)
 
         seen: list[str] = []
+        relinked = 0
         selected_id = self._selected_profile_id
         for position, profile in enumerate(profiles):
             if profile.id is None:
@@ -1049,7 +1057,7 @@ class SyncEngine:
                 selected=(profile.id == selected_id) if selected_id else profile.selected,
                 position=position,
             )
-            await self.shots.link_unlinked_by_device_profile(profile.id, version.id)
+            relinked += await self.shots.link_unlinked_by_device_profile(profile.id, version.id)
             seen.append(profile.id)
             if created or existing is None or existing.current_version_id != version.id:
                 update.profiles_changed += 1
@@ -1064,6 +1072,15 @@ class SyncEngine:
                     PROFILE_UPDATED_EVENT,
                     {"device_id": profile.id, "version_id": version.id, "label": profile.label},
                 )
+
+        if relinked:
+            # A shot that arrived before its profile was mirrored was derived
+            # with no profile to say what each phase steered by. Linking put it
+            # back to be derived; doing it here, with the profile just stored,
+            # means nobody reads its adherence as "not graded" until the next
+            # start.
+            rederived, failed = await rederive_shots(self.shots)
+            log.info("shots_relinked", relinked=relinked, rederived=rederived, failed=failed)
 
         removed = await self.profiles.mark_missing_deleted(seen)
         if removed:

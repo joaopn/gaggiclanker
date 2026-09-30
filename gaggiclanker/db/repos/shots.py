@@ -666,9 +666,17 @@ class ShotsRepository(Repository):
         )
 
     async def link_profile_version(self, shot_id: int, version_id: int) -> None:
-        """Attach a shot to the profile version it was brewed with."""
+        """Attach a shot to the profile version it was brewed with.
+
+        The profile is an input of the shot's derived columns (which target each
+        phase steered by), so the shot goes back to derivation version 0 in the
+        same write: whatever it was derived with before, it is derived again.
+        """
         await self.db.execute(
-            "UPDATE shots SET profile_version_id = ?, updated_at = ? WHERE id = ?",
+            """
+            UPDATE shots SET profile_version_id = ?, derivation_version = 0, updated_at = ?
+            WHERE id = ?
+            """,
             (version_id, utc_now(), shot_id),
         )
 
@@ -679,11 +687,12 @@ class ShotsRepository(Repository):
         starts the moment the socket is up), so a shot's `profile_version_id` is
         filled in by whichever runs second. Only NULLs are touched: a shot
         already linked to the version that was on the device *at the time* keeps
-        it when the user later edits that profile.
+        it when the user later edits that profile. Each shot it links goes back to
+        derivation version 0 in the same statement (see :meth:`link_profile_version`).
         """
         cursor = await self.db.execute(
             """
-            UPDATE shots SET profile_version_id = ?, updated_at = ?
+            UPDATE shots SET profile_version_id = ?, derivation_version = 0, updated_at = ?
             WHERE profile_id_on_device = ? AND profile_version_id IS NULL
             """,
             (version_id, utc_now(), device_profile_id),
