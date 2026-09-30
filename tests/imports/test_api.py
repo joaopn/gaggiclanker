@@ -72,7 +72,8 @@ async def test_an_imported_shot_is_a_shot_like_any_other(client: httpx.AsyncClie
     raw = await client.get(f"/api/shots/{shot_id}/raw")
 
     assert [row["id"] for row in listing.json()["data"]["items"]] == [shot_id]
-    assert detail.json()["data"]["shot"]["execution_score"] == pytest.approx(7.7)
+    # No profile is linked to the shot, so its adherence is not graded (and costs nothing).
+    assert detail.json()["data"]["shot"]["execution_score"] == pytest.approx(9.3)
     assert len(detail.json()["data"]["shot"]["phases"]) == 4
     assert detail.json()["data"]["notes"]["dose_out_g"] == pytest.approx(32.1)
     assert samples.json()["data"]["count"] == SHOT_129_SAMPLES

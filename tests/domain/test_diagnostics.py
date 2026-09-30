@@ -1015,6 +1015,11 @@ class TestPhaseClassification:
 class TestProfileCompliance:
     """Tests for profile compliance (RMSE and overshoot)."""
 
+    def _diagnostics(self, samples, controls):
+        """Full diagnostics of one single-phase shot whose profile steers by `controls`."""
+        shot = self._make_shot(samples)
+        return compute_shot_diagnostics(shot, phase_controls=controls)
+
     def _make_shot(self, samples, phases=None, **kwargs):
         defaults = dict(
             id="000100",
@@ -1030,7 +1035,11 @@ class TestProfileCompliance:
             weight=40.0,
         )
         defaults.update(kwargs)
-        return upstream_shot(samples=samples, phases=phases or [], **defaults)
+        # One phase, so every sample carries a phase number the profile can name.
+        phases = phases or [
+            PhaseTransition(sample_index=0, phase_number=0, phase_name="Extraction")
+        ]
+        return upstream_shot(samples=samples, phases=phases, **defaults)
 
     def test_compute_rmse_perfect(self):
         assert _compute_rmse([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) == 0.0
@@ -1053,8 +1062,7 @@ class TestProfileCompliance:
             {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "pf": 2.0},
             {"t": 500, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 2.1},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("pressure",))
         assert diag is not None
         pc = diag["profile_compliance"]
         assert pc is not None
@@ -1062,8 +1070,8 @@ class TestProfileCompliance:
         assert "pressure_adherence" in pc["annotations"]
         assert "pressure_overshoot" in pc["annotations"]
 
-    def test_profile_compliance_none_without_tp(self):
-        """Profile compliance is None when no tp data."""
+    def test_pressure_adherence_is_not_graded_without_tp(self):
+        """No `tp` recorded: the pressure adherence is missing, not zero."""
         samples = [
             {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 3.0, "pf": 0.5},
             {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "pf": 2.0},
@@ -1071,10 +1079,13 @@ class TestProfileCompliance:
             {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "pf": 2.0},
             {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "pf": 2.1},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("pressure",))
         assert diag is not None
-        assert diag["profile_compliance"] is None
+        pc = diag["profile_compliance"]
+        assert pc is not None
+        assert pc["pressure_rmse_bar"] is None
+        assert pc["pressure_grading"] == "not_graded"
+        assert "pressure_adherence" not in pc["annotations"]
 
     def test_overshoot_detected(self):
         """Overshoot correctly detected when actual exceeds target."""
@@ -1086,8 +1097,7 @@ class TestProfileCompliance:
             {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "pf": 2.0},
             {"t": 500, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 2.1},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("pressure",))
         pc = diag["profile_compliance"]
         assert pc["max_pressure_overshoot_bar"] == 2.0
         assert pc["annotations"]["pressure_overshoot"] == "SEVERE_OVERSHOOT"
@@ -1095,14 +1105,13 @@ class TestProfileCompliance:
     def test_flow_rmse_when_tf_available(self):
         """Flow RMSE computed when tf data available."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.0, "tf": 2.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.5, "tf": 2.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "pf": 2.0, "tf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 2.1, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "pf": 2.2, "tf": 2.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.0, "tf": 2.0},
+            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.5, "tf": 2.0},
+            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "fl": 2.0, "tf": 2.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 2.1, "tf": 2.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 2.2, "tf": 2.0},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["flow_rmse_ml_s"] is not None
         assert pc["flow_rmse_ml_s"] >= 0
@@ -1111,14 +1120,14 @@ class TestProfileCompliance:
     def test_flow_overshoot_detected(self):
         """Flow overshoot correctly detected when actual exceeds target."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.0, "tf": 1.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.0, "tf": 1.0},
             {
                 "t": 100,
                 "ct": 93.0,
                 "tt": 93.0,
                 "cp": 9.0,
                 "tp": 9.0,
-                "pf": 3.0,
+                "fl": 3.0,
                 "tf": 1.0,
             },  # +2.0 ml/s
             {
@@ -1127,14 +1136,13 @@ class TestProfileCompliance:
                 "tt": 93.0,
                 "cp": 8.5,
                 "tp": 9.0,
-                "pf": 2.5,
+                "fl": 2.5,
                 "tf": 1.0,
             },  # +1.5 ml/s
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 1.2, "tf": 1.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "pf": 1.0, "tf": 1.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 1.2, "tf": 1.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 1.0, "tf": 1.0},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_overshoot_ml_s"] == 2.0
         assert pc["annotations"]["flow_overshoot"] == "SEVERE_DEVIATION"
@@ -1142,14 +1150,14 @@ class TestProfileCompliance:
     def test_flow_undershoot_detected(self):
         """Flow undershoot correctly detected when actual is below target."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.0, "tf": 2.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.0, "tf": 2.0},
             {
                 "t": 100,
                 "ct": 93.0,
                 "tt": 93.0,
                 "cp": 9.0,
                 "tp": 9.0,
-                "pf": 1.0,
+                "fl": 1.0,
                 "tf": 2.0,
             },  # -1.0 ml/s
             {
@@ -1158,14 +1166,13 @@ class TestProfileCompliance:
                 "tt": 93.0,
                 "cp": 8.5,
                 "tp": 9.0,
-                "pf": 1.2,
+                "fl": 1.2,
                 "tf": 2.0,
             },  # -0.8 ml/s
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 1.8, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "pf": 1.9, "tf": 2.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 1.8, "tf": 2.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 1.9, "tf": 2.0},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_undershoot_ml_s"] == 1.0
         assert pc["annotations"]["flow_undershoot"] == "NOTABLE_DEVIATION"
@@ -1179,8 +1186,7 @@ class TestProfileCompliance:
             {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 2.0},
             {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "pf": 2.1},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("pressure",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_overshoot_ml_s"] is None
         assert pc["max_flow_undershoot_ml_s"] is None
@@ -1190,14 +1196,13 @@ class TestProfileCompliance:
     def test_flow_within_tolerance(self):
         """Small flow deviations annotated as WITHIN_TOLERANCE."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.1, "tf": 2.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "pf": 2.2, "tf": 2.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "pf": 1.9, "tf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "pf": 2.0, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "pf": 2.05, "tf": 2.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.1, "tf": 2.0},
+            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.2, "tf": 2.0},
+            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "fl": 1.9, "tf": 2.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 2.0, "tf": 2.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 2.05, "tf": 2.0},
         ]
-        shot = self._make_shot(samples)
-        diag = compute_shot_diagnostics(shot)
+        diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
         assert pc["max_flow_overshoot_ml_s"] <= 0.3
         assert pc["annotations"]["flow_overshoot"] == "WITHIN_TOLERANCE"
@@ -1256,17 +1261,26 @@ class TestPerPhaseDiagnostics:
         assert "taper_smoothness" in diag["annotations"]
 
     def test_per_phase_rmse(self):
-        """All phase types get RMSE vs target."""
+        """All phase types get an RMSE vs the target they steer by, and only that one."""
         samples = [
-            {"t": 0, "cp": 9.0, "pf": 2.0, "tp": 9.0},
-            {"t": 100, "cp": 8.5, "pf": 2.0, "tp": 9.0},
-            {"t": 200, "cp": 8.0, "pf": 2.1, "tp": 9.0},
+            {"t": 0, "cp": 9.0, "pf": 2.0, "fl": 2.0, "tp": 9.0, "tf": 2.0},
+            {"t": 100, "cp": 8.5, "pf": 2.0, "fl": 2.0, "tp": 9.0, "tf": 2.0},
+            {"t": 200, "cp": 8.0, "pf": 2.1, "fl": 2.2, "tp": 9.0, "tf": 2.0},
         ]
         for phase_type in ("preinfusion", "brew", "decline"):
-            diag = _compute_phase_diagnostics(samples, phase_type, 0.1)
-            assert "pressure_rmse_bar" in diag
-            assert "flow_rmse_ml_s" in diag
-            assert diag["pressure_rmse_bar"] >= 0
+            by_pressure = _compute_phase_diagnostics(
+                samples, phase_type, 0.1, steering=["pressure"] * 3
+            )
+            assert by_pressure["pressure_rmse_bar"] >= 0
+            assert "flow_rmse_ml_s" not in by_pressure
+            by_flow = _compute_phase_diagnostics(samples, phase_type, 0.1, steering=["flow"] * 3)
+            assert by_flow["flow_rmse_ml_s"] >= 0
+            assert "pressure_rmse_bar" not in by_flow
+            assert "pressure_adherence" not in by_flow["annotations"]
+            # No profile behind the phase: neither.
+            ungraded = _compute_phase_diagnostics(samples, phase_type, 0.1)
+            assert "pressure_rmse_bar" not in ungraded
+            assert "flow_rmse_ml_s" not in ungraded
 
 
 class TestRampExclusion:

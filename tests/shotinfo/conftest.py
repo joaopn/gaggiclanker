@@ -41,6 +41,14 @@ SLOG = Path(__file__).resolve().parents[1] / "fixtures" / "slog" / "shot_204_ram
 #: The newest shot of the demo archive, exported by the machine's web UI: 213
 #: samples over 53 s, four phases, a real scale. What a person's own shot looks
 #: like, and so what the curve's budget is measured on.
+#: The profiles these two shots are derived with: constructed to match them (the
+#: real ones no longer exist; see the README beside the files), each phase
+#: steering by pressure. The profile is what says which target a phase steered
+#: by, so it is an input of the derived adherence the examples show.
+CONSTRUCTED = Path(__file__).resolve().parents[1] / "fixtures" / "constructed_profiles"
+PROFILE_204 = json.loads((CONSTRUCTED / "shot_204_pressure-first.json").read_text())
+PROFILE_129 = json.loads((CONSTRUCTED / "shot_129_pressure-first.json").read_text())
+
 SHOT_129 = Path(__file__).resolve().parents[1] / "fixtures" / "exports" / "shot-129.json"
 
 
@@ -75,14 +83,22 @@ def _without_scale(slog: Slog) -> Slog:
 async def insert_shot_129(db: Database) -> int:
     """The exported shot, stored the way an import stores it."""
     slog = shot_export_to_slog(ShotExport.model_validate(json.loads(SHOT_129.read_text())))
-    derived = derive_shot(slog, slog_to_raw(slog), device_id="000129", source="import")
+    derived = derive_shot(
+        slog, slog_to_raw(slog), device_id="000129", source="import", profile=PROFILE_129
+    )
     return await ShotsRepository(db).insert(derived.shot, derived.samples)
 
 
 async def _insert(
     db: Database, slog: Slog, device_id: str, *, has_pressure: bool | None = None
 ) -> int:
-    derived = derive_shot(slog, SLOG.read_bytes(), device_id=device_id, has_pressure=has_pressure)
+    derived = derive_shot(
+        slog,
+        SLOG.read_bytes(),
+        device_id=device_id,
+        has_pressure=has_pressure,
+        profile=PROFILE_204,
+    )
     return await ShotsRepository(db).insert(derived.shot, derived.samples)
 
 

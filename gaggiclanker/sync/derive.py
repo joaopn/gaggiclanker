@@ -16,6 +16,7 @@ lost shot.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -32,6 +33,7 @@ from gaggiclanker.db.repos.shots import (
 from gaggiclanker.domain.diagnostics import as_sample_dicts, transform_shot
 from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
+from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
 from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
 
@@ -58,7 +60,12 @@ log = structlog.get_logger(__name__)
 #: 1: puck resistance from the machine's own measurement when the shot has it.
 #: 2: the firmware analyzer's machine puck resistance, liquid resistance and water
 #: pumped (``diagnostics_json["firmware"]``).
-DERIVATION_VERSION = 2
+#: 3: profile compliance reads the shot's profile: each phase is graded only on
+#: the target it steers by (pressure or pump flow), never on a soft limit, a
+#: simple phase or the post-brew tail, and a shot with no usable profile has no
+#: adherence. **The profile a shot is linked to is now an input**: linking a
+#: shot to a profile version leaves it to be derived again.
+DERIVATION_VERSION = 3
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -92,6 +99,7 @@ def derive_shot(
     has_pressure: bool | None = None,
     entry: IndexEntry | None = None,
     incomplete: bool = False,
+    profile: Mapping[str, Any] | None = None,
 ) -> DerivedShot:
     """Everything storable about one parsed `.slog`.
 
@@ -109,6 +117,11 @@ def derive_shot(
     "nobody has told us", which makes the diagnostics decide from the trace;
     ``False`` is a Standard board, where pressure is a hard zero and a confident
     pressure diagnostic is confident nonsense.
+
+    ``profile`` is the stored document of the profile version the shot is linked
+    to. It is the only thing that says which of a phase's two logged targets is
+    the one the machine steered by, so without it (a shot never mirrored, or an
+    unreadable document) no adherence is worked out: absent, not perfect.
     """
     header = slog.header
     samples = sample_rows(slog)
@@ -149,11 +162,19 @@ def derive_shot(
         if key in from_index:
             setattr(shot, key, from_index[key])
 
-    error = _attach_diagnostics(shot, slog, has_pressure=has_pressure)
+    error = _attach_diagnostics(
+        shot, slog, has_pressure=has_pressure, controls=phase_controls(profile)
+    )
     return DerivedShot(shot=shot, samples=samples, diagnostics_error=error)
 
 
-def _attach_diagnostics(shot: ShotInsert, slog: Slog, *, has_pressure: bool | None) -> str | None:
+def _attach_diagnostics(
+    shot: ShotInsert,
+    slog: Slog,
+    *,
+    has_pressure: bool | None,
+    controls: tuple[PhaseControl, ...] | None,
+) -> str | None:
     """Phases, diagnostics and the execution score — best effort, and on purpose.
 
     This is the one failure in the ingest path that does **not** quarantine. The
@@ -163,7 +184,9 @@ def _attach_diagnostics(shot: ShotInsert, slog: Slog, *, has_pressure: bool | No
     away.
     """
     try:
-        transformed = transform_shot(slog, "per_phase", has_pressure=has_pressure)
+        transformed = transform_shot(
+            slog, "per_phase", has_pressure=has_pressure, phase_controls=controls
+        )
         score = execution_score(transformed)
     except Exception as exc:  # pragma: no cover - a diagnostics bug, not a data shape
         log.warning("shot_diagnostics_failed", device_id=shot.device_id, exc_info=True)
@@ -227,6 +250,10 @@ async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
     goes through, and nothing else of the shot is touched (notes, judgements,
     Set membership, samples and the device's own index fields are not derived).
 
+    The profile is the one the shot is linked to now (its versions are content-
+    hashed and immutable, so it is the same document every time), and none when
+    it is not linked.
+
     The pressure gate is the one the shot was first derived with, read back from
     its stored diagnostics, and ``None`` ("decide from the trace") when it has
     none. Not the machine's row of today: which board a shot came off does not
@@ -252,6 +279,7 @@ async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
                 source.raw_slog,
                 device_id=source.device_id,
                 has_pressure=source.has_pressure,
+                profile=source.profile,
             )
             error = derived.diagnostics_error
         except Exception as exc:  # a shot must never stop the archive booting

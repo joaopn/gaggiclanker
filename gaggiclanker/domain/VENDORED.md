@@ -30,7 +30,10 @@ boundary without saying so out loud.
 wording of every annotation and guidance sentence. Verified numerically — on all
 three upstream `.slog` fixtures, `compute_shot_diagnostics` and
 `compute_summary_diagnostics` produce output identical to upstream's, key for key
-and value for value, as do all three detail levels of the shot transform.
+and value for value, as do all three detail levels of the shot transform. That
+was true when it was written and stopped being true at item 8: which samples the
+adherence numbers are read from changed (the formulas and bands did not), so the
+adherence fields no longer equal upstream's on those fixtures.
 
 1. **Input model.** Upstream took its own `ShotData` dataclass with `samples` as
    a list of plain dicts. We take a `Slog` (`gaggiclanker/domain/slog.py`), which
@@ -86,6 +89,30 @@ and value for value, as do all three detail levels of the shot transform.
    estimate, its ramp spikes included. The formula lives in one function
    (`_build_resistance`) that the full block, the summary and each brew phase
    share.
+8. **Adherence is graded on the target a phase steers by, read from the shot's
+   profile.** Upstream paired every sample's measured pressure with `tp` and
+   its puck flow with `tf`. The firmware logs *both* targets on every advanced
+   pump phase (`Controller.cpp`) and only one is the target; the other is a soft
+   limit, and a simple power phase, an inactive machine and the recording tail
+   after the brew log 0/0. So a pressure profile came out with a POOR flow
+   adherence (against its flow limit and zeros), a flow penalty in the score, and
+   a "largest pressure overshoot" that was the pressure falling in the tail. Now
+   `phase_controls` (from the shot's linked profile: `phase.pump` is an integer
+   or `{target: pressure | flow}`) says what each phase steers by, and
+   `_steering` decides which samples are graded: pressure adherence over the
+   samples of pressure-steered phases, flow adherence over those of flow-steered
+   phases, compared with the **pump flow** `fl` (the firmware's flow mode turns
+   the target into a pump duty cycle through the pump's flow model and never
+   reads the puck flow), never a power phase, never the tail after the last
+   target, transition ramps included. No profile, a sample with no phase number
+   or a phase number the profile lacks: nothing is graded (the block is `None`).
+   Each adherence carries a `pressure_grading` / `flow_grading` of `graded`,
+   `not_applicable` (the profile has no phase of that kind) or `not_graded`
+   (should have a number and has none); per-phase diagnostics carry only the
+   adherence of their own target. The formulas, band edges and labels are
+   untouched, and `DERIVATION_VERSION` 3 brings stored shots along. The
+   channeling block's flow-versus-target residual (`_residual_std_vs_target`)
+   still pairs `pf` with `tf` and was not changed.
 
 ---
 
@@ -120,6 +147,12 @@ crema itself vendors gaggimate-mcp's diagnostics, so the two share ancestry.
    clean pass.
 4. `recipe_yield` and `recipe_profile` behave exactly as upstream: an absent
    target imposes no generic espresso ideal.
+5. **Not applicable is not a miss.** Upstream lowered the confidence to
+   `medium` whenever the flow RMSE was missing. A flow adherence the profile
+   does not call for (a pressure profile) is `not_applicable` and neither
+   penalises nor lowers the confidence; one that applies and could not be worked
+   out, or a shot with no usable profile, is missing and still lowers it. The
+   penalty formulas and caps are untouched.
 
 ---
 

@@ -33,6 +33,7 @@ def _samples(*, pressure: bool) -> list[dict[str, Any]]:
             "tp": 9.0 if pressure else 0.0,
             "cp": (2.0 + i * 0.7 if i < 8 else 9.0) if pressure else 0.0,
             "pf": 0.2 + i * 0.12,
+            "fl": 0.2 + i * 0.12,
             "tf": 2.0,
             "v": i * 1.6,
         }
@@ -49,7 +50,7 @@ def _standard() -> Any:
 
 
 def test_pro_board_gets_the_full_pressure_diagnostics() -> None:
-    diagnostics = compute_shot_diagnostics(_pro())
+    diagnostics = compute_shot_diagnostics(_pro(), phase_controls=("pressure", "pressure"))
     assert diagnostics is not None
     assert diagnostics["has_pressure"] is True
     assert diagnostics["resistance"] is not None
@@ -71,14 +72,14 @@ def test_standard_board_omits_pressure_derived_blocks() -> None:
 
 
 def test_standard_board_summary_omits_the_same_things() -> None:
-    summary = compute_summary_diagnostics(_standard())
+    summary = compute_summary_diagnostics(_standard(), phase_controls=("flow", "flow"))
     assert summary is not None
     assert summary["has_pressure"] is False
     assert summary["resistance_avg"] is None
     assert summary["channeling_risk"] is None
     assert summary["pressure_rmse_bar"] is None
     assert "resistance_level" not in summary["annotations"]
-    # This synthetic board records a target flow and a puck flow (which no real
+    # This synthetic board records a target flow and a pump flow (which no real
     # Standard board does, see below), so there is a flow to grade.
     assert summary["flow_rmse_ml_s"] is not None
 
@@ -115,6 +116,11 @@ def test_score_on_a_standard_board_is_low_confidence() -> None:
     assert "pressure sensor" in score.reason
 
 
+def _every_phase(slog: Any, control: Any) -> Any:
+    """A profile's phase controls with every phase of the shot steered the same way."""
+    return (control,) * (max(s.phase or 0 for s in slog.samples) + 1)
+
+
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
 FLOW = ("flow_adherence", "flow_overshoot", "flow_undershoot")
 
@@ -142,42 +148,51 @@ def test_the_predicate_lets_the_summary_grade_a_no_pressure_shot_that_has_flow(
     """The predicate is about the samples, not the board: with the gate forced off, a
     recording that carries a target and a measured flow somewhere is not refused.
 
-    These recordings command flow only in preinfusion, so the brew window the
-    summary grades holds a zero target: this tests that the summary grades at
-    all, not the quality of that grade (the synthetic board above has a real
-    target in its brew window)."""
+    These recordings command flow only in preinfusion, so with every phase read as
+    flow-steered the brew window the summary grades holds a zero target: this
+    tests that the summary grades at all, not the quality of that grade (the
+    synthetic board above has a real target in its brew window)."""
     slog = parse_slog(path.read_bytes())
-    summary: Any = transform_shot(slog, "summary", has_pressure=False)["diagnostics"]
+    summary: Any = transform_shot(
+        slog, "summary", has_pressure=False, phase_controls=_every_phase(slog, "flow")
+    )["diagnostics"]
     assert summary["has_pressure"] is False
     assert {"flow_adherence", "flow_overshoot"} <= set(summary["annotations"])
     assert summary["flow_rmse_ml_s"] is not None
 
 
 def test_a_no_pressure_shot_needs_both_a_target_and_a_measured_flow() -> None:
-    for zeroed in ("tf", "pf"):
+    for zeroed in ("tf", "fl"):
         samples = [{**s, zeroed: 0.0} for s in _samples(pressure=False)]
         slog = make_slog(samples, [(0, 0, "Preinfusion"), (6, 1, "Extraction")])
-        summary: Any = compute_summary_diagnostics(slog)
+        summary: Any = compute_summary_diagnostics(slog, phase_controls=("flow", "flow"))
         assert summary is not None and summary["flow_rmse_ml_s"] is None, zeroed
+        assert summary["flow_grading"] == "not_graded", zeroed
 
 
-def test_a_negative_puck_flow_is_still_a_measured_flow() -> None:
-    """The puck flow can go negative while the pump depressurises: still a reading."""
-    samples = [{**s, "pf": -0.1 * (i % 3 + 1)} for i, s in enumerate(_samples(pressure=False))]
+def test_a_negative_pump_flow_is_still_a_measured_flow() -> None:
+    """The pump flow is logged with small negatives (`fl` allows them): still a reading."""
+    samples = [{**s, "fl": -0.1 * (i % 3 + 1)} for i, s in enumerate(_samples(pressure=False))]
     slog = make_slog(samples, [(0, 0, "Preinfusion"), (6, 1, "Extraction")])
-    summary: Any = compute_summary_diagnostics(slog)
+    summary: Any = compute_summary_diagnostics(slog, phase_controls=("flow", "flow"))
     assert summary is not None and summary["flow_rmse_ml_s"] is not None
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
-def test_a_pressure_shot_keeps_grading_flow_even_without_flow_targets(path: Path) -> None:
-    """A pure pressure profile on a board with a sensor: unchanged, both shapes."""
+def test_a_pure_pressure_profile_has_no_flow_to_grade_in_either_shape(path: Path) -> None:
+    """A pressure profile on a board with a sensor: flow is not applicable, pressure is graded."""
     slog = parse_slog(path.read_bytes())
     slog = dataclasses.replace(
         slog, samples=[s.model_copy(update={"tf": 0.0}) for s in slog.samples]
     )
     assert slog.has_pressure
-    summary: Any = transform_shot(slog, "summary")["diagnostics"]
-    full: Any = transform_shot(slog, "per_phase")["diagnostics"]
-    assert summary["flow_rmse_ml_s"] is not None
-    assert full["profile_compliance"]["flow_rmse_ml_s"] is not None
+    controls = _every_phase(slog, "pressure")
+    summary: Any = transform_shot(slog, "summary", phase_controls=controls)["diagnostics"]
+    full: Any = transform_shot(slog, "per_phase", phase_controls=controls)["diagnostics"]
+    assert summary["flow_rmse_ml_s"] is None
+    assert summary["flow_grading"] == "not_applicable"
+    assert summary["pressure_grading"] == "graded"
+    compliance = full["profile_compliance"]
+    assert compliance["flow_rmse_ml_s"] is None
+    assert compliance["flow_grading"] == "not_applicable"
+    assert compliance["pressure_grading"] == "graded"

@@ -20,6 +20,9 @@ What changed here, and why:
   The band tables did not move: ``pr²`` is the same quadratic model on the same
   scale. Peak and peak timing follow the machine's estimate, ramp spikes
   included.
+* Profile compliance is graded over the samples of the phases that steer by each
+  target, read from the shot's profile (`phase_controls`), and flow is compared
+  with the pump flow; see :func:`_steering` and `VENDORED.md` item 8.
 
 A sample's field is absent from the working dict when the firmware never
 recorded it (its `fieldsMask` bit was clear). That is why the code reads
@@ -30,9 +33,11 @@ recorded" and "recorded as zero" are different facts.
 from __future__ import annotations
 
 import math
-from typing import Literal, NotRequired, TypedDict
+from collections.abc import Sequence
+from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from gaggiclanker.domain.models import PhaseTransition
+from gaggiclanker.domain.phase_control import PhaseControl
 from gaggiclanker.domain.slog import Slog
 
 #: A sample flattened to plain numbers. Keys are the `.slog` field names; a key
@@ -214,22 +219,47 @@ class WeightDiagnostics(TypedDict):
     annotations: dict[str, str]
 
 
+#: Whether one of the two adherences was worked out, and if not, why.
+#:
+#: * ``graded``: the profile steers by it and enough samples were measured;
+#: * ``not_applicable``: the profile has no phase that steers by it (a pressure
+#:   profile has no flow to follow), so there is nothing to grade and nothing
+#:   missing;
+#: * ``not_graded``: it should have a number and does not (too few samples, or
+#:   the shot did not record the measurement).
+#:
+#: The score reads the difference: only ``not_graded`` lowers its confidence.
+Grading = Literal["graded", "not_applicable", "not_graded"]
+
+
 class ProfileComplianceMetrics(TypedDict):
     """RMSE of actual against commanded pressure and flow.
 
-    Flow deviation is the better grind signal: the firmware's PID actively
-    drives pump power to hold target pressure, so pressure error is masked by
-    the controller, while flow is a *consequence* of grind, dose and puck prep
-    and cannot be masked. A pressure overshoot above 1 bar is therefore
-    remarkable — it means the controller ran out of room.
+    Each is graded only over the samples of the phases that steer by it, read
+    from the profile the shot was brewed with (see :class:`_Steering`): the
+    firmware logs both targets on every advanced phase, but one of them is a
+    limit, and grading a pressure shot's flow against its flow limit produced a
+    POOR verdict on every pressure profile.
+
+    Flow is compared with the *pump* flow (`fl`), because that is what the
+    firmware's flow mode controls: it converts the target to a pump duty cycle
+    through the pump's flow model and never looks at the puck flow.
+
+    Flow deviation is the better grind signal in a flow phase: flow is a
+    *consequence* of grind, dose and puck prep and cannot be masked. A pressure
+    overshoot above 1 bar is remarkable — it means the controller ran out of
+    room. A block with no profile behind it does not exist (``None`` in
+    :class:`ShotDiagnostics`).
     """
 
-    pressure_rmse_bar: float
+    pressure_rmse_bar: float | None
     flow_rmse_ml_s: float | None
-    max_pressure_overshoot_bar: float
-    max_pressure_undershoot_bar: float
+    max_pressure_overshoot_bar: float | None
+    max_pressure_undershoot_bar: float | None
     max_flow_overshoot_ml_s: float | None
     max_flow_undershoot_ml_s: float | None
+    pressure_grading: Grading
+    flow_grading: Grading
     annotations: dict[str, str]
 
 
@@ -259,6 +289,8 @@ class SummaryDiagnostics(TypedDict):
     max_overshoot_bar: float | None
     flow_rmse_ml_s: float | None
     max_flow_overshoot_ml_s: float | None
+    pressure_grading: Grading
+    flow_grading: Grading
     scale_connected: bool
     annotations: dict[str, str]
 
@@ -833,16 +865,6 @@ def _phase_ranges(
     return result
 
 
-def _phase_slices(
-    samples: list[SampleDict], transitions: list[PhaseTransition]
-) -> list[tuple[PhaseTransition, list[SampleDict]]]:
-    """Pair each transition with the samples recorded while it was active."""
-    return [
-        (transition, samples[span.start : span.stop])
-        for transition, span in _phase_ranges(len(samples), transitions)
-    ]
-
-
 def _brew_phase_positions(
     samples: list[SampleDict], transitions: list[PhaseTransition]
 ) -> list[int]:
@@ -1279,13 +1301,20 @@ def calculate_summary(slog: Slog, *, has_pressure: bool | None = None) -> ShotSu
 
 
 def compute_shot_diagnostics(
-    slog: Slog, *, has_pressure: bool | None = None
+    slog: Slog,
+    *,
+    has_pressure: bool | None = None,
+    phase_controls: Sequence[PhaseControl] | None = None,
 ) -> ShotDiagnostics | None:
     """Full diagnostics, or None when there is too little to say anything.
 
     Too little means fewer than 5 samples overall or fewer than 3 in the brew
     phase. `has_pressure` defaults to whether the trace carries any non-zero
     pressure at all, which is how a Standard board shows up.
+
+    `phase_controls` is what each phase of the shot's profile steers by (see
+    :func:`~gaggiclanker.domain.phase_control.phase_controls`). Without it the
+    profile compliance is not worked out at all.
     """
     samples = as_sample_dicts(slog)
     if len(samples) < _MIN_SHOT_SAMPLES:
@@ -1313,7 +1342,9 @@ def compute_shot_diagnostics(
     if pressure_ok:
         resistance = _build_resistance(brew_samples, dt)
         channeling = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)
-        profile_compliance = _compute_profile_compliance(samples)
+        profile_compliance = _compute_profile_compliance(
+            samples, _steering(samples, phase_controls)
+        )
 
     temp_deviations = [
         ct - tt for ct, tt in zip(brew_temps, brew_target_temps, strict=True) if tt > 0
@@ -1462,10 +1493,10 @@ def _flow_commanded_and_measured(samples: list[SampleDict]) -> bool:
     """Whether the samples hold a flow that was commanded and one that was measured.
 
     A GaggiMate Standard board has no pressure sensor and no dimmed pump: the
-    controller reports zero for the puck flow unless the board has the pressure
-    capability, the display sets the target flow only when it does, and every
-    Standard revision in the firmware's board table is built without it. The
-    log records every field, so such a shot carries `pf = 0` and `tf = 0` on
+    controller reports zero for the pump and puck flow unless the board has the
+    pressure capability, the display sets the target flow only when it does, and
+    every Standard revision in the firmware's board table is built without it.
+    The log records every field, so such a shot carries `fl = 0` and `tf = 0` on
     every sample, and comparing the two would report a perfect adherence to a
     profile nobody measured.
 
@@ -1474,46 +1505,146 @@ def _flow_commanded_and_measured(samples: list[SampleDict]) -> bool:
     which asks this. The full block, the one that is stored and shown, never
     grades flow without pressure. That is fine: the summary shape is reached
     only through `transform_shot("summary")`, which nothing stored or shown
-    uses. A negative puck flow (the pump depressurising) still counts as a
-    measurement, hence `!= 0` and not `> 0`.
+    uses. A negative pump flow still counts as a measurement, hence `!= 0` and
+    not `> 0`.
     """
     return any(s.get("tf", 0.0) > 0 for s in samples) and any(
-        s.get("pf", 0.0) != 0 for s in samples
+        s.get("fl", 0.0) != 0 for s in samples
     )
 
 
-def _compute_profile_compliance(samples: list[SampleDict]) -> ProfileComplianceMetrics | None:
-    """How closely the machine followed the commanded pressure and flow."""
-    p_pairs = [(s.get("cp", 0.0), s["tp"]) for s in samples if "tp" in s]
-    if len(p_pairs) < 3:
+#: Fewest samples a phase set needs before its adherence is a number.
+_MIN_ADHERENCE_SAMPLES = 3
+
+
+class _Steering(NamedTuple):
+    """What the profile says each sample of one shot was steered by.
+
+    ``per_sample`` is aligned with the shot's samples: ``"pressure"`` or
+    ``"flow"`` when the sample belongs to a phase that steers by that quantity
+    and its logged target is a real one, ``None`` when there is nothing to grade
+    against (a simple power phase, or the post-brew tail).
+    """
+
+    pressure_applicable: bool
+    flow_applicable: bool
+    per_sample: list[PhaseControl | None]
+
+
+def _steering(
+    samples: list[SampleDict], controls: Sequence[PhaseControl] | None
+) -> _Steering | None:
+    """Which samples may be graded against which target, or ``None`` when none may.
+
+    The firmware logs both `tp` and `tf` in an advanced pump phase (one is the
+    target, the other a soft limit) and 0/0 in a simple phase, when inactive and
+    in the extended-recording tail that follows the brew (up to three seconds,
+    inside the last phase). Only the profile says which is the target, so the
+    profile's phase list is the authority, read by each sample's own phase
+    number: a phase shorter than one sample is missing from the transition
+    table, but never from the samples.
+
+    Nothing is graded when there is no profile, or when a sample has no phase
+    number or one the profile does not have: that is a profile that is not the
+    one the shot ran, and a verdict against it would be a guess. The tail, the
+    samples after the last one that carried a target, is never graded: a
+    controller that has stopped is not following a profile. Ramps between
+    phases are graded, because the target really does interpolate there.
+    """
+    if controls is None:
         return None
+    last_target = max(
+        (i for i, s in enumerate(samples) if s.get("tp", 0.0) > 0 or s.get("tf", 0.0) > 0),
+        default=-1,
+    )
+    per_sample: list[PhaseControl | None] = []
+    for i, sample in enumerate(samples):
+        phase = sample.get("phase")
+        if phase is None or phase != int(phase) or not 0 <= int(phase) < len(controls):
+            return None
+        control = controls[int(phase)]
+        per_sample.append(control if i <= last_target and control != "power" else None)
+    return _Steering("pressure" in controls, "flow" in controls, per_sample)
 
-    p_rmse = _round2(_compute_rmse([a for a, _ in p_pairs], [t for _, t in p_pairs]))
-    deviations = [a - t for a, t in p_pairs]
-    max_overshoot = _round2(max(0.0, max(deviations)))
-    max_undershoot = _round2(max(0.0, abs(min(deviations))))
 
-    f_pairs = [(s.get("pf", 0.0), s["tf"]) for s in samples if "tf" in s]
-    f_rmse: float | None = None
-    max_flow_overshoot: float | None = None
-    max_flow_undershoot: float | None = None
-    if len(f_pairs) >= 3:
-        f_rmse = _round2(_compute_rmse([a for a, _ in f_pairs], [t for _, t in f_pairs]))
-        f_deviations = [a - t for a, t in f_pairs]
-        max_flow_overshoot = _round2(max(0.0, max(f_deviations)))
-        max_flow_undershoot = _round2(max(0.0, abs(min(f_deviations))))
+def _adherence_of(
+    pairs: list[tuple[float, float]],
+) -> tuple[float, float, float] | None:
+    """RMSE, largest overshoot and largest undershoot of ``(measured, target)`` pairs."""
+    if len(pairs) < _MIN_ADHERENCE_SAMPLES:
+        return None
+    measured = [a for a, _ in pairs]
+    targets = [t for _, t in pairs]
+    deviations = [a - t for a, t in pairs]
+    return (
+        _round2(_compute_rmse(measured, targets)),
+        _round2(max(0.0, max(deviations))),
+        _round2(max(0.0, abs(min(deviations)))),
+    )
 
-    annotations: dict[str, str] = {
-        "pressure_adherence": _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS),
-        "pressure_overshoot": _annotate_ascending(max_overshoot, _PRESSURE_OVERSHOOT_BANDS),
-    }
-    if f_rmse is not None:
+
+def _pressure_pairs(
+    samples: Sequence[SampleDict], per_sample: Sequence[PhaseControl | None]
+) -> list[tuple[float, float]]:
+    return [
+        (s.get("cp", 0.0), s["tp"])
+        for s, control in zip(samples, per_sample, strict=True)
+        if control == "pressure" and "tp" in s
+    ]
+
+
+def _flow_pairs(
+    samples: Sequence[SampleDict], per_sample: Sequence[PhaseControl | None]
+) -> list[tuple[float, float]]:
+    """Pump flow against the flow target, in the flow-steered samples.
+
+    The pump flow (`fl`), not the puck flow (`pf`): the firmware's flow mode
+    turns the target into a pump duty cycle through the pump's flow model, so
+    the pump flow is what it steers; the puck flow is water that got through the
+    puck and is 0 for as long as the puck is filling. A shot that did not record
+    `fl` cannot be graded.
+    """
+    return [
+        (s["fl"], s["tf"])
+        for s, control in zip(samples, per_sample, strict=True)
+        if control == "flow" and "tf" in s and "fl" in s
+    ]
+
+
+def _grading(applicable: bool, worked_out: bool) -> Grading:
+    if not applicable:
+        return "not_applicable"
+    return "graded" if worked_out else "not_graded"
+
+
+def _compute_profile_compliance(
+    samples: list[SampleDict], steering: _Steering | None
+) -> ProfileComplianceMetrics | None:
+    """How closely the machine followed the commanded pressure and flow.
+
+    ``None`` when the shot has no usable profile (see :func:`_steering`): there
+    is then nothing to say, which is not the same as a clean pass.
+    """
+    if steering is None:
+        return None
+    pressure = _adherence_of(_pressure_pairs(samples, steering.per_sample))
+    flow = _adherence_of(_flow_pairs(samples, steering.per_sample))
+
+    annotations: dict[str, str] = {}
+    p_rmse = max_overshoot = max_undershoot = None
+    if pressure is not None:
+        p_rmse, max_overshoot, max_undershoot = pressure
+        annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)
+        annotations["pressure_overshoot"] = _annotate_ascending(
+            max_overshoot, _PRESSURE_OVERSHOOT_BANDS
+        )
+    f_rmse = max_flow_overshoot = max_flow_undershoot = None
+    if flow is not None:
+        f_rmse, max_flow_overshoot, max_flow_undershoot = flow
         annotations["flow_adherence"] = _annotate_ascending(f_rmse, _PROFILE_ADHERENCE_BANDS)
-    if max_flow_overshoot is not None:
         annotations["flow_overshoot"] = _annotate_ascending(
             max_flow_overshoot, _FLOW_DEVIATION_BANDS
         )
-    if max_flow_undershoot is not None:
         annotations["flow_undershoot"] = _annotate_ascending(
             max_flow_undershoot, _FLOW_DEVIATION_BANDS
         )
@@ -1525,21 +1656,32 @@ def _compute_profile_compliance(samples: list[SampleDict]) -> ProfileComplianceM
         max_pressure_undershoot_bar=max_undershoot,
         max_flow_overshoot_ml_s=max_flow_overshoot,
         max_flow_undershoot_ml_s=max_flow_undershoot,
+        pressure_grading=_grading(steering.pressure_applicable, pressure is not None),
+        flow_grading=_grading(steering.flow_applicable, flow is not None),
         annotations=annotations,
     )
 
 
 def compute_summary_diagnostics(
-    slog: Slog, *, has_pressure: bool | None = None
+    slog: Slog,
+    *,
+    has_pressure: bool | None = None,
+    phase_controls: Sequence[PhaseControl] | None = None,
 ) -> SummaryDiagnostics | None:
-    """The cheap detail level: key indicators only, same trims and bands."""
+    """The cheap detail level: key indicators only, same trims and bands.
+
+    Adherence is read over the brew window, in the samples of the phases that
+    steer by it (see :func:`_steering`); without `phase_controls` it is not
+    worked out.
+    """
     samples = as_sample_dicts(slog)
     if len(samples) < _MIN_SHOT_SAMPLES:
         return None
 
     pressure_ok = slog.has_pressure if has_pressure is None else has_pressure
     dt = slog.sample_interval / 1000.0
-    brew_samples = _get_brew_phase_samples(samples, slog.transitions)
+    brew_positions = _brew_phase_positions(samples, slog.transitions)
+    brew_samples = [samples[i] for i in brew_positions]
     if len(brew_samples) < _MIN_BREW_SAMPLES:
         return None
 
@@ -1547,6 +1689,12 @@ def compute_summary_diagnostics(
     brew_flows = [s.get("pf", 0.0) for s in brew_samples]
     brew_temps = [s.get("ct", 0.0) for s in brew_samples]
     brew_weights = [s.get("v", 0.0) for s in brew_samples]
+    steering = _steering(samples, phase_controls)
+    brew_steering: list[PhaseControl | None] = (
+        [steering.per_sample[i] for i in brew_positions]
+        if steering is not None
+        else [None] * len(brew_positions)
+    )
 
     r_avg: float | None = None
     r_slope: float | None = None
@@ -1564,20 +1712,19 @@ def compute_summary_diagnostics(
         r_source = resistance["source"]
         risk = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)["channeling_risk"]
 
-        p_rmse = 0.0
-        max_overshoot = 0.0
-        p_targets = [(s.get("cp", 0.0), s["tp"]) for s in brew_samples if "tp" in s]
-        if p_targets:
-            p_rmse = _round2(_compute_rmse([a for a, _ in p_targets], [t for _, t in p_targets]))
-            max_overshoot = _round2(max(0.0, max(a - t for a, t in p_targets)))
+        pressure = _adherence_of(_pressure_pairs(brew_samples, brew_steering))
+        if pressure is not None:
+            p_rmse, max_overshoot = pressure[0], pressure[1]
+            annotations["pressure_adherence"] = _annotate_ascending(
+                p_rmse, _PROFILE_ADHERENCE_BANDS
+            )
+            annotations["pressure_overshoot"] = _annotate_ascending(
+                max_overshoot, _PRESSURE_OVERSHOOT_BANDS
+            )
 
         annotations["resistance_level"] = _annotate_ascending(r_avg, _RESISTANCE_LEVEL_BANDS)
         annotations["resistance_erosion"] = _annotate_descending(r_slope, _RESISTANCE_SLOPE_BANDS)
         annotations["channeling_risk"] = risk
-        annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)
-        annotations["pressure_overshoot"] = _annotate_ascending(
-            max_overshoot, _PRESSURE_OVERSHOOT_BANDS
-        )
     else:
         annotations["note"] = _NO_PRESSURE_NOTE
 
@@ -1586,17 +1733,24 @@ def compute_summary_diagnostics(
 
     f_rmse: float | None = None
     max_flow_overshoot: float | None = None
-    f_targets = [(s.get("pf", 0.0), s["tf"]) for s in brew_samples if "tf" in s]
     # A board without a pressure sensor has no flow to grade (see the predicate);
-    # a pressure shot keeps grading whatever its samples hold, as it always has.
+    # a pressure shot grades whatever its profile steers by flow.
     flow_gradable = pressure_ok or _flow_commanded_and_measured(samples)
-    if flow_gradable and len(f_targets) >= 3:
-        f_rmse = _round2(_compute_rmse([a for a, _ in f_targets], [t for _, t in f_targets]))
-        max_flow_overshoot = _round2(max(0.0, max(a - t for a, t in f_targets)))
+    flow = _adherence_of(_flow_pairs(brew_samples, brew_steering)) if flow_gradable else None
+    if flow is not None:
+        f_rmse, max_flow_overshoot = flow[0], flow[1]
         annotations["flow_adherence"] = _annotate_ascending(f_rmse, _PROFILE_ADHERENCE_BANDS)
         annotations["flow_overshoot"] = _annotate_ascending(
             max_flow_overshoot, _FLOW_DEVIATION_BANDS
         )
+
+    pressure_grading: Grading = "not_graded"
+    flow_grading: Grading = "not_graded"
+    if steering is not None:
+        if pressure_ok:
+            pressure_grading = _grading(steering.pressure_applicable, p_rmse is not None)
+        if flow_gradable:
+            flow_grading = _grading(steering.flow_applicable, f_rmse is not None)
 
     return SummaryDiagnostics(
         has_pressure=pressure_ok,
@@ -1609,6 +1763,8 @@ def compute_summary_diagnostics(
         max_overshoot_bar=max_overshoot,
         flow_rmse_ml_s=f_rmse,
         max_flow_overshoot_ml_s=max_flow_overshoot,
+        pressure_grading=pressure_grading,
+        flow_grading=flow_grading,
         scale_connected=any(w > 0 for w in brew_weights),
         annotations=annotations,
     )
@@ -1625,39 +1781,45 @@ def _compute_phase_diagnostics(
     dt: float,
     *,
     has_pressure: bool = True,
+    steering: Sequence[PhaseControl | None] | None = None,
 ) -> PhaseDiagnostics:
-    """Metrics for one phase, chosen by what that kind of phase is for."""
+    """Metrics for one phase, chosen by what that kind of phase is for.
+
+    ``steering`` says, for each of the phase's samples, what the profile steered
+    it by (a slice of :attr:`_Steering.per_sample`). A phase is graded only on
+    its own target: a pressure phase has a pressure adherence and no flow one,
+    and a flow phase the reverse. A phase with nothing to grade (a power phase,
+    the post-brew tail, no profile) carries neither.
+    """
     pressures = [s.get("cp", 0.0) for s in phase_samples]
     flows = [s.get("pf", 0.0) for s in phase_samples]
 
     avg_p = _round2(_safe_mean(pressures))
     avg_f = _round2(_safe_mean(flows))
 
-    p_pairs = [(s.get("cp", 0.0), s["tp"]) for s in phase_samples if "tp" in s]
-    p_rmse = (
-        _round2(_compute_rmse([a for a, _ in p_pairs], [t for _, t in p_pairs])) if p_pairs else 0.0
-    )
-
-    f_pairs = [(s.get("pf", 0.0), s["tf"]) for s in phase_samples if "tf" in s]
-    f_rmse = (
-        _round2(_compute_rmse([a for a, _ in f_pairs], [t for _, t in f_pairs])) if f_pairs else 0.0
-    )
+    p_pairs = _pressure_pairs(phase_samples, steering) if steering is not None else []
+    f_pairs = _flow_pairs(phase_samples, steering) if steering is not None else []
 
     annotations: dict[str, str] = {}
     result: PhaseDiagnostics = {
         "phase_type": phase_type,
         "avg_flow_ml_s": avg_f,
-        "flow_rmse_ml_s": f_rmse,
         "annotations": annotations,
     }
+    if f_pairs:
+        result["flow_rmse_ml_s"] = _round2(
+            _compute_rmse([a for a, _ in f_pairs], [t for _, t in f_pairs])
+        )
 
     if not has_pressure:
         annotations["note"] = _NO_PRESSURE_NOTE
         return result
 
     result["avg_pressure_bar"] = avg_p
-    result["pressure_rmse_bar"] = p_rmse
-    annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)
+    if p_pairs:
+        p_rmse = _round2(_compute_rmse([a for a, _ in p_pairs], [t for _, t in p_pairs]))
+        result["pressure_rmse_bar"] = p_rmse
+        annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)
 
     if phase_type == "preinfusion":
         ramp_rate = _round2(_linear_slope(pressures, dt))
@@ -1752,6 +1914,7 @@ def build_phases(
     include_samples: bool = True,
     include_diagnostics: bool = False,
     has_pressure: bool | None = None,
+    phase_controls: Sequence[PhaseControl] | None = None,
 ) -> list[PhaseData]:
     """Per-phase statistics, optionally with samples and diagnostics."""
     samples = as_sample_dicts(slog)
@@ -1762,10 +1925,11 @@ def build_phases(
     dt = slog.sample_interval / 1000.0
     transitions = slog.transitions
     phases: list[PhaseData] = []
+    steering = _steering(samples, phase_controls)
 
     if transitions:
-        slices = _phase_slices(samples, transitions)
-        for i, (transition, phase_samples) in enumerate(slices):
+        for i, (transition, span) in enumerate(_phase_ranges(len(samples), transitions)):
+            phase_samples = samples[span.start : span.stop]
             if not phase_samples:
                 continue
 
@@ -1800,7 +1964,11 @@ def build_phases(
                     total_phases=len(transitions),
                 )
                 pd["diagnostics"] = _compute_phase_diagnostics(
-                    phase_samples, phase_type, dt, has_pressure=pressure_ok
+                    phase_samples,
+                    phase_type,
+                    dt,
+                    has_pressure=pressure_ok,
+                    steering=steering.per_sample[span.start : span.stop] if steering else None,
                 )
 
             phases.append(pd)
@@ -1823,7 +1991,11 @@ def build_phases(
         single["samples"] = _select_samples(samples)
     if include_diagnostics and dt > 0 and len(samples) >= 3:
         single["diagnostics"] = _compute_phase_diagnostics(
-            samples, "brew", dt, has_pressure=pressure_ok
+            samples,
+            "brew",
+            dt,
+            has_pressure=pressure_ok,
+            steering=steering.per_sample if steering else None,
         )
     phases.append(single)
     return phases
@@ -1834,6 +2006,7 @@ def transform_shot(
     detail: str = "summary",
     *,
     has_pressure: bool | None = None,
+    phase_controls: Sequence[PhaseControl] | None = None,
 ) -> TransformedShot:
     """Render a shot at one of three detail levels.
 
@@ -1846,6 +2019,9 @@ def transform_shot(
 
     An unrecognised `detail` falls back to summary rather than raising: this
     feeds an LLM prompt, and a typo should cost tokens, not the analysis.
+
+    `phase_controls` is what each phase of the shot's profile steers the pump by.
+    Without it no adherence is worked out, at any level.
     """
     if detail not in VALID_DETAIL_LEVELS:
         detail = "summary"
@@ -1856,19 +2032,37 @@ def transform_shot(
     diagnostics: ShotDiagnostics | SummaryDiagnostics | None
     if detail == "summary":
         phases = build_phases(
-            slog, include_samples=False, include_diagnostics=False, has_pressure=pressure_ok
+            slog,
+            include_samples=False,
+            include_diagnostics=False,
+            has_pressure=pressure_ok,
+            phase_controls=phase_controls,
         )
-        diagnostics = compute_summary_diagnostics(slog, has_pressure=pressure_ok)
+        diagnostics = compute_summary_diagnostics(
+            slog, has_pressure=pressure_ok, phase_controls=phase_controls
+        )
     elif detail == "per_phase":
         phases = build_phases(
-            slog, include_samples=False, include_diagnostics=True, has_pressure=pressure_ok
+            slog,
+            include_samples=False,
+            include_diagnostics=True,
+            has_pressure=pressure_ok,
+            phase_controls=phase_controls,
         )
-        diagnostics = compute_shot_diagnostics(slog, has_pressure=pressure_ok)
+        diagnostics = compute_shot_diagnostics(
+            slog, has_pressure=pressure_ok, phase_controls=phase_controls
+        )
     else:
         phases = build_phases(
-            slog, include_samples=True, include_diagnostics=True, has_pressure=pressure_ok
+            slog,
+            include_samples=True,
+            include_diagnostics=True,
+            has_pressure=pressure_ok,
+            phase_controls=phase_controls,
         )
-        diagnostics = compute_shot_diagnostics(slog, has_pressure=pressure_ok)
+        diagnostics = compute_shot_diagnostics(
+            slog, has_pressure=pressure_ok, phase_controls=phase_controls
+        )
 
     return TransformedShot(
         shot_id=slog.shot_id,

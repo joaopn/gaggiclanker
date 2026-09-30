@@ -19,13 +19,14 @@ import pytest
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.domain.diagnostics import transform_shot
+from gaggiclanker.domain.phase_control import phase_controls
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.knowledge.rules import load_seed_rules
 from gaggiclanker.review.context import build_review_input, signal_tokens
 from gaggiclanker.review.style import StyleVerdict
 from gaggiclanker.shotinfo import load_shots
 from gaggiclanker.sync.derive import derive_shot
-from tests.domain.helpers import standard_board
+from tests.domain.helpers import constructed_profile_for, standard_board
 
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
 
@@ -43,16 +44,32 @@ def _rule_tokens() -> set[str]:
     return {token for rule in load_seed_rules() for token in rule.applies.get("signal") or []}
 
 
-async def _ingest(db: Database, path: Path, *, has_pressure: bool | None = None) -> int:
+async def _ingest(
+    db: Database,
+    path: Path,
+    *,
+    has_pressure: bool | None = None,
+    variant: str | None = "pressure-first",
+) -> int:
+    """A real shot, derived with its constructed profile (`None`: with no profile)."""
     raw = path.read_bytes()
-    derived = derive_shot(parse_slog(raw), raw, device_id=path.stem, has_pressure=has_pressure)
+    derived = derive_shot(
+        parse_slog(raw),
+        raw,
+        device_id=path.stem,
+        has_pressure=has_pressure,
+        profile=None if variant is None else constructed_profile_for(path, variant),
+    )
     assert derived.diagnostics_error is None
     return await ShotsRepository(db).insert(derived.shot, derived.samples)
 
 
 def _summary_tokens(path: Path) -> set[str]:
     """What the summary shape of the same recording names, straight from the engine."""
-    diagnostics = transform_shot(parse_slog(path.read_bytes()), "summary")["diagnostics"]
+    controls = phase_controls(constructed_profile_for(path))
+    diagnostics = transform_shot(parse_slog(path.read_bytes()), "summary", phase_controls=controls)[
+        "diagnostics"
+    ]
     return {
         f"{metric}:{label}"
         for metric, label in json.loads(json.dumps(diagnostics))["annotations"].items()
@@ -80,6 +97,57 @@ async def test_a_derived_shot_produces_the_summary_shape_s_band_tokens(
         t for t in tokens if t.startswith(("level:", "erosion:", "stability:", "guidance:"))
     ]
     assert listed == sorted(tokens)
+
+
+ADHERENCE = ("pressure_adherence:", "pressure_overshoot:", "flow_adherence:", "flow_overshoot:")
+
+
+def _adherence_rules(prefixes: tuple[str, ...]) -> set[str]:
+    return {
+        rule.key
+        for rule in load_seed_rules()
+        if any(t.startswith(prefixes) for t in rule.applies.get("signal") or [])
+    }
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_pressure_profile_s_review_reads_no_flow_adherence(
+    seeded: Database, path: Path
+) -> None:
+    """Its flow was never a target: no token, and so no rule about the grind by flow."""
+    shot_id = await _ingest(seeded, path)
+    review = await build_review_input(seeded, shot_id)
+
+    assert any(t.startswith("pressure_adherence:") for t in review.signals)
+    assert not [t for t in review.signals if t.startswith(("flow_adherence:", "flow_overshoot:"))]
+    assert not [t for t in review.signals if t.startswith("flow_undershoot:")]
+    flow_rules = _adherence_rules(("flow_adherence:", "flow_overshoot:", "flow_undershoot:"))
+    assert flow_rules, "some seed rule keys on flow adherence"
+    assert not flow_rules & set(review.rule_keys)
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_flow_steered_phase_gives_the_review_its_flow_adherence(
+    seeded: Database, path: Path
+) -> None:
+    shot_id = await _ingest(seeded, path, variant="flow-first")
+    review = await build_review_input(seeded, shot_id)
+
+    assert "flow_adherence:EXCELLENT" in review.signals
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_shot_with_no_known_profile_s_review_reads_no_adherence_at_all(
+    seeded: Database, path: Path
+) -> None:
+    shot_id = await _ingest(seeded, path, variant=None)
+    review = await build_review_input(seeded, shot_id)
+
+    assert not [t for t in review.signals if t.startswith(ADHERENCE)]
+    assert not [t for t in review.signals if t.startswith("flow_undershoot:")]
+    assert not _adherence_rules(ADHERENCE) & set(review.rule_keys)
+    # The rest of the diagnostics are still read.
+    assert any(t.startswith("resistance_level:") for t in review.signals)
 
 
 @pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)

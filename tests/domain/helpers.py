@@ -14,12 +14,38 @@ from typing import Any
 
 from gaggiclanker.domain.exports import ShotExport, shot_export_to_slog
 from gaggiclanker.domain.models import PhaseTransition, Sample, SlogHeader
+from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
 from gaggiclanker.domain.slog import FIELDS_MASK_ALL, Slog
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 SLOG_FIXTURES = FIXTURES / "slog"
 EXPORT_FIXTURES = FIXTURES / "exports"
 PROFILE_FIXTURES = FIXTURES / "profiles"
+CONSTRUCTED_PROFILES = FIXTURES / "constructed_profiles"
+
+
+def constructed_profile(shot: str, variant: str = "pressure-first") -> dict[str, Any]:
+    """The profile constructed for a real fixture shot (`shot_196`, `shot_129`, ...).
+
+    The real profiles no longer exist; see the README beside the files for how
+    these were made and what the two variants mean.
+    """
+    profile: dict[str, Any] = json.loads(
+        (CONSTRUCTED_PROFILES / f"{shot}_{variant}.json").read_text()
+    )
+    return profile
+
+
+def constructed_profile_for(slog_path: Path, variant: str = "pressure-first") -> dict[str, Any]:
+    """The constructed profile of a real `.slog` fixture (`shot_204_ramping_flow.slog`)."""
+    return constructed_profile("_".join(slog_path.stem.split("_")[:2]), variant)
+
+
+def constructed_controls(shot: str, variant: str = "pressure-first") -> tuple[PhaseControl, ...]:
+    """What each phase of :func:`constructed_profile` steers by."""
+    controls = phase_controls(constructed_profile(shot, variant))
+    assert controls is not None
+    return controls
 
 
 def make_slog(

@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-from gaggiclanker.domain.diagnostics import TransformedShot, transform_shot
+from gaggiclanker.domain.diagnostics import (
+    ProfileComplianceMetrics,
+    TransformedShot,
+    transform_shot,
+)
+from gaggiclanker.domain.phase_control import PhaseControl
 from gaggiclanker.domain.scoring import Recipe, execution_score
 from gaggiclanker.domain.slog import encode_slog, parse_slog
-from tests.domain.helpers import make_slog, slog_from_export
+from tests.domain.helpers import SLOG_FIXTURES, constructed_controls, make_slog, slog_from_export
 
 
-def _clean_shot() -> TransformedShot:
-    """A steady 9-bar extraction that tracks its targets."""
+def _clean_shot(
+    controls: tuple[PhaseControl, ...] | None = ("pressure", "flow"),
+) -> TransformedShot:
+    """A steady 9-bar extraction that tracks its targets.
+
+    Two phases by default, the first steered by pressure and the second by flow,
+    so that both adherences apply and are graded (both at zero error).
+    """
     samples: list[dict[str, Any]] = [
         {
             "t": i * 250,
@@ -22,14 +33,22 @@ def _clean_shot() -> TransformedShot:
             "tp": 9.0,
             "cp": 9.0,
             "pf": 2.0,
+            "fl": 2.0,
             "tf": 2.0,
             "v": i * 1.5,
         }
         for i in range(24)
     ]
-    return transform_shot(
-        make_slog(samples, [(0, 0, "Extraction")], final_weight_g=36.0), "per_phase"
-    )
+    slog = make_slog(samples, [(0, 0, "Extraction"), (12, 1, "Extraction")], final_weight_g=36.0)
+    return transform_shot(slog, "per_phase", phase_controls=controls)
+
+
+def _compliance(shot: TransformedShot) -> ProfileComplianceMetrics:
+    diagnostics = shot["diagnostics"]
+    assert diagnostics is not None
+    compliance = diagnostics["profile_compliance"]  # type: ignore[typeddict-item]
+    assert compliance is not None
+    return cast(ProfileComplianceMetrics, compliance)
 
 
 def _with(shot: TransformedShot, **over: Any) -> TransformedShot:
@@ -184,22 +203,92 @@ def test_insufficient_channeling_data_lowers_confidence() -> None:
 def test_summary_detail_level_scores_too() -> None:
     """The summary block carries the same indicators under flatter keys."""
     samples: list[dict[str, Any]] = [
-        {"t": i * 250, "tt": 93.0, "ct": 93.0, "tp": 9.0, "cp": 9.0, "pf": 2.0, "tf": 2.0}
+        {
+            "t": i * 250,
+            "tt": 93.0,
+            "ct": 93.0,
+            "tp": 9.0,
+            "cp": 9.0,
+            "pf": 2.0,
+            "fl": 2.0,
+            "tf": 2.0,
+        }
         for i in range(24)
     ]
-    shot = transform_shot(make_slog(samples, [(0, 0, "Extraction")]), "summary")
+    shot = transform_shot(
+        make_slog(samples, [(0, 0, "Extraction"), (12, 1, "Extraction")]),
+        "summary",
+        phase_controls=("pressure", "flow"),
+    )
     score = execution_score(shot)
     assert score.score == 10.0
     assert score.confidence == "medium"
 
 
 def test_score_on_the_maintainers_real_shot_is_stable() -> None:
-    """A regression pin on a real curve, not a synthetic one."""
+    """A regression pin on a real curve, not a synthetic one.
+
+    Graded against a profile constructed to match the shot (the real one no
+    longer exists), whose phases all steer by pressure: the flow the machine was
+    never asked to hold costs nothing.
+    """
     slog = parse_slog(encode_slog(slog_from_export("shot-129.json")), "000129")
-    score = execution_score(transform_shot(slog, "per_phase"))
-    assert score.score == 7.7
+    controls = constructed_controls("shot_129")
+    score = execution_score(transform_shot(slog, "per_phase", phase_controls=controls))
+    assert score.score == 9.1
     assert score.confidence == "high"
     # The erosion penalty is the fixed bug firing on real data.
     assert score.components["resistance_erosion"] == -0.7
-    assert score.components["flow_adherence"] == -1.32
-    assert score.as_dict()["score"] == 7.7
+    assert "flow_adherence" not in score.components
+    assert score.as_dict()["score"] == 9.1  # 7.7 before, with a 1.32 point flow penalty
+
+
+def test_a_flow_that_does_not_apply_neither_costs_nor_lowers_confidence() -> None:
+    """A pressure profile has no flow to follow: not applicable is not a miss."""
+    shot = _clean_shot(("pressure", "pressure"))
+    assert _compliance(shot)["flow_grading"] == "not_applicable"
+    score = execution_score(shot)
+    assert score.score == 10.0
+    assert score.confidence == "high"
+
+
+def test_a_pressure_that_does_not_apply_neither_costs_nor_lowers_confidence() -> None:
+    shot = _clean_shot(("flow", "flow"))
+    assert _compliance(shot)["pressure_grading"] == "not_applicable"
+    score = execution_score(shot)
+    assert score.score == 10.0
+    assert score.confidence == "high"
+
+
+def test_a_shot_with_no_usable_profile_is_scored_less_surely() -> None:
+    """Not graded (no profile) is a missing measurement, and lowers the confidence."""
+    score = execution_score(_clean_shot(None))
+    assert score.components == {}
+    assert score.confidence == "medium"
+
+
+def test_an_adherence_that_applies_but_could_not_be_worked_out_lowers_confidence() -> None:
+    """A phase whose measurement is missing (few samples) is `not_graded`, not `not_applicable`."""
+    shot = _clean_shot()
+    compliance = _compliance(shot)
+    compliance["flow_grading"] = "not_graded"
+    compliance["flow_rmse_ml_s"] = None
+    assert execution_score(shot).confidence == "medium"
+    compliance["flow_grading"] = "not_applicable"
+    assert execution_score(shot).confidence == "high"
+
+
+def test_a_pressure_profile_pays_no_flow_penalty_on_a_real_shot() -> None:
+    """The three real shots, each with its constructed pressure profile.
+
+    Before the fix the flow was graded against its limit and zeros, and every one
+    of them carried the flow penalty; now none does.
+    """
+    for path in sorted(SLOG_FIXTURES.glob("*.slog")):
+        prefix = "_".join(path.stem.split("_")[:2])
+        for variant in ("pressure-first", "flow-first"):
+            slog = parse_slog(path.read_bytes())
+            controls = constructed_controls(prefix, variant)
+            score = execution_score(transform_shot(slog, "per_phase", phase_controls=controls))
+            assert score.confidence == "high", (path.stem, variant)
+            assert "flow_adherence" not in score.components, (path.stem, variant)

@@ -27,7 +27,7 @@ from gaggiclanker.domain.exports import (
 from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import FIELDS_MASK_ALL, FIELDS_MASK_V5, SlogError, parse_slog
-from tests.domain.helpers import PROFILE_FIXTURES, load_export
+from tests.domain.helpers import PROFILE_FIXTURES, constructed_controls, load_export
 from tests.imports.helpers import (
     PROFILE_ARRAY_EXPORT,
     V7_EXPORT,
@@ -136,8 +136,10 @@ def test_diagnostics_of_an_imported_shot_equal_those_of_the_binary() -> None:
     slog = shot_export_to_slog(shot_129())
     reparsed = parse_slog(slog_to_raw(slog), slog.shot_id)
 
-    assert transform_shot(slog, "per_phase") == transform_shot(reparsed, "per_phase")
-    assert execution_score(transform_shot(slog, "per_phase")).score == pytest.approx(7.7)
+    controls = constructed_controls("shot_129")
+    shot = transform_shot(slog, "per_phase", phase_controls=controls)
+    assert shot == transform_shot(reparsed, "per_phase", phase_controls=controls)
+    assert execution_score(shot).score == pytest.approx(9.1)
 
 
 def test_every_exported_sample_survives_the_rebuild() -> None:

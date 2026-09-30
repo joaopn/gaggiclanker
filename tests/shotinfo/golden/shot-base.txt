@@ -9,7 +9,7 @@ Machine's shot number: 000204
 [Outcome]
 Shot time: 47.8 s
 Yield: 31.6 g
-Execution score: 6.9 / 10
+Execution score: 8.1 / 10
 [Timing]
 First drip: 28.0 s
 [Pressure]
@@ -21,8 +21,7 @@ Resistance level: 1.36 LOW, from the machine
 [Channeling]
 Channeling risk: LOW
 [Profile compliance]
-Pressure adherence: 2.56 bar POOR
-Flow adherence: 1.73 ml/s POOR
+Pressure adherence: 2.25 bar POOR
 [Your judgement]
 Rating: 4/5
 Balance: Balanced

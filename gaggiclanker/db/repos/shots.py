@@ -153,6 +153,9 @@ class ShotDerivationSource(BaseModel):
     #: The `has_pressure` its stored diagnostics were derived with (the resolved
     #: answer, never "unknown"), or ``None`` when it has no stored diagnostics.
     has_pressure: bool | None = None
+    #: The stored document of the profile version the shot is linked to, decoded,
+    #: or ``None`` when it is not linked (or the document does not decode).
+    profile: JsonObject = Field(default=None, validation_alias="profile_json")
 
 
 class ShotDerivationUpdate(BaseModel):
@@ -614,15 +617,17 @@ class ShotsRepository(Repository):
         return [int(row["id"]) for row in rows]
 
     async def derivation_source(self, shot_id: int) -> ShotDerivationSource | None:
-        """One shot's bytes and the pressure gate its stored diagnostics used."""
+        """One shot's bytes, its profile, and the pressure gate its stored diagnostics used."""
         row = await self.db.fetch_one(
             """
-            SELECT id, device_id, raw_slog,
-                   CASE WHEN diagnostics_json IS NOT NULL AND json_valid(diagnostics_json)
-                        THEN CASE json_type(diagnostics_json, '$.has_pressure')
+            SELECT s.id, s.device_id, s.raw_slog,
+                   CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
+                        THEN CASE json_type(s.diagnostics_json, '$.has_pressure')
                                  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END
-                   END AS has_pressure
-            FROM shots WHERE id = ?
+                   END AS has_pressure,
+                   CASE WHEN json_valid(v.json) THEN v.json END AS profile_json
+            FROM shots s LEFT JOIN profile_versions v ON v.id = s.profile_version_id
+            WHERE s.id = ?
             """,
             (shot_id,),
         )

@@ -9,11 +9,11 @@ Machine's shot number: 000204
 [Outcome]
 Shot time: 47.8 s
 Yield: 31.6 g
-Execution score: 6.9 / 10
+Execution score: 8.1 / 10
 [Execution score detail]
 Score confidence: high
-Score reason: Execution capped by flow adherence (1.1 point penalty).
-Penalty components: flow adherence -1.10, pressure adherence -1.00, resistance erosion -0.70, temperature stability -0.32
+Score reason: Execution capped by pressure adherence (0.88 point penalty).
+Penalty components: pressure adherence -0.88, resistance erosion -0.70, temperature stability -0.32
 [Timing]
 First drip: 28.0 s
 Pre-infusion time: 23.8 s
@@ -62,17 +62,14 @@ Flow shape: RAMPING_UP
 Window confidence: HIGH
 Guidance: "Flow traces a ramping up trajectory cleanly — no channeling signature."
 [Profile compliance]
-Pressure adherence: 2.56 bar POOR
-Flow adherence: 1.73 ml/s POOR
-Largest pressure overshoot: 8.00 bar SEVERE_OVERSHOOT
+Pressure adherence: 2.25 bar POOR
+Largest pressure overshoot: 0.20 bar WITHIN_TOLERANCE
 Largest pressure undershoot: 6.30 bar
-Largest flow overshoot: 3.30 ml/s SEVERE_DEVIATION
-Largest flow undershoot: 2.00 ml/s SEVERE_DEVIATION
 [Phases]
-phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; pressure 0.1 bar; temperature 94.9 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 2.93 bar POOR; flow error 2.00 ml/s; ramp 0.02 bar/s GENTLE; saturation 7.25 s
-phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; pressure 0.1 bar; temperature 93.9 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 0.08 bar EXCELLENT; flow error 0.00 ml/s; ramp -0.01 bar/s GENTLE; saturation 10.00 s
-phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; pressure 0.8 bar; temperature 93.1 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 3.61 bar POOR; flow error 0.00 ml/s; machine puck resistance (s·√bar/mL) avg 0.20 (start 0.39, end 0.18, min 0.16, max 0.39); liquid resistance (bar·s/mL) avg 0.24 (start 0.30, end 0.26, min 0.21, max 0.30); channeling INSUFFICIENT_DATA, signals none, flow shape FLAT
-phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; pressure 7.5 bar; temperature 91.8 °C; volume 42.2 ml; flow 1.71 ml/s; pressure adherence 2.70 bar POOR; flow error 2.12 ml/s; resistance 1.36 LOW, -0.12 /s MODERATE_DECLINE, from the machine; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20); channeling LOW, signals none, flow shape RAMPING_UP
+phase 0 · Pre-infusion: type preinfusion; start 0.0 s; duration 7.2 s; pressure 0.1 bar; temperature 94.9 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 2.93 bar POOR; ramp 0.02 bar/s GENTLE; saturation 7.25 s
+phase 1 · Bloom: type preinfusion; start 7.2 s; duration 10.0 s; pressure 0.1 bar; temperature 93.9 °C; volume 0.0 ml; flow 0.00 ml/s; ramp -0.01 bar/s GENTLE; saturation 10.00 s
+phase 2 · Ramp: type brew; start 17.2 s; duration 5.0 s; pressure 0.8 bar; temperature 93.1 °C; volume 0.0 ml; flow 0.00 ml/s; pressure adherence 3.61 bar POOR; machine puck resistance (s·√bar/mL) avg 0.20 (start 0.39, end 0.18, min 0.16, max 0.39); liquid resistance (bar·s/mL) avg 0.24 (start 0.30, end 0.26, min 0.21, max 0.30); channeling INSUFFICIENT_DATA, signals none, flow shape FLAT
+phase 3 · Extraction: type brew; start 22.2 s; duration 24.8 s; pressure 7.5 bar; temperature 91.8 °C; volume 42.2 ml; flow 1.71 ml/s; pressure adherence 1.45 bar FAIR; resistance 1.36 LOW, -0.12 /s MODERATE_DECLINE, from the machine; machine puck resistance (s·√bar/mL) avg 1.07 (start 0.19, end 0.88, min 0.19, max 1.84); liquid resistance (bar·s/mL) avg 2.99 (start 0.29, end 2.33, min 0.29, max 5.20); channeling LOW, signals none, flow shape RAMPING_UP
 [Curve]
 47 of 188 samples, shape-preserving; always kept: the first and last, each phase's first and last, peak pressure, first drip, both ends of the largest pressure drop
 t (s),pressure (bar),target pressure (bar),puck flow (ml/s),target flow (ml/s),weight (g),temperature (°C),phase marker

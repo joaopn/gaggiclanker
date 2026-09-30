@@ -26,6 +26,7 @@ from gaggiclanker.domain.diagnostics import (
     is_healthy_band,
     transform_shot,
 )
+from gaggiclanker.domain.phase_control import phase_controls
 from gaggiclanker.domain.slog import parse_slog
 from gaggiclanker.knowledge.service import (
     _UNREMARKABLE_BANDS,
@@ -35,6 +36,7 @@ from gaggiclanker.knowledge.service import (
 )
 from gaggiclanker.review.context import build_review_input, signal_tokens
 from gaggiclanker.sync.derive import derive_shot
+from tests.domain.helpers import constructed_profile_for
 
 SLOGS = sorted((Path(__file__).resolve().parents[1] / "fixtures" / "slog").glob("*.slog"))
 
@@ -175,7 +177,8 @@ def test_the_global_healthy_labels_are_never_notable_for_a_metric() -> None:
 
 def _facts(path: Path, detail: str) -> Any:
     """What `signal_tokens` reads, from the engine at one detail level, through JSON as stored."""
-    transformed = transform_shot(parse_slog(path.read_bytes()), detail)
+    controls = phase_controls(constructed_profile_for(path, "flow-first"))
+    transformed = transform_shot(parse_slog(path.read_bytes()), detail, phase_controls=controls)
     return SimpleNamespace(
         diagnostics=json.loads(json.dumps(transformed["diagnostics"])),
         summary=json.loads(json.dumps(transformed["summary"])),
@@ -273,7 +276,14 @@ async def test_a_real_shot_s_review_retrieves_nothing_for_a_healthy_band(
     seeded: Database, path: Path
 ) -> None:
     raw = path.read_bytes()
-    derived = derive_shot(parse_slog(raw), raw, device_id=path.stem)
+    # The flow-first profile: a flow-steered phase, so a healthy flow adherence
+    # is among the readings that must not be searched for.
+    derived = derive_shot(
+        parse_slog(raw),
+        raw,
+        device_id=path.stem,
+        profile=constructed_profile_for(path, "flow-first"),
+    )
     shot_id = await ShotsRepository(seeded).insert(derived.shot, derived.samples)
     review = await build_review_input(seeded, shot_id)
 
@@ -369,7 +379,14 @@ async def test_a_real_shot_s_review_is_given_the_puck_resistance_section(
     seeded: Database, path: Path
 ) -> None:
     raw = path.read_bytes()
-    derived = derive_shot(parse_slog(raw), raw, device_id=path.stem)
+    # The flow-first profile: a flow-steered phase, so a healthy flow adherence
+    # is among the readings that must not be searched for.
+    derived = derive_shot(
+        parse_slog(raw),
+        raw,
+        device_id=path.stem,
+        profile=constructed_profile_for(path, "flow-first"),
+    )
     shot_id = await ShotsRepository(seeded).insert(derived.shot, derived.samples)
     review = await build_review_input(seeded, shot_id)
 

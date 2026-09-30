@@ -113,7 +113,8 @@ def execution_score(
     if stability is not None and stability > 0.5:
         penalties["temperature_stability"] = min(1.2, round((stability - 0.5) * 0.6, 2))
 
-    pressure_rmse, flow_rmse = _adherence(full, summary)
+    adherence = _adherence(full, summary)
+    pressure_rmse, flow_rmse = adherence.pressure_rmse, adherence.flow_rmse
     if pressure_rmse is not None and pressure_rmse > 0.5:
         penalties["pressure_adherence"] = min(1.0, round((pressure_rmse - 0.5) * 0.5, 2))
     if flow_rmse is not None and flow_rmse > 0.35:
@@ -139,7 +140,10 @@ def execution_score(
         confidence = "low"
     elif risk == "INSUFFICIENT_DATA":
         confidence = "low"
-    elif flow_rmse is None or full is None:
+    elif not adherence.complete or full is None:
+        # An adherence that should have a number and has none (no profile to
+        # grade against, too few samples) makes the score less sure. One that
+        # does not apply (a pressure profile has no flow to follow) does not.
         confidence = "medium"
     else:
         confidence = "high"
@@ -185,17 +189,37 @@ def _temperature_stability(
     return summary["temperature_stability_c"] if summary else None
 
 
-def _adherence(
-    full: ShotDiagnostics | None, summary: SummaryDiagnostics | None
-) -> tuple[float | None, float | None]:
+@dataclass(frozen=True)
+class _Adherence:
+    pressure_rmse: float | None
+    flow_rmse: float | None
+    #: Every adherence that applies to the profile was worked out. ``False`` when
+    #: the shot has none at all (no profile behind it) or one that applies and
+    #: is missing; a quantity the profile does not steer by never makes it so.
+    complete: bool
+
+
+_NOT_GRADED = _Adherence(None, None, complete=False)
+
+
+def _adherence(full: ShotDiagnostics | None, summary: SummaryDiagnostics | None) -> _Adherence:
     if full is not None:
         compliance = full["profile_compliance"]
         if compliance is None:
-            return None, None
-        return compliance["pressure_rmse_bar"], compliance["flow_rmse_ml_s"]
+            return _NOT_GRADED
+        return _Adherence(
+            compliance["pressure_rmse_bar"],
+            compliance["flow_rmse_ml_s"],
+            complete="not_graded"
+            not in (compliance["pressure_grading"], compliance["flow_grading"]),
+        )
     if summary is None:
-        return None, None
-    return summary["pressure_rmse_bar"], summary["flow_rmse_ml_s"]
+        return _NOT_GRADED
+    return _Adherence(
+        summary["pressure_rmse_bar"],
+        summary["flow_rmse_ml_s"],
+        complete="not_graded" not in (summary["pressure_grading"], summary["flow_grading"]),
+    )
 
 
 def _erosion(full: ShotDiagnostics | None, summary: SummaryDiagnostics | None) -> str | None:

@@ -82,7 +82,10 @@ async def test_the_two_real_exports_land_as_a_shot_and_a_profile(
     assert shot.phases is not None
     assert len(shot.phases) == SHOT_129_PHASES
     assert shot.diagnostics is not None
-    assert shot.execution_score == pytest.approx(7.7)
+    # No profile is linked to this shot (the export's profile id and name match
+    # none the archive holds), so its adherence is not graded and costs nothing.
+    assert shot.profile_version_id is None
+    assert shot.execution_score == pytest.approx(9.3)
     assert shot.execution_reason
     assert shot.quarantined is False
     assert shot.incomplete is False
