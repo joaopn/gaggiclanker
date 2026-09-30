@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from gaggiclanker.db.repos.base import JsonObject, JsonText, dumps, utc_now
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.models import LiveStatus, OtaSettings
+from gaggiclanker.domain.secrets import without_secrets
 
 __all__ = ["MACHINE_ID", "MachineRepository", "MachineRow", "MachineUpsert", "identity_to_upsert"]
 
@@ -82,9 +83,12 @@ class MachineRow(BaseModel):
     temperature_offset_c: float | None = None
     pid: str | None = None
     brew_delay_ms: int | None = None
-    #: `res:ota-settings` verbatim, as the machine sent it.
+    #: `res:ota-settings` as the machine sent it, minus secrets
+    #: (`domain/secrets.py::without_secrets`).
     identity: JsonObject = Field(default=None, validation_alias="identity_json")
-    #: `GET /api/settings` verbatim. Read-only here and always will be: the POST
+    #: `GET /api/settings` as the machine sent it, minus secrets
+    #: (`domain/secrets.py::without_secrets`: it carries the Wi-Fi, access-point and
+    #: Home Assistant passwords). Read-only here and always will be: the POST
     #: counterpart changes WiFi and PID (and, up to firmware v1.8.x, cleared every
     #: boolean key absent from its body).
     settings: JsonObject = Field(default=None, validation_alias="settings_json")
@@ -240,13 +244,18 @@ def identity_to_upsert(
         upsert.hardware_string = identity.hardware
         upsert.display_version = identity.display_version
         upsert.controller_version = identity.controller_version
-        upsert.identity_json = dumps(identity.model_dump(by_alias=True, mode="json"))
+        upsert.identity_json = dumps(
+            without_secrets(identity.model_dump(by_alias=True, mode="json"))
+        )
     if status is not None:
         upsert.has_pressure = status.cp
         upsert.has_dimming = status.cd
         upsert.has_gear_pump = status.gp
         upsert.has_led = status.led
     if settings:
+        # Credentials never reach the row: it is served by the API and copied into
+        # every backup. The three values read below are not among them.
+        settings = without_secrets(settings)
         upsert.settings_json = dumps(settings)
         upsert.temperature_offset_c = _as_float(settings.get("temperatureOffset"))
         pid = settings.get("pid")

@@ -110,6 +110,7 @@ from gaggiclanker.domain.models import (
     ShotNotes,
     canonical_profile_json,
 )
+from gaggiclanker.domain.secrets import without_secrets
 from gaggiclanker.domain.slog import Slog, SlogError, header_size_for, is_html_response, parse_slog
 from gaggiclanker.infra.sse import EventBus
 
@@ -583,7 +584,9 @@ class GaggimateClient:
         check, so a frame with no waiter is normal rather than an error — and
         it is still the freshest identity we have.
         """
-        payload = {k: v for k, v in message.items() if k != "tp"}
+        # Secrets out before the model keeps the frame (it allows extra keys, and
+        # `/api/device/status` serves it whole).
+        payload = without_secrets({k: v for k, v in message.items() if k != "tp"})
         try:
             identity = OtaSettings.model_validate(payload)
         except ValidationError as exc:
@@ -1099,7 +1102,11 @@ class GaggimateClient:
         from the body, so a partial write silently turned off HomeKit, boiler
         fill and the momentary buttons (v1.9.0 made it a partial update).
         """
-        return await self._get_json("/api/settings")
+        # The document carries the machine's Wi-Fi, access-point and Home
+        # Assistant passwords; they are dropped here so no caller can store,
+        # log or serve them.
+        settings: dict[str, Any] = without_secrets(await self._get_json("/api/settings"))
+        return settings
 
     # ── HTTP plumbing ────────────────────────────────────────────────
 

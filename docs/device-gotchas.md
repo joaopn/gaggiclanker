@@ -108,6 +108,13 @@ Not the nominal 250 ms, and not the 100 ms that gaggimate-mcp's research
 document assumes. The samples carry real `millis()` values; a chart that
 assumed a fixed interval draws a shot with a gap in it as a shot that ran short.
 
+**13. `GET /api/settings` returns the machine's passwords in plain text.**
+`wifiPassword` (only outside access-point mode), `apPassword` and `haPassword`
+(empty when Home Assistant is unused) sit next to the settings worth keeping
+(`WebUIPlugin.cpp:486-495`). The archive removes them, and any key named for a
+password, token or secret, before storing or showing the document
+(`domain/secrets.py`); the fake serves all three so the suite exercises it.
+
 ---
 
 These are enforced, not merely documented. `gaggiclanker/device/fake.py` is a
