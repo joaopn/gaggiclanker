@@ -650,9 +650,10 @@ async def test_0016_keeps_the_most_recently_seen_of_two_real_machines(
     hosts = await db.fetch_all("SELECT id, host FROM machines")
     assert [(int(r["id"]), r["host"]) for r in hosts] == [(1, "192.168.1.77")]
 
-    # Nothing was dropped on the floor: both shots, both runs, one profile row.
+    # Nothing was dropped on the floor: both shots, the starting-point run, one
+    # profile row. (The cleanup ledger this test also seeds is dropped by 0031,
+    # which `run_migrations` goes on to apply.)
     assert await db.fetch_value("SELECT count(*) FROM shots") == 2
-    assert await db.fetch_value("SELECT count(*) FROM cleanup_runs") == 1
     assert await db.fetch_value("SELECT count(*) FROM starting_point_runs") == 1
     profiles = await db.fetch_all("SELECT device_id, last_seen_at FROM device_profiles")
     assert [(r["device_id"], r["last_seen_at"]) for r in profiles] == [
@@ -665,7 +666,7 @@ async def test_0016_keeps_the_most_recently_seen_of_two_real_machines(
     names = await db.fetch_all("SELECT name FROM sets ORDER BY name")
     assert [r["name"] for r in names] == ["new address", "old address"]
 
-    for table in ("sets", "cleanup_runs", "starting_point_runs", "device_profiles"):
+    for table in ("sets", "starting_point_runs", "device_profiles"):
         columns = {str(r["name"]) for r in await db.fetch_all(f"PRAGMA table_info({table})")}
         assert "machine_id" not in columns, table
     assert await db.fetch_all("PRAGMA foreign_key_check") == []
@@ -825,7 +826,7 @@ async def test_0018_deletes_the_retired_machine_write_switches_and_nothing_else(
         ("deviceCleanupAuto", "true"),
         ("notesWritebackEnabled", "true"),
         ("deviceWritesEnabled", "true"),
-        ("notesWritebackFields", "rating,notes"),
+        ("gaggimateHost", "10.0.0.5"),
     ):
         await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, value))
 
@@ -834,7 +835,7 @@ async def test_0018_deletes_the_retired_machine_write_switches_and_nothing_else(
     rows = await db.fetch_all("SELECT key, value FROM settings ORDER BY key")
     assert [(row["key"], row["value"]) for row in rows] == [
         ("deviceWritesEnabled", "true"),
-        ("notesWritebackFields", "rating,notes"),
+        ("gaggimateHost", "10.0.0.5"),
     ]
 
 
