@@ -92,6 +92,9 @@ DEFAULT_HTTP_STATUS: dict[str, Any] = {"mode": 1, "tt": 93.0, "ct": 92.4}
 
 DEFAULT_DEVICE_SETTINGS: dict[str, Any] = {
     "startupMode": "standby",
+    # Empty means "the last used profile"; a profile id pins one. The firmware clears it
+    # when that profile is deleted (`ProfileManager::deleteProfile`).
+    "startupProfile": "",
     "targetSteamTemp": 145,
     "targetWaterTemp": 80,
     "mdnsName": "gaggimate",
@@ -267,6 +270,13 @@ class FakeDevice:
     #: on `favorite` is asserting on this, not on what it saved.
     favorite_profile_ids: set[str] = field(default_factory=set)
     selected_profile_id: str | None = None
+    #: The firmware favourites every new profile. Off, a test can see whether the app
+    #: itself moved a favourite star rather than inheriting the firmware's.
+    auto_favorite_new: bool = True
+    #: Request types (``req:profiles:select``) answered with an error instead of being
+    #: carried out, for the tests that prove what a failure part-way through a replace
+    #: leaves on the machine.
+    error_requests: set[str] = field(default_factory=set)
     #: A hook that corrupts what a save stores, for the one test that has to
     #: prove the round-trip check catches a machine that did not store what it
     #: was sent. Takes the parsed profile and returns what to keep.
@@ -654,6 +664,9 @@ class FakeDevice:
         self.ws_requests.append(str(tp))
         if tp in self.hang_requests:
             return
+        if tp in self.error_requests:
+            await self._reply(socket, tp, rid, error="Request failed")
+            return
 
         if tp == "req:ota-settings":
             # Broadcast, with no rid echoed — the real quirk this fake exists
@@ -747,7 +760,7 @@ class FakeDevice:
             self.profiles.append(stored)
         else:
             self.profiles[self.profiles.index(existing)] = stored
-        if is_new:
+        if is_new and self.auto_favorite_new:
             self.favorite_profile_ids.add(profile_id)
         await self._reply(socket, tp, rid, profile=self._serialise(stored))
 
@@ -762,8 +775,12 @@ class FakeDevice:
         # Deleting removes it from favourites and clears the startup profile if
         # it matched (`ProfileManager::deleteProfile`).
         self.favorite_profile_ids.discard(profile_id)
-        if self.selected_profile_id == profile_id:
-            self.selected_profile_id = None
+        # The selection is left pointing at the missing id: `deleteProfile` does not
+        # touch the selected-profile setting, so the display keeps naming a file that is
+        # gone until something selects another. An app that deletes a selected profile
+        # must select its replacement first.
+        if self.device_settings.get("startupProfile") == profile_id:
+            self.device_settings["startupProfile"] = ""
         await self._reply(socket, tp, rid)
 
     async def _reply(
