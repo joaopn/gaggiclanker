@@ -10,6 +10,41 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Adherence is judged on what each phase steers by
+
+- **Fixed: a pressure profile no longer shows a flow adherence.** The machine
+  logs a pressure target and a flow target on every phase that drives the pump,
+  but only one of them is the target: the other is a limit. The shot page, the
+  shot information and the execution score compared the measured flow with the
+  logged flow target in every phase, so a profile that steers by pressure
+  everywhere (every brew phase of the real shots in the archive's fixtures)
+  showed a **POOR** flow adherence and a flow penalty of up to 1.4 points that
+  meant nothing. Adherence verdicts now judge each phase only on what it was
+  steering by, read from the profile the shot was brewed with: pressure over the
+  phases that steer by pressure, and **pump flow** (what the machine's flow mode
+  controls, not the flow through the puck) over the phases that steer by flow. A
+  simple power phase and the few seconds the machine keeps recording after the
+  shot are never graded, which also stops the largest pressure overshoot from
+  reporting the pressure falling after the shot as an overshoot. Each phase in
+  the Phases line and the shot page carries only the adherence it is graded on.
+- **Scores of pressure-profile shots rise by up to 1.4 points.** The flow
+  penalty was fake; the pressure penalty keeps what it measured, over the right
+  samples. A profile with no flow-steered phase has nothing to grade for flow,
+  which the shot page says ("not applicable") and which neither costs points
+  nor lowers the score's confidence.
+- **A shot with no known profile shows no adherence.** Without the profile there
+  is no telling which target was real, so the shot is not graded rather than
+  graded wrongly: no adherence lines, no adherence review tokens, and the score's
+  confidence drops to medium, as it does for any missing measurement. This is
+  every imported shot whose profile the archive never held, and any shot the
+  machine's profiles were not mirrored for (Sync page, Pull profiles). Profiles
+  are taken as they were mirrored: the archive does not check them against the
+  machine. When a profile is mirrored or imported and a shot gets linked to it,
+  the shot is recalculated at once.
+- **Every stored shot is recalculated once, at the first start after the
+  update,** as for the resistance change above: scores, verdicts and the
+  Phases line move, notes, judgements, Sets and curves do not.
+
 ### Puck resistance comes from the machine
 
 - **A shot's puck resistance is now the machine's own measurement whenever the

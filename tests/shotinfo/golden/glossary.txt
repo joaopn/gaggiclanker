@@ -26,7 +26,7 @@ The band tables several fields are read against, named in their entries; each en
 - Execution score [base]: How cleanly the machine executed the shot, out of 10: 10 less a capped penalty for each fault the telemetry shows (channeling, temperature instability, pressure and flow adherence, puck erosion), never below 1. Higher is cleaner. It says nothing about taste, and it is computed, not judged: explain it, never restate or contradict it.
 
 [Execution score detail]
-- Score confidence [extended]: How much of the telemetry the execution score could use. high: full diagnostics with a flow target. medium: no flow target was commanded, or only the summary diagnostics exist. low: no pressure sensor, a channeling window too short to assess, or too little telemetry to score at all.
+- Score confidence [extended]: How much of the telemetry the execution score could use. high: full diagnostics and every adherence the profile calls for graded. medium: no profile to grade against, an adherence that could not be worked out, or only the summary diagnostics. low: no pressure sensor, a channeling window too short to assess, or too little telemetry to score at all.
 - Score reason [extended]: The execution score's own sentence: which penalty cost the most, or that no material fault was found.
 - Penalty components [extended]: Each penalty the execution score subtracted, in points, largest first: channeling, temperature stability, pressure adherence, flow adherence, resistance erosion, and data quality when the telemetry was too sparse to score. none means a clean 10.
 
@@ -92,13 +92,13 @@ The indicators are measured over the steady-state window: the brew phases from w
 - Guidance [extended]: The diagnostics engine's one-sentence reading of the channeling indicators together; a cross-check for your own reading, not a verdict.
 
 [Profile compliance]
-How closely the machine followed what the profile commanded. The pressure lines need a pressure sensor; the flow lines exist only where the profile commanded a flow.
-- Pressure adherence [base]: The root-mean-square difference between measured and commanded pressure over the shot, in bar; lower is closer to the profile. The machine's controller fights to hold pressure, so it hides grind problems that flow adherence shows. Bands: the adherence bands, in bar.
-- Flow adherence [base]: The root-mean-square difference between puck flow and commanded flow over the samples that carry a flow target, in ml/s; lower is closer. Flow is a consequence of grind, dose and prep that the pump cannot mask, so it is the better grind signal. Bands: the adherence bands, in ml/s.
-- Largest pressure overshoot [extended]: The most measured pressure rose above the commanded pressure, in bar. Over 0.5 is unusual and over 1 almost always a grind too fine, a dose too big or a prep problem. Bands: WITHIN_TOLERANCE under 0.25 bar; MINOR_OVERSHOOT 0.25 to 0.5 bar; NOTABLE_OVERSHOOT 0.5 to 1 bar; SEVERE_OVERSHOOT from 1 bar up.
-- Largest pressure undershoot [extended]: The most measured pressure fell below the commanded pressure, in bar. A large one throughout is a puck too loose to build pressure.
-- Largest flow overshoot [extended]: The most puck flow rose above the commanded flow, in ml/s: flow running away from the profile, often a coarse grind. Bands: the flow deviation bands, in ml/s.
-- Largest flow undershoot [extended]: The most puck flow fell below the commanded flow, in ml/s: a puck choking the flow, often a fine grind. Bands: the flow deviation bands, in ml/s.
+How closely the machine followed the target each phase steered by, read from the shot's profile. The pressure lines need a pressure sensor and cover the pressure-steered phases; the flow lines (pump flow against the flow target) exist only where the profile has a flow-steered phase. All are absent when the shot has no known profile.
+- Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller fights to hold pressure, so it hides grind problems that flow adherence shows. Bands: the adherence bands, in bar.
+- Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. Flow is a consequence of grind, dose and prep that the pump cannot mask, so it is the better grind signal. Bands: the adherence bands, in ml/s.
+- Largest pressure overshoot [extended]: The most measured pressure rose above the target pressure, in bar. Over 0.5 is unusual and over 1 almost always a grind too fine, a dose too big or a prep problem. Bands: WITHIN_TOLERANCE under 0.25 bar; MINOR_OVERSHOOT 0.25 to 0.5 bar; NOTABLE_OVERSHOOT 0.5 to 1 bar; SEVERE_OVERSHOOT from 1 bar up.
+- Largest pressure undershoot [extended]: The most measured pressure fell below the target pressure, in bar. A large one throughout is a puck too loose to build pressure.
+- Largest flow overshoot [extended]: The most pump flow rose above the target flow, in ml/s: flow running away from the profile. Bands: the flow deviation bands, in ml/s.
+- Largest flow undershoot [extended]: The most pump flow fell below the target flow, in ml/s: a puck choking the flow, often a fine grind. Bands: the flow deviation bands, in ml/s.
 
 [Phases]
 One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start 20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence need a pressure sensor.
@@ -110,8 +110,8 @@ One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; 
 - temperature [extended]: The mean measured temperature during the phase, in °C.
 - volume [extended]: Puck flow integrated over the phase, in ml.
 - flow [extended]: The mean puck flow during the phase, in ml/s.
-- pressure adherence [extended]: Pressure adherence (as above) within the phase, in bar. Bands: the adherence bands, in bar.
-- flow error [extended]: The root-mean-square difference between puck flow and the flow target within the phase, in ml/s. On a pressure-led phase the target is often 0, so this is then close to the flow itself.
+- pressure adherence [extended]: Pressure adherence (as above) within a pressure-steered phase, in bar. Bands: the adherence bands, in bar.
+- flow error [extended]: Flow-steered phases only: the root-mean-square difference between pump flow and the flow target within the phase, in ml/s.
 - ramp [extended]: Pre-infusion phases only: how fast pressure rose over the phase (its least-squares slope), in bar/s. Banded on its size: GENTLE under 0.5 bar/s; MODERATE 0.5 to 1.5 bar/s; BRISK 1.5 to 3 bar/s; AGGRESSIVE 3 to 5 bar/s; VERY_AGGRESSIVE from 5 bar/s up.
 - saturation [extended]: Pre-infusion phases only: seconds into the phase until flow settled (three samples flowing over 0.1 ml/s and varying by under 0.15): when the puck was wet through. The whole phase when it never settled.
 - taper [extended]: Decline phases only: how fast pressure fell (its slope, bar/s), then how evenly (the standard deviation of its sample-to-sample rate, bar/s; lower is smoother). Smoothness bands: VERY_SMOOTH under 0.2 bar/s; SMOOTH 0.2 to 0.5 bar/s; MODERATE 0.5 to 1 bar/s; ROUGH from 1 bar/s up.

@@ -249,39 +249,56 @@ export function TemperatureCard({ diagnostics }: { diagnostics: ShotDiagnosticsB
   );
 }
 
+/** What a compliance row says instead of a number: the profile has nothing of this kind to
+    follow ("not applicable"), or the number could not be worked out ("not graded"). A block
+    stored before the grading was recorded has neither field and shows a dash, as it always did. */
+function gradingText(
+  grading: "graded" | "not_applicable" | "not_graded" | undefined,
+): string | null {
+  if (grading === "not_applicable") return "not applicable";
+  if (grading === "not_graded") return "not graded";
+  return null;
+}
+
 export function ComplianceCard({ diagnostics }: { diagnostics: ShotDiagnosticsBlob }) {
   const compliance = diagnostics.diagnostics?.profile_compliance;
   if (!compliance) return null;
   const annotations = compliance.annotations ?? {};
+  const pressureText = gradingText(compliance.pressure_grading);
+  const flowText = gradingText(compliance.flow_grading);
   return (
     <SectionCard
       title="Profile compliance"
-      description="How closely the machine followed what the profile commanded. Flow deviation is the better grind signal: the PID actively drives pump power to hold pressure, so pressure error is masked by the controller."
+      description="How closely the machine followed what the profile commanded, phase by phase: pressure over the phases that steer by pressure, and pump flow over the phases that steer by flow. A profile with no phase of one kind has nothing to grade for it. Flow deviation is the better grind signal where a profile steers by flow; the PID actively drives pump power to hold pressure, so pressure error is masked by the controller."
     >
       <BandRow
         label="Pressure RMSE"
-        value={formatNumber(compliance.pressure_rmse_bar, 2, "bar")}
+        value={pressureText ?? formatNumber(compliance.pressure_rmse_bar, 2, "bar")}
         metric="pressure_adherence"
         band={annotations.pressure_adherence}
       />
-      <BandRow
-        label="Worst pressure overshoot"
-        value={formatNumber(compliance.max_pressure_overshoot_bar, 2, "bar")}
-        metric="pressure_overshoot"
-        band={annotations.pressure_overshoot}
-      />
+      {pressureText ? null : (
+        <BandRow
+          label="Worst pressure overshoot"
+          value={formatNumber(compliance.max_pressure_overshoot_bar, 2, "bar")}
+          metric="pressure_overshoot"
+          band={annotations.pressure_overshoot}
+        />
+      )}
       <BandRow
         label="Flow RMSE"
-        value={formatNumber(compliance.flow_rmse_ml_s, 2, "ml/s")}
+        value={flowText ?? formatNumber(compliance.flow_rmse_ml_s, 2, "ml/s")}
         metric="flow_adherence"
         band={annotations.flow_adherence}
       />
-      <BandRow
-        label="Worst flow undershoot"
-        value={formatNumber(compliance.max_flow_undershoot_ml_s, 2, "ml/s")}
-        metric="flow_undershoot"
-        band={annotations.flow_undershoot}
-      />
+      {flowText ? null : (
+        <BandRow
+          label="Worst flow undershoot"
+          value={formatNumber(compliance.max_flow_undershoot_ml_s, 2, "ml/s")}
+          metric="flow_undershoot"
+          band={annotations.flow_undershoot}
+        />
+      )}
     </SectionCard>
   );
 }

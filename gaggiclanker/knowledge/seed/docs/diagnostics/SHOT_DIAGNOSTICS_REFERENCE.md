@@ -55,8 +55,8 @@ Returned as a flat object with key indicators:
 | `temperature_stability` | VERY_STABLE (<0.3) · STABLE (<0.8) · MODERATE (<1.5) · UNSTABLE |
 | `pressure_adherence` | EXCELLENT (<0.3) · GOOD (<0.8) · FAIR (<1.5) · POOR |
 | `pressure_overshoot` | WITHIN_TOLERANCE (<0.25) · MINOR_OVERSHOOT (<0.5) · NOTABLE_OVERSHOOT (<1.0) · SEVERE_OVERSHOOT |
-| `flow_adherence` | EXCELLENT (<0.3) · GOOD (<0.8) · FAIR (<1.5) · POOR *(when target flow available)* |
-| `flow_overshoot` | WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION *(when target flow available)* |
+| `flow_adherence` | EXCELLENT (<0.3) · GOOD (<0.8) · FAIR (<1.5) · POOR *(only when the profile has a flow-steered phase)* |
+| `flow_overshoot` | WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION *(only when the profile has a flow-steered phase)* |
 
 ---
 
@@ -227,9 +227,9 @@ Measures how well the machine followed the programmed target profile.
 |-----|-------|
 | `pressure_adherence` | EXCELLENT (<0.3) · GOOD (<0.8) · FAIR (<1.5) · POOR |
 | `pressure_overshoot` | WITHIN_TOLERANCE (<0.25) · MINOR_OVERSHOOT (<0.5) · NOTABLE_OVERSHOOT (<1.0) · SEVERE_OVERSHOOT |
-| `flow_adherence` | Same as pressure_adherence (only present when tf data available) |
-| `flow_overshoot` | WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION *(only when tf data available)* |
-| `flow_undershoot` | Same bands as flow_overshoot *(only when tf data available)* |
+| `flow_adherence` | Same as pressure_adherence (pump flow against the flow target, only over flow-steered phases; absent for a pressure profile) |
+| `flow_overshoot` | WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION *(only over flow-steered phases)* |
+| `flow_undershoot` | Same bands as flow_overshoot *(only over flow-steered phases)* |
 
 **Key diagnostic insight:** Flow deviation is a more reliable grind indicator than
 pressure overshoot. The Gaggimate/gaggiuino PID actively controls pump power to

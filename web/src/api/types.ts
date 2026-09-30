@@ -310,6 +310,7 @@ export type ShotPhase = {
     phase_type?: string;
     avg_pressure_bar?: number;
     avg_flow_ml_s?: number;
+    /** Only in a phase that steers by pressure (or flow) and has samples to grade. */
     pressure_rmse_bar?: number;
     flow_rmse_ml_s?: number;
     ramp_rate_bar_s?: number;
@@ -408,13 +409,19 @@ export type ShotDiagnosticsBlob = {
       scale_connected: boolean;
       annotations: BandAnnotations;
     };
+    /** Absent when the shot has no known profile to grade against. Each adherence is graded
+        only over the phases that steer by it: "not_applicable" when the profile has none,
+        "not_graded" when it has and the number could not be worked out. */
     profile_compliance?: {
-      pressure_rmse_bar: number;
+      pressure_rmse_bar: number | null;
       flow_rmse_ml_s: number | null;
-      max_pressure_overshoot_bar: number;
-      max_pressure_undershoot_bar: number;
+      max_pressure_overshoot_bar: number | null;
+      max_pressure_undershoot_bar: number | null;
       max_flow_overshoot_ml_s: number | null;
       max_flow_undershoot_ml_s: number | null;
+      /** Absent on a block stored before the grading was recorded. */
+      pressure_grading?: "graded" | "not_applicable" | "not_graded";
+      flow_grading?: "graded" | "not_applicable" | "not_graded";
       annotations: BandAnnotations;
     } | null;
   } | null;

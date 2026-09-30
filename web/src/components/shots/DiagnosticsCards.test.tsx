@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { FirmwareValues, ResistanceSource, ShotDiagnosticsBlob, ShotPhase } from "@/api/types";
-import { PhaseTable, ResistanceCard, WeightCard } from "@/components/shots/DiagnosticsCards";
+import {
+  ComplianceCard,
+  PhaseTable,
+  ResistanceCard,
+  WeightCard,
+} from "@/components/shots/DiagnosticsCards";
 
 function blob(source: ResistanceSource | undefined): ShotDiagnosticsBlob {
   return {
@@ -173,5 +178,96 @@ describe("the firmware analyzer's values on the shot page", () => {
     expect(screen.queryByTestId("firmware-water")).toBeNull();
     expect(screen.queryByTestId("phase-firmware")).toBeNull();
     expect(screen.queryByText("Firmware analyzer")).toBeNull();
+  });
+});
+
+type Compliance = NonNullable<
+  NonNullable<ShotDiagnosticsBlob["diagnostics"]>["profile_compliance"]
+>;
+
+function complianceBlob(compliance: Compliance | null): ShotDiagnosticsBlob {
+  return { diagnostics: { has_pressure: true, profile_compliance: compliance } };
+}
+
+const pressureProfile: Compliance = {
+  pressure_rmse_bar: 2.25,
+  flow_rmse_ml_s: null,
+  max_pressure_overshoot_bar: 0.2,
+  max_pressure_undershoot_bar: 8,
+  max_flow_overshoot_ml_s: null,
+  max_flow_undershoot_ml_s: null,
+  pressure_grading: "graded",
+  flow_grading: "not_applicable",
+  annotations: { pressure_adherence: "POOR", pressure_overshoot: "WITHIN_TOLERANCE" },
+};
+
+describe("ComplianceCard", () => {
+  it("says a pressure profile has no flow to grade, and shows no flow number", () => {
+    render(<ComplianceCard diagnostics={complianceBlob(pressureProfile)} />);
+
+    expect(screen.getByTestId("band-pressure_adherence")).toHaveTextContent("2.25 bar");
+    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent("not applicable");
+    expect(screen.getByTestId("band-flow_adherence")).not.toHaveTextContent("ml/s");
+    expect(screen.getByTestId("band-flow_adherence")).not.toHaveTextContent(/poor/i);
+    // The flow deviation row has nothing to say either.
+    expect(screen.queryByTestId("band-flow_undershoot")).toBeNull();
+    expect(screen.getByTestId("band-pressure_overshoot")).toHaveTextContent("0.20 bar");
+  });
+
+  it("says a pressure that could not be worked out is not graded, never 0.00", () => {
+    render(
+      <ComplianceCard
+        diagnostics={complianceBlob({
+          ...pressureProfile,
+          pressure_rmse_bar: null,
+          max_pressure_overshoot_bar: null,
+          max_pressure_undershoot_bar: null,
+          pressure_grading: "not_graded",
+          annotations: {},
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("band-pressure_adherence")).toHaveTextContent("not graded");
+    expect(screen.queryByTestId("band-pressure_overshoot")).toBeNull();
+    expect(screen.queryByText(/0\.00/)).toBeNull();
+  });
+
+  it("shows a flow-steered profile's flow adherence with its band", () => {
+    render(
+      <ComplianceCard
+        diagnostics={complianceBlob({
+          ...pressureProfile,
+          flow_rmse_ml_s: 0.08,
+          max_flow_undershoot_ml_s: 0.32,
+          flow_grading: "graded",
+          annotations: { ...pressureProfile.annotations, flow_adherence: "EXCELLENT" },
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent("0.08 ml/s");
+    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent(/excellent/);
+    expect(screen.getByTestId("band-flow_undershoot")).toHaveTextContent("0.32 ml/s");
+  });
+
+  it("keeps a dash for a block stored before the grading was recorded", () => {
+    render(
+      <ComplianceCard
+        diagnostics={complianceBlob({
+          ...pressureProfile,
+          pressure_grading: undefined,
+          flow_grading: undefined,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("band-flow_adherence")).toHaveTextContent("—");
+  });
+
+  it("draws nothing for a shot with no profile to grade against", () => {
+    const { container } = render(<ComplianceCard diagnostics={complianceBlob(null)} />);
+
+    expect(container).toBeEmptyDOMElement();
   });
 });

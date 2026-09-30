@@ -666,8 +666,11 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "ml/s of flow. None of it exists without a pressure sensor."
         ),
         "Profile compliance": (
-            "How closely the machine followed what the profile commanded. The pressure lines need "
-            "a pressure sensor; the flow lines exist only where the profile commanded a flow."
+            "How closely the machine followed the target each phase steered by, read from the "
+            "shot's profile. The pressure lines need a pressure sensor and cover the "
+            "pressure-steered phases; the flow lines (pump flow against the flow target) exist "
+            "only where the profile has a flow-steered phase. All are absent when the shot has "
+            "no known profile."
         ),
         "Phases": (
             "One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start "
@@ -887,8 +890,9 @@ def _items() -> tuple[Item, ...]:
             label="Score confidence",
             meaning=(
                 "How much of the telemetry the execution score could use. high: full diagnostics "
-                "with a flow target. medium: no flow target was commanded, or only the summary "
-                "diagnostics exist. low: no pressure sensor, a channeling window too short to "
+                "and every adherence the profile calls for graded. medium: no profile to grade "
+                "against, an adherence that could not be worked out, or only the summary "
+                "diagnostics. low: no pressure sensor, a channeling window too short to "
                 "assess, or too little telemetry to score at all."
             ),
             default_tier="extended",
@@ -1552,9 +1556,10 @@ def _items() -> tuple[Item, ...]:
             name="Pressure adherence (RMSE), with band",
             label="Pressure adherence",
             meaning=(
-                "The root-mean-square difference between measured and commanded pressure over "
-                "the shot, in bar; lower is closer to the profile. The machine's controller "
-                "fights to hold pressure, so it hides grind problems that flow adherence shows. "
+                "The root-mean-square difference between measured and target pressure over the "
+                "samples of pressure-steered phases, in bar; lower is closer to the profile. The "
+                "machine's controller fights to hold pressure, so it hides grind problems that "
+                "flow adherence shows. "
                 f"Bands: {_shared('adherence', 'bar')}."
             ),
             default_tier="base",
@@ -1567,10 +1572,10 @@ def _items() -> tuple[Item, ...]:
             name="Flow adherence (RMSE), with band",
             label="Flow adherence",
             meaning=(
-                "The root-mean-square difference between puck flow and commanded flow over the "
-                "samples that carry a flow target, in ml/s; lower is closer. Flow is a "
-                "consequence of grind, dose and prep that the pump cannot mask, so it is the "
-                f"better grind signal. Bands: {_shared('adherence', 'ml/s')}."
+                "The root-mean-square difference between pump flow and target flow over the "
+                "samples of flow-steered phases, in ml/s; lower is closer. Flow is a consequence "
+                "of grind, dose and prep that the pump cannot mask, so it is the better grind "
+                f"signal. Bands: {_shared('adherence', 'ml/s')}."
             ),
             default_tier="base",
             shot=lambda f: _banded(_flow_rmse(f), 2, "ml/s", flow_adherence_band(f)),
@@ -1582,7 +1587,7 @@ def _items() -> tuple[Item, ...]:
             name="Largest pressure overshoot, with band",
             label="Largest pressure overshoot",
             meaning=(
-                "The most measured pressure rose above the commanded pressure, in bar. Over 0.5 "
+                "The most measured pressure rose above the target pressure, in bar. Over 0.5 "
                 "is unusual and over 1 almost always a grind too fine, a dose too big or a prep "
                 "problem. Bands: "
                 f"{band_text(engine._PRESSURE_OVERSHOOT_BANDS, 'bar')}."
@@ -1602,7 +1607,7 @@ def _items() -> tuple[Item, ...]:
             name="Largest pressure undershoot",
             label="Largest pressure undershoot",
             meaning=(
-                "The most measured pressure fell below the commanded pressure, in bar. A large "
+                "The most measured pressure fell below the target pressure, in bar. A large "
                 "one throughout is a puck too loose to build pressure."
             ),
             default_tier="extended",
@@ -1614,8 +1619,8 @@ def _items() -> tuple[Item, ...]:
             name="Largest flow overshoot, with band",
             label="Largest flow overshoot",
             meaning=(
-                "The most puck flow rose above the commanded flow, in ml/s: flow running away "
-                "from the profile, often a coarse grind. Bands: "
+                "The most pump flow rose above the target flow, in ml/s: flow running away "
+                "from the profile. Bands: "
                 f"{_shared('flow deviation', 'ml/s')}."
             ),
             default_tier="extended",
@@ -1633,7 +1638,7 @@ def _items() -> tuple[Item, ...]:
             name="Largest flow undershoot, with band",
             label="Largest flow undershoot",
             meaning=(
-                "The most puck flow fell below the commanded flow, in ml/s: a puck choking the "
+                "The most pump flow fell below the target flow, in ml/s: a puck choking the "
                 "flow, often a fine grind. Bands: "
                 f"{_shared('flow deviation', 'ml/s')}."
             ),
@@ -1742,7 +1747,7 @@ def _items() -> tuple[Item, ...]:
             name="Phase pressure adherence (RMSE), with band",
             label="pressure adherence",
             meaning=(
-                "Pressure adherence (as above) within the phase, in bar. Bands: "
+                "Pressure adherence (as above) within a pressure-steered phase, in bar. Bands: "
                 f"{_shared('adherence', 'bar')}."
             ),
             default_tier="extended",
@@ -1755,9 +1760,8 @@ def _items() -> tuple[Item, ...]:
             name="Phase flow error (RMSE)",
             label="flow error",
             meaning=(
-                "The root-mean-square difference between puck flow and the flow target within "
-                "the phase, in ml/s. On a pressure-led phase the target is often 0, so this is "
-                "then close to the flow itself."
+                "Flow-steered phases only: the root-mean-square difference between pump flow and "
+                "the flow target within the phase, in ml/s."
             ),
             default_tier="extended",
             phase=lambda _, p: _qty(_phase_diag_number(p, "flow_rmse_ml_s"), 2, "ml/s"),
