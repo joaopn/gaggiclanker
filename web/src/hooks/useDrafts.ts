@@ -27,6 +27,7 @@ import {
   type ProfileDraftDetail,
   type ProfileDraftListData,
 } from "@/api/types";
+import { outcomeLines, rollbackRemovedProfile } from "@/lib/draftOutcome";
 import {
   invalidateDeviceWrites,
   invalidateDrafts,
@@ -177,11 +178,17 @@ export function usePushDraft(): UseMutationResult<
       ),
     onSuccess: (result) => {
       if (result.draft.status === "pushed") {
-        toast.success(
-          result.set_version
-            ? `On the machine as ${result.draft.pushed_device_profile_id}, recorded as ${result.set_version.version_label} of ${result.draft.set_name ?? "its Set"}`
-            : `On the machine as ${result.draft.pushed_device_profile_id}`,
-        );
+        const message = result.set_version
+          ? `On the machine as ${result.draft.pushed_device_profile_id}, recorded as ${result.set_version.version_label} of ${result.draft.set_name ?? "its Set"}`
+          : `On the machine as ${result.draft.pushed_device_profile_id}`;
+        // The card leaves the default view once a push lands, so what the push replaced,
+        // kept or cleared is said here too.
+        const lines = outcomeLines(result.draft);
+        if (lines.length > 0) {
+          toast.success(message, { description: lines.join(" ") });
+        } else {
+          toast.success(message);
+        }
       } else {
         // 200, and the worst outcome this feature has: the machine took the
         // profile and stored something else. Say so, and point at the button
@@ -209,7 +216,18 @@ export function useRollbackDraft(): UseMutationResult<ProfileDraft, Error, numbe
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => rollbackProfileDraft(id),
-    onSuccess: () => toast.success("Deleted from the machine"),
+    onSuccess: (draft) => {
+      // A rollback can decline to remove a profile (somebody edited it on the display,
+      // another draft or Set still uses it, or this push never saved it), so the toast
+      // says which from what the server recorded rather than claiming a removal.
+      const lines = outcomeLines(draft);
+      const description = lines.length > 0 ? lines.join(" ") : undefined;
+      if (rollbackRemovedProfile(draft)) {
+        toast.success("Rolled back on the machine", { description });
+      } else {
+        toast.warning("The profile was left on the machine", { description });
+      }
+    },
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);

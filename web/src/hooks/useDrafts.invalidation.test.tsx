@@ -89,3 +89,66 @@ describe("the push toast says what the push recorded", () => {
     expect(toast.success).toHaveBeenCalledWith("On the machine as aB3xYz90Pq");
   });
 });
+
+describe("the toasts carry what the machine did, since the card leaves the default view", () => {
+  it("a push says what it replaced", async () => {
+    pushProfileDraft.mockResolvedValue({
+      draft: draft({
+        status: "pushed",
+        pushed_device_profile_id: "nEw1234567",
+        outcome: { action: "push", lines: ["Replaced aB3xYz90Pq: the previous copy is off."] },
+      }),
+      set_version: null,
+    });
+    const { result } = renderHookWithQueryClient(() => usePushDraft());
+
+    await result.current.mutateAsync({ id: 1 });
+
+    expect(toast.success).toHaveBeenCalledWith("On the machine as nEw1234567", {
+      description: "Replaced aB3xYz90Pq: the previous copy is off.",
+    });
+  });
+
+  it("a rollback that removed the profile says so", async () => {
+    rollbackProfileDraft.mockResolvedValue(
+      draft({
+        status: "discarded",
+        outcome: {
+          action: "rollback",
+          removed_device_profile_id: "aB3xYz90Pq",
+          lines: ["Removed aB3xYz90Pq from the machine."],
+        },
+      }),
+    );
+    const { result } = renderHookWithQueryClient(() => useRollbackDraft());
+
+    await result.current.mutateAsync(1);
+
+    expect(toast.success).toHaveBeenCalledWith("Rolled back on the machine", {
+      description: "Removed aB3xYz90Pq from the machine.",
+    });
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("a rollback that left the profile alone does not claim a rollback", async () => {
+    rollbackProfileDraft.mockResolvedValue(
+      draft({
+        status: "discarded",
+        outcome: {
+          action: "rollback",
+          removed_device_profile_id: null,
+          kept_reason: "not created by this app",
+          lines: ["Left aB3xYz90Pq on the machine: not created by this app."],
+        },
+      }),
+    );
+    const { result } = renderHookWithQueryClient(() => useRollbackDraft());
+
+    await result.current.mutateAsync(1);
+
+    expect(toast.warning).toHaveBeenCalledWith("The profile was left on the machine", {
+      description: "Left aB3xYz90Pq on the machine: not created by this app.",
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+});

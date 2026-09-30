@@ -337,12 +337,59 @@ describe("DraftCard", () => {
     });
   });
 
-  it("says a pushed draft was not selected", () => {
-    renderWithQueryClient(
-      <DraftCard draft={draft({ status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" })} />,
+  it("says what a push replaced, what it kept and why, and the startup profile note", () => {
+    const lines = [
+      "Replaced aB3xYz90Pq: the previous copy is off the machine.",
+      "The machine's startup profile was the replaced one and the firmware cleared that setting.",
+    ];
+    const { rerender } = renderWithQueryClient(
+      <DraftCard
+        draft={draft({
+          status: "pushed",
+          pushed_device_profile_id: "nEw1234567",
+          replaced_device_profile_id: "aB3xYz90Pq",
+          outcome: { action: "push", lines },
+        })}
+      />,
     );
-    expect(screen.getByTestId("draft-pushed")).toHaveTextContent("aB3xYz90Pq");
-    expect(screen.getByTestId("draft-pushed")).toHaveTextContent("was not selected");
+    expect(screen.getByTestId("draft-pushed")).toHaveTextContent("nEw1234567");
+    expect(screen.getByTestId("draft-outcome")).toHaveTextContent("Replaced aB3xYz90Pq");
+    expect(screen.getByTestId("draft-outcome")).toHaveTextContent("startup profile");
+    expect(screen.getByTestId("rollback-draft")).toHaveTextContent("restore the previous profile");
+
+    rerender(
+      <DraftCard
+        draft={draft({
+          status: "pushed",
+          pushed_device_profile_id: "nEw1234567",
+          outcome: {
+            action: "push",
+            lines: ["Left aB3xYz90Pq on the machine: not created by this app."],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("draft-outcome")).toHaveTextContent("not created by this app");
+    expect(screen.getByTestId("rollback-draft")).toHaveTextContent("Delete it from the machine");
+  });
+
+  it("offers no rollback for a draft whose profile a later push replaced", () => {
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({
+          status: "pushed",
+          pushed_device_profile_id: "aB3xYz90Pq",
+          replaced_by_draft_id: 2,
+        })}
+      />,
+    );
+    expect(screen.queryByTestId("rollback-draft")).not.toBeInTheDocument();
+    expect(screen.getByTestId("draft-replaced")).toHaveTextContent("replaced this profile");
+  });
+
+  it("shows no outcome for a draft that has not touched the machine", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} />);
+    expect(screen.queryByTestId("draft-outcome")).not.toBeInTheDocument();
   });
 
   it("offers one click to remove a push that did not verify", async () => {

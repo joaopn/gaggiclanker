@@ -16,6 +16,7 @@ import {
   useRefineDraft,
   useRollbackDraft,
 } from "@/hooks/useDrafts";
+import { outcomeLines } from "@/lib/draftOutcome";
 import { formatTime } from "@/lib/shots";
 
 /**
@@ -209,11 +210,30 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
         </div>
       ) : null}
 
-      {draft.status === "pushed" ? (
-        <p className="mt-3 text-muted-foreground text-xs" data-testid="draft-pushed">
-          On the machine as <span className="font-mono">{draft.pushed_device_profile_id}</span>. It
-          was not selected — the machine is still brewing with whatever it was brewing with.
+      {draft.status === "pushed" && draft.replaced_by_draft_id != null ? (
+        <p className="mt-3 text-muted-foreground text-xs" data-testid="draft-replaced">
+          A later push replaced this profile on the machine, so there is nothing left to roll back
+          here.
         </p>
+      ) : null}
+
+      {draft.status === "pushed" && draft.replaced_by_draft_id == null ? (
+        <p className="mt-3 text-muted-foreground text-xs" data-testid="draft-pushed">
+          On the machine as <span className="font-mono">{draft.pushed_device_profile_id}</span>. The
+          machine keeps brewing with whatever it had selected, unless that was the profile this one
+          replaced.
+        </p>
+      ) : null}
+
+      {outcomeLines(draft).length > 0 ? (
+        <ul
+          className="mt-2 list-disc space-y-0.5 pl-5 text-muted-foreground text-xs"
+          data-testid="draft-outcome"
+        >
+          {outcomeLines(draft).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -305,7 +325,8 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
             A failed draft stays failed afterwards; a pushed one becomes
             discarded, because the machine no longer has it. */}
         {(draft.status === "failed" || draft.status === "pushed") &&
-        draft.pushed_device_profile_id ? (
+        draft.pushed_device_profile_id &&
+        draft.replaced_by_draft_id == null ? (
           <Button
             size="sm"
             variant="destructive"
@@ -314,7 +335,9 @@ export function DraftCard({ draft }: { draft: ProfileDraft }) {
             onClick={() => rollback.mutate(draft.id)}
           >
             <Undo2 className="size-3.5" aria-hidden="true" />
-            Delete it from the machine
+            {draft.replaced_device_profile_id
+              ? "Roll back: restore the previous profile"
+              : "Delete it from the machine"}
           </Button>
         ) : null}
 
