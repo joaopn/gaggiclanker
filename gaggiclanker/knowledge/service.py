@@ -119,6 +119,65 @@ _UNREMARKABLE_BANDS = frozenset(
 _NON_BAND_PREFIXES = ("style", "taste", "balance", "primary", "scale")
 
 
+#: The order a review looks up the diagnostic bands that stand out, by what the
+#: band says about the shot rather than by the alphabet. The merge takes each
+#: query's best hit before any query's second and at most one chunk per
+#: document, and the diagnostics reference is one document, so the first band
+#: query decides which of its sections a review is shown. A review is about the
+#: recipe and the puck, so the puck leads; the machine's tracking of the profile
+#: matters but must not crowd the puck out when the budget buys two excerpts.
+#: Within a group the order is the one written here, so the whole is fixed. A
+#: metric that is in none of the groups sorts after all of them, alphabetically;
+#: a test holds every classified metric to being placed here on purpose.
+BAND_QUERY_ORDER: tuple[tuple[str, ...], ...] = (
+    # The puck.
+    (
+        "resistance_level",
+        "resistance_erosion",
+        "resistance_stability",
+        "resistance_saturation",
+        "channeling_risk",
+    ),
+    # The water temperature.
+    ("temperature_stability", "temperature_undershoot", "temperature_overshoot"),
+    # How the machine tracked the profile.
+    (
+        "pressure_adherence",
+        "flow_adherence",
+        "pressure_overshoot",
+        "flow_overshoot",
+        "flow_undershoot",
+    ),
+    # Trends over the shot.
+    ("pressure_trend", "flow_trend"),
+)
+
+_BAND_QUERY_RANK = {
+    metric: rank for rank, metric in enumerate(m for group in BAND_QUERY_ORDER for m in group)
+}
+
+#: How the knowledge base itself speaks about a metric, where the default
+#: "`metric label`" does not reach it. The diagnostics reference describes the
+#: resistance level under "Resistance (Puck Resistance)", and "resistance level
+#: LOW" matches its "Summary Level Diagnostics" section instead (the words
+#: "level" and "resistance" both occur there), while "low puck resistance" finds
+#: the section. `{label}` is the band's label in lower case, words separated by
+#: spaces. Measured against the shipped corpus: the other resistance metrics
+#: (erosion, stability, saturation) already retrieve that section first with the
+#: default wording, so they are not listed; add a metric here only after
+#: measuring the same mismatch.
+_BAND_QUERY_PHRASING = {
+    "resistance_level": "{label} puck resistance",
+}
+
+
+def _band_query(metric: str, label: str) -> str:
+    phrasing = _BAND_QUERY_PHRASING.get(metric)
+    if phrasing is None:
+        return f"{metric} {label}"
+    return phrasing.format(label=label.lower())
+
+
 @dataclass(frozen=True, slots=True)
 class RetrievalContext:
     """What a caller knows, in the shape retrieval needs it.
@@ -380,14 +439,18 @@ class KnowledgeService:
             if token.startswith("primary:"):
                 add(f"channeling {token.removeprefix('primary:')}")
 
-        # 3. The diagnostic bands that were not normal.
+        # 3. The diagnostic bands that were not normal, the puck first (see
+        #    BAND_QUERY_ORDER), in the knowledge base's own words.
+        bands: list[tuple[int, str, str]] = []
         for token in context.signals:
             metric, _, label = token.partition(":")
             if not label or metric in _NON_BAND_PREFIXES or not label.isupper():
                 continue
             if label in _UNREMARKABLE_BANDS or is_healthy_band(metric, label):
                 continue
-            add(f"{metric} {label}")
+            bands.append((_BAND_QUERY_RANK.get(metric, len(_BAND_QUERY_RANK)), metric, label))
+        for _, metric, label in sorted(bands):
+            add(_band_query(metric, label))
 
         # 4. The bean and the shot style — always present, always last. They are
         #    background rather than evidence, and they are what a shot with

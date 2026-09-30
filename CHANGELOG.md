@@ -74,6 +74,16 @@ first (`POST /api/backup`), because there is no down-migration.
   still searched for. A gradual decline of resistance (how a bed settles) and a
   channeling window too short to judge count as unremarkable.
   Reviews already written are unchanged.
+- **A shot review's background excerpts now look up what stands out about the
+  puck first, in the knowledge base's own words.** The bands that stand out
+  were searched in alphabetical order, so how well the machine followed the
+  profile took the diagnostics reference's one slot before the puck did, and
+  "resistance level LOW" matched the summary section rather than the one on
+  puck resistance. The puck (resistance level, erosion, stability, saturation,
+  channeling risk) is now searched first, then temperature, then how the machine
+  tracked the profile, then trends, and a low or high resistance is asked as
+  "low puck resistance". The puck resistance section now reaches reviews of
+  shots with a low or high resistance. Reviews already written are unchanged.
 
 ### Tested against GaggiMate firmware v1.9.0
 

@@ -27,7 +27,12 @@ from gaggiclanker.domain.diagnostics import (
     transform_shot,
 )
 from gaggiclanker.domain.slog import parse_slog
-from gaggiclanker.knowledge.service import _UNREMARKABLE_BANDS, KnowledgeService, RetrievalContext
+from gaggiclanker.knowledge.service import (
+    _UNREMARKABLE_BANDS,
+    BAND_QUERY_ORDER,
+    KnowledgeService,
+    RetrievalContext,
+)
 from gaggiclanker.review.context import build_review_input, signal_tokens
 from gaggiclanker.sync.derive import derive_shot
 
@@ -199,7 +204,7 @@ def _queries(*signals: str, style: str = "classic") -> list[str]:
 def test_a_healthy_reading_makes_no_query_and_the_same_word_elsewhere_does() -> None:
     # `LOW` and `MODERATE` are healthy for one metric and notable for another.
     assert _queries("channeling_risk:LOW") == ["classic shot profile"]
-    assert "resistance level LOW" in _queries("resistance_level:LOW")
+    assert "low puck resistance" in _queries("resistance_level:LOW")
     assert _queries("resistance_level:MODERATE") == ["classic shot profile"]
     assert "temperature stability MODERATE" in _queries("temperature_stability:MODERATE")
     assert "resistance stability MODERATE" in _queries("resistance_stability:MODERATE")
@@ -210,8 +215,6 @@ def test_a_healthy_reading_makes_no_query_and_the_same_word_elsewhere_does() -> 
     [
         "channeling_risk:MODERATE",
         "channeling_risk:HIGH",
-        "resistance_level:LOW",
-        "resistance_level:HIGH",
         "resistance_erosion:MODERATE_DECLINE",
         "resistance_erosion:INCREASING",
         "pressure_trend:GRADUAL_DECLINE",
@@ -259,7 +262,7 @@ def test_the_order_of_the_remaining_queries_is_unchanged() -> None:
     )
     assert _queries(*signals) == [
         "channeling flow jitter",
-        "resistance level LOW",
+        "low puck resistance",
         "temperature stability MODERATE",
         "classic shot profile",
     ]
@@ -288,4 +291,91 @@ async def test_a_real_shot_s_review_retrieves_nothing_for_a_healthy_band(
     assert not [e for e in review.excerpts if e["query"] in healthy]
     # The reading that does stand out is asked about.
     assert any(t.startswith("resistance_level:") for t in review.signals)
-    assert any(q.startswith("resistance level ") for q in queries)
+    assert any(q.endswith(" puck resistance") for q in queries)
+
+
+@pytest.mark.parametrize(
+    ("token", "query"),
+    [
+        ("resistance_level:VERY_LOW", "very low puck resistance"),
+        ("resistance_level:LOW", "low puck resistance"),
+        ("resistance_level:HIGH", "high puck resistance"),
+        ("resistance_level:VERY_HIGH", "very high puck resistance"),
+        # The metrics the knowledge base already answers keep the default wording.
+        ("resistance_erosion:MODERATE_DECLINE", "resistance erosion MODERATE DECLINE"),
+        ("temperature_stability:MODERATE", "temperature stability MODERATE"),
+    ],
+)
+def test_a_resistance_level_is_asked_in_the_knowledge_base_s_words(token: str, query: str) -> None:
+    assert _queries(token)[0] == query
+    assert _queries(token) == _queries(token)
+
+
+def test_the_puck_is_asked_about_before_how_the_machine_tracked_the_profile() -> None:
+    # Alphabetically `flow_adherence` and `pressure_*` come before `resistance_*`.
+    signals = (
+        "flow_adherence:POOR",
+        "flow_trend:INCREASING",
+        "pressure_adherence:POOR",
+        "resistance_level:LOW",
+        "temperature_undershoot:SIGNIFICANT",
+        "channeling_risk:HIGH",
+    )
+    queries = _queries(*signals)
+    assert queries == [
+        "low puck resistance",
+        "channeling risk HIGH",
+        "temperature undershoot SIGNIFICANT",
+        "pressure adherence POOR",
+        "flow adherence POOR",
+        "flow trend INCREASING",
+        "classic shot profile",
+    ]
+    assert queries == _queries(*reversed(signals))
+
+
+def test_a_metric_nobody_placed_is_asked_after_every_placed_one_alphabetically() -> None:
+    queries = _queries("zz_metric:HIGH", "aa_metric:HIGH", "flow_trend:INCREASING")
+    assert queries == [
+        "flow trend INCREASING",
+        "aa metric HIGH",
+        "zz metric HIGH",
+        "classic shot profile",
+    ]
+
+
+def test_every_band_metric_is_placed_in_the_query_order_once() -> None:
+    placed = [metric for group in BAND_QUERY_ORDER for metric in group]
+    assert len(placed) == len(set(placed))
+    assert set(BAND_READINGS) <= set(placed), "classify the new metric's place in BAND_QUERY_ORDER"
+    assert set(placed) <= set(BAND_READINGS), "BAND_QUERY_ORDER names a metric nobody emits"
+
+
+@pytest.mark.parametrize("detail", ["per_phase", "summary"])
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+def test_every_metric_a_real_shot_emits_is_placed_in_the_query_order(
+    path: Path, detail: str
+) -> None:
+    tokens = signal_tokens(_facts(path, detail), SimpleNamespace(style="unknown"))  # type: ignore[arg-type]
+    placed = {metric for group in BAND_QUERY_ORDER for metric in group}
+    for token in tokens:
+        metric, _, label = token.partition(":")
+        if label.isupper() and metric != "style":
+            assert metric in placed, token
+
+
+@pytest.mark.parametrize("path", SLOGS, ids=lambda p: p.stem)
+async def test_a_real_shot_s_review_is_given_the_puck_resistance_section(
+    seeded: Database, path: Path
+) -> None:
+    raw = path.read_bytes()
+    derived = derive_shot(parse_slog(raw), raw, device_id=path.stem)
+    shot_id = await ShotsRepository(seeded).insert(derived.shot, derived.samples)
+    review = await build_review_input(seeded, shot_id)
+
+    assert any(t.startswith("resistance_level:") for t in review.signals)
+    paths = [e["heading_path"] for e in review.excerpts]
+    assert any(
+        p.startswith("SHOT_DIAGNOSTICS_REFERENCE#") and p.endswith("/resistance-puck-resistance")
+        for p in paths
+    ), paths
