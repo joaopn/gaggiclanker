@@ -175,6 +175,29 @@ class ProfileDraftRow(BaseModel):
     #: machine served back, plus their canonical forms.
     verification: JsonObject = Field(default=None, validation_alias="verification_json")
     error: str | None = None
+    #: Whether this draft's push saved a profile (``True``) or found an identical one
+    #: already on the machine and used it. A rollback removes only one its own push saved.
+    pushed_saved: bool = False
+    #: The device id of the predecessor this draft's push removed from the machine,
+    #: and the stored version holding the content the archive recorded for it, so a
+    #: rollback knows to bring that content back first. NULL when the push left the
+    #: predecessor alone or had none.
+    replaced_device_profile_id: str | None = None
+    replaced_version_id: int | None = None
+    #: The Set versions that named the removed predecessor and were cleared by its
+    #: removal: the only ones a rollback points at the restored copy.
+    cleared_set_version_ids: JsonList = Field(
+        default=None, validation_alias="cleared_set_version_ids_json"
+    )
+    #: The Set version this push recorded, when it recorded one.
+    recorded_version_id: int | None = None
+    #: The draft whose push removed this one's profile from the machine. Such a draft
+    #: has nothing left to roll back.
+    replaced_by_draft_id: int | None = None
+    #: What the latest machine action on this draft did (a push or a rollback):
+    #: ``action``, the ids involved, ``startup_profile_cleared`` and ``lines``, the
+    #: sentences the card shows. Overwritten by the next action.
+    outcome: JsonObject = Field(default=None, validation_alias="outcome_json")
     created_at: str
     updated_at: str
     #: Joined from `profile_versions`, so a list row can say what it is about
@@ -320,6 +343,11 @@ class ProfileDraftsRepository(Repository):
         pushed_device_profile_id: str | None = None,
         verification: dict[str, Any] | None = None,
         error: str | None = None,
+        outcome: dict[str, Any] | None = None,
+        pushed_saved: bool | None = None,
+        replaced_device_profile_id: str | None = None,
+        replaced_version_id: int | None = None,
+        cleared_set_version_ids: list[int] | None = None,
     ) -> ProfileDraftRow | None:
         """Move a draft along, setting only the fields this transition owns.
 
@@ -341,13 +369,30 @@ class ProfileDraftsRepository(Repository):
         if error is not None:
             assignments.append("error = ?")
             params.append(error)
+        if outcome is not None:
+            assignments.append("outcome_json = ?")
+            params.append(dumps(outcome))
+        if pushed_saved is not None:
+            assignments.append("pushed_saved = ?")
+            params.append(int(pushed_saved))
+        if replaced_device_profile_id is not None:
+            assignments.append("replaced_device_profile_id = ?")
+            params.append(replaced_device_profile_id)
+        if replaced_version_id is not None:
+            assignments.append("replaced_version_id = ?")
+            params.append(replaced_version_id)
+        if cleared_set_version_ids is not None:
+            assignments.append("cleared_set_version_ids_json = ?")
+            params.append(dumps(cleared_set_version_ids))
         await self.db.execute(
             f"UPDATE profile_drafts SET {', '.join(assignments)} WHERE id = ?",  # noqa: S608 - assignments are literals, values are bound
             [*params, draft_id],
         )
         return await self.get(draft_id)
 
-    async def clear_pushed_profile(self, draft_id: int) -> ProfileDraftRow | None:
+    async def clear_pushed_profile(
+        self, draft_id: int, *, outcome: dict[str, Any] | None = None
+    ) -> ProfileDraftRow | None:
         """Forget the device id after a rollback deleted the machine's copy.
 
         The draft stays `failed` — what happened, happened — but it must stop
@@ -355,9 +400,53 @@ class ProfileDraftsRepository(Repository):
         back and deletes whatever inherits that id next.
         """
         await self.db.execute(
-            "UPDATE profile_drafts SET pushed_device_profile_id = NULL, updated_at = ? "
-            "WHERE id = ?",
-            (utc_now(), draft_id),
+            "UPDATE profile_drafts SET pushed_device_profile_id = NULL, pushed_saved = 0, "
+            "replaced_device_profile_id = NULL, replaced_version_id = NULL, "
+            "cleared_set_version_ids_json = NULL, recorded_version_id = NULL, "
+            "outcome_json = COALESCE(?, outcome_json), updated_at = ? WHERE id = ?",
+            (None if outcome is None else dumps(outcome), utc_now(), draft_id),
+        )
+        return await self.get(draft_id)
+
+    async def set_recorded_version(self, draft_id: int, version_id: int | None) -> None:
+        """Remember which Set version this draft's push recorded."""
+        await self.db.execute(
+            "UPDATE profile_drafts SET recorded_version_id = ? WHERE id = ?", (version_id, draft_id)
+        )
+
+    async def supersede_pushed(self, device_id: str, *, by_draft_id: int) -> int:
+        """Mark every pushed draft of this device profile as replaced by a later push.
+
+        Called once the profile is off the machine: those drafts hold a profile that
+        is gone, so they have nothing left to roll back.
+        """
+        cursor = await self.db.execute(
+            "UPDATE profile_drafts SET replaced_by_draft_id = ?, updated_at = ? "
+            "WHERE status = 'pushed' AND pushed_device_profile_id = ? "
+            "AND replaced_by_draft_id IS NULL AND id != ?",
+            (by_draft_id, utc_now(), device_id, by_draft_id),
+        )
+        return cursor.rowcount
+
+    async def other_pushed_claims(self, device_id: str, *, excluding: int) -> list[int]:
+        """Drafts other than ``excluding`` that still stand behind this profile.
+
+        Pushed, not replaced by a later push, and naming this device id. Removing the
+        profile would take it away from every one of them.
+        """
+        rows = await self.db.fetch_all(
+            "SELECT id FROM profile_drafts WHERE status = 'pushed' "
+            "AND replaced_by_draft_id IS NULL AND pushed_device_profile_id = ? AND id != ? "
+            "ORDER BY id",
+            (device_id, excluding),
+        )
+        return [int(row["id"]) for row in rows]
+
+    async def set_outcome(self, draft_id: int, outcome: dict[str, Any]) -> ProfileDraftRow | None:
+        """Record what a machine action did without moving the draft."""
+        await self.db.execute(
+            "UPDATE profile_drafts SET outcome_json = ?, updated_at = ? WHERE id = ?",
+            (dumps(outcome), utc_now(), draft_id),
         )
         return await self.get(draft_id)
 

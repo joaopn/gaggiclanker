@@ -1270,6 +1270,13 @@ class SetsRepository(Repository):
         values["origin"] = patch.origin
         values["origin_analysis_id"] = patch.origin_analysis_id
         values["pushed_device_profile_id"] = patch.pushed_device_profile_id
+        if patch.pushed_device_profile_id is None:
+            # A version that keeps the profile (a grind, dose or yield change, an accepted
+            # proposal) keeps brewing it where it already is on the machine. Not stated
+            # would mean a Set whose profile is still on the display reads as having none.
+            values["pushed_device_profile_id"] = await self.device_profile_of(
+                set_id, values["profile_version_id"], same_as=parent.profile_version_id
+            )
         # Omitted is "against the version I changed from"; an explicit null
         # is "against nothing". `sent` is what tells them apart.
         compares_to = (
@@ -1559,9 +1566,10 @@ class SetsRepository(Repository):
         draws is the reversal, field by field, rather than an empty entry that
         only says "went back".
 
-        `pushed_device_profile_id` is not copied, exactly as it is not on any
-        other new version: it names a file on the display, and nothing here
-        writes to the machine.
+        `pushed_device_profile_id` is looked up rather than copied: the latest version of
+        this Set with the restored profile that still names a file on the display
+        (a replace clears the ids of the copies it removed), since nothing here writes
+        to the machine and the restored recipe brews whatever is there.
 
         There is no major/minor choice here: a roll back is named by the rule
         alone, on what it changes relative to the current version — back to
@@ -1581,6 +1589,10 @@ class SetsRepository(Repository):
             values["intent"] = spec.intent
             values["origin"] = "manual"
             values["restores_version_id"] = target.id
+            # What the recipe being restored has on the machine, if it still does.
+            values["pushed_device_profile_id"] = await self.device_profile_of(
+                set_id, target.profile_version_id
+            )
             values.update(_prediction_values(spec.prediction, current.id, now=now))
             version_id = await self._insert_version(
                 set_id,
@@ -1705,23 +1717,100 @@ class SetsRepository(Repository):
         )
         return None if value is None else int(value)
 
-    async def clear_pushed_device_profile(self, device_id: str) -> int:
-        """Forget a device id every Set version that names it. Returns the count.
+    async def clear_pushed_device_profile(self, device_id: str) -> list[int]:
+        """Forget a device id in every Set version that names it. Returns their ids.
 
-        Called when a rollback deletes the machine's copy. The version keeps its
+        Called when the machine's copy is removed. The version keeps its
         `profile_version_id` — what it brewed is a historical fact and does not
         change — but it must stop naming a file that is not there, or a later
         "select the profile this Set wants" would select whatever inherits that
-        id next.
+        id next. The ids come back so a rollback can point exactly those versions
+        at the copy it puts back.
         """
         if not device_id:
-            return 0
-        cursor = await self.db.execute(
-            "UPDATE set_versions SET pushed_device_profile_id = NULL "
-            "WHERE pushed_device_profile_id = ?",
+            return []
+        rows = await self.db.fetch_all(
+            "SELECT id FROM set_versions WHERE pushed_device_profile_id = ? ORDER BY id",
             (device_id,),
         )
+        ids = [int(row["id"]) for row in rows]
+        if ids:
+            placeholders = ", ".join("?" * len(ids))
+            await self.db.execute(
+                "UPDATE set_versions SET pushed_device_profile_id = NULL "  # noqa: S608 - placeholders are generated, the ids are bound
+                f"WHERE id IN ({placeholders})",
+                ids,
+            )
+        return ids
+
+    async def restore_pushed_device_profile(self, version_ids: list[int], device_id: str) -> int:
+        """Point the Set versions a replace cleared at the copy just put back.
+
+        A rollback that brings a replaced profile back gives it a new device id
+        (the firmware always assigns one). Only the versions the replace itself
+        cleared are repointed: another Set's version of the same content that never
+        named a device profile did not have one before and has none now.
+        """
+        if not device_id or not version_ids:
+            return 0
+        placeholders = ", ".join("?" * len(version_ids))
+        cursor = await self.db.execute(
+            "UPDATE set_versions SET pushed_device_profile_id = ? "  # noqa: S608 - placeholders are generated, the ids are bound
+            f"WHERE id IN ({placeholders}) AND pushed_device_profile_id IS NULL",
+            [device_id, *version_ids],
+        )
         return cursor.rowcount
+
+    async def device_profile_of(
+        self, set_id: int, profile_version_id: int | None, *, same_as: int | None = None
+    ) -> str | None:
+        """Where a Set's profile is on the machine: the latest version naming it there.
+
+        Looks back through the Set's versions, newest first, for one with this stored
+        profile and a device id, because a grind or yield change, a roll back or an
+        accepted proposal appends a version with no device id of its own while the
+        profile is still where the last push put it. ``same_as`` restricts the answer to
+        a version that keeps that profile (``None`` there means no restriction).
+        """
+        if profile_version_id is None:
+            return None
+        if same_as is not None and same_as != profile_version_id:
+            return None
+        row = await self.db.fetch_one(
+            "SELECT pushed_device_profile_id FROM set_versions "
+            "WHERE set_id = ? AND profile_version_id = ? AND pushed_device_profile_id IS NOT NULL "
+            "ORDER BY version_no DESC LIMIT 1",
+            (set_id, profile_version_id),
+        )
+        return None if row is None else str(row["pushed_device_profile_id"])
+
+    async def current_device_profile(self, set_id: int) -> tuple[str, int] | None:
+        """The profile the Set's current version brews, as ``(device id, stored version id)``."""
+        current = await self._current_version_row(set_id)
+        if current is None or current.profile_version_id is None:
+            return None
+        device_id = await self.device_profile_of(set_id, current.profile_version_id)
+        return None if device_id is None else (device_id, current.profile_version_id)
+
+    async def sets_currently_using(
+        self, device_id: str, profile_version_id: int | None, *, excluding: int | None = None
+    ) -> list[str]:
+        """Names of the Sets whose current version brews this profile.
+
+        By device id **or** by stored profile version: a Set that picked the profile from
+        the library, or whose latest version is a grind change, names no device id and
+        still brews it. Except ``excluding``: the Set the caller is acting for, whose own
+        version is expected to name it. What a Set's current version names is what it
+        brews with, so another Set's profile is not the caller's to delete.
+        """
+        rows = await self.db.fetch_all(
+            "SELECT s.id AS id, s.name AS name FROM sets s "
+            "JOIN set_versions v ON v.set_id = s.id "
+            "AND v.version_no = (SELECT MAX(version_no) FROM set_versions WHERE set_id = s.id) "
+            "WHERE v.pushed_device_profile_id = ? OR v.profile_version_id = ? ORDER BY s.id",
+            (device_id, profile_version_id),
+        )
+        return [str(row["name"]) for row in rows if excluding is None or row["id"] != excluding]
 
     async def get_version(self, version_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))

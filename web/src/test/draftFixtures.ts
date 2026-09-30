@@ -73,6 +73,7 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     status: "draft",
     acknowledged_stop_changes: false,
     pushed_device_profile_id: null,
+    pushed_saved: false,
     verification: null,
     error: null,
     created_at: "2026-03-01T09:00:00.000Z",

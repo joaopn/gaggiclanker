@@ -4415,6 +4415,7 @@ export interface components {
              */
             change_summary: string;
             clamp_changes?: components["schemas"]["JsonList"];
+            cleared_set_version_ids?: components["schemas"]["JsonList"];
             /** Compares To Version Id */
             compares_to_version_id?: number | null;
             /** Compares To Version Label */
@@ -4441,6 +4442,7 @@ export interface components {
              * @default
              */
             notes: string;
+            outcome?: components["schemas"]["JsonObject"];
             /** Parent Draft Id */
             parent_draft_id?: number | null;
             /**
@@ -4450,10 +4452,23 @@ export interface components {
             prediction: string;
             /** Pushed Device Profile Id */
             pushed_device_profile_id?: string | null;
+            /**
+             * Pushed Saved
+             * @default false
+             */
+            pushed_saved: boolean;
+            /** Recorded Version Id */
+            recorded_version_id?: number | null;
             /** Recorded Version Label */
             recorded_version_label?: string | null;
             /** Recorded Version No */
             recorded_version_no?: number | null;
+            /** Replaced By Draft Id */
+            replaced_by_draft_id?: number | null;
+            /** Replaced Device Profile Id */
+            replaced_device_profile_id?: string | null;
+            /** Replaced Version Id */
+            replaced_version_id?: number | null;
             /** Set Id */
             set_id?: number | null;
             /** Set Name */
