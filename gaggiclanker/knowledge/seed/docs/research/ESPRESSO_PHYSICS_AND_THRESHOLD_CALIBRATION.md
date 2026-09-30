@@ -372,14 +372,17 @@ Summary of all threshold changes made based on this research:
 
 ### Flow Deviation Bands — Rationale
 
-Flow deviation (overshoot/undershoot vs target) is the more reliable grind indicator
-because the Gaggimate PID actively controls pump power to maintain target
-pressure. Pressure overshoot is artificially limited by the controller; flow rate is
-a *consequence* of grind + dose + puck prep and cannot be masked by the pump.
+Flow deviation (overshoot/undershoot vs target) is read over the phases that steer by
+flow, against the pump flow. That flow is the pump model's estimate for the power the
+controller chose, so it departs from its target only when the pump runs out of power or
+a pressure limit takes over; it does not measure the puck. (The bands below are
+upstream's, calibrated on its own reading of flow deviation.)
 
 **Bands:** WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION
 
-**Scenario analysis** (assuming a normal espresso profile targeting ~1 ml/s flow):
+**Scenario analysis** (upstream's, for the *puck* flow of a profile targeting ~1 ml/s;
+it does **not** describe this app's flow adherence, which reads the pump flow, so a
+coarse or fine grind does not move that one by these amounts):
 
 | Scenario | Grind | Expected outcome | Flow deviation | Band |
 |----------|-------|-----------------|----------------|------|

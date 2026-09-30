@@ -35,15 +35,17 @@ Returned as a flat object with key indicators:
 | `pressure_rmse_bar` | float | RMSE between actual and target pressure (profile compliance). 0 = perfect adherence. |
 | `max_overshoot_bar` | float | Largest pressure overshoot above target. >1.0 bar is highly unusual and almost certainly = grind too fine. |
 | `flow_rmse_ml_s` | float? | RMSE between actual and target flow (when target flow data available). 0 = perfect adherence. |
-| `max_flow_overshoot_ml_s` | float? | Largest flow above target. More reliable grind indicator than pressure overshoot (see note below). |
+| `max_flow_overshoot_ml_s` | float? | Largest pump flow above the flow target, over the phases that steer by flow (see note below). |
 | `scale_connected` | bool | Whether BT scale data was present. |
 | `annotations` | dict | Human-readable labels for all of the above. |
 
-> **Flow vs pressure for grind diagnosis:** Flow deviation is a more reliable grind
-> indicator than pressure overshoot. The Gaggimate/gaggiuino PID actively controls
-> pump power to maintain target pressure, so pressure overshoot is artificially limited
-> by the controller. Flow rate is a *consequence* of grind + dose + puck prep and cannot
-> be masked by the pump.
+> **Flow vs pressure for grind diagnosis:** Neither adherence is a grind signal by
+> itself. The controller drives pump power to hold the pressure target, so pressure
+> error says how well it did. The pump flow (`fl`) that flow adherence compares with
+> its target is the pump model's estimate for the power the controller chose, not a
+> measurement: it leaves a flow target only when the pump runs out of power, a
+> pressure limit takes over, or the smoothing lags. What the puck did is in the puck
+> flow and the puck resistance.
 
 ### Summary Annotations
 
@@ -231,12 +233,12 @@ Measures how well the machine followed the programmed target profile.
 | `flow_overshoot` | WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION *(only over flow-steered phases)* |
 | `flow_undershoot` | Same bands as flow_overshoot *(only over flow-steered phases)* |
 
-**Key diagnostic insight:** Flow deviation is a more reliable grind indicator than
-pressure overshoot. The Gaggimate/gaggiuino PID actively controls pump power to
-maintain target pressure, so pressure overshoot is artificially limited by the
-controller. Flow rate is a *consequence* of grind + dose + puck prep and cannot be
-masked by the pump. Check `max_flow_overshoot_ml_s` / `max_flow_undershoot_ml_s`
-first when diagnosing grind issues.
+**Key diagnostic insight:** Adherence says how well the machine held the profile,
+not what the puck did. The controller drives pump power to hold the pressure target,
+so pressure error is limited by the controller; the pump flow that flow adherence
+reads is the pump model's own estimate, so it leaves its target only when the pump
+runs out of power or a pressure limit takes over. For the grind, read the puck
+resistance and the puck flow (`flow_avg_brew_ml_s`, the channeling indicators).
 
 `max_pressure_overshoot_bar > 0.5` is unusual and worth investigating. `> 1.0` is
 highly unlikely in normal operation and almost certainly indicates grind too fine,

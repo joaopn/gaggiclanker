@@ -93,12 +93,12 @@ The indicators are measured over the steady-state window: the brew phases from w
 
 [Profile compliance]
 How closely the machine followed the target each phase steered by, read from the shot's profile. The pressure lines need a pressure sensor and cover the pressure-steered phases; the flow lines (pump flow against the flow target) exist only where the profile has a flow-steered phase. All are absent when the shot has no known profile.
-- Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller fights to hold pressure, so it hides grind problems that flow adherence shows. Bands: the adherence bands, in bar.
-- Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. Flow is a consequence of grind, dose and prep that the pump cannot mask, so it is the better grind signal. Bands: the adherence bands, in ml/s.
+- Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller drives the pump to hold pressure, so this says how well it did, not what the puck did. Bands: the adherence bands, in bar.
+- Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the machine's own estimate, not a measurement: it leaves the target only when the pump runs out of power or a pressure limit takes over, so it is not a grind signal. Bands: the adherence bands, in ml/s.
 - Largest pressure overshoot [extended]: The most measured pressure rose above the target pressure, in bar. Over 0.5 is unusual and over 1 almost always a grind too fine, a dose too big or a prep problem. Bands: WITHIN_TOLERANCE under 0.25 bar; MINOR_OVERSHOOT 0.25 to 0.5 bar; NOTABLE_OVERSHOOT 0.5 to 1 bar; SEVERE_OVERSHOOT from 1 bar up.
 - Largest pressure undershoot [extended]: The most measured pressure fell below the target pressure, in bar. A large one throughout is a puck too loose to build pressure.
-- Largest flow overshoot [extended]: The most pump flow rose above the target flow, in ml/s: flow running away from the profile. Bands: the flow deviation bands, in ml/s.
-- Largest flow undershoot [extended]: The most pump flow fell below the target flow, in ml/s: a puck choking the flow, often a fine grind. Bands: the flow deviation bands, in ml/s.
+- Largest flow overshoot [extended]: The most the pump flow rose above the target flow, in ml/s, over the flow-steered phases. Bands: the flow deviation bands, in ml/s.
+- Largest flow undershoot [extended]: The most the pump flow fell below the target flow, in ml/s, over the flow-steered phases: the pump could not deliver what was asked (out of power, or a pressure limit took over). Bands: the flow deviation bands, in ml/s.
 
 [Phases]
 One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start 20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence need a pressure sensor.

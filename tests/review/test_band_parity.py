@@ -7,8 +7,8 @@ Three tables have to agree about which labels exist:
 * `web/src/lib/shots.ts::BAND_MEANINGS` — what the shot page tells a reader.
 
 They are not the same sentences and should not be: the rule carries the
-interpretation the model needs ("flow deviation is the better grind signal,
-because the PID masks pressure error"), the card carries one line a person can
+interpretation the model needs (what the pump flow is, so what a deviation
+means), the card carries one line a person can
 read at a glance. What must not drift is *coverage*. A band added to the engine
 and to one of the other two is a shot whose page says "NOTABLE_DEVIATION" and
 whose review has never heard of it, which is exactly the kind of gap nobody

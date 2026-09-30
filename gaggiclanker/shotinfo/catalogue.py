@@ -1558,8 +1558,8 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "The root-mean-square difference between measured and target pressure over the "
                 "samples of pressure-steered phases, in bar; lower is closer to the profile. The "
-                "machine's controller fights to hold pressure, so it hides grind problems that "
-                "flow adherence shows. "
+                "machine's controller drives the pump to hold pressure, so this says how well it "
+                "did, not what the puck did. "
                 f"Bands: {_shared('adherence', 'bar')}."
             ),
             default_tier="base",
@@ -1573,8 +1573,9 @@ def _items() -> tuple[Item, ...]:
             label="Flow adherence",
             meaning=(
                 "The root-mean-square difference between pump flow and target flow over the "
-                "samples of flow-steered phases, in ml/s; lower is closer. Flow is a consequence "
-                "of grind, dose and prep that the pump cannot mask, so it is the better grind "
+                "samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the "
+                "machine's own estimate, not a measurement: it leaves the target only when the "
+                "pump runs out of power or a pressure limit takes over, so it is not a grind "
                 f"signal. Bands: {_shared('adherence', 'ml/s')}."
             ),
             default_tier="base",
@@ -1619,8 +1620,8 @@ def _items() -> tuple[Item, ...]:
             name="Largest flow overshoot, with band",
             label="Largest flow overshoot",
             meaning=(
-                "The most pump flow rose above the target flow, in ml/s: flow running away "
-                "from the profile. Bands: "
+                "The most the pump flow rose above the target flow, in ml/s, over the flow-steered "
+                "phases. Bands: "
                 f"{_shared('flow deviation', 'ml/s')}."
             ),
             default_tier="extended",
@@ -1638,8 +1639,9 @@ def _items() -> tuple[Item, ...]:
             name="Largest flow undershoot, with band",
             label="Largest flow undershoot",
             meaning=(
-                "The most pump flow fell below the target flow, in ml/s: a puck choking the "
-                "flow, often a fine grind. Bands: "
+                "The most the pump flow fell below the target flow, in ml/s, over the flow-steered "
+                "phases: the pump could not deliver what was asked (out of power, or a pressure "
+                "limit took over). Bands: "
                 f"{_shared('flow deviation', 'ml/s')}."
             ),
             default_tier="extended",

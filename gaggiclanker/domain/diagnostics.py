@@ -246,11 +246,13 @@ class ProfileComplianceMetrics(TypedDict):
     firmware's flow mode controls: it converts the target to a pump duty cycle
     through the pump's flow model and never looks at the puck flow.
 
-    Flow deviation is the better grind signal in a flow phase: flow is a
-    *consequence* of grind, dose and puck prep and cannot be masked. A pressure
-    overshoot above 1 bar is remarkable — it means the controller ran out of
-    room. A block with no profile behind it does not exist (``None`` in
-    :class:`ShotDiagnostics`).
+    Neither is a grind signal by itself: the pump flow is the pump model's
+    estimate for the power the controller chose (not a measurement), so it
+    leaves its target only when the pump runs out of power, a pressure limit
+    takes over or the smoothing lags, and the controller drives the pump to hold
+    pressure. A pressure overshoot above 1 bar is remarkable — it means the
+    controller ran out of room. A block with no profile behind it does not exist
+    (``None`` in :class:`ShotDiagnostics`).
     """
 
     pressure_rmse_bar: float | None

@@ -23,8 +23,8 @@
 # reader looking at a card and is shared across metrics — "GOOD" means the same
 # sentence under pressure adherence and under flow adherence. These rules are
 # per metric and carry the interpretation a model needs, which is the part
-# worth having: flow_adherence says *why* flow deviation is the better grind
-# signal, and the card has no room for that. What IS pinned, by
+# worth having: flow_adherence says what the pump flow is (an estimate) and so
+# what a deviation means, and the card has no room for that. What IS pinned, by
 # `tests/review/test_band_parity.py`, is coverage — every band label the
 # diagnostics engine can emit has a rule here and a line there, so adding a band
 # to `diagnostics.py` and forgetting one of the two is a failing test rather
@@ -893,9 +893,10 @@ rules:
     applies: { signal: ["flow_adherence:EXCELLENT"] }
     value:
       text: >-
-        flow_adherence EXCELLENT — RMSE under 0.3 ml/s. Flow deviation is the
-        better grind signal, because the PID masks pressure error and cannot
-        mask flow.
+        flow_adherence EXCELLENT — RMSE under 0.3 ml/s: the pump delivered the
+        commanded flow. The pump flow is the machine's own estimate for the
+        power it chose, not a measurement, so this says the machine could hold
+        its flow target; it says nothing about the puck.
     unit: none
     confidence: calibrated
     source: crema
@@ -913,7 +914,7 @@ rules:
   - category: band_meanings
     key: "flow_adherence:FAIR"
     applies: { signal: ["flow_adherence:FAIR"] }
-    value: { text: "flow_adherence FAIR — RMSE 0.8-1.5 ml/s; the puck is not letting the profile happen." }
+    value: { text: "flow_adherence FAIR — RMSE 0.8-1.5 ml/s; the pump could not always deliver the commanded flow (out of power, or a pressure limit took over)." }
     unit: none
     confidence: calibrated
     source: crema
@@ -922,7 +923,7 @@ rules:
   - category: band_meanings
     key: "flow_adherence:POOR"
     applies: { signal: ["flow_adherence:POOR"] }
-    value: { text: "flow_adherence POOR — RMSE over 1.5 ml/s: grind, dose or puck prep is well off." }
+    value: { text: "flow_adherence POOR — RMSE over 1.5 ml/s: the pump was well away from the commanded flow (out of power, or a pressure limit took over). Read the puck's resistance and flow for what the puck did." }
     unit: none
     confidence: calibrated
     source: crema
@@ -991,8 +992,10 @@ rules:
     applies: { signal: ["flow_overshoot:NOTABLE_DEVIATION"] }
     value:
       text: >-
-        flow_overshoot NOTABLE_DEVIATION — flow ran above target by more than
-        0.7 ml/s, which reads as too coarse.
+        flow_overshoot NOTABLE_DEVIATION — the pump flow ran above its target by
+        more than 0.7 ml/s: the pump was not holding the flow it was asked for.
+        The pump flow is an estimate, so this says nothing about the grind by
+        itself; read the puck's resistance and flow.
     unit: none
     confidence: calibrated
     source: crema
@@ -1212,10 +1215,11 @@ rules:
     applies: { signal: ["primary:flow_vs_target"] }
     value:
       text: >-
-        Deviation from the commanded flow is the better grind signal, because
-        the PID drives pump power to hold pressure and masks pressure error
-        entirely. Overshoot beyond 0.7 ml/s reads as too coarse, undershoot
-        beyond 0.7 as too fine.
+        The puck's flow parting from the logged flow target by more than 0.7
+        ml/s is worth a look, but the logged flow target is only a target in a
+        phase that steers by flow; in a pressure phase it is a limit, and a gap
+        to it says nothing about the grind. Where it is a target, weigh the gap
+        with the puck's resistance, not as a grind direction on its own.
       threshold_ml_s: 0.7
     unit: ml_s
     confidence: calibrated

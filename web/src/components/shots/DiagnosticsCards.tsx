@@ -269,7 +269,7 @@ export function ComplianceCard({ diagnostics }: { diagnostics: ShotDiagnosticsBl
   return (
     <SectionCard
       title="Profile compliance"
-      description="How closely the machine followed what the profile commanded, phase by phase: pressure over the phases that steer by pressure, and pump flow over the phases that steer by flow. A profile with no phase of one kind has nothing to grade for it. Flow deviation is the better grind signal where a profile steers by flow; the PID actively drives pump power to hold pressure, so pressure error is masked by the controller."
+      description="How closely the machine followed what the profile commanded, phase by phase: pressure over the phases that steer by pressure, and pump flow over the phases that steer by flow. A profile with no phase of one kind has nothing to grade for it. Both say how well the machine held the profile, not what the puck did: the pump flow is the machine's own estimate, and the controller drives the pump to hold pressure."
     >
       <BandRow
         label="Pressure RMSE"
