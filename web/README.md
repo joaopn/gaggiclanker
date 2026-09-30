@@ -156,31 +156,24 @@ The judgement form in the open panel is the exception, as on the shot page: it
 puts back every field it renders when Save is pressed, and it re-seeds from the
 server whenever the verdict changes underneath it.
 
-The Sync page is where a person starts every exchange with the machine:
+The Sync page is where a person pulls from the machine and reads what this box has written to it:
 
 ```
 src/
   pages/
-    SyncPage.tsx          the four sections and their anchors (#pull, #notes, #storage, #writes)
+    SyncPage.tsx          the two sections and their anchors (#pull, #writes)
   components/sync/
     PullSection.tsx       the shots page's PullButton, with the ledger under it
-    NotesSection.tsx      pending judgements, a selection, an inline confirm, the send
-    CleanupSection.tsx    storage figures, the plan with its reasons, an inline confirm, the runs
     DeviceWritesSection.tsx  the audit of every write, refusals included
-    ConfirmStrip.tsx      the inline "are you sure" both write actions use
-  lib/
-    sync.ts               writeBlocker: why a write action cannot start, in the server's order
+    ConfirmStrip.tsx      the inline "are you sure" (also used by Settings → Shot information)
 ```
 
-Three things about it are worth knowing before editing. **Nothing on it runs
-by itself**, and nothing elsewhere may write to the machine except a profile
+Two things about it are worth knowing before editing. **Nothing on it runs
+by itself**, and nothing in the web may write to the machine except a profile
 push from the Profiles page: saving a judgement never sends it, and a pull
-never deletes. **Both write actions send back what was shown** — the ticked
-shot ids, the planned shot ids — and the server answers 409 when its own list
-has moved since, so the hooks invalidate on settle rather than on success and
-the fresh list is on screen with the toast. **Nothing is pre-selected** in the
-notes list: select-all is one click, and a list that arrived ticked would be
-the automatic send it replaced.
+never deletes. **The audit renders whatever `kind` the server stored** as a
+plain string: rows of the two kinds this box used to write (`shot_delete`,
+`notes_save`) stay readable as history.
 
 The LLM layer adds a third:
 

@@ -87,9 +87,8 @@ function EditorBody({ shot, onDone }: { shot: ShotListRow; onDone: () => void })
   // portafilter" is a legitimate row with nothing else in it — so a PUT of
   // `{rating: null, notes: ""}` creates one, and that row then lights up
   // `has_judgement`, puts a null point on the Set's trend, and dates itself
-  // later than the machine's notes card, which is what notes write-back
-  // compares against before pushing a rating of zero over what was typed at
-  // the machine.
+  // later than the machine's notes card, so the shot would read as judged
+  // after the machine's own rating, which is not what anybody did.
   const verdictChanged = rating !== loaded.rating || notes !== loaded.notes;
   const deviceRating = shot.rating ?? shot.index_rating ?? null;
 

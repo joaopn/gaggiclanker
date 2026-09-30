@@ -125,9 +125,8 @@ export const NAV_LINKS: NavItem[] = [
         shortcut: "g p",
         shortcutLabel: "g p",
       },
-      // Every exchange with the machine that a person starts — a pull, sending
-      // notes, deleting shots, and the record of every write — and the only
-      // place anything but a profile is written to or deleted from it. `g y`,
+      // The pull from the machine, which a person starts, and the record of
+      // every write this box has made to it (only ever profiles). `g y`,
       // for sYnc: `g s` is Shots.
       { to: "/sync", label: "Sync", icon: ArrowLeftRight, shortcut: "g y", shortcutLabel: "g y" },
       // What the machine is: status, firmware, storage. The header's status

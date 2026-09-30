@@ -10,21 +10,16 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getDeviceStatus, getSyncStatus, getDeviceWrites, getCleanupPlan, getPendingNotes } =
-  vi.hoisted(() => ({
-    getDeviceStatus: vi.fn(),
-    getSyncStatus: vi.fn(),
-    getDeviceWrites: vi.fn(),
-    getCleanupPlan: vi.fn(),
-    getPendingNotes: vi.fn(),
-  }));
+const { getDeviceStatus, getSyncStatus, getDeviceWrites } = vi.hoisted(() => ({
+  getDeviceStatus: vi.fn(),
+  getSyncStatus: vi.fn(),
+  getDeviceWrites: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getDeviceStatus,
   getSyncStatus,
   getDeviceWrites,
-  getCleanupPlan,
-  getPendingNotes,
 }));
 
 function deviceStatus(overrides: Partial<DeviceStatusData> = {}): DeviceStatusData {
@@ -79,20 +74,16 @@ describe("DevicePage", () => {
     expect(screen.getByTestId("device-connection")).toHaveTextContent("connected");
   });
 
-  it("holds no sync, notes, storage or write-audit card: those are on the Sync page", async () => {
+  it("holds no sync or write-audit card: those are on the Sync page", async () => {
     renderAt("/device");
     await screen.findByRole("heading", { name: "GaggiMate Pro" });
 
     expect(screen.queryByTestId("sync-runs")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("notes-pending")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("cleanup-summary")).not.toBeInTheDocument();
     expect(screen.queryByTestId("device-writes-empty")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sync now" })).not.toBeInTheDocument();
     // Nothing on this page asks for any of it either.
     expect(getSyncStatus).not.toHaveBeenCalled();
     expect(getDeviceWrites).not.toHaveBeenCalled();
-    expect(getCleanupPlan).not.toHaveBeenCalled();
-    expect(getPendingNotes).not.toHaveBeenCalled();
 
     expect(screen.getByRole("link", { name: /Sync with the machine/ })).toHaveAttribute(
       "href",
@@ -109,9 +100,9 @@ describe("DevicePage", () => {
   });
 
   it.each([
-    ["#storage", "/sync#storage"],
-    ["#cleanup", "/sync#storage"],
-    ["#notes", "/sync#notes"],
+    ["#storage", "/sync#pull"],
+    ["#cleanup", "/sync#pull"],
+    ["#notes", "/sync#pull"],
     ["#sync", "/sync#pull"],
     ["#writes", "/sync#writes"],
   ])("sends an old %s anchor to the section that moved", async (anchor, target) => {

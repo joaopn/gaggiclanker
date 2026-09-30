@@ -233,7 +233,7 @@ function GroupBody({
  * goes wrong: a wedged display is recoverable, and the recovery is a reflash
  * plus a filesystem erase.
  */
-function DeviceWritesWarning() {
+export function DeviceWritesWarning() {
   return (
     <div
       className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
@@ -245,13 +245,12 @@ function DeviceWritesWarning() {
       </p>
       <p className="mt-1 text-status-warn-text text-xs">
         Off by default. With it on, gaggiclanker may save a <strong>new</strong> profile to the
-        display, delete one it created itself, select one, and star or unstar one. Sending your
-        judgements to shots' notes cards and deleting shots the archive already holds happen only
-        from the Sync page, when you confirm them. It never overwrites an existing profile and never
-        writes device settings. A profile with zero phases crashes brew start on the display and
-        recovering that means a reflash plus a filesystem erase — four validation layers stand in
-        the way of that, and this switch is the fifth. Every attempt, refused or not, is recorded on
-        the{" "}
+        display, delete one it created itself, select one, and star or unstar one. A profile is the
+        only thing this box ever writes to the machine: it never deletes a shot, never writes a
+        notes card, never overwrites an existing profile and never writes device settings. A profile
+        with zero phases crashes brew start on the display and recovering that means a reflash plus
+        a filesystem erase — four validation layers stand in the way of that, and this switch is the
+        fifth. Every attempt, refused or not, is recorded on the{" "}
         <Link className="underline underline-offset-2" to="/sync#writes">
           Sync page
         </Link>

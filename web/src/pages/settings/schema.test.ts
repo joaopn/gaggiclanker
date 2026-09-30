@@ -122,7 +122,7 @@ describe("buildSettingsSchema", () => {
 
 describe("labels and sections", () => {
   it("turns a camelCase registry key into a sentence", () => {
-    expect(humanizeKey("deviceCleanupKeepNewest")).toBe("Device cleanup keep newest");
+    expect(humanizeKey("deviceSyncEnabled")).toBe("Device sync enabled");
     expect(humanizeKey("gaggimateHost")).toBe("Gaggimate host");
   });
 
@@ -161,23 +161,15 @@ describe("labels and sections", () => {
 
   it("sorts a page's keys into its groups, in the groups' order, with the rest under Other", () => {
     expect(groupFor("gaggimateHost")).toBe("connection");
-    expect(groupFor("notesWritebackFields")).toBe("writes");
+    expect(groupFor("deviceWritesEnabled")).toBe("writes");
     expect(groupFor("modelStartingPoint")).toBe("models");
     expect(groupFor("deviceSomethingNew")).toBe("other");
 
-    const entries = [
-      "deviceCleanupMode",
-      "deviceSomethingNew",
-      "gaggimateHost",
-      "deviceWritesEnabled",
-    ].map((key) => plain({ key, type: "string", value: "" }));
+    const entries = ["deviceSomethingNew", "gaggimateHost", "deviceWritesEnabled"].map((key) =>
+      plain({ key, type: "string", value: "" }),
+    );
     const grouped = groupEntries("machine", entries);
-    expect(grouped.map(({ group }) => group.id)).toEqual([
-      "connection",
-      "writes",
-      "cleanup",
-      "other",
-    ]);
+    expect(grouped.map(({ group }) => group.id)).toEqual(["connection", "writes", "other"]);
     expect(grouped.at(-1)?.entries.map((entry) => entry.key)).toEqual(["deviceSomethingNew"]);
     // An empty group is left out rather than drawn as a card with nothing in it.
     expect(groupEntries("safety", [])).toEqual([]);

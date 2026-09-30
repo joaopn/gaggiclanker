@@ -12,14 +12,15 @@ import { SYNC_ANCHORS } from "@/pages/SyncPage";
 
 /**
  * Where an anchor on this page used to point, now that its cards live on the
- * Sync page. A bookmark to `/device#storage` lands on the section it meant.
+ * Sync page. A bookmark to `/device#pull` or `#writes` lands on that section; the notes
+ * and storage anchors, whose sections are gone, land on the pull.
  */
 const MOVED_ANCHORS: Record<string, string> = {
   "#sync": SYNC_ANCHORS.pull,
   "#pull": SYNC_ANCHORS.pull,
-  "#notes": SYNC_ANCHORS.notes,
-  "#storage": SYNC_ANCHORS.storage,
-  "#cleanup": SYNC_ANCHORS.storage,
+  "#notes": SYNC_ANCHORS.pull,
+  "#storage": SYNC_ANCHORS.pull,
+  "#cleanup": SYNC_ANCHORS.pull,
   "#writes": SYNC_ANCHORS.writes,
 };
 
@@ -29,8 +30,8 @@ const MOVED_ANCHORS: Record<string, string> = {
  * `/api/device/status` carries the facts — configured, connected, identity.
  * There is no telemetry here: what the boiler is doing right now is on the
  * machine's own display and in its own web UI. Everything this box exchanges
- * with the machine — pulling, sending notes, cleaning up storage, and the audit
- * of what it wrote — is on the Sync page, where a person starts it; this page
+ * with the machine — pulling, and the audit of what it wrote — is on the Sync
+ * page, where a person starts it; this page
  * links there rather than carrying a second copy of any of it.
  */
 export function DevicePage() {
@@ -101,7 +102,7 @@ export function DevicePage() {
             <Fact label="State" value={device.data.connected ? "connected" : "not connected"} />
           </dl>
           <p className="mt-3 text-muted-foreground text-sm">
-            Pulling, sending notes, cleaning up storage and the record of every write are on the{" "}
+            Pulling from the machine and the record of every write are on the{" "}
             <Link className="underline underline-offset-2" to="/sync">
               Sync page
             </Link>

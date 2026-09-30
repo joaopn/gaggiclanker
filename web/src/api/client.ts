@@ -23,9 +23,6 @@ import type {
   ChatThreadWrite,
   ChatToolList,
   ClaudeCliStatus,
-  CleanupPlan,
-  CleanupRunAccepted,
-  CleanupRunsData,
   DeviceStatusData,
   DeviceWritesData,
   DraftCreateBody,
@@ -59,9 +56,7 @@ import type {
   MachineData,
   MachinePatch,
   MachineRow,
-  NotesPushAccepted,
   PasswordData,
-  PendingNotesData,
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
@@ -614,57 +609,6 @@ export async function previewProfileDraft(
 /** Every write this box has asked the machine to make, refusals included. */
 export async function getDeviceWrites(limit = 100): Promise<DeviceWritesData> {
   return fetchApi<DeviceWritesData>(`/device/writes${queryString({ limit })}`);
-}
-
-/**
- * What a cleanup would delete from the machine right now.
- *
- * A dry run: it reads the archive and the last identity frame and writes
- * nothing, which is what makes it safe to fetch on every render of the Device
- * page.
- */
-export async function getCleanupPlan(): Promise<CleanupPlan> {
-  return fetchApi<CleanupPlan>("/device/cleanup/plan");
-}
-
-/**
- * Start a cleanup of the plan a person confirmed. Resolves as soon as it is
- * **queued**, not when it is done.
- *
- * `shotIds` are the planned shots the preview showed. The server compares them
- * with a fresh plan and refuses with a 409 if they differ, so what runs is what
- * was approved. 202 and a background task, like running a review: a hundred
- * shots at two deletes a second is most of a minute. The page follows the ledger.
- */
-export async function runCleanup(shotIds: number[]): Promise<CleanupRunAccepted> {
-  return fetchApi<CleanupRunAccepted>("/device/cleanup/run", {
-    method: "POST",
-    body: JSON.stringify({ shot_ids: shotIds }),
-  });
-}
-
-export async function getCleanupRuns(limit = 20): Promise<CleanupRunsData> {
-  return fetchApi<CleanupRunsData>(`/device/cleanup/runs${queryString({ limit })}`);
-}
-
-/** The judgements the machine's own notes cards do not have yet. */
-export async function getPendingNotes(): Promise<PendingNotesData> {
-  return fetchApi<PendingNotesData>("/device/notes/pending");
-}
-
-/**
- * Send the judgements a person selected to the machine's notes cards. 202, like
- * the cleanup run.
- *
- * `shotIds` are the ticked shots, at least one; there is no "everything
- * pending" form. Every one must still be pending when the request lands, or the
- * server refuses it with a 409 and sends nothing.
- */
-export async function pushPendingNotes(shotIds: number[]): Promise<NotesPushAccepted> {
-  return fetchApi<NotesPushAccepted>("/device/notes/push", {
-    method: "POST",
-    body: JSON.stringify({ shot_ids: shotIds }),
-  });
 }
 
 export async function getSyncStatus(): Promise<SyncStatusData> {

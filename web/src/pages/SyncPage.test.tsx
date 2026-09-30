@@ -9,22 +9,11 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const {
-  getDeviceStatus,
-  getSyncStatus,
-  runSync,
-  getDeviceWrites,
-  getCleanupPlan,
-  getCleanupRuns,
-  getPendingNotes,
-} = vi.hoisted(() => ({
+const { getDeviceStatus, getSyncStatus, runSync, getDeviceWrites } = vi.hoisted(() => ({
   getDeviceStatus: vi.fn(),
   getSyncStatus: vi.fn(),
   runSync: vi.fn(),
   getDeviceWrites: vi.fn(),
-  getCleanupPlan: vi.fn(),
-  getCleanupRuns: vi.fn(),
-  getPendingNotes: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -32,9 +21,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getSyncStatus,
   runSync,
   getDeviceWrites,
-  getCleanupPlan,
-  getCleanupRuns,
-  getPendingNotes,
 }));
 
 function deviceStatus(overrides: Partial<DeviceStatusData> = {}): DeviceStatusData {
@@ -95,91 +81,41 @@ function syncStatus(overrides: Partial<SyncStatusData> = {}): SyncStatusData {
   };
 }
 
-function cleanupPlan(writesEnabled: boolean) {
-  return {
-    policy: {
-      mode: "keep_newest",
-      keep_newest: 10,
-      min_free_kb: 2048,
-      writes_enabled: writesEnabled,
-    },
-    on_device_count: 12,
-    free_bytes: 262_144,
-    free_source: "spiffs",
-    planned: [
-      {
-        shot_id: 1,
-        device_id: "000001",
-        started_at: "2026-03-01T08:00:00.000Z",
-        raw_bytes: 4096,
-        profile_name: "9 Bar",
-        reason: "Older than the newest 10 shots the policy keeps on the machine.",
-      },
-    ],
-    skipped: [],
-    blocked: null,
-  };
-}
-
-function pendingNotes(writesEnabled: boolean) {
-  return {
-    writes_enabled: writesEnabled,
-    fields: ["rating"],
-    items: [
-      {
-        shot_id: 7,
-        device_id: "000007",
-        started_at: "2026-03-02T08:00:00.000Z",
-        profile_name: "9 Bar",
-        rating: 5,
-        balance: null,
-        notes: "",
-        updated_at: "2026-03-02T09:00:00.000Z",
-      },
-    ],
-  };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   getDeviceStatus.mockResolvedValue(deviceStatus());
   getSyncStatus.mockResolvedValue(syncStatus());
   runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
   getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
-  // Writes off by default, as shipped: every write action on the page has to
-  // say so rather than only disabling a button.
-  getCleanupPlan.mockResolvedValue(cleanupPlan(false));
-  getCleanupRuns.mockResolvedValue({ items: [] });
-  getPendingNotes.mockResolvedValue(pendingNotes(false));
 });
 
 describe("SyncPage", () => {
-  it("holds the four exchanges with the machine, in order, each with its anchor", async () => {
+  it("holds the pull and the write audit, in order, each with its anchor", async () => {
     const { container } = renderWithQueryClient(<SyncPage />);
 
     await screen.findByText(/120 shots/);
     const headings = screen
-      .getAllByText(
-        /^(Pull from the machine|Send notes to the machine|Clean up the machine's storage|Recent writes)$/,
-      )
+      .getAllByText(/^(Pull from the machine|Recent writes)$/)
       .map((node) => node.textContent);
-    expect(headings).toEqual([
-      "Pull from the machine",
-      "Send notes to the machine",
-      "Clean up the machine's storage",
-      "Recent writes",
-    ]);
-    for (const anchor of ["pull", "notes", "storage", "writes"]) {
+    expect(headings).toEqual(["Pull from the machine", "Recent writes"]);
+    for (const anchor of ["pull", "writes"]) {
       expect(container.querySelector(`#${anchor}`)).not.toBeNull();
     }
   });
 
-  it("states the rule: profiles from the Profiles page, everything else from here", async () => {
+  it("offers no way to send notes to the machine or to delete its shots", async () => {
+    renderWithQueryClient(<SyncPage />);
+
+    await screen.findByText(/120 shots/);
+    expect(screen.queryByText(/Send notes/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Clean up/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete/ })).not.toBeInTheDocument();
+  });
+
+  it("states the rule: the only thing written to the machine is a profile", async () => {
     renderWithQueryClient(<SyncPage />);
     expect(
-      await screen.findByText(
-        /Everything else this box writes to or deletes from the machine starts here/,
-      ),
+      await screen.findByText(/The only thing this box ever writes to it is a profile/),
     ).toBeInTheDocument();
   });
 
@@ -230,40 +166,6 @@ describe("SyncPage", () => {
     await waitFor(() => expect(runSync).toHaveBeenCalledWith("all"));
   });
 
-  it("with writes off, both write actions say so and cannot start", async () => {
-    renderWithQueryClient(<SyncPage />);
-
-    expect(await screen.findByTestId("notes-blocked")).toHaveTextContent("Device writes enabled");
-    expect(await screen.findByTestId("cleanup-blocked")).toHaveTextContent("Device writes enabled");
-    expect(screen.getByRole("button", { name: /Delete 1 shot…/ })).toBeDisabled();
-    expect(screen.getByText("writes off")).toBeInTheDocument();
-  });
-
-  it("with writes on but the machine offline, both write actions name the connection", async () => {
-    getDeviceStatus.mockResolvedValue(deviceStatus({ connected: false }));
-    getCleanupPlan.mockResolvedValue(cleanupPlan(true));
-    getPendingNotes.mockResolvedValue(pendingNotes(true));
-    renderWithQueryClient(<SyncPage />);
-
-    await waitFor(() =>
-      expect(screen.getByTestId("notes-blocked")).toHaveTextContent("not connected"),
-    );
-    expect(screen.getByTestId("cleanup-blocked")).toHaveTextContent("not connected");
-    expect(screen.getByRole("button", { name: /Delete 1 shot…/ })).toBeDisabled();
-  });
-
-  it("with writes on and the machine connected, the write actions can start", async () => {
-    getCleanupPlan.mockResolvedValue(cleanupPlan(true));
-    getPendingNotes.mockResolvedValue(pendingNotes(true));
-    renderWithQueryClient(<SyncPage />);
-
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Delete 1 shot…/ })).toBeEnabled(),
-    );
-    expect(screen.queryByTestId("notes-blocked")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("cleanup-blocked")).not.toBeInTheDocument();
-  });
-
   it("says what is missing when no machine is configured", async () => {
     getDeviceStatus.mockResolvedValue(
       deviceStatus({ configured: false, connected: false, host: null, identity: null }),
@@ -271,15 +173,13 @@ describe("SyncPage", () => {
     renderWithQueryClient(<SyncPage />);
 
     expect(await screen.findByText("No machine is configured.")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByTestId("notes-blocked")).toHaveTextContent("No machine is configured"),
-    );
   });
 
   it("lists every write, refusals included, and says whether writes are on", async () => {
     // The refused rows are the ones worth having: "nothing tried to write" and
     // "something tried and was stopped" look identical in an audit that only
-    // records what worked.
+    // records what worked. A `notes_save` row is from before the notes send was
+    // removed and still reads as history.
     getDeviceWrites.mockResolvedValue({
       enabled: false,
       items: [

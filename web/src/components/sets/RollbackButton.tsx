@@ -11,8 +11,8 @@ import { attempt } from "@/lib/mutations";
  * who expected it to *edit* the Set back would be surprised by a v6 appearing.
  * It also says the thing nobody should have to guess — nothing is sent to the
  * machine — because the restored version may well name a different profile, and
- * the one rule this app never bends is that the machine is written only from
- * the Sync page, by a person, on purpose.
+ * the one rule this app never bends is that the only thing it writes to the
+ * machine is a profile, pushed by a person, on purpose.
  *
  * An inline strip rather than a dialog: it is two sentences and two buttons,
  * and it is rendered always and toggled with `hidden` so `aria-controls`

@@ -71,8 +71,8 @@ function settingsFixture(): SettingsMap {
       source: "default",
       description: "Hold the WebSocket so a pull can reach the machine.",
     },
-    deviceCleanupKeepNewest: {
-      key: "deviceCleanupKeepNewest",
+    deviceSomethingNew: {
+      key: "deviceSomethingNew",
       type: "int",
       secret: false,
       readonly: false,
@@ -80,7 +80,7 @@ function settingsFixture(): SettingsMap {
       default: 50,
       override: null,
       source: "default",
-      description: "How many shots to leave on the machine.",
+      description: "A machine setting no group names yet.",
     },
     llmProvider: {
       key: "llmProvider",
@@ -192,7 +192,7 @@ describe("SettingsPage", () => {
     expect(screen.queryByLabelText("Llm api key")).not.toBeInTheDocument();
     // Headings with nothing in them are left out: the fixture has no writes keys.
     expect(screen.getByRole("button", { name: "Connection" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Storage cleanup" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Other" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Writes" })).not.toBeInTheDocument();
   });
 
@@ -202,9 +202,9 @@ describe("SettingsPage", () => {
     const host = await screen.findByLabelText("Gaggimate host");
 
     const connection = screen.getByRole("button", { name: "Connection" });
-    const cleanup = screen.getByRole("button", { name: "Storage cleanup" });
+    const other = screen.getByRole("button", { name: "Other" });
     expect(connection).toHaveAttribute("aria-expanded", "false");
-    expect(cleanup).toHaveAttribute("aria-expanded", "false");
+    expect(other).toHaveAttribute("aria-expanded", "false");
     // Closed, not unmounted: the field keeps its value for the save.
     expect(host).not.toBeVisible();
     expect(host).toHaveValue("10.0.0.5");
@@ -215,15 +215,15 @@ describe("SettingsPage", () => {
       document.getElementById(String(connection.getAttribute("aria-controls"))),
     ).toContainElement(host);
     expect(host).toBeVisible();
-    expect(cleanup).toHaveAttribute("aria-expanded", "false");
+    expect(other).toHaveAttribute("aria-expanded", "false");
 
     await user.click(connection);
     expect(host).not.toBeVisible();
   });
 
   it("opens the card a link names", async () => {
-    renderAt("/settings/machine#cleanup");
-    expect(await screen.findByLabelText("Device cleanup keep newest")).toBeVisible();
+    renderAt("/settings/machine#other");
+    expect(await screen.findByLabelText("Device something new")).toBeVisible();
     expect(screen.getByLabelText("Gaggimate host")).not.toBeVisible();
   });
 
@@ -232,7 +232,7 @@ describe("SettingsPage", () => {
 
     const host = await screen.findByLabelText("Gaggimate host");
     expect(host).toHaveValue("10.0.0.5");
-    expect(screen.getByLabelText("Device cleanup keep newest")).toHaveValue("50");
+    expect(screen.getByLabelText("Device something new")).toHaveValue("50");
     // A bool gets a select, not a text box.
     expect(screen.getByLabelText("Device sync enabled")).toHaveAttribute("role", "combobox");
   });
@@ -303,17 +303,17 @@ describe("SettingsPage", () => {
   it("refuses to save a non-integer, and opens the closed card that holds it", async () => {
     const user = setupUser();
     renderAt("/settings/machine");
-    const cleanup = await screen.findByRole("button", { name: "Storage cleanup" });
+    const other = await screen.findByRole("button", { name: "Other" });
 
-    await user.click(cleanup);
-    const keep = screen.getByLabelText("Device cleanup keep newest");
+    await user.click(other);
+    const keep = screen.getByLabelText("Device something new");
     await user.clear(keep);
     await user.type(keep, "fifty");
-    await user.click(cleanup);
+    await user.click(other);
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText("expected an integer")).toBeVisible();
-    expect(cleanup).toHaveAttribute("aria-expanded", "true");
+    expect(other).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Connection" })).toHaveAttribute(
       "aria-expanded",
       "false",

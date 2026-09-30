@@ -7,9 +7,9 @@ import { formatTime } from "@/lib/shots";
 /**
  * Recent writes: everything this box has asked the machine to change.
  *
- * On the Sync page because two of the three kinds of write are caused there,
- * and the row a send or a cleanup leaves belongs next to the button that made
- * it. Profile pushes from the Profiles page land in the same list.
+ * Profile pushes and rollbacks from the Profiles page land here. Rows of the two
+ * kinds this box used to write (`notes_save`, `shot_delete`) stay in the list as
+ * history: the kind is rendered as the plain string the server stored.
  *
  * The refusals are the rows worth having. "Nothing tried to write" and
  * "something tried and was stopped" look identical in an audit that only
@@ -24,7 +24,7 @@ export function DeviceWritesSection() {
   return (
     <SectionCard
       title="Recent writes"
-      description="Every write attempt, refused ones included: profiles pushed from the Profiles page, and the notes sends and shot deletions started here. Device settings are never written."
+      description="Every write attempt, refused ones included. Profiles are the only thing this box writes to the machine; device settings and shots never are."
       actions={
         enabled ? (
           <Badge variant="secondary">writes enabled</Badge>

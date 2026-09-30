@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 /**
- * The inline "are you sure" under a Sync page action that writes to the machine.
+ * The inline "are you sure" under an action that cannot be undone.
  *
  * Inline rather than a dialog: the question sits directly under the list it is
- * about, so the shots being deleted or sent stay on screen while somebody
+ * about, so what is about to change stays on screen while somebody
  * decides, and nothing positioned or portalled has to open for a test to drive
  * it. Focus is left where it is on purpose — putting it on the confirm button
  * would make a stray Enter the decision.

@@ -696,8 +696,8 @@ function Cell({ shot, id }: { shot: ShotListRow; id: ShotColumnId }) {
  * rating when this box holds no verdict; clicking that star has to record the
  * value, not clear a verdict that does not exist — and "clear" on a shot with
  * no judgement would write an empty one, which is a row that claims somebody
- * had an opinion, ages past the machine's notes card, and would be pushed back
- * over what was typed at the machine.
+ * had an opinion, and ages past the machine's notes card, which would then read
+ * as older than a verdict nobody gave.
  */
 function RatingCell({ shot }: { shot: ShotListRow }) {
   const patch = usePatchJudgement(shot.id);

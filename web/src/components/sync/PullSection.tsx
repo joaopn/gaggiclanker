@@ -5,7 +5,7 @@ import { useSyncStatus } from "@/hooks/useArchive";
 import { formatTime } from "@/lib/shots";
 
 /**
- * Pull from the machine: the one exchange on the Sync page that only reads.
+ * Pull from the machine: the shots, profiles and notes the archive reads from it.
  *
  * The same `PullButton` the shots page carries, so the two cannot disagree about
  * whether a pull can start or what the last one did, with the ledger under it:

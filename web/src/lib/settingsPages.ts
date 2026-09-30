@@ -50,7 +50,7 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     label: "Machine access",
     icon: Gauge,
     description:
-      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default. Profiles are pushed from the Profiles page; sending notes and cleaning up storage happen only on the Sync page, when you confirm them.",
+      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default. The only thing it ever writes to the machine is a profile, pushed from the Profiles page.",
   },
   {
     id: "llm",

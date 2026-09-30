@@ -265,7 +265,7 @@ function BeanCard({
 /**
  * The inline "are you sure" under a bean card.
  *
- * Inline rather than a dialog, like the Sync page's confirmations: the coffee
+ * Inline rather than a dialog, like the other inline confirmations: the coffee
  * stays on screen while somebody decides, and nothing positioned has to open
  * for a test to drive it. Focus stays on the trash button, so a stray Enter
  * toggles the question rather than answering it.

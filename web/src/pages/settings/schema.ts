@@ -146,7 +146,7 @@ export function toPatch(settings: SettingsMap, values: SettingsFormValues): Sett
   return patch;
 }
 
-/** A human label for a registry key: `deviceCleanupKeepNewest` -> `Device cleanup keep newest`. */
+/** A human label for a registry key: `deviceSyncEnabled` -> `Device sync enabled`. */
 export function humanizeKey(key: string): string {
   const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -172,18 +172,9 @@ export function sectionFor(key: string): RegistryPageId {
   // written, not about how the machine is reached, and burying seven bounds in
   // the connection settings would hide them.
   if (key.startsWith("profilePolicy")) return "safety";
-  // `notesWriteback*` is named after what it writes rather than after the
-  // machine, but it is a device write behind the same master switch — so it
-  // belongs beside `deviceWritesEnabled`, where a person turning writes on
-  // will find it.
   // `shots*` is what happens to a shot as it arrives from the machine (or an
   // export of it), which is where somebody deciding how pulls behave looks.
-  if (
-    key.startsWith("device") ||
-    key.startsWith("gaggimate") ||
-    key.startsWith("notesWriteback") ||
-    key.startsWith("shots")
-  )
+  if (key.startsWith("device") || key.startsWith("gaggimate") || key.startsWith("shots"))
     return "machine";
   if (key.startsWith("auth")) return "auth";
   return "llm";
@@ -217,15 +208,9 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
     {
       id: "writes",
       title: "Writes",
-      description: "What this box may change on the machine, and what a notes send writes.",
-      keys: ["deviceWritesEnabled", "notesWritebackFields"],
-    },
-    {
-      id: "cleanup",
-      title: "Storage cleanup",
       description:
-        "What the Sync page proposes when the machine's storage runs short. Nothing is deleted until a person confirms it there.",
-      keys: ["deviceCleanupMode", "deviceCleanupKeepNewest", "deviceCleanupMinFreeKb"],
+        "Whether this box may write to the machine. Profiles are the only thing it writes.",
+      keys: ["deviceWritesEnabled"],
     },
   ],
   safety: [
