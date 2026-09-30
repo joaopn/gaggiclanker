@@ -393,6 +393,20 @@ class FakeDevice:
         self.shots[shot_id] = shot
         return shot
 
+    def reset_history(self) -> None:
+        """Forget every shot, as a machine whose settings were erased does.
+
+        The firmware's shot counter (`hi`) lives in NVS, not with the files, so
+        a reflash, a factory reset or a replacement board starts numbering from
+        the beginning again while the clock keeps moving forward: the next
+        shots reuse numbers an archive already holds, with later start times.
+        A test calls this and then :meth:`add_shot` with the numbers and epochs
+        it wants the "new life" to have.
+        """
+        self.shots.clear()
+        self.hidden_from_index.clear()
+        self.missing_files.clear()
+
     def index(self) -> ShotIndex:
         """The index as the fake would encode it, newest id last."""
         entries = [
