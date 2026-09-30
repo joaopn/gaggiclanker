@@ -1,0 +1,83 @@
+{
+  "label": "Amigo Alturas Bloom [AI]",
+  "type": "pro",
+  "description": "CONSTRUCTED for tests: matches the phases of the named real shot; the profile that shot ran no longer exists.",
+  "temperature": 93,
+  "utility": false,
+  "phases": [
+    {
+      "name": "Pre-infusion",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 7.0,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "flow",
+        "pressure": 3,
+        "flow": 2
+      },
+      "targets": []
+    },
+    {
+      "name": "Bloom",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 10.0,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": false
+      },
+      "pump": 0,
+      "targets": []
+    },
+    {
+      "name": "Ramp",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 5.0,
+      "temperature": 0,
+      "transition": {
+        "type": "ease-in-out",
+        "duration": 5.0,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 8,
+        "flow": 0
+      },
+      "targets": []
+    },
+    {
+      "name": "Extraction",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 24.5,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 8,
+        "flow": 0
+      },
+      "targets": [
+        {
+          "type": "volumetric",
+          "operator": "gte",
+          "value": 36
+        }
+      ]
+    }
+  ]
+}

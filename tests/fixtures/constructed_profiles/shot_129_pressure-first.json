@@ -1,0 +1,87 @@
+{
+  "label": "Gratus 16:32 trad",
+  "type": "pro",
+  "description": "CONSTRUCTED for tests: matches the phases of the exported shot 129; the profile that shot ran no longer exists.",
+  "temperature": 93,
+  "utility": false,
+  "phases": [
+    {
+      "name": "fill",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 4.25,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 1.1,
+        "flow": 3
+      },
+      "targets": []
+    },
+    {
+      "name": "soak",
+      "phase": "preinfusion",
+      "valve": 1,
+      "duration": 9.75,
+      "temperature": 0,
+      "transition": {
+        "type": "instant",
+        "duration": 0,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 1.1,
+        "flow": 3
+      },
+      "targets": []
+    },
+    {
+      "name": "ramp",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 6.0,
+      "temperature": 0,
+      "transition": {
+        "type": "ease-in-out",
+        "duration": 6,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 9,
+        "flow": 3
+      },
+      "targets": []
+    },
+    {
+      "name": "decline 9-4",
+      "phase": "brew",
+      "valve": 1,
+      "duration": 34.0,
+      "temperature": 0,
+      "transition": {
+        "type": "linear",
+        "duration": 20,
+        "adaptive": false
+      },
+      "pump": {
+        "target": "pressure",
+        "pressure": 4,
+        "flow": 3
+      },
+      "targets": [
+        {
+          "type": "volumetric",
+          "operator": "gte",
+          "value": 36
+        }
+      ]
+    }
+  ]
+}
