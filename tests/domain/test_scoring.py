@@ -25,16 +25,20 @@ def _clean_shot(
     Two phases by default, the first steered by pressure and the second by flow,
     so that both adherences apply and are graded (both at zero error).
     """
+    # Each phase's limit sits away from the measurement: a pressure phase's flow
+    # limit (3) is above the pump flow (2), a flow phase's pressure limit (12) is
+    # above the pressure (9). A sample the limit held is not graded at all.
+    steered = controls or ("pressure", "pressure")
     samples: list[dict[str, Any]] = [
         {
             "t": i * 250,
             "tt": 93.0,
             "ct": 93.0,
-            "tp": 9.0,
+            "tp": 12.0 if steered[i // 12] == "flow" else 9.0,
             "cp": 9.0,
             "pf": 2.0,
             "fl": 2.0,
-            "tf": 2.0,
+            "tf": 2.0 if steered[i // 12] == "flow" else 3.0,
             "v": i * 1.5,
         }
         for i in range(24)
@@ -235,12 +239,12 @@ def test_score_on_the_maintainers_real_shot_is_stable() -> None:
     slog = parse_slog(encode_slog(slog_from_export("shot-129.json")), "000129")
     controls = constructed_controls("shot_129")
     score = execution_score(transform_shot(slog, "per_phase", phase_controls=controls))
-    assert score.score == 9.1
+    assert score.score == 9.3
     assert score.confidence == "high"
     # The erosion penalty is the fixed bug firing on real data.
     assert score.components["resistance_erosion"] == -0.7
     assert "flow_adherence" not in score.components
-    assert score.as_dict()["score"] == 9.1  # 7.7 before, with a 1.32 point flow penalty
+    assert score.as_dict()["score"] == 9.3  # 7.7 before the flow penalty went, 9.1 before limits
 
 
 def test_a_flow_that_does_not_apply_neither_costs_nor_lowers_confidence() -> None:

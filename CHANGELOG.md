@@ -27,6 +27,19 @@ first (`POST /api/backup`), because there is no down-migration.
   shot are never graded, which also stops the largest pressure overshoot from
   reporting the pressure falling after the shot as an overshoot. Each phase in
   the Phases line and the shot page carries only the adherence it is graded on.
+- **A moment the limit was in charge is not graded either.** The machine drives
+  the pump by the lower of what the pressure and the flow ask for, so a pressure
+  phase whose pump flow sits at its flow limit (or a flow phase whose pressure
+  sits at its pressure limit) shows the limit working, not a missed target, and
+  is left out of the adherence. The pump flow the machine logs lags the pump by a
+  third of a second, so the first samples of a climb to a limit count too. A phase
+  needs three graded samples for an adherence of its own, as a whole shot does. On
+  the constructed profiles for the fixture shots this moves the pressure
+  adherence of one shot from 2.32 to 2.20, another from 2.25 to 2.04, a third
+  from 3.20 to 3.10 and the export's from 0.86 to 0.47 (FAIR to GOOD). A phase
+  the limit held throughout simply has no adherence of its own; only a shot with
+  fewer than three graded samples in all is "not graded", which drops that
+  penalty and lowers the score's confidence to medium.
 - **Scores of pressure-profile shots rise by up to 1.4 points.** The flow
   penalty was fake; the pressure penalty keeps what it measured, over the right
   samples. A profile with no flow-steered phase has nothing to grade for flow,

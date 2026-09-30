@@ -104,13 +104,23 @@ adherence fields no longer equal upstream's on those fixtures.
    phases, compared with the **pump flow** `fl` (the firmware's flow mode turns
    the target into a pump duty cycle through the pump's flow model and never
    reads the puck flow), never a power phase, never the tail after the last
-   target, transition ramps included. No profile, a sample with no phase number
+   target, transition ramps included, and never a sample the phase's *limit*
+   was in charge of (the firmware drives the pump by `min(flowOutput,
+   pressureOutput)` whenever both setpoints are above zero,
+   `PressureController.cpp` `update`: a pressure-steered sample whose pump flow
+   reaches its logged flow limit less 0.15 ml/s, as logged or de-filtered (the
+   logged `fl` is low-passed at 0.5 Hz, tau about 0.32 s, `.cpp` line 177, and
+   lags the pump), or a flow-steered one whose pressure reaches its logged
+   pressure limit less `max(0.2, 10 % of the limit)` bar (the controller's dead
+   band coefficient 0.1); a limit of 0 or below is none; `limit_holds` in
+   `diagnostics.py`). A phase's own adherence needs 3 graded samples, as the
+   whole shot's does. No profile, a sample with no phase number
    or a phase number the profile lacks: nothing is graded (the block is `None`).
    Each adherence carries a `pressure_grading` / `flow_grading` of `graded`,
    `not_applicable` (the profile has no phase of that kind) or `not_graded`
    (should have a number and has none); per-phase diagnostics carry only the
    adherence of their own target. The formulas, band edges and labels are
-   untouched, and `DERIVATION_VERSION` 3 brings stored shots along. The
+   untouched, and `DERIVATION_VERSION` 4 brings stored shots along. The
    channeling block's flow-versus-target residual (`_residual_std_vs_target`)
    still pairs `pf` with `tf` and was not changed.
 

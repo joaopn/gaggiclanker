@@ -183,7 +183,7 @@ async def test_an_imported_shot_linked_to_a_profile_by_label_is_derived_again(
     score = await db.fetch_value(
         "SELECT execution_score FROM shots WHERE id = ?", (shot_item.shot_id,)
     )
-    assert score == pytest.approx(9.1)
+    assert score == pytest.approx(9.3)
 
 
 async def test_an_imported_shot_whose_profile_is_already_stored_is_derived_with_it(

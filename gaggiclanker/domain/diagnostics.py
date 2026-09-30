@@ -225,8 +225,9 @@ class WeightDiagnostics(TypedDict):
 #: * ``not_applicable``: the profile has no phase that steers by it (a pressure
 #:   profile has no flow to follow), so there is nothing to grade and nothing
 #:   missing;
-#: * ``not_graded``: it should have a number and does not (too few samples, or
-#:   the shot did not record the measurement).
+#: * ``not_graded``: it should have a number and does not (too few samples, in
+#:   all, because the limit held nearly every one, or the shot did not record the
+#:   measurement).
 #:
 #: The score reads the difference: only ``not_graded`` lowers its confidence.
 Grading = Literal["graded", "not_applicable", "not_graded"]
@@ -1563,8 +1564,102 @@ def _steering(
         if phase is None or phase != int(phase) or not 0 <= int(phase) < len(controls):
             return None
         control = controls[int(phase)]
-        per_sample.append(control if i <= last_target and control != "power" else None)
+        previous = samples[i - 1] if i > 0 else None
+        graded = (
+            i <= last_target and control != "power" and not limit_holds(sample, control, previous)
+        )
+        per_sample.append(control if graded else None)
     return _Steering("pressure" in controls, "flow" in controls, per_sample)
+
+
+#: The pump flow `fl` the log carries is the firmware's ``exportPumpFlowRate``:
+#: the flow model of the duty the controller chose, through a first-order low
+#: pass at ``_filterEstimatorFrequency / 2`` = 0.5 Hz (``PressureController.cpp``
+#: line 177, the frequency in ``PressureController.h``), so its time constant is
+#: 1 / (2π · 0.5 Hz) ≈ 0.32 s. It therefore *lags* the pump: for the first
+#: sample or two after a phase starts, or after the limit's ask takes over, it is
+#: still climbing although the limit is already in charge.
+_PUMP_FLOW_FILTER_TAU_S = 1.0 / (2.0 * math.pi * 0.5)
+
+#: How far a measurement may sit short of a limit and still be the limit's.
+#: Flow: 0.15 ml/s, the top of the ``WITHIN_TOLERANCE`` flow band. Pressure: the
+#: larger of 0.2 bar and 10 % of the limit: the controller's own dead band is
+#: ``_deadbandCoefficient`` = 0.1 times the setpoint (``PressureController.h``,
+#: used at ``.cpp`` line 271), and its integral is reset whenever the flow ask
+#: wins, so a flow phase held at its pressure limit settles below it (by 0.6 to
+#: 0.9 bar under a 6 to 9 bar limit in a simplified simulation of the controller,
+#: not a measurement on a machine).
+_FLOW_LIMIT_TOLERANCE_ML_S = 0.15
+_PRESSURE_LIMIT_TOLERANCE_BAR = 0.2
+_PRESSURE_LIMIT_TOLERANCE_FRACTION = 0.1
+
+#: The logs carry two decimals of flow and one of pressure, so a value at the
+#: exact edge of a tolerance is held; float subtraction (`8.3 - 0.83`) must not
+#: decide it.
+_EDGE_EPSILON = 1e-9
+
+
+def _defiltered_pump_flow(sample: SampleDict, previous: SampleDict | None) -> float | None:
+    """The flow the pump model was asked for, undoing the log's low pass.
+
+    The logged ``fl[i] = a · fl[i-1] + (1 - a) · q`` for the model flow ``q``
+    held over the interval between the samples, with ``a = exp(-dt / tau)``;
+    so ``q = (fl[i] - a · fl[i-1]) / (1 - a)``. ``dt`` is the samples' own
+    time difference, not the nominal interval. ``None`` when either sample lacks
+    the pump flow or the time.
+    """
+    if previous is None or "fl" not in sample or "fl" not in previous:
+        return None
+    if "t" not in sample or "t" not in previous:
+        return None
+    dt = (sample["t"] - previous["t"]) / 1000.0
+    if dt <= 0:
+        return None
+    a = math.exp(-dt / _PUMP_FLOW_FILTER_TAU_S)
+    return (sample["fl"] - a * previous["fl"]) / (1.0 - a)
+
+
+def limit_holds(
+    sample: SampleDict, control: PhaseControl, previous: SampleDict | None = None
+) -> bool:
+    """Whether the phase's *limit*, not its target, was in charge of this sample.
+
+    The firmware drives the pump by ``min(flowOutput, pressureOutput)`` whenever
+    both the pressure and the flow setpoints are above zero, in either mode
+    (``PressureController::update``): the flow limit of a pressure phase caps
+    the duty the pressure loop asks for, and the pressure limit of a flow phase
+    caps the flow loop's. A sample where the limit is the lower ask says how
+    the limit was held, not how the target was followed, so it is not graded.
+    A limit of 0 (or below: the firmware tests ``> 0``; a profile's ``-1`` is
+    resolved to the value at phase entry before it is logged) is no limit.
+
+    The limit's own measured value sits at the limit, from below or past it:
+
+    * pressure phase: ``tf > 0`` and the pump flow reaches ``tf`` less 0.15 ml/s,
+      either as logged (``fl``) or de-filtered (see
+      :func:`_defiltered_pump_flow`: the logged value lags the pump, so the
+      first samples of a climb to the limit read low although the limit already
+      holds). A held flow limit is the feed-forward duty for ``tf``, and a
+      pressure-held sample has the flow well below it;
+    * flow phase: ``tp > 0`` and the pressure ``cp`` reaches ``tp`` less
+      ``max(0.2, 0.1 · tp)`` bar (the controller's dead band, see above).
+
+    Both are one-sided: reaching or exceeding the limit is holding it, and a
+    value on the edge of the tolerance counts. A sample that does not record the
+    measurement is not held (nothing to compare).
+    """
+    if control == "pressure":
+        target, limit = sample.get("tp", 0.0), sample.get("tf", 0.0)
+        floor = limit - _FLOW_LIMIT_TOLERANCE_ML_S - _EDGE_EPSILON
+        readings = [sample.get("fl"), _defiltered_pump_flow(sample, previous)]
+    elif control == "flow":
+        target, limit = sample.get("tf", 0.0), sample.get("tp", 0.0)
+        tolerance = max(_PRESSURE_LIMIT_TOLERANCE_BAR, _PRESSURE_LIMIT_TOLERANCE_FRACTION * limit)
+        floor = limit - tolerance - _EDGE_EPSILON
+        readings = [sample.get("cp")]
+    else:
+        return False
+    return limit > 0 and target > 0 and any(r is not None and r >= floor for r in readings)
 
 
 def _adherence_of(
@@ -1806,7 +1901,8 @@ def _compute_phase_diagnostics(
         "avg_flow_ml_s": avg_f,
         "annotations": annotations,
     }
-    if f_pairs:
+    # As for the whole shot (`_adherence_of`): fewer samples than this is not a verdict.
+    if len(f_pairs) >= _MIN_ADHERENCE_SAMPLES:
         result["flow_rmse_ml_s"] = _round2(
             _compute_rmse([a for a, _ in f_pairs], [t for _, t in f_pairs])
         )
@@ -1816,7 +1912,7 @@ def _compute_phase_diagnostics(
         return result
 
     result["avg_pressure_bar"] = avg_p
-    if p_pairs:
+    if len(p_pairs) >= _MIN_ADHERENCE_SAMPLES:
         p_rmse = _round2(_compute_rmse([a for a, _ in p_pairs], [t for _, t in p_pairs]))
         result["pressure_rmse_bar"] = p_rmse
         annotations["pressure_adherence"] = _annotate_ascending(p_rmse, _PROFILE_ADHERENCE_BANDS)

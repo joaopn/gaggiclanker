@@ -139,7 +139,7 @@ def test_diagnostics_of_an_imported_shot_equal_those_of_the_binary() -> None:
     controls = constructed_controls("shot_129")
     shot = transform_shot(slog, "per_phase", phase_controls=controls)
     assert shot == transform_shot(reparsed, "per_phase", phase_controls=controls)
-    assert execution_score(shot).score == pytest.approx(9.1)
+    assert execution_score(shot).score == pytest.approx(9.3)
 
 
 def test_every_exported_sample_survives_the_rebuild() -> None:

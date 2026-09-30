@@ -8,15 +8,19 @@ from "not graded".
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from gaggiclanker.domain.diagnostics import (
+    _PUMP_FLOW_FILTER_TAU_S,
     ProfileComplianceMetrics,
+    _steering,
     compute_shot_diagnostics,
     compute_summary_diagnostics,
+    limit_holds,
     transform_shot,
 )
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
@@ -79,13 +83,15 @@ def test_a_profile_that_cannot_be_read_says_nothing(profile: Any) -> None:
 #: Per shot and variant of the constructed profile: the pressure and flow
 #: adherence (`None`: not applicable). Measured on the shots as they were, and
 #: worked out here by hand only in the sense that the flow ones are tiny: the
-#: pump did follow its flow target where one was steering.
+#: pump did follow its flow target where one was steering. The pressure-first
+#: figures leave out the samples the flow limit held (26, 28 and 16 of them in
+#: the first phase); graded with them they were 2.32, 2.25 and 3.2.
 EXPECTED = {
-    ("shot_196", "pressure-first"): (2.32, None),
+    ("shot_196", "pressure-first"): (2.2, None),
     ("shot_196", "flow-first"): (2.21, 0.08),
-    ("shot_204", "pressure-first"): (2.25, None),
+    ("shot_204", "pressure-first"): (2.04, None),
     ("shot_204", "flow-first"): (2.03, 0.03),
-    ("shot_222", "pressure-first"): (3.2, None),
+    ("shot_222", "pressure-first"): (3.1, None),
     ("shot_222", "flow-first"): (3.11, 0.1),
 }
 
@@ -356,3 +362,230 @@ def test_the_summary_grades_the_brew_window_on_the_same_rule() -> None:
     assert early is not None
     assert early["flow_rmse_ml_s"] is None
     assert early["flow_grading"] == "not_graded"
+
+
+# ── samples the phase's limit held ───────────────────────────────────
+
+
+def _limit_samples(control: PhaseControl, measured: float, limit: float, count: int = 6) -> Slog:
+    """One phase of ``count`` samples whose target is 1 off its measurement.
+
+    Pressure phase: target 9 bar, pressure 8, flow limit ``limit`` ml/s, pump
+    flow ``measured``. Flow phase: target 2 ml/s, pump flow 1, pressure limit
+    ``limit`` bar, pressure ``measured``.
+    """
+    if control == "pressure":
+        row = {"cp": 8.0, "tp": 9.0, "fl": measured, "tf": limit, "pf": 0.0}
+    else:
+        row = {"cp": measured, "tp": limit, "fl": 1.0, "tf": 2.0, "pf": 0.0}
+    return make_slog([{"t": i * 250, **row} for i in range(count)], [(0, 0, "Phase")])
+
+
+def _rmse(slog: Slog, control: PhaseControl) -> float | None:
+    c = _compliance(slog, (control,))
+    return c["pressure_rmse_bar" if control == "pressure" else "flow_rmse_ml_s"]
+
+
+@pytest.mark.parametrize(
+    ("measured", "held"),
+    [
+        (2.0, True),  # on the limit
+        (2.5, True),  # past it (the limit ramping down under the filter)
+        (1.85, True),  # 0.15 short: the edge of the tolerance, held
+        (1.84, False),  # 0.16 short: the pump is not at the limit
+        (0.5, False),
+    ],
+)
+def test_a_pressure_phase_sample_at_its_flow_limit_is_not_graded(
+    measured: float, held: bool
+) -> None:
+    """The definition: limit > 0, target > 0 and pump flow >= limit - 0.15 ml/s."""
+    slog = _limit_samples("pressure", measured, limit=2.0)
+    if held:
+        assert _compliance(slog, ("pressure",))["pressure_grading"] == "not_graded"
+        assert _rmse(slog, "pressure") is None
+    else:
+        assert _rmse(slog, "pressure") == 1.0
+
+
+@pytest.mark.parametrize(
+    ("measured", "held"),
+    [
+        (6.0, True),  # on the limit
+        (6.5, True),  # past it
+        (5.4, True),  # 0.6 short, 10 % of the limit: the edge, held
+        (5.39, False),
+        (3.0, False),
+    ],
+)
+def test_a_flow_phase_sample_at_its_pressure_limit_is_not_graded(
+    measured: float, held: bool
+) -> None:
+    """The definition: limit > 0, target > 0 and pressure >= limit - max(0.2, 10 % of limit) bar."""
+    slog = _limit_samples("flow", measured, limit=6.0)
+    if held:
+        assert _compliance(slog, ("flow",))["flow_grading"] == "not_graded"
+        assert _rmse(slog, "flow") is None
+    else:
+        assert _rmse(slog, "flow") == 1.0
+
+
+@pytest.mark.parametrize("limit", [0.0, -1.0])
+def test_a_limit_of_zero_or_below_is_no_limit(limit: float) -> None:
+    """The firmware acts on a limit only when it is above zero; `-1` is "hold the value
+    at phase entry" in a profile and is resolved to a number before it is logged, so
+    a logged value at or below zero is none: the samples are graded, however the
+    measurement compares with it."""
+    assert _rmse(_limit_samples("pressure", 2.0, limit), "pressure") == 1.0
+    assert _rmse(_limit_samples("pressure", -2.0, limit), "pressure") == 1.0
+    assert _rmse(_limit_samples("flow", 6.0, limit), "flow") == 1.0
+
+
+def test_a_limit_with_no_target_is_not_one() -> None:
+    """The firmware arbitrates only when both setpoints are above zero: with the target at 0 a
+    flow at its "limit" is the only loop running and holds nothing back, so the sample is graded."""
+    slog = make_slog(
+        [{"t": i * 250, "cp": 8.0, "tp": 0.0, "fl": 2.0, "tf": 2.0, "pf": 0.0} for i in range(6)],
+        [(0, 0, "Phase")],
+    )
+    assert _rmse(slog, "pressure") == 8.0
+
+
+def test_a_pressure_limit_is_held_to_the_controllers_dead_band() -> None:
+    """A flow phase held at its pressure limit settles below it: tf 2, limit 6, pressure 5.4."""
+    assert _rmse(_limit_samples("flow", 5.4, 6.0), "flow") is None
+    # Below 2 bar the 10 % is under the 0.2 bar floor: the floor decides.
+    assert limit_holds({"tf": 2.0, "tp": 1.0, "cp": 0.8}, "flow")
+    assert not limit_holds({"tf": 2.0, "tp": 1.0, "cp": 0.79}, "flow")
+
+
+@pytest.mark.parametrize(
+    ("control", "sample"),
+    [
+        # Exactly on the edge of the tolerance on the log's grid; in floats
+        # 0.2 - 0.15 and 8.3 - 0.83 land a hair above 0.05 and 7.47.
+        ("pressure", {"tp": 9.0, "tf": 0.20, "fl": 0.05}),
+        ("flow", {"tf": 2.0, "tp": 8.3, "cp": 7.47}),
+    ],
+)
+def test_the_edge_of_a_tolerance_is_decided_on_the_log_grid_not_by_float_rounding(
+    control: PhaseControl, sample: dict[str, float]
+) -> None:
+    assert limit_holds(sample, control)
+
+
+@pytest.mark.parametrize(
+    ("control", "sample"),
+    [
+        ("pressure", {"tp": 9.0, "tf": 2.0, "cp": 8.0}),  # no pump flow recorded
+        ("flow", {"tf": 2.0, "tp": 6.0, "fl": 2.0}),  # no pressure recorded
+    ],
+)
+def test_a_sample_that_did_not_record_the_measurement_is_not_held(
+    control: PhaseControl, sample: dict[str, float]
+) -> None:
+    assert not limit_holds(sample, control)
+
+
+def test_a_climb_to_the_flow_limit_is_held_from_its_first_sample() -> None:
+    """The logged pump flow lags the pump through a 0.5 Hz filter (tau ~ 0.32 s).
+
+    Built by the filter itself: the pump is at the 2 ml/s limit from the first
+    sample, and the logged value climbs to it. Read as logged, the first two
+    samples are 0.91 and 0.55 short of the limit and graded as misses; undone,
+    every sample is the limit's.
+    """
+    a = math.exp(-0.25 / _PUMP_FLOW_FILTER_TAU_S)
+    logged, value = [], 0.0
+    for _ in range(6):
+        value = a * value + (1 - a) * 2.0
+        logged.append(round(value, 2))
+    assert logged[0] < 1.85 and logged[1] < 1.85  # the lag this is about
+    samples = [
+        {"t": i * 250, "cp": 0.3, "tp": 3.0, "fl": fl, "tf": 2.0, "pf": 0.0}
+        for i, fl in enumerate(logged)
+    ]
+    held = [
+        limit_holds(s, "pressure", samples[i - 1] if i else None) for i, s in enumerate(samples)
+    ]
+    assert held[1:] == [True] * 5  # the first has no sample before it to undo the filter with
+    assert not held[0]
+
+
+def test_the_filter_is_undone_over_the_samples_own_time_step_not_the_nominal_one() -> None:
+    """Two samples 100 ms apart: the same logged flows, read as 250 ms apart, would not be held."""
+    a = math.exp(-0.1 / _PUMP_FLOW_FILTER_TAU_S)
+    before = {"t": 0, "cp": 0.3, "tp": 3.0, "fl": 0.0, "tf": 2.0}
+    after = {"t": 100, "cp": 0.3, "tp": 3.0, "fl": round((1 - a) * 2.0, 2), "tf": 2.0}
+    assert limit_holds(after, "pressure", before)
+    assert not limit_holds({**after, "t": 350}, "pressure", {**before, "t": 100})
+
+
+def test_a_phase_needs_three_graded_samples_for_an_adherence_of_its_own() -> None:
+    """Per phase as for the whole shot: one or two samples are not a verdict.
+
+    A phase is only diagnosed from three samples; here five, of which the flow
+    limit held all but ``graded``.
+    """
+
+    def shot(graded: int) -> Slog:
+        free = {"cp": 6.0, "tp": 9.0, "fl": 1.0, "tf": 0.0, "pf": 0.0}
+        held = {"cp": 6.0, "tp": 9.0, "fl": 2.0, "tf": 2.0, "pf": 0.0}
+        rows = [{"t": i * 250, **free} for i in range(6)]
+        rows += [{"t": (6 + i) * 250, **(free if i < graded else held)} for i in range(5)]
+        return make_slog(rows, [(0, 0, "Hold"), (6, 1, "Extraction")])
+
+    for graded, verdict in [(2, False), (3, True)]:
+        phases = transform_shot(shot(graded), "per_phase", phase_controls=("pressure", "pressure"))[
+            "phases"
+        ]
+        assert phases[0]["diagnostics"]["pressure_rmse_bar"] == 3.0
+        assert ("pressure_rmse_bar" in phases[1]["diagnostics"]) is verdict
+
+
+def test_a_flow_phase_needs_three_graded_samples_for_an_adherence_of_its_own() -> None:
+    free = {"cp": 1.0, "tp": 6.0, "fl": 1.0, "tf": 2.0, "pf": 0.0}
+    held = {**free, "cp": 6.0}  # the pressure limit reached
+
+    def shot(graded: int) -> Slog:
+        rows = [{"t": i * 250, **free} for i in range(6)]
+        rows += [{"t": (6 + i) * 250, **(free if i < graded else held)} for i in range(5)]
+        return make_slog(rows, [(0, 0, "Hold"), (6, 1, "Extraction")])
+
+    for graded, verdict in [(2, False), (3, True)]:
+        phases = transform_shot(shot(graded), "per_phase", phase_controls=("flow", "flow"))[
+            "phases"
+        ]
+        assert phases[0]["diagnostics"]["flow_rmse_ml_s"] == 1.0
+        assert ("flow_rmse_ml_s" in phases[1]["diagnostics"]) is verdict
+
+
+def test_the_steering_undoes_the_filter_with_each_samples_predecessor() -> None:
+    """Through `_steering`, not only the predicate: the first sample has no
+    predecessor and is graded; the ones after it, still under the limit as
+    logged, are the limit's."""
+    a = math.exp(-0.25 / _PUMP_FLOW_FILTER_TAU_S)
+    value, samples = 0.0, []
+    for i in range(6):
+        value = a * value + (1 - a) * 2.0
+        samples.append(
+            {"t": i * 250.0, "phase": 0.0, "cp": 0.3, "tp": 3.0, "fl": round(value, 2), "tf": 2.0}
+        )
+    steering = _steering(samples, ("pressure",))
+    assert steering is not None
+    assert steering.per_sample == ["pressure"] + [None] * 5
+
+
+def test_the_filter_constant_is_the_firmwares() -> None:
+    """tau = 1 / (2 pi 0.5 Hz): 0.1 s after a step to 2 ml/s the log reads 0.54 (2.0 undone);
+    a wrong constant would call a real 0.3 a limit, or 0.54 a miss."""
+    before = {"t": 0, "cp": 0.3, "tp": 3.0, "fl": 0.0, "tf": 2.0}
+    assert limit_holds({"t": 100, "cp": 0.3, "tp": 3.0, "fl": 0.54, "tf": 2.0}, "pressure", before)
+    assert not limit_holds(
+        {"t": 100, "cp": 0.3, "tp": 3.0, "fl": 0.3, "tf": 2.0}, "pressure", before
+    )
+    # 0.47 at 0.1 s undoes to 1.74, short of 1.85; tau / (tau + dt) in place of
+    # exp(-dt / tau) would make it 1.97.
+    assert not limit_holds(
+        {"t": 100, "cp": 0.3, "tp": 3.0, "fl": 0.47, "tf": 2.0}, "pressure", before
+    )

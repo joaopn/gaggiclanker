@@ -1105,11 +1105,11 @@ class TestProfileCompliance:
     def test_flow_rmse_when_tf_available(self):
         """Flow RMSE computed when tf data available."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.0, "tf": 2.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.5, "tf": 2.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "fl": 2.0, "tf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 2.1, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 2.2, "tf": 2.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.0, "tf": 2.0},
+            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.5, "tf": 2.0},
+            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 12.0, "fl": 2.0, "tf": 2.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 12.0, "fl": 2.1, "tf": 2.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 12.0, "fl": 2.2, "tf": 2.0},
         ]
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
@@ -1120,13 +1120,13 @@ class TestProfileCompliance:
     def test_flow_overshoot_detected(self):
         """Flow overshoot correctly detected when actual exceeds target."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.0, "tf": 1.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.0, "tf": 1.0},
             {
                 "t": 100,
                 "ct": 93.0,
                 "tt": 93.0,
                 "cp": 9.0,
-                "tp": 9.0,
+                "tp": 12.0,
                 "fl": 3.0,
                 "tf": 1.0,
             },  # +2.0 ml/s
@@ -1135,12 +1135,12 @@ class TestProfileCompliance:
                 "ct": 93.0,
                 "tt": 93.0,
                 "cp": 8.5,
-                "tp": 9.0,
+                "tp": 12.0,
                 "fl": 2.5,
                 "tf": 1.0,
             },  # +1.5 ml/s
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 1.2, "tf": 1.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 1.0, "tf": 1.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 12.0, "fl": 1.2, "tf": 1.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 12.0, "fl": 1.0, "tf": 1.0},
         ]
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
@@ -1150,13 +1150,13 @@ class TestProfileCompliance:
     def test_flow_undershoot_detected(self):
         """Flow undershoot correctly detected when actual is below target."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.0, "tf": 2.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.0, "tf": 2.0},
             {
                 "t": 100,
                 "ct": 93.0,
                 "tt": 93.0,
                 "cp": 9.0,
-                "tp": 9.0,
+                "tp": 12.0,
                 "fl": 1.0,
                 "tf": 2.0,
             },  # -1.0 ml/s
@@ -1165,12 +1165,12 @@ class TestProfileCompliance:
                 "ct": 93.0,
                 "tt": 93.0,
                 "cp": 8.5,
-                "tp": 9.0,
+                "tp": 12.0,
                 "fl": 1.2,
                 "tf": 2.0,
             },  # -0.8 ml/s
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 1.8, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 1.9, "tf": 2.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 12.0, "fl": 1.8, "tf": 2.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 12.0, "fl": 1.9, "tf": 2.0},
         ]
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]
@@ -1196,11 +1196,11 @@ class TestProfileCompliance:
     def test_flow_within_tolerance(self):
         """Small flow deviations annotated as WITHIN_TOLERANCE."""
         samples = [
-            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.1, "tf": 2.0},
-            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 9.0, "fl": 2.2, "tf": 2.0},
-            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 9.0, "fl": 1.9, "tf": 2.0},
-            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 9.0, "fl": 2.0, "tf": 2.0},
-            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 9.0, "fl": 2.05, "tf": 2.0},
+            {"t": 0, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.1, "tf": 2.0},
+            {"t": 100, "ct": 93.0, "tt": 93.0, "cp": 9.0, "tp": 12.0, "fl": 2.2, "tf": 2.0},
+            {"t": 200, "ct": 93.0, "tt": 93.0, "cp": 8.5, "tp": 12.0, "fl": 1.9, "tf": 2.0},
+            {"t": 300, "ct": 93.0, "tt": 93.0, "cp": 8.0, "tp": 12.0, "fl": 2.0, "tf": 2.0},
+            {"t": 400, "ct": 93.0, "tt": 93.0, "cp": 7.5, "tp": 12.0, "fl": 2.05, "tf": 2.0},
         ]
         diag = self._diagnostics(samples, ("flow",))
         pc = diag["profile_compliance"]

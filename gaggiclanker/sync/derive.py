@@ -65,7 +65,9 @@ log = structlog.get_logger(__name__)
 #: simple phase or the post-brew tail, and a shot with no usable profile has no
 #: adherence. **The profile a shot is linked to is now an input**: linking a
 #: shot to a profile version leaves it to be derived again.
-DERIVATION_VERSION = 3
+#: 4: a sample the phase's *limit* held (a pressure phase at its flow limit, a
+#: flow phase at its pressure limit) is not graded either.
+DERIVATION_VERSION = 4
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these

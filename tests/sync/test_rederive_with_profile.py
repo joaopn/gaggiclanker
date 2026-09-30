@@ -39,7 +39,7 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
 
 
 def test_the_derivation_version_moved_with_the_profile_input() -> None:
-    assert DERIVATION_VERSION == 3
+    assert DERIVATION_VERSION == 4
 
 
 async def test_a_shot_stored_at_the_previous_version_is_derived_again_with_its_profile(
