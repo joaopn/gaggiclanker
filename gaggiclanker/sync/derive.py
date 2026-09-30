@@ -292,7 +292,7 @@ async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
             failed += 1
             continue
         shot = derived.shot
-        await shots.rewrite_derived(
+        landed = await shots.rewrite_derived(
             shot_id,
             ShotDerivationUpdate(
                 phases_json=shot.phases_json,
@@ -301,7 +301,14 @@ async def rederive_shots(shots: ShotsRepository) -> tuple[int, int]:
                 execution_reason=shot.execution_reason,
                 derivation_version=DERIVATION_VERSION,
             ),
+            profile_version_id=source.profile_version_id,
         )
+        if not landed:
+            # Linked to another profile since it was read: that link put the shot
+            # back to version 0, so the next pass (the mirror or import that linked it
+            # runs one, else the next start) derives it with the new profile.
+            log.info("shot_rederive_superseded", shot_id=shot_id)
+            continue
         rederived += 1
     log.info(
         "shots_rederived",

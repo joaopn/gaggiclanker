@@ -156,6 +156,9 @@ class ShotDerivationSource(BaseModel):
     #: The stored document of the profile version the shot is linked to, decoded,
     #: or ``None`` when it is not linked (or the document does not decode).
     profile: JsonObject = Field(default=None, validation_alias="profile_json")
+    #: The link that profile was read through, so the write can refuse to land
+    #: on a shot that was linked to another version since.
+    profile_version_id: int | None = None
 
 
 class ShotDerivationUpdate(BaseModel):
@@ -629,6 +632,7 @@ class ShotsRepository(Repository):
                         THEN CASE json_type(s.diagnostics_json, '$.has_pressure')
                                  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END
                    END AS has_pressure,
+                   s.profile_version_id,
                    CASE WHEN json_valid(v.json) THEN v.json END AS profile_json
             FROM shots s LEFT JOIN profile_versions v ON v.id = s.profile_version_id
             WHERE s.id = ?
@@ -637,24 +641,34 @@ class ShotsRepository(Repository):
         )
         return None if row is None else ShotDerivationSource.model_validate(dict(row))
 
-    async def rewrite_derived(self, shot_id: int, update: ShotDerivationUpdate) -> None:
+    async def rewrite_derived(
+        self, shot_id: int, update: ShotDerivationUpdate, *, profile_version_id: int | None
+    ) -> bool:
         """Replace a shot's phases, diagnostics, score and version, and nothing else.
 
         One statement, so a crash leaves the shot as it was or as it is meant to
         be. Samples, notes, judgements, Set membership and `updated_at` are not
         this write's to touch: the shot itself did not change, only how it is
         read.
+
+        ``profile_version_id`` is the link the update was derived with. The write
+        lands only while the shot still has it: a link made since (the profile
+        mirror, an import's label match) put the shot back to derivation version
+        0 so it is derived again, and this write would put the old profile's
+        result back at the current version. Returns whether it landed; ``False``
+        leaves the shot for the next pass.
         """
-        await self.db.execute(
+        cursor = await self.db.execute(
             """
             UPDATE shots SET phases_json = :phases_json, diagnostics_json = :diagnostics_json,
                              execution_score = :execution_score,
                              execution_reason = :execution_reason,
                              derivation_version = :derivation_version
-            WHERE id = :id
+            WHERE id = :id AND profile_version_id IS :link
             """,
-            {**update.model_dump(), "id": shot_id},
+            {**update.model_dump(), "id": shot_id, "link": profile_version_id},
         )
+        return cursor.rowcount > 0
 
     async def mark_derivation_failed(self, shot_id: int, version: int) -> None:
         """Record that this shot could not be re-derived at ``version``, so boots stop trying."""

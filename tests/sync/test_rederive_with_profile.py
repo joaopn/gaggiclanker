@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -83,3 +84,41 @@ async def test_a_shot_with_no_linked_profile_is_derived_again_as_not_graded(db: 
 
     assert await compliance(db, shot_id) is None
     assert await derivation_version(db, shot_id) == DERIVATION_VERSION
+
+
+async def test_a_link_made_between_the_read_and_the_write_is_not_overwritten(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The profile mirror or an import's label match can link the shot mid-derive.
+
+    The derive read the old profile; landing its result at the current version
+    would hide that the new link asked for another derive.
+    """
+    shots = ShotsRepository(db)
+    first = await profile_version(db, "pressure-first")
+    second = await profile_version(db, "flow-first")
+    shot_id = await unlinked_shot(db)
+    await db.execute(
+        "UPDATE shots SET profile_version_id = ?, derivation_version = 2 WHERE id = ?",
+        (first, shot_id),
+    )
+    read = shots.derivation_source
+
+    async def read_then_link(which: int) -> Any:
+        source = await read(which)
+        # What a concurrent mirror's link does: new profile, back to version 0.
+        await db.execute(
+            "UPDATE shots SET profile_version_id = ?, derivation_version = 0 WHERE id = ?",
+            (second, which),
+        )
+        return source
+
+    monkeypatch.setattr(shots, "derivation_source", read_then_link)
+    assert await rederive_shots(shots) == (0, 0)
+    assert await derivation_version(db, shot_id) == 0  # still to be derived
+    assert await compliance(db, shot_id) is None  # and nothing of the old profile landed
+
+    monkeypatch.setattr(shots, "derivation_source", read)
+    assert await rederive_shots(shots) == (1, 0)
+    block = await compliance(db, shot_id)
+    assert block is not None and block["flow_grading"] == "graded"  # the new profile's
