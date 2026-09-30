@@ -59,7 +59,9 @@ header whether the machine is there at all.
 1)` — describing whatever host is configured now, and nothing else in the schema
 carries a machine id. The host is a setting rather than an identity, so pointing
 the container at a new address updates that row and every shot, profile and Set
-stays attached; a shot is unique by the id the device gave it. Grinders stay
+stays attached. A shot is unique by the number the machine gave it **and** its
+start time, because the machine's counter restarts after its settings are erased
+and a later shot can carry an old number. Grinders stay
 plural, because a kitchen really does have several and a grind number only
 means something on the grinder it was set on — which is also why any number of
 Sets may collect shots at once: several grinders means several bags loaded, and

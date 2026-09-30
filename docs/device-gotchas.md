@@ -1,6 +1,6 @@
 # Device gotchas
 
-Twelve firmware behaviours that shaped the sync engine. Every one of them was
+Thirteen firmware behaviours that shaped the sync engine. Every one of them was
 verified against the GaggiMate firmware source
 rather than inferred from the machine's behaviour, and most of them cost
 somebody an evening before they were written down.
@@ -115,6 +115,25 @@ assumed a fixed interval draws a shot with a gap in it as a shot that ran short.
 (`WebUIPlugin.cpp:486-495`). The archive removes them, and any key named for a
 password, token or secret, before storing or showing the document
 (`domain/secrets.py`); the fake serves all three so the suite exercises it.
+
+**14. The shot number is not an identity: the counter lives in NVS and restarts after an erase.**
+The next shot's number is the `hi` setting (`Settings.h`, default 0), stored in
+NVS beside the machine's other settings, and it is only ever raised again by a
+history rebuild. A reflash, a factory reset or a replacement board therefore
+numbers its shots from 0 again while the clock keeps going, and its new shots
+carry numbers an archive already holds for different shots. What does tell them
+apart is the start epoch: every index row's `timestamp` and its `.slog` header's
+`startEpoch` are written from the same `header.startEpoch`
+(`ShotHistoryPlugin.cpp`, both in the recorder and in the rebuild from files).
+So the archive identifies a shot by number **and** start epoch (`UNIQUE
+(device_id, start_epoch)`), pairs an index row with an archived shot only when
+both agree, and treats an archived shot whose number the machine has given to a
+later one as gone from the machine. The number stays what is displayed and what
+`/h/<id>.slog` and `/h/<id>.json` are addressed by. The pair is unique only
+for a machine whose clock is set, and the firmware sets it from NTP, which needs
+internet: on a machine without one `startEpoch` is seconds since boot, two
+shots can share both number and epoch, and the later one is then taken for the
+earlier one.
 
 ---
 

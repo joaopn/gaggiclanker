@@ -86,6 +86,24 @@ first (`POST /api/backup`), because there is no down-migration.
 - **Recent writes still lists what older versions wrote.** Rows of the two
   removed kinds (`shot_delete`, `notes_save`) stay in the audit as history.
 
+### Shots brewed after a machine reset are archived
+
+- **Fixed: after the machine's settings were erased (a reflash, a factory reset,
+  a replacement board), the shots it brewed were never archived and they
+  overwrote the ratings, volumes and notes of older shots.** The machine
+  numbers its shots from a counter kept with its settings, so it started again
+  from 0 and used numbers the archive already held for different shots. A pull
+  saw the number, believed it already had the shot, skipped it, and copied the
+  new shot's rating, volume, temperature, pressure, flow and notes onto the old
+  one. A shot is now identified by its number together with the time it
+  started: a new shot under an old number is archived as its own shot, the old
+  shot keeps everything it had and is shown as no longer on the machine, and a
+  JSON export of a new shot under an old number is imported as a new shot
+  instead of replacing the old one. Shots already overwritten are not repaired
+  (the sync log's "the device's index entry changed" lines say what changed; a
+  backup from before is the clean source). A new migration rebuilds the shots
+  table to carry the new key; no rows are lost.
+
 ### Puck resistance comes from the machine
 
 - **A shot's puck resistance is now the machine's own measurement whenever the
