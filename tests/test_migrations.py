@@ -1154,3 +1154,147 @@ async def test_0027_names_every_existing_version_by_its_number(
     added = await SetsRepository(db).add_version(1, SetVersionPatch(grind_setting="21"))
     assert added is not None
     assert (added.version_no, added.version_label) == (4, "v3.1")
+
+
+async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
+    db: Database, tmp_path: Path
+) -> None:
+    """Widening the shot key rebuilds `shots`, and four tables cascade off it.
+
+    A rebuild done the obvious way (`DROP TABLE shots`) fires the cascade and
+    silently empties samples, notes cards, judgements and reviews, which is the
+    whole archive. So the archive here has one of each on more than one shot,
+    every shot column set to something other than its default, a high-water
+    mark above the highest surviving id, and the five views the SQL tool reads.
+    """
+    await _migrate_below(db, tmp_path, "0029")
+    await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
+    await db.execute(
+        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "VALUES (1, 1, 'baseline', 'x')"
+    )
+    for number in range(1, 5):
+        await db.execute(
+            """
+            INSERT INTO shots (
+                device_id, set_version_id, started_at, start_epoch, duration_ms,
+                profile_id_on_device, profile_name_on_device, final_weight_g,
+                final_exit_reason, brew_delay_ms, slog_version, sample_interval_ms,
+                fields_mask, sample_count, scale_connected, incomplete, source,
+                deleted_on_device, quarantined, quarantine_reason, raw_slog,
+                phases_json, diagnostics_json, execution_score, execution_reason,
+                derivation_version, index_rating, index_volume_g, index_avg_temp_c,
+                index_max_pressure_bar, index_avg_flow_ml_s, index_flags,
+                synced_at, updated_at)
+            VALUES (?, 1, '2026-01-01T00:00:00Z', ?, 28000, 'p', 'Profile', 36.5, 1, 800, 7,
+                    250, 16383, 2, 1, 1, 'device', 1, 0, 'q', ?, '[]', '{"a":1}', 0.75,
+                    'why', 2, 4, 37.0, 93.5, 9.1, 1.8, 3, 'synced', 'updated')
+            """,
+            (f"{number:06d}", 1_760_000_000 + number, bytes([number, 0, 255])),
+        )
+        await db.execute(
+            "INSERT INTO shot_samples (shot_id, t_ms, ct, cp) VALUES (?, 0, 92.5, 1.5), "
+            "(?, 250, 92.7, 2.5)",
+            (number, number),
+        )
+    for number in (1, 2):
+        await db.execute(
+            "INSERT INTO shot_judgements (shot_id, rating, notes) VALUES (?, 4, 'good')",
+            (number,),
+        )
+        await db.execute(
+            "INSERT INTO device_shot_notes (shot_id, raw_json, rating, notes, fetched_at) "
+            "VALUES (?, '{}', 3, 'card', 'x')",
+            (number,),
+        )
+    await db.execute("INSERT INTO shot_reviews (shot_id, status) VALUES (2, 'ok'), (2, 'failed')")
+    await db.execute("INSERT INTO shot_reviews (shot_id, status) VALUES (3, 'ok')")
+    await db.execute(
+        "INSERT INTO sync_events (run_id, at, kind, shot_id) VALUES (NULL, 'x', 'k', 4)"
+    )
+    # A shot that has been deleted since: its id must never be handed out again.
+    await db.execute(
+        "INSERT INTO shots (device_id, raw_slog, synced_at, updated_at) "
+        "VALUES ('000099', x'00', 'x', 'x')"
+    )
+    await db.execute("DELETE FROM shots WHERE device_id = '000099'")
+
+    async def everything() -> dict[str, list[list[object]]]:
+        out: dict[str, list[list[object]]] = {}
+        for table, order in (
+            ("shots", "id"),
+            ("shot_samples", "shot_id, t_ms"),
+            ("shot_judgements", "shot_id"),
+            ("device_shot_notes", "shot_id"),
+            ("shot_reviews", "id"),
+            ("sync_events", "id"),
+        ):
+            columns = sorted(
+                str(r["name"]) for r in await db.fetch_all(f"PRAGMA table_info({table})")
+            )
+            rows = await db.fetch_all(
+                f"SELECT {', '.join(columns)} FROM {table} ORDER BY {order}"  # noqa: S608
+            )
+            out[table] = [list(r) for r in rows]
+        return out
+
+    views = "'v_shots', 'v_sets', 'v_set_versions', 'v_judgements', 'v_profiles'"
+    view_sql = (
+        f"SELECT name, sql FROM sqlite_master WHERE type = 'view' AND name IN ({views}) "  # noqa: S608
+        "ORDER BY name"
+    )
+    before = await everything()
+    views_before = [tuple(r) for r in await db.fetch_all(view_sql)]
+    indexes_before = {
+        str(r["name"])
+        for r in await db.fetch_all(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'shots' "
+            "AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    assert len(before["shots"]) == 4 and len(before["shot_samples"]) == 8
+    assert len(before["shot_reviews"]) == 3
+
+    assert "0029" in await run_migrations(db)
+
+    assert await everything() == before
+    assert [tuple(r) for r in await db.fetch_all(view_sql)] == views_before
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+    assert indexes_before == {
+        str(r["name"])
+        for r in await db.fetch_all(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'shots' "
+            "AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    # The cascade still hangs off the rebuilt table.
+    await db.execute("DELETE FROM shots WHERE id = 2")
+    assert await db.fetch_value("SELECT COUNT(*) FROM shot_samples WHERE shot_id = 2") == 0
+    assert await db.fetch_value("SELECT COUNT(*) FROM shot_reviews WHERE shot_id = 2") == 0
+    assert await db.fetch_value("SELECT COUNT(*) FROM shot_judgements WHERE shot_id = 2") == 0
+    assert await db.fetch_value("SELECT COUNT(*) FROM device_shot_notes WHERE shot_id = 2") == 0
+    # The high-water mark survived, and so did the reviews' own.
+    await db.execute(
+        "INSERT INTO shots (device_id, raw_slog, synced_at, updated_at) "
+        "VALUES ('000500', x'00', 'x', 'x')"
+    )
+    assert await db.fetch_value("SELECT MAX(id) FROM shots") == 6  # 5 was the deleted one
+    await db.execute("INSERT INTO shot_reviews (shot_id) VALUES (1)")
+    assert await db.fetch_value("SELECT MAX(id) FROM shot_reviews") == 4
+
+
+async def test_0029_lets_two_shots_share_a_number_and_nothing_else(
+    db: Database, tmp_path: Path
+) -> None:
+    """The key is the number and the start time together."""
+    await run_migrations(db)
+    insert = (
+        "INSERT INTO shots (device_id, start_epoch, raw_slog, synced_at, updated_at) "
+        "VALUES (?, ?, x'00', 'x', 'x')"
+    )
+    await db.execute(insert, ("000001", 1_760_000_000))
+    await db.execute(insert, ("000001", 1_770_000_000))
+    with pytest.raises(Exception, match="UNIQUE"):
+        await db.execute(insert, ("000001", 1_770_000_000))
+    assert await db.fetch_value("SELECT COUNT(*) FROM shots WHERE device_id = '000001'") == 2
