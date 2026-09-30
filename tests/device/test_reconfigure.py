@@ -221,14 +221,12 @@ async def test_services_act_on_the_new_client_after_a_swap(
     assert await new.wait_connected(5.0)
     await wait_for(lambda: new.identity is not None)
 
-    assert app.state.cleanup.client is new
-    assert app.state.notes_writeback.client is new
-    # The cleanup plan's free space is read off the machine it is talking to.
-    plan = (await client.get("/api/device/cleanup/plan")).json()["data"]
-    assert plan["free_bytes"] == 777_000
-    # And a read the cleanup service makes goes to B's HTTP server.
+    # The status the Sync page reads is the new machine's own identity.
+    status = (await client.get("/api/device/status")).json()["data"]
+    assert status["identity"]["spiffsFree"] == 777_000
+    # And a pull's read goes to B's HTTP server.
     before = len(fake_b.requests)
-    await app.state.cleanup._index_by_id()
+    await new.fetch_index()
     assert any(path.startswith("/api/history/index.bin") for path in fake_b.requests[before:])
     # A push would find it too: the draft service reads the connection it was given.
     async with app.state.drafts.connection.operation("a test") as held:
@@ -486,3 +484,67 @@ async def test_every_pass_cut_short_is_recorded_as_stopped(
     assert row is not None
     assert row["status"] == "error", dict(row)
     assert row["error"] == STOPPED_MESSAGE
+
+
+# ── a connection change is never made under a running pull ───────────
+
+ELSEWHERE = "127.0.0.1:9"
+
+
+async def test_a_pull_holds_off_a_connection_change(
+    on_a: tuple[FastAPI, httpx.AsyncClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The change is a 409 naming the pull and nothing is stored; other settings go through."""
+    app, client = on_a
+    engine = app.state.connection.engine
+    machine = current(app)
+    original = machine.fetch_index
+    release = asyncio.Event()
+    reached = asyncio.Event()
+
+    async def held() -> object:
+        reached.set()
+        await release.wait()
+        return await original()
+
+    monkeypatch.setattr(machine, "fetch_index", held)
+    assert (await client.post("/api/sync/run", json={"kind": "shots"})).status_code == 202
+    # Asked for and not yet picked up is already a pull somebody is waiting for.
+    assert engine.busy() == "a pull"
+    await asyncio.wait_for(reached.wait(), 5.0)
+
+    try:
+        before = (await client.get("/api/settings")).json()["data"]["gaggimateHost"]
+        response = await patch(
+            client, {"gaggimateHost": ELSEWHERE, "modelDefault": "not-stored-either"}
+        )
+        assert response.status_code == 409, response.text
+        body = response.json()["error"]
+        assert "a pull" in body["message"]
+        assert body["details"] == {"running": "a pull"}
+        after = (await client.get("/api/settings")).json()["data"]
+        assert after["gaggimateHost"] == before
+        assert after["modelDefault"]["source"] == "default"
+        assert current(app) is machine
+
+        # Only a change that would move the connection is refused.
+        other = await patch(client, {"modelDefault": "sonnet"})
+        assert other.status_code == 200, other.text
+    finally:
+        release.set()
+        await wait_for(lambda: engine.busy() is None)
+
+    last = (await client.get("/api/sync/status")).json()["data"]["last_runs"]
+    assert last["backfill"]["status"] == "ok"
+
+
+async def test_a_host_change_with_an_invalid_value_is_a_400_even_while_busy(
+    on_a: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Validation first: the person gets told what is wrong with the value, not to wait."""
+    app, client = on_a
+    async with app.state.connection.operation("a profile push"):
+        response = await patch(
+            client, {"gaggimateHost": ELSEWHERE, "gaggimateTimeoutSeconds": "soon"}
+        )
+    assert response.status_code == 400

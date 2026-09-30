@@ -40,9 +40,9 @@ async def test_defaults_are_returned_when_nothing_is_configured(
     settings = await get_settings(client)
     assert set(settings) == set(SETTINGS_REGISTRY)
 
-    keep = settings["deviceCleanupKeepNewest"]
-    assert keep["value"] == 50
-    assert keep["default"] == 50
+    keep = settings["chatMaxToolRounds"]
+    assert keep["value"] == 8
+    assert keep["default"] == 8
     assert keep["override"] is None
     assert keep["source"] == "default"
 
@@ -89,25 +89,25 @@ async def test_clearing_an_override_falls_back_to_the_default(
     monkeypatch: pytest.MonkeyPatch, env: EnvSettings
 ) -> None:
     """Even with the old variable set: there is nothing between the row and the default."""
-    monkeypatch.setenv("GAGGICLANKER_DEVICE_CLEANUP_KEEP_NEWEST", "12")
+    monkeypatch.setenv("GAGGICLANKER_CHAT_MAX_TOOL_ROUNDS", "12")
     async with running_app(env) as (_app, client):
-        await client.patch("/api/settings", json={"deviceCleanupKeepNewest": 15})
-        await client.patch("/api/settings", json={"deviceCleanupKeepNewest": None})
+        await client.patch("/api/settings", json={"chatMaxToolRounds": 15})
+        await client.patch("/api/settings", json={"chatMaxToolRounds": None})
 
         settings = await get_settings(client)
-        assert settings["deviceCleanupKeepNewest"]["value"] == 50
-        assert settings["deviceCleanupKeepNewest"]["source"] == "default"
+        assert settings["chatMaxToolRounds"]["value"] == 8
+        assert settings["chatMaxToolRounds"]["source"] == "default"
 
 
 async def test_override_survives_a_restart(env: EnvSettings) -> None:
     """The override lives in the database file, not in process memory."""
     async with running_app(env) as (_app, client):
-        await client.patch("/api/settings", json={"deviceCleanupKeepNewest": 15})
+        await client.patch("/api/settings", json={"chatMaxToolRounds": 15})
 
     async with running_app(env) as (_app, client):
         settings = await get_settings(client)
-        assert settings["deviceCleanupKeepNewest"]["value"] == 15
-        assert settings["deviceCleanupKeepNewest"]["source"] == "database"
+        assert settings["chatMaxToolRounds"]["value"] == 15
+        assert settings["chatMaxToolRounds"]["source"] == "database"
 
 
 async def test_a_row_for_a_key_that_no_longer_exists_is_ignored(env: EnvSettings) -> None:
@@ -150,7 +150,11 @@ async def test_former_setting_variables_are_named_once_at_boot_and_do_nothing(
     assert set(REMOVED_SETTINGS) == {
         "mcpDeviceWrites",
         "deviceCleanupAuto",
+        "deviceCleanupMode",
+        "deviceCleanupKeepNewest",
+        "deviceCleanupMinFreeKb",
         "notesWritebackEnabled",
+        "notesWritebackFields",
         "mcpEnabled",
     }
     named = ("GAGGIMATE_HOST", "GAGGICLANKER_MODEL_ANALYSIS", *REMOVED_SETTINGS.values())
@@ -249,7 +253,7 @@ async def test_booleans_round_trip(client: httpx.AsyncClient) -> None:
 
 async def test_boolean_is_rejected_for_an_int_setting(client: httpx.AsyncClient) -> None:
     """JSON ``true`` is a Python bool and ``int(True) == 1``; that must not store 1."""
-    response = await client.patch("/api/settings", json={"deviceCleanupKeepNewest": True})
+    response = await client.patch("/api/settings", json={"chatMaxToolRounds": True})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_REQUEST"
 
@@ -257,10 +261,10 @@ async def test_boolean_is_rejected_for_an_int_setting(client: httpx.AsyncClient)
 async def test_non_numeric_value_for_an_int_setting_is_rejected(
     client: httpx.AsyncClient,
 ) -> None:
-    response = await client.patch("/api/settings", json={"deviceCleanupKeepNewest": "often"})
+    response = await client.patch("/api/settings", json={"chatMaxToolRounds": "often"})
     assert response.status_code == 400
     details = response.json()["error"]["details"]
-    assert any(item["field"] == "deviceCleanupKeepNewest" for item in details)
+    assert any(item["field"] == "chatMaxToolRounds" for item in details)
 
 
 @pytest.mark.parametrize(
@@ -372,9 +376,9 @@ def test_short_secrets_are_masked_rather_than_hinted() -> None:
 async def test_settings_service_is_reachable_from_app_state(app: FastAPI) -> None:
     """Other layers read settings through the service, not through the HTTP API."""
     service = app.state.settings_service
-    assert await service.get("deviceCleanupKeepNewest") == 50
-    await service.apply({"deviceCleanupKeepNewest": 30})
-    assert await service.get("deviceCleanupKeepNewest") == 30
+    assert await service.get("chatMaxToolRounds") == 8
+    await service.apply({"chatMaxToolRounds": 30})
+    assert await service.get("chatMaxToolRounds") == 30
 
 
 async def test_rejected_value_is_never_echoed_back(client: httpx.AsyncClient) -> None:
@@ -385,18 +389,18 @@ async def test_rejected_value_is_never_echoed_back(client: httpx.AsyncClient) ->
     someone pastes an API key into the wrong field.
     """
     leaked = "sk-live-DO-NOT-ECHO-THIS"
-    response = await client.patch("/api/settings", json={"deviceCleanupKeepNewest": leaked})
+    response = await client.patch("/api/settings", json={"chatMaxToolRounds": leaked})
     assert response.status_code == 400
     assert leaked not in response.text
     details = response.json()["error"]["details"]
-    assert details == [{"field": "deviceCleanupKeepNewest", "message": "expected an integer"}]
+    assert details == [{"field": "chatMaxToolRounds", "message": "expected an integer"}]
 
 
 @pytest.mark.parametrize(
     ("key", "value", "message"),
     [
-        ("deviceCleanupKeepNewest", "nope", "expected an integer"),
-        ("deviceCleanupKeepNewest", True, "expected an integer"),
+        ("chatMaxToolRounds", "nope", "expected an integer"),
+        ("chatMaxToolRounds", True, "expected an integer"),
         ("deviceSyncEnabled", "maybe", "expected a boolean"),
         ("deviceSyncEnabled", 7, "expected a boolean"),
         ("gaggimateHost", 1234, "expected a string"),

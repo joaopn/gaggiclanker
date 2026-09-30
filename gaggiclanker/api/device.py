@@ -11,60 +11,30 @@ holds.
 The web UI's Device page reads the status; its Sync page reads everything else
 here. Profile push adds the audit of every write this box has ever asked the
 machine to make, which is what answers "what has this thing done to my machine".
-Storage cleanup adds the storage-cleanup trio (plan, run, history), and notes add
-the pending list and the send. Both writes start only from a person's
-confirmation on the Sync page — the run and the send carry the shot ids that
-were shown, and a list that moved since is a 409 — and both follow the same
-shape as the review routes: the **plan** is computed in the request because
-it is a database read, and the **run** is 202 plus a background task, because it
-is a sequence of WebSocket frames paced at two a second and `docker stop` allows
-ten seconds in total.
+The only thing this box ever writes to the machine is a profile, so there is no
+route here that deletes a shot or sends a note: what the audit lists is pushes,
+rollbacks, and the older rows of the two history writes that were removed.
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 from gaggiclanker.api.deps import (
-    CleanupServiceDep,
     DeviceClientDep,
     DeviceWritesRepoDep,
-    NotesWritebackServiceDep,
     SettingsServiceDep,
 )
-from gaggiclanker.cleanup.service import CleanupPlan, CleanupService, cleanup_task_name
-from gaggiclanker.db.repos.cleanup import CleanupRepository, CleanupRunRow
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow
-from gaggiclanker.db.repos.judgements import PendingWritebackRow
-from gaggiclanker.device.connection import DeviceConnection, machine_operation
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import Conflict, ServiceUnavailable
-from gaggiclanker.infra.tasks import TaskRegistry
-from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/device", tags=["device"])
-
-
-def _machine_tasks(connection: DeviceConnection[Any] | None) -> TaskRegistry:
-    """Where a cleanup run and a notes send belong: the machine owner's registry.
-
-    Never ``app.state.tasks``. Both coroutines hold the service that holds this
-    connection, and the app's registry is handed to the chat's tools — a task in
-    it can be reached through its own coroutine frame, and cancelled by name by
-    anything holding the registry. Keeping machine work on the connection is
-    what makes the reachability guarantee in `gaggiclanker/tools/registry.py`
-    true rather than merely intended. The busy check reads these same names, so
-    a settings change is still refused while either is in flight.
-    """
-    if connection is None:  # pragma: no cover - the app wires one whenever a service exists
-        raise ServiceUnavailable("No machine is configured, so there is nothing to run against it.")
-    return connection.tasks
 
 
 class DeviceStatusData(BaseModel):
@@ -137,220 +107,3 @@ async def list_device_writes(
     items = await writes.list_writes(limit=limit)
     enabled = bool(await settings.get("deviceWritesEnabled"))
     return envelope_response(DeviceWritesData(enabled=enabled, items=items).model_dump(mode="json"))
-
-
-# ── storage cleanup ──────────────────────────────────────────────────
-
-
-def _require_cleanup(service: CleanupService | None) -> CleanupService:
-    if service is None:
-        raise ServiceUnavailable(
-            "No machine is configured, so there is nothing to clean up. "
-            "Set `gaggimateHost` (and leave `deviceSyncEnabled` on) in settings."
-        )
-    return service
-
-
-class CleanupRunRequest(BaseModel):
-    """The plan a person confirmed, by the shot ids the preview showed them."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: Every planned shot id from the preview that was confirmed. Required and
-    #: non-empty — confirming nothing is not a run — and compared with a fresh
-    #: plan: a run deletes what was approved or nothing.
-    shot_ids: list[int] = Field(min_length=1)
-
-
-class CleanupRunAccepted(BaseModel):
-    """What was queued. Nothing has been deleted when this is sent."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    planned: int
-    task: str
-
-
-class CleanupRunsData(BaseModel):
-    """The ledger of past runs, newest first."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    items: list[CleanupRunRow]
-
-
-@router.get(
-    "/cleanup/plan",
-    response_model=ApiResponse[CleanupPlan],
-    summary="What a cleanup would delete from the machine right now",
-)
-async def get_cleanup_plan(cleanup: CleanupServiceDep) -> JSONResponse:
-    """A dry run. Reads the archive and the last identity frame; writes nothing.
-
-    This is the preview a person approves, and it lists what it will **not**
-    delete as well as what it will — a shot that is quarantined or whose stored
-    bytes do not match its header is named with the reason, because "why is that
-    shot still on my machine" is otherwise unanswerable from this page.
-    """
-    plan = await _require_cleanup(cleanup).plan()
-    return envelope_response(plan.model_dump(mode="json"))
-
-
-@router.post(
-    "/cleanup/run",
-    response_model=ApiResponse[CleanupRunAccepted],
-    status_code=202,
-    summary="Delete the approved plan's shots from the machine, oldest first",
-)
-async def post_cleanup_run(body: CleanupRunRequest, cleanup: CleanupServiceDep) -> JSONResponse:
-    """202, and the work happens in a background task — but only for the plan shown.
-
-    The body names the shots the preview showed and the person confirmed. A
-    fresh plan that differs is a 409 and nothing is queued, so what runs is
-    exactly what was approved; with writes off it is a 403, audited, naming the
-    switch. This route is the only way a cleanup starts: nothing runs one
-    automatically.
-
-    Not in the request, for the same reason a review is not: a run is one
-    WebSocket frame per shot paced at two a second, so a hundred shots is most
-    of a minute and `docker stop` allows ten seconds. The task is named
-    `cleanup`, claimed synchronously, so a second tab pressing the button gets a
-    409 rather than a second pass fighting this one over the device's two HTTP
-    slots.
-
-    Every delete is still authorised by the write gate on its way out, which is
-    what makes this route safe to expose at all: it cannot delete anything the
-    archive does not already hold intact.
-    """
-    service = _require_cleanup(cleanup)
-    tasks = _machine_tasks(service.connection)
-    # Registered with the machine connection from the approval to the claim, so
-    # a settings change cannot rebuild the client between the plan a person
-    # confirmed and the run that deletes it; once the task holds its name, the
-    # connection sees the run by that name instead.
-    async with machine_operation(service.connection, "a cleanup run"):
-        # Checked before the plan as well as by the claim below: a run in
-        # progress is moving shots out of the plan, and "the plan changed" would
-        # be the wrong sentence for "wait for the one already going".
-        if tasks.get(cleanup_task_name()) is not None:
-            raise _cleanup_running()
-        plan = await service.approve(body.shot_ids)
-        if not service.spawn(tasks, plan, trigger="manual"):
-            raise _cleanup_running()
-    return envelope_response(
-        CleanupRunAccepted(planned=len(plan.planned), task=cleanup_task_name()).model_dump(
-            mode="json"
-        ),
-        status_code=202,
-    )
-
-
-def _cleanup_running() -> Conflict:
-    return Conflict(
-        "A cleanup is already running. Wait for it to finish; its result appears "
-        "under Clean up storage on the Sync page."
-    )
-
-
-@router.get(
-    "/cleanup/runs",
-    response_model=ApiResponse[CleanupRunsData],
-    summary="Every cleanup pass this box has run",
-)
-async def list_cleanup_runs(
-    request: Request,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
-) -> JSONResponse:
-    """Newest first. A run that stopped early shows both figures: planned and deleted."""
-    items = await CleanupRepository(request.app.state.db).list_runs(limit=limit)
-    return envelope_response(CleanupRunsData(items=items).model_dump(mode="json"))
-
-
-# ── notes write-back ─────────────────────────────────────────────────
-
-
-def _require_writeback(service: NotesWritebackService | None) -> NotesWritebackService:
-    if service is None:
-        raise ServiceUnavailable("No machine is configured, so there is nowhere to write notes to.")
-    return service
-
-
-class PendingNotesData(BaseModel):
-    """The verdicts this box holds that the machine does not, and what a send would write."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    writes_enabled: bool
-    fields: list[str]
-    items: list[PendingWritebackRow]
-
-
-class NotesPushRequest(BaseModel):
-    """What a person chose to send: the ticked shots, by id.
-
-    Required and non-empty. There is deliberately no "every pending one" form:
-    the Sync page never sends it, and a send nobody saw a list for is exactly
-    the kind of write this route exists to rule out.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    shot_ids: list[int] = Field(min_length=1)
-
-
-class NotesPushAccepted(BaseModel):
-    """What was queued for the send."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    pending: int
-
-
-@router.get(
-    "/notes/pending",
-    response_model=ApiResponse[PendingNotesData],
-    summary="Judgements the machine's own notes cards do not have yet",
-)
-async def get_pending_notes(notes: NotesWritebackServiceDep) -> JSONResponse:
-    """The backlog, plus the write switch — a page has to say *why* Send is idle."""
-    service = _require_writeback(notes)
-    policy = await service.policy()
-    return envelope_response(
-        PendingNotesData(
-            writes_enabled=policy.writes_enabled,
-            fields=policy.fields,
-            items=await service.pending_rows(),
-        ).model_dump(mode="json")
-    )
-
-
-@router.post(
-    "/notes/push",
-    response_model=ApiResponse[NotesPushAccepted],
-    status_code=202,
-    summary="Send the selected pending judgements to the machine's notes cards",
-)
-async def post_notes_push(
-    body: NotesPushRequest,
-    notes: NotesWritebackServiceDep,
-) -> JSONResponse:
-    """202: one frame per shot, in a background task, stopping on the first device error.
-
-    The only way a judgement reaches the machine: a person ticks shots on the
-    Sync page and confirms. The ids are required and non-empty (400 otherwise);
-    every one must still be pending (409 otherwise, nothing queued); writes off
-    is a 403, audited. Saving a judgement never sends one.
-    """
-    service = _require_writeback(notes)
-    tasks = _machine_tasks(service.connection)
-    # As for a cleanup run: held from the approval to the claim of the task name.
-    async with machine_operation(service.connection, "a notes send"):
-        if tasks.get(writeback_task_name()) is not None:
-            raise Conflict("A notes send is already running.")
-        selected = await service.approve_push(body.shot_ids)
-        if not service.spawn_push(tasks, selected):
-            raise Conflict("A notes send is already running.")
-    return envelope_response(
-        NotesPushAccepted(pending=len(selected)).model_dump(mode="json"),
-        status_code=202,
-    )

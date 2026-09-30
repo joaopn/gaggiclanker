@@ -21,7 +21,6 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.device.writes import DeviceWriteRefused
 from gaggiclanker.domain.models import (
     Profile,
-    ShotNotes,
     canonical_profile_json,
     with_app_suffix,
 )
@@ -339,22 +338,11 @@ def test_the_write_kinds_are_spelled_the_same_in_every_layer() -> None:
     ).read_text()
     check = re.search(r"kind\s+TEXT\s+NOT NULL CHECK \(kind IN\s*\(([^)]*)\)", migration)
     assert check is not None, "migration 0010 no longer declares the kind CHECK"
-    assert set(re.findall(r"'([a-z_]+)'", check.group(1))) == client_kinds
-
-
-async def test_the_two_history_writes_are_gated_by_the_same_switch(
-    live: tuple[FastAPI, object],
-) -> None:
-    """Cleanup and notes write-back widened the surface; they did not widen the default.
-
-    The per-kind rules are tested in `tests/cleanup`; what is checked here is
-    that the master switch still comes first for both of them, which is the
-    property the whole gate exists for.
-    """
-    app, _ = live
-    client = app.state.connection.client
-    with pytest.raises(DeviceWriteRefused, match="switched off"):
-        await client.delete_shot(129)
-    with pytest.raises(DeviceWriteRefused, match="switched off"):
-        await client.save_shot_notes(129, ShotNotes(id="000129"))
-    assert {result for _kind, result, _id in await audit(app)} == {"refused"}
+    # The CHECK still admits the two kinds this box used to write (a shot delete
+    # and a notes save): a shipped migration is never edited, and rows of those
+    # kinds in an existing archive stay in the audit as history. No client sends
+    # them any more, so they are in the CHECK and in neither list above.
+    assert set(re.findall(r"'([a-z_]+)'", check.group(1))) == client_kinds | {
+        "shot_delete",
+        "notes_save",
+    }

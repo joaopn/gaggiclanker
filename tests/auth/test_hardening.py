@@ -319,9 +319,8 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     test is still being run, because what this box can do to somebody's machine
     is the claim the README makes to whoever installs it. Profile push changed
     the answer from "nothing" to "five profile writes, all gated"; storage
-    cleanup and notes write-back made it seven, adding one shot delete and one
-    notes save, each with
-    its own rule in the gate on top of the switch. The question is still asked
+    a storage cleanup and a notes write-back once made it seven, and both were
+    removed again: only profiles are ever written. The question is still asked
     twice, in two files, on purpose.
     """
     import inspect
@@ -344,7 +343,7 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
     # changes WiFi and PID (and, up to firmware v1.8.x, cleared every boolean
     # key it omits).
     assert all(not name.startswith(("write", "set_")) for name in public - set(GATED_WRITE_METHODS))
-    # And the seven are exactly the seven, named rather than counted: a count
+    # And the five are exactly the five, named rather than counted: a count
     # would survive a swap.
     assert set(GATED_WRITE_METHODS) == {
         "save_profile",
@@ -352,8 +351,6 @@ def test_the_device_client_surface_is_still_the_two_declared_lists() -> None:
         "select_profile",
         "favorite_profile",
         "unfavorite_profile",
-        "delete_shot",
-        "save_shot_notes",
     }
 
 
@@ -367,12 +364,18 @@ def test_device_writes_are_off_until_somebody_turns_them_on(app: FastAPI) -> Non
     from gaggiclanker.settings import SETTINGS_REGISTRY
 
     assert SETTINGS_REGISTRY["deviceWritesEnabled"].default is False
-    # The two features that write outside `req:profiles:*` have no switch of
-    # their own and nothing that runs them automatically: a person starts each
-    # from the Sync page, behind this one switch. The cleanup policy proposes
-    # nothing until somebody picks one.
-    assert SETTINGS_REGISTRY["deviceCleanupMode"].default == "off"
-    for removed in ("deviceCleanupAuto", "notesWritebackEnabled", "mcpDeviceWrites", "mcpEnabled"):
+    # Nothing writes outside `req:profiles:*`, so there is no cleanup or notes
+    # setting, and no automatic-write switch either.
+    for removed in (
+        "deviceCleanupAuto",
+        "deviceCleanupMode",
+        "deviceCleanupKeepNewest",
+        "deviceCleanupMinFreeKb",
+        "notesWritebackEnabled",
+        "notesWritebackFields",
+        "mcpDeviceWrites",
+        "mcpEnabled",
+    ):
         assert removed not in SETTINGS_REGISTRY
 
 

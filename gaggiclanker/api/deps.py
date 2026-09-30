@@ -15,7 +15,6 @@ from fastapi import Depends, Request
 
 from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
-from gaggiclanker.cleanup.service import CleanupService
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
@@ -41,7 +40,6 @@ from gaggiclanker.infra.sse import SseEventBus
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
-from gaggiclanker.notes.writeback import NotesWritebackService
 from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
@@ -53,7 +51,6 @@ __all__ = [
     "AuthServiceDep",
     "BeansRepoDep",
     "ChatRunnerDep",
-    "CleanupServiceDep",
     "DatabaseDep",
     "DeviceClientDep",
     "DeviceConnectionDep",
@@ -70,7 +67,6 @@ __all__ = [
     "LlmServiceDep",
     "MachineRepoDep",
     "NotesRepoDep",
-    "NotesWritebackServiceDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
     "ReviewServiceDep",
@@ -267,22 +263,6 @@ def get_device_writes_repo(request: Request) -> DeviceWritesRepository:
     return DeviceWritesRepository(get_database(request))
 
 
-def get_cleanup_service(request: Request) -> CleanupService | None:
-    """The device-cleanup service, or ``None`` when no machine is configured.
-
-    App-scoped for the reason the draft service is: it reaches the machine
-    through the app's one connection, whose client carries the write gate.
-    """
-    service: CleanupService | None = getattr(request.app.state, "cleanup", None)
-    return service
-
-
-def get_notes_writeback_service(request: Request) -> NotesWritebackService | None:
-    """The notes write-back service, or ``None`` before the lifespan built it."""
-    service: NotesWritebackService | None = getattr(request.app.state, "notes_writeback", None)
-    return service
-
-
 def get_starting_point_service(request: Request) -> StartingPointService:
     """The starting-point wizard. App-scoped, for the review service's reason.
 
@@ -341,7 +321,3 @@ DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_write
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
 StartingPointServiceDep = Annotated[StartingPointService, Depends(get_starting_point_service)]
 ChatRunnerDep = Annotated[ChatRunner, Depends(get_chat_runner)]
-CleanupServiceDep = Annotated["CleanupService | None", Depends(get_cleanup_service)]
-NotesWritebackServiceDep = Annotated[
-    "NotesWritebackService | None", Depends(get_notes_writeback_service)
-]

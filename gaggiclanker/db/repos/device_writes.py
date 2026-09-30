@@ -41,8 +41,6 @@ class DeviceWriteWrite(BaseModel):
         "profile_select",
         "profile_favorite",
         "profile_unfavorite",
-        "shot_delete",
-        "notes_save",
     ]
     host: str = ""
     device_id: str | None = None

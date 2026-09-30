@@ -116,7 +116,7 @@ class ToolContext:
     ``cancel()`` if it has them, and a task hands out its own coroutine frame,
     where the ``self`` it was called on is sitting. What makes this safe is that
     the registry wired in holds no task that talks to the machine; the sync
-    engine's loops, a cleanup run and a notes send live on the registry
+    engine's loops live on the registry
     :class:`~gaggiclanker.device.connection.DeviceConnection` keeps to itself.
     """
 

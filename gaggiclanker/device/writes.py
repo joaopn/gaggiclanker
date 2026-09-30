@@ -1,6 +1,6 @@
 """The gate every device write passes through, and the refusal it raises.
 
-`GaggimateClient` gained five write methods with profile push. It did not gain the
+`GaggimateClient` has five write methods, all of them profile operations. It did not gain the
 right to decide whether a write is allowed: that depends on a setting and on an
 audit table, both of which live in the database, and the device layer sits
 *below* the database layer in this codebase's import graph (`sync/engine.py`
@@ -36,20 +36,11 @@ __all__ = [
     "payload_hash",
 ]
 
-#: The seven things this box may ever ask a machine to change, and no more.
-#:
-#: Five are `req:profiles:*` frames. Two are `req:history:*` frames
-#: and each was a deliberate widening of this list rather than a refactor:
-#:
-#: * ``shot_delete`` is `req:history:delete`, and it is
-#:   **unrecoverable** — which is why the gate refuses it for any shot whose
-#:   bytes are not already in the archive, intact and unquarantined. The
-#:   firmware performs exactly the same deletion itself when free space drops
-#:   below 500 KB, so the machine is losing these shots either way; the only
-#:   question is whether the archive has them first.
-#: * ``notes_save`` is `req:history:notes:save`, which overwrites the
-#:   machine's own notes card for one shot and, as a side effect, the index's
-#:   rating and volume.
+#: The five things this box may ever ask a machine to change, and no more: all
+#: of them `req:profiles:*` frames. Only profiles are ever written. Shots are
+#: never deleted from the machine and notes cards are never written to it (the
+#: machine deletes its own oldest shots when storage runs low, and the archive
+#: pulls before it does); both were once on this list and were removed.
 #:
 #: Still absent, and still a design decision to add: `req:profiles:reorder` (it
 #: rewrites the display's whole ordering for a cosmetic gain),
@@ -62,8 +53,6 @@ type WriteKind = Literal[
     "profile_select",
     "profile_favorite",
     "profile_unfavorite",
-    "shot_delete",
-    "notes_save",
 ]
 
 

@@ -450,8 +450,9 @@ class SyncEngine:
     async def sync_shots(self, *, kind: str = "backfill", trigger: str = "manual") -> SyncRunRow:
         """One index diff: fetch what is missing, reconcile what changed, pull notes.
 
-        Nothing hangs off the end of a pass: shots leave the machine only when a
-        person confirms a cleanup on the Sync page, so a pull only ever reads.
+        Nothing hangs off the end of a pass: a pull only ever reads. The machine
+        deletes its own oldest shots when storage runs low (`cleanupHistory`), so a
+        pull is how the archive gets a shot before that happens.
         """
         # Counted before the lock is taken, and synchronously with the loop
         # waking: see `busy`.

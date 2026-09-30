@@ -22,7 +22,7 @@
 #       `npm run gen:api`, which must not change web/src/api/schema.d.ts
 #   web/ (a regenerated schema.d.ts included), except its Markdown
 #       npm run check, npm run build
-#   gaggiclanker/{device,sync,drafts,notes,cleanup}/, scripts/sim*, tests/simulator/
+#   gaggiclanker/{device,sync,drafts}/, scripts/sim*, tests/simulator/
 #       scripts/sim.sh test -- about three minutes, so reported as owed and
 #       run only with --sim
 #   anything else (docs, prompt YAML, scripts outside the simulator)
@@ -123,7 +123,7 @@ for path in "${changed[@]}"; do
     esac
     case "$path" in
         gaggiclanker/device/* | gaggiclanker/sync/* | gaggiclanker/drafts/* | \
-            gaggiclanker/notes/* | gaggiclanker/cleanup/* | scripts/sim* | tests/simulator/*)
+            scripts/sim* | tests/simulator/*)
             owes_sim=1
             ;;
     esac

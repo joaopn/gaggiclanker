@@ -6,29 +6,27 @@ push add five profile writes, so the question this file answers changes from "is
 anything writable" to **"is exactly the agreed set writable, and is every one of
 them gated"**.
 
-Storage cleanup and notes write-back move two request types across the line, and the shape of
-that move is the thing to copy if a third is ever proposed. `req:history:delete`
-and `req:history:notes:save` were in the forbidden-grep list below, which is
-where a request type lives while this client may not send it at all. They are
-now in the "appears exactly once" list, which is where it lives once a gated
-method owns it — one method, one frame, no second place that sends it. Moving an
-entry between those two lists is the edit that admits the surface has grown; a
-rule that let a write appear *without* that edit would be a rule that does not
-hold.
+Moving a request type between the forbidden-grep list below, where it lives while
+this client may not send it at all, and the "appears exactly once" list, where it
+lives once a gated method owns it, is the edit that admits the surface has grown;
+a rule that let a write appear *without* that edit would be a rule that does not
+hold. `req:history:delete` and `req:history:notes:save` made that move once, for
+a storage cleanup and a notes write-back, and were moved back when both were
+removed: only profiles are ever written to the machine.
 
 The stakes have not changed. `POST /api/settings` changes WiFi and PID and, up to
 firmware v1.8.x, cleared every checkbox-style boolean key the body omits (a
 partial write turned off HomeKit, boiler fill and the momentary buttons),
 `req:profiles:save` with a float `pump` leaves a profile that never runs the
-pump, `req:history:delete` is unrecoverable — the
-machine is the only copy until we have synced it, which is exactly why the gate
-refuses it for any shot the archive does not already hold intact — and a profile
-with zero phases crashes brew start on the display.
+pump, `req:history:delete` is unrecoverable (which is why no client of this box
+sends it: the machine's own rotation deletes its oldest shots, and the archive
+pulls before it does), and a profile with zero phases crashes brew start on the
+display.
 
 So: two allow-lists, a forbidden-request-type grep that still covers everything
 outside them, and a check that no write method can reach `_send` except through
 the gate. If you are here because this test failed, the question is not "how do
-I update the list" but "does this write belong in the seven, and has it got a
+I update the list" but "does this write belong in the five, and has it got a
 rule in front of it".
 """
 
@@ -96,7 +94,7 @@ def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
 
     A source grep rather than an API check, because the way a write sneaks back
     in is somebody adding `req:history:rebuild` to a private helper that a
-    public read then calls. The seven writes this client is allowed to make are
+    public read then calls. The five writes this client is allowed to make are
     absent from this list and checked separately below; everything else the
     firmware will act on is here.
     """
@@ -110,9 +108,14 @@ def test_no_forbidden_request_type_appears_anywhere_in_the_client() -> None:
         '"req:profiles:reorder"',
         # History: a rebuild regenerates `index.bin` from every `.slog` on the
         # machine at once, which is minutes of filesystem work and a progress
-        # stream nothing here consumes. The delete and the notes save moved out
-        # of this list when they were added and are pinned below instead.
+        # stream nothing here consumes.
         '"req:history:rebuild"',
+        # Only profiles are ever written. A shot delete is unrecoverable (the
+        # machine is the only copy until it has been pulled) and a notes save
+        # overwrites the card and, as a side effect, the index's rating and
+        # volume; both were once sent from the Sync page and are forbidden again.
+        '"req:history:delete"',
+        '"req:history:notes:save"',
         # Anything that moves the hardware or the firmware.
         '"req:ota-start"',
         '"req:autotune-start"',
@@ -145,11 +148,6 @@ def test_each_allowed_write_type_appears_exactly_once() -> None:
         '"req:profiles:select"',
         '"req:profiles:favorite"',
         '"req:profiles:unfavorite"',
-        # The two history writes. Each is sent by exactly one gated method, and
-        # each has an eligibility rule in `SettingsWriteGate.authorize` that
-        # runs before the frame exists.
-        '"req:history:delete"',
-        '"req:history:notes:save"',
     ):
         assert source.count(request_type) == 1, request_type
 

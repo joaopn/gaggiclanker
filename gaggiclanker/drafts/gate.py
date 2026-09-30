@@ -1,4 +1,4 @@
-"""The real write gate: one setting, one audit table, two rules.
+"""The real write gate: one setting, one audit table, one rule.
 
 :class:`~gaggiclanker.device.writes.DenyAllWrites` is what a client gets by
 default. This is what it gets in an installation, and everything it knows that
@@ -19,14 +19,11 @@ from typing import Literal
 
 import structlog
 
-from gaggiclanker.cleanup.eligibility import ineligible_reason
-from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
 from gaggiclanker.device.writes import DeviceWriteRefused, PendingWrite
 from gaggiclanker.settings_service import SettingsService
 
-__all__ = ["SettingsWriteGate", "refuse_unless_writes_enabled"]
+__all__ = ["SettingsWriteGate"]
 
 log = structlog.get_logger(__name__)
 
@@ -39,32 +36,6 @@ DISABLED_MESSAGE = (
 )
 
 
-async def refuse_unless_writes_enabled(
-    settings: SettingsService,
-    writes: DeviceWritesRepository,
-    *,
-    kind: Literal["shot_delete", "notes_save"],
-    host: str,
-) -> None:
-    """Refuse a person's request to start a batch of writes while the switch is off.
-
-    The Sync page's two batch actions check here before anything is queued, so
-    pressing "Send" or "Delete" with writes off is a 403 naming the switch rather
-    than a background task whose every frame the gate then refuses one by one.
-    The refusal is still an attempt, and every attempt leaves a row in
-    `device_writes` — one row, with no shot id, because nothing was tried against
-    any shot in particular. The gate itself still checks the switch on every
-    frame that follows when it is on.
-    """
-    if bool(await settings.get("deviceWritesEnabled")):
-        return
-    await writes.record(
-        DeviceWriteWrite(kind=kind, host=host, result="refused", error=DISABLED_MESSAGE)
-    )
-    log.info("device_write", kind=kind, host=host, device_id=None, result="refused")
-    raise DeviceWriteRefused(DISABLED_MESSAGE)
-
-
 class SettingsWriteGate:
     """Authorise device writes against the setting, and record every attempt.
 
@@ -72,21 +43,9 @@ class SettingsWriteGate:
     built in the lifespan once the database and the settings service exist.
     """
 
-    def __init__(
-        self,
-        settings: SettingsService,
-        writes: DeviceWritesRepository,
-        *,
-        db: Database | None = None,
-    ) -> None:
+    def __init__(self, settings: SettingsService, writes: DeviceWritesRepository) -> None:
         self.settings = settings
         self.writes = writes
-        # The shot-delete branch needs to look a shot up in the archive, which
-        # the profile branches never did. Optional so a gate can still be built
-        # from a settings service and an audit alone (several tests do): without
-        # a database there is nothing to prove a shot is safely archived with,
-        # so `shot_delete` is refused outright rather than allowed by default.
-        self.cleanup = CleanupRepository(db) if db is not None else None
 
     async def enabled(self) -> bool:
         return bool(await self.settings.get("deviceWritesEnabled"))
@@ -109,35 +68,6 @@ class SettingsWriteGate:
                     "save for that id in the device-write audit. gaggiclanker deletes only the "
                     "profiles it wrote; delete this one from the machine's own display."
                 )
-        elif write.kind == "shot_delete":
-            await self._authorize_shot_delete(write)
-        # `notes_save` has no branch of its own. Its rules (newer than the card,
-        # never an unedited verdict seeded from the machine) need the judgement
-        # and the mirror, and live in the notes service; the consent is the
-        # person pressing Send on the Sync page, behind this same master switch.
-
-    async def _authorize_shot_delete(self, write: PendingWrite) -> None:
-        """Refuse unless the archive already holds this shot, intact and readable.
-
-        `req:history:delete` removes the `.slog`, the notes file and the index
-        entry, and there is no undo. Every condition is in
-        :func:`~gaggiclanker.cleanup.eligibility.ineligible_reason`, which the
-        plan step runs too so that the preview a person approves is the same set
-        this will allow. The refusal carries the reason into the audit row,
-        because "why is this shot still on my machine" is the question the
-        Sync page is asked.
-        """
-        device_id = write.device_id or ""
-        if self.cleanup is None:
-            raise DeviceWriteRefused(
-                f"Shot {device_id} was not deleted: this client has no archive to check it "
-                "against, and a shot is only ever deleted from a machine once this box "
-                "holds its bytes."
-            )
-        candidate = await self.cleanup.candidate(device_id)
-        reason = ineligible_reason(candidate, device_id=device_id)
-        if reason is not None:
-            raise DeviceWriteRefused(reason)
 
     async def record(
         self, write: PendingWrite, *, result: Literal["ok", "refused", "failed"], error: str = ""

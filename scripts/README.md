@@ -11,7 +11,7 @@ uncommitted, and picks the gates from them:
 |---|---|
 | `gaggiclanker/`, `tests/`, `pyproject.toml`, `uv.lock` | `ruff check .`, `ruff format --check .`, `mypy`, `pytest`, then `npm run gen:api`, which must leave `web/src/api/schema.d.ts` unchanged |
 | `web/` (Markdown excepted) | `npm run check`, `npm run build` |
-| `gaggiclanker/{device,sync,drafts,notes,cleanup}/`, `scripts/sim*`, `tests/simulator/` | `scripts/sim.sh test`, reported as owed and run only with `--sim` |
+| `gaggiclanker/{device,sync,drafts}/`, `scripts/sim*`, `tests/simulator/` | `scripts/sim.sh test`, reported as owed and run only with `--sim` |
 | anything else with Python in it | `ruff format --check` on those files |
 
 ```bash

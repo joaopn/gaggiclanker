@@ -19,9 +19,9 @@ does: one from the push-capable draft service, one from a task spawned on the
 registry the tools are given, and one from the registry the machine's owner
 keeps to itself.
 
-It runs against an app actually connected to the fake machine, with a cleanup
-run and a notes send in flight, so a client, a connection, an engine and two
-held machine writes all exist and would be found if anything led to them.
+It runs against an app actually connected to the fake machine, with a pull held
+in flight, so a client, a connection, an engine and its running loops all exist
+and would be found if anything led to them.
 """
 
 from __future__ import annotations
@@ -43,20 +43,15 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.cleanup.service import cleanup_task_name
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
-from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
-from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
-from gaggiclanker.domain.ids import pad6
 from gaggiclanker.drafts.proposals import DraftProposals
-from gaggiclanker.notes.writeback import writeback_task_name
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.sync.engine import SyncEngine
@@ -65,7 +60,7 @@ from gaggiclanker.tools.registry import registry
 from gaggiclanker.tools.scope import ToolScope
 from tests.conftest import running_app, seed_settings
 from tests.review.conftest import Fixture, build_fixture
-from tests.sync.conftest import FIRST_ID, SMALL_COUNT, build_archive_device
+from tests.sync.conftest import SMALL_COUNT, build_archive_device
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -272,83 +267,58 @@ async def test_nothing_the_chat_hands_a_tool_reaches_the_machine(
 
 @pytest.fixture
 async def machine_busy(env: EnvSettings, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[FastAPI]:
-    """The app with both machine writes actually in flight, and held there.
+    """The app with a pull actually in flight, and held there.
 
-    A cleanup run and a notes send are the two background tasks whose coroutines
-    hold the device client, and they only exist while somebody is deleting or
-    sending. The walk has to be run while they are: a graph checked with nothing
-    running would miss exactly the tasks this arrangement is about. Both are
-    stopped inside the client method they call, so neither finishes until the
-    test lets it.
+    The sync engine's loops and a running pull are the background work whose
+    coroutines hold the device client. The walk has to be run while they are: a
+    graph checked with nothing running would miss exactly the tasks this
+    arrangement is about. The pull is stopped inside the client method it calls,
+    so it does not finish until the test lets it.
     """
     device = build_archive_device(SMALL_COUNT, header_only=False)
     await device.start()
     await seed_settings(env, gaggimateHost=device.address, gaggimateTimeoutSeconds=5)
     release = asyncio.Event()
     try:
-        async with running_app(env) as (app, _client):
+        async with running_app(env) as (app, client):
             machine = app.state.connection.client
             assert await machine.wait_connected(5.0), "the fake machine did not connect"
             await app.state.connection.engine.sync_shots(trigger="test")
-            await app.state.settings_service.apply(
-                {
-                    "deviceWritesEnabled": True,
-                    "deviceCleanupMode": "keep_newest",
-                    "deviceCleanupKeepNewest": SMALL_COUNT - 3,
-                }
-            )
-            app.state.cleanup.pace_seconds = 0.0
+            await app.state.settings_service.apply({"deviceWritesEnabled": True})
 
-            deleting = asyncio.Event()
-            sending = asyncio.Event()
+            pulling = asyncio.Event()
+            original = machine.fetch_index
 
-            async def held_delete(shot_id: Any) -> None:
-                deleting.set()
+            async def held_index() -> Any:
+                pulling.set()
                 await release.wait()
+                return await original()
 
-            async def held_save(shot_id: Any, notes: Any) -> None:
-                sending.set()
-                await release.wait()
-
-            monkeypatch.setattr(machine, "delete_shot", held_delete)
-            monkeypatch.setattr(machine, "save_shot_notes", held_save)
-
-            shot = await ShotsRepository(app.state.db).get_by_device_id(pad6(FIRST_ID))
-            assert shot is not None
-            await JudgementsRepository(app.state.db).upsert(
-                shot.id, JudgementWrite(rating=4, dose_in_g=18.0, dose_out_g=36.5)
-            )
-            plan = await app.state.cleanup.plan()
-            assert plan.planned, "the policy must want something deleted for this to mean anything"
-
-            tasks = app.state.connection.tasks
-            assert app.state.cleanup.spawn(tasks, plan) is True
-            assert app.state.notes_writeback.spawn_push(tasks, [shot.id]) is True
+            monkeypatch.setattr(machine, "fetch_index", held_index)
+            response = await client.post("/api/sync/run", json={"kind": "shots"})
+            assert response.status_code == 202, response.text
             async with asyncio.timeout(10):
-                await deleting.wait()
-                await sending.wait()
-            assert {cleanup_task_name(), writeback_task_name()} <= set(tasks.names)
+                await pulling.wait()
+            assert app.state.connection.tasks.names, "the sync loops must be running"
 
             try:
                 yield app
             finally:
                 release.set()
-                await tasks.cancel([cleanup_task_name(), writeback_task_name()])
     finally:
         release.set()
         await device.stop()
 
 
-async def test_nothing_reaches_the_machine_while_both_machine_writes_are_running(
+async def test_nothing_reaches_the_machine_while_a_pull_is_running(
     machine_busy: FastAPI,
     tmp_path: Path,
 ) -> None:
     """The three contexts, checked with the machine's own registry at its fullest.
 
-    Four sync loops, a cleanup run stopped inside `delete_shot` and a notes send
-    stopped inside `save_shot_notes` — every coroutine frame in the process that
-    holds the client exists right now, and none of them is reachable from what a
-    model drives.
+    Four sync loops and a pull stopped inside `fetch_index` — every coroutine
+    frame in the process that holds the client exists right now, and none of
+    them is reachable from what a model drives.
     """
     app = machine_busy
     for label, scope in (

@@ -342,9 +342,8 @@ async def put_judgement(
     """
     if await shots.get(shot_id) is None:
         raise NotFound(f"No shot {shot_id}")
-    # Only the archive. Sending a verdict to the machine's notes card is a
-    # separate, explicit action on the Sync page: saving here never contacts the
-    # machine, whatever the write switch says.
+    # Only the archive. A verdict is never written to the machine's notes card:
+    # saving here never contacts the machine, whatever the write switch says.
     row = await judgements.upsert(shot_id, body)
     return envelope_response(row.model_dump(mode="json"))
 

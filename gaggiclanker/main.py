@@ -26,11 +26,9 @@ from gaggiclanker.api import api_router, health_router
 from gaggiclanker.auth.guard import AuthGuardMiddleware
 from gaggiclanker.auth.service import AuthService
 from gaggiclanker.chat.runner import ChatRunner
-from gaggiclanker.cleanup.service import CleanupService, cleanup_task_name
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository
-from gaggiclanker.db.repos.cleanup import CleanupRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
@@ -62,7 +60,6 @@ from gaggiclanker.llm.claude_cli import ClaudeCliManager
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
-from gaggiclanker.notes.writeback import NotesWritebackService, writeback_task_name
 from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import (
     IGNORED_ENV_FILE,
@@ -230,7 +227,7 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
     leave the very thread this exists to reap.
 
     The order is the acquisition order reversed. The machine connection first:
-    it cancels its own registry — the sync loops, a cleanup run, a notes send —
+    it cancels its own registry — the sync loops —
     and then stops the engine and the client, whose supervisor owns a socket and
     an aiohttp session that have to be closed before the loop stops accepting
     callbacks. Then the app's shared registry, so nothing is mid-write. Then the
@@ -243,8 +240,6 @@ async def _shutdown(app: FastAPI, db: Database) -> None:
             await connection.stop()
     app.state.drafts = None
     app.state.starting = None
-    app.state.cleanup = None
-    app.state.notes_writeback = None
 
     tasks: TaskRegistry | None = getattr(app.state, "tasks", None)
     if tasks is not None:
@@ -352,10 +347,6 @@ async def _start(app: FastAPI, db: Database) -> None:
     # an absent log line does not answer it.
     interrupted_reviews = await ShotReviewsRepository(db).reconcile_running()
     interrupted_syncs = await SyncRepository(db).reconcile_running()
-    # The cleanup ledger gets the same treatment and for the same reason: a
-    # `running` cleanup row nothing closes would show a deletion in progress for
-    # ever on the Sync page.
-    interrupted_cleanups = await CleanupRepository(db).reconcile_running()
     # The chat's runs, for the reason a review's are: a `running` chat run
     # nobody owns is a spinner and a cancel button that cancels nothing.
     interrupted_chats = await ChatRepository(db).reconcile_running()
@@ -374,7 +365,6 @@ async def _start(app: FastAPI, db: Database) -> None:
         "boot_reconciled",
         reviews_interrupted=interrupted_reviews,
         sync_runs_interrupted=interrupted_syncs,
-        cleanup_runs_interrupted=interrupted_cleanups,
         chat_runs_interrupted=interrupted_chats,
         starting_points_interrupted=interrupted_starts,
         final_weights_refilled=final_weights_refilled,
@@ -449,20 +439,6 @@ async def _start(app: FastAPI, db: Database) -> None:
     app.state.connection = build_device_connection(app, settings_service, db)
     await app.state.connection.start()
 
-    # Cleanup and notes write-back. Both are app-scoped for the reason the draft service
-    # is: they reach the one client that can change a machine, through the one
-    # connection that owns it, and a per-request copy would have to build its
-    # own — which would mean a second gate, or a client with none. Neither is
-    # wired to anything that runs on its own: they act only when a person
-    # confirms an action on the Sync page, and the task each one spawns belongs
-    # to the connection's registry rather than to the app's.
-    app.state.cleanup = CleanupService(
-        db, settings_service, connection=app.state.connection, bus=app.state.events
-    )
-    app.state.notes_writeback = NotesWritebackService(
-        db, settings_service, connection=app.state.connection, bus=app.state.events
-    )
-
     # App-scoped because it reaches the one client that can change a machine. A
     # per-request service would have to build its own — and a client built
     # without the gate cannot write at all, which is the right default and the
@@ -507,13 +483,11 @@ def build_device_connection(
             timeout=config.timeout,
             # The one place the gate is attached. Without it every write method
             # refuses, which is what a client built anywhere else in this
-            # codebase gets — see `gaggiclanker/device/writes.py`. The database
-            # goes in with it because the `shot_delete` branch has to look the
-            # shot up in the archive before it will allow the machine to lose
-            # it. A rebuilt client gets a gate of its own over the same
-            # settings and audit table, so nothing about what may be written
-            # changes with the address.
-            write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db), db=db),
+            # codebase gets — see `gaggiclanker/device/writes.py`. A rebuilt
+            # client gets a gate of its own over the same settings and audit
+            # table, so nothing about what may be written changes with the
+            # address.
+            write_gate=SettingsWriteGate(settings, DeviceWritesRepository(db)),
         )
 
     def build_engine(client: GaggimateClient) -> SyncEngine:
@@ -527,13 +501,6 @@ def build_device_connection(
         read_config=read_config,
         build_client=build_client,
         build_engine=build_engine,
-        # The two machine writes that outlive their request. Profile pushes and
-        # rollbacks register themselves for as long as they run, and the sync
-        # engine reports its own pulls.
-        busy_tasks={
-            cleanup_task_name(): "a cleanup run",
-            writeback_task_name(): "a notes send",
-        },
     )
 
 

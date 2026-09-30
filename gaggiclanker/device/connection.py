@@ -4,8 +4,8 @@ The client and the sync engine used to be built once, in the lifespan, and
 captured by every service that needed them. Changing the machine's address in
 Settings therefore did nothing until a restart, and nothing said so. This object
 owns both instead, and everything else asks it for the current ones at the
-moment it acts — the routes through their dependencies, the cleanup, notes and
-profile-draft services through :attr:`DeviceConnection.client`.
+moment it acts — the routes through their dependencies, and the profile-draft
+service through :attr:`DeviceConnection.client`.
 
 Three rules shape it:
 
@@ -19,10 +19,10 @@ starts between the busy check and the rebuild, and a rebuild never starts while
 one is registered.
 
 **Never cut a write in half.** A change that would move the connection is
-refused while anything is using the machine — a profile push or rollback, a
-cleanup run, a notes send, a pull — with the reason, and before anything is
-stored. A change that leaves the effective values where they were does nothing
-to the connection at all, busy or not.
+refused while anything is using the machine — a profile push or rollback, or a
+pull — with the reason, and before anything is stored. A change that leaves the
+effective values where they were does nothing to the connection at all, busy or
+not.
 
 **It knows nothing above the device layer.** Reading the settings, building a
 client with the write gate attached and building the sync engine are handed in
@@ -31,7 +31,7 @@ the sync package — the direction `docs/architecture.md` draws.
 
 **Every background task that talks to the machine lives here.** This object
 keeps a :class:`~gaggiclanker.infra.tasks.TaskRegistry` of its own — the sync
-engine's loops, a cleanup run, a notes send — rather than sharing the app's.
+engine's loops — rather than sharing the app's.
 The app's registry is handed to things a language model drives (a chat run, an
 review, a starting point queue work on it), and a registry is not an opaque
 handle: every task in it answers ``get_coro()``, and a coroutine's frame holds
@@ -140,7 +140,6 @@ class DeviceConnection[EngineT: DeviceEngine]:
         read_config: Callable[[], Awaitable[DeviceConfig]],
         build_client: Callable[[DeviceConfig], GaggimateClient],
         build_engine: Callable[[GaggimateClient], EngineT],
-        busy_tasks: Mapping[str, str] | None = None,
     ) -> None:
         self._read_config = read_config
         self._build_client = build_client
@@ -148,10 +147,6 @@ class DeviceConnection[EngineT: DeviceEngine]:
         #: Built here, not handed in: see the module docstring. Everything in it
         #: holds the client, so nothing outside the device layer may hold it.
         self._tasks = TaskRegistry()
-        #: Registry task names that use the machine, with the phrase a refusal
-        #: says ("a cleanup run"). The cleanup run and the notes send run as
-        #: background tasks and outlive the request that started them.
-        self._busy_tasks: dict[str, str] = dict(busy_tasks or {})
         self._lock = asyncio.Lock()
         #: Operations registered through :meth:`operation`, by phrase.
         self._operations: Counter[str] = Counter()
@@ -180,13 +175,9 @@ class DeviceConnection[EngineT: DeviceEngine]:
     def tasks(self) -> TaskRegistry:
         """Where a background task that talks to the machine belongs.
 
-        The sync engine's loops are spawned here by :meth:`_build`; a cleanup
-        run and a notes send are spawned here by the two routes that start them
-        — both hold this connection through their service, so both belong to
-        the machine's owner rather than to the app's shared registry. The busy
-        check reads their names from here, so a rebuild is still refused while
-        either is in flight, and :meth:`stop` cancels them before anything else
-        goes.
+        The sync engine's loops are spawned here by :meth:`_build`, so they
+        belong to the machine's owner rather than to the app's shared registry,
+        and :meth:`stop` cancels them before anything else goes.
         """
         return self._tasks
 
@@ -194,9 +185,6 @@ class DeviceConnection[EngineT: DeviceEngine]:
         """What is using the machine right now, as a phrase, or ``None``."""
         for phrase, count in self._operations.items():
             if count > 0:
-                return phrase
-        for name, phrase in self._busy_tasks.items():
-            if self._tasks.get(name) is not None:
                 return phrase
         if self._engine is not None:
             return self._engine.busy()
@@ -212,12 +200,11 @@ class DeviceConnection[EngineT: DeviceEngine]:
     async def stop(self) -> None:
         """Stop this connection's background work, then the engine and the client.
 
-        Idempotent; the shutdown path. The registry goes first because a
-        cleanup run and a notes send are machine writes that also write to the
-        archive, and the lifespan closes the database straight after this: they
-        have to be over before the client they write through disappears, and
-        long before the file is released. The engine's loops are in the same
-        registry and are cancelled here too, which leaves
+        Idempotent; the shutdown path. The registry goes first because the
+        engine's loops write to the archive, and the lifespan closes the database
+        straight after this: they have to be over before the client they read
+        through disappears, and long before the file is released. They are in
+        the registry and are cancelled here, which leaves
         :meth:`DeviceEngine.stop` nothing to cancel and its ledger backstop
         still to run.
         """
