@@ -793,9 +793,10 @@ class GaggimateClient:
     async def select_profile(self, profile_id: str) -> None:
         """Make ``profile_id`` the machine's selected profile.
 
-        Never called by a push: a draft is pushed *beside* what the person is
-        brewing with, never in place of it. This exists so the UI can offer it
-        as a separate, deliberate action.
+        Called by a push or a rollback only to move the selection from the
+        profile it is removing to the one that replaces it, so the display keeps
+        brewing with the same recipe. A push that replaces nothing never selects:
+        the profile lands *beside* what the person is brewing with.
         """
         write = PendingWrite(
             kind="profile_select",

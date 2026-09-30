@@ -578,12 +578,14 @@ async def test_a_refinement_keeps_the_agent_s_major_suggestion(
     )
 
 
-async def test_two_drafts_of_one_profile_each_find_the_version_their_own_push_recorded(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
+async def test_two_drafts_of_one_profile_share_the_one_copy_on_the_machine(
+    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int, fake_device: FakeDevice
 ) -> None:
     """Profile versions are content-hashed, so two drafts can name the same one.
 
-    The device id the firmware gave each push is what tells their versions apart.
+    The second push finds the first one's profile on the machine and saves nothing,
+    so both drafts name the same device id and the display holds one copy. Both
+    still record a version of the Set, and both find one when re-read.
     """
     app, client = writes_on
     first = await _drafted_for(app, a_set)
@@ -597,7 +599,10 @@ async def test_two_drafts_of_one_profile_each_find_the_version_their_own_push_re
         data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
         for draft in (first, second)
     ]
+    assert reread[0]["pushed_device_profile_id"] == reread[1]["pushed_device_profile_id"]
+    assert [p.get("label") for p in fake_device.profiles].count(reread[0]["draft_label"]) == 1
     assert [row["recorded_version_no"] for row in reread] == [2, 3]
+    assert len(data(await client.get(f"/api/sets/{a_set}"))["versions"]) == 3
 
 
 async def test_a_set_s_draft_pushed_without_its_set_says_it_recorded_nothing(
@@ -1128,13 +1133,15 @@ async def test_a_stale_push_goes_through_with_the_override(
     assert pushed["status"] == "pushed"
 
 
-async def test_a_base_deleted_from_the_machine_counts_as_stale(
+async def test_a_base_gone_from_the_machine_is_not_stale_and_the_push_adds(
     writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
 ) -> None:
-    """The tombstone is the point: the mirror keeps the row, the display does not.
+    """A reset display holds nothing the base could have drifted from.
 
-    A draft whose base is no longer on the machine at all is not a diff anybody
-    can still check, so it gets the same question as one that merely moved.
+    The archive's copy of the base is what the diff was made against, and there is
+    nothing on the machine left to overwrite or to be inconsistent with, so the
+    push simply adds. Refusing would make every draft demand an override after an
+    update wipes the machine.
     """
     app, client = writes_on
     draft = await a_draft(app, client, provider)
@@ -1143,5 +1150,8 @@ async def test_a_base_deleted_from_the_machine_counts_as_stale(
     fake_device.profiles[:] = [p for p in fake_device.profiles if p.get("label") != BASE_LABEL]
     await app.state.connection.engine.sync_profiles(trigger="test")
 
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
-    assert response.status_code == 409
+    detail = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
+    assert detail["base_is_current"] is True
+    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
+    assert pushed["status"] == "pushed"
+    assert pushed["replaced_device_profile_id"] is None

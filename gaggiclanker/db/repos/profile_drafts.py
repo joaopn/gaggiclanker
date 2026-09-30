@@ -140,13 +140,10 @@ class ProfileDraftRow(BaseModel):
     set_next_major_label: str | None = None
     #: The version of this draft's Set that its push recorded, prediction and
     #: all. NULL when it was pushed without recording it there (or for another
-    #: Set), or not pushed yet. Found rather than stored: only a push for the
-    #: draft's own Set writes a version of that Set naming both the drafted
-    #: profile and the device id the firmware gave this push, and a rollback
-    #: clears that id. Not by origin: a draft made from an analysis (before it
-    #: was retired) records its prediction under `analysis`. An API client that
-    #: adds a version by hand naming both would read as this push's record; the
-    #: web's form never sends a device id.
+    #: Set), or not pushed yet. Read through `recorded_version_id`, which the push
+    #: stores: two drafts of one profile that share a device id (the second found
+    #: the first on the machine) each find their own version. A rollback clears the
+    #: device id and the number goes with it.
     recorded_version_no: int | None = None
     #: That version's name, "v1.3".
     recorded_version_label: str | None = None
@@ -154,9 +151,12 @@ class ProfileDraftRow(BaseModel):
     #:
     #: Computed in SQL rather than stored, because it is a fact about *now*: a
     #: draft made this morning against a profile somebody edited at lunchtime is
-    #: stale by the afternoon without anything about the draft changing. `True`
-    #: for a base that was never on the machine — there is nothing it could have
-    #: drifted from.
+    #: stale by the afternoon without anything about the draft changing. Current
+    #: when the mirror has the base's content under any device id; stale only when
+    #: its own id holds something else now. `True` for a base that was never on the
+    #: machine, or that is gone from it (a reset display): there is nothing left it
+    #: could have drifted from, and a push simply adds. A push re-reads the machine
+    #: and decides by what it finds, not by this.
     base_is_current: bool = True
     change_summary: str = ""
     #: The per-phase target changes computed at draft time. Stored rather than
@@ -220,22 +220,24 @@ _SELECT = f"""
                        FROM set_versions nv WHERE nv.set_id = s.id)
            END AS set_next_version_no,
            (SELECT rv.version_no FROM set_versions rv
-             WHERE rv.set_id = d.set_id
-               AND rv.profile_version_id = d.draft_version_id
-               AND rv.pushed_device_profile_id = d.pushed_device_profile_id
-             ORDER BY rv.version_no DESC LIMIT 1) AS recorded_version_no,
+             WHERE rv.id = d.recorded_version_id
+               AND rv.set_id = d.set_id
+               AND d.pushed_device_profile_id IS NOT NULL) AS recorded_version_no,
            (SELECT {label_sql("rv")} FROM set_versions rv
-             WHERE rv.set_id = d.set_id
-               AND rv.profile_version_id = d.draft_version_id
-               AND rv.pushed_device_profile_id = d.pushed_device_profile_id
-             ORDER BY rv.version_no DESC LIMIT 1) AS recorded_version_label,
+             WHERE rv.id = d.recorded_version_id
+               AND rv.set_id = d.set_id
+               AND d.pushed_device_profile_id IS NOT NULL) AS recorded_version_label,
            CASE
                WHEN d.base_device_profile_id IS NULL THEN 1
-               ELSE EXISTS (
+               WHEN EXISTS (
+                   SELECT 1 FROM device_profiles dp
+                    WHERE dp.deleted_at IS NULL
+                      AND dp.current_version_id = d.base_version_id
+               ) THEN 1
+               ELSE NOT EXISTS (
                    SELECT 1 FROM device_profiles dp
                     WHERE dp.device_id = d.base_device_profile_id
                       AND dp.deleted_at IS NULL
-                      AND dp.current_version_id = d.base_version_id
                )
            END AS base_is_current
     FROM profile_drafts d
