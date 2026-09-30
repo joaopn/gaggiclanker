@@ -72,8 +72,13 @@ def main() -> int:
             for p in json.loads(shot.phases_json)
             if "flow_rmse_ml_s" in p.get("diagnostics", {})
         ]
-        print(f"{path.stem}: flow verdicts {found or 'none'}; phases with a flow error {phases}")
-        failures += bool(found) + bool(phases)
+        # Graded, not merely absent: a profile ignored altogether would pass the rest.
+        ungraded = compliance.get("pressure_grading") != "graded"
+        print(
+            f"{path.stem}: pressure graded {not ungraded}; flow verdicts {found or 'none'}; "
+            f"phases with a flow error {phases}"
+        )
+        failures += bool(found) + bool(phases) + ungraded
     print("FAIL" if failures else "ok")
     return 1 if failures else 0
 

@@ -38,9 +38,6 @@ from gaggiclanker.sync.derive import SI_SCALE_CONNECTED, derive_shot
 from tests.sets.conftest import make_profile_version
 
 SLOG = Path(__file__).resolve().parents[1] / "fixtures" / "slog" / "shot_204_ramping_flow.slog"
-#: The newest shot of the demo archive, exported by the machine's web UI: 213
-#: samples over 53 s, four phases, a real scale. What a person's own shot looks
-#: like, and so what the curve's budget is measured on.
 #: The profiles these two shots are derived with: constructed to match them (the
 #: real ones no longer exist; see the README beside the files), each phase
 #: steering by pressure. The profile is what says which target a phase steered
@@ -49,6 +46,9 @@ CONSTRUCTED = Path(__file__).resolve().parents[1] / "fixtures" / "constructed_pr
 PROFILE_204 = json.loads((CONSTRUCTED / "shot_204_pressure-first.json").read_text())
 PROFILE_129 = json.loads((CONSTRUCTED / "shot_129_pressure-first.json").read_text())
 
+#: The newest shot of the demo archive, exported by the machine's web UI: 213
+#: samples over 53 s, four phases, a real scale. What a person's own shot looks
+#: like, and so what the curve's budget is measured on.
 SHOT_129 = Path(__file__).resolve().parents[1] / "fixtures" / "exports" / "shot-129.json"
 
 
