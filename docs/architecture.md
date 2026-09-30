@@ -41,9 +41,9 @@ storage pressure. gaggiclanker is the archive.**
 
 That is why the raw `.slog` bytes are stored before anything tries to parse
 them, why a shot that fails validation is quarantined rather than dropped, and
-why the device client is read-only. Losing a shot to a parser bug is worse than
-storing one nobody can read yet: the bug can be fixed next week, and by then the
-machine's copy is gone.
+why the only thing this box ever writes to the machine is a profile. Losing a
+shot to a parser bug is worse than storing one nobody can read yet: the bug can
+be fixed next week, and by then the machine's copy is gone.
 
 **Filling the archive is something a person asks for.** `POST /api/sync/run` —
 the button on the shots page — is the only thing that starts a pass over the
@@ -73,14 +73,12 @@ the archive tells them apart by the profile a shot was brewed with.
 | `review/`, `llm/`, `knowledge/` | A shot's review: one structured LLM call about one shot, started only by the shot page's button, given the shot's own information (never the judgement, the Set or another shot), the profile it brewed and the rules and passages its telemetry selects, and writing a blind taste prediction, a description and a summary to one `shot_reviews` row and nothing else. The knowledge base's three tiers: the rules, the prose, and the insights you have confirmed. |
 | `drafts/` | Profile drafts: the write gate, generation from advice, the four safety layers, the push and its rollback. Holds the gate every write to a machine passes. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and only the route-facing service holds the machine connection. |
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
-| `cleanup/` | Device storage: which shots are eligible to delete off the machine, the plan the Sync page shows, and the run of a plan a person confirmed. |
-| `notes/` | Judgements a person sends from the Sync page to the machine's own notes card, and only when ours is newer than its. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
 | `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, the version's newest shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
 | `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary the chat prompts carry, generated from the catalogue. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
-| `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and seven gated write methods — nothing else. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`, `delete_shot` only by `POST /api/device/cleanup/run` and `save_shot_notes` only by `POST /api/device/notes/push`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
+| `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and five gated write methods, all of them profile operations — nothing else. Only profiles are ever written to the machine. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push`, `delete_profile` only by `POST /api/profile-drafts/{id}/rollback`; `select_profile`, `favorite_profile` and `unfavorite_profile` have no route (only `scripts/profile_gate.py` selects). Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
 | `db/` | Repositories — the only code that writes SQL — plus migrations and backups. |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
 | `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
@@ -251,14 +249,14 @@ HTTP client comes from `infra/outbound.py`.
 
 **The machine connection is one object, and a settings change rebuilds it.**
 `DeviceConnection` owns the device client and the sync engine; routes and the
-cleanup, notes and profile-draft services ask it for the current client at the
+profile-draft service ask it for the current client at the
 moment they act rather than keeping one. Changing the host, the protocol, the
 timeout or the sync switch through `PATCH /api/settings` compares the effective
 values before and after and, if they moved, stops the engine's loops and the
 client and builds new ones — with no restart, and with the same write gate over
 the same settings. The change and the rebuild happen under one lock that every
 machine-bound operation also registers through, so a change that would move the
-connection while a profile push or rollback, a cleanup run, a notes send or a
+connection while a profile push or rollback or a
 pull is using the machine is a 409 naming it, and nothing is stored. A pull asked
 for while a change is being stored waits for the change and goes to whatever
 connection it leaves. An identity read is not held to that: it is cut, and the
@@ -413,12 +411,10 @@ is a read-only snapshot assembled on the server: no tool in the design scope
 browses another Set, and the block is gone the moment version 1 is filled.
 
 **What can reach the machine is two closed lists, enforced by a test.** Ten
-reads, and seven writes behind a switch that is off by default: five profile
-operations, plus a shot delete and a notes save that each carry a rule of their
-own. **And who may start one is a rule too**: profiles may be pushed by the app;
-everything else written to or deleted from the machine happens only from the
-Sync page, by a person — no timer, no hook after a pull, no judgement save and
-no tool a model calls starts one. See [`safety-layers.md`](safety-layers.md).
+reads, and five writes behind a switch that is off by default, all of them
+profile operations. **And what may be written is a rule too**: only profiles are
+ever written to the machine — no shot delete, no notes write-back — and no timer,
+no hook after a pull, no judgement save and no tool a model calls starts one. See [`safety-layers.md`](safety-layers.md).
 
 ## What runs where
 

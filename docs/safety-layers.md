@@ -2,50 +2,44 @@
 
 Verified against the GaggiMate firmware source.
 
-**gaggiclanker writes exactly seven things to a machine, and only when a person
-has switched writes on.** Five are profile operations — save, delete, select,
-favourite, unfavourite — each a `req:profiles:*` frame. Two are history
-operations added later: `req:history:delete` (deleting a shot the
-archive already holds) and `req:history:notes:save` (a judgement
-sent to the machine's notes card). Not a setting, not a mode change, not
-an index rebuild.
+**gaggiclanker writes exactly five things to a machine, all of them profile
+operations, and only when a person has switched writes on.** Save, delete,
+select, favourite and unfavourite: each a `req:profiles:*` frame. Only profiles
+are ever written. Not a shot delete, not a notes card, not a setting, not a
+mode change, not an index rebuild. (Earlier versions could delete shots the
+archive already held and write a judgement to a shot's notes card, both from the
+Sync page; both were removed. The firmware deletes its own oldest shots when
+free space runs low and the archive pulls before it does, which is accepted.)
 
-**Who may start a write is a rule of its own: profiles may be pushed by the app;
-everything else written to or deleted from the machine happens only from the
-Sync page, by a person.** A profile push goes through the four layers below and
-is the one class of write that may ever be automated (replacing an old version
-on the machine with its approved successor, say); nothing automates one today.
-A shot delete runs only when a person confirms a cleanup plan on the Sync page,
-and the request carries the planned shot ids so a plan that moved in between is
-refused rather than run. A notes save runs only when a person selects
-judgements there and sends them; saving a judgement never contacts the machine.
-No timer, no hook after a pull, and no tool a language model can call starts
-either.
+**Who may start a write:** a profile push goes through the four layers below,
+from a button a person presses on a page showing the diff they are approving. It
+is the one class of write that may ever be automated (replacing an old version on
+the machine with its approved successor, say); nothing automates one today. No
+timer, no hook after a pull, and no tool a language model can call starts one.
 
 That is a property of the code, not a convention. `GaggimateClient`'s public
-surface is two closed lists — ten reads in `READ_ONLY_METHODS`, seven writes in
+surface is two closed lists — ten reads in `READ_ONLY_METHODS`, five writes in
 `GATED_WRITE_METHODS` — `_send` is private, no write method can reach it except
 through the gate, and `tests/device/test_public_surface.py` fails the build if
-an eleventh read or an eighth write appears, or if a request type outside those
-seven shows up anywhere in the module, including in a docstring. Widening that
-list is what storage cleanup and notes write-back each did deliberately, by moving a request
-type from the test's forbidden-grep list into its "appears exactly once" list —
-an edit nobody makes by accident. Even the
+an eleventh read or a sixth write appears, or if a request type outside those
+five shows up anywhere in the module, including in a docstring. `req:history:delete`
+and `req:history:notes:save` are in that test's forbidden list, alongside the
+index rebuild, the profile reorder and everything that moves the hardware.
+Widening the surface means moving a request type from the forbidden list into
+the "appears exactly once" list — an edit nobody makes by accident. Even the
 simulator end-to-end test, which genuinely needs the machine to brew, opens a
 throwaway socket of its own rather than widening that surface.
 
 The gate is `deviceWritesEnabled`, **off by default**, re-read on every single
 write rather than cached at boot — the person turning it off is usually the
-person who has just seen something they did not like. It is the only switch:
-the two history writes have no second one, because the consent for each is a
-person confirming it on the Sync page, and a request made there with writes off
-is refused before anything is queued (and audited). `deviceCleanupMode` is not a
-switch either; it shapes the plan the page proposes, and `off` proposes nothing.
-The gate's per-kind branch is where the narrower rules live — a delete is
-refused unless the archive already holds that shot intact. A client built without a
-gate (in a test, in a script) gets `DenyAllWrites` and can write nothing at all,
-so read-only is what you get by forgetting. Every attempt, authorised or
-refused, leaves a row in `device_writes`, which the Sync page lists.
+person who has just seen something they did not like. It is the only switch.
+The gate's per-kind branch is where the narrower rules live — a profile delete
+is refused unless the audit holds a successful save for that id. A client built
+without a gate (in a test, in a script) gets `DenyAllWrites` and can write
+nothing at all, so read-only is what you get by forgetting. Every attempt,
+authorised or refused, leaves a row in `device_writes`, which the Sync page
+lists; rows of the two removed history kinds (`shot_delete`, `notes_save`) from
+an older archive are still listed as history.
 
 **The chat adds a caller, not writes, and its tools cannot reach the machine.**
 Every tool declares a permission class, and there are exactly two: `read`, and
@@ -66,27 +60,15 @@ the bar is where it is.
 
 ## What can actually go wrong
 
-**Shot data can be lost, and that is the risk device storage cleanup manages.**
-`req:history:delete` removes the `.slog`, the notes file and the index entry,
-and there is no undo on the display — which is why it happens only after a
-person has seen the list of shots and confirmed it, and why the confirmation
-says so. What makes it acceptable is that the
-firmware performs exactly the same deletion itself whenever free space drops
-below 500 KB, archived or not — the machine loses these shots either way, and
-the only question is whether this box has them first. So the gate refuses the
-delete unless the archive holds that shot, for that machine, unquarantined — a
-shot whose bytes are stored but did not parse stays on the display, because a
-parser fix can still re-derive it — and with a stored blob exactly the length
-its header implies. The rule is `gaggiclanker/cleanup/eligibility.py`, it is applied
-by the plan step *and* by the gate, and a refusal is audited with its reason.
-
-**A notes save overwrites somebody's typing if it is careless.**
-`req:history:notes:save` stores the document verbatim and rewrites the index's
-rating and volume as a side effect, so a send from the Sync page writes the
-machine's own document with our fields laid over it (unknown keys survive), and
-only when our judgement is newer than the card's `timestamp` — a selected shot
-whose card is newer is skipped. A judgement that came *from* the machine
-and was never edited is never sent back.
+**Shot data can be lost, and the machine does it on its own.** The firmware
+deletes its oldest shot files (`cleanupHistory` in `ShotHistoryPlugin.cpp`)
+whenever free space drops below 500 KB, archived or not, and there is no undo.
+This box does not delete shots and does not try to get ahead of that: the
+defence is a pull that has run before the machine gets there, and the accepted
+cost is that a shot never pulled is one the rotation may take. Notes are the
+same: the machine's notes card is read into the archive on a pull and never
+written back, so a card edited on the display after the last pull is only in
+the archive once the next pull has seen it.
 
 **Profiles can wedge a machine.** They are JSON files the display re-reads at
 boot and on every list. Known failure modes, from the firmware's own parser:

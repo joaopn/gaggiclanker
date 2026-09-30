@@ -104,7 +104,7 @@ pages, in the order the sidebar lists them:
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
 | **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
-| **Sync** | `g y` | Every exchange with the machine that you start: pull from it, send your judgements to its notes cards, clean up its storage, and the record of every write. The only place anything but a profile is written to or deleted from the machine. |
+| **Sync** | `g y` | Pull from the machine, and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights the chat proposes wait there for you to confirm. |
@@ -263,8 +263,9 @@ follows: what is live is whatever the current recipe actually came from.
 ### What gaggiclanker writes to the machine, and who starts it
 
 Nothing, until **Device writes enabled** is on under Settings → Machine access. With it
-on: **profiles may be pushed by the app** (see below); **everything else written
-to or deleted from the machine happens only from the Sync page, by a person.**
+on, **the only thing this box ever writes to the machine is a profile** (see
+below). It never deletes a shot from the machine, never writes a judgement to a
+shot's notes card and never changes a device setting.
 
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
@@ -273,21 +274,14 @@ you approve and push yourself. When it was drafted in a Set's conversation, the
 push button records it as that Set's next version with its prediction; **Push
 without recording it on the Set** tries it without touching the Set.
 
-* **Send notes to the machine** lists the judgements the machine's notes cards
-  do not have yet. Tick the ones to send and confirm; nothing is ticked for you.
-  Saving a judgement never sends it. A card edited on the machine more recently
-  than your verdict is left alone, and a verdict that came from the machine and
-  was never edited is never sent back. `notesWritebackFields` picks the fields.
-  Taste and aroma notes stay here: the machine's notes card has no field for
-  them, and the balance goes as its own sour/balanced/bitter.
-* **Clean up the machine's storage** shows the plan your cleanup policy
-  (`deviceCleanupMode`) proposes: which shots would be deleted and why, and which
-  are kept and why. Confirming deletes exactly those shots, oldest first — if the
-  plan changed since you looked, nothing is deleted and you are asked to look
-  again. There is no undo on the machine; the archive keeps every shot.
+The machine is a buffer, not an archive: when its storage runs low its own
+firmware deletes its oldest shots, whether or not this box has them. That is
+accepted rather than managed from here, so pull from the Sync page often enough
+that nothing waits on the machine for long. The machine's notes cards are read
+on a pull too, and never written back.
 
-Nothing runs either on its own: a pull never deletes anything, and there is no
-timer. Every attempt, refused ones included, is listed under **Recent writes**.
+Nothing runs on its own: a pull only reads, and there is no timer. Every write
+attempt, refused ones included, is listed under **Recent writes** on the Sync page.
 
 ### Putting a profile on the machine
 
@@ -461,7 +455,7 @@ the upgrade. Two ways round it, both on the old version, before you pull:
   ```bash
   curl -X PATCH http://localhost:8000/api/settings \
     -H 'content-type: application/json' \
-    -d '{"gaggimateHost": "192.168.1.50", "deviceCleanupMode": "keep_newest"}'
+    -d '{"gaggimateHost": "192.168.1.50", "gaggimateTimeoutSeconds": 20}'
   ```
 
   Add `-H "Authorization: Bearer <token>"` if sign-in is on. Check what stuck
@@ -473,7 +467,7 @@ the upgrade. Two ways round it, both on the old version, before you pull:
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
 or the sync switch under Settings → Machine access closes the connection and opens the
 new one, with no restart; the header pill follows within a few seconds. While a
-profile push, a cleanup run, a notes send or a pull is using the machine, such a
+profile push, a rollback or a pull is using the machine, such a
 change is refused with the reason and nothing is saved — wait for it to finish
 and save again.
 
@@ -812,8 +806,7 @@ accept. **Eight while a Set is being designed** (below). The registry holds
 twenty-one in total: twelve both kinds have, eight that belong to one kind or the
 other, and `propose_initial_recipe`, which only a design has. None of them
 starts a shot's review: only its button does. Nothing in the chat can touch
-the machine — pushing a profile and deleting a shot off the display stay
-buttons you press.
+the machine — pushing a profile stays a button you press.
 
 **A Set can be designed in its own conversation.** `POST /api/sets/design`
 takes a bean and a grinder (both required), optionally a profile to fork, your

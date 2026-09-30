@@ -67,12 +67,13 @@ failure — by the time a parser bug is fixed, the machine's copy is gone. That
 single fact is why quarantine exists, and why a pull fetches the *oldest*
 missing shots first.
 
-It is also why device storage cleanup is safe *and* why it is careful. The firmware
-deletes the oldest `.slog` in filename order, so a cleanup that went
-newest-first would fight it; and `cleanupHistory()` does not care whether
-anything has archived the shot, so the one thing this box adds is the
-precondition that it has. A quarantined shot therefore stays on the machine:
-its bytes might yet parse, and the display holds the only other copy.
+`cleanupHistory()` in `ShotHistoryPlugin.cpp` is the firmware deleting its oldest
+`.slog` (in filename order, with the notes file) on its own when storage runs
+low, and it does not care whether anything has archived the shot. gaggiclanker
+does not delete shots from the machine and does not try to get ahead of it: this
+is accepted, and the defence is to pull before it does. A quarantined shot is
+kept in the archive as raw bytes, so a parser fix can still re-derive it, but
+once the machine has rotated the shot out there is no other copy to fetch.
 
 Deleting leaves the index row behind with the DELETED flag set and removes the
 files, which is why the reconcile treats the flag rather than the absence as the
@@ -83,9 +84,9 @@ It is the one endpoint that can change WiFi and PID. Up to firmware v1.8.x a
 partial write also turned off HomeKit, boiler fill and the momentary buttons;
 v1.9.0 made it a partial update that leaves an omitted boolean alone, so the
 clearing is not something to rely on either way. gaggiclanker never writes
-device settings — the seven writes it *can* make are five `req:profiles:*`
-frames plus `req:history:delete` and `req:history:notes:save`, and every one of
-them is off by default (`docs/safety-layers.md`).
+device settings — the only writes it *can* make are the five `req:profiles:*`
+frames, and every one of them is off by default (`docs/safety-layers.md`). It
+sends neither `req:history:delete` nor `req:history:notes:save`.
 
 **11. Profile JSON has undocumented fields, and `pump` must be an integer.**
 The firmware includes `transition.target`, which a strict validator has to

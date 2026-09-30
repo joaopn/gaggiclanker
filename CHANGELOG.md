@@ -61,6 +61,31 @@ first (`POST /api/backup`), because there is no down-migration.
   access-point and Home Assistant passwords on the machine if the archive or a
   backup has left your own network.
 
+### Only profiles are written to the machine
+
+- **Removed: sending notes to the machine and cleaning up its storage.** The
+  Sync page no longer has the **Send notes to the machine** and **Clean up the
+  machine's storage** sections, and the routes behind them are gone. The only
+  thing this box ever writes to the machine is a profile, pushed from the
+  Profiles page; it never deletes a shot from the machine, never writes a
+  judgement to a shot's notes card and never writes a device setting. The
+  machine's notes cards are still read on a pull and seed a judgement once.
+- **The machine's own rotation deletes its oldest shots when storage runs low,
+  and that is accepted.** The firmware does this whether or not this box has the
+  shots, so pull from the Sync page often enough that nothing waits on the
+  machine for long. `docs/device-gotchas.md` says which firmware routine it is.
+- **Breaking: the cleanup history table is dropped.** A new migration deletes
+  the per-pass ledger of past cleanup runs (the per-shot record stays: every
+  delete is still in **Recent writes** and the shots it removed are still marked
+  as gone from the machine). Nothing else is lost and no reset is needed.
+- **Removed settings:** `deviceCleanupMode`, `deviceCleanupKeepNewest`,
+  `deviceCleanupMinFreeKb` and `notesWritebackFields`. Their stored values are
+  deleted by the same migration, and a `PATCH` naming one is refused like any
+  other removed setting; their `GAGGICLANKER_*` variables join the list an old
+  compose file is told is ignored.
+- **Recent writes still lists what older versions wrote.** Rows of the two
+  removed kinds (`shot_delete`, `notes_save`) stay in the audit as history.
+
 ### Puck resistance comes from the machine
 
 - **A shot's puck resistance is now the machine's own measurement whenever the
