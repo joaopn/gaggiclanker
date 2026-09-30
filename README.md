@@ -20,7 +20,8 @@ low. This is the thing that remembers them.
 > works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's review,
 > the chat, optional authentication and the container. It can now
 > also put a profile *on* the machine — as a new `[AI]`-suffixed file, never
-> over an existing one, never selected for you, behind a switch that is off by
+> over an existing one, replacing only an earlier copy this app itself wrote (and
+> selecting the new one only if that copy was selected), behind a switch that is off by
 > default and through the four layers in `docs/safety-layers.md`.
 > `CHANGELOG.md` has what landed in each release.
 
@@ -295,9 +296,16 @@ the same buttons on it.
 
 A staged profile is then approved and pushed, and the push is refused before
 anything reaches the wire unless **Device writes enabled** is on. It is always
-saved as a new profile with an `[AI]` suffix, never over an existing one and
-never selected for you; what came back off the machine is compared against what
-was sent, and a mismatch offers a rollback. `docs/safety-layers.md` is the whole
+saved as a new profile with an `[AI]` suffix, never over an existing one. The
+machine is read again first: a profile already holding the same content is
+reused, and a later push of the same profile (for a Set: what the Set's current
+version has on the machine) replaces this app's previous copy, carrying its star and
+selection, instead of piling up versions. A fork under a new name is a new profile and
+removes nothing. A profile
+you made yourself is never deleted, and a copy you edited on the display since is
+kept; the card says which. What came back off the machine is compared against
+what was sent, and a mismatch offers a rollback, which puts the replaced profile
+back. `docs/safety-layers.md` is the whole
 contract.
 
 Profile exports can be uploaded straight into the library with **Upload

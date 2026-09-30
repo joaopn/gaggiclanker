@@ -10,6 +10,48 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A push replaces the profile it supersedes
+
+- **A push no longer piles up copies on the machine.** Before every push the
+  machine's profiles are read again. A profile that already holds exactly the
+  content being pushed is reused and nothing is saved. Otherwise the new profile
+  is saved and read back, the favourite star and the selection move to it if the
+  old one had them, and then the old copy is removed. The new profile keeps the
+  old one's label outside a Set. If anything fails before the removal, both stay.
+  Only a new version of the same profile replaces: for a push recorded on a Set,
+  what the Set's current version has on the machine; otherwise the profile the
+  draft was made from, and only when it carries the same label. A fork under a new
+  name adds a profile and removes nothing.
+- **Only profiles this app pushed are ever removed.** A profile you made
+  yourself is never deleted: the first push made from it adds a copy beside it,
+  and later pushes replace that copy. A copy you edited on the display since, or
+  that is already gone, is left alone, and the draft card says why.
+- **Rollback puts the replaced profile back** (saved again from the archive if it
+  is no longer on the machine) and then removes the pushed one, under the same
+  checks, and only after confirming the pushed profile can be removed. It never
+  removes a profile its own push did not save, nor one another pushed draft or
+  another Set's current version still uses. Set versions and the profile list
+  point at what is on the machine afterwards.
+- **A push and a rollback say what they did** on the draft card and in the
+  notification: what was replaced, what was kept and why, and the startup profile.
+  With device writes off, a push or rollback is refused and audited before the
+  machine is read.
+- **The startup profile.** The firmware clears its startup-profile setting when
+  that profile is deleted, and this app never writes settings; the draft card
+  tells you when that happened so you can pick one again on the display.
+- **A draft whose base profile is gone from the machine is no longer stale,** and
+  staleness is decided by content: the same profile under another id is not a
+  change. After an update wipes the machine, a push simply adds.
+- **A Set's profile stays its own.** A version that changes only the grind, dose or
+  yield, a Set rollback and an accepted proposal now keep naming where the profile
+  is on the machine, and a push for a Set finds it by looking back through the
+  Set's versions. A profile is also kept while any Set's current version brews it,
+  whether or not that Set ever pushed it.
+- **Schema:** a new migration adds columns to the drafts table and marks the
+  pushes made before it as having saved their profile; no data is lost and no
+  reset is needed. A push recorded on a Set before this update has no recorded
+  version, so rolling it back is refused while it is that Set's current version.
+
 ### Adherence is judged on what each phase steers by
 
 - **Fixed: a pressure profile no longer shows a flow adherence.** The machine

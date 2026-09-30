@@ -151,7 +151,7 @@ is not the same as "the machine stored what we sent", and the difference is only
 visible by reading it back.
 
 Two more rules live at this layer rather than in the policy, because they are
-about the machine rather than about the document. A save **never overwrites**:
+about the machine rather than about the document. A save **never overwrites** (a replace is a new save followed by a guarded delete):
 `saveProfile` upserts on `/p/<id>.json`, so `save_profile` refuses a profile
 carrying an id at all and the firmware generates its own. A delete needs **two
 independent proofs** that the profile is ours — the label on the machine right
@@ -159,6 +159,46 @@ now ends in ` [AI]`, and the `device_writes` audit holds a successful save for
 that id. A person can rename a profile to end in "[AI]"; an id can be reused
 after a delete. Together they mean it is the profile we pushed and it is still
 ours.
+
+**A push replaces, a rollback restores.** The machine is listed and every profile
+loaded again before each write; nothing the archive remembers about it is trusted
+without that read. The steps, in this order, and any failure before the last one
+leaves both profiles on the machine:
+
+1. If a profile already holds the canonical content being pushed, nothing is
+   saved and that id is used (two identical profiles are clutter and a needless
+   write).
+2. Save the new profile and read it back (layer 3).
+3. Star and select the new profile if the one it replaces was starred or
+   selected, so the display looks the same to whoever stands at it.
+4. Remove the predecessor, only within one lineage: for a push recorded as a
+   Set's next version, what the Set's current version has on the machine;
+   otherwise the profile the draft was made from, and only when the label on the
+   machine is the label being pushed (a fork under a new name is a new profile and
+   removes nothing). It goes only when **all** of these hold on a fresh load, read
+   again immediately before the delete: the audit holds a successful save of
+   that id by this box and its label ends in ` [AI]` (the two proofs above), and
+   its content is exactly what the archive recorded for it. A person's own
+   profile is never removed: the first push made from a hand-made profile adds
+   beside it, and later pushes of that lineage replace the app's copy. A copy
+   edited on the display since, one this app did not create, one any Set's current
+   version still brews (by device id or by stored profile, so a Set that picked it
+   from the library or whose latest version is a grind change counts), or one already gone stays, and the push result
+   says which. A gate refusal part-way leaves both profiles and is reported the
+   same way. Drafts that pushed the removed profile can no longer be rolled back.
+
+Outside a Set the new profile keeps the predecessor's label (the same label is what
+makes it a predecessor); inside a Set it carries the label the draft was approved with. The firmware clears its
+startup-profile setting when that profile is deleted (`ProfileManager::deleteProfile`)
+and this app never writes settings, so the push result says when that happened. A
+**rollback** first checks that the draft's profile can be removed (it is this app's,
+unchanged, and no other pushed draft or Set still uses it), and touches nothing if
+not; then puts the predecessor back (saved from its archived content, by the same
+steps, unless an identical profile is still there; a copy that does not verify is
+removed again); then removes the draft's profile under the same checks. A push that
+only reused a profile already on the machine has no profile of its own to remove. A draft's base counts as unchanged when
+the machine holds its content under any id; a base that is gone (a machine reset by
+an update) is not stale and the push simply adds.
 
 **4. A simulator gate in CI.**
 `tests/simulator/test_profile_push.py`: every profile fixture is saved to the
