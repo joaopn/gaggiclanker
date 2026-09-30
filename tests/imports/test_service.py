@@ -559,3 +559,135 @@ async def test_an_id_match_is_never_overridden_by_a_label_match(db: Database) ->
     # whose label happens to match the header.
     assert shot.profile_version_id == version.id
     assert shot.profile_label == "Cremina v2"
+
+
+# ── a shot is its number and its start time ─────────────────────────
+
+
+def restated(name: str, *, timestamp: int | None, break_it: bool = False) -> ImportFile:
+    """The same export as a different shot: another start time under the same number."""
+    body = document(name)
+    if timestamp is None:
+        body.pop("timestamp", None)
+    else:
+        body["timestamp"] = timestamp
+    if break_it:
+        body["samples"][3]["cp"] = "wildly not a number"
+    return ImportFile(filename=name, data=json.dumps(body).encode())
+
+
+async def test_an_export_that_reuses_an_archived_number_is_a_new_shot(
+    service: ImportService, db: Database
+) -> None:
+    """The machine's counter restarts after an erase: the number is not an identity."""
+    first = await service.import_files(files(SHOT_FIXTURE))
+    later = document(SHOT_FIXTURE)["timestamp"] + 90 * 24 * 3600
+
+    second = await service.import_files([restated(SHOT_FIXTURE, timestamp=later)])
+
+    assert (second.created, second.skipped, second.updated) == (1, 0, 0)
+    assert second.items[0].shot_id != first.items[0].shot_id
+    rows = await db.fetch_all("SELECT device_id, start_epoch FROM shots ORDER BY id")
+    assert [tuple(row) for row in rows] == [
+        ("000129", document(SHOT_FIXTURE)["timestamp"]),
+        ("000129", later),
+    ]
+
+
+async def test_replace_does_not_overwrite_a_shot_with_a_different_start_time(
+    service: ImportService, db: Database
+) -> None:
+    first = await service.import_files(files(SHOT_FIXTURE))
+    shot_id = first.items[0].shot_id
+    assert shot_id is not None
+    before = await db.fetch_one("SELECT raw_slog, start_epoch FROM shots WHERE id = ?", (shot_id,))
+    later = document(SHOT_FIXTURE)["timestamp"] + 3600
+
+    second = await service.import_files([restated(SHOT_FIXTURE, timestamp=later)], replace=True)
+
+    assert second.created == 1 and second.updated == 0
+    after = await db.fetch_one("SELECT raw_slog, start_epoch FROM shots WHERE id = ?", (shot_id,))
+    assert before is not None and after is not None
+    assert tuple(after) == tuple(before)
+
+
+async def test_an_export_with_the_same_number_and_start_time_is_still_the_same_shot(
+    service: ImportService, db: Database
+) -> None:
+    await service.import_files(files(SHOT_FIXTURE))
+    again = await service.import_files(
+        [restated(SHOT_FIXTURE, timestamp=document(SHOT_FIXTURE)["timestamp"])], replace=True
+    )
+
+    assert again.updated == 1
+    assert await db.fetch_value("SELECT COUNT(*) FROM shots") == 1
+
+
+async def test_an_unreadable_export_that_reuses_a_number_is_a_new_shot(
+    service: ImportService, db: Database
+) -> None:
+    await service.import_files(files(SHOT_FIXTURE))
+    later = document(SHOT_FIXTURE)["timestamp"] + 3600
+
+    summary = await service.import_files([restated(SHOT_FIXTURE, timestamp=later, break_it=True)])
+
+    assert summary.items[0].status == "created" and summary.items[0].quarantined
+    rows = await db.fetch_all(
+        "SELECT start_epoch, quarantined FROM shots WHERE device_id = '000129' ORDER BY id"
+    )
+    assert [tuple(row) for row in rows] == [(document(SHOT_FIXTURE)["timestamp"], 0), (later, 1)]
+
+
+async def test_an_unreadable_export_with_no_start_time_is_the_one_shot_that_has_its_number(
+    service: ImportService, db: Database
+) -> None:
+    await service.import_files(files(SHOT_FIXTURE))
+
+    summary = await service.import_files([restated(SHOT_FIXTURE, timestamp=None, break_it=True)])
+
+    assert summary.items[0].status == "skipped"
+    assert await db.fetch_value("SELECT COUNT(*) FROM shots") == 1
+
+
+async def test_a_file_with_no_start_time_refuses_a_number_two_shots_hold(
+    service: ImportService, db: Database
+) -> None:
+    await service.import_files(files(SHOT_FIXTURE))
+    later = document(SHOT_FIXTURE)["timestamp"] + 3600
+    await service.import_files([restated(SHOT_FIXTURE, timestamp=later)])
+
+    summary = await service.import_files(
+        [restated(SHOT_FIXTURE, timestamp=None, break_it=True)], replace=True
+    )
+
+    assert summary.items[0].status == "failed"
+    assert "cannot be told which one" in summary.items[0].message
+    assert await db.fetch_value("SELECT COUNT(*) FROM shots") == 2
+
+
+async def test_a_parsed_file_with_no_start_time_keeps_the_archived_start_time(
+    service: ImportService, db: Database
+) -> None:
+    await service.import_files(files(SHOT_FIXTURE))
+    epoch = document(SHOT_FIXTURE)["timestamp"]
+
+    summary = await service.import_files([restated(SHOT_FIXTURE, timestamp=None)], replace=True)
+
+    assert summary.items[0].status == "updated"
+    assert await db.fetch_value("SELECT COUNT(*) FROM shots") == 1
+    assert await db.fetch_value("SELECT start_epoch FROM shots") == epoch
+
+
+async def test_an_unreadable_file_with_no_start_time_keeps_the_archived_start_time(
+    service: ImportService, db: Database
+) -> None:
+    await service.import_files(files(SHOT_FIXTURE))
+    epoch = document(SHOT_FIXTURE)["timestamp"]
+
+    summary = await service.import_files(
+        [restated(SHOT_FIXTURE, timestamp=None, break_it=True)], replace=True
+    )
+
+    assert summary.items[0].status == "updated" and summary.items[0].quarantined
+    assert await db.fetch_value("SELECT COUNT(*) FROM shots") == 1
+    assert await db.fetch_value("SELECT start_epoch FROM shots") == epoch

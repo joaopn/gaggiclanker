@@ -52,7 +52,7 @@ from gaggiclanker.domain.models import (
     ShotIndex,
     SlogHeader,
 )
-from gaggiclanker.domain.slog import FIELDS_MASK_ALL, Slog, encode_slog
+from gaggiclanker.domain.slog import FIELDS_MASK_ALL, MAGIC, Slog, encode_slog
 
 __all__ = ["FakeDevice", "FakeShot", "run_fake_device", "write_profile"]
 
@@ -369,11 +369,18 @@ class FakeDevice:
         profile_name: str = "Test Profile",
         header_only_requests: int = 0,
     ) -> FakeShot:
-        """Register a shot: an index row, the file behind it, optional notes."""
+        """Register a shot: an index row, the file behind it, optional notes.
+
+        The index row's time is the file header's start epoch unless a test
+        says otherwise: the firmware writes both from one `header.startEpoch`
+        (`ShotHistoryPlugin.cpp`), and a fake whose index disagreed with its own
+        files would describe a machine that cannot exist — the archive tells a
+        shot from another that reuses its number by exactly that time.
+        """
         flags = SHOT_FLAG_COMPLETED | (SHOT_FLAG_HAS_NOTES if notes else 0)
         entry = IndexEntry(
             id=shot_id,
-            timestamp=timestamp if timestamp is not None else 1_700_000_000 + shot_id,
+            timestamp=timestamp if timestamp is not None else _header_epoch(slog_bytes, shot_id),
             duration_ms=28_000,
             volume_g=36.0,
             rating=0,
@@ -785,6 +792,13 @@ def header_only_bytes(slog_bytes: bytes) -> bytes:
     if len(head) >= 20:
         head[16:20] = (0).to_bytes(4, "little")
     return bytes(head)
+
+
+def _header_epoch(slog_bytes: bytes, shot_id: int) -> int:
+    """The `startEpoch` a `.slog` header states, or a made-up one for bytes that are not one."""
+    if len(slog_bytes) >= 28 and int.from_bytes(slog_bytes[:4], "little") == MAGIC:
+        return int.from_bytes(slog_bytes[24:28], "little")
+    return 1_700_000_000 + shot_id
 
 
 def synthetic_slog_bytes(

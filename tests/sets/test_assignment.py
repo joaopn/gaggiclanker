@@ -64,10 +64,9 @@ def _device_with_two_shots(*, with_notes: bool = False) -> FakeDevice:
     device.add_shot(
         MATCHING_ID,
         raws[ids.index(matching)],
-        timestamp=1_770_000_000,
         notes=default_notes(MATCHING_ID) if with_notes else None,
     )
-    device.add_shot(OTHER_ID, raws[ids.index(other)], timestamp=1_770_003_600)
+    device.add_shot(OTHER_ID, raws[ids.index(other)])
     return device
 
 

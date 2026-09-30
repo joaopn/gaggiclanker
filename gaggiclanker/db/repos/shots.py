@@ -319,6 +319,10 @@ class ShotState:
 
     id: int
     device_id: str
+    #: The other half of a shot's identity: the machine's number is reused after
+    #: its settings are erased, the start time is not. 0 is "not known" (a shot
+    #: stored unreadable before any index row listed it).
+    start_epoch: int
     quarantined: bool
     deleted_on_device: bool
     index_rating: int | None
@@ -701,25 +705,32 @@ class ShotsRepository(Repository):
 
     # ── reading ──────────────────────────────────────────────────────
 
-    async def known_states(self) -> dict[str, ShotState]:
-        """Every shot we already have, keyed by padded device id.
+    async def known_states(self) -> list[ShotState]:
+        """Every shot we already have, in id order.
+
+        A list and not a map by device id: after the machine's counter restarts
+        several archived shots share a number, and a map would silently keep one
+        of them. The identity of a shot is its number and its start epoch
+        together; the index diff pairs on both.
 
         One query per pass rather than one per index entry: a full index is a
         few hundred rows and the diff is a set difference, not a lookup loop.
         """
         rows = await self.db.fetch_all(
             """
-            SELECT s.id, s.device_id, s.quarantined, s.deleted_on_device,
+            SELECT s.id, s.device_id, s.start_epoch, s.quarantined, s.deleted_on_device,
                    s.index_rating, s.index_volume_g, s.index_flags,
                    n.shot_id IS NOT NULL AS has_notes
             FROM shots s
             LEFT JOIN device_shot_notes n ON n.shot_id = s.id
+            ORDER BY s.id
             """
         )
-        return {
-            str(row["device_id"]): ShotState(
+        return [
+            ShotState(
                 id=int(row["id"]),
                 device_id=str(row["device_id"]),
+                start_epoch=int(row["start_epoch"]),
                 quarantined=bool(row["quarantined"]),
                 deleted_on_device=bool(row["deleted_on_device"]),
                 index_rating=row["index_rating"],
@@ -728,7 +739,7 @@ class ShotsRepository(Repository):
                 has_notes=bool(row["has_notes"]),
             )
             for row in rows
-        }
+        ]
 
     async def get(self, shot_id: int) -> ShotDetailRow | None:
         row = await self.db.fetch_one(
@@ -771,10 +782,78 @@ class ShotsRepository(Repository):
         found = {row.id: row for row in self.to_models(ShotDetailRow, rows)}
         return [found[shot_id] for shot_id in wanted if shot_id in found]
 
+    async def get_by_identity(self, device_id: str, start_epoch: int) -> ShotDetailRow | None:
+        """The shot with this machine number *and* this start epoch.
+
+        The only lookup that names one shot from what the machine or an export
+        says about it: the number alone is reused after the machine's counter
+        restarts. Unique since 0029.
+        """
+        row = await self.id_by_identity(device_id, start_epoch)
+        return None if row is None else await self.get(row)
+
+    async def id_by_identity(self, device_id: str, start_epoch: int) -> int | None:
+        """The row id of the shot with this number and start epoch, if it is archived."""
+        row = await self.db.fetch_value(
+            "SELECT id FROM shots WHERE device_id = ? AND start_epoch = ?",
+            (device_id, start_epoch),
+        )
+        return None if row is None else int(row)
+
+    async def ids_by_device_id(self, device_id: str) -> list[int]:
+        """Every archived shot that carries this machine number, oldest start first.
+
+        More than one after the machine's counter restarted. What a caller that
+        holds only a number (an export with no start time) has to be able to see
+        before it decides that a shot is "the same one".
+        """
+        rows = await self.db.fetch_all(
+            "SELECT id FROM shots WHERE device_id = ? ORDER BY start_epoch, id", (device_id,)
+        )
+        return [int(row["id"]) for row in rows]
+
     async def get_by_device_id(self, device_id: str) -> ShotDetailRow | None:
-        """The shot the machine knows by that id. Unique since 0016."""
-        row = await self.db.fetch_value("SELECT id FROM shots WHERE device_id = ?", (device_id,))
+        """The *latest* shot the machine numbered this way (newest start epoch).
+
+        For a reader that has only the number a person sees on screen; a number
+        can name several archived shots, and this picks the one that can still be
+        the machine's current. Nothing that decides whether two shots are the
+        same shot may use it: that is :meth:`get_by_identity`.
+        """
+        row = await self.db.fetch_value(
+            "SELECT id FROM shots WHERE device_id = ? ORDER BY start_epoch DESC, id DESC LIMIT 1",
+            (device_id,),
+        )
         return None if row is None else await self.get(int(row))
+
+    async def unknown_start_shot(self, device_id: str) -> tuple[int, bytes] | None:
+        """(id, stored bytes) of the shot with this number whose start time is unknown.
+
+        Only a shot the machine still holds is offered: once it is marked gone
+        its row is history and keeps the identity it has.
+        """
+        row = await self.db.fetch_one(
+            "SELECT id, raw_slog FROM shots "
+            "WHERE device_id = ? AND start_epoch = 0 AND deleted_on_device = 0",
+            (device_id,),
+        )
+        return None if row is None else (int(row["id"]), bytes(row["raw_slog"]))
+
+    async def adopt_start_epoch(
+        self, shot_id: int, start_epoch: int, started_at: str | None
+    ) -> None:
+        """Give a shot whose start time was unknown the one the machine's index states.
+
+        A shot stored unreadable before any index row listed it has no header to
+        read the time from (0). Its first index row settles it, once, so the
+        shot is never mistaken for a different one that later reuses its number.
+        Only a 0 on a shot the machine still holds is ever replaced.
+        """
+        await self.db.execute(
+            "UPDATE shots SET start_epoch = ?, started_at = ?, updated_at = ? "
+            "WHERE id = ? AND start_epoch = 0 AND deleted_on_device = 0",
+            (start_epoch, started_at, utc_now(), shot_id),
+        )
 
     async def raw_slog(self, shot_id: int) -> bytes | None:
         """The stored `.slog` bytes. The archive's product; everything else is derived."""

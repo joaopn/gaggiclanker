@@ -118,24 +118,15 @@ class NotesRepository(Repository):
         )
         return {row.shot_id: row for row in self.to_models(DeviceShotNotesRow, rows)}
 
-    async def stale_shot_ids(self) -> dict[str, tuple[int, int | None, float | None]]:
-        """Device id → (shot row id, synced rating, synced volume) for shots we hold notes for.
+    async def synced_index_figures(self) -> dict[int, tuple[int | None, float | None]]:
+        """Shot row id → (synced rating, synced volume) for shots we hold notes for.
 
-        The caller compares those two figures with the current index entry and
-        re-pulls where they differ.
+        Keyed by the row id, never the machine's number: two archived shots can
+        share a number, and only one of them is the shot the machine's notes
+        card belongs to. The caller compares the two figures with the current
+        index entry of the shot it paired and re-pulls where they differ.
         """
         rows = await self.db.fetch_all(
-            """
-            SELECT s.device_id, n.shot_id, n.synced_rating, n.synced_volume_g
-            FROM device_shot_notes n
-            JOIN shots s ON s.id = n.shot_id
-            """
+            "SELECT shot_id, synced_rating, synced_volume_g FROM device_shot_notes"
         )
-        return {
-            str(row["device_id"]): (
-                int(row["shot_id"]),
-                row["synced_rating"],
-                row["synced_volume_g"],
-            )
-            for row in rows
-        }
+        return {int(row["shot_id"]): (row["synced_rating"], row["synced_volume_g"]) for row in rows}

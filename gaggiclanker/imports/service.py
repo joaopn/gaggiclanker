@@ -43,7 +43,7 @@ from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository
-from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.db.repos.shots import ShotDetailRow, ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import (
     ShotExport,
     export_device_id,
@@ -355,7 +355,9 @@ class ImportService:
                 message="the export has no shot id, so it cannot be told apart from another",
             )
 
-        existing = await self.shots.get_by_device_id(device_id)
+        existing, ambiguous = await self._same_shot(device_id, slog.timestamp)
+        if ambiguous:
+            return _ambiguous(filename, device_id)
         if existing is not None and not replace:
             return ImportResult(
                 filename=filename,
@@ -388,6 +390,10 @@ class ImportService:
         )
         shot = derived.shot
         shot.profile_version_id = None if version is None else version.id
+        if existing is not None and not shot.start_epoch:
+            # A file with no start time was matched by its number; it must not
+            # erase the time the archived shot has.
+            shot.start_epoch = existing.start_epoch
 
         status: ImportStatus = "updated"
         if existing is not None:
@@ -451,6 +457,31 @@ class ImportService:
             message=message,
         )
 
+    async def _same_shot(
+        self, device_id: str, start_epoch: int
+    ) -> tuple[ShotDetailRow | None, bool]:
+        """The archived shot a file is a copy of, and whether that cannot be told.
+
+        A shot is its machine number **and** its start time: the machine's
+        counter restarts after its settings are erased, so a file with an old
+        number and a different time is a new shot, never a replacement.
+
+        A file that states no start time (0) is matched by number alone when
+        exactly one archived shot carries it; when several do, the second answer
+        is ``True`` and the caller refuses rather than guess. A file with a time
+        also matches an archived shot whose time was never known (stored
+        unreadable), which then takes this one.
+        """
+        if start_epoch:
+            found = await self.shots.get_by_identity(device_id, start_epoch)
+            if found is None:
+                found = await self.shots.get_by_identity(device_id, 0)
+            return found, False
+        ids = await self.shots.ids_by_device_id(device_id)
+        if len(ids) > 1:
+            return None, True
+        return (await self.shots.get(ids[0]) if ids else None), False
+
     async def _quarantine(
         self,
         document: Any,
@@ -471,7 +502,10 @@ class ImportService:
         if not device_id:
             return ImportResult(filename=filename, kind="shot", status="failed", message=reason)
 
-        existing = await self.shots.get_by_device_id(device_id)
+        start_epoch = _document_start_epoch(document)
+        existing, ambiguous = await self._same_shot(device_id, start_epoch)
+        if ambiguous:
+            return _ambiguous(filename, device_id)
         if existing is not None and not replace:
             return ImportResult(
                 filename=filename,
@@ -488,6 +522,8 @@ class ImportService:
             raw_slog=raw_bytes,
             quarantined=True,
             quarantine_reason=reason,
+            # The archived shot's own time when the file states none.
+            start_epoch=start_epoch or (existing.start_epoch if existing is not None else 0),
         )
         status: ImportStatus = "updated"
         if existing is not None:
@@ -673,6 +709,27 @@ def _as_document(
     # `default=str` never fires on a document that came out of json.loads; it is
     # there so a hand-built dict cannot turn a quarantine into a TypeError.
     return data, raw if raw is not None else json.dumps(data, default=str).encode(), None
+
+
+def _document_start_epoch(document: Any) -> int:
+    """The start time a document we could not read states, or 0 for "none"."""
+    value = document.get("timestamp") if isinstance(document, dict) else None
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
+def _ambiguous(filename: str, device_id: str) -> ImportResult:
+    return ImportResult(
+        filename=filename,
+        kind="shot",
+        status="failed",
+        device_id=device_id,
+        message=(
+            f"several archived shots carry the number {device_id} and this file states no "
+            "start time, so it cannot be told which one it is"
+        ),
+    )
 
 
 def _document_device_id(document: Any) -> str:

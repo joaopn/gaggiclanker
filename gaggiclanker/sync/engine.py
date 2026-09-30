@@ -67,7 +67,7 @@ from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry, LiveStatus
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
-from gaggiclanker.sync.derive import derive_shot, index_fields, rederive_shots
+from gaggiclanker.sync.derive import derive_shot, epoch_to_iso, index_fields, rederive_shots
 
 __all__ = [
     "LOOP_TASK_NAMES",
@@ -148,6 +148,40 @@ class _Poke:
         await self.event.wait()
         self.event.clear()
         return self.reason
+
+
+@dataclass(slots=True)
+class _Pairing:
+    """Which archived shot each index row describes, and which are left over."""
+
+    #: Machine number → the archived shot the index row of that number is.
+    paired: dict[str, ShotState]
+    #: Archived shots no index row describes.
+    unpaired: list[ShotState]
+
+
+def pair_index(entries: dict[str, IndexEntry], known: Sequence[ShotState]) -> _Pairing:
+    """Pair every index row with the archived shot it describes, by number and start time.
+
+    The machine's number is not an identity: its counter lives in NVS with the
+    settings and restarts after an erase, so a later shot can carry a number the
+    archive holds for a different one. The row's `timestamp` is the shot's start
+    epoch (the firmware writes both from the same `header.startEpoch`), so a
+    shot is the same shot only when both agree. A row whose number is archived
+    under a different start time is a new shot, and the archived one is not on
+    the machine any more.
+    """
+    by_identity = {(state.device_id, state.start_epoch): state for state in known}
+    paired: dict[str, ShotState] = {}
+    for device_id, entry in entries.items():
+        state = by_identity.get((device_id, entry.timestamp))
+        if state is not None:
+            paired[device_id] = state
+    taken = {state.id for state in paired.values()}
+    return _Pairing(
+        paired=paired,
+        unpaired=[state for state in known if state.id not in taken],
+    )
 
 
 @dataclass(slots=True)
@@ -482,10 +516,19 @@ class SyncEngine:
             known = await self.shots.known_states()
             update.shots_seen = len(listed)
 
-            missing = self._missing_entries(listed, known)
+            pairing = pair_index(listed, known)
+            missing = self._missing_entries(listed, pairing)
             await self._fetch_and_store(missing, run_id=run_id, update=update)
+            if missing:
+                # What the fetches stored or settled changes who is paired: a
+                # shot whose start time was just written down is on the machine.
+                # A shot stored in this very pass (announced before the index
+                # listed it) is not "gone" for having no row yet.
+                held_before = {state.id for state in known}
+                pairing = pair_index(listed, await self.shots.known_states())
+                pairing.unpaired = [s for s in pairing.unpaired if s.id in held_before]
             await self._reconcile(
-                listed, known, run_id=run_id, update=update, full_index=entries is not None
+                listed, pairing, run_id=run_id, update=update, full_index=entries is not None
             )
         except asyncio.CancelledError:
             update.errors += 1
@@ -541,7 +584,7 @@ class SyncEngine:
         return {pad6(entry.id): entry for entry in index.entries}
 
     def _missing_entries(
-        self, entries: dict[str, IndexEntry], known: dict[str, ShotState]
+        self, entries: dict[str, IndexEntry], pairing: _Pairing
     ) -> list[tuple[str, IndexEntry | None]]:
         """What to fetch, oldest first.
 
@@ -550,21 +593,27 @@ class SyncEngine:
         the index are the ones we may not get another chance at; the newest one
         is already safe for another few hundred shots.
 
+        A row is fetched when no archived shot has both its number and its start
+        time: a number that is archived under another start time is a different
+        shot (the machine's counter restarted), not one we already hold.
+
         An announced id the index has not listed yet is appended: `evt:history-
         shot-saved` and the index write are not atomic, so somebody pressing
         pull the moment the machine beeps would otherwise be told there is
-        nothing new and be right only about the index.
+        nothing new and be right only about the index. Its start time is in the
+        file it names, so what is stored is decided there (`_store` skips a shot
+        the archive already holds), not by the number.
         """
         missing: list[tuple[str, IndexEntry | None]] = [
             (device_id, entry)
             for device_id, entry in sorted(entries.items())
             # A deleted entry whose file we never fetched is gone from the
             # machine; there is nothing left to archive.
-            if device_id not in known and not entry.deleted
+            if device_id not in pairing.paired and not entry.deleted
         ]
         for shot_id in sorted(self._pushed_ids):
             device_id = pad6(shot_id)
-            if device_id not in entries and device_id not in known:
+            if device_id not in entries:
                 missing.append((device_id, None))
         self._pushed_ids.clear()
         return missing
@@ -737,6 +786,24 @@ class SyncEngine:
         if derived.diagnostics_error is not None:
             update.errors += 1
 
+        # A shot is its number and its start time together. Whoever asked for
+        # this file (an announcement with no index row yet, or a row that did not
+        # pair) may be asking for one the archive holds already.
+        held_id = await self.shots.id_by_identity(shot.device_id, shot.start_epoch)
+        if held_id is not None:
+            if entry is not None:
+                # The firmware writes both from one `header.startEpoch`, so this
+                # is not supposed to happen; if it ever does, the diff will keep
+                # asking for a shot it holds and must be told why.
+                log.warning(
+                    "shot_index_time_differs_from_header",
+                    shot_id=held_id,
+                    device_id=shot.device_id,
+                    index_epoch=entry.timestamp,
+                    header_epoch=shot.start_epoch,
+                )
+            return
+
         shot.profile_version_id = None if version is None else version.id
         shot_id = await self.shots.insert(shot, samples)
         # The user's half of the shot: which Set was this, and what did they
@@ -792,6 +859,28 @@ class SyncEngine:
         fetch = fetched.fetch
         assert fetch is not None  # only called with bytes in hand
         entry = fetched.entry
+        if entry is None:
+            # An announced shot that did not parse and that no index row has
+            # listed yet: its start time is unknown, so it cannot be told from a
+            # shot already archived under this number. The next pull, with the
+            # row in hand, stores it properly.
+            if await self.shots.ids_by_device_id(fetched.device_id):
+                log.info("shot_announced_unreadable_held", device_id=fetched.device_id)
+                await self.runs.add_event(
+                    "shot_skipped",
+                    run_id=run_id,
+                    device_id=fetched.device_id,
+                    message=(
+                        "announced before the index listed it, unreadable, and its number is "
+                        "already archived: stored on the next pull, when its start time is known"
+                    ),
+                )
+                return
+        else:
+            if await self._adopt_unknown_start(fetched, entry, run_id=run_id):
+                return
+            if await self.shots.id_by_identity(fetched.device_id, entry.timestamp) is not None:
+                return
         shot = ShotInsert(
             device_id=fetched.device_id,
             raw_slog=fetch.raw,
@@ -826,6 +915,27 @@ class SyncEngine:
             bytes=len(fetch.raw),
         )
 
+    async def _adopt_unknown_start(
+        self, fetched: _Fetched, entry: IndexEntry, *, run_id: int
+    ) -> bool:
+        """Settle the start time of a shot stored unreadable before any row listed it.
+
+        Such a shot has no header, so its start time is 0. When the row of its
+        number arrives, the shot the machine serves is that shot only if it is
+        byte for byte the file we stored; after a counter restart the same number
+        can be a different shot, which then is stored as its own. A shot the
+        machine no longer holds is never given a new identity.
+        """
+        assert fetched.fetch is not None
+        if entry.timestamp == 0:
+            return False
+        held = await self.shots.unknown_start_shot(fetched.device_id)
+        if held is None or held[1] != fetched.fetch.raw:
+            return False
+        await self.shots.adopt_start_epoch(held[0], entry.timestamp, epoch_to_iso(entry.timestamp))
+        log.info("shot_start_time_settled", shot_id=held[0], device_id=fetched.device_id)
+        return True
+
     def _has_pressure(self) -> bool | None:
         """Whether pressure telemetry means anything on this machine.
 
@@ -856,7 +966,7 @@ class SyncEngine:
     async def _reconcile(
         self,
         entries: dict[str, IndexEntry],
-        known: dict[str, ShotState],
+        pairing: _Pairing,
         *,
         run_id: int,
         update: SyncRunUpdate,
@@ -870,32 +980,44 @@ class SyncEngine:
         of that touches the `.slog`, so re-fetching the file would learn
         nothing — this is the only path by which those facts reach the archive.
 
+        Only the archived shot an index row is paired with (same number **and**
+        same start time) is ever updated from it. A row whose number the archive
+        holds under a different start time is a different shot, fetched as a new
+        one; it must never overwrite the archived shot's rating, volume or flags.
+
         A shot **absent** from the index counts as deleted too, but only when
         ``full_index`` says the machine actually served one. `req:history:rebuild`
         regenerates `index.bin` from the `.slog` files that are still there, so
         after a rebuild a deleted shot has no row at all rather than a flagged
         one — and a run that could not read the index must not conclude from
-        that that the machine has thrown everything away.
+        that that the machine has thrown everything away. An archived shot whose
+        number the machine has since given to a later shot is absent in the same
+        sense: the machine no longer holds it.
         """
-        for device_id, state in known.items():
-            entry = entries.get(device_id)
-            if entry is None:
-                if full_index and not state.deleted_on_device:
-                    await self.shots.mark_deleted_on_device(state.id)
-                    update.shots_updated += 1
-                    await self.runs.add_event(
-                        "shot_updated",
-                        run_id=run_id,
-                        shot_id=state.id,
-                        device_id=device_id,
-                        message="gone from the machine's index",
-                        data={"deleted_on_device": True},
-                    )
-                    self._publish(
-                        SHOT_UPDATED_EVENT,
-                        {"shot_id": state.id, "device_id": device_id, "deleted_on_device": True},
-                    )
+        for state in pairing.unpaired:
+            if not full_index or state.deleted_on_device:
                 continue
+            reused = state.device_id in entries
+            await self.shots.mark_deleted_on_device(state.id)
+            update.shots_updated += 1
+            await self.runs.add_event(
+                "shot_updated",
+                run_id=run_id,
+                shot_id=state.id,
+                device_id=state.device_id,
+                message=(
+                    "the machine numbered a later shot the same"
+                    if reused
+                    else "gone from the machine's index"
+                ),
+                data={"deleted_on_device": True, "number_reused": reused},
+            )
+            self._publish(
+                SHOT_UPDATED_EVENT,
+                {"shot_id": state.id, "device_id": state.device_id, "deleted_on_device": True},
+            )
+        for device_id, state in pairing.paired.items():
+            entry = entries[device_id]
             if (
                 state.index_rating == entry.rating
                 and state.index_volume_g == entry.volume_g
@@ -953,16 +1075,20 @@ class SyncEngine:
         if not wanted:
             return None
 
-        held = await self.notes.stale_shot_ids()
-        shots = await self.shots.known_states()
+        held = await self.notes.synced_index_figures()
+        # Re-read after the pass: shots it just fetched are archived by now. The
+        # machine's card for a number belongs to the shot that number's index
+        # row describes (same start time), never to an older archived shot that
+        # merely carries the same number.
+        pairing = pair_index(entries, await self.shots.known_states())
         run_id = await self.runs.start_run("notes", trigger)
         update = SyncRunUpdate()
         try:
             for device_id, entry in sorted(wanted.items()):
-                state = shots.get(device_id)
+                state = pairing.paired.get(device_id)
                 if state is None:
                     continue
-                existing = held.get(device_id)
+                existing = held.get(state.id)
                 if existing is not None and not _notes_are_stale(existing, entry):
                     continue
                 try:
@@ -1134,7 +1260,7 @@ class SyncEngine:
 # ── free functions ───────────────────────────────────────────────────
 
 
-def _notes_are_stale(held: tuple[int, int | None, float | None], entry: IndexEntry) -> bool:
+def _notes_are_stale(held: tuple[int | None, float | None], entry: IndexEntry) -> bool:
     """Whether the index says the notes we hold have been edited since.
 
     The comparison is against what the index said *when we pulled*, not against
@@ -1142,7 +1268,7 @@ def _notes_are_stale(held: tuple[int, int | None, float | None], entry: IndexEnt
     back into the index entry when the notes card is saved, so a difference here
     is the cheapest possible "go and re-read" signal and costs no request.
     """
-    _, synced_rating, synced_volume = held
+    synced_rating, synced_volume = held
     return synced_rating != entry.rating or synced_volume != entry.volume_g
 
 

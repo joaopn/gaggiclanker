@@ -47,7 +47,7 @@ async def test_the_deleted_entry_is_never_fetched(archive: Archive) -> None:
     """
     await archive.engine.sync_shots(trigger="test")
 
-    stored = await archive.engine.shots.known_states()
+    stored = {state.device_id for state in await archive.engine.shots.known_states()}
     assert pad6(DELETED_ID) not in stored
     assert f"/api/history/{pad6(DELETED_ID)}.slog" not in archive.device.requests
 

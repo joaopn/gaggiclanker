@@ -285,3 +285,107 @@ async def test_a_shot_can_be_derived_and_stored_without_a_live_device(
     assert stored.diagnostics is not None
     assert derived.diagnostics_error is None
     assert len(await ShotsRepository(db).samples(shot_id)) == stored.sample_count > 100
+
+
+def _reused(device_id: str, start_epoch: int) -> ShotInsert:
+    shot = a_shot(device_id)
+    shot.start_epoch = start_epoch
+    return shot
+
+
+async def test_two_shots_may_share_a_machine_number_when_they_started_at_different_times(
+    db: Database,
+) -> None:
+    """The machine's counter restarts after an erase: the number is not an identity."""
+    repo = ShotsRepository(db)
+    old = await repo.insert(_reused("000001", 1_760_000_000))
+    new = await repo.insert(_reused("000001", 1_770_000_000))
+
+    assert old != new
+    assert await repo.ids_by_device_id("000001") == [old, new]
+
+
+async def test_a_number_and_start_time_together_cannot_be_stored_twice(db: Database) -> None:
+    repo = ShotsRepository(db)
+    await repo.insert(_reused("000001", 1_760_000_000))
+
+    with pytest.raises(Exception, match="UNIQUE"):
+        await repo.insert(_reused("000001", 1_760_000_000))
+
+
+async def test_a_shot_is_found_by_its_number_and_start_time_together(db: Database) -> None:
+    repo = ShotsRepository(db)
+    old = await repo.insert(_reused("000001", 1_760_000_000))
+    new = await repo.insert(_reused("000001", 1_770_000_000))
+
+    found_old = await repo.get_by_identity("000001", 1_760_000_000)
+    found_new = await repo.get_by_identity("000001", 1_770_000_000)
+
+    assert found_old is not None and found_old.id == old
+    assert found_new is not None and found_new.id == new
+    assert await repo.get_by_identity("000001", 1_780_000_000) is None
+    assert await repo.id_by_identity("000002", 1_760_000_000) is None
+
+
+async def test_looking_a_shot_up_by_number_alone_gives_the_latest_one(db: Database) -> None:
+    repo = ShotsRepository(db)
+    await repo.insert(_reused("000001", 1_770_000_000))
+    await repo.insert(_reused("000001", 1_760_000_000))
+
+    latest = await repo.get_by_device_id("000001")
+
+    assert latest is not None and latest.start_epoch == 1_770_000_000
+
+
+async def test_the_known_shots_carry_their_start_time_and_may_repeat_a_number(
+    db: Database,
+) -> None:
+    repo = ShotsRepository(db)
+    await repo.insert(_reused("000001", 1_760_000_000))
+    await repo.insert(_reused("000001", 1_770_000_000))
+
+    states = await repo.known_states()
+
+    assert [(state.device_id, state.start_epoch) for state in states] == [
+        ("000001", 1_760_000_000),
+        ("000001", 1_770_000_000),
+    ]
+
+
+async def test_an_unknown_start_time_is_settled_once_and_never_replaced(db: Database) -> None:
+    repo = ShotsRepository(db)
+    unknown = await repo.insert(_reused("000001", 0))
+    known = await repo.insert(_reused("000002", 1_760_000_000))
+
+    await repo.adopt_start_epoch(unknown, 1_770_000_000, "2026-02-02T00:00:00.000Z")
+    await repo.adopt_start_epoch(known, 1_780_000_000, "2026-03-03T00:00:00.000Z")
+
+    settled = await repo.get(unknown)
+    untouched = await repo.get(known)
+    assert settled is not None and settled.start_epoch == 1_770_000_000
+    assert settled.started_at == "2026-02-02T00:00:00.000Z"
+    assert untouched is not None and untouched.start_epoch == 1_760_000_000
+
+
+async def test_a_shot_the_machine_no_longer_holds_keeps_its_unknown_start_time(
+    db: Database,
+) -> None:
+    repo = ShotsRepository(db)
+    gone = await repo.insert(_reused("000001", 0))
+    await repo.mark_deleted_on_device(gone)
+
+    assert await repo.unknown_start_shot("000001") is None
+    await repo.adopt_start_epoch(gone, 1_770_000_000, "2026-02-02T00:00:00.000Z")
+
+    stored = await repo.get(gone)
+    assert stored is not None and stored.start_epoch == 0
+
+
+async def test_the_shot_with_an_unknown_start_time_is_offered_with_its_bytes(
+    db: Database,
+) -> None:
+    repo = ShotsRepository(db)
+    unknown = await repo.insert(_reused("000001", 0))
+    await repo.insert(_reused("000001", 1_760_000_000))
+
+    assert await repo.unknown_start_shot("000001") == (unknown, RAW)
