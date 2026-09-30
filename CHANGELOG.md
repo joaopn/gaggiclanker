@@ -45,6 +45,22 @@ first (`POST /api/backup`), because there is no down-migration.
   update,** as for the resistance change above: scores, verdicts and the
   Phases line move, notes, judgements, Sets and curves do not.
 
+### The machine's passwords are no longer kept
+
+- **Fixed (security): the archive stored the machine's Wi-Fi, access-point and
+  Home Assistant passwords in plain text.** GaggiMate firmware returns them in
+  its settings document, and the archive kept that document whole, so the
+  passwords sat in the database, were served by `GET /api/machine` to the web
+  and were copied into every backup. Secrets are now removed before anything is
+  stored or shown: the three known passwords and any key whose name contains
+  `password`, `token` or `secret`, at any depth. The first start after the
+  update also removes the passwords from what is already stored, without
+  touching the rest of the archive.
+- **Backup files written before this update still contain the passwords.**
+  Delete them or keep them somewhere only you can read, and change the Wi-Fi,
+  access-point and Home Assistant passwords on the machine if the archive or a
+  backup has left your own network.
+
 ### Puck resistance comes from the machine
 
 - **A shot's puck resistance is now the machine's own measurement whenever the
