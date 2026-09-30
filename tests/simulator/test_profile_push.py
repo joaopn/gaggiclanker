@@ -271,3 +271,76 @@ async def test_a_generated_draft_is_pushed_verified_brewed_and_deleted(
     assert ("profile_save", "ok") in kinds
     assert ("profile_select", "ok") in kinds
     assert ("profile_delete", "ok") in kinds
+
+
+async def test_a_second_push_replaces_the_first_and_a_rollback_puts_it_back(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    """Replace and restore against the real firmware: star, selection, delete, save.
+
+    The first push is made from the simulator's own profile, which this app did not
+    create, so it adds a copy beside it. The second is made from that copy, so it
+    replaces it: the new profile is starred and selected first, then the old one is
+    deleted. The rollback saves the first copy again, then removes the second.
+    """
+    app, client = live
+    profiles = ProfilesRepository(app.state.db)
+    page = await profiles.list_versions(limit=200)
+    usable = next((version for version in page.items if not version.utility), None)
+    assert usable is not None, "the simulator listed no usable profile"
+
+    async def push_with_pressure(base_version_id: int, bar: float) -> dict[str, Any]:
+        base = await profiles.get_version(base_version_id)
+        assert base is not None and base.profile is not None
+        document: dict[str, Any] = dict(base.profile)
+        document["phases"] = [dict(phase) for phase in document["phases"]]
+        first = document["phases"][0]
+        first["pump"] = (
+            {**first["pump"], "pressure": bar}
+            if isinstance(first.get("pump"), dict)
+            else max(int(first.get("pump", 100)) - int(bar), 0)
+        )
+        provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
+        draft = data(
+            await client.post(
+                "/api/profile-drafts", json={"base_version_id": base_version_id, "notes": "edit"}
+            )
+        )
+        approved = await client.post(
+            f"/api/profile-drafts/{draft['id']}/approve", json={"acknowledge_stop_changes": True}
+        )
+        assert approved.status_code == 200, approved.text
+        return dict(
+            data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
+        )
+
+    created: list[str] = []
+    client_device = app.state.connection.client
+    try:
+        first = await push_with_pressure(usable.id, 8)
+        assert first["status"] == "pushed", first.get("error")
+        first_id = first["pushed_device_profile_id"]
+        created.append(first_id)
+        assert first["replaced_device_profile_id"] is None  # the original is not ours
+
+        await client_device.select_profile(first_id)
+        second = await push_with_pressure(first["draft_version_id"], 7)
+        assert second["status"] == "pushed", second.get("error")
+        second_id = second["pushed_device_profile_id"]
+        created.append(second_id)
+        assert second["replaced_device_profile_id"] == first_id
+        listed = {p.id for p in await client_device.list_profiles()}
+        assert second_id in listed and first_id not in listed
+        assert (await client_device.load_profile(second_id)).selected
+
+        rolled = data(await client.post(f"/api/profile-drafts/{second['id']}/rollback", json={}))
+        restored_id = rolled["outcome"]["restored_device_profile_id"]
+        assert restored_id
+        created.append(restored_id)
+        listed = {p.id for p in await client_device.list_profiles()}
+        assert restored_id in listed and second_id not in listed
+    finally:
+        listed = {p.id for p in await client_device.list_profiles()}
+        for device_id in created:
+            if device_id in listed:
+                await client_device.delete_profile(device_id)
