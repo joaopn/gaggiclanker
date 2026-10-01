@@ -48,7 +48,10 @@ first (`POST /api/backup`), because there is no down-migration.
   newest put; going back makes it that version again and the next sync saves it and removes the
   newer copy through the same guards as any replacement. It is the old rollback, on the board:
   the draft behind the removed copy is discarded and the Set versions that named it stop naming
-  it. Not offered for a profile of yours, or when there is no earlier version. New migration
+  it. Not offered for a profile of yours, when there is no earlier version, or while the earlier
+  copy is still kept on the machine for a Set (go back once that Set has moved on). A Set that
+  later rolls back onto the newer profile keeps its file. Profiles on the board have an **Edit**
+  button, which is how a change is made to one. New migration
   `0034` adds the two columns this needs; nothing is rewritten.
 - **New: no two profiles on the board share a name.** A put that would add a second profile
   beside one with its name (or rename one onto a name another holds) and taking a machine

@@ -105,7 +105,11 @@ replacement does (saves the earlier version, removes the newer copy through the 
 and the record stays true: the draft that made the newer version is discarded, the Set
 versions that named the removed copy stop naming it, and the ones the replacement had cleared
 name the copy put back. A profile of the person's cannot go back, and a profile with no earlier
-version, or whose earlier version would repeat a label on the board, cannot either.
+version, or whose earlier version would repeat a label on the board, cannot either. Nor can one
+whose earlier copy the sync kept on the machine for a Set that is still brewing it while the newer
+copy sits beside it (nothing on the board would stand on the newer copy afterwards); it can go
+back once that Set has moved on. The Set that recorded the version being left is not a reason to
+keep its file only while the Set version that was current at the click is still current.
 
 With the switch on, every sync ends by making the machine's profiles match the board,
 in this order:
