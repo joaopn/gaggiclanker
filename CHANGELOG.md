@@ -103,6 +103,11 @@ first (`POST /api/backup`), because there is no down-migration.
   the board** (new route `POST /api/profile-board/take`). It reads the last mirror, sends
   nothing to the machine, and treats a copy this app saved itself as the app's and anything
   else as yours, exactly as the first adoption does. Chat and MCP have no tool for it.
+- **A draft says where it will land:** "goes on the board as a new profile" or "replaces X on
+  the board, as its next version", worked out by the server with the code a put runs (the board
+  read now carries it), and "Put on the board" is hidden only when the profile it would replace
+  already holds a newer draft. Taking a profile onto the board is atomic (two clicks make one
+  row) and is refused for a file whose exact content a board profile already stands for.
 - **Fixes while building it:** a pull's write phase now refreshes the drafts, Sets and write
   audit open in the browser; the Resume banner goes away once resumed; the Sync summary reads
   each reason by the section it is under; a board that cannot be read says so instead of
