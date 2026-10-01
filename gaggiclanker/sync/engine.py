@@ -24,6 +24,11 @@ button. Identity is the exception and stays automatic — it is one frame plus
 one request, it is what tells the header whether the machine is there at all,
 and the `machines` row has to exist before any pull can store a shot against it.
 
+That is also what keeps the one automatic write this app makes under a person's hand: the
+profile board's write phase is a step of the profiles pass (there is no pass of its own, and
+no second loop that mirrors), so only a request for that pass, which only the Sync button's
+route makes, can start it, and only with the writes switch on.
+
 **The bytes are the product.** A `.slog` that does not parse is stored with
 `quarantined = 1`, its reason and its raw bytes, and produces no sample rows.
 The machine will have deleted its copy long before anyone fixes the parser.
@@ -341,7 +346,11 @@ class SyncEngine:
         self._shot_poke.raise_(reason)
 
     def request_profile_sync(self, reason: str = "manual") -> None:
-        """Ask for a profile mirror on the next turn of the loop."""
+        """Ask for a profile pass (the mirror, then the board's write phase) on the next turn.
+
+        Called by the Sync route and by nothing else: no timer, event or boot step may call it,
+        since the pass it starts can write to the machine (a test pins the call sites).
+        """
         self._profile_poke.raise_(reason)
 
     def request_identity_sync(self, reason: str = "manual") -> None:
