@@ -3121,11 +3121,15 @@ export interface components {
          * @description Where a put of one draft would land: the row it continues, or a new profile.
          */
         BoardLanding: {
+            /** Beside Label */
+            beside_label?: string | null;
             /**
              * Holds Newer Draft
              * @default false
              */
             holds_newer_draft: boolean;
+            /** Revives Label */
+            revives_label?: string | null;
             /** Row Id */
             row_id?: number | null;
             /** Row Label */

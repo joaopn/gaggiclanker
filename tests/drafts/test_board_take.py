@@ -18,8 +18,11 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.infra.errors import Conflict
 from tests.drafts.conftest import data
-from tests.drafts.test_board import get_board, pull, row_for, write_frames
+from tests.drafts.test_board import adopted, app_row, get_board, pull, row_for, write_frames
 from tests.drafts.test_replace import APP_LABEL, Live
+from tests.llm.conftest import FakeProvider
+
+__all__ = ["adopted"]  # the fixture, re-exported for this module
 
 
 async def take(client: httpx.AsyncClient, device_id: str) -> httpx.Response:
@@ -201,20 +204,37 @@ async def test_the_unique_index_is_the_same_refusal_never_a_500(
     assert response.status_code == 409, response.text
 
 
-async def test_a_file_holding_what_a_board_profile_already_stands_for_is_refused(
-    writes_on: Live, fake_device: FakeDevice
+async def test_a_file_holding_what_an_app_profile_already_stands_for_is_refused(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    app, client = writes_on
-    await pull(app)
-    twin = copy.deepcopy(fake_device.profiles[0])
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider, 8)
+    [app_file] = [p for p in fake.profiles if p["label"] == APP_LABEL]
+    twin = copy.deepcopy(app_file)
     twin["id"] = "twin"
-    fake_device.profiles.append(twin)  # the same content under another id
+    fake.profiles.append(twin)  # the same content under another id: a third copy if taken
     await pull(app)
 
     response = await take(client, "twin")
 
     assert response.status_code == 409
     assert "already stands for" in response.text
+
+
+async def test_a_persons_identical_duplicate_can_be_taken_as_theirs(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    twin = copy.deepcopy(fake_device.profiles[0])
+    twin["id"] = "twin"
+    fake_device.profiles.append(twin)  # made on the display: the pull never pushes it
+    await pull(app)
+
+    response = await take(client, "twin")
+
+    assert response.status_code == 201, response.text
+    assert data(response)["origin"] == "adopted"
 
 
 async def test_a_profile_the_mirror_marks_deleted_is_refused(

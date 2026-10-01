@@ -93,3 +93,29 @@ async def test_adoption_is_recorded_once(repo: ProfileBoardRepository) -> None:
 def test_a_row_must_say_where_it_came_from() -> None:
     with pytest.raises(ValidationError):
         BoardRowWrite.model_validate({"label": "P", "current_version_id": 1, "origin": "typed"})
+
+
+async def test_two_live_rows_cannot_stand_on_one_file_but_a_deleted_one_may(
+    repo: ProfileBoardRepository,
+) -> None:
+    """The backstop for every writer that checks first and inserts second (a take, a put).
+
+    A race between two takes of one file cannot be observed through the service: the second
+    insert meets this index and is answered as the same refusal. So the index is what is pinned.
+    """
+    import sqlite3
+
+    first = await repo.insert(
+        BoardRowWrite(label="P", current_version_id=1, device_profile_id="abc", origin="adopted")
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        await repo.insert(
+            BoardRowWrite(
+                label="P", current_version_id=1, device_profile_id="abc", origin="adopted"
+            )
+        )
+    await repo.update(first.id, BoardRowPatch(deleted_at="2026-01-01T00:00:00.000Z"))
+    again = await repo.insert(
+        BoardRowWrite(label="P", current_version_id=1, device_profile_id="abc", origin="adopted")
+    )
+    assert again.id != first.id

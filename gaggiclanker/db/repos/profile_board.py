@@ -158,6 +158,24 @@ class ProfileBoardRepository(Repository):
         )
         return self.to_model(BoardRow, row)
 
+    async def find_live_app_by_version(self, version_id: int) -> BoardRow | None:
+        """The live row the app itself pushed whose current version is this one, if any."""
+        row = await self.db.fetch_one(
+            "SELECT * FROM profile_board WHERE current_version_id = ? AND deleted_at IS NULL "
+            "AND origin = 'draft' ORDER BY id LIMIT 1",
+            (version_id,),
+        )
+        return self.to_model(BoardRow, row)
+
+    async def find_live_by_label(self, label: str) -> BoardRow | None:
+        """A live row with this label, if any (the first, for a stable answer)."""
+        row = await self.db.fetch_one(
+            "SELECT * FROM profile_board WHERE label = ? AND deleted_at IS NULL "
+            "ORDER BY id LIMIT 1",
+            (label,),
+        )
+        return self.to_model(BoardRow, row)
+
     async def find_live_by_device(self, device_id: str) -> BoardRow | None:
         """The live row that holds this machine file, if any."""
         row = await self.db.fetch_one(

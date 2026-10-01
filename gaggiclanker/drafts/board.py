@@ -197,6 +197,11 @@ class BoardLanding(BaseModel):
     #: Whether that row already holds a newer draft (current, or waiting for a pull), so a
     #: put of this one would undo it.
     holds_newer_draft: bool = False
+    #: A put that would make a new row while a live board profile has the same label: the
+    #: label it would sit beside, so the page can say "a second profile" rather than "new".
+    beside_label: str | None = None
+    #: A put that would bring a deleted profile back (its file still waits to be dealt with).
+    revives_label: str | None = None
 
 
 class DraftLanding(BaseModel):
@@ -349,13 +354,34 @@ class BoardService:
     ) -> BoardLanding:
         row = await self._lineage_row(draft, version, set_id)
         if row is None:
-            return BoardLanding()
+            revived = await self._revivable(version)
+            if revived is not None:
+                return BoardLanding(revives_label=revived.label)
+            beside = await self.board.find_live_by_label(version.label)
+            return BoardLanding(beside_label=None if beside is None else beside.label)
         newer = row.pending_draft_id is not None and row.pending_draft_id > draft.id
         if not newer:
-            newer = await self.drafts.has_newer_on_version(
-                row.current_version_id, after_id=draft.id
-            )
+            holder = await self.drafts.first_draft_on_version(row.current_version_id)
+            newer = holder is not None and holder > draft.id
         return BoardLanding(row_id=row.id, row_label=row.label, holds_newer_draft=newer)
+
+    async def _revivable(self, version: ProfileVersionRow) -> BoardRow | None:
+        """The deleted row a put of this version would bring back, if there is one.
+
+        One function for the put and for the read of where a put lands. A deleted row whose
+        file a live row now stands on is not revivable: a new row, never two on one file.
+        """
+        revived = await self.board.find_deleted_with_file(version.id)
+        if (
+            revived is not None
+            and revived.device_profile_id is not None
+            and await self.board.other_live_on_device(
+                revived.device_profile_id, excluding=revived.id
+            )
+            is not None
+        ):
+            return None
+        return revived
 
     # ── editing the board (never the machine) ────────────────────────
 
@@ -401,16 +427,7 @@ class BoardService:
                 pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
             )
             if row is None:
-                revived = await self.board.find_deleted_with_file(version.id)
-                if (
-                    revived is not None
-                    and revived.device_profile_id is not None
-                    and await self.board.other_live_on_device(
-                        revived.device_profile_id, excluding=revived.id
-                    )
-                    is not None
-                ):
-                    revived = None  # a live row stands on that file now: a new row, never two
+                revived = await self._revivable(version)
                 if revived is not None:
                     # The same profile put back while its old file still waits to be dealt
                     # with (a Set may be brewing it): the row is the same profile again, not
@@ -522,10 +539,12 @@ class BoardService:
             version = await self.profiles.get_version(mirrored.current_version_id)
             if version is None:  # pragma: no cover - a foreign key guarantees it
                 raise NotFound(f"No profile version {mirrored.current_version_id}")
-            if await self.board.find_live_by_version(version.id) is not None:
-                # A board profile already stands for exactly this content (a copy a pull has
-                # just put on the machine while the old one is still kept): a second row on
-                # it would be pushed a third copy by the next pull.
+            if await self.board.find_live_app_by_version(version.id) is not None:
+                # A profile the app pushed already stands for exactly this content (a copy a
+                # pull has just put on the machine while the old one is still kept): a second
+                # row on it would be pushed a third copy by the next pull. A person's own
+                # identical duplicate is a different thing: the pull never pushes it, so it can
+                # be taken as theirs.
                 raise Conflict("A profile on the board already stands for this exact profile.")
             ours = await self._saved_by_the_app(
                 device_profile_id, version.label, version.content_hash, host=adoption.host

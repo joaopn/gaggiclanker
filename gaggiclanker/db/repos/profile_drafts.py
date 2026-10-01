@@ -336,18 +336,21 @@ class ProfileDraftsRepository(Repository):
         )
         return await self._with_next_names(self.to_models(ProfileDraftRow, rows))
 
-    async def has_newer_on_version(self, version_id: int, *, after_id: int) -> bool:
-        """Whether a later approved or pushed draft made this exact document.
+    async def first_draft_on_version(self, version_id: int) -> int | None:
+        """The id of the draft that first made this exact document, if it is still live.
 
-        A board row whose current version is some draft's document "holds" that draft; a
-        draft with a lower id than a draft holding it is one the board has moved past.
+        A board row's current document was made by a draft; that draft is what the row
+        "holds", and a draft with a lower id is one the board has moved past. A draft that
+        merely re-staged the same document later (same content, so the same version) did not
+        change anything and is not the holder, and a discarded or superseded draft holds
+        nothing.
         """
         row = await self.db.fetch_one(
-            "SELECT 1 AS found FROM profile_drafts WHERE draft_version_id = ? AND id > ? "
-            "AND status IN ('approved', 'pushed') LIMIT 1",
-            (version_id, after_id),
+            "SELECT MIN(id) AS first_id FROM profile_drafts WHERE draft_version_id = ? "
+            "AND status IN ('approved', 'pushed')",
+            (version_id,),
         )
-        return row is not None
+        return None if row is None or row["first_id"] is None else int(row["first_id"])
 
     async def set_status(
         self,
