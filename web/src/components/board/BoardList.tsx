@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, Clock, Trash2 } from "lucide-react";
-import { useState } from "react";
-import type { BoardRowView, BoardView } from "@/api/types";
+import { useEffect, useRef, useState } from "react";
+import type { BoardRowView, BoardView, ProfileDraft } from "@/api/types";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,11 @@ import { cn } from "@/lib/utils";
 export function BoardList({
   view,
   versionName,
+  draftOf,
 }: {
   view: BoardView;
+  /** The draft a row is waiting on, to name its Set. */
+  draftOf: (draftId: number) => ProfileDraft | undefined;
   /** The short name of a version (its hash), or `null` when the page does not hold it. */
   versionName: (versionId: number) => string | null;
 }) {
@@ -46,6 +49,9 @@ export function BoardList({
             entry={entry}
             state={rowStateOf(view, entry)}
             version={versionName(entry.row.current_version_id)}
+            pendingDraft={
+              entry.row.pending_draft_id != null ? draftOf(entry.row.pending_draft_id) : undefined
+            }
           />
         ))}
       </ul>
@@ -74,15 +80,30 @@ function BoardRowCard({
   entry,
   state,
   version,
+  pendingDraft,
 }: {
   entry: BoardRowView;
   state: RowState;
   version: string | null;
+  pendingDraft: ProfileDraft | undefined;
 }) {
   const { row } = entry;
   const home = useSetHomeScreen();
   const remove = useDeleteBoardRow();
   const [confirming, setConfirming] = useState(false);
+  // Closing the confirm hands focus back to Delete, which stays rendered under it.
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const [restoreFocus, setRestoreFocus] = useState(false);
+  useEffect(() => {
+    if (restoreFocus && !confirming) {
+      deleteRef.current?.focus();
+      setRestoreFocus(false);
+    }
+  }, [restoreFocus, confirming]);
+  const closeConfirm = () => {
+    setConfirming(false);
+    setRestoreFocus(true);
+  };
   const owner = ownerOf(row);
   const busy = home.isPending || remove.isPending;
 
@@ -102,7 +123,7 @@ function BoardRowCard({
               version <span className="font-mono">{version}</span>
             </>
           ) : (
-            `version ${row.current_version_id}`
+            "version not loaded"
           )}
         </span>
       </div>
@@ -110,7 +131,13 @@ function BoardRowCard({
       <StateLine state={state} />
       {row.pending_set_id != null ? (
         <p className="mt-1 text-muted-foreground text-xs" data-testid="board-row-set">
-          Once it is on the machine it is recorded as the next version of its Set.
+          {pendingDraft?.set_name
+            ? `Once it is on the machine it is recorded as ${
+                (row.pending_major
+                  ? pendingDraft.set_next_major_label
+                  : pendingDraft.set_next_minor_label) ?? "the next version"
+              } of ${pendingDraft.set_name}.`
+            : "Once it is on the machine it is recorded as the next version of its Set."}
         </p>
       ) : null}
 
@@ -128,6 +155,7 @@ function BoardRowCard({
           On the home screen
         </label>
         <Button
+          ref={deleteRef}
           size="sm"
           variant="ghost"
           disabled={busy}
@@ -146,14 +174,15 @@ function BoardRowCard({
             title={`Delete ${row.label} from the board?`}
             confirmLabel="Delete from the board"
             testId="board-delete-confirm"
-            onCancel={() => setConfirming(false)}
+            focusOnOpen
+            onCancel={closeConfirm}
             onConfirm={() => {
-              setConfirming(false);
+              closeConfirm();
               remove.mutate(row.id);
             }}
           >
             {owner === "app"
-              ? "The next pull removes the app's copy from the machine, as long as it is still as the app saved it. "
+              ? "The next pull removes the app's copy from the machine, as long as it is still as the app saved it. The copy stays while a Set is still brewing it, while it is the profile selected on the machine and nothing else on the board can replace it, and while another profile on the board stands on it. "
               : "This profile is yours, so it stays on the machine and only leaves the board. "}
             A profile of yours is never removed from the machine.
           </ConfirmStrip>

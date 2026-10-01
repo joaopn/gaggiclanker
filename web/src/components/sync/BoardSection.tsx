@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,19 @@ export function BoardSection() {
   const board = useProfileBoard();
   const resume = useResumeBoard();
   const [confirming, setConfirming] = useState(false);
+  // The strip replaces the Resume button on screen; closing it hands focus back to the button.
+  const resumeRef = useRef<HTMLButtonElement>(null);
+  const [restoreFocus, setRestoreFocus] = useState(false);
+  useEffect(() => {
+    if (restoreFocus && !confirming) {
+      resumeRef.current?.focus();
+      setRestoreFocus(false);
+    }
+  }, [restoreFocus, confirming]);
+  const closeConfirm = () => {
+    setConfirming(false);
+    setRestoreFocus(true);
+  };
 
   const run = sync.data?.last_runs?.profiles;
   const summary = boardSummaryOf(run);
@@ -95,26 +108,28 @@ export function BoardSection() {
                   confirmLabel="Resume"
                   confirmVariant="default"
                   testId="board-resume-confirm"
-                  onCancel={() => setConfirming(false)}
+                  focusOnOpen
+                  onCancel={closeConfirm}
                   onConfirm={() => {
-                    setConfirming(false);
+                    closeConfirm();
                     resume.mutate();
                   }}
                 >
                   The next pull will push the app's profiles back onto the machine. Profiles of
                   yours are never pushed.
                 </ConfirmStrip>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={resume.isPending}
-                  data-testid="board-resume"
-                  onClick={() => setConfirming(true)}
-                >
-                  Resume
-                </Button>
-              )}
+              ) : null}
+              <Button
+                ref={resumeRef}
+                size="sm"
+                variant="outline"
+                hidden={confirming}
+                disabled={resume.isPending}
+                data-testid="board-resume"
+                onClick={() => setConfirming(true)}
+              >
+                Resume
+              </Button>
             </div>
           ) : null}
 

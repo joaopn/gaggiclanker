@@ -228,6 +228,10 @@ function WritesPreview() {
         <p data-testid="writes-preview-paused">
           The machine looks reset, so pulls write nothing until you resume them on the Sync page.
         </p>
+      ) : actions.length === 0 && !fromMachine ? (
+        <p data-testid="writes-preview-unknown">
+          Without a read of the machine there is no telling what the next pull would do.
+        </p>
       ) : actions.length === 0 ? (
         <p data-testid="writes-preview-none">
           The machine already matches the board: the next pull would change nothing.

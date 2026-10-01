@@ -22,6 +22,7 @@ const {
   setBoardHomeScreen,
   deleteBoardRow,
   pushProfileDraft,
+  takeOntoBoard,
 } = vi.hoisted(() => ({
   getProfiles: vi.fn(),
   getProfileVersions: vi.fn(),
@@ -33,6 +34,7 @@ const {
   setBoardHomeScreen: vi.fn(),
   deleteBoardRow: vi.fn(),
   pushProfileDraft: vi.fn(),
+  takeOntoBoard: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -46,6 +48,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   setBoardHomeScreen,
   deleteBoardRow,
   pushProfileDraft,
+  takeOntoBoard,
 }));
 
 const versions: ProfileVersionListData = {
@@ -115,8 +118,9 @@ describe("the Profiles page around the board", () => {
     expect(second).toHaveTextContent("Londinium [AI]");
     expect(second).toHaveAttribute("data-owner", "app");
     expect(second).toHaveTextContent("the app's");
-    // A version the page does not hold is named by its number, not left blank.
-    expect(second).toHaveTextContent("version 11");
+    // A version the page does not hold says so, with no internal number.
+    expect(second).toHaveTextContent("version not loaded");
+    expect(second.textContent ?? "").not.toMatch(/version 11/);
     expect(within(second).getByTestId("board-state")).toHaveTextContent(
       "Will be pushed on the next pull",
     );
@@ -384,11 +388,276 @@ describe("before the board is adopted the page is as it was", () => {
     expect(screen.queryByText(/on the next pull/)).toBeNull();
   });
 
-  it("is the same when the board cannot be read", async () => {
-    getProfileBoard.mockRejectedValue(new Error("boom"));
+  it("shows no push button while the board is still being read", async () => {
+    getProfileBoard.mockReturnValue(new Promise(() => {}));
     renderWithQueryClient(<ProfilesPage />);
 
-    expect(await screen.findByTestId("push-draft")).toBeInTheDocument();
+    expect(await screen.findByTestId("drafts-skeleton")).toBeInTheDocument();
+    expect(screen.queryByTestId("push-draft")).toBeNull();
+    expect(screen.queryByTestId("push-draft-for-set")).toBeNull();
     expect(screen.queryByTestId("put-on-board")).toBeNull();
+  });
+});
+
+describe("when the board cannot be read", () => {
+  beforeEach(() => {
+    getProfileBoard.mockRejectedValue(new Error("boom"));
+    getProfileDrafts.mockResolvedValue({ items: [draft({ status: "approved" })] });
+  });
+
+  it("says so, and offers neither a push nor a put", async () => {
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("board-unreadable")).toHaveTextContent(
+      "Can't tell what is on the board right now",
+    );
+    expect(await screen.findByTestId("draft-board-unknown")).toBeInTheDocument();
+    expect(screen.queryByTestId("push-draft")).toBeNull();
+    expect(screen.queryByTestId("put-on-board")).toBeNull();
+    expect(screen.queryByTestId("rollback-draft")).toBeNull();
+    expect(screen.queryByTestId("board-list")).toBeNull();
+  });
+
+  it("tries again on request", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+    await screen.findByTestId("board-unreadable");
+    getProfileBoard.mockResolvedValue(boardView());
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByTestId("board-list")).toBeInTheDocument();
+    expect(screen.queryByTestId("board-unreadable")).toBeNull();
+  });
+});
+
+describe("the delete confirm", () => {
+  it("says when the copy also stays", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+    const [, second] = await cards();
+
+    await user.click(within(second).getByTestId("board-delete"));
+
+    const text = within(second).getByTestId("board-delete-confirm").textContent ?? "";
+    expect(text).toContain("while a Set is still brewing it");
+    expect(text).toContain("while it is the profile selected on the machine");
+    expect(text).toContain("another profile on the board stands on it");
+  });
+
+  it("moves focus in, closes on Escape and gives focus back to Delete", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+    const [first] = await cards();
+    const del = within(first).getByTestId("board-delete");
+
+    await user.click(del);
+    const confirm = within(first).getByTestId("board-delete-confirm");
+    expect(within(confirm).getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(within(first).queryByTestId("board-delete-confirm")).toBeNull();
+    await waitFor(() => expect(del).toHaveFocus());
+    expect(deleteBoardRow).not.toHaveBeenCalled();
+
+    await user.click(del);
+    await user.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(del).toHaveFocus());
+  });
+});
+
+describe("notes follow the Writes switch", () => {
+  it("say once writes are turned on, while they are off", async () => {
+    const removing = boardRowView({
+      row: { id: 2, label: "Londinium [AI]", origin: "draft", on_home_screen: false },
+      planned: [
+        boardAction({ row_id: 2, kind: "remove", device_id: "old1" }),
+        boardAction({ row_id: 2, kind: "home_screen", on: true }),
+      ],
+    });
+    getProfileBoard.mockResolvedValue(boardView({ writes_enabled: false, rows: [removing] }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    const state = await screen.findByTestId("board-state");
+    expect(state).toHaveTextContent(
+      "The old copy (old1) will be removed once writes are turned on.",
+    );
+    expect(state).toHaveTextContent("put on the home screen once writes are turned on");
+  });
+
+  it("a draft on the board says so too", async () => {
+    getProfileDrafts.mockResolvedValue({ items: [draft({ status: "approved" })] });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        writes_enabled: false,
+        rows: [boardRowView({ row: { id: 2, origin: "draft", pending_draft_id: 1 } })],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-on-board")).toHaveTextContent(
+      "It reaches the machine once writes are turned on",
+    );
+  });
+});
+
+describe("a draft the board has moved past", () => {
+  const older = draft({ id: 1, status: "approved", created_at: "2026-03-01T09:00:00.000Z" });
+  const newer = draft({
+    id: 2,
+    status: "pushed",
+    draft_version_id: 11,
+    created_at: "2026-03-02T09:00:00.000Z",
+  });
+
+  beforeEach(() => {
+    getProfileDrafts.mockResolvedValue({ items: [older] });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [boardRowView({ row: { id: 2, origin: "draft", current_version_id: 11 } })],
+      }),
+    );
+  });
+
+  it("is not offered Put, and says why, but can be discarded", async () => {
+    getProfileDrafts.mockImplementation(async () => ({ items: [older, newer] }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    const cardsFound = await screen.findAllByTestId("draft-card");
+    const card = cardsFound.find(
+      (c) => c.getAttribute("data-status") === "approved",
+    ) as HTMLElement;
+    expect(await within(card).findByTestId("draft-overtaken")).toHaveTextContent(
+      "already on the board, so putting this one there would undo it",
+    );
+    expect(within(card).queryByTestId("put-on-board")).toBeNull();
+    expect(within(card).getByTestId("discard-draft")).toBeInTheDocument();
+  });
+
+  it("an approved draft nothing has overtaken can be put or discarded", async () => {
+    getProfileBoard.mockResolvedValue(boardView());
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("put-on-board")).toBeInTheDocument();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+  });
+
+  it("a draft waiting on the board cannot be discarded under it", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({ rows: [boardRowView({ row: { id: 2, origin: "draft", pending_draft_id: 1 } })] }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findByTestId("draft-on-board");
+    expect(screen.queryByTestId("discard-draft")).toBeNull();
+  });
+});
+
+describe("a Set's draft on the board", () => {
+  it("names the Set and the version on the row, and the prediction line says what was chosen", async () => {
+    const forGuji = draft({
+      id: 1,
+      status: "approved",
+      set_id: 3,
+      set_name: "Guji on the Niche",
+      set_next_minor_label: "v2.2",
+      set_next_major_label: "v3",
+      prediction: "Less of the dry finish.",
+    });
+    getProfileDrafts.mockResolvedValue({ items: [forGuji] });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          boardRowView({
+            row: {
+              id: 2,
+              origin: "draft",
+              pending_draft_id: 1,
+              pending_set_id: 3,
+              pending_major: true,
+            },
+          }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("board-row-set")).toHaveTextContent(
+        "recorded as v3 of Guji on the Niche",
+      ),
+    );
+    expect(screen.getByTestId("draft-prediction-landing")).toHaveTextContent(
+      "It is recorded as v3 of Guji on the Niche when the next pull puts this draft on the machine.",
+    );
+    expect(screen.getByTestId("draft-prediction-landing").textContent).not.toMatch(/if you put/);
+  });
+});
+
+describe("profiles on the machine that the board does not hold", () => {
+  const mirror = (id: string, label: string, extra: Record<string, unknown> = {}) => ({
+    device_id: id,
+    current_version_id: 7,
+    favorite: false,
+    selected: false,
+    position: 0,
+    first_seen_at: "2026-03-01T00:00:00.000Z",
+    last_seen_at: "2026-03-04T00:00:00.000Z",
+    deleted_at: null,
+    label,
+    type: "standard",
+    utility: false,
+    content_hash: "abcdef0123456789",
+    shot_count: 0,
+    ...extra,
+  });
+
+  beforeEach(() => {
+    getProfiles.mockResolvedValue({
+      items: [
+        mirror("9bar", "9 Bar Espresso"), // on the board (row device id)
+        mirror("later", "Made on the display", { favorite: true }),
+        mirror("gone", "Removed from the machine", { deleted_at: "2026-03-05T00:00:00.000Z" }),
+        mirror("waiting", "Deleted and waiting"), // a deleted row still stands on it
+      ],
+    });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [mine],
+        pending_removals: [boardRow({ id: 9, device_profile_id: "waiting", deleted_at: "x" })],
+      }),
+    );
+    takeOntoBoard.mockResolvedValue(boardRow({ id: 5, label: "Made on the display" }));
+  });
+
+  it("lists only the mirror's live profiles no board row stands on, and explains them", async () => {
+    renderWithQueryClient(<ProfilesPage />);
+
+    const rows = await screen.findAllByTestId("not-on-board-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Made on the display");
+    expect(rows[0]).toHaveTextContent("on the home screen");
+    expect(screen.getByText("On the machine, not on the board")).toBeInTheDocument();
+    expect(screen.getByText(/a pull leaves them exactly as they are/)).toBeInTheDocument();
+  });
+
+  it("takes one onto the board with a click and sends nothing else", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Take Made on the display onto the board" }),
+    );
+
+    await waitFor(() => expect(takeOntoBoard).toHaveBeenCalledWith("later"));
+    expect(pushProfileDraft).not.toHaveBeenCalled();
+  });
+
+  it("is absent when every profile is on the board", async () => {
+    getProfiles.mockResolvedValue({ items: [mirror("9bar", "9 Bar Espresso")] });
+    renderWithQueryClient(<ProfilesPage />);
+
+    await cards();
+    expect(screen.queryByTestId("not-on-board")).toBeNull();
   });
 });

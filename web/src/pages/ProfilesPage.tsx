@@ -3,6 +3,7 @@ import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { BoardRow, ProfileDraft, ProfileVersionSummary } from "@/api/types";
 import { BoardList } from "@/components/board/BoardList";
+import { NotOnBoard } from "@/components/board/NotOnBoard";
 import { DraftCard } from "@/components/drafts/DraftCard";
 import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -18,6 +19,7 @@ import { useDeviceWrites } from "@/hooks/useDeviceStatus";
 import { useProfileDrafts, useStageVersionAsIs } from "@/hooks/useDrafts";
 import { useImportFiles } from "@/hooks/useImport";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
+import { notOnTheBoard, overtakenDraftIds } from "@/lib/board";
 import { formatDate } from "@/lib/shots";
 
 /**
@@ -78,6 +80,15 @@ export function ProfilesPage() {
   // board that refuses it.
   const adopted = board.data?.adopted === true;
   const boardView = adopted ? board.data : undefined;
+  // Every draft ever made, to tell an approved one from a draft the board has moved past.
+  // Only worth asking once the board is adopted.
+  const everyDraft = useProfileDrafts({}, { enabled: adopted });
+  const overtaken = boardView
+    ? overtakenDraftIds(everyDraft.data?.items ?? [], boardView)
+    : new Set<number>();
+  const draftById = (id: number) => everyDraft.data?.items.find((d) => d.id === id);
+  const notTaken = boardView ? notOnTheBoard(profiles.data?.items ?? [], boardView) : [];
+  const boardUnknown = board.isError;
   const boardRowByDraft = new Map(
     (boardView?.rows ?? [])
       .filter((entry) => entry.row.pending_draft_id != null)
@@ -208,9 +219,33 @@ export function ProfilesPage() {
                 : "As of the last pull. A pull makes the machine match this."
             }
           >
-            <BoardList view={boardView} versionName={versionHash} />
+            <BoardList view={boardView} versionName={versionHash} draftOf={draftById} />
           </SectionCard>
+          <NotOnBoard profiles={notTaken} />
         </>
+      ) : boardUnknown ? (
+        <div
+          className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+          data-testid="board-unreadable"
+          role="alert"
+        >
+          <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
+            <AlertTriangle className="size-3.5" aria-hidden="true" />
+            Can't tell what is on the board right now
+          </p>
+          <p className="mt-1 text-status-warn-text text-xs">
+            The board could not be read, so nothing can be put on the machine until it can.
+          </p>
+          <Button
+            className="mt-2"
+            size="sm"
+            variant="outline"
+            disabled={board.isFetching}
+            onClick={() => void board.refetch()}
+          >
+            Try again
+          </Button>
+        </div>
       ) : profiles.isPending ? (
         <div className="space-y-2">
           {[0, 1, 2].map((row) => (
@@ -282,6 +317,9 @@ export function ProfilesPage() {
         items={draftItems}
         pending={drafts.isPending || board.isPending}
         adopted={adopted}
+        boardUnknown={boardUnknown}
+        writesOn={boardView?.writes_enabled ?? true}
+        overtaken={overtaken}
         boardRows={boardRowByDraft}
         showAll={showAllDrafts}
         onShowAllChange={setShowAllDrafts}
@@ -321,6 +359,9 @@ function StagedForTheMachine({
   items,
   pending,
   adopted,
+  boardUnknown,
+  writesOn,
+  overtaken,
   boardRows,
   showAll,
   onShowAllChange,
@@ -328,6 +369,9 @@ function StagedForTheMachine({
   items: ProfileDraft[];
   pending: boolean;
   adopted: boolean;
+  boardUnknown: boolean;
+  writesOn: boolean;
+  overtaken: Set<number>;
   /** The board rows waiting on a draft, by draft id. */
   boardRows: Map<number, BoardRow>;
   showAll: boolean;
@@ -370,7 +414,10 @@ function StagedForTheMachine({
                 key={draft.id}
                 draft={draft}
                 adopted={adopted}
-                onBoard={boardRows.has(draft.id)}
+                boardUnknown={boardUnknown}
+                boardRow={boardRows.get(draft.id) ?? null}
+                writesOn={writesOn}
+                overtaken={overtaken.has(draft.id)}
               />
             ))}
           </ul>

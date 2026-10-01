@@ -206,6 +206,19 @@ describe("DeviceWritesSwitch", () => {
       expect(screen.getByTestId("writes-preview-list")).toHaveTextContent("Push Londinium [AI]");
     });
 
+    it("does not say the machine matches the board when it could not be read", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(boardView({ machine_source: "mirror", actions: [] }));
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview-unknown")).toHaveTextContent(
+        "no telling what the next pull would do",
+      );
+      expect(screen.queryByTestId("writes-preview-none")).toBeNull();
+    });
+
     it("still lets you turn on when the board cannot be read at all", async () => {
       const user = setupUser();
       getProfileBoard.mockRejectedValue(new Error("boom"));

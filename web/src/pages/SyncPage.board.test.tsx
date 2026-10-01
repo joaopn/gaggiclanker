@@ -207,6 +207,22 @@ describe("a board paused because the machine looks reset", () => {
     expect(resumeBoard).not.toHaveBeenCalled();
   });
 
+  it("moves focus into the confirm, closes on Escape and gives focus back to Resume", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SyncPage />);
+    const resume = await screen.findByTestId("board-resume");
+
+    await user.click(resume);
+    expect(
+      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Cancel" }),
+    ).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("board-resume-confirm")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("board-resume")).toHaveFocus());
+    expect(resumeBoard).not.toHaveBeenCalled();
+  });
+
   it("resumes on confirmation and refreshes everything the resume changes", async () => {
     const user = setupUser();
     const { queryClient } = renderWithQueryClient(<SyncPage />);

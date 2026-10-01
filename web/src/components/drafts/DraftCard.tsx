@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, ListPlus, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 import { useId, useState } from "react";
-import type { ProfileDraft, StopConditionChange } from "@/api/types";
+import type { BoardRow, ProfileDraft, StopConditionChange } from "@/api/types";
 import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
 import { MajorChoice } from "@/components/sets/MajorChoice";
@@ -49,7 +49,10 @@ const STATUS_BADGE: Record<
 export function DraftCard({
   draft,
   adopted = false,
-  onBoard = false,
+  boardUnknown = false,
+  boardRow = null,
+  writesOn = true,
+  overtaken = false,
 }: {
   draft: ProfileDraft;
   /**
@@ -57,9 +60,16 @@ export function DraftCard({
    * (the server refuses both) and an approved draft is put on the board instead.
    */
   adopted?: boolean;
-  /** This draft is already on the board, waiting for the next pull. */
-  onBoard?: boolean;
+  /** The board could not be read, so neither a push nor a put is offered. */
+  boardUnknown?: boolean;
+  /** The board row this draft is on, waiting for the next pull. */
+  boardRow?: BoardRow | null;
+  /** Whether the Writes switch is on (a pull writes nothing otherwise). */
+  writesOn?: boolean;
+  /** A newer draft of the same profile is on the board: putting this one would undo it. */
+  overtaken?: boolean;
 }) {
+  const onBoard = boardRow !== null;
   const detail = useProfileDraft(draft.id);
   const approve = useApproveDraft();
   const push = usePushDraft();
@@ -141,7 +151,7 @@ export function DraftCard({
               : ""}
           </p>
           <p className="text-sm">{draft.prediction}</p>
-          <PredictionLanding draft={draft} adopted={adopted} />
+          <PredictionLanding draft={draft} adopted={adopted} boardRow={boardRow} />
         </div>
       ) : null}
 
@@ -288,14 +298,41 @@ export function DraftCard({
         {draft.status === "approved" && onBoard ? (
           <p className="w-full text-sm" data-testid="draft-on-board">
             <Check className="mr-1 inline size-3.5" aria-hidden="true" />
-            On the board. It reaches the machine on the next pull.
+            On the board. It reaches the machine{" "}
+            {writesOn ? "on the next pull" : "once writes are turned on"}.
           </p>
+        ) : null}
+
+        {draft.status === "approved" && boardUnknown ? (
+          <p className="w-full text-muted-foreground text-sm" data-testid="draft-board-unknown">
+            The board can't be read right now, so this can't be put on the machine until it can.
+          </p>
+        ) : null}
+
+        {draft.status === "approved" && adopted && !onBoard && overtaken ? (
+          <p className="w-full text-sm" data-testid="draft-overtaken">
+            A newer version of this profile is already on the board, so putting this one there would
+            undo it. Refine the newer one, or discard this draft.
+          </p>
+        ) : null}
+
+        {draft.status === "approved" && adopted && !onBoard ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            data-testid="discard-draft"
+            onClick={() => discard.mutate(draft.id)}
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            Discard
+          </Button>
         ) : null}
 
         {/* With the board adopted a pull is the only thing that writes a profile, so an
             approved draft goes on the board, carrying what the push carried: the Set whose
             next version it becomes, and whether that is a major change. */}
-        {draft.status === "approved" && adopted && !onBoard && forSet !== null ? (
+        {draft.status === "approved" && adopted && !onBoard && !overtaken && forSet !== null ? (
           <>
             {forSet.minorLabel !== null && forSet.majorLabel !== null ? (
               <div className="w-full">
@@ -332,7 +369,7 @@ export function DraftCard({
           </>
         ) : null}
 
-        {draft.status === "approved" && adopted && !onBoard && forSet === null ? (
+        {draft.status === "approved" && adopted && !onBoard && !overtaken && forSet === null ? (
           <Button
             size="sm"
             disabled={busy}
@@ -344,7 +381,7 @@ export function DraftCard({
           </Button>
         ) : null}
 
-        {draft.status === "approved" && !adopted && forSet !== null ? (
+        {draft.status === "approved" && !adopted && !boardUnknown && forSet !== null ? (
           <>
             {forSet.minorLabel !== null && forSet.majorLabel !== null ? (
               <div className="w-full">
@@ -385,7 +422,7 @@ export function DraftCard({
           </>
         ) : null}
 
-        {draft.status === "approved" && !adopted && forSet === null ? (
+        {draft.status === "approved" && !adopted && !boardUnknown && forSet === null ? (
           <Button
             size="sm"
             disabled={busy || (!draft.base_is_current && !allowStale)}
@@ -402,6 +439,7 @@ export function DraftCard({
             A failed draft stays failed afterwards; a pushed one becomes
             discarded, because the machine no longer has it. */}
         {!adopted &&
+        !boardUnknown &&
         (draft.status === "failed" || draft.status === "pushed") &&
         draft.pushed_device_profile_id &&
         draft.replaced_by_draft_id == null ? (
@@ -492,7 +530,15 @@ export function DraftCard({
  * Set, or pushed for another one, recorded nothing, and the line must not claim
  * otherwise. Nothing is said once the draft can no longer be pushed at all.
  */
-function PredictionLanding({ draft, adopted }: { draft: ProfileDraft; adopted: boolean }) {
+function PredictionLanding({
+  draft,
+  adopted,
+  boardRow,
+}: {
+  draft: ProfileDraft;
+  adopted: boolean;
+  boardRow: BoardRow | null;
+}) {
   const where = draft.set_name ?? "the Set";
   let line: string | null = null;
   if (draft.status === "pushed") {
@@ -501,6 +547,15 @@ function PredictionLanding({ draft, adopted }: { draft: ProfileDraft; adopted: b
       recorded !== null
         ? `Recorded as ${recorded} of ${where} when this was pushed for it.`
         : `Pushed without recording it on ${where}, so this prediction was not recorded.`;
+  } else if (draft.status === "approved" && boardRow !== null) {
+    // The choice has been made: say what it was, not what could still be chosen.
+    line =
+      boardRow.pending_set_id != null
+        ? `It is recorded as ${
+            (boardRow.pending_major ? draft.set_next_major_label : draft.set_next_minor_label) ??
+            "the next version"
+          } of ${where} when the next pull puts this draft on the machine.`
+        : `Put on the board without recording it on ${where}, so this prediction will not be recorded.`;
   } else if (draft.status === "draft" || draft.status === "approved") {
     line = adopted
       ? "It is recorded on the Set when the next pull puts this draft on the machine, if you put it on the board for that Set."

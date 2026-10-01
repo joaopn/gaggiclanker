@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -18,6 +18,7 @@ export function ConfirmStrip({
   onCancel,
   testId,
   confirmVariant = "destructive",
+  focusOnOpen = false,
 }: {
   title: string;
   children: ReactNode;
@@ -27,12 +28,27 @@ export function ConfirmStrip({
   testId: string;
   /** `destructive` for something that cannot be undone; `default` for a step that can. */
   confirmVariant?: "destructive" | "default";
+  /**
+   * Move focus to Cancel when the strip opens, for a strip that replaces the control that
+   * opened it (focus would otherwise fall to the page). Cancel, never the confirm button, so a
+   * stray Enter is still not the decision.
+   */
+  focusOnOpen?: boolean;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (focusOnOpen) cancelRef.current?.focus();
+  }, [focusOnOpen]);
   return (
     <section
       aria-label={title}
       data-testid={testId}
       className="space-y-2 rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+        event.stopPropagation();
+        onCancel();
+      }}
     >
       <p className="font-medium text-sm">{title}</p>
       <div className="text-sm">{children}</div>
@@ -40,7 +56,7 @@ export function ConfirmStrip({
         <Button size="sm" variant={confirmVariant} onClick={onConfirm}>
           {confirmLabel}
         </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
+        <Button ref={cancelRef} size="sm" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
       </div>

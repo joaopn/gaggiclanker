@@ -105,14 +105,16 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
 
   for (const action of entry.planned ?? []) {
     if (action.kind === "remove") {
-      notes.push(`The old copy (${action.device_id}) will be removed.`);
+      notes.push(
+        `The old copy (${action.device_id}) will be removed${writesOn ? "" : " once writes are turned on"}.`,
+      );
     } else if (action.kind === "leave") {
       notes.push(
         `The old copy${action.device_id ? ` (${action.device_id})` : ""} stays on the machine: ${action.detail || reasonWords(action.reason)}.`,
       );
     } else if (action.kind === "home_screen") {
       notes.push(
-        action.on ? "It will be put on the home screen." : "It will be taken off the home screen.",
+        `${action.on ? "It will be put on the home screen" : "It will be taken off the home screen"}${writesOn ? "" : " once writes are turned on"}.`,
       );
     }
   }
@@ -299,4 +301,65 @@ export function summaryLine(item: BoardSummaryItem, section: SummarySection): st
     Boolean,
   );
   return parts.length > 0 ? `${item.label}: ${parts.join(" ")}` : item.label;
+}
+
+/**
+ * The machine's profiles no board row stands on: what the board has not taken.
+ *
+ * Read from the mirror the page already holds, minus every file a row names, a deleted
+ * row still waiting on its file included, and the file a row's current content was found
+ * in. Nothing here asks the machine.
+ */
+export function notOnTheBoard<T extends { device_id: string; deleted_at?: string | null }>(
+  mirror: T[],
+  view: BoardView,
+): T[] {
+  const claimed = new Set<string>();
+  for (const entry of view.rows ?? []) {
+    if (entry.row.device_profile_id) claimed.add(entry.row.device_profile_id);
+    if (entry.machine.device_id) claimed.add(entry.machine.device_id);
+  }
+  for (const row of view.pending_removals ?? []) {
+    if (row.device_profile_id) claimed.add(row.device_profile_id);
+  }
+  return mirror.filter((profile) => !profile.deleted_at && !claimed.has(profile.device_id));
+}
+
+/**
+ * Approved drafts the board has moved past: another draft of the same profile (the same
+ * base, or the same Set) that is newer and is what a board row now stands on or waits to
+ * push. Putting the older one on the board would silently undo the newer one.
+ */
+export function overtakenDraftIds(
+  drafts: {
+    id: number;
+    status: string;
+    base_version_id: number;
+    set_id?: number | null;
+    draft_version_id?: number | null;
+    created_at: string;
+  }[],
+  view: BoardView,
+): Set<number> {
+  const onBoard = new Set<number>();
+  for (const entry of view.rows ?? []) {
+    onBoard.add(entry.row.current_version_id);
+    if (entry.row.pending_draft_id != null) onBoard.add(-entry.row.pending_draft_id);
+  }
+  const overtaken = new Set<number>();
+  for (const older of drafts) {
+    if (older.status !== "approved") continue;
+    const newer = drafts.find(
+      (other) =>
+        other.id !== older.id &&
+        (other.status === "approved" || other.status === "pushed") &&
+        other.created_at > older.created_at &&
+        (other.base_version_id === older.base_version_id ||
+          (older.set_id != null && other.set_id === older.set_id)) &&
+        ((other.draft_version_id != null && onBoard.has(other.draft_version_id)) ||
+          onBoard.has(-other.id)),
+    );
+    if (newer) overtaken.add(older.id);
+  }
+  return overtaken;
 }

@@ -50,10 +50,12 @@ import { queryKeys } from "@/lib/queryKeys";
 
 export function useProfileDrafts(
   params: { status?: string; open?: boolean } = {},
+  options: { enabled?: boolean } = {},
 ): UseQueryResult<ProfileDraftListData, Error> {
   return useQuery({
     queryKey: queryKeys.drafts.list(params),
     queryFn: () => getProfileDrafts(params),
+    enabled: options.enabled ?? true,
   });
 }
 

@@ -12,6 +12,7 @@ import {
   putOnBoard,
   resumeBoard,
   setBoardHomeScreen,
+  takeOntoBoard,
 } from "@/api/client";
 import type { BoardRow, BoardView } from "@/api/types";
 import { invalidateBoardWrites, invalidateSets } from "@/lib/invalidate";
@@ -64,6 +65,19 @@ export function usePutOnBoard(): UseMutationResult<
       void invalidateBoardWrites(queryClient);
       if (variables?.setId !== undefined) void invalidateSets(queryClient);
     },
+  });
+}
+
+export function useTakeOntoBoard(): UseMutationResult<BoardRow, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (deviceProfileId: string) => takeOntoBoard(deviceProfileId),
+    onSuccess: (row) =>
+      toast.success(`${row.label} is on the board`, {
+        description: "Nothing was sent to the machine.",
+      }),
+    onError: (error) => toast.error(error.message),
+    onSettled: () => void invalidateBoardWrites(queryClient),
   });
 }
 

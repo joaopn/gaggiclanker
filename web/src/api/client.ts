@@ -617,6 +617,14 @@ export async function putOnBoard(body: {
   });
 }
 
+/** Take one profile the machine holds onto the board as it is. Sends nothing to the machine. */
+export async function takeOntoBoard(deviceProfileId: string): Promise<BoardRow> {
+  return fetchApi<BoardRow>("/profile-board/take", {
+    method: "POST",
+    body: JSON.stringify({ device_profile_id: deviceProfileId }),
+  });
+}
+
 export async function setBoardHomeScreen(rowId: number, on: boolean): Promise<BoardRow> {
   return fetchApi<BoardRow>(`/profile-board/${rowId}/home-screen`, {
     method: "PUT",

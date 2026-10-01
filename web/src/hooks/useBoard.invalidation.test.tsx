@@ -6,6 +6,7 @@ import {
   usePutOnBoard,
   useResumeBoard,
   useSetHomeScreen,
+  useTakeOntoBoard,
 } from "@/hooks/useBoard";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
@@ -15,18 +16,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { putOnBoard, setBoardHomeScreen, deleteBoardRow, resumeBoard } = vi.hoisted(() => ({
-  putOnBoard: vi.fn(),
-  setBoardHomeScreen: vi.fn(),
-  deleteBoardRow: vi.fn(),
-  resumeBoard: vi.fn(),
-}));
+const { putOnBoard, setBoardHomeScreen, deleteBoardRow, resumeBoard, takeOntoBoard } = vi.hoisted(
+  () => ({
+    takeOntoBoard: vi.fn(),
+    putOnBoard: vi.fn(),
+    setBoardHomeScreen: vi.fn(),
+    deleteBoardRow: vi.fn(),
+    resumeBoard: vi.fn(),
+  }),
+);
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   putOnBoard,
   setBoardHomeScreen,
   deleteBoardRow,
   resumeBoard,
+  takeOntoBoard,
 }));
 
 const row = { id: 4, label: "9 Bar Espresso [AI]" };
@@ -37,6 +42,7 @@ beforeEach(() => {
   setBoardHomeScreen.mockResolvedValue(row);
   deleteBoardRow.mockResolvedValue(row);
   resumeBoard.mockResolvedValue({ resumed: true });
+  takeOntoBoard.mockResolvedValue(row);
 });
 
 function spyOn(queryClient: QueryClient): readonly unknown[][] {
@@ -105,6 +111,15 @@ describe("every board mutation refreshes everything it changes", () => {
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync(4);
+
+    for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
+  });
+
+  it("taking a machine profile onto the board", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useTakeOntoBoard());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync("later");
 
     for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
   });
