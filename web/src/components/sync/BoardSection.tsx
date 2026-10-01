@@ -48,7 +48,10 @@ export function BoardSection() {
   const run = sync.data?.last_runs?.profiles;
   const summary = boardSummaryOf(run);
   const view = board.data;
-  const paused = view?.paused ?? summary?.paused ?? null;
+  // The board's own answer is the truth about a pause: once it has answered, the last run's
+  // summary (which still says "paused" after a Resume) is history, not state. Only a board
+  // that could not be read falls back to it.
+  const paused = view ? (view.paused ?? null) : (summary?.paused ?? null);
   const reports = view?.reports ?? [];
   const writesOn = view?.writes_enabled ?? false;
 

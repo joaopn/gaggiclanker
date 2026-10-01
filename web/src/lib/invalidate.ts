@@ -198,8 +198,17 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],
   "sync.progress": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
-  // A pull's write phase changes the board's machine state too (`{"board": true}`).
-  "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all, queryKeys.board.all],
+  // A pull's write phase (`{"board": true}`) changes the board's machine state, marks the
+  // drafts it pushed, records the Set versions they were put on the board for, and appends to
+  // the write audit: every reader of those is stale, not only the mirror.
+  "profile.updated": [
+    queryKeys.profiles.all,
+    queryKeys.sync.all,
+    queryKeys.board.all,
+    queryKeys.drafts.all,
+    queryKeys.sets.all,
+    queryKeys.device.all,
+  ],
   // A shot's review, carried on the LLM stream. Only the shot page shows one
   // (its detail carries the reviews), so only shot details are re-read: the
   // shots list carries nothing about a review.

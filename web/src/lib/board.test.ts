@@ -174,3 +174,59 @@ describe("boardSummaryOf", () => {
     );
   });
 });
+
+describe("the event a pull's write phase sends", () => {
+  it("refreshes every reader of what the phase changes", async () => {
+    const { EVENT_INVALIDATIONS } = await import("@/lib/invalidate");
+    const { queryKeys } = await import("@/lib/queryKeys");
+    const keys = EVENT_INVALIDATIONS["profile.updated"] ?? [];
+    for (const key of [
+      queryKeys.profiles.all,
+      queryKeys.sync.all,
+      queryKeys.board.all,
+      queryKeys.drafts.all,
+      queryKeys.sets.all,
+      queryKeys.device.all,
+    ]) {
+      expect(keys).toContainEqual([...key]);
+    }
+    expect(keys).toHaveLength(6);
+  });
+});
+
+describe("summaryLine reads a reason by the section it is listed under", () => {
+  const item = (reason: string, detail = "") => ({ label: "P", reason, detail, on: null });
+  const cases: [Parameters<typeof summaryLine>[1], string, string, string][] = [
+    ["pushed", "missing", "", "P: It was not on the machine."],
+    ["pushed", "superseded", "", "P: It replaced its older version."],
+    ["pushed", "edited_on_machine", "", "P: It was put beside a copy edited on the display."],
+    ["overwritten", "edited_on_machine", "", "P: It was put beside a copy edited on the display."],
+    ["removed", "superseded", "", "P: The old copy went after a newer version was put on."],
+    ["removed", "deleted", "", "P: It was deleted on the board."],
+    [
+      "left",
+      "superseded",
+      "a Set is still brewing it",
+      "P: The old copy stays although a newer version replaced it. A Set is still brewing it.",
+    ],
+    [
+      "left",
+      "deleted",
+      "not made by the app",
+      "P: It was deleted on the board but stays on the machine. Not made by the app.",
+    ],
+    ["adopted", "first_pull", "", "P: Taken from the machine as it was."],
+  ];
+  it.each(cases)("%s / %s", (section, reason, detail, expected) => {
+    expect(summaryLine(item(reason, detail), section)).toBe(expected);
+  });
+
+  it("puts the reason before the detail, never the detail instead of it", () => {
+    const line = summaryLine(
+      item("deleted", "the favourite star moved to the new copy"),
+      "removed",
+    );
+    expect(line.indexOf("deleted on the board")).toBeLessThan(line.indexOf("favourite"));
+    expect(line).toContain("favourite");
+  });
+});

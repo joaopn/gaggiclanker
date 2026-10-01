@@ -247,11 +247,44 @@ export function boardSummaryOf(run: SyncRunRow | undefined): BoardRunSummary | n
   };
 }
 
-/** One summary line in words: the profile, and why or what came of it. */
-export function summaryLine(
-  item: BoardSummaryItem,
-  section: "pushed" | "removed" | "left" | "homeScreen" | "failures" | "adopted" | "overwritten",
-): string {
+type SummarySection =
+  | "pushed"
+  | "removed"
+  | "left"
+  | "homeScreen"
+  | "failures"
+  | "adopted"
+  | "overwritten";
+
+/**
+ * What a reason means *in the section it is listed under*: the same code reads differently
+ * for a push ("superseded" is the new version arriving) and for a removal or a left file
+ * (it is the old one going or staying).
+ */
+const SECTION_REASONS: Record<SummarySection, Record<string, string>> = {
+  pushed: {
+    missing: "it was not on the machine",
+    superseded: "it replaced its older version",
+    edited_on_machine: "it was put beside a copy edited on the display",
+  },
+  overwritten: {
+    edited_on_machine: "it was put beside a copy edited on the display",
+  },
+  removed: {
+    superseded: "the old copy went after a newer version was put on",
+    deleted: "it was deleted on the board",
+  },
+  left: {
+    superseded: "the old copy stays although a newer version replaced it",
+    deleted: "it was deleted on the board but stays on the machine",
+  },
+  adopted: { first_pull: "taken from the machine as it was" },
+  homeScreen: {},
+  failures: {},
+};
+
+/** One summary line in words: the profile, why (by section), then what else was recorded. */
+export function summaryLine(item: BoardSummaryItem, section: SummarySection): string {
   if (section === "failures") {
     const step = item.reason ? reasonWords(item.reason) : "";
     return [item.label, [step, item.detail].filter(Boolean).join(": ")].filter(Boolean).join(": ");
@@ -259,10 +292,11 @@ export function summaryLine(
   if (section === "homeScreen") {
     return `${item.label}: ${item.on === null ? "star changed" : item.on ? "put on the home screen" : "taken off the home screen"}`;
   }
-  const why = item.detail
-    ? sentence(item.detail)
-    : item.reason
-      ? sentence(reasonWords(item.reason))
-      : "";
-  return why ? `${item.label}: ${why}` : item.label;
+  const reason = item.reason
+    ? (SECTION_REASONS[section][item.reason] ?? reasonWords(item.reason))
+    : "";
+  const parts = [reason ? sentence(reason) : "", item.detail ? sentence(item.detail) : ""].filter(
+    Boolean,
+  );
+  return parts.length > 0 ? `${item.label}: ${parts.join(" ")}` : item.label;
 }

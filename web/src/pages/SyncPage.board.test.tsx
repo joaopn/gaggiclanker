@@ -111,7 +111,7 @@ describe("the Sync page's profile board", () => {
       "Londinium [AI]: It was not on the machine.",
     );
     expect(within(summary).getByTestId("board-summary-removed")).toHaveTextContent(
-      "Old [AI]: A newer version replaced it.",
+      "Old [AI]: The old copy went after a newer version was put on.",
     );
     expect(within(summary).getByTestId("board-summary-left")).toHaveTextContent(
       "Mine: It is not a profile the app wrote.",
@@ -228,6 +228,23 @@ describe("a board paused because the machine looks reset", () => {
       expect(keys).toContainEqual(["sync"]);
       expect(keys).toContainEqual(["device"]);
     });
+  });
+
+  it("drops the banner once resumed, although the last run's summary still says paused", async () => {
+    const user = setupUser();
+    getSyncStatus.mockResolvedValue(status({ paused: "the machine looks reset", writes: 0 }));
+    resumeBoard.mockImplementation(async () => {
+      getProfileBoard.mockResolvedValue(boardView({ paused: null }));
+      return { resumed: true };
+    });
+    renderWithQueryClient(<SyncPage />);
+
+    await user.click(await screen.findByTestId("board-resume"));
+    await user.click(
+      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Resume" }),
+    );
+
+    await waitFor(() => expect(screen.queryByTestId("board-paused-banner")).toBeNull());
   });
 
   it("shows the banner from the last run too, when the board itself cannot be read", async () => {
