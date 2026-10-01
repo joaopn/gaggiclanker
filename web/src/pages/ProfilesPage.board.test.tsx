@@ -797,3 +797,36 @@ describe("profiles on the machine that the board does not hold", () => {
     expect(screen.queryByTestId("not-on-board")).toBeNull();
   });
 });
+
+describe("the landing words for a second and a revived profile", () => {
+  const withLanding = (plain: object) => {
+    getProfileDrafts.mockResolvedValue({ items: [draft({ id: 1, status: "approved" })] });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        landings: [
+          {
+            draft_id: 1,
+            plain: { row_id: null, row_label: null, holds_newer_draft: false, ...plain },
+            for_set: null,
+          },
+        ],
+      }),
+    );
+  };
+
+  it("says a second profile beside the one with the same label", async () => {
+    withLanding({ beside_label: "9 Bar Espresso [AI]" });
+    renderWithQueryClient(<ProfilesPage />);
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "It goes on the board as a second profile beside 9 Bar Espresso [AI].",
+    );
+  });
+
+  it("says a deleted profile comes back", async () => {
+    withLanding({ revives_label: "9 Bar Espresso [AI]" });
+    renderWithQueryClient(<ProfilesPage />);
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "It goes back on the board as 9 Bar Espresso [AI].",
+    );
+  });
+});

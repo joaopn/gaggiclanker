@@ -576,10 +576,20 @@ export function DraftCard({
  * otherwise. Nothing is said once the draft can no longer be pushed at all.
  */
 /** Where a put lands, in the words of the sentence it ends: "goes on as a new profile". */
-function landingWords(landing: { row_id?: number | null; row_label?: string | null }): string {
-  return landing.row_id == null
-    ? "goes on the board as a new profile"
-    : `replaces ${landing.row_label ?? "a profile"} on the board, as its next version`;
+function landingWords(landing: {
+  row_id?: number | null;
+  row_label?: string | null;
+  beside_label?: string | null;
+  revives_label?: string | null;
+}): string {
+  if (landing.row_id != null) {
+    return `replaces ${landing.row_label ?? "a profile"} on the board, as its next version`;
+  }
+  if (landing.revives_label) return `goes back on the board as ${landing.revives_label}`;
+  if (landing.beside_label) {
+    return `goes on the board as a second profile beside ${landing.beside_label}`;
+  }
+  return "goes on the board as a new profile";
 }
 
 function PredictionLanding({
