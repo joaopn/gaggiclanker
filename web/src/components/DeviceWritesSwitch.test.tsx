@@ -76,6 +76,16 @@ describe("DeviceWritesSwitch", () => {
     expect(toggle().querySelector("svg")).toHaveClass("lucide-pen-off");
   });
 
+  it("spans the viewport under sm: the wrapper is static and the panel has side insets", async () => {
+    const user = setupUser();
+    await renderSwitch(false);
+    await user.click(toggle());
+    // Below sm the panel is positioned against the sticky header, not against
+    // the switch's own wrapper; without these it collapses to a sliver.
+    expect(toggle().parentElement).toHaveClass("max-sm:static");
+    expect(screen.getByRole("dialog")).toHaveClass("max-sm:inset-x-4", "max-sm:w-auto");
+  });
+
   it("is a plain switch: no popup attributes on it", async () => {
     const user = setupUser();
     await renderSwitch(false);
