@@ -131,6 +131,9 @@ class BoardSummaryItem(BaseModel):
     reason: str = ""
     detail: str = ""
     on: bool | None = None
+    #: A push that found an identical file already on the machine and sent no save: listed
+    #: under ``pushed``, but not a write, so the notification counts it apart.
+    reused: bool = False
 
 
 class BoardRunSummary(BaseModel):
@@ -887,6 +890,7 @@ class BoardService:
             device_id=placed.device_id,
             reason=action.reason,
             detail="an identical profile was already on the machine" if placed.reused else "",
+            reused=placed.reused,
         )
         phase.summary.pushed.append(item)
         message = f"Put {plan.version.label} on the machine as {placed.device_id}."

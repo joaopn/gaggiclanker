@@ -13,6 +13,7 @@ earlier in the audit.**
 from __future__ import annotations
 
 import copy
+import dataclasses
 from typing import Any
 
 import httpx
@@ -243,6 +244,7 @@ async def test_a_missing_current_version_is_pushed_and_recorded_on_the_draft(
 
     assert run.status == "ok", run.error
     [pushed] = summary_of(run)["pushed"]
+    assert pushed["reused"] is False, "a push that saved a file is a write"
     device_id = pushed["device_id"]
     assert [str(p["label"]) for p in fake.profiles if p["id"] == device_id] == [APP_LABEL]
     saved = await DeviceWritesRepository(app.state.db).created_by_us(device_id)
@@ -733,6 +735,26 @@ def test_a_row_lets_go_of_a_file_only_when_trying_again_cannot_change_the_answer
     removal: Removal, settled: bool
 ) -> None:
     assert _is_settled(removal) is settled
+
+
+async def test_a_push_that_found_the_identical_file_there_is_marked_reused(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+    provider: FakeProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No save was sent, so the notification must not count it as a write."""
+    app, client, _fake = adopted
+    await put(client, await draft_of(app, client, provider, BASE_LABEL, 8))
+
+    async def found_there(*args: Any, **kwargs: Any) -> Any:
+        placed = await real_place(*args, **kwargs)
+        return dataclasses.replace(placed, reused=True)
+
+    monkeypatch.setattr(board_module, "place", found_there)
+    run = await pull(app)
+
+    [pushed] = summary_of(run)["pushed"]
+    assert pushed["reused"] is True
 
 
 async def test_a_copy_edited_between_the_read_and_the_delete_is_not_destroyed(

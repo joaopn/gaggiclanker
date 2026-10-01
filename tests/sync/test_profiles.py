@@ -258,3 +258,20 @@ async def test_a_profile_that_does_not_validate_is_skipped_not_fatal(
     mirrored = await small_archive.engine.profiles.list_device_profiles()
     assert "broken" not in {p.device_id for p in mirrored}
     assert len(mirrored) >= 1
+
+
+async def test_a_profile_without_an_id_is_not_counted_as_read(small_archive: Archive) -> None:
+    """The firmware always stamps an id; one without is an error, not a profile we read."""
+    engine = small_archive.engine
+    real = engine.client.list_profiles
+
+    async def list_with_one_nameless(minimal: bool = False) -> list[Profile]:
+        profiles = await real(minimal)
+        profiles[0] = profiles[0].model_copy(update={"id": None})
+        return profiles
+
+    engine.client.list_profiles = list_with_one_nameless  # type: ignore[method-assign]
+    run = await engine.sync_profiles(trigger="test")
+
+    assert (run.summary or {})["profiles_read"] == len(small_archive.device.profiles) - 1
+    assert run.errors == 1
