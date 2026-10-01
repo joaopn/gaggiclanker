@@ -125,7 +125,7 @@ adjacent phases instead.
 | Field | Unit | What it catches | Notes |
 |-------|------|-----------------|-------|
 | `flow_jitter_ml_s` | ml/s | Micro-spikes, oscillation, puck collapsing/re-forming | Std of first-differences of flow — insensitive to designed ramps. Primary signal. |
-| `flow_vs_target_residual_ml_s` | ml/s | Systematic inability to hold the commanded flow curve | Std of (actual − target). `null` when no target flow is commanded (pressure-led profiles). Often the clearest fingerprint on flow-led profiles. |
+| `flow_vs_target_residual_ml_s` | ml/s | Systematic inability to hold the commanded flow curve | Std of (actual − target). `null` when no flow-steered sample remains (pressure-led profiles, no known profile; gaggiclanker reads it only in phases that steer by flow, upstream read it against the logged `tf` everywhere). Often the clearest fingerprint on flow-led profiles. |
 | `pressure_max_drop_rate_bar_s` | bar/s | Abrupt channel opening (pressure cliff) | Most-negative *single-sample* dP/dt. Complementary to jitter — a single cliff can register as low jitter but high max_drop. |
 | `flow_acceleration_late_ml_s2` | ml/s² | Late-shot runaway channeling | `late_slope − overall_slope`. A linear flow ramp scores 0; only *excess* acceleration beyond the designed trajectory is a runaway signal. |
 
@@ -134,7 +134,7 @@ adjacent phases instead.
 | Field | Unit | Meaning |
 |-------|------|---------|
 | `flow_spread_ml_s` | ml/s | Raw std of flow values — includes intended ramps. Pair with `flow_shape` annotation to distinguish intentional trajectory from unintended spread. |
-| `pressure_jitter_bar` | bar | Same formula as flow_jitter on pressure. Sanity check — genuine channeling usually shows on both variables. Used as the secondary-indicator fallback in the risk score when no target_flow is commanded. |
+| `pressure_jitter_bar` | bar | Same formula as flow_jitter on pressure. Sanity check — genuine channeling usually shows on both variables. Used as the secondary-indicator fallback in the risk score when no flow-steered sample is left (a pressure profile, an unknown profile, or the limit held; upstream: when no target_flow is commanded). |
 
 #### Risk computation
 

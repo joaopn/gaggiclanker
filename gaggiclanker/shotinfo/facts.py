@@ -181,8 +181,8 @@ class ShotFacts:
 def _label(value: Any) -> str | None:
     """A band label, or ``None`` for anything that is not one.
 
-    ``N/A`` is the engine's word for "not assessed" — no target flow was
-    commanded, or the window was too short — and it is treated as absent: the
+    ``N/A`` is the engine's word for "not assessed" — no flow-steered
+    sample was left, or the window was too short — and it is treated as absent: the
     number beside it is a placeholder zero, never a measurement.
     """
     if not isinstance(value, str) or not value or value == "N/A":

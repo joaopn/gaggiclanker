@@ -69,7 +69,10 @@ log = structlog.get_logger(__name__)
 #: flow phase at its pressure limit) is not graded either.
 #: 5: the largest undershoot is 0 when the shot never fell below its target
 #: (it showed the smallest overshoot).
-DERIVATION_VERSION = 5
+#: 6: the channeling block's flow-versus-target residual is read only over
+#: flow-steered samples, absent otherwise. A version of its own, so a database
+#: that booted at 5 is derived again for this change too.
+DERIVATION_VERSION = 6
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these

@@ -1215,11 +1215,12 @@ rules:
     applies: { signal: ["primary:flow_vs_target"] }
     value:
       text: >-
-        The puck's flow parting from the logged flow target by more than 0.7
-        ml/s is worth a look, but the logged flow target is only a target in a
-        phase that steers by flow; in a pressure phase it is a limit, and a gap
-        to it says nothing about the grind. Where it is a target, weigh the gap
-        with the puck's resistance, not as a grind direction on its own.
+        The puck's flow parting from the flow target by more than 0.7 ml/s is
+        worth a look. It is read only over the samples of phases that steer by
+        flow (in a pressure phase the logged flow is a limit, and a gap to it
+        says nothing about the grind), so it is absent for a pressure profile.
+        Weigh the gap with the puck's resistance, not as a grind direction on
+        its own.
       threshold_ml_s: 0.7
     unit: ml_s
     confidence: calibrated

@@ -1449,20 +1449,24 @@ class TestJitterStd:
 
 
 class TestResidualStdVsTarget:
-    """_residual_std_vs_target measures how far actual flow strayed from target."""
+    """_residual_std_vs_target measures how far actual flow strayed from target.
+
+    These cases are all flow-steered samples; which samples count is in
+    `test_channeling_residual.py`.
+    """
 
     def test_perfect_tracking_returns_zero(self):
         from gaggiclanker.domain.diagnostics import _residual_std_vs_target
 
         samples = [{"pf": 2.0, "tf": 2.0}] * 5
-        assert _residual_std_vs_target(samples) == 0.0
+        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) == 0.0
 
     def test_systematic_constant_offset_returns_zero(self):
         """Systematic offset has zero std (no variation in residual)."""
         from gaggiclanker.domain.diagnostics import _residual_std_vs_target
 
         samples = [{"pf": 2.5, "tf": 2.0}] * 5
-        assert _residual_std_vs_target(samples) == 0.0
+        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) == 0.0
 
     def test_jitter_around_target_elevates_residual(self):
         from gaggiclanker.domain.diagnostics import _residual_std_vs_target
@@ -1476,14 +1480,14 @@ class TestResidualStdVsTarget:
             {"pf": 2.5, "tf": 2.0},
         ]
         # Residuals alternate ±0.5 → population std = 0.5
-        assert abs(_residual_std_vs_target(samples) - 0.5) < 0.01
+        assert abs(_residual_std_vs_target(samples, ["flow"] * len(samples)) - 0.5) < 0.01
 
     def test_no_target_flow_returns_none(self):
         """Pure pressure-led profile — no tf field → not applicable."""
         from gaggiclanker.domain.diagnostics import _residual_std_vs_target
 
         samples = [{"pf": 2.0}] * 5
-        assert _residual_std_vs_target(samples) is None
+        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) is None
 
     def test_zero_target_samples_ignored(self):
         """Samples with tf=0 are not part of the commanded trajectory."""
@@ -1496,13 +1500,13 @@ class TestResidualStdVsTarget:
             {"pf": 2.0, "tf": 2.0},
         ]
         # Only 3 valid pairs, all perfect → 0.0
-        assert _residual_std_vs_target(samples) == 0.0
+        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) == 0.0
 
     def test_too_few_valid_pairs_returns_none(self):
         from gaggiclanker.domain.diagnostics import _residual_std_vs_target
 
         samples = [{"pf": 2.0, "tf": 2.0}, {"pf": 2.0, "tf": 0.0}]
-        assert _residual_std_vs_target(samples) is None
+        assert _residual_std_vs_target(samples, ["flow"] * len(samples)) is None
 
 
 class TestStripFlowEdges:

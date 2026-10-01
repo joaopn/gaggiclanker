@@ -121,8 +121,8 @@ adherence fields no longer equal upstream's on those fixtures.
    (should have a number and has none); per-phase diagnostics carry only the
    adherence of their own target. The formulas, band edges and labels are
    untouched, and `DERIVATION_VERSION` 4 brings stored shots along. The
-   channeling block's flow-versus-target residual (`_residual_std_vs_target`)
-   still pairs `pf` with `tf` and was not changed.
+   channeling block's flow-versus-target residual follows the same rule: see
+   item 10.
 9. **The largest undershoot is clamped at 0.** Upstream reports it as
    `abs(min(deviation))` (pressure and flow adherence and the temperature
    block, `shot.py` lines 1392, 1405). When every sample is above its target
@@ -132,6 +132,18 @@ adherence fields no longer equal upstream's on those fixtures.
    (they band a magnitude, and a real undershoot has the same magnitude as
    before); no seed rule or band table assumed the old values, and no real
    fixture shot changes, since each of them does dip below its target.
+10. **The channeling residual is read only where flow steers.** Upstream pairs
+    the puck flow `pf` with the logged flow target `tf` over the whole steady
+    state (`_residual_std_vs_target`). In a phase that steers by pressure `tf`
+    is a soft limit (the pump follows min(flow ask, pressure ask)) or 0, not a
+    target. Here the residual uses only the samples `_steering` marks as
+    flow-steered, which already leaves out power phases, the post-brew tail and
+    the samples a phase's limit held (`limit_holds`). With no such samples, or
+    no known profile, `flow_vs_target_residual_ml_s` is `None` and its
+    annotation `N/A`, never 0, and the risk takes its existing fallback for a
+    window with no commanded flow (pressure jitter counts in its place); the
+    same holds in the summary and in each brew phase. The band edges and the
+    score are untouched. `DERIVATION_VERSION` 6 brings stored shots along.
 
 ---
 

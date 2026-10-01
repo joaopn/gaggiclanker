@@ -172,8 +172,8 @@ class ChannelingIndicators(TypedDict):
     whatever trajectory the profile intended. Blind to designed ramps."""
 
     flow_vs_target_residual_ml_s: float | None
-    """Std of (actual - target) flow; None on pressure-led profiles that
-    command no target flow."""
+    """Std of (actual - target) flow over the flow-steered samples; None when
+    none is left (a pressure profile, an unknown profile, or the limit held)."""
 
     pressure_max_drop_rate_bar_s: float
     """Worst single-sample dP/dt — an abrupt channel opening, which jitter can
@@ -695,13 +695,27 @@ def _flow_shape_label(flows: list[float], dt: float) -> str:
     return "FLAT"
 
 
-def _residual_std_vs_target(samples: list[SampleDict]) -> float | None:
-    """Population std of (actual flow - commanded flow).
+def _residual_std_vs_target(
+    samples: Sequence[SampleDict], steering: Sequence[PhaseControl | None] | None
+) -> float | None:
+    """Population std of (actual flow - commanded flow), over flow-steered samples.
 
-    None when too few samples command a target flow, so "tracked target badly"
-    stays distinguishable from "no target was set".
+    The logged flow target `tf` is a target only in a phase that steers by flow;
+    in a pressure phase it is a limit (or 0), and a gap to it says nothing about
+    the puck. ``steering`` is the profile's reading of each sample (see
+    :func:`_steering`: it already leaves out power phases, the tail and samples
+    the phase's limit held, by :func:`limit_holds`); only ``"flow"`` samples
+    count. None when there is no steering (no profile) or too few flow-steered
+    samples, so "tracked target badly" stays distinguishable from "no target was
+    steering".
     """
-    pairs = [(s.get("pf", 0.0), s["tf"]) for s in samples if s.get("tf", 0.0) > 0]
+    if steering is None:
+        return None
+    pairs = [
+        (s.get("pf", 0.0), s["tf"])
+        for s, control in zip(samples, steering, strict=True)
+        if control == "flow" and s.get("tf", 0.0) > 0
+    ]
     if len(pairs) < 3:
         return None
     return _safe_std([actual - target for actual, target in pairs])
@@ -1053,15 +1067,28 @@ def _build_channeling(
     brew_flows: list[float],
     brew_samples: list[SampleDict],
     dt: float,
+    steering: Sequence[PhaseControl | None] | None = None,
 ) -> ChannelingIndicators:
     """The whole channeling block, from a brew window.
 
     Shared by the full-shot, summary and per-phase paths so all three trim the
     window the same way and cannot disagree about the same shot.
+
+    ``steering`` is what the profile steered each brew sample by, aligned with
+    ``brew_samples``; the flow-versus-target residual is read only over the
+    flow-steered ones and is absent without it (see
+    :func:`_residual_std_vs_target`). When it is absent the risk falls back to
+    the pressure jitter, as it always has for a window with no flow target.
     """
-    ss_pressures, ss_flows, ss_samples, ramp_excluded, (zf_lead, zf_tail) = _steady_state(
-        brew_pressures, brew_flows, brew_samples
+    controls = steering if steering is not None else [None] * len(brew_samples)
+    # The steering rides along through the trim as part of each sample.
+    ss_pressures, ss_flows, ss_paired, ramp_excluded, (zf_lead, zf_tail) = _steady_state(
+        brew_pressures,
+        brew_flows,
+        list(zip(brew_samples, controls, strict=True)),
     )
+    ss_samples = [sample for sample, _ in ss_paired]
+    ss_steering = [control for _, control in ss_paired] if steering is not None else None
 
     n = len(ss_pressures)
     confidence = _window_confidence(n)
@@ -1099,7 +1126,7 @@ def _build_channeling(
     # move a value across a band boundary.
     flow_jitter_raw = _jitter_std(ss_flows)
     pressure_jitter_raw = _jitter_std(ss_pressures)
-    flow_vs_tgt_raw = _residual_std_vs_target(ss_samples)
+    flow_vs_tgt_raw = _residual_std_vs_target(ss_samples, ss_steering)
     p_derivatives = _pressure_rates(ss_pressures, dt)
     p_max_drop_raw = min(p_derivatives) if p_derivatives else 0.0
     f_accel_late_raw = _late_flow_runaway(ss_flows, dt)
@@ -1326,10 +1353,13 @@ def compute_shot_diagnostics(
     pressure_ok = slog.has_pressure if has_pressure is None else has_pressure
     dt = slog.sample_interval / 1000.0
 
-    brew_samples = _get_brew_phase_samples(samples, slog.transitions)
+    brew_positions = _brew_phase_positions(samples, slog.transitions)
+    brew_samples = [samples[i] for i in brew_positions]
     if len(brew_samples) < _MIN_BREW_SAMPLES:
         return None
 
+    steering = _steering(samples, phase_controls)
+    brew_steering = [steering.per_sample[i] for i in brew_positions] if steering else None
     brew_pressures = [s.get("cp", 0.0) for s in brew_samples]
     brew_flows = [s.get("pf", 0.0) for s in brew_samples]
     brew_temps = [s.get("ct", 0.0) for s in brew_samples]
@@ -1344,10 +1374,8 @@ def compute_shot_diagnostics(
 
     if pressure_ok:
         resistance = _build_resistance(brew_samples, dt)
-        channeling = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)
-        profile_compliance = _compute_profile_compliance(
-            samples, _steering(samples, phase_controls)
-        )
+        channeling = _build_channeling(brew_pressures, brew_flows, brew_samples, dt, brew_steering)
+        profile_compliance = _compute_profile_compliance(samples, steering)
 
     temp_deviations = [
         ct - tt for ct, tt in zip(brew_temps, brew_target_temps, strict=True) if tt > 0
@@ -1807,7 +1835,13 @@ def compute_summary_diagnostics(
         r_avg = resistance["avg"]
         r_slope = resistance["slope"]
         r_source = resistance["source"]
-        risk = _build_channeling(brew_pressures, brew_flows, brew_samples, dt)["channeling_risk"]
+        risk = _build_channeling(
+            brew_pressures,
+            brew_flows,
+            brew_samples,
+            dt,
+            brew_steering if steering is not None else None,
+        )["channeling_risk"]
 
         pressure = _adherence_of(_pressure_pairs(brew_samples, brew_steering))
         if pressure is not None:
@@ -1939,7 +1973,7 @@ def _compute_phase_diagnostics(
         r_avg = resistance["avg"]
         r_slope = resistance["slope"]
 
-        ch = _build_channeling(pressures, flows, phase_samples, dt)
+        ch = _build_channeling(pressures, flows, phase_samples, dt, steering)
 
         result["resistance_avg"] = r_avg
         result["resistance_slope"] = r_slope

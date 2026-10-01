@@ -430,7 +430,7 @@ def _indicator(f: ShotFacts, value_key: str, band_key: str, unit: str) -> str | 
     """A scored channeling indicator, only where the engine assessed it.
 
     An unassessed indicator carries the band ``N/A`` beside a placeholder zero
-    (the window was too short, or no target flow was commanded).
+    (the window was too short, or no flow-steered sample was left).
     """
     band = _channeling_band(f, band_key)
     if band is None:
@@ -1384,8 +1384,9 @@ def _items() -> tuple[Item, ...]:
             label="Channeling risk",
             meaning=(
                 "The risk that water found a channel through the puck, scored 0 to 8 from four "
-                "indicators (flow jitter; flow against target, or pressure jitter when no flow "
-                "target was commanded; the largest pressure drop; late flow acceleration), each "
+                "indicators (flow jitter; flow against target, or pressure jitter when no "
+                "flow-steered sample is left; the largest pressure drop; late flow acceleration), "
+                "each "
                 "adding 1 at its lower threshold and 2 at its upper: LOW 0-1, MODERATE 2-3, HIGH "
                 "4-5, VERY_HIGH 6-8. INSUFFICIENT_DATA: fewer than "
                 f"{engine._MIN_STEADY_STATE_SAMPLES} samples in the window, too short to judge, "
@@ -1402,7 +1403,7 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 "Which channeling indicators reached their lower threshold, comma-separated: "
                 "flow_jitter, flow_vs_target, pressure_jitter_fallback (pressure jitter standing "
-                "in when no flow target was commanded), pressure_cliff, late_flow_runaway; or "
+                "in when no flow-steered sample is left), pressure_cliff, late_flow_runaway; or "
                 "none. One signal alone is usually noise; two or more aligned is a channel."
             ),
             default_tier="extended",
@@ -1431,7 +1432,9 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 f"The standard deviation of puck flow minus the commanded flow {_STEADY}, in "
                 "ml/s: a puck that cannot hold the flow curve. Lower is better; it adds to the "
-                "channeling score from 0.35. Absent when the profile commanded no flow. Bands: "
+                "channeling score from 0.35. Read only over the samples of phases that steer by "
+                "flow (not those a pressure limit held); absent when there are none or the "
+                "profile is not known. Bands: "
                 f"{band_text(engine._FLOW_VS_TARGET_BANDS, 'ml/s')}."
             ),
             default_tier="extended",
@@ -1478,7 +1481,8 @@ def _items() -> tuple[Item, ...]:
             meaning=(
                 f"Sample-to-sample instability of pressure {_STEADY}, in bar, measured like flow "
                 "jitter. It stands in for flow against target in the channeling score when no "
-                "flow target was commanded (from 0.10). Bands: "
+                "flow-steered sample is left: a pressure profile, an unknown profile, or the "
+                "limit held (from 0.10). Bands: "
                 f"{band_text(engine._PRESSURE_JITTER_BANDS, 'bar')}."
             ),
             default_tier="extended",

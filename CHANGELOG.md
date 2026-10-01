@@ -123,6 +123,14 @@ first (`POST /api/backup`), because there is no down-migration.
   shot sitting above its target throughout showed its smallest overshoot as an
   undershoot (an overshoot of 0.8 bar with an "undershoot" of 0.1). Such a shot
   now shows 0. Shots that really dipped below target show what they did before.
+- **Fixed: the channeling check's flow-against-target reading only counts flow
+  phases.** The channeling indicators compared the flow through the puck with the
+  logged flow target in every phase, but in a pressure phase that number is a
+  limit (or 0), not something the machine steered by. The reading now uses only
+  the samples of phases that steer by flow (not those a pressure limit was
+  holding); for a pressure profile, or a shot with no known profile, it is "not
+  applicable" instead of a number, and the channeling risk weighs the pressure
+  jitter in its place, as it always has when no flow was commanded.
 - **Every stored shot is recalculated once, at the first start after the
   update,** as for the resistance change above: scores, verdicts and the
   Phases line move, notes, judgements, Sets and curves do not.
