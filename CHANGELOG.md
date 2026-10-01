@@ -10,6 +10,10 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A quick Claude Code install still says how it went
+
+- **Fixed: Settings → LLM could miss the "installed" message.** Starting an install answers at once, and when the download finished before that answer was put together it said "done" already, so the page never saw the install end and showed no message. The answer is now always the install as it started, and the page reports the outcome when it sees it finish.
+
 ### One Writes switch in the top bar
 
 - **Changed: writes to the machine are switched on and off from the top bar.**

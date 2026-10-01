@@ -359,8 +359,14 @@ async def install_claude_cli(
     if manager.running or tasks.get(CLAUDE_CLI_TASK) is not None:
         raise Conflict("A Claude Code install is already running")
     manager.begin(target)
+    # Taken before the task can run: reading the job back after the status
+    # awaits would let a quick install answer "done", and the page, which
+    # toasts on seeing running become done, would never show its toast.
+    started = manager.job.as_dict()
     tasks.spawn(CLAUDE_CLI_TASK, manager.install(target))
-    return envelope_response(await _claude_cli_status(request, settings), status_code=202)
+    data = await _claude_cli_status(request, settings)
+    data["job"] = ClaudeCliJob.model_validate(started).model_dump(mode="json")
+    return envelope_response(data, status_code=202)
 
 
 @router.delete(

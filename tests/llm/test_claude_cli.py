@@ -378,6 +378,35 @@ async def test_the_routes_install_report_and_revert(
     assert reverted.json()["data"]["active_binary"] == "claude"
 
 
+async def test_the_install_answer_is_the_job_as_it_started_even_when_it_finishes_first(
+    app: FastAPI, client: httpx.AsyncClient, data_dir: Path
+) -> None:
+    """The page toasts when it sees running become done: the 202 must never say done."""
+    npm = FakeNpm()
+    npm.publish("2.1.281")
+    manager = use_fake_npm(app, data_dir, npm)
+    read = manager.status
+
+    async def status_after_the_install(**kwargs: Any) -> dict[str, Any]:
+        # The worst scheduling the loop can pick: the task runs to its end
+        # before the route reads anything back. Yielding, not sleeping.
+        for _ in range(10_000):
+            if not manager.running:
+                break
+            await asyncio.sleep(0)
+        return await read(**kwargs)
+
+    manager.status = status_after_the_install  # type: ignore[method-assign]
+
+    started = await client.post("/api/llm/claude-cli/install", json={"version": "latest"})
+
+    assert not manager.running, "the install should have finished before the answer was built"
+    assert started.status_code == 202
+    job = started.json()["data"]["job"]
+    assert (job["state"], job["target"], job["finished_at"]) == ("running", "latest", None)
+    assert (await client.get("/api/llm/claude-cli")).json()["data"]["job"]["state"] == "done"
+
+
 async def test_a_second_install_while_one_runs_is_a_conflict(
     app: FastAPI, client: httpx.AsyncClient, data_dir: Path
 ) -> None:
