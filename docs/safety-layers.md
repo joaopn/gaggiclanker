@@ -11,13 +11,16 @@ archive already held and write a judgement to a shot's notes card, both from the
 Sync page; both were removed. The firmware deletes its own oldest shots when
 free space runs low and the archive syncs before it does, which is accepted.)
 
-**Who may start a write:** two things, and nothing else. A person pressing a button on a
-page that shows the diff they are approving starts a profile push (the four layers
-below). And, only while the writes switch is on, **the board write at the end of a
-sync**: the app keeps its own profile board, and a sync makes the machine's profiles
-match it (see "The board sync" below). That is the one automatic write, and it
-is the only one: no timer, no machine event, no other hook after a sync, and no
-tool a language model can call starts a write.
+**Who may start a write:** one thing, and nothing else. Only while the writes switch is
+on, **the board sync at the end of a sync**: the app keeps its own profile board, and a
+sync makes the machine's profiles match it (see "The board sync" below). That is the one
+automatic write, and it is the only one: no timer, no machine event, no push or rollback
+route, no other hook after a sync, and no tool a language model can call starts a write.
+What a person decides is what is on the board (putting a draft on it, going back to a
+profile's previous version, deleting a profile, the home-screen flag), on pages that show
+the diff they are putting there; none of those sends a byte to the machine, and each works
+with the switch off. The profile pass of a sync is started only by the Sync button's
+route (a test pins the call sites).
 
 That is a property of the code, not a convention. `GaggimateClient`'s public
 surface is two closed lists — ten reads in `READ_ONLY_METHODS`, five writes in
@@ -43,16 +46,19 @@ authorised or refused, leaves a row in `device_writes`, which the Sync page
 lists; rows of the two removed history kinds (`shot_delete`, `notes_save`) from
 an older archive are still listed as history.
 
-**The board sync is the same writes through the same primitives, with the same guards.**
+**The board sync is the only path to a write, and it goes through two primitives.**
 It runs only when `deviceWritesEnabled` is on, at the end of the profile pass of a
 sync, inside the sync engine's lock; with the switch off a sync sends nothing and
-reads nothing for writing. It has no machine path of its own: every save is the push's
-`place` (no duplicate, read back and compared), every removal the push's
+reads nothing for writing. It has no machine path of its own: every save is `place`
+(`drafts/machine.py`: no duplicate, read back and compared), every removal
 `remove_if_ours` (an `ok` save of that id by this app in the audit, the app label,
 exactly the content recorded, no Set still brewing it, the star and the selection
 moved first), every star change a gated `favorite_profile`/`unfavorite_profile`, and
 every one leaves its `device_writes` row. Its plan builder (`drafts/board_plan.py`) only
-reads; the same list is served as the preview before the first write.
+reads; the same list is served as the preview before the first write. (The app used to
+have a second path, a staged push and rollback a person pressed on a draft; it was
+removed, so the primitives have one caller and the plan is the only description of what
+will be written.)
 
 **The chat adds a caller, not writes, and its tools cannot reach the machine.**
 Every tool declares a permission class, and there are exactly two: `read`, and
@@ -62,12 +68,13 @@ tool declaring anything else, so the chat is handed the same set whichever
 provider runs it — including `claude_code`, whose tool loop reaches the registry
 through the stdio MCP server it spawns — and no setting widens it. Nor does a
 tool hold anything that could write: the context it is handed carries the
-object that creates drafts, never the service that pushes them, and no path from
-it leads to the device client or the connection that owns it (a test walks the
-graph). The connection to the machine is this application's own HTTP API and
-nothing more. Putting a draft on the board is a button a
-person presses, on a page showing the diff they are approving; the next sync with the
-switch on does the push.
+object that creates drafts, and the draft service holds no machine connection at
+all; no path from the context leads to the device client, the connection that owns it
+or the board that writes through them (a test walks the graph). The connection to
+the machine is this application's own HTTP API and nothing more. Putting a draft on the
+board is one button a person presses, on a page showing the diff they are putting
+there (it approves the draft, and asks for the stop-condition acknowledgement when a stop
+condition moved); the next sync with the switch on does the writing.
 
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.
@@ -77,8 +84,28 @@ the bar is where it is.
 The app owns a **profile board**: one row per profile it means the machine to hold, with
 the version that is current, whether it belongs on the machine's home screen, and which
 file on the machine stands for it. Profiles are edited in the app, never on the machine.
-Editing the board (putting an approved draft on it, turning the home-screen flag on or
-off, deleting a profile) writes to the archive only, and works with the switch off.
+Editing the board (putting a draft on it, going back to a profile's previous version,
+turning the home-screen flag on or off, deleting a profile) writes to the archive only, and
+works with the switch off.
+
+**Two live profiles never share a label.** A put that would add a second profile beside
+one with its label, or rename a profile onto a label another holds, is refused (the card says
+the board already has that profile and offers refine or discard), and so is taking a machine
+profile whose label is already on the board. Both checks run inside the transaction that
+writes the row, so two requests at once leave one profile. It is a transactional check and
+not a unique index on purpose: adoption takes the machine as it is, and a machine can hold
+two profiles with one name, which an index could not admit (nor could it be created on a board
+that already holds such a pair). A pair that adoption took is reported on the board, not
+refused and not acted on, and a new version of one of them is allowed, since it does not
+make the pair worse.
+
+**Going back.** A profile the app wrote remembers the version it was before its newest put,
+and a person can go back to it. Going back edits the board only; the sync then does what any
+replacement does (saves the earlier version, removes the newer copy through the guards below),
+and the record stays true: the draft that made the newer version is discarded, the Set
+versions that named the removed copy stop naming it, and the ones the replacement had cleared
+name the copy put back. A profile of the person's cannot go back, and a profile with no earlier
+version, or whose earlier version would repeat a label on the board, cannot either.
 
 With the switch on, every sync ends by making the machine's profiles match the board,
 in this order:
@@ -91,7 +118,7 @@ in this order:
    the app saved it, is the person's, and a person's profile is never removed. Nothing is written to the machine, and the sync ends
    there.
 2. **Each live row**, but **only the app's own versions are ever pushed**: a row whose
-   current version came from an approved draft. When the machine holds no file with that
+   current version came from a draft a person put on the board. When the machine holds no file with that
    content, the version is run through the schema and the safety policy with the bounds as
    they are now (a version that fails stays off the machine and is reported), saved, and read
    back and compared. The file the row stood on before is then removed if it is the app's.
@@ -108,7 +135,7 @@ in this order:
    state), from a fresh read when anything was written above.
 
 **A profile the app did not write is never removed, and neither is one that no longer holds
-exactly what the archive recorded for the app's save.** The delete guards are the push's
+exactly what the archive recorded for the app's save.** The delete guards are `remove_if_ours`'s
 own: an `ok` save of that id by this app in the audit, the app label, exactly that content on
 a fresh load immediately before the delete, no live board profile standing on the file (asked
 again at the moment of the delete, deleted rows' files included), no Set brewing it. A file
@@ -124,17 +151,16 @@ machine looks reset; nothing written", and the board shows it. A person resumes 
 then pushes the board's app profiles. Adopted profiles are never pushed back. A person who
 deleted every file by hand looks the same, which is why the answer is theirs.
 
-A staged push that failed to verify before the board was adopted leaves a copy that adoption
-takes as the person's (it no longer holds what the app saved), so only the display can remove
-it. A sync that stops halfway leaves every profile old or new: a push is a save followed by a
-removal, a failure between them leaves both files on the machine, and the next sync finds the
-new one by its content and finishes the removal. Failures are values (events, an error count
-on the run), and three device failures in a row end the phase. The order of profiles on the
-machine is not synced. A draft that is on the board is refused by the staged push and
-rollback routes: the sync is its only way to the machine.
+A push made by the staged box the app used to have, which failed to verify, leaves a copy that
+adoption takes as the person's (it no longer holds what the app saved), so only the display can
+remove it; none can arise now. A sync that stops halfway leaves every profile old or new: a push
+is a save followed by a removal, a failure between them leaves both files on the machine, and the
+next sync finds the new one by its content and finishes the removal. Failures are values
+(events, an error count on the run), and three device failures in a row end the phase. The order
+of profiles on the machine is not synced.
 
 The firmware simulator gate (`tests/simulator/test_profile_push.py`) covers a sync that
-pushes, replaces and clears a star on the real firmware.
+pushes, replaces and clears a star, and going back, on the real firmware.
 
 ## What can actually go wrong
 
@@ -143,7 +169,7 @@ deletes its oldest shot files (`cleanupHistory` in `ShotHistoryPlugin.cpp`)
 whenever free space drops below 500 KB, archived or not, and there is no undo.
 This box does not delete shots and does not try to get ahead of that: the
 defence is a sync that has run before the machine gets there, and the accepted
-cost is that a shot never pulled is one the rotation may take. Notes are the
+cost is that a shot never synced is one the rotation may take. Notes are the
 same: the machine's notes card is read into the archive on a sync and never
 written back, so a card edited on the display after the last sync is only in
 the archive once the next sync has seen it.
@@ -202,14 +228,15 @@ ending in a volumetric or pumped stop or a bounded duration.
 
 Two functions, and the difference between them is the design. `clamp()` moves
 numbers into range **and says what it moved** — the list is stored on the draft
-and rendered beside the approve button, because a silent clamp is a profile
+and rendered beside the put-on-the-board button, because a silent clamp is a profile
 nobody approved presented as one they did. `check()` reports what a clamp cannot
 fix, and that list is a refusal: eleven phases is *rejected*, never trimmed to
 ten, because truncating a profile would change what it brews while claiming to
 have made it safe.
 
 On top of the bounds, crema's rule: a draft that adds, removes or moves a
-`targets` entry needs an explicit acknowledgement before it can be approved.
+`targets` entry needs an explicit acknowledgement before it can be put on the board (the put is the
+approval, so the checkbox is on that click).
 Everything else in a profile changes how a shot is pulled; a stop condition
 changes how much coffee ends up in the cup. The diff normalises numbers, so `9`
 and `9.0` are not a change anybody is asked to tick a box for.
@@ -223,10 +250,11 @@ document that comes back has an `id`, a `favorite`, a `selected`, a
 going out did not. `canonical_profile_json` drops exactly that set, which is why
 a faithful machine compares equal and an unfaithful one does not.
 
-A mismatch marks the push `failed`, records both documents on the draft, and
-offers a one-click delete of the device's copy. "The machine says it saved it"
-is not the same as "the machine stored what we sent", and the difference is only
-visible by reading it back.
+A mismatch removes the copy just written (through the guarded path below), keeps the
+profile's previous version on the machine, and records the failure on the sync's run with both
+documents' difference; if that copy cannot be removed the version is not tried again until the
+profile changes. "The machine says it saved it" is not the same as "the machine stored what we
+sent", and the difference is only visible by reading it back.
 
 Two more rules live at this layer rather than in the policy, because they are
 about the machine rather than about the document. A save **never overwrites** (a replace is a new save followed by a guarded delete):
@@ -238,56 +266,49 @@ that id. A person can rename a profile to end in "[AI]"; an id can be reused
 after a delete. Together they mean it is the profile we pushed and it is still
 ours.
 
-**A push replaces, a rollback restores.** The machine is listed and every profile
+**A sync replaces, going back restores.** The machine is listed and every profile
 loaded again before each write; nothing the archive remembers about it is trusted
-without that read. The steps, in this order, and any failure before the last one
-leaves both profiles on the machine:
+without that read. For a board profile whose current version the machine does not hold,
+the steps, in this order, and any failure before the last one leaves both files on the
+machine:
 
-1. If a profile already holds the canonical content being pushed, nothing is
-   saved and that id is used (two identical profiles are clutter and a needless
+1. If a file already holds the canonical content, and no other board profile stands on it,
+   nothing is saved and that id is used (two identical profiles are clutter and a needless
    write).
-2. Save the new profile and read it back (layer 3).
-3. Star and select the new profile if the one it replaces was starred or
-   selected, so the display looks the same to whoever stands at it.
-4. Remove the predecessor, only within one lineage: for a push recorded as a
-   Set's next version, what the Set's current version has on the machine;
-   otherwise the profile the draft was made from, and only when the label on the
-   machine is the label being pushed (a fork under a new name is a new profile and
-   removes nothing). It goes only when **all** of these hold on a fresh load, read
-   again immediately before the delete: the audit holds a successful save of
-   that id by this box and its label ends in ` [AI]` (the two proofs above), and
-   its content is exactly what the archive recorded for it. A person's own
-   profile is never removed: the first push made from a hand-made profile adds
-   beside it, and later pushes of that lineage replace the app's copy. A copy
-   edited on the display since, one this app did not create, one any Set's current
-   version still brews (by device id or by stored profile, so a Set that picked it
-   from the library or whose latest version is a grind change counts), or one already gone stays, and the push result
-   says which. A gate refusal part-way leaves both profiles and is reported the
-   same way. Drafts that pushed the removed profile can no longer be rolled back.
+2. Save the new version and read it back (layer 3).
+3. Star and select the new file if the one it replaces was starred or selected, so the
+   display looks the same to whoever stands at it.
+4. Remove the file the profile stood on before, and only that one: it goes only when **all**
+   of these hold on a fresh load, read again immediately before the delete: the audit holds
+   a successful save of that id by this box and its label ends in ` [AI]` (the two proofs
+   above), its content is exactly what the archive recorded for it, no other live board
+   profile stands on it, and no Set's current version still brews it (by device id or by
+   stored profile, so a Set that picked it from the library or whose latest version is a
+   grind change counts; the Set that recorded the version being left, or that a person is
+   going back from, does not count). A person's own profile is never removed. A copy edited
+   on the display since, one this app did not create, one a Set is brewing, or one already
+   gone stays, and the sync says which.
 
-Outside a Set the new profile keeps the predecessor's label (the same label is what
-makes it a predecessor); inside a Set it carries the label the draft was approved with. The firmware clears its
-startup-profile setting when that profile is deleted (`ProfileManager::deleteProfile`)
-and this app never writes settings, so the push result says when that happened. A
-**rollback** first checks that the draft's profile can be removed (it is this app's,
-unchanged, and no other pushed draft or Set still uses it), and touches nothing if
-not; then puts the predecessor back (saved from its archived content, by the same
-steps, unless an identical profile is still there; a copy that does not verify is
-removed again); then removes the draft's profile under the same checks. A push that
-only reused a profile already on the machine has no profile of its own to remove. A draft's base counts as unchanged when
-the machine holds its content under any id; a base that is gone (a machine reset by
-an update) is not stale and the push simply adds.
+The firmware clears its startup-profile setting when that profile is deleted
+(`ProfileManager::deleteProfile`) and this app never writes settings, so the primitive reports
+when that happened. **Going back** is the same sync with the profile's previous version as the
+current one: it is saved again (a new file, since the firmware always assigns an id), the
+newer file is removed under the guards above, and the selection and star go back with it.
+Nothing is restored from a copy kept elsewhere: the earlier version is the archive's stored
+document, and what lands on the machine is checked by the same read-back.
 
 **4. A simulator gate in CI.**
 `tests/simulator/test_profile_push.py`: every profile fixture is saved to the
 firmware's `display-sim`, read back and compared, then one drafted profile is
-pushed through the whole flow, selected, brewed to completion and rolled back.
-Everything it creates it deletes. The simulator runs the same parser and the
+put on the board, synced to the machine, verified, selected, brewed to completion and
+deleted from the board and synced off; a second version replaces the first and going
+back restores it; and one sync pushes, replaces and clears a star. Everything it creates it
+deletes. The simulator runs the same parser and the
 same brew code as the device, so what it accepts, the device accepts.
 `scripts/sim.sh test` is what builds and runs it.
 
 This layer is also what makes layer 3 trustworthy: if the real `writeProfile`
-emitted a field `canonical_profile_json` does not drop, every push would report
+emitted a field `canonical_profile_json` does not drop, every sync that pushed would report
 a mismatch and the feature would be unusable. The fake device reproduces
 `writeProfile` from the source; this checks the source.
 

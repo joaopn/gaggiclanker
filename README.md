@@ -16,13 +16,14 @@ what an archive is for is the hundred before it.
 The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
-> **Status: 0.1.0, the prototype, plus profile drafts and push.** Everything in this README
+> **Status: 0.1.0, the prototype, plus profile drafts and the profile board.** Everything in this README
 > works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's review,
 > the chat, optional authentication and the container. It can now
-> also put a profile *on* the machine — as a new `[AI]`-suffixed file, never
-> over an existing one, replacing only an earlier copy this app itself wrote (and
-> selecting the new one only if that copy was selected), behind a switch that is off by
-> default and through the four layers in `docs/safety-layers.md`.
+> also put a profile *on* the machine — you put a draft on the app's profile board and the
+> next sync saves it as a new `[AI]`-suffixed file, never over an existing one, replacing
+> only an earlier copy this app itself wrote (and selecting the new one only if that copy
+> was selected), behind a switch that is off by default and through the four layers in
+> `docs/safety-layers.md`.
 > `CHANGELOG.md` has what landed in each release.
 
 ## Quick start
@@ -118,7 +119,7 @@ entry keeps its name — a tooltip for a mouse, the accessible name for everythi
 else — so nothing is lost but the fourteen rems.
 
 The old import page is now the drop zone on the Shots page, and the old drafts
-page is the staging section of Profiles; `/import` and `/drafts` still resolve,
+page is the drafts section of Profiles; `/import` and `/drafts` still resolve,
 by redirecting. The device page's old storage, notes, sync and writes anchors
 redirect to the Sync page.
 
@@ -127,8 +128,8 @@ redirect to the Sync page.
 A Set page is a record of experiments, one per version. A version's recipe is
 five things: the **profile** version, the grind as text and as a number, the
 dose and the target yield. A change of profile is recorded by hand from **Change something** on the Set page, or on
-its own when a staged profile is pushed for that Set. Recording one there sends
-nothing to the machine — that is still the Profiles page, and still you — but it
+its own when a draft is put on the board for that Set and a sync puts it on the machine.
+Recording one there sends nothing to the machine — that is still the Profiles page, and still you — but it
 is what keeps the next shots landing in the Set, because a shot joins its Set by
 the profile it was pulled with.
 
@@ -154,10 +155,10 @@ temperature — is a **minor** version: it keeps the major and takes the next
 minor (v1.2 → v1.3). A functional change to what the profile does is a **major**
 version: the next whole number (v1.2 → v2). You decide which, with the **Major
 change** box on the Add a version form, on a change card before you accept it,
-and on a draft's push for its Set; each button names the version it will record
+and on a draft's put for its Set; each button names the version it will record
 ("Accept as v1.3", "Accept as v2"). The box starts where the rule puts it:
-switching to a different profile is major, everything else — a pushed draft
-included — is minor, and a roll back is major exactly when it goes back to
+switching to a different profile is major, everything else — a draft put on
+the board for the Set included — is minor, and a roll back is major exactly when it goes back to
 another profile. The agent may suggest major on its card, with its reason
 beside the box, but the box is yours. Versions recorded before this existed
 keep their numbers: v3 is still v3. Everywhere a version is named — the log,
@@ -274,8 +275,7 @@ shot's notes card and never changes a device setting.
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
 nothing. A profile a conversation drafts is a draft on the Profiles page, which
-you approve and then put on the board (or, before the board is adopted, push)
-yourself. When it was drafted in a Set's conversation, the button records it as
+you put on the board yourself (that is the approval too). When it was drafted in a Set's conversation, the button records it as
 that Set's next version with its prediction once it reaches the machine; the
 button without the Set tries it without touching the Set.
 
@@ -285,7 +285,9 @@ accepted rather than managed from here, so sync from the Sync page often enough
 that nothing waits on the machine for long. The machine's notes cards are read
 on a sync too, and never written back.
 
-Nothing runs on its own: a sync only reads, and there is no timer. Every write
+Nothing runs on its own: a sync is something you ask for, and there is no timer. With
+the Writes switch on, the one thing a sync writes is the profile board's write phase at its
+end (see below); nothing else, and no tool a model calls, starts a write. Every write
 attempt, refused ones included, is listed under **Recent writes** on the Sync page.
 
 ### The profile board
@@ -298,39 +300,42 @@ the next sync would do, read from the machine at that moment. From then on a syn
 the app's profiles the machine lacks, removes the app's old copies and moves the home-screen
 stars. It never removes or overwrites a profile of yours: one you made on the display is shown
 on the board and its star is followed, and if it was changed or is gone, the Sync page says so.
-You edit the board on the Profiles page: put an approved draft on it, tick a profile on or off
-the home screen, delete one. None of that touches the machine; the next sync does. If the
-machine looks reset (none of the app's profiles is on it any more), syncs stop writing until
-you press **Resume** on the Sync page.
+You edit the board on the Profiles page: put a draft on it, go back to a profile's previous
+version, tick a profile on or off the home screen, delete one. None of that touches the
+machine; the next sync does. If the machine looks reset (none of the app's profiles is on it
+any more), syncs stop writing until you press **Resume** on the Sync page.
+
+**No two profiles on the board share a name.** A draft that would make a second profile with
+a name the board already has is refused (its card says the board already has that profile, and
+offers refine or discard), and so is taking a profile from the machine whose name is already on
+the board. If the machine already held two with one name when the board took it, the board says
+so and leaves both as they are.
 
 ### Putting a profile on the machine
 
-Before the board is adopted, nothing reaches the machine without passing through the
-**Staged for the machine** section of the Profiles page (afterwards the same drafts are put
-on the board and a sync sends them). A version gets there in one of three
-ways: **Stage as is**, for a profile that is already right and only needs to be
-on the machine; **Edit**, which opens the JSON editor and validates what you
-type against the strict schema and the safety policy; or the chat or the
-starting-point wizard proposing one, which lands in the same place with
-the same buttons on it.
+Nothing reaches the machine without being put on the board first. A draft comes from **Edit**
+on a version (the JSON editor validates what you type against the strict schema and the safety
+policy; save it unchanged to put a version on the board as it is), or from the chat or the
+starting-point wizard proposing one, and it waits in the **Waiting for you** section of the
+Profiles page. **Put on the board** is one click: it approves the draft (asking you to tick that
+you understand when it changes when the machine stops pumping), and for a draft made for a Set
+it records the Set's next version, with the **Major change** box, once the sync has put the
+profile on the machine. Until the machine's profiles have been taken onto the board (the
+**Writes** switch on, then a sync) a draft card says so and offers only refine and discard.
 
-A staged profile is then approved and pushed, and the push is refused before
-anything reaches the wire unless the **Writes** switch in the top bar is on. It is always
-saved as a new profile with an `[AI]` suffix, never over an existing one. The
-machine is read again first: a profile already holding the same content is
-reused, and a later push of the same profile (for a Set: what the Set's current
-version has on the machine) replaces this app's previous copy, carrying its star and
-selection, instead of piling up versions. A fork under a new name is a new profile and
-removes nothing. A profile
-you made yourself is never deleted, and a copy you edited on the display since is
-kept; the card says which. What came back off the machine is compared against
-what was sent, and a mismatch offers a rollback, which puts the replaced profile
-back. `docs/safety-layers.md` is the whole
-contract.
+The next sync with the **Writes** switch in the top bar on saves it as a new profile with an `[AI]`
+suffix, never over an existing one. The machine is read again first: a profile already holding the
+same content is reused, and a new version of a profile replaces this app's previous copy, carrying its
+star and selection, instead of piling up versions. A profile you made yourself is never deleted, and a
+copy you edited on the display since is kept; the board says which. What came back off the machine is
+compared against what was sent, and a mismatch removes the copy just written and keeps the
+previous version. **Go back a version** on a profile's card (with a confirmation) makes it its
+previous version again, and the next sync restores it and removes the newer copy: that is the
+rollback. `docs/safety-layers.md` is the whole contract.
 
 Profile exports can be uploaded straight into the library with **Upload
 profile** in the Profiles header — it runs them through the same importer as the
-shots page, so the new version appears below with its own staging button.
+shots page, so the new version appears below with its own edit button.
 
 You do not need to create `./data` first. Docker creates a missing bind-mount
 source as `root:root`, so the container's entrypoint starts as root, hands that
@@ -495,7 +500,7 @@ the upgrade. Two ways round it, both on the old version, before you pull:
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
 or the sync switch under Settings → Machine access closes the connection and opens the
 new one, with no restart; the header pill follows within a few seconds. While a
-profile push, a rollback or a sync is using the machine, such a
+sync (the profile board's write phase included) is using the machine, such a
 change is refused with the reason and nothing is saved — wait for it to finish
 and save again.
 
@@ -738,7 +743,7 @@ another shot on the same recipe, which needs no version. Only one proposal waits
 at a time.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
-version on the form, roll back, push a profile draft for the Set — whichever it
+version on the form, roll back, put a profile draft on the board for the Set — whichever it
 is, a change that was argued against the
 recipe you have just left is retired unanswered rather than sitting there with
 an Accept button that could only refuse. The log says so, and the next
@@ -750,9 +755,9 @@ package's own bytecode to keep it that way.
 A profile change is a change to the recipe too — the temperature and the
 pressure curve are as much of it as the grind — so a draft proposed inside a
 Set's conversation carries a prediction and obeys the same rules. It still lands
-on the Profiles page as an ordinary draft: you read the diff, approve it and
-push it, and the prediction is recorded on the Set when you push that draft for
-that Set.
+on the Profiles page as an ordinary draft: you read the diff and put it on the board
+(one click, which approves it), and the prediction is recorded on the Set when the sync puts
+the draft you put on the board for that Set on the machine.
 
 A conversation in **General** is the other way round: the whole archive,
 read-only. It runs SQL over the curated views, compares shots across Sets and
@@ -834,7 +839,7 @@ accept. **Eight while a Set is being designed** (below). The registry holds
 twenty-one in total: twelve both kinds have, eight that belong to one kind or the
 other, and `propose_initial_recipe`, which only a design has. None of them
 starts a shot's review: only its button does. Nothing in the chat can touch
-the machine — pushing a profile stays a button you press.
+the machine — putting a profile on the board stays a button you press.
 
 **A Set can be designed in its own conversation.** `POST /api/sets/design`
 takes a bean and a grinder (both required), optionally a profile to fork, your
@@ -852,7 +857,7 @@ profile of yours you did not choose. A newer card replaces the waiting one. Acce
 version 1 in place and ends the design conversation: the agent is told, and
 tells you to talk version 1's shots through in a new conversation (Discuss in chat on
 the Set page opens one rather than the design); the profile waits on the
-Profiles page for you to approve and put on the machine. Writing a version by hand, or putting a draft on the machine for the Set, ends the design
+Profiles page for you to put on the board. Writing a version by hand, or putting a draft on the board for the Set, ends the design
 the same way. A design nobody brewed anything under can be discarded
 (`DELETE /api/sets/{id}/design`).
 
@@ -888,10 +893,10 @@ what it leaned on.
 An option's temperature has to be true once you take it, and only a profile can
 make it so. When an option points at a profile you already have and suggests a
 temperature that profile does not brew at, the card says that taking it will
-**stage a draft** of that profile at the suggested temperature, and the new
+**make a draft** of that profile at the suggested temperature, and the new
 Set's first version points at the draft. Nothing is sent to the machine: you
-approve it and put it on the machine from the Profiles page, exactly as you would any other
-draft.
+put it on the board from the Profiles page, exactly as you would any other
+draft, and the next sync sends it.
 
 It will not invent a grind number. A grinder's scale is arbitrary and there is
 no conversion between two of them, so a figure on your dial is offered only when
@@ -900,7 +905,7 @@ answer is relative and the card says so.
 
 Taking one creates the Set with `origin=starting_point`, and — when the option
 authored a whole profile rather than pointing at one you already have — a draft
-staged on the **Profiles** page. Nothing is pushed; you approve it. The Beans
+waiting on the **Profiles** page. Nothing is pushed; you put it on the board. The Beans
 page has the same shortcut for the coffee you are looking at. The chat does not
 ask for starting points: a run it started had nowhere to be taken, and
 designing a Set with the agent (below) is the conversation for a new bag.
@@ -927,8 +932,8 @@ proposes the whole first recipe as one card — a profile of its own, the grind
 the yield. Nothing exists until you accept it, in the conversation or on the
 Set page. Accepting makes it version 1 and ends the design: the agent tells you
 to start a new conversation about the shots, since one conversation is one
-version; the profile is then a draft on the Profiles page for you to approve and put on the machine,
-and once it is on the machine, shots brewed on it are filed under the new Set.
+version; the profile is then a draft on the Profiles page for you to put on the board,
+and once a sync has put it on the machine, shots brewed on it are filed under the new Set.
 
 Until then the Set carries a **Designing** badge on the Sets list, on its page
 and on its folder in the Chat page, with **Continue designing** back into the

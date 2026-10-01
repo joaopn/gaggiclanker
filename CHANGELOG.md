@@ -28,6 +28,41 @@ first (`POST /api/backup`), because there is no down-migration.
   it takes. The profile pass of a sync now records
   how many profiles it read, on its run in the sync ledger.
 
+### Profiles reach the machine only through the board
+
+- **Breaking: the staged push is gone.** `POST /api/profile-drafts/{id}/push`,
+  `.../rollback` and `.../approve` are removed (a request to one is a 404), and with them the
+  Approve, Push and Roll back buttons, **Stage as is**, and the Profiles page's writes banner.
+  The only way a profile reaches the machine is the profile board: put a draft on it and the
+  next sync (with the Writes switch on) sends it. No database change needs undoing, and no
+  data is lost: drafts, Set versions and the write audit keep what they held.
+- **One click puts a draft on the board.** **Put on the board** now approves the draft in the
+  same action (`POST /api/profile-board` takes `acknowledge_stop_changes` for a draft that
+  moves when the machine stops pumping, and the checkbox sits under that warning), carries the
+  Set and the **Major change** choice as the push did, and a refused put leaves the draft as it
+  was. Before the board has taken the machine's profiles (Writes switch on, then a sync) a
+  draft card says so and offers only refine and discard. To put a version on the board as it
+  is, edit it and save it unchanged.
+- **New: go back a version** (`POST /api/profile-board/{id}/go-back`, the button on a profile's
+  card, with a confirmation). A profile the app wrote remembers the version it was before its
+  newest put; going back makes it that version again and the next sync saves it and removes the
+  newer copy through the same guards as any replacement. It is the old rollback, on the board:
+  the draft behind the removed copy is discarded and the Set versions that named it stop naming
+  it. Not offered for a profile of yours, or when there is no earlier version. New migration
+  `0034` adds the two columns this needs; nothing is rewritten.
+- **New: no two profiles on the board share a name.** A put that would add a second profile
+  beside one with its name (or rename one onto a name another holds) and taking a machine
+  profile whose name is already on the board are refused; the draft card says the board
+  already has that profile and offers refine or discard. A draft whose exact document is
+  already on the board says so instead of offering a put that would fail. The first sync
+  still takes the machine as it is and lists profiles that share a name instead of refusing
+  them.
+- **Changed: a person's identical duplicate can no longer be taken onto the board** (it was
+  allowed before): it is a second profile of one name.
+- **Changed: the chat and Set prompts and tool notes** say the person puts a draft on the
+  board and the next sync sends it (no approve or push step), so the agent no longer
+  describes one.
+
 ### A quick Claude Code install still says how it went
 
 - **Fixed: Settings → LLM could miss the "installed" message.** Starting an install answers at once, and when the download finished before that answer was put together it said "done" already, so the page never saw the install end and showed no message. The answer is now always the install as it started, and the page reports the outcome when it sees it finish.

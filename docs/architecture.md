@@ -73,14 +73,14 @@ the archive tells them apart by the profile a shot was brewed with.
 |---|---|
 | `api/` | One router per resource. Routes parse input and call services; they never build a response by hand. |
 | `review/`, `llm/`, `knowledge/` | A shot's review: one structured LLM call about one shot, started only by the shot page's button, given the shot's own information (never the judgement, the Set or another shot), the profile it brewed and the rules and passages its telemetry selects, and writing a blind taste prediction, a description and a summary to one `shot_reviews` row and nothing else. The knowledge base's three tiers: the rules, the prose, and the insights you have confirmed. |
-| `drafts/` | Profile drafts: the write gate, generation from advice, the four safety layers, the push and its rollback. Holds the gate every write to a machine passes. `board.py`/`board_plan.py` are the profile board (the profiles the app means the machine to hold) and the write phase of a sync that makes the machine match it, only with the switch on, built on the push's own `place` and `remove_if_ours`. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and only the route-facing service holds the machine connection. |
+| `drafts/` | Profile drafts: the write gate, generation from advice, and the four safety layers. Holds the gate every write to a machine passes. `board.py`/`board_plan.py` are the profile board (the profiles the app means the machine to hold: a person puts a draft on it, which approves it, goes back a version, deletes a profile) and the write phase of a sync that makes the machine match it, only with the switch on, built on `machine.py`'s `place` and `remove_if_ours`; it is the only path from a draft to the machine. Creating a draft lives apart, in `DraftProposals`, which is built from the database and the settings alone; the chat's tools and the starting-point wizard get that, and the route-facing draft service (drafting, refining, discarding, recording a Set version) holds no machine connection either. |
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
 | `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, the version's newest shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
 | `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary the chat prompts carry, generated from the catalogue. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
-| `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and five gated write methods, all of them profile operations — nothing else. Only profiles are ever written to the machine. `save_profile` is reached only by `POST /api/profile-drafts/{id}/push` and by the board sync of a sync (switch on); `delete_profile` only by the push (replacing this app's own previous copy), `POST /api/profile-drafts/{id}/rollback` and the board sync (a superseded or deleted profile this app wrote); `select_profile` and `favorite_profile` by the same, to move the star and the selection to the profile that replaces another, and `favorite_profile`/`unfavorite_profile` by the board sync to match a profile's home-screen flag; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
+| `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and five gated write methods, all of them profile operations — nothing else. Only profiles are ever written to the machine. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded, replaced-by-going-back or deleted profile this app wrote, the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
 | `db/` | Repositories — the only code that writes SQL — plus migrations and backups. |
 | `infra/` | Request ids, the error envelope, the SSE bus, the task registry, the auth guard's neighbours. |
 | `auth/` | Optional single-user auth: the policy, the password hashing, the ASGI guard. |
@@ -258,8 +258,8 @@ values before and after and, if they moved, stops the engine's loops and the
 client and builds new ones — with no restart, and with the same write gate over
 the same settings. The change and the rebuild happen under one lock that every
 machine-bound operation also registers through, so a change that would move the
-connection while a profile push or rollback or a
-sync is using the machine is a 409 naming it, and nothing is stored. A sync asked
+connection while a sync (the board's write phase included) is using the machine is a 409
+naming it, and nothing is stored. A sync asked
 for while a change is being stored waits for the change and goes to whatever
 connection it leaves. An identity read is not held to that: it is cut, and the
 new connection reads identity again on connect. A pass cut short — by a rebuild
@@ -312,7 +312,7 @@ version through `SetsRepository.append_version`, which exists so that append can
 be part of somebody else's transaction rather than opening its own.
 
 **A proposal stops waiting when the Set moves on.** Every path that appends a
-version — the Add a version form, a roll back, a pushed profile draft, and
+version — the Add a version form, a roll back, a profile draft put on the machine for the Set, and
 accepting a proposal itself — goes through
 `SetsRepository._insert_version` (or, on a Set being designed, the fill of its
 version 1), and that is where a waiting proposal of the same Set is marked
@@ -416,9 +416,10 @@ browses another Set, and the block is gone the moment version 1 is filled.
 reads, and five writes behind a switch that is off by default, all of them
 profile operations. **And what may be written is a rule too**: only profiles are
 ever written to the machine — no shot delete, no notes write-back — and nothing starts
-one but a person's button and, with the switch on, the board write at the end of a sync
-(`/api/profile-board`: the board is edited by a person and written by the sync; no timer,
-no machine event, no judgement save and no tool a model calls starts a write). See [`safety-layers.md`](safety-layers.md).
+one but the board sync at the end of a sync, with the switch on
+(`/api/profile-board`: the board is edited by a person, one click to put a draft on it, and
+written by the sync; no timer, no machine event, no judgement save, no push or rollback route
+and no tool a model calls starts a write). See [`safety-layers.md`](safety-layers.md).
 
 ## What runs where
 
