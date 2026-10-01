@@ -182,11 +182,17 @@ function BoardRowCard({
           <FilePen className="size-3.5" aria-hidden="true" />
           Edit
         </Button>
+        {canGoBack && entry.go_back_blocked != null ? (
+          <p className="w-full text-muted-foreground text-xs" data-testid="board-go-back-blocked">
+            {entry.go_back_blocked}
+          </p>
+        ) : null}
         {canGoBack ? (
           <Button
             size="sm"
             variant="ghost"
-            disabled={busy}
+            disabled={busy || entry.go_back_blocked != null}
+            title={entry.go_back_blocked ?? undefined}
             aria-label={`Go back to the previous version of ${row.label}`}
             data-testid="board-go-back"
             onClick={() => setConfirmingBack(true)}

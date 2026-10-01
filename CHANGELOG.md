@@ -50,7 +50,7 @@ first (`POST /api/backup`), because there is no down-migration.
   the draft behind the removed copy is discarded and the Set versions that named it stop naming
   it. Not offered for a profile of yours, when there is no earlier version, or while the earlier
   copy is still kept on the machine for a Set (go back once that Set has moved on). A Set that
-  later rolls back onto the newer profile keeps its file. Profiles on the board have an **Edit**
+  later rolls back onto the newer profile keeps its file. The button is disabled, with the reason, while going back would be refused (for example after a sync that stopped part-way). Profiles on the board have an **Edit**
   button, which is how a change is made to one. New migration
   `0034` adds the two columns this needs; nothing is rewritten.
 - **New: no two profiles on the board share a name.** A put that would add a second profile

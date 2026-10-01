@@ -476,14 +476,25 @@ describe("when the board cannot be read", () => {
 });
 
 describe("editing a board profile", () => {
-  it("opens the editor on the profile's current version", async () => {
+  it("opens the editor on the profile's current version, not the one it was before", async () => {
     const user = setupUser();
+    const replaced = boardRowView({
+      row: {
+        id: 2,
+        label: "Londinium [AI]",
+        origin: "draft",
+        current_version_id: 11,
+        previous_version_id: 5,
+      },
+    });
+    getProfileBoard.mockResolvedValue(boardView({ rows: [replaced] }));
     renderWithQueryClient(<ProfilesPage />);
-    const [first] = await cards();
+    const [card] = await cards();
 
-    await user.click(within(first).getByTestId("board-edit"));
+    await user.click(within(card).getByTestId("board-edit"));
 
-    await waitFor(() => expect(getProfileVersion).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(getProfileVersion).toHaveBeenCalledWith(11));
+    expect(getProfileVersion).not.toHaveBeenCalledWith(5);
   });
 });
 
@@ -515,6 +526,26 @@ describe("going back a version", () => {
     expect(within(first).queryByTestId("board-go-back")).toBeNull();
     expect(within(second).getByTestId("board-go-back")).toBeInTheDocument();
     expect(within(third).queryByTestId("board-go-back")).toBeNull();
+  });
+
+  it("is disabled with the reason when going back would be refused", async () => {
+    const user = setupUser();
+    const blocked = {
+      ...replaced,
+      go_back_blocked:
+        "The earlier copy of Londinium [AI] is still kept on the machine for the Set T; go back once that Set has moved on.",
+    };
+    getProfileBoard.mockResolvedValue(boardView({ rows: [blocked] }));
+    renderWithQueryClient(<ProfilesPage />);
+    const [card] = await cards();
+
+    const button = within(card).getByTestId("board-go-back");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", expect.stringContaining("for the Set T"));
+    expect(within(card).getByTestId("board-go-back-blocked")).toHaveTextContent("for the Set T");
+    await user.click(button);
+    expect(within(card).queryByTestId("board-go-back-confirm")).toBeNull();
+    expect(goBackOnBoard).not.toHaveBeenCalled();
   });
 
   it("asks first, says what the next sync does, and goes back on confirm", async () => {
