@@ -487,3 +487,43 @@ describe("DraftCard", () => {
     await waitFor(() => expect(rollbackProfileDraft).toHaveBeenCalledWith(1));
   });
 });
+
+describe("long button labels stay inside the card at phone width", () => {
+  // jsdom has no layout: what can be pinned is the classes that let a button shrink and wrap
+  // (the base button is `shrink-0 whitespace-nowrap`, which made the page scroll sideways).
+  const WRAPS = ["min-w-0", "max-w-full", "shrink", "whitespace-normal", "h-auto"];
+  const forGuji = {
+    set_id: 3,
+    set_name: "Guji on the Niche",
+    set_next_version_no: 4,
+    set_next_minor_label: "v2.2",
+    set_next_major_label: "v3",
+  };
+
+  it.each([
+    ["a push for the Set", false, ["push-draft-for-set", "push-draft"]],
+    ["a put for the Set", true, ["put-on-board-for-set", "put-on-board"]],
+  ])("%s", (_name, adopted, ids) => {
+    renderWithQueryClient(
+      <DraftCard draft={draft({ ...forGuji, status: "approved" })} adopted={adopted} />,
+    );
+    for (const id of ids) {
+      for (const cls of WRAPS) expect(screen.getByTestId(id)).toHaveClass(cls);
+    }
+  });
+
+  it("the plain push, the plain put and the rollback", () => {
+    const { unmount } = renderWithQueryClient(<DraftCard draft={draft({ status: "approved" })} />);
+    for (const cls of WRAPS) expect(screen.getByTestId("push-draft")).toHaveClass(cls);
+    unmount();
+    const second = renderWithQueryClient(
+      <DraftCard draft={draft({ status: "approved" })} adopted />,
+    );
+    for (const cls of WRAPS) expect(screen.getByTestId("put-on-board")).toHaveClass(cls);
+    second.unmount();
+    renderWithQueryClient(
+      <DraftCard draft={draft({ status: "pushed", pushed_device_profile_id: "ab12" })} />,
+    );
+    for (const cls of WRAPS) expect(screen.getByTestId("rollback-draft")).toHaveClass(cls);
+  });
+});

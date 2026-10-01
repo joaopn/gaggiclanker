@@ -46,6 +46,13 @@ const STATUS_BADGE: Record<
   superseded: { label: "overtaken", variant: "outline" },
 };
 
+/**
+ * Buttons whose labels run to a sentence ("Put on the board and record it as v1.2 of …").
+ * The base button is `shrink-0 whitespace-nowrap`, which in a flex row makes the card wider
+ * than a phone: these shrink, wrap and stay inside the card.
+ */
+export const WRAP_BUTTON = "h-auto min-h-8 min-w-0 max-w-full shrink whitespace-normal text-left";
+
 export function DraftCard({
   draft,
   adopted = false,
@@ -379,7 +386,7 @@ export function DraftCard({
                 size="sm"
                 disabled={busy}
                 data-testid="put-on-board-for-set"
-                className="h-auto min-h-8 whitespace-normal text-left"
+                className={WRAP_BUTTON}
                 onClick={() => putOnBoard({ draftId: draft.id, setId: forSet.id, major })}
               >
                 <ListPlus className="size-3.5" aria-hidden="true" />
@@ -395,6 +402,7 @@ export function DraftCard({
                 disabled={busy}
                 data-testid="put-on-board"
                 onClick={() => putOnBoard({ draftId: draft.id })}
+                className={WRAP_BUTTON}
               >
                 Put on the board without recording it on the Set
               </Button>
@@ -408,6 +416,7 @@ export function DraftCard({
             disabled={busy}
             data-testid="put-on-board"
             onClick={() => putOnBoard({ draftId: draft.id })}
+            className={WRAP_BUTTON}
           >
             <ListPlus className="size-3.5" aria-hidden="true" />
             Put on the board
@@ -434,7 +443,7 @@ export function DraftCard({
               data-testid="push-draft-for-set"
               // A long Set name wraps inside the button rather than pushing the
               // card wider than a phone.
-              className="h-auto min-h-8 whitespace-normal text-left"
+              className={WRAP_BUTTON}
               onClick={() =>
                 push.mutate({ id: draft.id, setId: forSet.id, allowStaleBase: allowStale, major })
               }
@@ -449,6 +458,7 @@ export function DraftCard({
               disabled={busy || (!draft.base_is_current && !allowStale)}
               data-testid="push-draft"
               onClick={() => push.mutate({ id: draft.id, allowStaleBase: allowStale })}
+              className={WRAP_BUTTON}
             >
               Push without recording it on the Set
             </Button>
@@ -461,6 +471,7 @@ export function DraftCard({
             disabled={busy || (!draft.base_is_current && !allowStale)}
             data-testid="push-draft"
             onClick={() => push.mutate({ id: draft.id, allowStaleBase: allowStale })}
+            className={WRAP_BUTTON}
           >
             <Upload className="size-3.5" aria-hidden="true" />
             Push to the machine
@@ -482,6 +493,7 @@ export function DraftCard({
             disabled={busy}
             data-testid="rollback-draft"
             onClick={() => rollback.mutate(draft.id)}
+            className={WRAP_BUTTON}
           >
             <Undo2 className="size-3.5" aria-hidden="true" />
             {draft.replaced_device_profile_id
