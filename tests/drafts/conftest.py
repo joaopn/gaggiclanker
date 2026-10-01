@@ -162,3 +162,18 @@ def error(response: httpx.Response) -> dict[str, Any]:
     body = response.json()
     assert body["ok"] is False, body
     return dict(body["error"])
+
+
+async def mirror_only(app: FastAPI) -> None:
+    """Refresh the profile mirror without the board's write phase adopting the machine.
+
+    A pull with writes on adopts the board, and once it has the staged push and rollback
+    refuse (profiles go through the board). The staged-box tests that need a fresh mirror
+    take it with the switch off, so they stay about the staged box.
+    """
+    was_on = bool(await app.state.settings_service.get("deviceWritesEnabled"))
+    await app.state.settings_service.apply({"deviceWritesEnabled": False})
+    try:
+        await app.state.connection.engine.sync_profiles(trigger="test")
+    finally:
+        await app.state.settings_service.apply({"deviceWritesEnabled": was_on})

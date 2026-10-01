@@ -26,7 +26,14 @@ from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepos
 from gaggiclanker.db.repos.sets import SetVersionPatch
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
-from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
+from tests.drafts.conftest import (
+    BASE_LABEL,
+    base_profile,
+    base_version_id,
+    data,
+    error,
+    mirror_only,
+)
 from tests.llm.conftest import FakeProvider
 
 
@@ -1057,7 +1064,7 @@ async def edit_on_the_machine(app: FastAPI, fake_device: FakeDevice, temperature
     for profile in fake_device.profiles:
         if profile.get("label") == BASE_LABEL:
             profile["temperature"] = temperature
-    await app.state.connection.engine.sync_profiles(trigger="test")
+    await mirror_only(app)
 
 
 async def test_a_fresh_draft_is_not_stale(
@@ -1148,7 +1155,7 @@ async def test_a_base_gone_from_the_machine_is_not_stale_and_the_push_adds(
     await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
 
     fake_device.profiles[:] = [p for p in fake_device.profiles if p.get("label") != BASE_LABEL]
-    await app.state.connection.engine.sync_profiles(trigger="test")
+    await mirror_only(app)
 
     detail = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
     assert detail["base_is_current"] is True

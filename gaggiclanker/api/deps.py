@@ -35,6 +35,7 @@ from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import DeviceConnection
+from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.infra.sse import SseEventBus
 from gaggiclanker.knowledge.service import KnowledgeService
@@ -50,6 +51,7 @@ from gaggiclanker.sync.engine import SyncEngine
 __all__ = [
     "AuthServiceDep",
     "BeansRepoDep",
+    "BoardServiceDep",
     "ChatRunnerDep",
     "DatabaseDep",
     "DeviceClientDep",
@@ -287,6 +289,12 @@ def get_draft_service(request: Request) -> ProfileDraftService:
     return service
 
 
+def get_board_service(request: Request) -> BoardService:
+    """The profile board. App-scoped: the sync engine's write phase is this same object."""
+    service: BoardService = request.app.state.board
+    return service
+
+
 DatabaseDep = Annotated[Database, Depends(get_database)]
 SettingsServiceDep = Annotated[SettingsService, Depends(get_settings_service)]
 EnvSettingsDep = Annotated[EnvSettings, Depends(get_env_settings)]
@@ -319,5 +327,6 @@ ReviewsRepoDep = Annotated[ShotReviewsRepository, Depends(get_reviews_repo)]
 ReviewServiceDep = Annotated[ReviewService, Depends(get_review_service)]
 DeviceWritesRepoDep = Annotated[DeviceWritesRepository, Depends(get_device_writes_repo)]
 DraftServiceDep = Annotated[ProfileDraftService, Depends(get_draft_service)]
+BoardServiceDep = Annotated[BoardService, Depends(get_board_service)]
 StartingPointServiceDep = Annotated[StartingPointService, Depends(get_starting_point_service)]
 ChatRunnerDep = Annotated[ChatRunner, Depends(get_chat_runner)]

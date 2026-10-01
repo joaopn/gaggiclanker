@@ -51,6 +51,7 @@ from gaggiclanker.db.settings_repo import SettingsRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.connection import DeviceConnection
 from gaggiclanker.device.fake import FakeDevice, build_fake_device
+from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
@@ -65,8 +66,10 @@ from tests.sync.conftest import SMALL_COUNT, build_archive_device
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: What a tool must never be able to reach.
-MACHINE_TYPES: tuple[type, ...] = (GaggimateClient, DeviceConnection, SyncEngine)
+#: What a tool must never be able to reach. The profile board's service is here as well as
+#: the client: it edits the board a pull pushes from and its write phase is handed the client,
+#: so a path to it is a path to a machine write one pull later.
+MACHINE_TYPES: tuple[type, ...] = (GaggimateClient, DeviceConnection, SyncEngine, BoardService)
 
 #: Not descended into, and why each one. Every entry is either a leaf or a
 #: place from which *everything* in the process is reachable, which would make
@@ -243,6 +246,20 @@ def test_the_walk_finds_the_machine_when_a_path_exists(
     assert any(path.endswith("DeviceConnection") for path in paths), paths
 
 
+def test_the_walk_finds_the_board_service_when_a_path_exists(
+    connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
+) -> None:
+    """The control for the board: an object holding it is found, one holding only a tool is not."""
+    app, _, _ = connected
+
+    class Holder:
+        def __init__(self, held: object) -> None:
+            self.held = held
+
+    assert machine_paths(Holder(app.state.board), label="holder") == ["holder.held -> BoardService"]
+    assert machine_paths(Holder(registry), label="registry") == []
+
+
 async def test_nothing_the_chat_hands_a_tool_reaches_the_machine(
     connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
@@ -417,6 +434,7 @@ DEVICE_MODULE_PREFIXES = (
     "gaggiclanker.device",
     "gaggiclanker.sync",
     "gaggiclanker.drafts.service",
+    "gaggiclanker.drafts.board",
     "gaggiclanker.drafts.gate",
     "gaggiclanker.imports.service",
     "gaggiclanker.main",

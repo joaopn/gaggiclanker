@@ -24,7 +24,14 @@ from gaggiclanker.db.repos.device_writes import DeviceWriteRow, DeviceWritesRepo
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, profile_content_hash
-from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
+from tests.drafts.conftest import (
+    BASE_LABEL,
+    base_profile,
+    base_version_id,
+    data,
+    error,
+    mirror_only,
+)
 from tests.llm.conftest import FakeProvider
 
 APP_LABEL = f"{BASE_LABEL} [AI]"
@@ -324,7 +331,7 @@ async def test_a_profile_renamed_to_end_in_the_suffix_is_still_not_ours(
     handmade = copy.deepcopy(next(p for p in fake_device.profiles if p["label"] == BASE_LABEL))
     handmade.update(id="hand0001", label="Hand made [AI]")
     fake_device.profiles.append(handmade)
-    await app.state.connection.engine.sync_profiles(trigger="test")
+    await mirror_only(app)
 
     pushed_draft = await pushed(client, await draft_of(app, client, provider, "Hand made [AI]", 7))
 

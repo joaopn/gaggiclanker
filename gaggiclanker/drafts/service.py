@@ -52,6 +52,7 @@ from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
+from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
@@ -144,6 +145,7 @@ class ProfileDraftService:
         self.profiles = ProfilesRepository(db)
         self.sets = SetsRepository(db)
         self.writes = DeviceWritesRepository(db)
+        self.board = ProfileBoardRepository(db)
 
     # ── the policy ───────────────────────────────────────────────────
 
@@ -371,6 +373,7 @@ class ProfileDraftService:
         minor version (it tunes a profile); the person's answer wins.
         """
         draft = await self._require(draft_id)
+        await self._refuse_once_on_the_board()
         if draft.status != "approved":
             raise Conflict(
                 f"A {draft.status} draft cannot be pushed; approve it first."
@@ -412,6 +415,21 @@ class ProfileDraftService:
                 )
             profile = await self._draft_profile(draft)
             return await self._push_to(client, draft, profile, machine, set_id, major)
+
+    async def _refuse_once_on_the_board(self) -> None:
+        """Once the board has been adopted, profiles reach the machine only through it.
+
+        A second path would race the pull: a staged push saves and replaces files a board
+        profile stands on, and a staged rollback removes the file the board's current version
+        is on. Before adoption (writes never switched on, no board) the staged routes work as
+        they always did.
+        """
+        if await self.board.adoption() is not None:
+            raise Conflict(
+                "Profiles now go to the machine through the profile board: put the draft on "
+                "the board and pull. The staged push and rollback are off once the board "
+                "has been adopted."
+            )
 
     @staticmethod
     def _base_is_stale(
@@ -676,6 +694,7 @@ class ProfileDraftService:
         whatever inherits that id next.
         """
         draft = await self._require(draft_id)
+        await self._refuse_once_on_the_board()
         if draft.status not in ("failed", "pushed"):
             raise Conflict(
                 f"A {draft.status} draft has nothing on the machine to roll back; "

@@ -981,6 +981,97 @@ export interface paths {
         patch: operations["patch_machine_api_machine_patch"];
         trace?: never;
     };
+    "/api/profile-board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The profile board, its state on the machine and what the next pull would do
+         * @description Read-only. The plan is the one a pull would execute.
+         *
+         *     By default it is built from the archive's last mirror of the machine, which costs no
+         *     request to it and is what a page that polls should use. ``?live=true`` reads the machine
+         *     now (a list and one load per profile) and is for a preview someone is about to act on;
+         *     ``machine_source`` says which one answered.
+         */
+        get: operations["get_board_api_profile_board_get"];
+        put?: never;
+        /**
+         * Put an approved draft on the board
+         * @description The next pull puts it on the machine. Nothing is sent to the machine now.
+         *
+         *     Refused (409) for a draft that is not approved, one already on the board, and for a Set
+         *     that could no longer be given a version, which a push for the Set refuses the same way.
+         */
+        post: operations["put_on_board_api_profile_board_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/{row_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a profile from the board
+         * @description A tombstone. The next pull removes the machine's copy only when the app wrote it.
+         */
+        delete: operations["delete_from_board_api_profile_board__row_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/{row_id}/home-screen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put a profile on, or take it off, the machine's home screen */
+        put: operations["put_home_screen_api_profile_board__row_id__home_screen_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Let pulls write again after the machine looked reset
+         * @description Person-only. Clears the pause; the next pull then pushes the board's app profiles.
+         *
+         *     Sends nothing to the machine. There is no chat or MCP tool for it.
+         */
+        post: operations["resume_board_api_profile_board_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-drafts": {
         parameters: {
             query?: never;
@@ -2185,6 +2276,8 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        ActionKind: "adopt" | "push" | "remove" | "leave" | "home_screen" | "report";
         /**
          * ApiError
          * @description The error half of the envelope.
@@ -2240,6 +2333,22 @@ export interface components {
         /** ApiResponse[BeanRow] */
         ApiResponse_BeanRow_: {
             data?: components["schemas"]["BeanRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[BoardRow] */
+        ApiResponse_BoardRow_: {
+            data?: components["schemas"]["BoardRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[BoardView] */
+        ApiResponse_BoardView_: {
+            data?: components["schemas"]["BoardView"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2556,6 +2665,14 @@ export interface components {
         /** ApiResponse[RateLimitData] */
         ApiResponse_RateLimitData_: {
             data?: components["schemas"]["RateLimitData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[ResumeData] */
+        ApiResponse_ResumeData_: {
+            data?: components["schemas"]["ResumeData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -2953,6 +3070,144 @@ export interface components {
             /** Roaster */
             roaster?: string | null;
             sweetness?: components["schemas"]["BeanScale"] | null;
+        };
+        /**
+         * BoardAction
+         * @description One thing the next pull would do (or, for ``leave`` and ``report``, would not).
+         */
+        BoardAction: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Device Id */
+            device_id?: string | null;
+            kind: components["schemas"]["ActionKind"];
+            /** Label */
+            label: string;
+            /** On */
+            on?: boolean | null;
+            /** Reason */
+            reason: string;
+            /** Row Id */
+            row_id?: number | null;
+        };
+        /**
+         * BoardMachineState
+         * @description Where one board row stands on the machine, as of the read the preview was built from.
+         */
+        BoardMachineState: {
+            /** Device Id */
+            device_id?: string | null;
+            /** Favorite */
+            favorite?: boolean | null;
+            /**
+             * Holds Current
+             * @default false
+             */
+            holds_current: boolean;
+            /**
+             * Present
+             * @default false
+             */
+            present: boolean;
+            /** Selected */
+            selected?: boolean | null;
+        };
+        /** @enum {string} */
+        BoardOrigin: "adopted" | "draft";
+        /**
+         * BoardPut
+         * @description Put an approved draft on the board.
+         */
+        BoardPut: {
+            /** Draft Id */
+            draft_id: number;
+            /** Major */
+            major?: boolean | null;
+            /** Set Id */
+            set_id?: number | null;
+        };
+        /**
+         * BoardRow
+         * @description One profile on the board.
+         */
+        BoardRow: {
+            /** Created At */
+            created_at: string;
+            /** Current Version Id */
+            current_version_id: number;
+            /** Deleted At */
+            deleted_at?: string | null;
+            /** Device Profile Id */
+            device_profile_id?: string | null;
+            /** Device Version Id */
+            device_version_id?: number | null;
+            /** Failed Version Id */
+            failed_version_id?: number | null;
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            /**
+             * On Home Screen
+             * @default true
+             */
+            on_home_screen: boolean;
+            origin: components["schemas"]["BoardOrigin"];
+            /** Pending Draft Id */
+            pending_draft_id?: number | null;
+            /** Pending Major */
+            pending_major?: boolean | null;
+            /** Pending Set Id */
+            pending_set_id?: number | null;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * BoardRowView
+         * @description A board row, its machine state and what the next pull would do about it.
+         */
+        BoardRowView: {
+            machine: components["schemas"]["BoardMachineState"];
+            /** Planned */
+            planned?: components["schemas"]["BoardAction"][];
+            row: components["schemas"]["BoardRow"];
+            /** Type */
+            type: string;
+            /**
+             * Utility
+             * @default false
+             */
+            utility: boolean;
+        };
+        /**
+         * BoardView
+         * @description The board and the next pull's plan, which is what the Profiles page and the switch show.
+         */
+        BoardView: {
+            /** Actions */
+            actions?: components["schemas"]["BoardAction"][];
+            /** Adopted */
+            adopted: boolean;
+            /** Machine Source */
+            machine_source: string;
+            /**
+             * Pause Recorded
+             * @default false
+             */
+            pause_recorded: boolean;
+            /** Paused */
+            paused?: string | null;
+            /** Pending Removals */
+            pending_removals?: components["schemas"]["BoardRow"][];
+            /** Reports */
+            reports?: components["schemas"]["BoardAction"][];
+            /** Rows */
+            rows?: components["schemas"]["BoardRowView"][];
+            /** Writes Enabled */
+            writes_enabled: boolean;
         };
         /** Body_import_files_api_import_post */
         Body_import_files_api_import_post: {
@@ -3846,6 +4101,11 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /** HomeScreenBody */
+        HomeScreenBody: {
+            /** On */
+            on: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -4743,6 +5003,11 @@ export interface components {
         RenameBody: {
             /** Title */
             title: string;
+        };
+        /** ResumeData */
+        ResumeData: {
+            /** Resumed */
+            resumed: boolean;
         };
         /** @enum {string} */
         ReviewConfidence: "low" | "medium" | "high";
@@ -8548,6 +8813,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_board_api_profile_board_get: {
+        parameters: {
+            query?: {
+                /** @description Read the machine now instead of the mirror */
+                live?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_on_board_api_profile_board_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoardPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_from_board_api_profile_board__row_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_home_screen_api_profile_board__row_id__home_screen_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomeScreenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_board_api_profile_board_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ResumeData_"];
                 };
             };
         };

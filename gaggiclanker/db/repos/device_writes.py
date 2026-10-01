@@ -106,6 +106,27 @@ class DeviceWritesRepository(Repository):
         row = await self.db.fetch_one(f"{sql} LIMIT 1", params)
         return row is not None
 
+    async def saved_with_content(
+        self, device_id: str, *, host: str | None, content_hash: str
+    ) -> bool:
+        """Whether this box's ``ok`` save of this id was of exactly this content.
+
+        The audit keeps the sha256 of the canonical document each save sent, which is the
+        profile's content hash. A file whose content differs from it was edited on the
+        display after the app saved it.
+        """
+        if not device_id:
+            return False
+        sql = (
+            "SELECT 1 FROM device_writes WHERE device_id = ? AND kind = 'profile_save' "
+            "AND result = 'ok' AND payload_hash = ?"
+        )
+        params: list[object] = [device_id, content_hash]
+        if host:
+            sql += " AND host = ?"
+            params.append(host)
+        return await self.db.fetch_one(f"{sql} LIMIT 1", params) is not None
+
     async def list_writes(self, *, limit: int = 100) -> list[DeviceWriteRow]:
         """Newest first. The Sync page's audit list, and nothing else reads it."""
         rows = await self.db.fetch_all(

@@ -105,10 +105,13 @@ async def live(
         assert await app.state.connection.client.wait_connected(20.0), (
             "the simulator did not connect"
         )
-        # Here, and only here. The shipped default is off and the offline suite
-        # is what proves it stays off.
-        await app.state.settings_service.apply({"deviceWritesEnabled": True})
+        # The mirror is taken first, with writes still off: a pull with writes on adopts
+        # the board, and once it has the staged push and rollback these tests drive are
+        # refused (profiles then go to the machine through the board).
         await app.state.connection.engine.sync_profiles(trigger="test")
+        # Then writes on, here and only here. The shipped default is off and the offline
+        # suite is what proves it stays off.
+        await app.state.settings_service.apply({"deviceWritesEnabled": True})
         yield app, client
 
 

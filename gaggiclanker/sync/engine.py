@@ -8,7 +8,8 @@ Four jobs, one lock:
 * **shots** — diff `index.bin` against what we hold, fetch what is missing,
   parse it, derive diagnostics and a score, store the lot in one transaction;
   reconcile the entries whose rating, volume or deleted flag changed.
-* **profiles** — mirror `/p/` as content-hashed versions plus a device-id map.
+* **profiles** — mirror `/p/` as content-hashed versions plus a device-id map; then,
+  with the writes switch on, the profile board's write phase (see `drafts/board.py`).
 * **notes** — pull `/h/<id>.json` for entries flagged `HAS_NOTES`, and re-pull
   when the index says the rating or the dose behind them moved.
 
@@ -40,7 +41,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import structlog
 
@@ -76,6 +77,7 @@ __all__ = [
     "SHOT_QUARANTINED_EVENT",
     "SHOT_UPDATED_EVENT",
     "SYNC_PROGRESS_EVENT",
+    "BoardWritePhase",
     "SyncEngine",
     "downsample",
 ]
@@ -117,6 +119,19 @@ STOPPED_MESSAGE = (
 #: enforces the same bound with its own semaphore; this one keeps the *pipeline*
 #: that deep so a slow parse does not leave both device slots idle.
 FETCH_CONCURRENCY = 2
+
+
+class BoardWritePhase(Protocol):
+    """What the engine needs of the profile board's write phase (``drafts/board.py``).
+
+    Handed in by the lifespan rather than imported, so this package keeps knowing nothing of
+    drafts. ``run`` is called inside the engine's lock at the end of a successful profile
+    pass, and does nothing at all (no read, no write) while the writes switch is off.
+    """
+
+    async def run(
+        self, client: GaggimateClient, *, run_id: int, update: SyncRunUpdate
+    ) -> bool | None: ...
 
 
 @dataclass(slots=True)
@@ -209,8 +224,11 @@ class SyncEngine:
         bus: SseEventBus,
         *,
         concurrency: int = FETCH_CONCURRENCY,
+        board: BoardWritePhase | None = None,
     ) -> None:
         self.client = client
+        #: The write phase that follows the profile mirror when the writes switch is on.
+        self.board = board
         self.db = db
         self.bus = bus
         self.concurrency = max(1, concurrency)
@@ -484,7 +502,8 @@ class SyncEngine:
     async def sync_shots(self, *, kind: str = "backfill", trigger: str = "manual") -> SyncRunRow:
         """One index diff: fetch what is missing, reconcile what changed, pull notes.
 
-        Nothing hangs off the end of a pass: a pull only ever reads. The machine
+        Nothing hangs off the end of a shot pass: it only ever reads (the one write a
+        pull can make is the profile board's, at the end of the profile pass). The machine
         deletes its own oldest shots when storage runs low (`cleanupHistory`), so a
         pull is how the archive gets a shot before that happens.
         """
@@ -1213,6 +1232,13 @@ class SyncEngine:
         if removed:
             update.profiles_changed += removed
             self._publish(PROFILE_UPDATED_EVENT, {"deleted": removed})
+
+        if self.board is not None:
+            # After the mirror, inside the lock the caller holds, and only on a mirror that
+            # read the machine: a pass that could not list its profiles returned above. A
+            # failure inside it is a value on the run, never an exception out of the pull.
+            if await self.board.run(self.client, run_id=run_id, update=update):
+                self._publish(PROFILE_UPDATED_EVENT, {"board": True})
 
         await self.runs.finish_run(run_id, update)
         self._publish(

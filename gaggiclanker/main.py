@@ -32,7 +32,9 @@ from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
+from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository
 from gaggiclanker.db.repos.sync import SyncRepository
@@ -44,6 +46,7 @@ from gaggiclanker.device.connection import (
     DeviceConnection,
     device_config,
 )
+from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.gate import SettingsWriteGate
 from gaggiclanker.drafts.proposals import DraftProposals
 from gaggiclanker.drafts.service import ProfileDraftService
@@ -434,6 +437,19 @@ async def _start(app: FastAPI, db: Database) -> None:
         tasks=app.state.tasks,
     )
 
+    # The profile board and its write phase. The phase is handed to each engine the
+    # connection builds; the routes edit the board through the same object. A Set version is
+    # recorded through the draft service's own `attach_to_set`, looked up when it is needed
+    # because that service is built after the connection it uses.
+    async def attach_to_set(
+        draft: ProfileDraftRow, set_id: int, major: bool | None
+    ) -> SetVersionRow | None:
+        version: SetVersionRow | None = await app.state.drafts.attach_to_set(
+            draft, set_id, major=major
+        )
+        return version
+
+    app.state.board = BoardService(db, settings_service, attach=attach_to_set)
     app.state.connection = build_device_connection(app, settings_service, db)
     await app.state.connection.start()
 
@@ -493,7 +509,7 @@ def build_device_connection(
         # not `app.state.tasks` — so shutdown cancels them in one call, a
         # rebuild stops exactly them, and nothing outside the device layer holds
         # a handle to a task whose coroutine frame holds this client.
-        return SyncEngine(client, db, app.state.events)
+        return SyncEngine(client, db, app.state.events, board=app.state.board)
 
     return DeviceConnection(
         read_config=read_config,

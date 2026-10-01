@@ -18,6 +18,7 @@ from gaggiclanker.api import (
     knowledge,
     llm,
     machine,
+    profile_board,
     profiles,
     prompts,
     reviews,
@@ -44,6 +45,7 @@ api_router.include_router(shots.router)
 api_router.include_router(profiles.router)
 api_router.include_router(profiles.versions_router)
 api_router.include_router(drafts.router)
+api_router.include_router(profile_board.router)
 api_router.include_router(machine.router)
 api_router.include_router(vocab.router)
 api_router.include_router(flavor_picks.router)

@@ -64,6 +64,10 @@ class MachineState:
     """Every profile the machine holds right now, loaded in full, by id."""
 
     profiles: dict[str, Profile] = field(default_factory=dict)
+    #: Ids the list named whose load then failed. Not on the machine as far as
+    #: ``profiles`` goes, but not known to be gone either: a caller that acts on absence must
+    #: leave these alone.
+    unreadable: set[str] = field(default_factory=set)
 
     def id_with_content(self, content_hash: str) -> str | None:
         """The id of a profile holding exactly this canonical content, under any id."""
@@ -90,6 +94,7 @@ async def read_machine(client: GaggimateClient) -> MachineState:
         try:
             state.profiles[listed.id] = await client.load_profile(listed.id)
         except DeviceError as exc:
+            state.unreadable.add(listed.id)
             log.warning(
                 "device_profile_unreadable", host=client.host, profile_id=listed.id, error=str(exc)
             )
