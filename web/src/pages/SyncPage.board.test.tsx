@@ -223,6 +223,18 @@ describe("a board paused because the machine looks reset", () => {
     expect(resumeBoard).not.toHaveBeenCalled();
   });
 
+  it("puts focus on the section, not the page, once Resume is confirmed", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SyncPage />);
+    await user.click(await screen.findByTestId("board-resume"));
+
+    await user.click(
+      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Resume" }),
+    );
+
+    await waitFor(() => expect(screen.getByTestId("board-section-body")).toHaveFocus());
+  });
+
   it("resumes on confirmation and refreshes everything the resume changes", async () => {
     const user = setupUser();
     const { queryClient } = renderWithQueryClient(<SyncPage />);

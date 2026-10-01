@@ -57,6 +57,16 @@ export function BoardSection() {
     setConfirming(false);
     setRestoreFocus(true);
   };
+  // After Resume is confirmed the banner (and its button) goes away once the board answers, so
+  // focus moves to the section's own body, which stays, rather than falling to the page.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [focusBody, setFocusBody] = useState(false);
+  useEffect(() => {
+    if (focusBody && !confirming) {
+      bodyRef.current?.focus();
+      setFocusBody(false);
+    }
+  }, [focusBody, confirming]);
 
   const run = sync.data?.last_runs?.profiles;
   const summary = boardSummaryOf(run);
@@ -87,7 +97,12 @@ export function BoardSection() {
       {sync.isPending || board.isPending ? (
         <Skeleton className="h-16 w-full" />
       ) : (
-        <div className="space-y-3">
+        <div
+          ref={bodyRef}
+          tabIndex={-1}
+          className="space-y-3 outline-none"
+          data-testid="board-section-body"
+        >
           {paused ? (
             <div
               className="space-y-2 rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
@@ -111,7 +126,8 @@ export function BoardSection() {
                   focusOnOpen
                   onCancel={closeConfirm}
                   onConfirm={() => {
-                    closeConfirm();
+                    setConfirming(false);
+                    setFocusBody(true);
                     resume.mutate();
                   }}
                 >

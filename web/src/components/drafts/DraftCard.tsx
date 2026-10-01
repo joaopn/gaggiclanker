@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, ListPlus, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
-import { useId, useState } from "react";
-import type { BoardRow, ProfileDraft, StopConditionChange } from "@/api/types";
+import { useId, useRef, useState } from "react";
+import type { BoardRow, DraftLanding, ProfileDraft, StopConditionChange } from "@/api/types";
 import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
 import { MajorChoice } from "@/components/sets/MajorChoice";
@@ -52,7 +52,7 @@ export function DraftCard({
   boardUnknown = false,
   boardRow = null,
   writesOn = true,
-  overtaken = false,
+  landing,
 }: {
   draft: ProfileDraft;
   /**
@@ -66,14 +66,32 @@ export function DraftCard({
   boardRow?: BoardRow | null;
   /** Whether the Writes switch is on (a pull writes nothing otherwise). */
   writesOn?: boolean;
-  /** A newer draft of the same profile is on the board: putting this one would undo it. */
-  overtaken?: boolean;
+  /**
+   * Where a put of this draft would land, as the server works it out with the code a put
+   * runs: a new profile, or a new version of a board profile, and whether that profile
+   * already holds a newer draft (so putting this one would undo it).
+   */
+  landing?: DraftLanding;
 }) {
   const onBoard = boardRow !== null;
+  const plainBlocked = landing?.plain.holds_newer_draft === true;
+  const setBlocked = landing?.for_set?.holds_newer_draft === true;
   const detail = useProfileDraft(draft.id);
   const approve = useApproveDraft();
   const push = usePushDraft();
   const put = usePutOnBoard();
+  // One put per click: a second click before the first has re-rendered the buttons disabled
+  // would send a second request for the same draft.
+  const putting = useRef(false);
+  const putOnBoard = (body: { draftId: number; setId?: number; major?: boolean }) => {
+    if (putting.current) return;
+    putting.current = true;
+    put.mutate(body, {
+      onSettled: () => {
+        putting.current = false;
+      },
+    });
+  };
   const rollback = useRollbackDraft();
   const discard = useDiscardDraft();
   const refine = useRefineDraft();
@@ -309,11 +327,21 @@ export function DraftCard({
           </p>
         ) : null}
 
-        {draft.status === "approved" && adopted && !onBoard && overtaken ? (
-          <p className="w-full text-sm" data-testid="draft-overtaken">
-            A newer version of this profile is already on the board, so putting this one there would
-            undo it. Refine the newer one, or discard this draft.
-          </p>
+        {draft.status === "approved" && adopted && !onBoard && landing ? (
+          <div className="w-full space-y-1 text-sm" data-testid="draft-landing">
+            <p>
+              {plainBlocked
+                ? `${forSet !== null ? "Without the Set, p" : "P"}utting this on the board would undo a newer version of ${landing.plain.row_label ?? "this profile"} that is already there. Refine the newer one, or discard this draft.`
+                : `${forSet !== null ? "Without the Set, it" : "It"} ${landingWords(landing.plain)}.`}
+            </p>
+            {landing.for_set ? (
+              <p>
+                {setBlocked
+                  ? `Recorded for the Set, putting it on the board would undo a newer version of ${landing.for_set.row_label ?? "this profile"} that is already there.`
+                  : `Recorded for the Set, it ${landingWords(landing.for_set)}.`}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {draft.status === "approved" && adopted && !onBoard ? (
@@ -332,9 +360,9 @@ export function DraftCard({
         {/* With the board adopted a pull is the only thing that writes a profile, so an
             approved draft goes on the board, carrying what the push carried: the Set whose
             next version it becomes, and whether that is a major change. */}
-        {draft.status === "approved" && adopted && !onBoard && !overtaken && forSet !== null ? (
+        {draft.status === "approved" && adopted && !onBoard && forSet !== null ? (
           <>
-            {forSet.minorLabel !== null && forSet.majorLabel !== null ? (
+            {!setBlocked && forSet.minorLabel !== null && forSet.majorLabel !== null ? (
               <div className="w-full">
                 <MajorChoice
                   checked={major}
@@ -346,35 +374,40 @@ export function DraftCard({
                 />
               </div>
             ) : null}
-            <Button
-              size="sm"
-              disabled={busy}
-              data-testid="put-on-board-for-set"
-              className="h-auto min-h-8 whitespace-normal text-left"
-              onClick={() => put.mutate({ draftId: draft.id, setId: forSet.id, major })}
-            >
-              <ListPlus className="size-3.5" aria-hidden="true" />
-              Put on the board and record it as{" "}
-              {(major ? forSet.majorLabel : forSet.minorLabel) ?? "a new version"} of {forSet.name}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              data-testid="put-on-board"
-              onClick={() => put.mutate({ draftId: draft.id })}
-            >
-              Put on the board without recording it on the Set
-            </Button>
+            {setBlocked ? null : (
+              <Button
+                size="sm"
+                disabled={busy}
+                data-testid="put-on-board-for-set"
+                className="h-auto min-h-8 whitespace-normal text-left"
+                onClick={() => putOnBoard({ draftId: draft.id, setId: forSet.id, major })}
+              >
+                <ListPlus className="size-3.5" aria-hidden="true" />
+                Put on the board and record it as{" "}
+                {(major ? forSet.majorLabel : forSet.minorLabel) ?? "a new version"} of{" "}
+                {forSet.name}
+              </Button>
+            )}
+            {plainBlocked ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                data-testid="put-on-board"
+                onClick={() => putOnBoard({ draftId: draft.id })}
+              >
+                Put on the board without recording it on the Set
+              </Button>
+            )}
           </>
         ) : null}
 
-        {draft.status === "approved" && adopted && !onBoard && !overtaken && forSet === null ? (
+        {draft.status === "approved" && adopted && !onBoard && !plainBlocked && forSet === null ? (
           <Button
             size="sm"
             disabled={busy}
             data-testid="put-on-board"
-            onClick={() => put.mutate({ draftId: draft.id })}
+            onClick={() => putOnBoard({ draftId: draft.id })}
           >
             <ListPlus className="size-3.5" aria-hidden="true" />
             Put on the board
@@ -530,6 +563,13 @@ export function DraftCard({
  * Set, or pushed for another one, recorded nothing, and the line must not claim
  * otherwise. Nothing is said once the draft can no longer be pushed at all.
  */
+/** Where a put lands, in the words of the sentence it ends: "goes on as a new profile". */
+function landingWords(landing: { row_id?: number | null; row_label?: string | null }): string {
+  return landing.row_id == null
+    ? "goes on the board as a new profile"
+    : `replaces ${landing.row_label ?? "a profile"} on the board, as its next version`;
+}
+
 function PredictionLanding({
   draft,
   adopted,

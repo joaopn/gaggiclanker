@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileVersionListData } from "@/api/types";
 import { ProfilesPage } from "@/pages/ProfilesPage";
@@ -299,6 +299,19 @@ describe("drafts once the board is adopted", () => {
     expect(screen.queryByTestId("rollback-draft")).toBeNull();
   });
 
+  it("sends one put when Put on the board is clicked twice at once", async () => {
+    putOnBoard.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(<ProfilesPage />);
+    const button = await screen.findByTestId("put-on-board");
+
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    await waitFor(() => expect(putOnBoard).toHaveBeenCalledTimes(1));
+  });
+
   it("carries what the push carried for a Set: the next version and the major choice", async () => {
     const user = setupUser();
     getProfileDrafts.mockResolvedValue({
@@ -504,45 +517,97 @@ describe("notes follow the Writes switch", () => {
   });
 });
 
-describe("a draft the board has moved past", () => {
-  const older = draft({ id: 1, status: "approved", created_at: "2026-03-01T09:00:00.000Z" });
-  const newer = draft({
-    id: 2,
-    status: "pushed",
-    draft_version_id: 11,
-    created_at: "2026-03-02T09:00:00.000Z",
+describe("where a put would land, as the server says it", () => {
+  const approved = draft({ id: 1, status: "approved" });
+  const landing = (plain: object, forSet?: object) => ({
+    draft_id: 1,
+    plain: { row_id: null, row_label: null, holds_newer_draft: false, ...plain },
+    for_set: forSet ? { row_id: null, row_label: null, holds_newer_draft: false, ...forSet } : null,
   });
 
   beforeEach(() => {
-    getProfileDrafts.mockResolvedValue({ items: [older] });
+    getProfileDrafts.mockResolvedValue({ items: [approved] });
+  });
+
+  it("says a draft goes on as a new profile and offers Put and Discard", async () => {
+    getProfileBoard.mockResolvedValue(boardView({ landings: [landing({})] }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "It goes on the board as a new profile.",
+    );
+    expect(screen.getByTestId("put-on-board")).toBeInTheDocument();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+  });
+
+  it("says which profile it replaces, and still offers Put", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({ landings: [landing({ row_id: 2, row_label: "Londinium [AI]" })] }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "It replaces Londinium [AI] on the board, as its next version.",
+    );
+    expect(screen.getByTestId("put-on-board")).toBeInTheDocument();
+  });
+
+  it("hides Put only when the server says the target holds a newer draft", async () => {
     getProfileBoard.mockResolvedValue(
       boardView({
-        rows: [boardRowView({ row: { id: 2, origin: "draft", current_version_id: 11 } })],
+        landings: [landing({ row_id: 2, row_label: "Londinium [AI]", holds_newer_draft: true })],
       }),
     );
-  });
-
-  it("is not offered Put, and says why, but can be discarded", async () => {
-    getProfileDrafts.mockImplementation(async () => ({ items: [older, newer] }));
     renderWithQueryClient(<ProfilesPage />);
 
-    const cardsFound = await screen.findAllByTestId("draft-card");
-    const card = cardsFound.find(
-      (c) => c.getAttribute("data-status") === "approved",
-    ) as HTMLElement;
-    expect(await within(card).findByTestId("draft-overtaken")).toHaveTextContent(
-      "already on the board, so putting this one there would undo it",
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "would undo a newer version of Londinium [AI]",
     );
-    expect(within(card).queryByTestId("put-on-board")).toBeNull();
-    expect(within(card).getByTestId("discard-draft")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).toBeNull();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
   });
 
-  it("an approved draft nothing has overtaken can be put or discarded", async () => {
-    getProfileBoard.mockResolvedValue(boardView());
+  it("two variants of a profile of yours are both offered, since each goes on as a new profile", async () => {
+    // What a guess from the draft's base got wrong: neither variant overtakes the other.
+    const second = draft({ id: 2, status: "approved", created_at: "2026-03-02T09:00:00.000Z" });
+    getProfileDrafts.mockResolvedValue({ items: [approved, second] });
+    getProfileBoard.mockResolvedValue(
+      boardView({ landings: [landing({}), { ...landing({}), draft_id: 2 }] }),
+    );
     renderWithQueryClient(<ProfilesPage />);
 
-    expect(await screen.findByTestId("put-on-board")).toBeInTheDocument();
-    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByTestId("put-on-board")).toHaveLength(2));
+    for (const found of screen.getAllByTestId("draft-landing")) {
+      expect(found.textContent).not.toMatch(/undo/);
+    }
+  });
+
+  it("follows the server for a Set draft: each button by its own landing", async () => {
+    const forSet = draft({
+      id: 1,
+      status: "approved",
+      set_id: 3,
+      set_name: "Guji on the Niche",
+      set_next_minor_label: "v2.2",
+      set_next_major_label: "v3",
+    });
+    getProfileDrafts.mockResolvedValue({ items: [forSet] });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        landings: [
+          landing({}, { row_id: 2, row_label: "Londinium [AI]", holds_newer_draft: true }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findByTestId("draft-landing");
+    expect(screen.getByTestId("put-on-board")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Major change" })).toBeNull();
+    expect(screen.getByTestId("draft-landing")).toHaveTextContent(
+      "Recorded for the Set, putting it on the board would undo a newer version",
+    );
   });
 
   it("a draft waiting on the board cannot be discarded under it", async () => {
@@ -553,6 +618,7 @@ describe("a draft the board has moved past", () => {
 
     await screen.findByTestId("draft-on-board");
     expect(screen.queryByTestId("discard-draft")).toBeNull();
+    expect(screen.queryByTestId("draft-landing")).toBeNull();
   });
 });
 
@@ -654,6 +720,49 @@ describe("profiles on the machine that the board does not hold", () => {
 
     await waitFor(() => expect(takeOntoBoard).toHaveBeenCalledWith("later"));
     expect(pushProfileDraft).not.toHaveBeenCalled();
+  });
+
+  it("ignores a second click on Take before the first has finished", async () => {
+    takeOntoBoard.mockReturnValue(new Promise(() => {}));
+    renderWithQueryClient(<ProfilesPage />);
+    const button = await screen.findByRole("button", {
+      name: "Take Made on the display onto the board",
+    });
+
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    await waitFor(() => expect(takeOntoBoard).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not list a file a board profile holds by its content, whatever id the row names", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          boardRowView({
+            row: { id: 1, device_profile_id: "9bar" },
+            machine: { device_id: "later", present: true, holds_current: true },
+          }),
+        ],
+        pending_removals: [boardRow({ id: 9, device_profile_id: "waiting", deleted_at: "x" })],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await cards();
+    expect(screen.queryByTestId("not-on-board")).toBeNull();
+  });
+
+  it("describes every entry truthfully: neither 'added after' nor 'yours' for all of them", async () => {
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findByTestId("not-on-board");
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/added on the machine after/);
+    expect(text).toContain("The machine has these and the board does not list them");
+    expect(text).toContain("one this app saved itself is treated as the app's");
   });
 
   it("is absent when every profile is on the board", async () => {

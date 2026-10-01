@@ -482,6 +482,7 @@ export type DeviceWritesData = components["schemas"]["DeviceWritesData"];
 export type BoardView = components["schemas"]["BoardView"];
 export type BoardRow = components["schemas"]["BoardRow"];
 export type BoardRowView = components["schemas"]["BoardRowView"];
+export type DraftLanding = components["schemas"]["DraftLanding"];
 export type BoardAction = components["schemas"]["BoardAction"];
 
 /** Every state a draft can be in, as the `status` CHECK spells them. */

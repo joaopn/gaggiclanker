@@ -1,4 +1,5 @@
 import { ListPlus } from "lucide-react";
+import { useRef } from "react";
 import type { DeviceProfileSummary } from "@/api/types";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
@@ -13,11 +14,23 @@ import { useTakeOntoBoard } from "@/hooks/useBoard";
  */
 export function NotOnBoard({ profiles }: { profiles: DeviceProfileSummary[] }) {
   const take = useTakeOntoBoard();
+  // A second click before the first has re-rendered the button disabled would send a second
+  // request for the same file; a ref answers it at once.
+  const inFlight = useRef(false);
   if (profiles.length === 0) return null;
+  const takeOne = (deviceId: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    take.mutate(deviceId, {
+      onSettled: () => {
+        inFlight.current = false;
+      },
+    });
+  };
   return (
     <SectionCard
       title="On the machine, not on the board"
-      description="These were added on the machine after the board took its profiles, so a pull leaves them exactly as they are. Taking one onto the board makes it one of yours: the board lists it and follows its home-screen star, and a pull still never pushes or removes it."
+      description="The machine has these and the board does not list them, so a pull leaves them exactly as they are. Taking one onto the board lists it there and follows its home-screen star. A profile that came from you stays yours and is never pushed or removed; one this app saved itself is treated as the app's, as when the board first took the machine's profiles."
     >
       <ul className="space-y-2" data-testid="not-on-board">
         {profiles.map((profile) => (
@@ -40,7 +53,7 @@ export function NotOnBoard({ profiles }: { profiles: DeviceProfileSummary[] }) {
               disabled={take.isPending}
               aria-label={`Take ${profile.label} onto the board`}
               data-testid="take-onto-board"
-              onClick={() => take.mutate(profile.device_id)}
+              onClick={() => takeOne(profile.device_id)}
             >
               <ListPlus className="size-3.5" aria-hidden="true" />
               Take onto the board

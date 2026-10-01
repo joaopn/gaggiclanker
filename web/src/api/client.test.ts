@@ -15,6 +15,7 @@ import {
   patchSettings,
   putOnBoard,
   setAuthToken,
+  takeOntoBoard,
 } from "@/api/client";
 
 const { redirectToSignIn } = vi.hoisted(() => ({ redirectToSignIn: vi.fn() }));
@@ -65,6 +66,17 @@ describe("the profile board's requests", () => {
     expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board");
     expect(body(0)).toEqual({ draft_id: 4, set_id: 3, major: true });
     expect(body(1)).toEqual({ draft_id: 4, set_id: null });
+  });
+
+  it("takes a profile by the field the server reads", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(201, success({})));
+    await takeOntoBoard("later");
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board/take");
+    const init = spy.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ device_profile_id: "later" });
+    expect(init.method).toBe("POST");
   });
 
   it("reads the machine only when asked to", async () => {

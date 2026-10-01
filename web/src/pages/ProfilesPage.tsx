@@ -1,7 +1,7 @@
 import { AlertTriangle, FilePen, SlidersHorizontal, Star, Upload } from "lucide-react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import type { BoardRow, ProfileDraft, ProfileVersionSummary } from "@/api/types";
+import type { BoardRow, DraftLanding, ProfileDraft, ProfileVersionSummary } from "@/api/types";
 import { BoardList } from "@/components/board/BoardList";
 import { NotOnBoard } from "@/components/board/NotOnBoard";
 import { DraftCard } from "@/components/drafts/DraftCard";
@@ -19,7 +19,7 @@ import { useDeviceWrites } from "@/hooks/useDeviceStatus";
 import { useProfileDrafts, useStageVersionAsIs } from "@/hooks/useDrafts";
 import { useImportFiles } from "@/hooks/useImport";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import { notOnTheBoard, overtakenDraftIds } from "@/lib/board";
+import { notOnTheBoard } from "@/lib/board";
 import { formatDate } from "@/lib/shots";
 
 /**
@@ -80,13 +80,8 @@ export function ProfilesPage() {
   // board that refuses it.
   const adopted = board.data?.adopted === true;
   const boardView = adopted ? board.data : undefined;
-  // Every draft ever made, to tell an approved one from a draft the board has moved past.
-  // Only worth asking once the board is adopted.
-  const everyDraft = useProfileDrafts({}, { enabled: adopted });
-  const overtaken = boardView
-    ? overtakenDraftIds(everyDraft.data?.items ?? [], boardView)
-    : new Set<number>();
-  const draftById = (id: number) => everyDraft.data?.items.find((d) => d.id === id);
+  const landingByDraft = new Map((boardView?.landings ?? []).map((l) => [l.draft_id, l]));
+  const draftById = (id: number) => draftItems.find((d) => d.id === id);
   const notTaken = boardView ? notOnTheBoard(profiles.data?.items ?? [], boardView) : [];
   const boardUnknown = board.isError;
   const boardRowByDraft = new Map(
@@ -319,7 +314,7 @@ export function ProfilesPage() {
         adopted={adopted}
         boardUnknown={boardUnknown}
         writesOn={boardView?.writes_enabled ?? true}
-        overtaken={overtaken}
+        landings={landingByDraft}
         boardRows={boardRowByDraft}
         showAll={showAllDrafts}
         onShowAllChange={setShowAllDrafts}
@@ -361,7 +356,7 @@ function StagedForTheMachine({
   adopted,
   boardUnknown,
   writesOn,
-  overtaken,
+  landings,
   boardRows,
   showAll,
   onShowAllChange,
@@ -371,7 +366,7 @@ function StagedForTheMachine({
   adopted: boolean;
   boardUnknown: boolean;
   writesOn: boolean;
-  overtaken: Set<number>;
+  landings: Map<number, DraftLanding>;
   /** The board rows waiting on a draft, by draft id. */
   boardRows: Map<number, BoardRow>;
   showAll: boolean;
@@ -417,7 +412,7 @@ function StagedForTheMachine({
                 boardUnknown={boardUnknown}
                 boardRow={boardRows.get(draft.id) ?? null}
                 writesOn={writesOn}
-                overtaken={overtaken.has(draft.id)}
+                landing={landings.get(draft.id)}
               />
             ))}
           </ul>
