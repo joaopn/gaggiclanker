@@ -18,7 +18,7 @@ from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data
 from tests.drafts.test_board import adopted, app_row, approve, get_board, pull, put
-from tests.drafts.test_replace import APP_LABEL, Live, draft_of
+from tests.drafts.test_replace import APP_LABEL, Live, draft_of, make_set_on
 from tests.llm.conftest import FakeProvider
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
@@ -136,3 +136,24 @@ async def test_the_landing_is_what_a_put_then_does(
     put_row = await put(client, draft)
 
     assert said["row_id"] == put_row["id"] == row["id"]
+
+
+async def test_a_set_draft_lands_by_the_sets_current_version_when_recorded_for_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    row = await app_row(app, client, fake, provider, 8)
+    set_id = await make_set_on(client, "Landing set", row["current_version_id"])
+    draft = await draft_of(app, client, provider, BASE_LABEL, 7)
+    await app.state.db.execute(
+        "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
+    )
+    await approve(client, draft)
+
+    found = landing(await get_board(client), draft)
+
+    # Without the Set it is a variant of the person's own profile: a new profile. Recorded for
+    # the Set it continues the app's profile the Set brews.
+    assert found["plain"]["row_id"] is None
+    assert found["for_set"]["row_id"] == row["id"]
+    assert (await put(client, draft, set_id=set_id))["id"] == row["id"]

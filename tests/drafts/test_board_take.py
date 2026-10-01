@@ -191,7 +191,11 @@ async def test_the_unique_index_is_the_same_refusal_never_a_500(
     async def none(*_: object, **__: object) -> list[object]:
         return []
 
+    async def no_row(*_: object, **__: object) -> None:
+        return None
+
     monkeypatch.setattr(app.state.board.board, "list_rows", none)
+    monkeypatch.setattr(app.state.board.board, "find_live_by_version", no_row)
     response = await take(client, "later")
 
     assert response.status_code == 409, response.text

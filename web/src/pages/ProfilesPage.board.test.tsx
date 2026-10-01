@@ -610,6 +610,30 @@ describe("where a put would land, as the server says it", () => {
     );
   });
 
+  it("and the other way round: only the plain put is hidden when it alone would undo", async () => {
+    const forSet = draft({
+      id: 1,
+      status: "approved",
+      set_id: 3,
+      set_name: "Guji on the Niche",
+      set_next_minor_label: "v2.2",
+      set_next_major_label: "v3",
+    });
+    getProfileDrafts.mockResolvedValue({ items: [forSet] });
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        landings: [
+          landing({ row_id: 2, row_label: "Londinium [AI]", holds_newer_draft: true }, {}),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findByTestId("draft-landing");
+    expect(screen.getByTestId("put-on-board-for-set")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).toBeNull();
+  });
+
   it("a draft waiting on the board cannot be discarded under it", async () => {
     getProfileBoard.mockResolvedValue(
       boardView({ rows: [boardRowView({ row: { id: 2, origin: "draft", pending_draft_id: 1 } })] }),
