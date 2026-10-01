@@ -57,8 +57,9 @@ class SyncRunRow(BaseModel):
     notes_synced: int = 0
     errors: int = 0
     error: str | None = None
-    #: What the run did beyond counting, decoded: today the profile board's write phase
-    #: (what it pushed, removed, left on the machine and why). ``None`` for every other run.
+    #: What the run did beyond counting, decoded: for a profile pass, ``profiles_read`` (how
+    #: many profiles the machine listed) and, with the writes switch on, the board's write
+    #: phase (what it pushed, removed, left on the machine and why). ``None`` for other runs.
     summary: JsonObject = Field(default=None, validation_alias="summary_json")
 
 

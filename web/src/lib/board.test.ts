@@ -152,6 +152,14 @@ describe("boardSummaryOf", () => {
     expect(boardSummaryOf(run([]))).toBeNull();
   });
 
+  it("is null for a profile pass with writes off, which only counts what it read", () => {
+    expect(boardSummaryOf(run({ profiles_read: 9 }))).toBeNull();
+  });
+
+  it("keeps the board's summary when the count of profiles read sits beside it", () => {
+    expect(boardSummaryOf(run({ profiles_read: 9, writes: 0, pushed: [] }))?.writes).toBe(0);
+  });
+
   it("reads what a write phase recorded and tolerates what is missing", () => {
     const summary = boardSummaryOf(
       run({

@@ -1240,6 +1240,10 @@ class SyncEngine:
             if await self.board.run(self.client, run_id=run_id, update=update):
                 self._publish(PROFILE_UPDATED_EVENT, {"board": True})
 
+        # How many profiles this pass read, so the notification after a sync can say it. Merged
+        # into whatever the board's write phase left (its keys are never touched), and recorded
+        # for a pass with the switch off too: "read 9, wrote nothing" is the answer then.
+        update.summary = {**(update.summary or {}), "profiles_read": len(seen)}
         await self.runs.finish_run(run_id, update)
         self._publish(
             SYNC_PROGRESS_EVENT,

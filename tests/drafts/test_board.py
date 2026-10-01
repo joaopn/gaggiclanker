@@ -63,7 +63,7 @@ async def pull(app: FastAPI) -> SyncRunRow:
 
 
 def summary_of(run: SyncRunRow) -> dict[str, Any]:
-    assert run.summary is not None, "the write phase did not run"
+    assert run.summary is not None and "writes" in run.summary, "the write phase did not run"
     return run.summary
 
 
@@ -152,7 +152,8 @@ async def test_with_the_switch_off_a_pull_reads_nothing_for_writing_and_writes_n
 
     run = await pull(app)
 
-    assert run.status == "ok" and run.summary is None
+    # Only the count of profiles read: no board keys, because no write phase ran.
+    assert run.status == "ok" and run.summary == {"profiles_read": len(fake_device.profiles)}
     assert "req:profiles:load" not in fake_device.ws_requests
     assert write_frames(fake_device) == []
     assert await audit(app) == []
@@ -196,6 +197,8 @@ async def test_adoption_runs_once_and_an_unchanged_board_on_an_in_sync_machine_p
 
     summary = summary_of(run)
     assert summary["adopted"] == [] and summary["writes"] == 0
+    # The count of profiles read sits beside the board's keys, not instead of them.
+    assert summary["profiles_read"] == len(fake.profiles)
     assert write_frames(fake) == []
     board = await get_board(client)
     assert len(board["rows"]) == rows_before

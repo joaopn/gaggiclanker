@@ -49,6 +49,30 @@ async def test_the_mirror_lands(small_archive: Archive) -> None:
     assert all(p.label for p in mirrored)
 
 
+async def test_a_run_records_how_many_profiles_it_read(small_archive: Archive) -> None:
+    """The notification after a sync says "read N profiles"; N is what the machine listed."""
+    machine_count = len(small_archive.device.profiles)
+    first = await small_archive.engine.sync_profiles(trigger="test")
+    # An unchanged machine is read in full again: read is not changed.
+    second = await small_archive.engine.sync_profiles(trigger="test")
+
+    assert machine_count > 1
+    assert first.summary == {"profiles_read": machine_count}
+    assert second.profiles_changed == 0
+    assert second.summary == {"profiles_read": machine_count}
+
+
+async def test_a_machine_that_loses_a_profile_is_read_with_one_fewer(
+    small_archive: Archive,
+) -> None:
+    await small_archive.engine.sync_profiles(trigger="test")
+    small_archive.device.profiles.pop()
+
+    run = await small_archive.engine.sync_profiles(trigger="test")
+
+    assert (run.summary or {})["profiles_read"] == len(small_archive.device.profiles)
+
+
 async def test_the_same_json_twice_is_one_version(small_archive: Archive) -> None:
     await small_archive.engine.sync_profiles(trigger="test")
     before = await _versions(small_archive)

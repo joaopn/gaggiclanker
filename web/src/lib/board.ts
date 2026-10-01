@@ -231,11 +231,16 @@ function items(value: unknown): BoardSummaryItem[] {
   });
 }
 
-/** Read a run's summary; `null` for a run that has none (any pass but a write phase). */
+/**
+ * Read a run's summary; `null` for a run that has none of the write phase's: any pass but a
+ * profile pass, and a profile pass with the switch off, whose summary holds only the count of
+ * profiles read. The write phase always records `writes`, so that is what tells them apart.
+ */
 export function boardSummaryOf(run: SyncRunRow | undefined): BoardRunSummary | null {
   const raw = run?.summary;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   const s = raw as Record<string, unknown>;
+  if (typeof s.writes !== "number") return null;
   return {
     adopted: items(s.adopted),
     pushed: items(s.pushed),
