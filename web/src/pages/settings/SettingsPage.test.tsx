@@ -1,7 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SettingsMap } from "@/api/types";
+import { queryKeys } from "@/lib/queryKeys";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -426,5 +427,34 @@ describe("SettingsPage", () => {
   it("opens the import page's only card", () => {
     renderAt("/settings/import");
     expect(screen.getByRole("link", { name: "Open the shots page" })).toBeVisible();
+  });
+
+  it("never sends the writes switch back: a form loaded before the top bar changed it", async () => {
+    // The page was opened with writes on; the top-bar switch then turned them
+    // off. Saving another field here must not put the stale `true` back.
+    const withWrites = (on: boolean): SettingsMap => {
+      const fixture = settingsFixture();
+      fixture.deviceWritesEnabled = { ...fixture.deviceWritesEnabled, value: on } as never;
+      return fixture;
+    };
+    getSettings.mockResolvedValue(withWrites(true));
+    patchSettings.mockImplementation(async () => withWrites(false));
+    const user = setupUser();
+    const { queryClient } = renderAt("/settings/machine");
+
+    await user.click(await screen.findByRole("button", { name: "Connection" }));
+    const host = screen.getByLabelText("Gaggimate host");
+    await user.clear(host);
+    await user.type(host, "10.0.0.9");
+    getSettings.mockResolvedValue(withWrites(false));
+    act(() => queryClient.setQueryData(queryKeys.settings.current(), withWrites(false)));
+    // Let the page take the new answer before Save, as it does in a browser.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(patchSettings).toHaveBeenCalledTimes(1));
+    expect(patchSettings.mock.calls[0]?.[0]).toEqual({ gaggimateHost: "10.0.0.9" });
   });
 });
