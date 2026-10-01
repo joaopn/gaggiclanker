@@ -92,7 +92,7 @@ beforeEach(() => {
 });
 
 describe("the Sync page's profile board", () => {
-  it("shows what the last pull pushed, removed, left, moved and failed", async () => {
+  it("shows what the last sync pushed, removed, left, moved and failed", async () => {
     getSyncStatus.mockResolvedValue(
       status({
         pushed: [item("Londinium [AI]", { reason: "missing" })],
@@ -127,7 +127,7 @@ describe("the Sync page's profile board", () => {
     );
   });
 
-  it("lists the profiles a pull would not touch as needing a look", async () => {
+  it("lists the profiles a sync would not touch as needing a look", async () => {
     getProfileBoard.mockResolvedValue(
       boardView({
         reports: [
@@ -148,7 +148,7 @@ describe("the Sync page's profile board", () => {
     );
   });
 
-  it("says a pull that found everything in place changed nothing", async () => {
+  it("says a sync that found everything in place changed nothing", async () => {
     getSyncStatus.mockResolvedValue(status({ pushed: [], removed: [], writes: 0 }));
     renderWithQueryClient(<SyncPage />);
 
@@ -162,7 +162,7 @@ describe("the Sync page's profile board", () => {
     renderWithQueryClient(<SyncPage />);
 
     expect(await screen.findByTestId("board-summary-none")).toHaveTextContent(
-      "Writes are off, so a pull does not change the machine's profiles.",
+      "Writes are off, so a sync does not change the machine's profiles.",
     );
   });
 
@@ -180,16 +180,16 @@ describe("a board paused because the machine looks reset", () => {
     );
   });
 
-  it("explains why pulls stopped writing and offers Resume", async () => {
+  it("explains why syncs stopped writing and offers Resume", async () => {
     renderWithQueryClient(<SyncPage />);
 
     const banner = await screen.findByTestId("board-paused-banner");
-    expect(banner).toHaveTextContent("Pulls are not writing profiles to the machine");
+    expect(banner).toHaveTextContent("Syncs are not writing profiles to the machine");
     expect(banner).toHaveTextContent("The machine looks reset");
     expect(within(banner).getByRole("button", { name: "Resume" })).toBeInTheDocument();
   });
 
-  it("asks first, saying the next pull pushes the app's profiles and never yours", async () => {
+  it("asks first, saying the next sync pushes the app's profiles and never yours", async () => {
     const user = setupUser();
     renderWithQueryClient(<SyncPage />);
 
@@ -197,7 +197,7 @@ describe("a board paused because the machine looks reset", () => {
 
     const confirm = screen.getByTestId("board-resume-confirm");
     expect(confirm).toHaveTextContent(
-      "The next pull will push the app's profiles back onto the machine.",
+      "The next sync will push the app's profiles back onto the machine.",
     );
     expect(confirm).toHaveTextContent("Profiles of yours are never pushed.");
     expect(resumeBoard).not.toHaveBeenCalled();

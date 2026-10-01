@@ -333,7 +333,7 @@ class SyncEngine:
             or self._shot_poke.event.is_set()
             or self._profile_poke.event.is_set()
         ):
-            return "a pull"
+            return "a sync"
         return None
 
     def request_shot_sync(self, reason: str = "manual") -> None:
@@ -891,7 +891,7 @@ class SyncEngine:
                     device_id=fetched.device_id,
                     message=(
                         "announced before the index listed it, unreadable, and its number is "
-                        "already archived: stored on the next pull, when its start time is known"
+                        "already archived: stored on the next sync, when its start time is known"
                     ),
                 )
                 return

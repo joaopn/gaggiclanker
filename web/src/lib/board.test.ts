@@ -25,14 +25,14 @@ describe("rowStateOf", () => {
     });
   });
 
-  it("says a planned push will happen on the next pull, or when writes are on", () => {
+  it("says a planned push will happen on the next sync, or when writes are on", () => {
     const entry = boardRowView({
       row: { id: 2, origin: "draft" },
       machine: { present: false, holds_current: false },
       planned: [boardAction({ row_id: 2 })],
     });
     expect(rowStateOf(boardView({ rows: [entry] }), entry).text).toBe(
-      "Will be pushed on the next pull",
+      "Will be pushed on the next sync",
     );
     expect(rowStateOf(boardView({ rows: [entry], writes_enabled: false }), entry).text).toBe(
       "Will be pushed once writes are turned on",
@@ -105,7 +105,7 @@ describe("deletedStateOf", () => {
     const row = boardRow({ id: 5, deleted_at: "2026-03-02T00:00:00.000Z" });
     const view = (actions: ReturnType<typeof boardAction>[]) => boardView({ actions });
     expect(deletedStateOf(view([boardAction({ kind: "remove", row_id: 5 })]), row)?.text).toBe(
-      "Will be removed from the machine on the next pull",
+      "Will be removed from the machine on the next sync",
     );
     expect(
       deletedStateOf(
@@ -123,7 +123,7 @@ describe("deletedStateOf", () => {
 });
 
 describe("previewCounts", () => {
-  it("counts each kind the next pull would do", () => {
+  it("counts each kind the next sync would do", () => {
     const view = boardView({
       actions: [
         boardAction({ kind: "push" }),
@@ -175,7 +175,7 @@ describe("boardSummaryOf", () => {
   });
 });
 
-describe("the event a pull's write phase sends", () => {
+describe("the event a sync's write phase sends", () => {
   it("refreshes every reader of what the phase changes", async () => {
     const { EVENT_INVALIDATIONS } = await import("@/lib/invalidate");
     const { queryKeys } = await import("@/lib/queryKeys");

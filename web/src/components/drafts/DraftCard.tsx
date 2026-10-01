@@ -63,7 +63,7 @@ export function DraftCard({
 }: {
   draft: ProfileDraft;
   /**
-   * The board is the machine's master: a pull writes it, so there is no push or rollback
+   * The board is the machine's master: a sync writes it, so there is no push or rollback
    * (the server refuses both) and an approved draft is put on the board instead.
    */
   adopted?: boolean;
@@ -71,7 +71,7 @@ export function DraftCard({
   boardUnknown?: boolean;
   /** The board row this draft is on, waiting for the next pull. */
   boardRow?: BoardRow | null;
-  /** Whether the Writes switch is on (a pull writes nothing otherwise). */
+  /** Whether the Writes switch is on (a sync writes nothing otherwise). */
   writesOn?: boolean;
   /**
    * Where a put of this draft would land, as the server works it out with the code a put
@@ -222,7 +222,7 @@ export function DraftCard({
             {draft.base_label ?? "It"} was edited on the display after this draft was made, so the
             diff above is against a version the machine no longer holds.{" "}
             {adopted
-              ? "Putting it on the board means the next pull puts this version beside whatever was changed there."
+              ? "Putting it on the board means the next sync puts this version beside whatever was changed there."
               : "Pushing anyway proposes undoing whatever was changed there."}{" "}
             Drafting again from the current profile is usually what you want.
           </p>
@@ -324,7 +324,7 @@ export function DraftCard({
           <p className="w-full text-sm" data-testid="draft-on-board">
             <Check className="mr-1 inline size-3.5" aria-hidden="true" />
             On the board. It reaches the machine{" "}
-            {writesOn ? "on the next pull" : "once writes are turned on"}.
+            {writesOn ? "on the next sync" : "once writes are turned on"}.
           </p>
         ) : null}
 
@@ -364,7 +364,7 @@ export function DraftCard({
           </Button>
         ) : null}
 
-        {/* With the board adopted a pull is the only thing that writes a profile, so an
+        {/* With the board adopted a sync is the only thing that writes a profile, so an
             approved draft goes on the board, carrying what the push carried: the Set whose
             next version it becomes, and whether that is a major change. */}
         {draft.status === "approved" && adopted && !onBoard && forSet !== null ? (
@@ -616,11 +616,11 @@ function PredictionLanding({
         ? `It is recorded as ${
             (boardRow.pending_major ? draft.set_next_major_label : draft.set_next_minor_label) ??
             "the next version"
-          } of ${where} when the next pull puts this draft on the machine.`
+          } of ${where} when the next sync puts this draft on the machine.`
         : `Put on the board without recording it on ${where}, so this prediction will not be recorded.`;
   } else if (draft.status === "draft" || draft.status === "approved") {
     line = adopted
-      ? "It is recorded on the Set when the next pull puts this draft on the machine, if you put it on the board for that Set."
+      ? "It is recorded on the Set when the next sync puts this draft on the machine, if you put it on the board for that Set."
       : "It is recorded on the Set when you push this draft for that Set, and not before.";
   }
   return line === null ? null : (

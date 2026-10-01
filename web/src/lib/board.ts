@@ -3,8 +3,8 @@ import type { BoardAction, BoardRow, BoardRowView, BoardView, SyncRunRow } from 
 /**
  * The profile board in the words a person reads.
  *
- * The server plans what the next pull would do (`BoardView`); everything here only
- * words it. Nothing decides what a pull does, so what the page says and what the pull
+ * The server plans what the next sync would do (`BoardView`); everything here only
+ * words it. Nothing decides what a sync does, so what the page says and what the sync
  * does cannot drift apart. No internal names reach the screen: a row made from a draft is
  * "the app's", one taken from the machine is "yours".
  */
@@ -53,8 +53,8 @@ function actionFor(
 /**
  * Where a live board profile stands on the machine.
  *
- * Order matters: a problem the pull will not fix (a profile of yours that was changed or
- * is gone) is said before anything else, then what the next pull will push, then the
+ * Order matters: a problem the sync will not fix (a profile of yours that was changed or
+ * is gone) is said before anything else, then what the next sync will push, then the
  * plain "on the machine".
  */
 export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
@@ -83,7 +83,7 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
       text: edited
         ? "Edited on the display"
         : writesOn
-          ? "Will be pushed on the next pull"
+          ? "Will be pushed on the next sync"
           : "Will be pushed once writes are turned on",
       tone: "info",
       notes,
@@ -91,7 +91,7 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
     if (edited) {
       notes.push(
         writesOn
-          ? "The board's version will be put beside it on the next pull."
+          ? "The board's version will be put beside it on the next sync."
           : "The board's version will be put beside it once writes are turned on.",
       );
     }
@@ -121,13 +121,13 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
   return state;
 }
 
-/** A deleted profile whose file the pull still has to deal with, or `null` when nothing is left. */
+/** A deleted profile whose file the sync still has to deal with, or `null` when nothing is left. */
 export function deletedStateOf(view: BoardView, row: BoardRow): RowState | null {
   const removal = actionFor(view, row.id, "remove");
   if (removal) {
     return {
       text: view.writes_enabled
-        ? "Will be removed from the machine on the next pull"
+        ? "Will be removed from the machine on the next sync"
         : "Will be removed from the machine once writes are turned on",
       tone: "info",
       notes: [],
@@ -156,7 +156,7 @@ function sentence(text: string): string {
 }
 
 export type PreviewCounts = {
-  /** Machine profiles the first pull would take onto the board. */
+  /** Machine profiles the first sync would take onto the board. */
   adopt: number;
   push: number;
   remove: number;
@@ -164,7 +164,7 @@ export type PreviewCounts = {
   leave: number;
 };
 
-/** How many of each thing the next pull would do. */
+/** How many of each thing the next sync would do. */
 export function previewCounts(view: BoardView): PreviewCounts {
   const count = (kind: BoardAction["kind"]) =>
     (view.actions ?? []).filter((a) => a.kind === kind).length;
@@ -193,7 +193,7 @@ export function previewLine(action: BoardAction): string {
   }
 }
 
-// ── a pull's summary ──────────────────────────────────────────────
+// ── a sync's summary ──────────────────────────────────────────────
 
 export type BoardSummaryItem = {
   label: string;
@@ -202,7 +202,7 @@ export type BoardSummaryItem = {
   on: boolean | null;
 };
 
-/** What the last pull's profile pass did to the machine: `SyncRunRow.summary` for the `profiles` run. */
+/** What the last sync's profile pass did to the machine: `SyncRunRow.summary` for the `profiles` run. */
 export type BoardRunSummary = {
   adopted: BoardSummaryItem[];
   pushed: BoardSummaryItem[];

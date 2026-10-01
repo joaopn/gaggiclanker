@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
  * Cards rather than a table so each one reads at a phone's width: the name and who it
  * belongs to on the first line, where it stands on the machine under it, and the two
  * controls (the home-screen tick and Delete) wrapping underneath. Nothing here writes to
- * the machine: a tick or a delete edits the board, and the next pull makes the machine
+ * the machine: a tick or a delete edits the board, and the next sync makes the machine
  * match it.
  */
 export function BoardList({
@@ -182,7 +182,7 @@ function BoardRowCard({
             }}
           >
             {owner === "app"
-              ? "The next pull removes the app's copy from the machine, as long as it is still as the app saved it. The copy stays while a Set is still brewing it, while it is the profile selected on the machine and nothing else on the board can replace it, and while another profile on the board stands on it. "
+              ? "The next sync removes the app's copy from the machine, as long as it is still as the app saved it. The copy stays while a Set is still brewing it, while it is the profile selected on the machine and nothing else on the board can replace it, and while another profile on the board stands on it. "
               : "This profile is yours, so it stays on the machine and only leaves the board. "}
             A profile of yours is never removed from the machine.
           </ConfirmStrip>

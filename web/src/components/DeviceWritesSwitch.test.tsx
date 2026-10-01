@@ -102,7 +102,7 @@ describe("DeviceWritesSwitch", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("asks before turning on, and says what on means: every pull matches the board", async () => {
+  it("asks before turning on, and says what on means: every sync matches the board", async () => {
     const user = setupUser();
     await renderSwitch(false);
 
@@ -111,7 +111,7 @@ describe("DeviceWritesSwitch", () => {
     expect(patchSettings).not.toHaveBeenCalled();
     const panel = screen.getByRole("dialog", { name: "Writes to the machine" });
     expect(panel).toHaveTextContent(WRITES_ON_SENTENCE);
-    expect(panel).toHaveTextContent("every pull makes the machine's profiles match the board");
+    expect(panel).toHaveTextContent("every sync makes the machine's profiles match the board");
     expect(panel).toHaveTextContent("pushes the app's profiles the machine does not have");
     expect(panel).toHaveTextContent("removes the app's old copies");
     expect(panel).toHaveTextContent("sets the home-screen stars");
@@ -122,8 +122,8 @@ describe("DeviceWritesSwitch", () => {
     );
   });
 
-  describe("the preview of the next pull", () => {
-    it("before the board is adopted says the first pull writes nothing", async () => {
+  describe("the preview of the next sync", () => {
+    it("before the board is adopted says the first sync writes nothing", async () => {
       const user = setupUser();
       getProfileBoard.mockResolvedValue(
         boardView({
@@ -142,7 +142,7 @@ describe("DeviceWritesSwitch", () => {
 
       const preview = await screen.findByTestId("writes-preview-first");
       expect(preview).toHaveTextContent(
-        "The first pull takes the machine's profiles onto the board and writes nothing.",
+        "The first sync takes the machine's profiles onto the board and writes nothing.",
       );
       expect(preview).toHaveTextContent("2 profiles are on the machine to take");
       expect(getProfileBoard).toHaveBeenCalledWith(true);
@@ -167,7 +167,7 @@ describe("DeviceWritesSwitch", () => {
 
       const counts = await screen.findByTestId("writes-preview-counts");
       expect(counts).toHaveTextContent(
-        "The next pull would push 1 profile, remove 1 old copy, change 1 home-screen star, and leave 1 on the machine.",
+        "The next sync would push 1 profile, remove 1 old copy, change 1 home-screen star, and leave 1 on the machine.",
       );
       const list = screen.getByTestId("writes-preview-list");
       expect(list).toHaveTextContent("Push Londinium [AI]");
@@ -184,11 +184,11 @@ describe("DeviceWritesSwitch", () => {
       await user.click(toggle());
 
       expect(await screen.findByTestId("writes-preview-none")).toHaveTextContent(
-        "the next pull would change nothing",
+        "the next sync would change nothing",
       );
     });
 
-    it("falls back to the last pull and says so when the machine cannot be read", async () => {
+    it("falls back to the last sync and says so when the machine cannot be read", async () => {
       const user = setupUser();
       getProfileBoard.mockResolvedValue(
         boardView({
@@ -201,7 +201,7 @@ describe("DeviceWritesSwitch", () => {
       await user.click(toggle());
 
       expect(await screen.findByTestId("writes-preview-stale")).toHaveTextContent(
-        "The machine could not be read just now, so this is from the last pull.",
+        "The machine could not be read just now, so this is from the last sync.",
       );
       expect(screen.getByTestId("writes-preview-list")).toHaveTextContent("Push Londinium [AI]");
     });
@@ -214,7 +214,7 @@ describe("DeviceWritesSwitch", () => {
       await user.click(toggle());
 
       expect(await screen.findByTestId("writes-preview-unknown")).toHaveTextContent(
-        "no telling what the next pull would do",
+        "no telling what the next sync would do",
       );
       expect(screen.queryByTestId("writes-preview-none")).toBeNull();
     });
@@ -242,7 +242,7 @@ describe("DeviceWritesSwitch", () => {
       await user.click(toggle());
 
       expect(await screen.findByTestId("writes-preview-paused")).toHaveTextContent(
-        "pulls write nothing until you resume them on the Sync page",
+        "syncs write nothing until you resume them on the Sync page",
       );
     });
 

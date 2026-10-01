@@ -22,11 +22,11 @@ import { queryKeys } from "@/lib/queryKeys";
  * The profile board and the five things a person can do to it.
  *
  * None of the mutations sends anything to the machine: the board is edited here and
- * the next pull writes it. What they share is what they change. Every one settles with
+ * the next sync writes it. What they share is what they change. Every one settles with
  * `invalidateBoardWrites`: the board and its preview, the drafts (which say whether
  * they are on it), the profile mirror, the sync status (the last run's summary and the
  * pause live there) and the write audit. Putting a draft on the board *for a Set* also
- * invalidates the Sets, since that pending record is what the pull turns into the Set's
+ * invalidates the Sets, since that pending record is what the sync turns into the Set's
  * next version.
  */
 
@@ -58,7 +58,7 @@ export function usePutOnBoard(): UseMutationResult<
     mutationFn: (body) => putOnBoard(body),
     onSuccess: (row) =>
       toast.success(`${row.label} is on the board`, {
-        description: "The next pull puts it on the machine.",
+        description: "The next sync puts it on the machine.",
       }),
     onError: (error) => toast.error(error.message),
     onSettled: (_data, _error, variables) => {
@@ -109,8 +109,8 @@ export function useResumeBoard(): UseMutationResult<{ resumed: boolean }, Error,
   return useMutation({
     mutationFn: () => resumeBoard(),
     onSuccess: () =>
-      toast.success("Pulls may write again", {
-        description: "The next pull puts the app's profiles back on the machine.",
+      toast.success("Syncs may write again", {
+        description: "The next sync puts the app's profiles back on the machine.",
       }),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateBoardWrites(queryClient),

@@ -28,32 +28,32 @@ first (`POST /api/backup`), because there is no down-migration.
   README point at the switch instead. The stored setting and the API are
   unchanged.
 
-### The app's own profile board, synced to the machine on every pull
+### The app's own profile board, synced to the machine
 
 - **The app now keeps a profile board** (new routes under `/api/profile-board`): the
   profiles it means the machine to hold, each with its current version, whether it is
   on the machine's home screen, and which file on the machine stands for it. Put an
   approved draft on it (a new version of the profile it descends from, or a new
   profile), turn a profile's home-screen flag on or off, delete a profile, or read the
-  board with each profile's state on the machine and what the next pull would do.
+  board with each profile's state on the machine and what the next sync would do.
   Editing the board never touches the machine.
-- **With device writes on, every pull ends by making the machine match the board.**
-  The first such pull adopts the machine's profiles as they are (the home screen is
-  each profile's star) and writes nothing. After that a pull saves a board profile the
+- **With device writes on, every sync ends by making the machine match the board.**
+  The first such sync adopts the machine's profiles as they are (the home screen is
+  each profile's star) and writes nothing. After that a sync saves a board profile the
   machine does not hold, checking what it saved by reading it back and running it through
   the safety policy with the current bounds first; removes the file a newer version
   replaced and the file of a profile deleted on the board; and sets each profile's star to
-  its home-screen flag. With writes off a pull only reads, exactly as before.
-- **A pull only ever pushes versions that came from an approved draft.** A profile you
+  its home-screen flag. With writes off a sync only reads, exactly as before.
+- **A sync only ever pushes versions that came from an approved draft.** A profile you
   made on the machine is shown on the board and its home-screen flag is applied, but it is
-  never pushed back: if its file is missing or was changed, the pull says so and does
+  never pushed back: if its file is missing or was changed, the sync says so and does
   nothing. A machine that looks reset (none of the app's profiles is on it any more) pauses
   the board sync until you resume it (`POST /api/profile-board/resume`).
 - **Only profiles this app pushed, still holding exactly what it saved, are removed**, by
   the same guards as a push's replace, and never one another board profile or a Set still
   stands on. A profile you made, or an app profile you edited on the machine, stays there
-  when it is superseded or deleted on the board, and the pull says which file and why. If a
-  pull stops halfway, each profile is left old or new and the next pull finishes it. A new
+  when it is superseded or deleted on the board, and the sync says which file and why. If a
+  sync stops halfway, each profile is left old or new and the next sync finishes it. A new
   version that does not read back as sent is removed again and the previous version stays.
 - **Once the board is adopted, profiles reach the machine through it:** the staged push and
   rollback refuse every draft with a message pointing at the board (before the first
@@ -75,28 +75,28 @@ first (`POST /api/backup`), because there is no down-migration.
 ### The Profiles page, the Writes switch and the Sync page, built around the board
 
 - **The Profiles page shows the board.** Once the board has been adopted (the Writes switch
-  has been on for a pull), each profile on it is one card: its name, its current version,
+  has been on for a sync), each profile on it is one card: its name, its current version,
   whether it is **the app's** or **yours**, and where it stands on the machine in plain
-  words: on the machine, will be pushed on the next pull, will be removed, left on the
+  words: on the machine, will be pushed on the next sync, will be removed, left on the
   machine (and why), edited on the display, did not verify, or missing. A tick puts it on or
   takes it off the machine's home screen, and **Delete** (asked first, and saying that a
   profile of yours is never removed from the machine) takes it off the board. A deleted
   profile whose file is still on the machine is listed as will be removed or left. Nothing
-  here sends anything to the machine; the next pull does. Before the first adoption the page
+  here sends anything to the machine; the next sync does. Before the first adoption the page
   is as it was: the mirror and the staged box with its push.
 - **Approved drafts get "Put on the board".** After adoption the staged push and rollback
   buttons are gone (the server refuses them) and an approved draft is put on the board
   instead. A draft made for a Set carries what the push carried: it is recorded as that Set's
-  next version once a pull has put it on the machine, with the "Major change" choice
+  next version once a sync has put it on the machine, with the "Major change" choice
   preselected from the agent's suggestion, or **Put on the board without recording it on the
-  Set**. A draft already on the board says it reaches the machine on the next pull.
-- **The Writes switch says what on now means:** every pull makes the machine's profiles match
+  Set**. A draft already on the board says it reaches the machine on the next sync.
+- **The Writes switch says what on now means:** every sync makes the machine's profiles match
   the board (it pushes the app's profiles the machine does not have, removes the app's old
   copies and sets the home-screen stars) and never removes or overwrites a profile of yours.
   Before turning it on, the confirmation shows a preview read from the machine just now:
-  before adoption, that the first pull takes the machine's profiles onto the board and writes
-  nothing; after, what the next pull would do (counts and the list). When the machine cannot
-  be read it says so and shows the last pull's picture. The panel stays inside the screen at
+  before adoption, that the first sync takes the machine's profiles onto the board and writes
+  nothing; after, what the next sync would do (counts and the list). When the machine cannot
+  be read it says so and shows the last sync's picture. The panel stays inside the screen at
   phone width.
 - **Profiles the machine gained after the board took its own can be taken onto it:** the
   Profiles page lists them under "On the machine, not on the board", each with **Take onto
@@ -108,17 +108,17 @@ first (`POST /api/backup`), because there is no down-migration.
   read now carries it), and "Put on the board" is hidden only when the profile it would replace
   already holds a newer draft. Taking a profile onto the board is atomic (two clicks make one
   row) and is refused for a file whose exact content a board profile already stands for.
-- **Fixes while building it:** a pull's write phase now refreshes the drafts, Sets and write
+- **Fixes while building it:** a sync's write phase now refreshes the drafts, Sets and write
   audit open in the browser; the Resume banner goes away once resumed; the Sync summary reads
   each reason by the section it is under; a board that cannot be read says so instead of
   showing the old push buttons; a draft the board has moved past is not offered "Put on the
   board" and can be discarded. Wording that said a person "pushes" a profile (the Set pages,
   the draft card, the chat's prompts and tool notes) now says they put it on the machine,
   which is true with and without the board; the agent's prompts are a little shorter.
-- **The Sync page shows what the last pull did to the profiles** (put on, removed, left and
-  why, home-screen changes, anything that did not work) and the profiles a pull will not touch
-  (one of yours that was edited or is missing). When the machine looks reset and pulls have
-  stopped writing, a banner says so, with **Resume**, which asks first: the next pull will push
+- **The Sync page shows what the last sync did to the profiles** (put on, removed, left and
+  why, home-screen changes, anything that did not work) and the profiles a sync will not touch
+  (one of yours that was edited or is missing). When the machine looks reset and syncs have
+  stopped writing, a banner says so, with **Resume**, which asks first: the next sync will push
   the app's profiles back, and profiles of yours are never pushed.
 
 ### A push replaces the profile it supersedes
@@ -255,10 +255,10 @@ first (`POST /api/backup`), because there is no down-migration.
   thing this box ever writes to the machine is a profile, pushed from the
   Profiles page; it never deletes a shot from the machine, never writes a
   judgement to a shot's notes card and never writes a device setting. The
-  machine's notes cards are still read on a pull and seed a judgement once.
+  machine's notes cards are still read on a sync and seed a judgement once.
 - **The machine's own rotation deletes its oldest shots when storage runs low,
   and that is accepted.** The firmware does this whether or not this box has the
-  shots, so pull from the Sync page often enough that nothing waits on the
+  shots, so sync from the Sync page often enough that nothing waits on the
   machine for long. `docs/device-gotchas.md` says which firmware routine it is.
 - **Breaking: the cleanup history table is dropped.** A new migration deletes
   the per-pass ledger of past cleanup runs (the per-shot record stays: every
@@ -278,7 +278,7 @@ first (`POST /api/backup`), because there is no down-migration.
   a replacement board), the shots it brewed were never archived and they
   overwrote the ratings, volumes and notes of older shots.** The machine
   numbers its shots from a counter kept with its settings, so it started again
-  from 0 and used numbers the archive already held for different shots. A pull
+  from 0 and used numbers the archive already held for different shots. A sync
   saw the number, believed it already had the shot, skipped it, and copied the
   new shot's rating, volume, temperature, pressure, flow and notes onto the old
   one. A shot is now identified by its number together with the time it
@@ -1216,10 +1216,10 @@ Settings → Machine access now takes effect on save: the connection to the old 
 closed and the new one opened, with no restart, and the header pill and the Sync
 page follow straight away. A save that leaves the effective values as they were
 does nothing to the connection. While a profile push or rollback, a cleanup run,
-a notes send or a pull is using the machine, a change that would move the
+a notes send or a sync is using the machine, a change that would move the
 connection is refused with `409` naming what is running, and nothing in that save
-is stored; other settings save as usual. A pull asked for while such a save is in
-progress waits for it. A pull cut short — by a connection change or by stopping
+is stored; other settings save as usual. A sync asked for while such a save is in
+progress waits for it. A sync cut short — by a connection change or by stopping
 the app — is now recorded as an error saying it was stopped; it used to be filed
 as `ok` with nothing archived.
 
@@ -1269,7 +1269,7 @@ the machine happens only from the new Sync page, by a person.** Three things tha
 used to happen on their own no longer can.
 
 **A Sync page.** A new **Sync** entry in the sidebar (`g y`) holds every exchange
-with the machine that you start: **Pull from the machine**, **Send notes to the
+with the machine that you start: **Sync with the machine**, **Send notes to the
 machine**, **Clean up the machine's storage** and **Recent writes**. Each write
 action says what is in the way when it cannot start — no machine configured,
 device writes off, or the machine not connected. The Device page keeps what the
@@ -1287,7 +1287,7 @@ a shot is gone.
 page shows the plan with the reason each shot is in it and, folded, the shots
 kept and why. Confirming names the count and says it cannot be undone on the
 machine (the archive keeps every shot). If the plan changed between the preview
-and the confirmation — a pull landed, a setting moved — nothing is deleted and you
+and the confirmation — a sync landed, a setting moved — nothing is deleted and you
 are asked to look again.
 
 **MCP is read-only by design.** MCP clients get exactly the in-app chat's tools:
@@ -1431,7 +1431,7 @@ live mapping over a tombstone. If two Sets were active, the survivor machine's
 stays active and the others are simply no longer *the* one — nothing is
 archived. An archive with no machine at all gets the row with an empty host, so
 a fresh install and an import-only install both have "the machine" before the
-first pull. Take a backup first (`POST /api/backup`); there is no
+first sync. Take a backup first (`POST /api/backup`); there is no
 down-migration.
 
 **`GET /api/machines` is `GET /api/machine`**, answering the row with its shot
@@ -1521,11 +1521,11 @@ archived, then say what the cup was like without leaving the list.
   their poke with no timeout at all, so there is no interval left to set.
 - Identity stays automatic — one `res:ota-settings` frame plus one
   `GET /api/settings`, at startup and on every connect. It is what tells the
-  header whether the machine is there, and a pull has nowhere to store a shot
+  header whether the machine is there, and a sync has nowhere to store a shot
   until the machines row exists.
 - The WebSocket is still held: it is what the header pill reads, and what a
   profile push, a notes write-back and a storage cleanup travel over.
-- Automatic cleanup, where it is switched on, now runs after a pull — which is
+- Automatic cleanup, where it is switched on, now runs after a sync — which is
   the right moment for it.
 - **Removed:** `GET /api/device/live` (the 2 Hz telemetry stream), the
   `devicePollIntervalSeconds` setting, and the fake device's `--brew-every`. An
@@ -1538,8 +1538,8 @@ status poll alone. Chart.js stays for the shot, compare and Set trend charts.
 
 **The shots page is a dataset.**
 
-- **"Pull from machine"** in the header: disabled with a reason when no machine
-  is configured or it is unreachable, a spinner while a pull is running —
+- **"Sync with machine"** in the header: disabled with a reason when no machine
+  is configured or it is unreachable, a spinner while a sync is running —
   whoever started it — and a toast when the one you started finishes, counted
   off the ledger ("3 new shots, 1 updated", "Nothing new", or what the machine
   said when it failed). The subtitle says when the archive was last pulled into,

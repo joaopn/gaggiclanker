@@ -28,9 +28,9 @@ is one of the three. So:
 **3. `evt:history-shot-saved {id}` carries an *unpadded* int.**
 Ids are six-digit zero-padded in URLs and in the notes files, and unpadded on
 the event. One helper converts, and it is tested: `gaggiclanker/domain/ids.py`.
-Nothing here acts on the event any more — a pull is a request — but the id is
+Nothing here acts on the event any more — a sync is a request — but the id is
 remembered, because the firmware writes the index entry and the event in quick
-succession and not atomically, and somebody pressing pull the moment the
+succession and not atomically, and somebody pressing sync the moment the
 machine beeps is inside that window.
 
 **4. A `.slog` may be header-only while it is still being written.**
@@ -61,17 +61,17 @@ modelled signal means less than one on a measured signal and the UI has to be
 able to say so.
 
 **9. The machine deletes old shots when free space drops below 500 KB.**
-It is a buffer, not an archive. Pull often enough that a few hundred shots
+It is a buffer, not an archive. Sync often enough that a few hundred shots
 never accumulate on it, keep the raw bytes, and never lose a shot to a parse
 failure — by the time a parser bug is fixed, the machine's copy is gone. That
-single fact is why quarantine exists, and why a pull fetches the *oldest*
+single fact is why quarantine exists, and why a sync fetches the *oldest*
 missing shots first.
 
 `cleanupHistory()` in `ShotHistoryPlugin.cpp` is the firmware deleting its oldest
 `.slog` (in filename order, with the notes file) on its own when storage runs
 low, and it does not care whether anything has archived the shot. gaggiclanker
 does not delete shots from the machine and does not try to get ahead of it: this
-is accepted, and the defence is to pull before it does. A quarantined shot is
+is accepted, and the defence is to sync before it does. A quarantined shot is
 kept in the archive as raw bytes, so a parser fix can still re-derive it, but
 once the machine has rotated the shot out there is no other copy to fetch.
 

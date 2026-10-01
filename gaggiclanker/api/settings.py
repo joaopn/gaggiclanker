@@ -58,7 +58,7 @@ async def patch_settings(
     A patch touching the machine's connection settings applies them live: the
     connection is rebuilt from the new effective values, with no restart. If
     that would move the connection while something is using the machine — a
-    profile push or rollback, a pull — the whole patch is a
+    profile push or rollback, a sync — the whole patch is a
     409 naming it and nothing is stored. Validation comes first, so a bad value
     is still a 400 whatever is running.
 

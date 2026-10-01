@@ -1,10 +1,10 @@
 """`/api/profile-board` — the profiles the app means the machine to hold.
 
-The board is edited here and written to the machine by the next pull, never by these routes:
+The board is edited here and written to the machine by the next sync, never by these routes:
 nothing below sends a byte to the machine, so every route works with the writes switch off
 and with no machine at all. What a route that reads the machine does is read.
 
-* ``GET`` serves the board with each row's state on the machine and the actions the next pull
+* ``GET`` serves the board with each row's state on the machine and the actions the next sync
   would take, from a read made now (or, when the machine cannot be read, the archive's last
   mirror of it, and the response says so).
 * ``POST`` puts an approved draft on the board: a new version of the profile it descends from,
@@ -12,7 +12,7 @@ and with no machine at all. What a route that reads the machine does is read.
 * ``PUT .../home-screen`` and ``DELETE`` change one row.
 
 Chat and MCP have no route here and no tool: a person's click is the only way a profile gets
-onto the board, and the board is the only thing a pull pushes.
+onto the board, and the board is the only thing a sync pushes.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class BoardPut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft_id: int
-    #: Record the profile as this Set's next version when a pull puts it on the machine.
+    #: Record the profile as this Set's next version when a sync puts it on the machine.
     set_id: int | None = None
     #: Whether that version is a major one; ``None`` leaves the default for a pushed draft.
     major: bool | None = None
@@ -86,10 +86,10 @@ async def take_onto_board(body: TakeBody, board: BoardServiceDep) -> JSONRespons
 @router.post(
     "/resume",
     response_model=ApiResponse[ResumeData],
-    summary="Let pulls write again after the machine looked reset",
+    summary="Let syncs write again after the machine looked reset",
 )
 async def resume_board(board: BoardServiceDep) -> JSONResponse:
-    """Person-only. Clears the pause; the next pull then pushes the board's app profiles.
+    """Person-only. Clears the pause; the next sync then pushes the board's app profiles.
 
     Sends nothing to the machine. There is no chat or MCP tool for it.
     """
@@ -100,7 +100,7 @@ async def resume_board(board: BoardServiceDep) -> JSONResponse:
 @router.get(
     "",
     response_model=ApiResponse[BoardView],
-    summary="The profile board, its state on the machine and what the next pull would do",
+    summary="The profile board, its state on the machine and what the next sync would do",
 )
 async def get_board(
     board: BoardServiceDep,
@@ -108,7 +108,7 @@ async def get_board(
     profiles: ProfilesRepoDep,
     live: Annotated[bool, Query(description="Read the machine now instead of the mirror")] = False,
 ) -> JSONResponse:
-    """Read-only. The plan is the one a pull would execute.
+    """Read-only. The plan is the one a sync would execute.
 
     By default it is built from the archive's last mirror of the machine, which costs no
     request to it and is what a page that polls should use. ``?live=true`` reads the machine
@@ -138,7 +138,7 @@ async def get_board(
     summary="Put an approved draft on the board",
 )
 async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep) -> JSONResponse:
-    """The next pull puts it on the machine. Nothing is sent to the machine now.
+    """The next sync puts it on the machine. Nothing is sent to the machine now.
 
     Refused (409) for a draft that is not approved, one already on the board, and for a Set
     that could no longer be given a version, which a push for the Set refuses the same way.
@@ -169,6 +169,6 @@ async def put_home_screen(
     summary="Delete a profile from the board",
 )
 async def delete_from_board(row_id: int, board: BoardServiceDep) -> JSONResponse:
-    """A tombstone. The next pull removes the machine's copy only when the app wrote it."""
+    """A tombstone. The next sync removes the machine's copy only when the app wrote it."""
     row = await board.delete_row(row_id)
     return envelope_response(row.model_dump(mode="json"))

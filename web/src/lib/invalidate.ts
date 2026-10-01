@@ -136,9 +136,9 @@ export function invalidateBoard(queryClient: QueryClient): Promise<void> {
 }
 
 /**
- * Everything a change to the board, or to whether pulls may write it, can change: the
+ * Everything a change to the board, or to whether syncs may write it, can change: the
  * board and its preview, the drafts that say whether they are on it, the profile mirror
- * the next pull rewrites, the sync status whose last run carries the summary and the pause,
+ * the next sync rewrites, the sync status whose last run carries the summary and the pause,
  * and the write audit.
  */
 export async function invalidateBoardWrites(queryClient: QueryClient): Promise<void> {
@@ -198,7 +198,7 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],
   "sync.progress": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
-  // A pull's write phase (`{"board": true}`) changes the board's machine state, marks the
+  // A sync's write phase (`{"board": true}`) changes the board's machine state, marks the
   // drafts it pushed, records the Set versions they were put on the board for, and appends to
   // the write audit: every reader of those is stale, not only the mirror.
   "profile.updated": [

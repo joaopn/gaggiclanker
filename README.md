@@ -1,7 +1,7 @@
 # gaggiclanker
 
 A self-hosted archive and analyst for a [GaggiMate](https://gaggimate.eu)
-espresso machine. Press a button and it pulls in every shot the machine holds —
+espresso machine. Press a button and it brings in every shot the machine holds —
 raw `.slog` bytes, every sample, phases, the device's own notes and profiles —
 shows them with curves and deterministic diagnostics, lets you judge each shot
 from the list and group shots into versioned **Sets** (bean + hardware + profile
@@ -64,10 +64,10 @@ an IP for the machine's host.
    header goes green within a few seconds of the WebSocket connecting. Prefer a
    fixed IP or a DHCP reservation — see Troubleshooting for why the name your
    browser resolves may not resolve here.
-3. **Press "Pull from machine"** on the Shots page. The first pull walks the
+3. **Press "Sync with machine"** on the Shots page. The first sync walks the
    machine's whole history, which for a few hundred shots takes a minute or
    two; when it finishes it says what it archived. Shots under 7.5 seconds
-   never appear: the firmware discards them. After that, pull whenever you have
+   never appear: the firmware discards them. After that, sync whenever you have
    pulled some coffee — or drop exported files on the strip under the header,
    which is the only way back for shots the machine has already deleted.
 4. **Turn on authentication** if this box is reachable by anything you do not
@@ -98,14 +98,14 @@ pages, in the order the sidebar lists them:
 
 | Page | `g` | What it is |
 | --- | --- | --- |
-| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The pull button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
+| **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The sync button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
 | **Chat** | `g c` | The tool-using conversation, in a folder per Set. New inside a folder starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
 | **Profiles** | `g p` | The profile board (each profile, whose it is, on or off the machine's home screen, where it stands on the machine), the drafts waiting to be put on it, and every version a shot can resolve to. |
-| **Sync** | `g y` | Pull from the machine, what the last pull did to its profiles (with Resume after a suspected reset), and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
+| **Sync** | `g y` | Sync with the machine, what the last sync did to its profiles (with Resume after a suspected reset), and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights the chat proposes wait there for you to confirm. |
@@ -279,33 +279,33 @@ button without the Set tries it without touching the Set.
 
 The machine is a buffer, not an archive: when its storage runs low its own
 firmware deletes its oldest shots, whether or not this box has them. That is
-accepted rather than managed from here, so pull from the Sync page often enough
+accepted rather than managed from here, so sync from the Sync page often enough
 that nothing waits on the machine for long. The machine's notes cards are read
-on a pull too, and never written back.
+on a sync too, and never written back.
 
-Nothing runs on its own: a pull only reads, and there is no timer. Every write
+Nothing runs on its own: a sync only reads, and there is no timer. Every write
 attempt, refused ones included, is listed under **Recent writes** on the Sync page.
 
 ### The profile board
 
-With the **Writes** switch on, every pull ends by making the machine's profiles match the
-**board** shown on the Profiles page. The first pull with the switch on takes the machine's
+With the **Writes** switch on, every sync ends by making the machine's profiles match the
+**board** shown on the Profiles page. The first sync with the switch on takes the machine's
 profiles onto the board as they are (the home screen is each profile's star) and writes
 nothing; the switch's confirmation says so before you turn it on, and after that shows what
-the next pull would do, read from the machine at that moment. From then on a pull pushes
+the next sync would do, read from the machine at that moment. From then on a sync pushes
 the app's profiles the machine lacks, removes the app's old copies and moves the home-screen
 stars. It never removes or overwrites a profile of yours: one you made on the display is shown
 on the board and its star is followed, and if it was changed or is gone, the Sync page says so.
 You edit the board on the Profiles page: put an approved draft on it, tick a profile on or off
-the home screen, delete one. None of that touches the machine; the next pull does. If the
-machine looks reset (none of the app's profiles is on it any more), pulls stop writing until
+the home screen, delete one. None of that touches the machine; the next sync does. If the
+machine looks reset (none of the app's profiles is on it any more), syncs stop writing until
 you press **Resume** on the Sync page.
 
 ### Putting a profile on the machine
 
 Before the board is adopted, nothing reaches the machine without passing through the
 **Staged for the machine** section of the Profiles page (afterwards the same drafts are put
-on the board and a pull sends them). A version gets there in one of three
+on the board and a sync sends them). A version gets there in one of three
 ways: **Stage as is**, for a profile that is already right and only needs to be
 on the machine; **Edit**, which opens the JSON editor and validates what you
 type against the strict schema and the safety policy; or the chat or the
@@ -380,7 +380,7 @@ Settings → Machine access, or with the `PATCH` above — and stays in the arch
 database file for every later run. The connection is rebuilt on save, so the app
 does not need restarting.
 
-It holds the fixture archive, so pressing "Pull from machine" against it fills
+It holds the fixture archive, so pressing "Sync with machine" against it fills
 the UI with real shots and real curves.
 
 Or seed the archive from files, with no machine at all. The web UI on the
@@ -388,7 +388,7 @@ display exports a shot as `shot-<id>.json` and a profile as `profile-<id>.json`;
 those files are the only way back for a shot the machine has already deleted,
 and the importer reads them into the same tables the sync engine writes.
 Importing first and connecting the machine afterwards is an ordinary order to do
-things in: the archive holds one machine, it exists before the first pull, and a
+things in: the archive holds one machine, it exists before the first sync, and a
 shot the sync engine later serves is recognised as the one already stored.
 
 ```bash
@@ -493,7 +493,7 @@ the upgrade. Two ways round it, both on the old version, before you pull:
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
 or the sync switch under Settings → Machine access closes the connection and opens the
 new one, with no restart; the header pill follows within a few seconds. While a
-profile push, a rollback or a pull is using the machine, such a
+profile push, a rollback or a sync is using the machine, such a
 change is refused with the reason and nothing is saved — wait for it to finish
 and save again.
 
@@ -981,8 +981,8 @@ want the machine left alone entirely, set
 
 **Everything under `/api/history` returns 503.**
 The machine is doing an OTA update. It is not an error and it is not lost: the
-pull records the failure and nothing is half-written. Wait for the update to
-finish and pull again.
+sync records the failure and nothing is half-written. Wait for the update to
+finish and sync again.
 
 **Shots appear with no pressure and no flow.**
 Those are zero on **Standard** boards — the sensor is a Pro part. Every

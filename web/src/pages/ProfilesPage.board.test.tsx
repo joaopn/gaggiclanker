@@ -122,7 +122,7 @@ describe("the Profiles page around the board", () => {
     expect(second).toHaveTextContent("version not loaded");
     expect(second.textContent ?? "").not.toMatch(/version 11/);
     expect(within(second).getByTestId("board-state")).toHaveTextContent(
-      "Will be pushed on the next pull",
+      "Will be pushed on the next sync",
     );
   });
 
@@ -132,11 +132,11 @@ describe("the Profiles page around the board", () => {
     expect(getProfileBoard).toHaveBeenCalledWith(false);
   });
 
-  it("says profiles reach the machine on the next pull, and drops the mirror table", async () => {
+  it("says profiles reach the machine on the next sync, and drops the mirror table", async () => {
     renderWithQueryClient(<ProfilesPage />);
     await cards();
-    expect(screen.getByText(/they reach the machine on the next pull/)).toBeInTheDocument();
-    expect(screen.queryByText("The mirror, as of the last pull.")).toBeNull();
+    expect(screen.getByText(/they reach the machine on the next sync/)).toBeInTheDocument();
+    expect(screen.queryByText("The mirror, as of the last sync.")).toBeNull();
   });
 
   it("puts each home-screen flag in a toggle and changes it through the board", async () => {
@@ -174,10 +174,10 @@ describe("the Profiles page around the board", () => {
     expect(within(first).queryByTestId("board-delete-confirm")).toBeNull();
     expect(deleteBoardRow).not.toHaveBeenCalled();
 
-    // The app's own: the pull removes its copy, and the same promise is made.
+    // The app's own: the sync removes its copy, and the same promise is made.
     await user.click(within(second).getByTestId("board-delete"));
     const second_confirm = within(second).getByTestId("board-delete-confirm");
-    expect(second_confirm).toHaveTextContent("The next pull removes the app's copy");
+    expect(second_confirm).toHaveTextContent("The next sync removes the app's copy");
     expect(second_confirm).toHaveTextContent("A profile of yours is never removed");
     await user.click(within(second_confirm).getByRole("button", { name: "Delete from the board" }));
     await waitFor(() => expect(deleteBoardRow).toHaveBeenCalledWith(2));
@@ -211,7 +211,7 @@ describe("the Profiles page around the board", () => {
 
     const removals = await screen.findAllByTestId("board-removal");
     expect(removals[0]).toHaveTextContent("Old [AI]");
-    expect(removals[0]).toHaveTextContent("Will be removed from the machine on the next pull");
+    expect(removals[0]).toHaveTextContent("Will be removed from the machine on the next sync");
     expect(removals[1]).toHaveTextContent("Left on the machine");
     expect(removals[1]).toHaveTextContent("It is not a profile the app wrote.");
   });
@@ -248,7 +248,7 @@ describe("the Profiles page around the board", () => {
     for (const text of states) expect(text).not.toMatch(/origin|adopt/i);
   });
 
-  it("says when writes are off, and when pulls are paused, with the way to resume", async () => {
+  it("says when writes are off, and when syncs are paused, with the way to resume", async () => {
     getProfileBoard.mockResolvedValue(
       boardView({
         writes_enabled: false,
@@ -346,7 +346,7 @@ describe("drafts once the board is adopted", () => {
     await waitFor(() => expect(putOnBoard).toHaveBeenLastCalledWith({ draftId: 1 }));
   });
 
-  it("says a draft already on the board reaches the machine on the next pull", async () => {
+  it("says a draft already on the board reaches the machine on the next sync", async () => {
     getProfileBoard.mockResolvedValue(
       boardView({
         rows: [
@@ -359,7 +359,7 @@ describe("drafts once the board is adopted", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     expect(await screen.findByTestId("draft-on-board")).toHaveTextContent(
-      "It reaches the machine on the next pull",
+      "It reaches the machine on the next sync",
     );
     expect(screen.queryByTestId("put-on-board")).toBeNull();
   });
@@ -397,8 +397,8 @@ describe("before the board is adopted the page is as it was", () => {
     expect(screen.queryByTestId("put-on-board")).toBeNull();
     expect(screen.queryByTestId("board-list")).toBeNull();
     expect(screen.getByText("Staged for the machine")).toBeInTheDocument();
-    expect(screen.getByText("The mirror, as of the last pull.")).toBeInTheDocument();
-    expect(screen.queryByText(/on the next pull/)).toBeNull();
+    expect(screen.getByText("The mirror, as of the last sync.")).toBeInTheDocument();
+    expect(screen.queryByText(/on the next sync/)).toBeNull();
   });
 
   it("shows no push button while the board is still being read", async () => {
@@ -681,7 +681,7 @@ describe("a Set's draft on the board", () => {
       ),
     );
     expect(screen.getByTestId("draft-prediction-landing")).toHaveTextContent(
-      "It is recorded as v3 of Guji on the Niche when the next pull puts this draft on the machine.",
+      "It is recorded as v3 of Guji on the Niche when the next sync puts this draft on the machine.",
     );
     expect(screen.getByTestId("draft-prediction-landing").textContent).not.toMatch(/if you put/);
   });
@@ -731,7 +731,7 @@ describe("profiles on the machine that the board does not hold", () => {
     expect(rows[0]).toHaveTextContent("Made on the display");
     expect(rows[0]).toHaveTextContent("on the home screen");
     expect(screen.getByText("On the machine, not on the board")).toBeInTheDocument();
-    expect(screen.getByText(/a pull leaves them exactly as they are/)).toBeInTheDocument();
+    expect(screen.getByText(/a sync leaves them exactly as they are/)).toBeInTheDocument();
   });
 
   it("takes one onto the board with a click and sends nothing else", async () => {

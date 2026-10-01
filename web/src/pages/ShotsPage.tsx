@@ -43,7 +43,7 @@ import { lastFinishedShotRun, relativeTime } from "@/lib/sync";
  * headers sort; the reader picks which columns to see and the choice sticks in
  * their browser. The list is windowed, because a year of shots is a thousand
  * rows. It refreshes from the server's own events rather than a timer, so a
- * pull started in another tab shows up here.
+ * sync started in another tab shows up here.
  *
  * Three pieces of state, in three different places, on purpose. The filters
  * and the sort are in the query string, so a link carries them and the back
@@ -162,7 +162,7 @@ export function ShotsPage() {
   // own: "never pulled" next to a configured machine is the single most useful
   // sentence this page can say to somebody wondering where their shots are.
   const lastPull = lastFinishedShotRun(sync.data);
-  const pulled = lastPull ? `Last pull ${relativeTime(lastPull.finished_at)}` : "Never pulled";
+  const pulled = lastPull ? `Last sync ${relativeTime(lastPull.finished_at)}` : "Never synced";
   const subtitle = counts
     ? `${counts.total} archived · ${counts.samples.toLocaleString()} samples` +
       (counts.quarantined ? ` · ${counts.quarantined} quarantined` : "") +
@@ -280,7 +280,7 @@ export function ShotsPage() {
             !isDefaultFilters(filters)
               ? "Nothing in the archive matches these filters. Clear them to see everything."
               : sync.data?.configured
-                ? "Pull from the machine, or drop exported files here."
+                ? "Sync with the machine, or drop exported files here."
                 : "Set the machine's address in Settings, or drop exported files here."
           }
         />

@@ -12,9 +12,9 @@ import type { SyncRunRow, SyncStatusData } from "@/api/types";
 /**
  * The kinds a shot pass has been recorded under.
  *
- * `backfill` is what every pull writes today. `live` is in the list because
- * archives filled before pulls became a request still hold runs under it, and
- * "last pull" on such an archive should say when, not "never".
+ * `backfill` is what every sync writes today. `live` is in the list because
+ * archives filled before syncs became a request still hold runs under it, and
+ * "last sync" on such an archive should say when, not "never".
  */
 const SHOT_RUN_KINDS = ["backfill", "live", "shots"];
 
@@ -29,12 +29,12 @@ export function latestShotRun(status: SyncStatusData | undefined): SyncRunRow | 
 }
 
 /**
- * Whether a pass that pulls anything is in flight.
+ * Whether a pass that syncs anything is in flight.
  *
  * Not `status.running`, which is true for any kind — including the identity
  * read the engine does on every reconnect. That is one frame and one request,
  * it happens whenever the machine's Wi-Fi blinks, and it made the button flash
- * "Pulling…" for half a second at a time while doing nothing of the sort.
+ * "Syncing…" for half a second at a time while doing nothing of the sort.
  */
 export function isPulling(status: SyncStatusData | undefined): boolean {
   if (!status) return false;
@@ -51,7 +51,7 @@ export function lastFinishedShotRun(status: SyncStatusData | undefined): SyncRun
 }
 
 /**
- * "3 new shots, 1 updated" — what a finished pull is worth saying out loud.
+ * "3 new shots, 1 updated" — what a finished sync is worth saying out loud.
  *
  * Quarantined shots are counted as landed rather than left out: the bytes are
  * in the archive and the row is in the list, which is what the person who
@@ -64,10 +64,10 @@ export function pullSummary(run: SyncRunRow): string {
 
   // A failed run is not an empty one. A pass that stored eleven shots and then
   // hit three it could not fetch ends `error`, sometimes with no message at
-  // all — the per-shot failures are counted, not raised — and "The pull
+  // all — the per-shot failures are counted, not raised — and "The sync
   // failed" would be telling somebody nothing happened when most of it did.
   const detail = run.error ?? "The Sync page has the details.";
-  if (counts === null) return run.error ?? "The pull failed. The Sync page has the details.";
+  if (counts === null) return run.error ?? "The sync failed. The Sync page has the details.";
   const failed = run.errors > 0 ? `${run.errors} failed` : "some failed";
   return `${counts}, ${failed}. ${detail}`;
 }

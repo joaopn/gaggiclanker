@@ -10,7 +10,7 @@ import { queryKeys } from "@/lib/queryKeys";
  * telemetry stream beside it whose connection events refreshed this key the
  * instant a socket came up or went down; without it the poll is the whole
  * mechanism, so it runs every fifteen seconds rather than every thirty. That
- * is the delay between plugging the machine in and the pull button going live,
+ * is the delay between plugging the machine in and the sync button going live,
  * and it costs one small request a minute against the box's own database.
  */
 export function useDeviceStatus(): UseQueryResult<DeviceStatusData, Error> {

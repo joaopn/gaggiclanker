@@ -53,9 +53,9 @@ describe("latestShotRun", () => {
     expect(latestShotRun(runs)?.id).toBe(7);
   });
 
-  it("still finds a pass recorded before pulls became a request", () => {
+  it("still finds a pass recorded before syncs became a request", () => {
     // An archive filled by the old push-driven engine holds its shot passes
-    // under `live`. "Last pull" on such an archive should say when, not never.
+    // under `live`. "Last sync" on such an archive should say when, not never.
     expect(latestShotRun(status({ live: run({ id: 4, kind: "live" }) }))?.id).toBe(4);
   });
 
@@ -65,7 +65,7 @@ describe("latestShotRun", () => {
     expect(lastFinishedShotRun(inflight)).toBeUndefined();
   });
 
-  it("says nothing about an archive that has never been asked to pull", () => {
+  it("says nothing about an archive that has never been asked to sync", () => {
     expect(latestShotRun(undefined)).toBeUndefined();
     expect(lastFinishedShotRun(status({}))).toBeUndefined();
   });
@@ -82,7 +82,7 @@ describe("isPulling", () => {
   it("is false for an identity read", () => {
     // One frame and one request, on every reconnect — so whenever the
     // machine's Wi-Fi blinks. The ledger's own `running` is true for any kind,
-    // which made the button flash "Pulling…" while pulling nothing.
+    // which made the button flash "Syncing…" while pulling nothing.
     expect(isPulling(status({ identity: run({ kind: "identity", finished_at: null }) }))).toBe(
       false,
     );
@@ -113,7 +113,7 @@ describe("pullSummary", () => {
     expect(pullSummary(run({ shots_quarantined: 1 }))).toBe("1 new shot, 1 could not be parsed");
   });
 
-  it("repeats what the machine said when the pull failed", () => {
+  it("repeats what the machine said when the sync failed", () => {
     expect(pullSummary(run({ status: "error", error: "the machine stopped answering" }))).toBe(
       "the machine stopped answering",
     );
@@ -122,7 +122,7 @@ describe("pullSummary", () => {
   it("says what landed when a run failed part of the way through", () => {
     // A pass that stored three shots and then hit two it could not fetch ends
     // `error` — sometimes with no message at all, because the per-shot
-    // failures are counted rather than raised. "The pull failed" would be
+    // failures are counted rather than raised. "The sync failed" would be
     // telling somebody nothing happened when most of it did.
     expect(pullSummary(run({ status: "error", error: null, shots_inserted: 3, errors: 2 }))).toBe(
       "3 new shots, 2 failed. The Sync page has the details.",

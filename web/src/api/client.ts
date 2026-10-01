@@ -590,7 +590,7 @@ export async function pushProfileDraft(
 }
 
 /**
- * The profile board with each row's state on the machine and what the next pull would do.
+ * The profile board with each row's state on the machine and what the next sync would do.
  *
  * `live` reads the machine now (a list and a load per profile) and is for the preview the
  * switch shows; the default answers from the archive's last mirror and is what a page
@@ -600,7 +600,7 @@ export async function getProfileBoard(live = false): Promise<BoardView> {
   return fetchApi<BoardView>(`/profile-board${live ? "?live=true" : ""}`);
 }
 
-/** Put an approved draft on the board. Nothing is sent to the machine: the next pull does. */
+/** Put an approved draft on the board. Nothing is sent to the machine: the next sync does. */
 export async function putOnBoard(body: {
   draftId: number;
   setId?: number;
@@ -636,7 +636,7 @@ export async function deleteBoardRow(rowId: number): Promise<BoardRow> {
   return fetchApi<BoardRow>(`/profile-board/${rowId}`, { method: "DELETE" });
 }
 
-/** Let pulls write again after the machine looked reset. Sends nothing to the machine. */
+/** Let syncs write again after the machine looked reset. Sends nothing to the machine. */
 export async function resumeBoard(): Promise<{ resumed: boolean }> {
   return fetchApi<{ resumed: boolean }>("/profile-board/resume", { method: "POST" });
 }

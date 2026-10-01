@@ -13,7 +13,7 @@ import { SYNC_ANCHORS } from "@/pages/SyncPage";
 /**
  * Where an anchor on this page used to point, now that its cards live on the
  * Sync page. A bookmark to `/device#pull` or `#writes` lands on that section; the notes
- * and storage anchors, whose sections are gone, land on the pull.
+ * and storage anchors, whose sections are gone, land on the sync section.
  */
 const MOVED_ANCHORS: Record<string, string> = {
   "#sync": SYNC_ANCHORS.pull,
@@ -30,7 +30,7 @@ const MOVED_ANCHORS: Record<string, string> = {
  * `/api/device/status` carries the facts — configured, connected, identity.
  * There is no telemetry here: what the boiler is doing right now is on the
  * machine's own display and in its own web UI. Everything this box exchanges
- * with the machine — pulling, and the audit of what it wrote — is on the Sync
+ * with the machine — syncing, and the audit of what it wrote — is on the Sync
  * page, where a person starts it; this page
  * links there rather than carrying a second copy of any of it.
  */
@@ -68,7 +68,7 @@ export function DevicePage() {
         <EmptyState
           icon={Cpu}
           title="No machine configured"
-          description="Set `gaggimateHost` in Settings. The archive works without one — imported shots are shots like any other — but there is nothing to pull from."
+          description="Set `gaggimateHost` in Settings. The archive works without one — imported shots are shots like any other — but there is nothing to sync with."
         />
       </div>
     );
@@ -102,7 +102,7 @@ export function DevicePage() {
             <Fact label="State" value={device.data.connected ? "connected" : "not connected"} />
           </dl>
           <p className="mt-3 text-muted-foreground text-sm">
-            Pulling from the machine and the record of every write are on the{" "}
+            Syncing with the machine and the record of every write are on the{" "}
             <Link className="underline underline-offset-2" to="/sync">
               Sync page
             </Link>

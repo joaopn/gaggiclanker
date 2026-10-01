@@ -14,13 +14,13 @@ import { cn } from "@/lib/utils";
 /**
  * What turning the switch on allows, in the one sentence the confirmation shows.
  *
- * As plain a statement of what a pull does with the switch on as it can be: it makes
+ * As plain a statement of what a sync does with the switch on as it can be: it makes
  * the machine's profiles match the board. It names the boundary a person cares about
  * (a profile of theirs is never removed or overwritten) because that is the question
  * somebody turning this on is asking. Exported so a test pins the wording.
  */
 export const WRITES_ON_SENTENCE =
-  "Turn on writes? From then on every pull makes the machine's profiles match the board on the Profiles page: it pushes the app's profiles the machine does not have, removes the app's old copies and sets the home-screen stars. It never removes or overwrites a profile of yours.";
+  "Turn on writes? From then on every sync makes the machine's profiles match the board on the Profiles page: it pushes the app's profiles the machine does not have, removes the app's old copies and sets the home-screen stars. It never removes or overwrites a profile of yours.";
 
 /**
  * The top-bar switch for writing to the machine.
@@ -69,7 +69,7 @@ export function DeviceWritesSwitch() {
     onError: () => setPanel("error"),
     // Every reader of the switch, success or not: the settings pages read the
     // registry, the board and its preview carry `writes_enabled` and what the next
-    // pull would do, the Sync page and the write audit read the rest, and after a
+    // sync would do, the Sync page and the write audit read the rest, and after a
     // failure the server is the authority on what the switch is.
     onSettled: () => {
       void invalidateSettings(queryClient);
@@ -178,13 +178,13 @@ export function DeviceWritesSwitch() {
 }
 
 /**
- * What the next pull would do, read from the machine now, under the confirmation.
+ * What the next sync would do, read from the machine now, under the confirmation.
  *
  * Asked for only while the confirmation is on screen (it is the one read in the
  * app that goes to the machine for a person's answer), and always worded from the
- * server's own plan: before the board has been adopted the first pull writes nothing
+ * server's own plan: before the board has been adopted the first sync writes nothing
  * at all, so that is what it says; after, the counts and the list. A machine that
- * cannot be read says so and falls back to what the last pull saw.
+ * cannot be read says so and falls back to what the last sync saw.
  */
 function WritesPreview() {
   const board = useProfileBoard({ live: true });
@@ -192,14 +192,14 @@ function WritesPreview() {
   if (board.isPending) {
     return (
       <p className="text-muted-foreground text-xs" data-testid="writes-preview-loading">
-        Reading the machine to see what the next pull would do…
+        Reading the machine to see what the next sync would do…
       </p>
     );
   }
   if (board.isError || !board.data) {
     return (
       <p className="text-muted-foreground text-xs" data-testid="writes-preview">
-        The board could not be read just now, so what the next pull would do is not shown.
+        The board could not be read just now, so what the next sync would do is not shown.
       </p>
     );
   }
@@ -213,33 +213,33 @@ function WritesPreview() {
       {!fromMachine ? (
         <p className="text-status-warn-text" data-testid="writes-preview-stale">
           {view.machine_source === "mirror"
-            ? "The machine could not be read just now, so this is from the last pull."
+            ? "The machine could not be read just now, so this is from the last sync."
             : "The machine could not be read just now and nothing is known of its profiles yet."}
         </p>
       ) : null}
       {!view.adopted ? (
         <p data-testid="writes-preview-first">
-          The first pull takes the machine's profiles onto the board and writes nothing.
+          The first sync takes the machine's profiles onto the board and writes nothing.
           {counts.adopt > 0
             ? ` ${counts.adopt} ${counts.adopt === 1 ? "profile is" : "profiles are"} on the machine to take.`
             : ""}
         </p>
       ) : view.paused ? (
         <p data-testid="writes-preview-paused">
-          The machine looks reset, so pulls write nothing until you resume them on the Sync page.
+          The machine looks reset, so syncs write nothing until you resume them on the Sync page.
         </p>
       ) : actions.length === 0 && !fromMachine ? (
         <p data-testid="writes-preview-unknown">
-          Without a read of the machine there is no telling what the next pull would do.
+          Without a read of the machine there is no telling what the next sync would do.
         </p>
       ) : actions.length === 0 ? (
         <p data-testid="writes-preview-none">
-          The machine already matches the board: the next pull would change nothing.
+          The machine already matches the board: the next sync would change nothing.
         </p>
       ) : (
         <>
           <p data-testid="writes-preview-counts">
-            The next pull would{" "}
+            The next sync would{" "}
             {[
               counts.push > 0 &&
                 `push ${counts.push} ${counts.push === 1 ? "profile" : "profiles"}`,

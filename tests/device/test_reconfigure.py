@@ -510,7 +510,7 @@ async def test_a_pull_holds_off_a_connection_change(
     monkeypatch.setattr(machine, "fetch_index", held)
     assert (await client.post("/api/sync/run", json={"kind": "shots"})).status_code == 202
     # Asked for and not yet picked up is already a pull somebody is waiting for.
-    assert engine.busy() == "a pull"
+    assert engine.busy() == "a sync"
     await asyncio.wait_for(reached.wait(), 5.0)
 
     try:
@@ -520,8 +520,8 @@ async def test_a_pull_holds_off_a_connection_change(
         )
         assert response.status_code == 409, response.text
         body = response.json()["error"]
-        assert "a pull" in body["message"]
-        assert body["details"] == {"running": "a pull"}
+        assert "a sync" in body["message"]
+        assert body["details"] == {"running": "a sync"}
         after = (await client.get("/api/settings")).json()["data"]
         assert after["gaggimateHost"] == before
         assert after["modelDefault"]["source"] == "default"

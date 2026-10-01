@@ -39,7 +39,7 @@ const SetDetailPage = lazy(() =>
 
 /**
  * The sync engine's stream: a shot ingested, a shot quarantined, a profile
- * changed, a pull started or finished. The only stream the app subscribes to —
+ * changed, a sync started or finished. The only stream the app subscribes to —
  * the device's 2 Hz telemetry used to be a second one, and drawing the shot
  * that is happening now is the machine's own web UI's job.
  */

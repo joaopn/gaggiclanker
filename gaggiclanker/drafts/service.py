@@ -419,7 +419,7 @@ class ProfileDraftService:
     async def _refuse_once_on_the_board(self) -> None:
         """Once the board has been adopted, profiles reach the machine only through it.
 
-        A second path would race the pull: a staged push saves and replaces files a board
+        A second path would race the sync: a staged push saves and replaces files a board
         profile stands on, and a staged rollback removes the file the board's current version
         is on. Before adoption (writes never switched on, no board) the staged routes work as
         they always did.
@@ -427,7 +427,7 @@ class ProfileDraftService:
         if await self.board.adoption() is not None:
             raise Conflict(
                 "Profiles now go to the machine through the profile board: put the draft on "
-                "the board and pull. The staged push and rollback are off once the board "
+                "the board and sync. The staged push and rollback are off once the board "
                 "has been adopted."
             )
 

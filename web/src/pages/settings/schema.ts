@@ -173,7 +173,7 @@ export function sectionFor(key: string): RegistryPageId {
   // the connection settings would hide them.
   if (key.startsWith("profilePolicy")) return "safety";
   // `shots*` is what happens to a shot as it arrives from the machine (or an
-  // export of it), which is where somebody deciding how pulls behave looks.
+  // export of it), which is where somebody deciding how syncs behave looks.
   if (key.startsWith("device") || key.startsWith("gaggimate") || key.startsWith("shots"))
     return "machine";
   if (key.startsWith("auth")) return "auth";

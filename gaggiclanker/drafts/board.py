@@ -1,4 +1,4 @@
-"""The app's profile board, and the write phase of a pull that makes the machine match it.
+"""The app's profile board, and the write phase of a sync that makes the machine match it.
 
 Two halves with one rule between them.
 
@@ -7,18 +7,18 @@ turning a profile's home-screen star on or off and deleting a profile change row
 archive and nothing else; they work with the writes switch off, and with no machine at all.
 
 **The write phase is the one automatic write this app makes**, and it runs only when the
-`deviceWritesEnabled` switch is on, at the end of the profile pass of a pull, inside the sync
+`deviceWritesEnabled` switch is on, at the end of the profile pass of a sync, inside the sync
 engine's lock. It does not decide anything the plan has not (:mod:`.board_plan`) and it has
 no machine path of its own: every save is :func:`~gaggiclanker.drafts.machine.place`, every
 removal :func:`~gaggiclanker.drafts.machine.remove_if_ours`, so the audit, the write gate and
 the delete guards (an ``ok`` save of that id by this app, the app label, exactly the content
 recorded, no Set still brewing it) apply as they do to a person's push.
 
-What a pull does, in order:
+What a sync does, in order:
 
-1. **Adoption**, once, on the first pull with the switch on: every profile the machine holds
+1. **Adoption**, once, on the first sync with the switch on: every profile the machine holds
    becomes a board row exactly as it is (home screen = its star). Nothing is written, and the
-   pull ends there.
+   sync ends there.
 2. **Per live row**: push the row's current version when the machine holds none (schema and
    policy ran when the draft was made; the save-then-load round trip runs here); then remove
    the file it stood on before, when that file is the app's. A round trip that does not match
@@ -29,10 +29,10 @@ What a pull does, in order:
 4. **Home screen**: set each file's star to the row's flag, from a fresh read when anything was
    written above.
 
-A pull that stops halfway leaves every profile old or new: a push is a save then a removal, and
-a failure between them leaves both files on the machine, which the next pull finishes (the row
+A sync that stops halfway leaves every profile old or new: a push is a save then a removal, and
+a failure between them leaves both files on the machine, which the next sync finishes (the row
 still stands on the old file, and the new one is found by its content). Failures are values
-(events, the run's summary, an error count), never an exception out of the pull.
+(events, the run's summary, an error count), never an exception out of the sync.
 """
 
 from __future__ import annotations
@@ -138,7 +138,7 @@ class BoardRunSummary(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Profiles taken onto the board by the first pull with the switch on.
+    #: Profiles taken onto the board by the first sync with the switch on.
     adopted: list[BoardSummaryItem] = Field(default_factory=list)
     pushed: list[BoardSummaryItem] = Field(default_factory=list)
     #: Pushed over a copy somebody had edited on the machine.
@@ -174,7 +174,7 @@ class BoardMachineState(BaseModel):
 
 
 class BoardRowView(BaseModel):
-    """A board row, its machine state and what the next pull would do about it."""
+    """A board row, its machine state and what the next sync would do about it."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -194,7 +194,7 @@ class BoardLanding(BaseModel):
     #: The board row the draft would become the next version of; ``None`` for a new profile.
     row_id: int | None = None
     row_label: str | None = None
-    #: Whether that row already holds a newer draft (current, or waiting for a pull), so a
+    #: Whether that row already holds a newer draft (current, or waiting for a sync), so a
     #: put of this one would undo it.
     holds_newer_draft: bool = False
     #: A put that would make a new row while a live board profile has the same label: the
@@ -218,7 +218,7 @@ class DraftLanding(BaseModel):
 
 
 class BoardView(BaseModel):
-    """The board and the next pull's plan, which is what the Profiles page and the switch show."""
+    """The board and the next sync's plan, which is what the Profiles page and the switch show."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -232,9 +232,9 @@ class BoardView(BaseModel):
     #: Deleted profiles whose file the app still has to deal with.
     pending_removals: list[BoardRow] = Field(default_factory=list)
     actions: list[BoardAction] = Field(default_factory=list)
-    #: What is wrong with profiles the pull will not touch; see ``BoardPlan.reports``.
+    #: What is wrong with profiles the sync will not touch; see ``BoardPlan.reports``.
     reports: list[BoardAction] = Field(default_factory=list)
-    #: Why a pull would write nothing (the machine looks reset), else ``None``. A person
+    #: Why a sync would write nothing (the machine looks reset), else ``None``. A person
     #: resumes it with ``POST /api/profile-board/resume``.
     paused: str | None = None
     #: Whether the pause has been recorded (the board stays paused until resumed).
@@ -285,7 +285,7 @@ class BoardService:
     # ── reading ──────────────────────────────────────────────────────
 
     async def plan(self, machine: MachineState, *, host: str) -> BoardPlan:
-        """What the next pull would do. Reads the archive only; ``machine`` is already read."""
+        """What the next sync would do. Reads the archive only; ``machine`` is already read."""
         return await self.plans.plan(machine, host=host)
 
     async def view(self, machine: MachineState, *, source: str, host: str) -> BoardView:
@@ -487,10 +487,10 @@ class BoardService:
         return _only_app_row(by_version)
 
     async def resume(self) -> None:
-        """Let the next pull write again after it paused for a suspected machine reset.
+        """Let the next sync write again after it paused for a suspected machine reset.
 
         A person's decision, reached only from its route. It writes to the archive and sends
-        nothing to the machine; the next pull then pushes the board's app profiles.
+        nothing to the machine; the next sync then pushes the board's app profiles.
         """
         await self.board.resume()
 
@@ -501,7 +501,7 @@ class BoardService:
 
         One rule for the first adoption and for taking a single profile later: the app
         label, an ``ok`` save of that id on this host, and content equal to what that save
-        sent. Anything else is the person's profile, which a pull never pushes or removes.
+        sent. Anything else is the person's profile, which a sync never pushes or removes.
         """
         return label.rstrip().endswith(
             APP_PROFILE_SUFFIX.strip()
@@ -522,11 +522,11 @@ class BoardService:
         async with self.db.transaction():
             adoption = await self.board.adoption()
             if adoption is None:
-                raise Conflict("The board has not taken the machine's profiles yet; pull first.")
+                raise Conflict("The board has not taken the machine's profiles yet; sync first.")
             mirrored = await self.profiles.get_device_profile(device_profile_id)
             if mirrored is None or mirrored.deleted_at is not None:
                 raise NotFound(
-                    f"The machine has no profile {device_profile_id} as of the last pull"
+                    f"The machine has no profile {device_profile_id} as of the last sync"
                 )
             for row in await self.board.list_rows(include_deleted=True):
                 if row.device_profile_id == device_profile_id:
@@ -534,16 +534,16 @@ class BoardService:
                         "That profile is already on the board."
                         if row.deleted_at is None
                         else "That profile was deleted from the board and its file is still "
-                        "waiting to be dealt with by the next pull."
+                        "waiting to be dealt with by the next sync."
                     )
             version = await self.profiles.get_version(mirrored.current_version_id)
             if version is None:  # pragma: no cover - a foreign key guarantees it
                 raise NotFound(f"No profile version {mirrored.current_version_id}")
             if await self.board.find_live_app_by_version(version.id) is not None:
                 # A profile the app pushed already stands for exactly this content (a copy a
-                # pull has just put on the machine while the old one is still kept): a second
-                # row on it would be pushed a third copy by the next pull. A person's own
-                # identical duplicate is a different thing: the pull never pushes it, so it can
+                # sync has just put on the machine while the old one is still kept): a second
+                # row on it would be pushed a third copy by the next sync. A person's own
+                # identical duplicate is a different thing: the sync never pushes it, so it can
                 # be taken as theirs.
                 raise Conflict("A profile on the board already stands for this exact profile.")
             ours = await self._saved_by_the_app(
@@ -570,7 +570,7 @@ class BoardService:
         return updated
 
     async def delete_row(self, row_id: int) -> BoardRow:
-        """Tombstone a profile. The next pull removes its file if the app wrote it."""
+        """Tombstone a profile. The next sync removes its file if the app wrote it."""
         row = await self._live_row(row_id)
         updated = await self.board.update(
             row.id,
@@ -595,12 +595,12 @@ class BoardService:
     async def run(
         self, client: GaggimateClient, *, run_id: int, update: SyncRunUpdate
     ) -> bool | None:
-        """The pull's write phase. ``None`` (and nothing read or sent) with the switch off.
+        """The sync's write phase. ``None`` (and nothing read or sent) with the switch off.
 
         Otherwise whether it changed anything, with the summary left on ``update``.
 
         Checked before the machine is read for any writing purpose: with the switch off the
-        pull is a pull, and an audited "refused" row for something nobody attempted would only
+        sync is a sync, and an audited "refused" row for something nobody attempted would only
         be noise in the audit a person reads to see what was sent.
         """
         if not await self.settings.get("deviceWritesEnabled"):
@@ -643,7 +643,7 @@ class BoardService:
             await self._adopt(phase, computed)
             return
         if computed.paused:
-            # Nothing is pushed or removed, and the pause outlives this pull: a person
+            # Nothing is pushed or removed, and the pause outlives this sync: a person
             # resumes it, since a reset machine and a person who deleted every file by hand
             # look the same and only the person knows which it is.
             await self.board.pause(computed.paused)
@@ -698,7 +698,7 @@ class BoardService:
                 # `ok` save of that id on this host, the app label, and content equal to what
                 # that save sent. A later draft of it continues the row and replaces the copy.
                 # A file edited on the display since the save (or anything else) stays the
-                # person's, so the pull neither pushes nor removes it.
+                # person's, so the sync neither pushes nor removes it.
                 ours = await self._saved_by_the_app(
                     device_id, profile.label, version.content_hash, host=phase.host
                 )
@@ -779,7 +779,7 @@ class BoardService:
         )
 
     async def _report(self, phase: _Phase, action: BoardAction) -> None:
-        """Say what is wrong with a row the pull will not touch."""
+        """Say what is wrong with a row the sync will not touch."""
         item = BoardSummaryItem(
             row_id=action.row_id,
             label=action.label,
@@ -862,7 +862,7 @@ class BoardService:
                 await self.profiles.mark_one_deleted(placed.device_id)
             else:
                 # A copy that did not verify and cannot be taken off again: pushing the
-                # same version every pull would add one each time.
+                # same version every sync would add one each time.
                 await self.board.update(
                     plan.row.id, BoardRowPatch(failed_version_id=plan.version.id)
                 )
@@ -985,7 +985,7 @@ class BoardService:
             )
         else:
             # The machine could not be asked, or refused for a reason that may pass: the row
-            # keeps standing on the file and the next pull tries again.
+            # keeps standing on the file and the next sync tries again.
             await self._row_failed(phase, action, "remove", removal.reason, device_id=device_id)
         return removal
 
@@ -1274,7 +1274,7 @@ def _is_settled(removal: Removal) -> bool:
     """The row may let go of the file: it is gone, or will never be this app's to remove.
 
     A Set still brewing it, another board profile standing on it, or a machine that did not
-    answer are not final: the row keeps the file and the next pull asks again.
+    answer are not final: the row keeps the file and the next sync asks again.
     """
     return removal.removed or removal.gone or removal.reason in FINAL_REFUSALS
 

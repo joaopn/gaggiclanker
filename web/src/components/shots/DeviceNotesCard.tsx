@@ -7,13 +7,13 @@ import { RatingStars } from "@/components/shots/RatingStars";
  * The device's own notes, mirrored.
  *
  * Read-only wherever it is shown: this is what was typed on the machine, read
- * in by a pull. This box never writes a notes card back. Shared by the
+ * in by a sync. This box never writes a notes card back. Shared by the
  * shot page and the shots list's open row, so the two cannot show a different
  * card for the same shot.
  */
 export function DeviceNotesCard({
   notes,
-  description = "What was typed on the machine's own notes card for this shot, as of the last pull. Your judgement is kept here and never sent back to the machine.",
+  description = "What was typed on the machine's own notes card for this shot, as of the last sync. Your judgement is kept here and never sent back to the machine.",
   className,
 }: {
   notes: DeviceShotNotes;

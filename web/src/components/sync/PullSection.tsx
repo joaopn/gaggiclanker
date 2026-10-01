@@ -5,10 +5,10 @@ import { useSyncStatus } from "@/hooks/useArchive";
 import { formatTime } from "@/lib/shots";
 
 /**
- * Pull from the machine: the shots, profiles and notes the archive reads from it.
+ * Sync with the machine: the shots, profiles and notes the archive reads from it.
  *
  * The same `PullButton` the shots page carries, so the two cannot disagree about
- * whether a pull can start or what the last one did, with the ledger under it:
+ * whether a sync can start or what the last one did, with the ledger under it:
  * the last run of each pass and what the archive now holds.
  */
 export function PullSection() {
@@ -16,7 +16,7 @@ export function PullSection() {
 
   return (
     <SectionCard
-      title="Pull from the machine"
+      title="Sync with the machine"
       description="Read the machine's index, profiles and notes, and archive anything new. Nothing comes off the machine unless somebody asks, here or on the Shots page."
       actions={
         <>

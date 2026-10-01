@@ -25,11 +25,11 @@ import { formatDate } from "@/lib/shots";
 /**
  * Profiles, in two shapes.
  *
- * **Once the board is adopted** (the Writes switch has been on for a pull, which took the
+ * **Once the board is adopted** (the Writes switch has been on for a sync, which took the
  * machine's profiles onto the app's board) the page is built around that board: one card
  * per profile (`BoardList`) with where it stands on the machine in plain words, the
  * home-screen tick and Delete, then the drafts waiting for a person, each with "Put on the
- * board", then the versions. A pull is the only thing that writes a profile to the machine,
+ * board", then the versions. A sync is the only thing that writes a profile to the machine,
  * so there is no push or rollback button any more. **Before that** the page is what it
  * was: the mirror, the staged queue with its push and rollback, the versions.
  *
@@ -125,7 +125,7 @@ export function ProfilesPage() {
         title="Profiles"
         subtitle={
           adopted
-            ? "The profiles the app keeps on the machine. Change them here: they reach the machine on the next pull."
+            ? "The profiles the app keeps on the machine. Change them here: they reach the machine on the next sync."
             : "Mirrored from the machine. Each distinct version is kept, so a shot from March still resolves to what it was brewed with."
         }
         actions={
@@ -183,7 +183,7 @@ export function ProfilesPage() {
                 Writes are switched off
               </p>
               <p className="mt-1 text-status-warn-text text-xs">
-                The board keeps your changes, but a pull changes nothing on the machine until you
+                The board keeps your changes, but a sync changes nothing on the machine until you
                 turn on the Writes switch in the top bar.
               </p>
             </div>
@@ -195,7 +195,7 @@ export function ProfilesPage() {
             >
               <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
                 <AlertTriangle className="size-3.5" aria-hidden="true" />
-                Pulls are not writing to the machine
+                Syncs are not writing to the machine
               </p>
               <p className="mt-1 text-status-warn-text text-xs">
                 The machine looks reset, so nothing is pushed or removed until you say so.{" "}
@@ -211,7 +211,7 @@ export function ProfilesPage() {
             description={
               boardView.machine_source === "machine"
                 ? "Read from the machine just now."
-                : "As of the last pull. A pull makes the machine match this."
+                : "As of the last sync. A sync makes the machine match this."
             }
           >
             <BoardList view={boardView} versionName={versionHash} draftOf={draftById} />
@@ -250,7 +250,7 @@ export function ProfilesPage() {
       ) : profiles.data && profiles.data.items.length > 0 ? (
         <SectionCard
           title="On the machine"
-          description="The mirror, as of the last pull."
+          description="The mirror, as of the last sync."
           contentClassName="overflow-x-auto"
         >
           <table className="w-full border-collapse text-left text-sm">
@@ -304,7 +304,7 @@ export function ProfilesPage() {
         <EmptyState
           icon={SlidersHorizontal}
           title="No profiles mirrored yet"
-          description="The mirror is read on a pull, and whenever the machine reports that the selected profile changed."
+          description="The mirror is read on a sync, and whenever the machine reports that the selected profile changed."
         />
       )}
 
@@ -380,7 +380,7 @@ function StagedForTheMachine({
         title={adopted ? "Waiting for you" : "Staged for the machine"}
         description={
           adopted
-            ? "Approve a draft, then put it on the board. Profiles reach the machine on the next pull; nothing is ever selected for you."
+            ? "Approve a draft, then put it on the board. Profiles reach the machine on the next sync; nothing is ever selected for you."
             : "Every one is saved as a new profile with an [AI] suffix — nothing is ever overwritten, and nothing is ever selected for you."
         }
         actions={

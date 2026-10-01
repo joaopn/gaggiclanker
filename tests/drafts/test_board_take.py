@@ -127,7 +127,7 @@ async def test_before_the_board_is_adopted_there_is_nothing_to_take_onto(
     _, client = writes_on
     response = await take(client, str(fake_device.profiles[0]["id"]))
     assert response.status_code == 409
-    assert "pull first" in response.text
+    assert "sync first" in response.text
 
 
 async def test_a_deleted_row_whose_file_waits_to_be_dealt_with_is_refused(

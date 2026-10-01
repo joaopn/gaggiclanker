@@ -125,7 +125,7 @@ export const NAV_LINKS: NavItem[] = [
         shortcut: "g p",
         shortcutLabel: "g p",
       },
-      // The pull from the machine, which a person starts, and the record of
+      // The sync with the machine, which a person starts, and the record of
       // every write this box has made to it (only ever profiles). `g y`,
       // for sYnc: `g s` is Shots.
       { to: "/sync", label: "Sync", icon: ArrowLeftRight, shortcut: "g y", shortcutLabel: "g y" },

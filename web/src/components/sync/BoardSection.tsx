@@ -30,14 +30,14 @@ const SECTIONS: { key: Section; title: string }[] = [
 ];
 
 /**
- * What the last pull did to the machine's profiles, and the way back from a pause.
+ * What the last sync did to the machine's profiles, and the way back from a pause.
  *
- * With the Writes switch on, a pull makes the machine's profiles match the board; this
+ * With the Writes switch on, a sync makes the machine's profiles match the board; this
  * says what that came to (put on, removed, left and why, stars moved, failures) from the
  * run's own summary, and what the board still cannot fix by itself (a profile of yours
  * that was edited or is missing). When the machine looks reset, with none of the app's
- * profiles on it, the pull stops writing rather than push the whole board back; the
- * banner says so and Resume (after a confirmation) lets the next pull do it.
+ * profiles on it, the sync stops writing rather than push the whole board back; the
+ * banner says so and Resume (after a confirmation) lets the next sync do it.
  */
 export function BoardSection() {
   const sync = useSyncStatus();
@@ -83,8 +83,8 @@ export function BoardSection() {
       title="Profile board"
       description={
         run?.finished_at
-          ? `What the last pull did to the machine's profiles (${formatTime(run.finished_at)}).`
-          : "What a pull does to the machine's profiles."
+          ? `What the last sync did to the machine's profiles (${formatTime(run.finished_at)}).`
+          : "What a sync does to the machine's profiles."
       }
       actions={
         writesOn ? (
@@ -110,16 +110,16 @@ export function BoardSection() {
             >
               <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
                 <AlertTriangle className="size-3.5" aria-hidden="true" />
-                Pulls are not writing profiles to the machine
+                Syncs are not writing profiles to the machine
               </p>
               <p className="text-status-warn-text text-xs">
                 The machine looks reset: none of the profiles the app put on it is there any more,
-                so a pull writes nothing until you say it may. This stops a pull from refilling a
+                so a sync writes nothing until you say it may. This stops a sync from refilling a
                 machine somebody has just wiped without being asked.
               </p>
               {confirming ? (
                 <ConfirmStrip
-                  title="Let pulls write again?"
+                  title="Let syncs write again?"
                   confirmLabel="Resume"
                   confirmVariant="default"
                   testId="board-resume-confirm"
@@ -131,7 +131,7 @@ export function BoardSection() {
                     resume.mutate();
                   }}
                 >
-                  The next pull will push the app's profiles back onto the machine. Profiles of
+                  The next sync will push the app's profiles back onto the machine. Profiles of
                   yours are never pushed.
                 </ConfirmStrip>
               ) : null}
@@ -152,8 +152,8 @@ export function BoardSection() {
           {summary === null ? (
             <p className="text-muted-foreground text-sm" data-testid="board-summary-none">
               {writesOn
-                ? "The last pull made no change to the machine's profiles, or has not run since writes were turned on."
-                : "Writes are off, so a pull does not change the machine's profiles."}
+                ? "The last sync made no change to the machine's profiles, or has not run since writes were turned on."
+                : "Writes are off, so a sync does not change the machine's profiles."}
             </p>
           ) : (
             <BoardSummary summary={summary} />
@@ -192,8 +192,8 @@ function BoardSummary({ summary }: { summary: NonNullable<ReturnType<typeof boar
     return (
       <p className="text-muted-foreground text-sm" data-testid="board-summary-nothing">
         {summary.paused
-          ? "The last pull wrote nothing: the machine looked reset."
-          : "The last pull found the machine already matching the board."}
+          ? "The last sync wrote nothing: the machine looked reset."
+          : "The last sync found the machine already matching the board."}
       </p>
     );
   }

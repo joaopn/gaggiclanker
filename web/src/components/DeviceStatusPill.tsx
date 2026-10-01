@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * every page the one element that re-rendered twice a second — for numbers the
  * machine's own display is already showing to whoever is standing at it. What
  * is left is the question this box can answer better than the machine can: can
- * it reach it, which is what decides whether a pull will work.
+ * it reach it, which is what decides whether a sync will work.
  */
 export function DeviceStatusPill() {
   const health = useHealth();
@@ -54,7 +54,7 @@ export function DeviceStatusPill() {
   } else {
     state = "bad";
     label = "Machine offline";
-    detail = `No connection to ${device.data.host}. The archive still works; a pull cannot.`;
+    detail = `No connection to ${device.data.host}. The archive still works; a sync cannot.`;
   }
 
   return (

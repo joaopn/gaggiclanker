@@ -18,12 +18,12 @@ import { isPulling, latestShotRun, pullSummary } from "@/lib/sync";
  * clicked: can it work (is a machine configured and connected), is it working
  * right now, and what did it do last time. The first two come from
  * `/api/device/status` and the sync ledger; the third is a toast, because a
- * pull is something you ask for and then look away from.
+ * sync is something you ask for and then look away from.
  *
  * "What did this click do" is tracked by run id rather than by waiting on the
  * mutation: `POST /api/sync/run` answers 202 the moment the loops are woken,
  * and the run that follows is watched through the ledger, which the
- * `sync.progress` events keep fresh. A pull started in another tab therefore
+ * `sync.progress` events keep fresh. A sync started in another tab therefore
  * shows the spinner here too, and only the tab that asked gets the toast.
  *
  * The id to wait past is captured when the button is *pressed*, not when the
@@ -44,7 +44,7 @@ export function PullButton() {
 
   // The newest run id this tab has already accounted for. `null` means "not
   // waiting for anything", which is the state every tab starts in — including
-  // one opened while a pull it did not start is under way.
+  // one opened while a sync it did not start is under way.
   const [waitingAfter, setWaitingAfter] = useState<number | null>(null);
   const waiting = useRef(false);
 
@@ -81,9 +81,9 @@ export function PullButton() {
   const why = !configured
     ? "No machine is configured. Set its address in Settings."
     : !connected
-      ? "The machine is not reachable. The archive still works; a pull cannot."
+      ? "The machine is not reachable. The archive still works; a sync cannot."
       : running
-        ? "A pull is already running."
+        ? "A sync is already running."
         : "Read the machine's index and archive anything new.";
 
   const button = (
@@ -98,7 +98,7 @@ export function PullButton() {
       ) : (
         <Download className="size-3.5" aria-hidden="true" />
       )}
-      {running ? "Pulling…" : "Pull from machine"}
+      {running ? "Syncing…" : "Sync with machine"}
     </Button>
   );
 

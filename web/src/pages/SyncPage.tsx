@@ -18,12 +18,12 @@ export const SYNC_ANCHORS = {
 } as const;
 
 /**
- * The pull from the machine, and the audit of what this box has written to it.
+ * The sync from the machine, and the audit of what this box has written to it.
  *
  * The rule the page makes visible: the only thing this box ever writes to the
- * machine is a profile, and only a pull does it, with the Writes switch on, by
+ * machine is a profile, and only a sync does it, with the Writes switch on, by
  * making the machine match the board on the Profiles page through every safety
- * layer. The page shows what the last pull did about that, lets a person resume
+ * layer. The page shows what the last sync did about that, lets a person resume
  * a board that paused because the machine looked reset, and lists the audit.
  */
 export function SyncPage() {
@@ -51,8 +51,8 @@ export function SyncPage() {
         }
       />
       <p className="text-muted-foreground text-sm">
-        Shots, profiles and notes are read from the machine when you pull. The only thing this box
-        ever writes to it is a profile: with writes on, a pull also makes the machine's profiles
+        Shots, profiles and notes are read from the machine when you sync. The only thing this box
+        ever writes to it is a profile: with writes on, a sync also makes the machine's profiles
         match the board on the Profiles page.
       </p>
 

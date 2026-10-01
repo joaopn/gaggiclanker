@@ -1,8 +1,8 @@
-"""What the next pull would do to the machine, worked out from the board and one read of it.
+"""What the next sync would do to the machine, worked out from the board and one read of it.
 
 Reads only. The write phase (:mod:`gaggiclanker.drafts.board`) executes exactly what this
 module computes, and the board route serves the same list as the preview, so what a person
-is shown and what a pull does cannot be two implementations.
+is shown and what a sync does cannot be two implementations.
 
 The plan is a pure function of its inputs: the board rows (in id order), the stored versions
 they name, the machine as :func:`~gaggiclanker.drafts.machine.read_machine` returned it, and
@@ -10,7 +10,7 @@ facts the archive answers (did this app save that id, which Set still brews it).
 inputs give the same list in the same order: rows by id, live rows before deleted ones, the
 adoption list by device id.
 
-**A pull pushes only the app's own versions.** A row whose current version came from an
+**A sync pushes only the app's own versions.** A row whose current version came from an
 approved draft (``origin = 'draft'``) is pushed, replaced and removed. A row adopted from the
 machine is a profile the person made: it is shown, its home-screen flag is applied while its
 file exists, and when its file is missing or was changed the plan reports that and does
@@ -18,7 +18,7 @@ nothing else. Nothing that was never through the safety policy is written.
 
 **What counts as the machine "holding" a profile**: a file with exactly the row's current
 canonical content, under any id, that no other board row stands on (a deleted row's file is
-still standing until the pull has dealt with it) and no earlier row of this same plan took.
+still standing until the sync has dealt with it) and no earlier row of this same plan took.
 
 **Why an app row and the machine can differ, and what each means**:
 
@@ -37,7 +37,7 @@ facts the guards in :func:`~gaggiclanker.drafts.machine.remove_if_ours` read aga
 loads, before any delete; those guards have the last word.
 
 **A machine that looks reset pauses the phase**: when the app's profiles were on the machine
-at the last pull and none of their files is there now, nothing is pushed or removed until a
+at the last sync and none of their files is there now, nothing is pushed or removed until a
 person resumes it.
 """
 
@@ -76,17 +76,17 @@ NO_SUCCESSOR = "selected on the machine and no other board profile is there to s
 #: Why a file stays while another live board profile stands on it.
 ANOTHER_ROW = "another board profile stands on it"
 
-#: What the run records when a pull finds the machine looks reset.
+#: What the run records when a sync finds the machine looks reset.
 RESET_REASON = "the machine looks reset (none of the app's profiles is on it); nothing written"
 
 #: Refusals that will not change by waiting, so a row lets go of the file. Anything else
 #: (a Set still brewing it, nothing to select instead, a machine that did not answer) is
-#: asked again on the next pull.
+#: asked again on the next sync.
 FINAL_REFUSALS = (NOT_OURS, CHANGED_SINCE)
 
 
 class BoardAction(BaseModel):
-    """One thing the next pull would do (or, for ``leave`` and ``report``, would not)."""
+    """One thing the next sync would do (or, for ``leave`` and ``report``, would not)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -115,9 +115,9 @@ class BoardPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     adopted: bool
-    #: Why a pull would write nothing at all (paused after a suspected reset), else ``None``.
+    #: Why a sync would write nothing at all (paused after a suspected reset), else ``None``.
     paused: str | None = None
-    #: What is wrong with a profile the pull will not touch (a profile you made that is
+    #: What is wrong with a profile the sync will not touch (a profile you made that is
     #: missing or changed, a file that could not be read, a version that did not verify).
     #: Not writes, so a machine in sync has no actions even while a report stands.
     reports: list[BoardAction]
@@ -237,7 +237,7 @@ class PlanBuilder:
             return versions[version_id]
 
         hashes = {device_id: profile_content_hash(p) for device_id, p in machine.profiles.items()}
-        # Every file a row stands on is spoken for, deleted rows' included: the pull has not
+        # Every file a row stands on is spoken for, deleted rows' included: the sync has not
         # removed those yet, and a live row taking one would have it removed under it.
         claimed = {row.device_profile_id: row.id for row in rows if row.device_profile_id}
         live_claims: dict[str, set[int]] = {}
@@ -266,7 +266,7 @@ class PlanBuilder:
             edited = old is not None and hashes[old_id or ""] != recorded_hash
 
             if held is None and row.origin != "draft":
-                # A profile the person made: never pushed by a pull. Said, and left.
+                # A profile the person made: never pushed by a sync. Said, and left.
                 plan.report = _report(
                     row,
                     current.label,

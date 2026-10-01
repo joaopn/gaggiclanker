@@ -989,8 +989,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The profile board, its state on the machine and what the next pull would do
-         * @description Read-only. The plan is the one a pull would execute.
+         * The profile board, its state on the machine and what the next sync would do
+         * @description Read-only. The plan is the one a sync would execute.
          *
          *     By default it is built from the archive's last mirror of the machine, which costs no
          *     request to it and is what a page that polls should use. ``?live=true`` reads the machine
@@ -1001,7 +1001,7 @@ export interface paths {
         put?: never;
         /**
          * Put an approved draft on the board
-         * @description The next pull puts it on the machine. Nothing is sent to the machine now.
+         * @description The next sync puts it on the machine. Nothing is sent to the machine now.
          *
          *     Refused (409) for a draft that is not approved, one already on the board, and for a Set
          *     that could no longer be given a version, which a push for the Set refuses the same way.
@@ -1025,7 +1025,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a profile from the board
-         * @description A tombstone. The next pull removes the machine's copy only when the app wrote it.
+         * @description A tombstone. The next sync removes the machine's copy only when the app wrote it.
          */
         delete: operations["delete_from_board_api_profile_board__row_id__delete"];
         options?: never;
@@ -1060,8 +1060,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Let pulls write again after the machine looked reset
-         * @description Person-only. Clears the pause; the next pull then pushes the board's app profiles.
+         * Let syncs write again after the machine looked reset
+         * @description Person-only. Clears the pause; the next sync then pushes the board's app profiles.
          *
          *     Sends nothing to the machine. There is no chat or MCP tool for it.
          */
@@ -1807,7 +1807,7 @@ export interface paths {
          *     A patch touching the machine's connection settings applies them live: the
          *     connection is rebuilt from the new effective values, with no restart. If
          *     that would move the connection while something is using the machine — a
-         *     profile push or rollback, a pull — the whole patch is a
+         *     profile push or rollback, a sync — the whole patch is a
          *     409 naming it and nothing is stored. Validation comes first, so a bad value
          *     is still a 400 whatever is running.
          *
@@ -3096,7 +3096,7 @@ export interface components {
         };
         /**
          * BoardAction
-         * @description One thing the next pull would do (or, for ``leave`` and ``report``, would not).
+         * @description One thing the next sync would do (or, for ``leave`` and ``report``, would not).
          */
         BoardAction: {
             /**
@@ -3209,7 +3209,7 @@ export interface components {
         };
         /**
          * BoardRowView
-         * @description A board row, its machine state and what the next pull would do about it.
+         * @description A board row, its machine state and what the next sync would do about it.
          */
         BoardRowView: {
             machine: components["schemas"]["BoardMachineState"];
@@ -3226,7 +3226,7 @@ export interface components {
         };
         /**
          * BoardView
-         * @description The board and the next pull's plan, which is what the Profiles page and the switch show.
+         * @description The board and the next sync's plan, which is what the Profiles page and the switch show.
          */
         BoardView: {
             /** Actions */

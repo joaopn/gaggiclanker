@@ -33,7 +33,7 @@ const {
   getPrompts: vi.fn(),
   getShotInformation: vi.fn(),
 }));
-// Partial: the page pulls ApiClientError in through useQueryErrorToast, and a
+// Partial: the page syncs ApiClientError in through useQueryErrorToast, and a
 // factory that enumerates exports would have to be edited every time the client
 // grows one.
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -70,7 +70,7 @@ function settingsFixture(): SettingsMap {
       default: true,
       override: null,
       source: "default",
-      description: "Hold the WebSocket so a pull can reach the machine.",
+      description: "Hold the WebSocket so a sync can reach the machine.",
     },
     deviceWritesEnabled: {
       key: "deviceWritesEnabled",

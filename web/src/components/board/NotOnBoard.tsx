@@ -8,7 +8,7 @@ import { useTakeOntoBoard } from "@/hooks/useBoard";
 
 /**
  * Profiles the machine holds that the board does not: made on its display (or by another
- * tool) after the board took the machine's profiles. A pull leaves them alone; taking one
+ * tool) after the board took the machine's profiles. A sync leaves them alone; taking one
  * onto the board makes it one of the person's own, which the app lists and follows the
  * home-screen star of but never pushes or removes. It sends nothing to the machine.
  */
@@ -30,7 +30,7 @@ export function NotOnBoard({ profiles }: { profiles: DeviceProfileSummary[] }) {
   return (
     <SectionCard
       title="On the machine, not on the board"
-      description="The machine has these and the board does not list them, so a pull leaves them exactly as they are. Taking one onto the board lists it there and follows its home-screen star. A profile that came from you stays yours and is never pushed or removed; one this app saved itself is treated as the app's, as when the board first took the machine's profiles."
+      description="The machine has these and the board does not list them, so a sync leaves them exactly as they are. Taking one onto the board lists it there and follows its home-screen star. A profile that came from you stays yours and is never pushed or removed; one this app saved itself is treated as the app's, as when the board first took the machine's profiles."
     >
       <ul className="space-y-2" data-testid="not-on-board">
         {profiles.map((profile) => (

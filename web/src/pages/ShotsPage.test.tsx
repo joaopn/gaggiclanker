@@ -429,14 +429,14 @@ describe("ShotsPage", () => {
     expect(screen.getByTestId("shots-dropzone")).toBeInTheDocument();
   });
 
-  it("says the archive has never been pulled into", async () => {
+  it("says the archive has never been synced", async () => {
     // Nothing fills the archive on its own, so "never pulled" next to a
     // configured machine is the sentence that answers "where are my shots".
     getShots.mockResolvedValue(listData([shot()]));
 
     renderWithQueryClient(<ShotsPage />);
 
-    expect(await screen.findByText(/Never pulled/)).toBeInTheDocument();
+    expect(await screen.findByText(/Never synced/)).toBeInTheDocument();
   });
 
   it("fetches a sparkline per row, thinned, once the Curve column is on", async () => {
@@ -2216,8 +2216,8 @@ describe("ShotsPage row editing", () => {
   });
 });
 
-describe("ShotsPage pull button", () => {
-  it("pulls, and says what landed when the run it started finishes", async () => {
+describe("ShotsPage sync button", () => {
+  it("syncs, and says what landed when the run it started finishes", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
     getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
@@ -2240,7 +2240,7 @@ describe("ShotsPage pull button", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("3 new shots, 1 updated"));
   });
 
-  it("says nothing new when a pull found nothing", async () => {
+  it("says nothing new when a sync found nothing", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
     getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
@@ -2262,7 +2262,7 @@ describe("ShotsPage pull button", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Nothing new"));
   });
 
-  it("reports a failed pull with what the machine said", async () => {
+  it("reports a failed sync with what the machine said", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
     getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
@@ -2292,10 +2292,10 @@ describe("ShotsPage pull button", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("the machine stopped answering"));
   });
 
-  it("says what landed when a pull failed part of the way through", async () => {
+  it("says what landed when a sync failed part of the way through", async () => {
     // The common shape of a failure: eleven shots stored, three the machine
     // would not serve, and no message at all — the per-shot failures are
-    // counted, not raised. Saying "the pull failed" would be wrong about the
+    // counted, not raised. Saying "the sync failed" would be wrong about the
     // eleven.
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
@@ -2375,10 +2375,10 @@ describe("ShotsPage pull button", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 new shots, 1 updated"));
   });
 
-  it("does not call an identity read a pull", async () => {
+  it("does not call an identity read a sync", async () => {
     // The engine reads identity on every reconnect — one frame and one
     // request, whenever the machine's Wi-Fi blinks. `running` on the ledger is
-    // true for any kind, so the button used to flash "Pulling…" and go dead
+    // true for any kind, so the button used to flash "Syncing…" and go dead
     // for half a second at a time while nothing was being pulled.
     getShots.mockResolvedValue(listData([shot()]));
     getSyncStatus.mockResolvedValue(
@@ -2394,7 +2394,7 @@ describe("ShotsPage pull button", () => {
     renderWithQueryClient(<ShotsPage />);
     await listed();
 
-    expect(screen.queryByText("Pulling…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Syncing…")).not.toBeInTheDocument();
     expect(screen.getByTestId("pull-button")).toBeEnabled();
   });
 
@@ -2428,7 +2428,7 @@ describe("ShotsPage pull button", () => {
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeDisabled());
   });
 
-  it("shows a pull that is already running, whoever started it", async () => {
+  it("shows a sync that is already running, whoever started it", async () => {
     getShots.mockResolvedValue(listData([shot()]));
     getSyncStatus.mockResolvedValue(
       statusData({ running: true, last_runs: { backfill: shotRun({ finished_at: null }) } }),
@@ -2436,17 +2436,17 @@ describe("ShotsPage pull button", () => {
 
     renderWithQueryClient(<ShotsPage />);
 
-    expect(await screen.findByText("Pulling…")).toBeInTheDocument();
+    expect(await screen.findByText("Syncing…")).toBeInTheDocument();
     expect(screen.getByTestId("pull-button")).toBeDisabled();
   });
 
-  it("says when the archive was last pulled into", async () => {
+  it("says when the archive was last synced", async () => {
     getShots.mockResolvedValue(listData([shot()]));
     getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun() } }));
 
     renderWithQueryClient(<ShotsPage />);
 
-    expect(await screen.findByText(/Last pull/)).toBeInTheDocument();
+    expect(await screen.findByText(/Last sync/)).toBeInTheDocument();
   });
 });
 

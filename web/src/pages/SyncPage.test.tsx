@@ -96,14 +96,14 @@ beforeEach(() => {
 });
 
 describe("SyncPage", () => {
-  it("holds the pull and the write audit, in order, each with its anchor", async () => {
+  it("holds the sync and the write audit, in order, each with its anchor", async () => {
     const { container } = renderWithQueryClient(<SyncPage />);
 
     await screen.findByText(/120 shots/);
     const headings = screen
-      .getAllByText(/^(Pull from the machine|Recent writes)$/)
+      .getAllByText(/^(Sync with the machine|Recent writes)$/)
       .map((node) => node.textContent);
-    expect(headings).toEqual(["Pull from the machine", "Recent writes"]);
+    expect(headings).toEqual(["Sync with the machine", "Recent writes"]);
     for (const anchor of ["pull", "writes"]) {
       expect(container.querySelector(`#${anchor}`)).not.toBeNull();
     }
@@ -164,7 +164,7 @@ describe("SyncPage", () => {
     expect(await screen.findByText(/503 during an OTA update/)).toBeInTheDocument();
   });
 
-  it("pulls from the machine with the shots page's own button", async () => {
+  it("syncs from the machine with the shots page's own button", async () => {
     const user = setupUser();
     renderWithQueryClient(<SyncPage />);
     await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
