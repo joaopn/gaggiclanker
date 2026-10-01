@@ -14,7 +14,8 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **Changed: writes to the machine are switched on and off from the top bar.**
   The switch sits beside the machine status on every page and says **Writes on**
-  or **Writes off** (just **On** / **Off** on a narrow window). Off is the
+  or **Writes off** (just **on** / **off** on a tablet, and only an icon on a
+  phone, where the brand name in the header gives way too). Off is the
   default and turning it off is immediate; turning it on asks first and says what
   it allows today: pushing a profile to the machine, or rolling one back, from
   the Profiles page. Nothing is written on its own. A change the server refuses
@@ -1092,7 +1093,7 @@ see the port change below.
 Two are refused rather than ignored, and the container exits naming them: any
 variable that used to carry a credential (see *Credentials leave the environment*
 below) and `GAGGICLANKER_DEVICE_WRITES_ENABLED`, which used to open the only path
-from this box to the machine. Turn writes on under Settings → Machine access instead.
+from this box to the machine. Turn writes on with the **Writes** switch in the top bar instead.
 Silently ignoring either would leave a box less protected than its owner
 believes. An empty value counts as unset in both cases, so an old compose file
 passing `${GAGGICLANKER_DEVICE_WRITES_ENABLED:-}` through still starts.
@@ -1187,7 +1188,7 @@ and no setting adds one.
 Removed settings: `mcpDeviceWrites`, `deviceCleanupAuto` and
 `notesWritebackEnabled` (and their `GAGGICLANKER_MCP_DEVICE_WRITES`,
 `GAGGICLANKER_DEVICE_CLEANUP_AUTO` and `GAGGICLANKER_NOTES_WRITEBACK_ENABLED`
-variables). **Device writes enabled** is the one switch in front of every write;
+variables). The **Writes** switch in the top bar is the one switch in front of every write;
 `deviceCleanupMode` and its two numbers now shape the plan the Sync page proposes,
 and `notesWritebackFields` picks what a send writes. Stored values for the removed
 settings are deleted at upgrade (migration `0018`), and a boot with one of the
