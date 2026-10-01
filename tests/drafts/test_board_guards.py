@@ -399,7 +399,7 @@ async def test_a_draft_put_on_the_profile_during_a_pull_keeps_its_pending_record
     await app_row(app, client, fake, provider, 8)
     await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
     newer = await draft_of(app, client, provider, APP_LABEL, 6)
-    await approve(client, newer)
+    await approve(app, newer)
 
     async def place_then_put_newer(*args: Any, **kwargs: Any) -> Any:
         placed = await real_place(*args, **kwargs)
@@ -655,7 +655,7 @@ async def test_once_the_board_is_adopted_the_staged_routes_refuse_every_draft(
     assert rolled.status_code == 409 and "profile board" in error(rolled)["message"]
     # And a push of a draft made from a board file would replace that file behind the board.
     fresh = await draft_of(app, client, provider, APP_LABEL, 5)
-    await approve(client, fresh)
+    await approve(app, fresh)
     pushed = await client.post(f"/api/profile-drafts/{fresh['id']}/push", json={})
     assert pushed.status_code == 409 and "profile board" in error(pushed)["message"]
 
@@ -714,9 +714,9 @@ async def test_a_profile_the_person_made_stays_theirs_even_when_it_ends_in_the_a
     # person's own profile is never continued, replaced or doubled.
     set_id = await make_set_on(client, "OnMine", mine_row["row"]["current_version_id"])
     plain = await draft_of(app, client, provider, APP_LABEL, 7)
-    await approve(client, plain)
+    await approve(app, plain)
     for_set = await draft_of(app, client, provider, APP_LABEL, 6)
-    await approve(client, for_set)
+    await approve(app, for_set)
     for body in ({"draft_id": plain["id"]}, {"draft_id": for_set["id"], "set_id": set_id}):
         refused = await client.post("/api/profile-board", json=body)
         assert refused.status_code == 409, refused.text
@@ -975,7 +975,7 @@ async def _approved_draft(
     app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider
 ) -> dict[str, Any]:
     draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await approve(client, draft)
+    await approve(app, draft)
     return draft
 
 
@@ -1006,7 +1006,7 @@ async def test_a_row_revived_between_the_plan_and_its_removal_keeps_its_file(
             )
         )
     )
-    await approve(client, draft)
+    await approve(app, draft)
     real_apply = board_module.BoardService._apply_deleted
     revived: list[int] = []
 
@@ -1107,7 +1107,7 @@ async def test_two_puts_of_one_draft_at_once_make_one_row_and_one_copy_on_the_ma
 ) -> None:
     app, client, fake = adopted
     draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await approve(client, draft)
+    await approve(app, draft)
 
     results = await asyncio.gather(
         app.state.board.put_draft(draft["id"]),
@@ -1130,7 +1130,7 @@ async def test_two_posts_of_one_draft_at_once_answer_one_created_and_one_conflic
 ) -> None:
     app, client, fake = adopted
     draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await approve(client, draft)
+    await approve(app, draft)
 
     responses = await asyncio.gather(
         client.post("/api/profile-board", json={"draft_id": draft["id"]}),

@@ -347,13 +347,18 @@ class BoardService:
         )
 
     async def _landings(self) -> list[DraftLanding]:
-        """Where each waiting approved draft would land, by the code a put runs.
+        """Where each waiting draft (drafted or approved) would land, by the code a put runs.
 
         The same ``_destination`` ``put_draft`` calls, never a second implementation, so the
         page cannot offer a put the server would place somewhere else or refuse.
         """
         found: list[DraftLanding] = []
-        for draft in await self.drafts.list_drafts(status="approved", limit=200):
+        waiting = [
+            draft
+            for draft in await self.drafts.list_drafts(open_only=True, limit=200)
+            if draft.status in ("draft", "approved")
+        ]
+        for draft in waiting:
             if draft.draft_version_id is None:
                 continue
             version = await self.profiles.get_version(draft.draft_version_id)
@@ -440,33 +445,48 @@ class BoardService:
     # ── editing the board (never the machine) ────────────────────────
 
     async def put_draft(
-        self, draft_id: int, *, set_id: int | None = None, major: bool | None = None
+        self,
+        draft_id: int,
+        *,
+        set_id: int | None = None,
+        major: bool | None = None,
+        acknowledge_stop_changes: bool = False,
     ) -> BoardRow:
-        """Make an approved draft the profile's next current version, or a new profile.
+        """Make a draft the profile's next current version, or a new profile. One action.
 
-        The profile it is a new version of is found by lineage, the rule a push uses to pick
-        what it replaces: for a draft recorded on a Set, the board profile standing for the
-        Set's current version; otherwise the profile the draft was made from, and only when
-        the label is unchanged (the draft keeps its base's label, so a renamed or forked draft
-        is a new profile). A draft made from a profile the person wrote themselves carries
-        the app label and so lands beside it, as a new row.
+        Approving a proposal and putting it on the board are the same click: a drafted draft
+        is approved here, in the same transaction as the row it makes, and a draft that moves
+        a stop condition (the pump stops at another volume or weight, which changes how much
+        coffee ends up in the cup) is refused until the person says they know
+        (``acknowledge_stop_changes``). The list acknowledged is the one stored on the draft,
+        which is the list the card rendered. A draft approved before this existed is put as it
+        is, its acknowledgement already on record.
+
+        The profile it is a new version of is found by lineage: for a draft recorded on a Set,
+        the board profile standing for the Set's current version; otherwise the profile the
+        draft was made from, and only when the label is unchanged (the draft keeps its base's
+        label, so a renamed or forked draft is a new profile). A draft made from a profile the
+        person wrote themselves carries the app label and so lands beside it, as a new row,
+        unless the board already has a profile with that label, which refuses it.
         """
         # Every check and the write in one transaction: two puts of the same draft (a
-        # double click) are serialised, and the second finds the first one's row.
+        # double click) are serialised, and the second finds the first's row.
         async with self.db.transaction():
             draft = await self.drafts.get(draft_id)
             if draft is None:
                 raise NotFound(f"No profile draft {draft_id}")
-            if draft.status != "approved":
+            if draft.status not in ("draft", "approved"):
+                raise Conflict(f"A {draft.status} draft cannot go on the board.")
+            changes = draft.stop_condition_changes or []
+            if changes and not (draft.acknowledged_stop_changes or acknowledge_stop_changes):
                 raise Conflict(
-                    f"A {draft.status} draft cannot go on the board; approve it first."
-                    if draft.status == "draft"
-                    else f"A {draft.status} draft cannot go on the board."
-                )
-            if (draft.stop_condition_changes or []) and not draft.acknowledged_stop_changes:
-                raise Conflict(
-                    "This draft's stop conditions were never acknowledged. Approve it again with "
-                    "acknowledge_stop_changes."
+                    "This draft changes when the machine stops pumping, which changes how much "
+                    "coffee ends up in the cup. Put it on the board again with "
+                    "acknowledge_stop_changes to confirm you meant that.",
+                    details={
+                        "field": "acknowledge_stop_changes",
+                        "stop_condition_changes": changes,
+                    },
                 )
             if draft.draft_version_id is None:
                 raise Conflict("That draft has no document to put on the board")
@@ -484,6 +504,10 @@ class BoardService:
                     details={"reason": "duplicate_label"},
                 )
             row = dest.row
+            if draft.status == "draft":
+                await self.drafts.set_status(
+                    draft.id, "approved", acknowledged=bool(changes and acknowledge_stop_changes)
+                )
             pending = BoardRowPatch(
                 pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
             )

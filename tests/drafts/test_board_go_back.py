@@ -329,7 +329,7 @@ async def test_a_draft_that_is_approved_but_not_put_is_left_alone_by_going_back(
     app, client, fake = adopted
     v1, _, _ = await two_versions(app, client, fake, provider)
     bystander = await draft_of(app, client, provider, BASE_LABEL, 5)
-    await approve(client, bystander)
+    await approve(app, bystander)
 
     await go_back(client, v1["id"])
     await pull(app)

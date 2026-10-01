@@ -81,6 +81,9 @@ export function DraftCard({
   landing?: DraftLanding;
 }) {
   const onBoard = boardRow !== null;
+  // With the board adopted a draft that has not been put is put in one action (which also
+  // approves it): a drafted one or one approved before that was so.
+  const waiting = adopted && !onBoard && (draft.status === "draft" || draft.status === "approved");
   // A put the server would refuse is not offered: it would undo a newer version, the board
   // already has a profile with the label it would carry, or its exact document is there.
   const alreadyOnBoard = landing?.already_on_board_label ?? null;
@@ -102,7 +105,9 @@ export function DraftCard({
   const putOnBoard = (body: { draftId: number; setId?: number; major?: boolean }) => {
     if (putting.current) return;
     putting.current = true;
-    put.mutate(body, {
+    // Putting a draft on the board approves it, so the stop-condition acknowledgement the
+    // approval needed is sent with the put.
+    put.mutate(acknowledged ? { ...body, acknowledgeStopChanges: true } : body, {
       onSettled: () => {
         putting.current = false;
       },
@@ -218,6 +223,25 @@ export function DraftCard({
 
       {stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
+      {needsAcknowledgement && draft.status === "draft" ? (
+        <label
+          className="mt-3 flex items-start gap-2 text-sm"
+          htmlFor={acknowledgeId}
+          data-testid="acknowledge-stop-changes"
+        >
+          <input
+            id={acknowledgeId}
+            type="checkbox"
+            className="mt-1 size-4"
+            checked={acknowledged}
+            onChange={(event) => setAcknowledged(event.target.checked)}
+          />
+          <span>
+            I understand this changes how much coffee ends up in the cup, not just how it is pulled.
+          </span>
+        </label>
+      ) : null}
+
       {!draft.base_is_current && draft.status !== "pushed" && draft.status !== "discarded" ? (
         <div
           className="mt-3 rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
@@ -299,28 +323,16 @@ export function DraftCard({
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {draft.status === "draft" ? (
-          <>
-            <Button
-              size="sm"
-              disabled={busy || (needsAcknowledgement && !acknowledged)}
-              data-testid="approve-draft"
-              onClick={() => approve.mutate({ id: draft.id, acknowledgeStopChanges: acknowledged })}
-            >
-              <Check className="size-3.5" aria-hidden="true" />
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              data-testid="discard-draft"
-              onClick={() => discard.mutate(draft.id)}
-            >
-              <Trash2 className="size-3.5" aria-hidden="true" />
-              Discard
-            </Button>
-          </>
+        {draft.status === "draft" && !adopted ? (
+          <Button
+            size="sm"
+            disabled={busy || (needsAcknowledgement && !acknowledged)}
+            data-testid="approve-draft"
+            onClick={() => approve.mutate({ id: draft.id, acknowledgeStopChanges: acknowledged })}
+          >
+            <Check className="size-3.5" aria-hidden="true" />
+            Approve
+          </Button>
         ) : null}
 
         {/* A draft made in a Set's conversation is pushed for that Set unless
@@ -343,7 +355,7 @@ export function DraftCard({
           </p>
         ) : null}
 
-        {draft.status === "approved" && adopted && !onBoard && landing ? (
+        {waiting && landing ? (
           <div className="w-full space-y-1 text-sm" data-testid="draft-landing">
             {alreadyOnBoard !== null ? (
               <p data-testid="draft-already-on-board">
@@ -360,7 +372,7 @@ export function DraftCard({
           </div>
         ) : null}
 
-        {draft.status === "approved" && adopted && !onBoard ? (
+        {waiting || (draft.status === "draft" && !adopted) ? (
           <Button
             size="sm"
             variant="ghost"
@@ -376,7 +388,7 @@ export function DraftCard({
         {/* With the board adopted a sync is the only thing that writes a profile, so an
             approved draft goes on the board, carrying what the push carried: the Set whose
             next version it becomes, and whether that is a major change. */}
-        {draft.status === "approved" && adopted && !onBoard && forSet !== null ? (
+        {waiting && forSet !== null ? (
           <>
             {!setBlocked && forSet.minorLabel !== null && forSet.majorLabel !== null ? (
               <div className="w-full">
@@ -393,7 +405,7 @@ export function DraftCard({
             {setBlocked ? null : (
               <Button
                 size="sm"
-                disabled={busy}
+                disabled={busy || (needsAcknowledgement && !acknowledged)}
                 data-testid="put-on-board-for-set"
                 className={WRAP_BUTTON}
                 onClick={() => putOnBoard({ draftId: draft.id, setId: forSet.id, major })}
@@ -408,7 +420,7 @@ export function DraftCard({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy}
+                disabled={busy || (needsAcknowledgement && !acknowledged)}
                 data-testid="put-on-board"
                 onClick={() => putOnBoard({ draftId: draft.id })}
                 className={WRAP_BUTTON}
@@ -419,10 +431,10 @@ export function DraftCard({
           </>
         ) : null}
 
-        {draft.status === "approved" && adopted && !onBoard && !plainBlocked && forSet === null ? (
+        {waiting && !plainBlocked && forSet === null ? (
           <Button
             size="sm"
-            disabled={busy}
+            disabled={busy || (needsAcknowledgement && !acknowledged)}
             data-testid="put-on-board"
             onClick={() => putOnBoard({ draftId: draft.id })}
             className={WRAP_BUTTON}
@@ -554,25 +566,6 @@ export function DraftCard({
             Draft again
           </Button>
         </div>
-      ) : null}
-
-      {needsAcknowledgement && draft.status === "draft" ? (
-        <label
-          className="mt-3 flex items-start gap-2 text-sm"
-          htmlFor={acknowledgeId}
-          data-testid="acknowledge-stop-changes"
-        >
-          <input
-            id={acknowledgeId}
-            type="checkbox"
-            className="mt-1 size-4"
-            checked={acknowledged}
-            onChange={(event) => setAcknowledged(event.target.checked)}
-          />
-          <span>
-            I understand this changes how much coffee ends up in the cup, not just how it is pulled.
-          </span>
-        </label>
       ) : null}
     </li>
   );

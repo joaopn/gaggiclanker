@@ -380,7 +380,7 @@ function StagedForTheMachine({
         title={adopted ? "Waiting for you" : "Staged for the machine"}
         description={
           adopted
-            ? "Approve a draft, then put it on the board. Profiles reach the machine on the next sync; nothing is ever selected for you."
+            ? "Put a draft on the board: that approves it, and the next sync puts it on the machine. Nothing is ever selected for you."
             : "Every one is saved as a new profile with an [AI] suffix — nothing is ever overwritten, and nothing is ever selected for you."
         }
         actions={

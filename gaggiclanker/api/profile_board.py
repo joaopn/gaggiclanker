@@ -49,6 +49,10 @@ class BoardPut(BaseModel):
     set_id: int | None = None
     #: Whether that version is a major one; ``None`` leaves the default for a pushed draft.
     major: bool | None = None
+    #: Required, and refused without, when the draft moves a stop condition: the person says
+    #: they know it changes how much coffee ends up in the cup. Named for what it acknowledges
+    #: so a client that sets every boolean to true has still said something specific.
+    acknowledge_stop_changes: bool = False
 
 
 class ResumeData(BaseModel):
@@ -142,14 +146,22 @@ async def get_board(
 async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep) -> JSONResponse:
     """The next sync puts it on the machine. Nothing is sent to the machine now.
 
-    Refused (409) for a draft that is not approved, one already on the board, and for a Set
-    that could no longer be given a version, which a push for the Set refuses the same way.
+    One action for a proposal: a drafted draft is approved by it (with the stop-condition
+    acknowledgement when its stop conditions moved). Refused (409) for a draft that is already
+    on the machine, discarded or overtaken, one already on the board, a stop-condition change
+    nobody acknowledged, a label the board already has, and for a Set that could no longer be
+    given a version.
     """
     if body.set_id is not None:
         refusal = await sets.design_refusal(body.set_id)
         if refusal is not None:
             raise version_refused(VersionRefused(refusal))
-    row = await board.put_draft(body.draft_id, set_id=body.set_id, major=body.major)
+    row = await board.put_draft(
+        body.draft_id,
+        set_id=body.set_id,
+        major=body.major,
+        acknowledge_stop_changes=body.acknowledge_stop_changes,
+    )
     return envelope_response(row.model_dump(mode="json"), status_code=201)
 
 

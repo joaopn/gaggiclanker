@@ -53,8 +53,8 @@ async def test_two_variants_of_a_profile_of_yours_with_labels_of_their_own_each_
     await pull(app)
     first = await variant_draft(app, client, "Variant one", 7)
     second = await variant_draft(app, client, "Variant two", 6)
-    await approve(client, first)
-    await approve(client, second)
+    await approve(app, first)
+    await approve(app, second)
 
     board = await get_board(client)
 
@@ -72,8 +72,8 @@ async def test_two_variants_with_one_label_cannot_both_go_on_the_board(
     await pull(app)
     first = await draft_of(app, client, provider, BASE_LABEL, 7)
     second = await draft_of(app, client, provider, BASE_LABEL, 6)
-    await approve(client, first)
-    await approve(client, second)
+    await approve(app, first)
+    await approve(app, second)
     # Neither is refused while the other is not on the board: the landing is per draft.
     board = await get_board(client)
     assert landing(board, second)["plain"]["taken_label"] is None
@@ -97,8 +97,8 @@ async def test_an_older_draft_of_an_app_profile_is_told_its_row_holds_a_newer_on
     row = await app_row(app, client, fake, provider, 8)
     older = await draft_from(app, client, provider, row, 7)
     newer = await draft_from(app, client, provider, row, 6)
-    await approve(client, older)
-    await approve(client, newer)
+    await approve(app, older)
+    await approve(app, newer)
 
     # Both continue the app's profile, and neither is newer than the other yet.
     board = await get_board(client)
@@ -125,8 +125,8 @@ async def test_once_the_newer_draft_is_on_the_board_the_older_one_says_it_would_
     row = await app_row(app, client, fake, provider, 8)
     older = await draft_from(app, client, provider, row, 7)
     newer = await draft_from(app, client, provider, row, 6)
-    await approve(client, older)
-    await approve(client, newer)
+    await approve(app, older)
+    await approve(app, newer)
     await client.post("/api/profile-board", json={"draft_id": newer["id"]})
 
     said = landing(await get_board(client), older)["plain"]
@@ -143,8 +143,8 @@ async def test_a_restaged_copy_of_a_document_is_not_the_draft_that_holds_it(
     first = await draft_of(app, client, provider, BASE_LABEL, 7)
     again = await draft_of(app, client, provider, BASE_LABEL, 7)  # the same document, later
     assert first["draft_version_id"] == again["draft_version_id"]
-    await approve(client, first)
-    await approve(client, again)
+    await approve(app, first)
+    await approve(app, again)
     repo = ProfileDraftsRepository(app.state.db)
     version = first["draft_version_id"]
 
@@ -163,14 +163,14 @@ async def test_a_draft_that_restaged_the_rows_document_does_not_make_a_newer_dra
     app, client, fake = adopted
     row = await app_row(app, client, fake, provider, 8)
     holder = await draft_from(app, client, provider, row, 6)
-    await approve(client, holder)
+    await approve(app, holder)
     await BoardRowRepoPatch(app, row["id"], current_version_id=holder["draft_version_id"])
     current = dict(row) | {"current_version_id": holder["draft_version_id"]}
     newer = await draft_from(app, client, provider, current, 5)
     restaged = await draft_from(app, client, provider, current, 6)  # the holder's document again
     assert restaged["draft_version_id"] == holder["draft_version_id"]
-    await approve(client, newer)
-    await approve(client, restaged)
+    await approve(app, newer)
+    await approve(app, restaged)
 
     found = landing(await get_board(client), newer)["plain"]
 
@@ -184,8 +184,8 @@ async def test_a_row_made_by_a_newer_draft_holds_it_and_a_discarded_one_holds_no
     row = await app_row(app, client, fake, provider, 8)
     older = await draft_from(app, client, provider, row, 7)
     newer = await draft_from(app, client, provider, row, 6)
-    await approve(client, older)
-    await approve(client, newer)
+    await approve(app, older)
+    await approve(app, newer)
     # The row now stands on the newer draft's document, with nothing pending.
     await BoardRowRepoPatch(app, row["id"], current_version_id=newer["draft_version_id"])
     # (its base file is still the row's file, so the older draft still finds the row)
@@ -203,7 +203,7 @@ async def test_a_draft_whose_document_is_already_on_the_board_says_so_and_a_put_
     on_board = await draft_of(app, client, provider, BASE_LABEL, 7)
     again = await draft_of(app, client, provider, BASE_LABEL, 7)  # the same document, later
     assert on_board["draft_version_id"] == again["draft_version_id"]
-    await approve(client, again)
+    await approve(app, again)
     await put(client, on_board)
 
     board = await get_board(client)
@@ -225,7 +225,7 @@ async def test_no_landings_before_the_board_is_adopted(
     await client.patch("/api/settings", json={"deviceWritesEnabled": False})
     await pull(app)  # the mirror, with no adoption
     draft = await draft_of(app, client, provider, BASE_LABEL, 7)
-    await approve(client, draft)
+    await approve(app, draft)
 
     board = await get_board(client, live=False)
 
@@ -238,7 +238,7 @@ async def test_a_variant_beside_an_app_profile_with_the_same_label_is_refused(
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)  # the app's "9 Bar Espresso [AI]"
     variant = await draft_of(app, client, provider, BASE_LABEL, 7)  # of the person's own: [AI] too
-    await approve(client, variant)
+    await approve(app, variant)
 
     found = landing(await get_board(client), variant)["plain"]
 
@@ -277,7 +277,7 @@ async def test_a_version_that_renames_its_profile_to_a_taken_label_is_refused(
     await app.state.db.execute(
         "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, renamed["id"])
     )
-    await approve(client, renamed)
+    await approve(app, renamed)
 
     found = landing(await get_board(client), renamed)
 
@@ -305,7 +305,7 @@ async def test_a_put_that_keeps_its_rows_label_is_never_refused_for_a_pair_that_
         )
     )
     newer = await draft_from(app, client, provider, row, 6)
-    await approve(client, newer)
+    await approve(app, newer)
 
     found = landing(await get_board(client), newer)["plain"]
 
@@ -324,7 +324,7 @@ async def _deleted_app_row_waiting(
     assert (await client.delete(f"/api/profile-board/{row['id']}")).status_code == 200
     again = await draft_from(app, client, provider, row, 8)  # the very same document
     assert again["draft_version_id"] == row["current_version_id"]
-    await approve(client, again)
+    await approve(app, again)
     return row, again
 
 
@@ -365,7 +365,7 @@ async def test_the_landing_is_what_a_put_then_does(
     app, client, fake = adopted
     row = await app_row(app, client, fake, provider, 8)
     draft = await draft_of(app, client, provider, APP_LABEL, 7)
-    await approve(client, draft)
+    await approve(app, draft)
     said = landing(await get_board(client), draft)["plain"]
 
     put_row = await put(client, draft)
@@ -383,7 +383,7 @@ async def test_a_set_draft_lands_by_the_sets_current_version_when_recorded_for_i
     await app.state.db.execute(
         "UPDATE profile_drafts SET set_id = ? WHERE id = ?", (set_id, draft["id"])
     )
-    await approve(client, draft)
+    await approve(app, draft)
 
     found = landing(await get_board(client), draft)
 

@@ -16,6 +16,7 @@ const {
   rollbackProfileDraft,
   discardProfileDraft,
   refineProfileDraft,
+  putOnBoard,
 } = vi.hoisted(() => ({
   getProfileDraft: vi.fn(),
   approveProfileDraft: vi.fn(),
@@ -23,6 +24,7 @@ const {
   rollbackProfileDraft: vi.fn(),
   discardProfileDraft: vi.fn(),
   refineProfileDraft: vi.fn(),
+  putOnBoard: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -32,6 +34,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   rollbackProfileDraft,
   discardProfileDraft,
   refineProfileDraft,
+  putOnBoard,
 }));
 
 beforeEach(() => {
@@ -45,6 +48,102 @@ beforeEach(() => {
   rollbackProfileDraft.mockResolvedValue(draft({ status: "failed" }));
   discardProfileDraft.mockResolvedValue(draft({ status: "discarded" }));
   refineProfileDraft.mockResolvedValue(draft({ id: 2, parent_draft_id: 1 }));
+  putOnBoard.mockResolvedValue({ id: 5, label: "9 Bar Espresso [AI]" });
+});
+
+const NEW_PROFILE = {
+  draft_id: 1,
+  already_on_board_label: null,
+  plain: { row_id: null, row_label: null, holds_newer_draft: false },
+  for_set: null,
+};
+
+describe("putting a draft on the board is one action", () => {
+  it("offers Put on a drafted draft, with no Approve step, and puts it in one click", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<DraftCard draft={draft()} adopted landing={NEW_PROFILE} />);
+
+    expect(screen.queryByTestId("approve-draft")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+    await user.click(screen.getByTestId("put-on-board"));
+
+    await waitFor(() => expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1 }));
+    expect(approveProfileDraft).not.toHaveBeenCalled();
+  });
+
+  it("asks for the stop-condition acknowledgement on the same click and sends it", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({ stop_condition_changes: [yieldChange()] })}
+        adopted
+        landing={NEW_PROFILE}
+      />,
+    );
+
+    expect(screen.getByTestId("stop-condition-warning")).toBeInTheDocument();
+    expect(screen.getByTestId("put-on-board")).toBeDisabled();
+    await user.click(screen.getByRole("checkbox"));
+    expect(screen.getByTestId("put-on-board")).not.toBeDisabled();
+    await user.click(screen.getByTestId("put-on-board"));
+
+    await waitFor(() =>
+      expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1, acknowledgeStopChanges: true }),
+    );
+  });
+
+  it("carries the Set and the major choice, and holds the Set's button for the acknowledgement", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({
+          stop_condition_changes: [yieldChange()],
+          set_id: 3,
+          set_name: "Guji on the Niche",
+          set_next_minor_label: "v2.2",
+          set_next_major_label: "v3",
+        })}
+        adopted
+        landing={{ ...NEW_PROFILE, for_set: NEW_PROFILE.plain }}
+      />,
+    );
+
+    expect(screen.getByTestId("put-on-board-for-set")).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /I understand/ }));
+    await user.click(screen.getByRole("checkbox", { name: "Major change" }));
+    await user.click(screen.getByTestId("put-on-board-for-set"));
+
+    await waitFor(() =>
+      expect(putOnBoard).toHaveBeenCalledWith({
+        draftId: 1,
+        setId: 3,
+        major: true,
+        acknowledgeStopChanges: true,
+      }),
+    );
+  });
+
+  it("does not put a draft on the board that the server would refuse", () => {
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft()}
+        adopted
+        landing={{ ...NEW_PROFILE, plain: { ...NEW_PROFILE.plain, taken_label: "Londinium" } }}
+      />,
+    );
+
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+    expect(screen.getByTestId("draft-landing")).toHaveTextContent(
+      "The board already has Londinium; refine this draft from it, or discard it.",
+    );
+  });
+
+  it("still offers Approve before the board is adopted", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} />);
+
+    expect(screen.getByTestId("approve-draft")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+  });
 });
 
 describe("DraftCard", () => {

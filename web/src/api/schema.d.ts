@@ -1003,8 +1003,11 @@ export interface paths {
          * Put an approved draft on the board
          * @description The next sync puts it on the machine. Nothing is sent to the machine now.
          *
-         *     Refused (409) for a draft that is not approved, one already on the board, and for a Set
-         *     that could no longer be given a version, which a push for the Set refuses the same way.
+         *     One action for a proposal: a drafted draft is approved by it (with the stop-condition
+         *     acknowledgement when its stop conditions moved). Refused (409) for a draft that is already
+         *     on the machine, discarded or overtaken, one already on the board, a stop-condition change
+         *     nobody acknowledged, a label the board already has, and for a Set that could no longer be
+         *     given a version.
          */
         post: operations["put_on_board_api_profile_board_post"];
         delete?: never;
@@ -3187,6 +3190,11 @@ export interface components {
          * @description Put an approved draft on the board.
          */
         BoardPut: {
+            /**
+             * Acknowledge Stop Changes
+             * @default false
+             */
+            acknowledge_stop_changes: boolean;
             /** Draft Id */
             draft_id: number;
             /** Major */

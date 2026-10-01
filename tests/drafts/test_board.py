@@ -23,6 +23,7 @@ import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
+from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunRow
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, profile_content_hash
@@ -79,13 +80,17 @@ async def get_board(client: httpx.AsyncClient, *, live: bool = True) -> dict[str
     return dict(data(await client.get(f"/api/profile-board?live={str(live).lower()}")))
 
 
-async def approve(client: httpx.AsyncClient, draft: dict[str, Any]) -> None:
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    assert response.status_code == 200, response.text
+async def approve(app: FastAPI, draft: dict[str, Any]) -> None:
+    """Leave a draft ``approved`` without putting it on the board.
+
+    Putting a draft on the board approves it, so a draft only waits in this state when it was
+    approved before that was one action (a database can still hold one). The board treats it
+    exactly as a drafted one; tests that care set it directly.
+    """
+    await ProfileDraftsRepository(app.state.db).set_status(draft["id"], "approved")
 
 
 async def put(client: httpx.AsyncClient, draft: dict[str, Any], **body: Any) -> dict[str, Any]:
-    await approve(client, draft)
     response = await client.post("/api/profile-board", json={"draft_id": draft["id"], **body})
     return dict(data(response))
 
@@ -349,7 +354,7 @@ async def test_a_draft_with_the_label_of_a_profile_the_person_made_waits_until_t
     await pull(app)  # adoption (and the mirror)
     adopted_row = row_for(await get_board(client), "Legacy [AI]")
     draft = await draft_of(app, client, provider, "Legacy [AI]", 7)
-    await approve(client, draft)
+    await approve(app, draft)
 
     # A draft of it carries the same label, and two live profiles never share one.
     refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
@@ -684,10 +689,15 @@ async def test_the_board_routes_refuse_what_cannot_go_on_the_board(
 ) -> None:
     app, client, _ = adopted
     draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    unapproved = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
-    assert unapproved.status_code == 409 and "approve" in error(unapproved)["message"]
+    discarded = dict(data(await client.post(f"/api/profile-drafts/{draft['id']}/discard")))
+    refused = await client.post("/api/profile-board", json={"draft_id": discarded["id"]})
+    assert (
+        refused.status_code == 409 and "discarded draft cannot go on" in error(refused)["message"]
+    )
+    other = await draft_of(app, client, provider, BASE_LABEL, 7)
 
-    await put(client, draft)
+    await put(client, other)
+    draft = other
     again = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
     assert again.status_code == 409
     missing = await client.post("/api/profile-board", json={"draft_id": 9999})
@@ -881,8 +891,8 @@ async def test_two_puts_of_one_label_at_once_make_one_row_and_one_refusal(
     app, client, _ = adopted
     first = await draft_of(app, client, provider, BASE_LABEL, 7)
     second = await draft_of(app, client, provider, BASE_LABEL, 6)
-    await approve(client, first)
-    await approve(client, second)
+    await approve(app, first)
+    await approve(app, second)
 
     responses = await asyncio.gather(
         *(client.post("/api/profile-board", json={"draft_id": d["id"]}) for d in (first, second))
@@ -898,7 +908,7 @@ async def test_a_put_and_a_take_of_one_label_at_once_leave_one_profile_with_it(
 ) -> None:
     app, client, fake = adopted
     draft = await draft_of(app, client, provider, BASE_LABEL, 7)
-    await approve(client, draft)
+    await approve(app, draft)
     # A profile made on the display that carries the very label the draft would give.
     made = copy.deepcopy(fake.profiles[0])
     made.update(id="made", label=APP_LABEL)

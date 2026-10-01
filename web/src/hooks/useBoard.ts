@@ -52,7 +52,7 @@ export function useProfileBoard(
 export function usePutOnBoard(): UseMutationResult<
   BoardRow,
   Error,
-  { draftId: number; setId?: number; major?: boolean }
+  { draftId: number; setId?: number; major?: boolean; acknowledgeStopChanges?: boolean }
 > {
   const queryClient = useQueryClient();
   return useMutation({
