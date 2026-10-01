@@ -21,7 +21,7 @@ import type {
   ProfileDraftDetail,
   ProfileDraftListData,
 } from "@/api/types";
-import { invalidateDrafts } from "@/lib/invalidate";
+import { invalidateBoard, invalidateDrafts } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -61,6 +61,9 @@ export function useCreateDraft(): UseMutationResult<ProfileDraft, Error, DraftCr
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);
+      // Where a put of a draft would land is read from the board, so a draft made, refined or
+      // discarded changes what the board says about it.
+      void invalidateBoard(queryClient);
     },
   });
 }
@@ -77,6 +80,9 @@ export function useRefineDraft(): UseMutationResult<
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);
+      // Where a put of a draft would land is read from the board, so a draft made, refined or
+      // discarded changes what the board says about it.
+      void invalidateBoard(queryClient);
     },
   });
 }
@@ -89,6 +95,9 @@ export function useDiscardDraft(): UseMutationResult<ProfileDraft, Error, number
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);
+      // Where a put of a draft would land is read from the board, so a draft made, refined or
+      // discarded changes what the board says about it.
+      void invalidateBoard(queryClient);
     },
   });
 }

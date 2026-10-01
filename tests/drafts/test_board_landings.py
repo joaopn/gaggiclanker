@@ -85,7 +85,8 @@ async def test_two_variants_with_one_label_cannot_both_go_on_the_board(
     refused = await client.post("/api/profile-board", json={"draft_id": second["id"]})
     assert refused.status_code == 409
     assert error(refused)["message"] == (
-        f"The board already has {APP_LABEL}; refine this draft from it, or discard it."
+        f"The board already has {APP_LABEL}; make the change by editing that profile on the board "
+        "instead, or discard this draft."
     )
     assert error(refused)["details"] == {"reason": "duplicate_label"}
 

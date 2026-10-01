@@ -152,7 +152,7 @@ describe("putting a draft on the board is one action", () => {
 
     expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
     expect(screen.getByTestId("draft-landing")).toHaveTextContent(
-      "The board already has Londinium; refine this draft from it, or discard it.",
+      "The board already has Londinium; make the change by editing that profile on the board instead, or discard this draft.",
     );
   });
 });
@@ -183,6 +183,39 @@ describe("before the board has taken the machine's profiles", () => {
     renderWithQueryClient(<DraftCard draft={draft()} adopted landing={NEW_PROFILE} />);
 
     expect(screen.queryByTestId("draft-board-not-adopted")).not.toBeInTheDocument();
+  });
+});
+
+describe("what the card says while the board is unknown", () => {
+  it("offers no put for a draft the board has not placed yet, and says it is checking", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} adopted />);
+
+    expect(screen.getByTestId("draft-landing-pending")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board-for-set")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+  });
+
+  it("says only that the board can't be read when it can't, for a drafted draft too", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} boardUnknown />);
+
+    expect(screen.getByTestId("draft-board-unknown")).toBeInTheDocument();
+    expect(screen.queryByTestId("draft-board-not-adopted")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+  });
+
+  it("offers no put when the board was adopted but can't be read now", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} adopted boardUnknown landing={NEW_PROFILE} />);
+
+    expect(screen.getByTestId("draft-board-unknown")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+  });
+
+  it("shows no acknowledgement checkbox before the board is adopted: nothing to apply it to", () => {
+    renderWithQueryClient(<DraftCard draft={draft({ stop_condition_changes: [yieldChange()] })} />);
+
+    expect(screen.getByTestId("stop-condition-warning")).toBeInTheDocument();
+    expect(screen.queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
   });
 });
 

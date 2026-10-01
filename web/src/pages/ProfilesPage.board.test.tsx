@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileVersionListData } from "@/api/types";
 import { ProfilesPage } from "@/pages/ProfilesPage";
 import { boardAction, boardRow, boardRowView, boardView } from "@/test/boardFixtures";
-import { draft, draftDetail } from "@/test/draftFixtures";
+import { baseProfile, draft, draftDetail } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -14,6 +14,7 @@ vi.mock("sonner", () => ({
 const {
   getProfiles,
   getProfileVersions,
+  getProfileVersion,
   getProfileDrafts,
   getProfileDraft,
   getDeviceWrites,
@@ -26,6 +27,7 @@ const {
 } = vi.hoisted(() => ({
   getProfiles: vi.fn(),
   getProfileVersions: vi.fn(),
+  getProfileVersion: vi.fn(),
   getProfileDrafts: vi.fn(),
   getProfileDraft: vi.fn(),
   getDeviceWrites: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getProfiles,
   getProfileVersions,
+  getProfileVersion,
   getProfileDrafts,
   getProfileDraft,
   getDeviceWrites,
@@ -90,6 +93,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getProfiles.mockResolvedValue({ items: [] });
   getProfileVersions.mockResolvedValue(versions);
+  getProfileVersion.mockResolvedValue({ ...versions.items[0], profile: baseProfile() });
   getProfileDrafts.mockResolvedValue({ items: [] });
   getProfileDraft.mockResolvedValue(draftDetail());
   getDeviceWrites.mockResolvedValue({ enabled: true, items: [] });
@@ -273,6 +277,24 @@ describe("drafts once the board is adopted", () => {
 
   beforeEach(() => {
     getProfileDrafts.mockResolvedValue({ items: [approved] });
+    // The board has said where a put of draft 1 would land: a put is offered only then.
+    const lands = { row_id: null, row_label: null, holds_newer_draft: false };
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [mine, apps],
+        landings: [{ draft_id: 1, already_on_board_label: null, plain: lands, for_set: lands }],
+      }),
+    );
+  });
+
+  it("offers no put until the board has said where it would land", async () => {
+    getProfileBoard.mockResolvedValue(boardView({ rows: [mine, apps], landings: [] }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-landing-pending")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).toBeNull();
+    expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
   });
 
   it("offers Put on the board and no push", async () => {
@@ -450,6 +472,18 @@ describe("when the board cannot be read", () => {
 
     expect(await screen.findByTestId("board-list")).toBeInTheDocument();
     expect(screen.queryByTestId("board-unreadable")).toBeNull();
+  });
+});
+
+describe("editing a board profile", () => {
+  it("opens the editor on the profile's current version", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<ProfilesPage />);
+    const [first] = await cards();
+
+    await user.click(within(first).getByTestId("board-edit"));
+
+    await waitFor(() => expect(getProfileVersion).toHaveBeenCalledWith(7));
   });
 });
 
@@ -636,7 +670,7 @@ describe("where a put would land, as the server says it", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
-      "The board already has 9 Bar Espresso [AI]; refine this draft from it, or discard it.",
+      "The board already has 9 Bar Espresso [AI]; make the change by editing that profile on the board instead, or discard this draft.",
     );
     expect(screen.queryByTestId("put-on-board")).toBeNull();
     expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();

@@ -85,6 +85,10 @@ export function DraftCard({
   // approves it): a drafted one or one approved before that was so.
   const open = !onBoard && (draft.status === "draft" || draft.status === "approved");
   const waiting = adopted && open;
+  // A put is offered only once the board has said where it would land: a draft made a moment ago
+  // (or edited, refined) is not in the board's landings until the board has been read again, and
+  // a missing landing is not "allowed".
+  const ready = waiting && landing !== undefined && !boardUnknown;
   // A put the server would refuse is not offered: it would undo a newer version, the board
   // already has a profile with the label it would carry, or its exact document is there.
   const alreadyOnBoard = landing?.already_on_board_label ?? null;
@@ -213,7 +217,7 @@ export function DraftCard({
 
       {stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
-      {needsAcknowledgement && (draft.status === "draft" || draft.status === "approved") ? (
+      {needsAcknowledgement && ready ? (
         <label
           className="mt-3 flex items-start gap-2 text-sm"
           htmlFor={acknowledgeId}
@@ -303,7 +307,7 @@ export function DraftCard({
           </p>
         ) : null}
 
-        {draft.status === "approved" && boardUnknown ? (
+        {open && boardUnknown ? (
           <p className="w-full text-muted-foreground text-sm" data-testid="draft-board-unknown">
             The board can't be read right now, so this can't be put on the machine until it can.
           </p>
@@ -311,14 +315,20 @@ export function DraftCard({
 
         {/* Nothing to put it on yet: say what makes that happen, and offer only refine and
             discard, which the server does not refuse. */}
-        {!adopted && open ? (
+        {!adopted && !boardUnknown && open ? (
           <p className="w-full text-sm" data-testid="draft-board-not-adopted">
             Profiles reach the machine once the Writes switch is on and a sync has taken the
             machine's profiles onto the board. Then this can be put on it.
           </p>
         ) : null}
 
-        {waiting && landing ? (
+        {waiting && !ready && !boardUnknown ? (
+          <p className="w-full text-muted-foreground text-sm" data-testid="draft-landing-pending">
+            Checking where it would land on the board…
+          </p>
+        ) : null}
+
+        {ready && landing ? (
           <div className="w-full space-y-1 text-sm" data-testid="draft-landing">
             {alreadyOnBoard !== null ? (
               <p data-testid="draft-already-on-board">
@@ -354,7 +364,7 @@ export function DraftCard({
         {/* One click: the put approves the draft and carries what approval carried (the
             stop-condition acknowledgement) and what a push carried: the Set whose next version
             it becomes, and whether that is a major change. */}
-        {waiting && forSet !== null ? (
+        {ready && forSet !== null ? (
           <>
             {!setBlocked && forSet.minorLabel !== null && forSet.majorLabel !== null ? (
               <div className="w-full">
@@ -397,7 +407,7 @@ export function DraftCard({
           </>
         ) : null}
 
-        {waiting && !plainBlocked && forSet === null ? (
+        {ready && !plainBlocked && forSet === null ? (
           <Button
             size="sm"
             disabled={busy || (needsAcknowledgement && !acknowledged)}
@@ -477,8 +487,8 @@ function landingSentence(
     lead === "" ? upperCase : `${lead}${lowerCase}`;
   if (landing.taken_label) {
     return sentence(
-      `the board already has ${landing.taken_label}; refine this draft from it, or discard it.`,
-      `The board already has ${landing.taken_label}; refine this draft from it, or discard it.`,
+      `the board already has ${landing.taken_label}; make the change by editing that profile on the board instead, or discard this draft.`,
+      `The board already has ${landing.taken_label}; make the change by editing that profile on the board instead, or discard this draft.`,
     );
   }
   if (landing.holds_newer_draft) {

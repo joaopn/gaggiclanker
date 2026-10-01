@@ -499,8 +499,8 @@ class BoardService:
             dest = await self._destination(draft, version, set_id)
             if dest.taken is not None:
                 raise Conflict(
-                    f"The board already has {dest.taken}; refine this draft from it, or discard "
-                    "it.",
+                    f"The board already has {dest.taken}; make the change by editing that profile "
+                    "on the board instead, or discard this draft.",
                     details={"reason": "duplicate_label"},
                 )
             row = dest.row

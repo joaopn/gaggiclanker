@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Clock, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, Check, Clock, FilePen, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { BoardRowView, BoardView, ProfileDraft } from "@/api/types";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
@@ -21,12 +21,15 @@ export function BoardList({
   view,
   versionName,
   draftOf,
+  onEdit,
 }: {
   view: BoardView;
   /** The draft a row is waiting on, to name its Set. */
   draftOf: (draftId: number) => ProfileDraft | undefined;
   /** The short name of a version (its hash), or `null` when the page does not hold it. */
   versionName: (versionId: number) => string | null;
+  /** Open the editor on a profile's current version: how a change is made to a board profile. */
+  onEdit: (versionId: number) => void;
 }) {
   const rows = view.rows ?? [];
   const removals = (view.pending_removals ?? [])
@@ -49,6 +52,7 @@ export function BoardList({
             entry={entry}
             state={rowStateOf(view, entry)}
             version={versionName(entry.row.current_version_id)}
+            onEdit={onEdit}
             previousVersion={
               entry.row.previous_version_id != null
                 ? versionName(entry.row.previous_version_id)
@@ -87,11 +91,13 @@ function BoardRowCard({
   version,
   previousVersion,
   pendingDraft,
+  onEdit,
 }: {
   entry: BoardRowView;
   state: RowState;
   version: string | null;
   previousVersion: string | null;
+  onEdit: (versionId: number) => void;
   pendingDraft: ProfileDraft | undefined;
 }) {
   const { row } = entry;
@@ -165,6 +171,17 @@ function BoardRowCard({
           />
           On the home screen
         </label>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          aria-label={`Edit ${row.label}`}
+          data-testid="board-edit"
+          onClick={() => onEdit(row.current_version_id)}
+        >
+          <FilePen className="size-3.5" aria-hidden="true" />
+          Edit
+        </Button>
         {canGoBack ? (
           <Button
             size="sm"
@@ -215,8 +232,8 @@ function BoardRowCard({
             )}
             The next sync puts it on the machine and removes the newer copy there, as long as that
             copy is still as the app saved it. The draft that made the newer version is discarded;
-            you can draft it again if you change your mind. Going back is one step: after it there
-            is no earlier version until you put another.
+            to bring that change back, make it again with Edit on this profile. Going back is one
+            step: after it there is no earlier version until you put another.
           </ConfirmStrip>
         </div>
       ) : null}

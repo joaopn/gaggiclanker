@@ -180,7 +180,12 @@ export function ProfilesPage() {
                 : "As of the last sync. A sync makes the machine match this."
             }
           >
-            <BoardList view={boardView} versionName={versionHash} draftOf={draftById} />
+            <BoardList
+              view={boardView}
+              versionName={versionHash}
+              draftOf={draftById}
+              onEdit={setEditing}
+            />
           </SectionCard>
           <NotOnBoard profiles={notTaken} />
         </>
