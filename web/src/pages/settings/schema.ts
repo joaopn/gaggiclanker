@@ -205,13 +205,6 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       description: "Where the display board is, and whether gaggiclanker keeps a connection open.",
       keys: ["gaggimateHost", "gaggimateProtocol", "gaggimateTimeoutSeconds", "deviceSyncEnabled"],
     },
-    {
-      id: "writes",
-      title: "Writes",
-      description:
-        "Whether this box may write to the machine. Profiles are the only thing it writes.",
-      keys: ["deviceWritesEnabled"],
-    },
   ],
   safety: [
     {
@@ -304,6 +297,19 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
 
 export const OTHER_GROUP_ID = "other";
 
+/**
+ * Registry keys that are edited somewhere other than a settings page, so no
+ * page lists them and no "Other" card catches them. Today that is the writes
+ * switch, which lives in the top bar beside the machine status. A key is added
+ * here when its control moves out, and the registry page then leaves it out of
+ * its form too, so a Save here can never send it.
+ */
+const EDITED_ELSEWHERE: ReadonlySet<string> = new Set(["deviceWritesEnabled"]);
+
+export function isEditedElsewhere(key: string): boolean {
+  return EDITED_ELSEWHERE.has(key);
+}
+
 /** The group a key renders in on its page: a named one, or "Other". */
 export function groupFor(key: string): string {
   const group = SETTINGS_GROUPS[sectionFor(key)].find((candidate) => candidate.keys.includes(key));
@@ -319,6 +325,7 @@ export function groupEntries(
   page: RegistryPageId,
   entries: readonly ResolvedSetting[],
 ): { group: SettingsGroup; entries: ResolvedSetting[] }[] {
+  entries = entries.filter((entry) => !isEditedElsewhere(entry.key));
   const byKey = new Map(entries.map((entry) => [entry.key, entry]));
   const named = new Set<string>();
   const result: { group: SettingsGroup; entries: ResolvedSetting[] }[] = [];

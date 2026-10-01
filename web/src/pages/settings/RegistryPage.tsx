@@ -2,7 +2,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { type Control, type FieldErrors, useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { ResolvedSetting, SettingsMap } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -20,6 +19,7 @@ import {
   buildSettingsSchema,
   groupEntries,
   groupFor,
+  isEditedElsewhere,
   type RegistryPageId,
   type SettingsFormValues,
   sectionFor,
@@ -30,7 +30,9 @@ import { useOpenGroups } from "@/pages/settings/useOpenGroups";
 
 /** The registry entries one page owns, as a map the schema helpers take. */
 function pageSettings(settings: SettingsMap, page: RegistryPageId): SettingsMap {
-  return Object.fromEntries(Object.entries(settings).filter(([key]) => sectionFor(key) === page));
+  return Object.fromEntries(
+    Object.entries(settings).filter(([key]) => sectionFor(key) === page && !isEditedElsewhere(key)),
+  );
 }
 
 /**
@@ -212,50 +214,7 @@ function GroupBody({
           <RateLimitLatch />
         </>
       );
-    case "machine.writes":
-      return (
-        <>
-          <DeviceWritesWarning />
-          {fields}
-        </>
-      );
     default:
       return <>{fields}</>;
   }
-}
-
-/**
- * The one setting on this page that can change somebody's espresso machine.
- *
- * Rendered above the field rather than as part of its description, because the
- * description is a sentence in a small grey font under a dropdown and this is
- * the thing a person should read before touching the dropdown. Plain about what
- * goes wrong: a wedged display is recoverable, and the recovery is a reflash
- * plus a filesystem erase.
- */
-export function DeviceWritesWarning() {
-  return (
-    <div
-      className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
-      data-testid="device-writes-warning"
-    >
-      <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
-        <AlertTriangle className="size-3.5" aria-hidden="true" />
-        Device writes enabled
-      </p>
-      <p className="mt-1 text-status-warn-text text-xs">
-        Off by default. With it on, gaggiclanker may save a <strong>new</strong> profile to the
-        display, delete one it created itself, select one, and star or unstar one. A profile is the
-        only thing this box ever writes to the machine: it never deletes a shot, never writes a
-        notes card, never overwrites an existing profile and never writes device settings. A profile
-        with zero phases crashes brew start on the display and recovering that means a reflash plus
-        a filesystem erase — four validation layers stand in the way of that, and this switch is the
-        fifth. Every attempt, refused or not, is recorded on the{" "}
-        <Link className="underline underline-offset-2" to="/sync#writes">
-          Sync page
-        </Link>
-        .
-      </p>
-    </div>
-  );
 }

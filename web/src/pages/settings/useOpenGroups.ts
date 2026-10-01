@@ -6,7 +6,7 @@ import { useLocation } from "react-router-dom";
  *
  * Every card starts closed. A link's `#<card>` opens that one, on arrival and
  * when the hash changes on a page already showing, which is how another page
- * sends somebody to one switch (`/settings/machine#writes`). `openGroups` is for
+ * sends somebody to one card (`/settings/machine#connection`). `openGroups` is for
  * the page itself: a save that fails validation opens the cards holding the bad
  * fields, since a message in a closed card reads as a save that did nothing.
  */

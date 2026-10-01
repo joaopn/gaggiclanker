@@ -1,26 +1,19 @@
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { WRITES_ON_SENTENCE } from "@/components/DeviceWritesSwitch";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
 import { SETTINGS_PAGES } from "@/lib/settingsPages";
-import { DeviceWritesWarning } from "@/pages/settings/RegistryPage";
 
 /**
  * The machine is only ever written with profiles. The copy that describes what
- * "Device writes enabled" allows must not send anyone to a feature that is gone.
+ * the writes switch allows must not send anyone to a feature that is gone.
  */
 const GONE = /send(ing)? (your )?(judgement|notes)|clean(ing)? up|deleting shots|storage/i;
 
 describe("copy about what is written to the machine", () => {
-  it("the writes warning says a profile is the only thing written", () => {
-    render(
-      <MemoryRouter>
-        <DeviceWritesWarning />
-      </MemoryRouter>,
-    );
-    const warning = screen.getByTestId("device-writes-warning");
-    expect(warning).toHaveTextContent(/only thing this box ever writes to the machine/);
-    expect(warning.textContent ?? "").not.toMatch(GONE);
+  it("the writes switch's confirmation says a profile is all it allows", () => {
+    expect(WRITES_ON_SENTENCE).toMatch(/push a profile .* roll one back/);
+    expect(WRITES_ON_SENTENCE).not.toMatch(GONE);
   });
 
   it("the Machine access subtitle says the same", () => {

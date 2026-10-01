@@ -71,6 +71,17 @@ function settingsFixture(): SettingsMap {
       source: "default",
       description: "Hold the WebSocket so a pull can reach the machine.",
     },
+    deviceWritesEnabled: {
+      key: "deviceWritesEnabled",
+      type: "bool",
+      secret: false,
+      readonly: false,
+      value: false,
+      default: false,
+      override: null,
+      source: "default",
+      description: "Whether this box may write to the machine.",
+    },
     deviceSomethingNew: {
       key: "deviceSomethingNew",
       type: "int",
@@ -190,10 +201,24 @@ describe("SettingsPage", () => {
     renderAt("/settings/machine");
     await screen.findByLabelText("Gaggimate host");
     expect(screen.queryByLabelText("Llm api key")).not.toBeInTheDocument();
-    // Headings with nothing in them are left out: the fixture has no writes keys.
     expect(screen.getByRole("button", { name: "Connection" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Other" })).toBeInTheDocument();
+  });
+
+  it("has no Writes card: the switch is in the top bar, and Other does not pick it up", async () => {
+    // The fixture carries deviceWritesEnabled, as the real registry does.
+    renderAt("/settings/machine");
+    await screen.findByLabelText("Gaggimate host");
     expect(screen.queryByRole("button", { name: "Writes" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/device writes enabled/i)).not.toBeInTheDocument();
+    const other = screen.getByRole("button", { name: "Other" });
+    const body = document.getElementById(String(other.getAttribute("aria-controls")));
+    expect(body).toHaveTextContent(/something new/i);
+    expect(
+      body?.querySelectorAll("input, select, [role='switch'], [role='combobox']"),
+    ).toHaveLength(1);
+    // The page says where the switch went.
+    expect(screen.getByText(/Writes switch in the top bar/)).toBeInTheDocument();
   });
 
   it("starts with every card closed, and opens one on a click", async () => {

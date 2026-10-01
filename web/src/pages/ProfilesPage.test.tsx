@@ -167,10 +167,11 @@ describe("ProfilesPage staging queue", () => {
 
     const banner = await screen.findByTestId("writes-disabled-banner");
     expect(banner).toHaveTextContent("switched off");
-    expect(within(banner).getByRole("link", { name: /Settings/ })).toHaveAttribute(
-      "href",
-      "/settings/machine#writes",
-    );
+    // The switch is in the top bar, not on a settings page: no link, and no
+    // pointer to the card that used to hold it.
+    expect(banner).toHaveTextContent("Turn on the Writes switch in the top bar");
+    expect(within(banner).queryByRole("link")).toBeNull();
+    expect(banner.textContent ?? "").not.toMatch(/Settings|Device writes enabled/);
   });
 
   it("does not nag when writes are on", async () => {

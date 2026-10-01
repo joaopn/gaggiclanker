@@ -127,12 +127,9 @@ export function ProfilesPage() {
             Writing to the machine is switched off
           </p>
           <p className="mt-1 text-status-warn-text text-xs">
-            Staging and approving work; pushing is refused before anything reaches the wire, and the
-            refusal is recorded in the write audit. Turn on "Device writes enabled" under{" "}
-            <Link className="underline underline-offset-2" to="/settings/machine#writes">
-              Settings → Machine access
-            </Link>
-            .
+            Staging and approving work; pushing and rolling back are refused before anything reaches
+            the wire, and the refusal is recorded in the write audit. Turn on the Writes switch in
+            the top bar.
           </p>
         </div>
       ) : null}

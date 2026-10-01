@@ -6,6 +6,7 @@ import {
   groupEntries,
   groupFor,
   humanizeKey,
+  isEditedElsewhere,
   SETTINGS_GROUPS,
   sectionFor,
   toFormValues,
@@ -161,7 +162,6 @@ describe("labels and sections", () => {
 
   it("sorts a page's keys into its groups, in the groups' order, with the rest under Other", () => {
     expect(groupFor("gaggimateHost")).toBe("connection");
-    expect(groupFor("deviceWritesEnabled")).toBe("writes");
     expect(groupFor("modelStartingPoint")).toBe("models");
     expect(groupFor("deviceSomethingNew")).toBe("other");
 
@@ -169,7 +169,15 @@ describe("labels and sections", () => {
       plain({ key, type: "string", value: "" }),
     );
     const grouped = groupEntries("machine", entries);
-    expect(grouped.map(({ group }) => group.id)).toEqual(["connection", "writes", "other"]);
+    // The writes switch lives in the top bar: it is neither a card of its own
+    // nor something "Other" picks up.
+    expect(grouped.map(({ group }) => group.id)).toEqual(["connection", "other"]);
+    expect(grouped.flatMap(({ entries: members }) => members.map((entry) => entry.key))).toEqual([
+      "gaggimateHost",
+      "deviceSomethingNew",
+    ]);
+    expect(isEditedElsewhere("deviceWritesEnabled")).toBe(true);
+    expect(isEditedElsewhere("gaggimateHost")).toBe(false);
     expect(grouped.at(-1)?.entries.map((entry) => entry.key)).toEqual(["deviceSomethingNew"]);
     // An empty group is left out rather than drawn as a card with nothing in it.
     expect(groupEntries("safety", [])).toEqual([]);
