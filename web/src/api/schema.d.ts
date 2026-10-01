@@ -6504,6 +6504,7 @@ export interface components {
              * @default running
              */
             status: string;
+            summary?: components["schemas"]["JsonObject"];
             /**
              * Trigger
              * @default

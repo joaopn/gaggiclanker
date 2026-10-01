@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.db.repos.base import JsonText, dumps, utc_now
+from gaggiclanker.db.repos.base import JsonObject, JsonText, dumps, utc_now
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -57,6 +57,9 @@ class SyncRunRow(BaseModel):
     notes_synced: int = 0
     errors: int = 0
     error: str | None = None
+    #: What the run did beyond counting, decoded: today the profile board's write phase
+    #: (what it pushed, removed, left on the machine and why). ``None`` for every other run.
+    summary: JsonObject = Field(default=None, validation_alias="summary_json")
 
 
 class SyncRunUpdate(BaseModel):
@@ -72,6 +75,7 @@ class SyncRunUpdate(BaseModel):
     notes_synced: int = 0
     errors: int = 0
     error: str | None = None
+    summary: dict[str, Any] | None = None
 
 
 class SyncEventRow(BaseModel):
@@ -116,7 +120,7 @@ class SyncRepository(Repository):
             UPDATE sync_runs SET
                 status = ?, finished_at = ?,
                 shots_seen = ?, shots_inserted = ?, shots_updated = ?, shots_quarantined = ?,
-                profiles_changed = ?, notes_synced = ?, errors = ?, error = ?
+                profiles_changed = ?, notes_synced = ?, errors = ?, error = ?, summary_json = ?
             WHERE id = ?
             """,
             (
@@ -130,6 +134,7 @@ class SyncRepository(Repository):
                 update.notes_synced,
                 update.errors,
                 update.error,
+                None if update.summary is None else dumps(update.summary),
                 run_id,
             ),
         )
