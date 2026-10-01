@@ -392,7 +392,10 @@ describe("before the board is adopted the page is as it was", () => {
     getProfileBoard.mockReturnValue(new Promise(() => {}));
     renderWithQueryClient(<ProfilesPage />);
 
-    expect(await screen.findByTestId("drafts-skeleton")).toBeInTheDocument();
+    // The drafts have long since loaded: what holds the buttons back is the board.
+    await waitFor(() => expect(getProfileDrafts).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.getByTestId("drafts-skeleton")).toBeInTheDocument();
     expect(screen.queryByTestId("push-draft")).toBeNull();
     expect(screen.queryByTestId("push-draft-for-set")).toBeNull();
     expect(screen.queryByTestId("put-on-board")).toBeNull();
