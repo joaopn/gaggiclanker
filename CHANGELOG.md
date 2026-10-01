@@ -29,6 +29,50 @@ first (`POST /api/backup`), because there is no down-migration.
   README point at the switch instead. The stored setting and the API are
   unchanged.
 
+### The app's own profile board, synced to the machine on every pull
+
+- **The app now keeps a profile board** (new routes under `/api/profile-board`): the
+  profiles it means the machine to hold, each with its current version, whether it is
+  on the machine's home screen, and which file on the machine stands for it. Put an
+  approved draft on it (a new version of the profile it descends from, or a new
+  profile), turn a profile's home-screen flag on or off, delete a profile, or read the
+  board with each profile's state on the machine and what the next pull would do.
+  Editing the board never touches the machine.
+- **With device writes on, every pull ends by making the machine match the board.**
+  The first such pull adopts the machine's profiles as they are (the home screen is
+  each profile's star) and writes nothing. After that a pull saves a board profile the
+  machine does not hold, checking what it saved by reading it back and running it through
+  the safety policy with the current bounds first; removes the file a newer version
+  replaced and the file of a profile deleted on the board; and sets each profile's star to
+  its home-screen flag. With writes off a pull only reads, exactly as before.
+- **A pull only ever pushes versions that came from an approved draft.** A profile you
+  made on the machine is shown on the board and its home-screen flag is applied, but it is
+  never pushed back: if its file is missing or was changed, the pull says so and does
+  nothing. A machine that looks reset (none of the app's profiles is on it any more) pauses
+  the board sync until you resume it (`POST /api/profile-board/resume`).
+- **Only profiles this app pushed, still holding exactly what it saved, are removed**, by
+  the same guards as a push's replace, and never one another board profile or a Set still
+  stands on. A profile you made, or an app profile you edited on the machine, stays there
+  when it is superseded or deleted on the board, and the pull says which file and why. If a
+  pull stops halfway, each profile is left old or new and the next pull finishes it. A new
+  version that does not read back as sent is removed again and the previous version stays.
+- **Once the board is adopted, profiles reach the machine through it:** the staged push and
+  rollback refuse every draft with a message pointing at the board (before the first
+  adoption they work as before). A profile this app saved itself before adoption counts as
+  the app's own on the board when it is still exactly what was saved, so a later draft of it
+  replaces it instead of adding a duplicate; everything else, even one named like an app
+  profile or edited since, stays yours and is never removed. That includes a copy a staged
+  push left unverified before the first adoption: only the machine's display can remove it.
+- **Reading the board is cheap by default** (served from the last mirror); add `?live=true`
+  to read the machine now.
+- **Sync runs carry a summary** of what the board sync did (adopted, pushed,
+  overwritten, removed, left on the machine, home-screen changes, failures), and every
+  action is a sync event and a row in the device-write audit.
+- **Schema (new migration, no reset needed):** a table for the board, a marker for the
+  one-time adoption, and a summary column on sync runs. No existing data changes.
+- **Not yet reachable from the web:** the board has routes only. The staged box and its
+  per-draft push and rollback still work as before.
+
 ### A push replaces the profile it supersedes
 
 - **A push no longer piles up copies on the machine.** Before every push the

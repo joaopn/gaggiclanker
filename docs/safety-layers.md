@@ -11,11 +11,13 @@ archive already held and write a judgement to a shot's notes card, both from the
 Sync page; both were removed. The firmware deletes its own oldest shots when
 free space runs low and the archive pulls before it does, which is accepted.)
 
-**Who may start a write:** a profile push goes through the four layers below,
-from a button a person presses on a page showing the diff they are approving. It
-is the one class of write that may ever be automated (replacing an old version on
-the machine with its approved successor, say); nothing automates one today. No
-timer, no hook after a pull, and no tool a language model can call starts one.
+**Who may start a write:** two things, and nothing else. A person pressing a button on a
+page that shows the diff they are approving starts a profile push (the four layers
+below). And, only while the writes switch is on, **the board sync at the end of a
+pull**: the app keeps its own profile board, and a pull makes the machine's profiles
+match it (see "The board sync" below). That is the one automatic write, and it
+is the only one: no timer, no machine event, no other hook after a pull, and no
+tool a language model can call starts a write.
 
 That is a property of the code, not a convention. `GaggimateClient`'s public
 surface is two closed lists — ten reads in `READ_ONLY_METHODS`, five writes in
@@ -41,6 +43,17 @@ authorised or refused, leaves a row in `device_writes`, which the Sync page
 lists; rows of the two removed history kinds (`shot_delete`, `notes_save`) from
 an older archive are still listed as history.
 
+**The board sync is the same writes through the same primitives, with the same guards.**
+It runs only when `deviceWritesEnabled` is on, at the end of the profile pass of a
+pull, inside the sync engine's lock; with the switch off a pull sends nothing and
+reads nothing for writing. It has no machine path of its own: every save is the push's
+`place` (no duplicate, read back and compared), every removal the push's
+`remove_if_ours` (an `ok` save of that id by this app in the audit, the app label,
+exactly the content recorded, no Set still brewing it, the star and the selection
+moved first), every star change a gated `favorite_profile`/`unfavorite_profile`, and
+every one leaves its `device_writes` row. Its plan builder (`drafts/board_plan.py`) only
+reads; the same list is served as the preview before the first write.
+
 **The chat adds a caller, not writes, and its tools cannot reach the machine.**
 Every tool declares a permission class, and there are exactly two: `read`, and
 `propose`, which writes to gaggiclanker — a Set version, a profile draft, an
@@ -52,11 +65,76 @@ tool hold anything that could write: the context it is handed carries the
 object that creates drafts, never the service that pushes them, and no path from
 it leads to the device client or the connection that owns it (a test walks the
 graph). The connection to the machine is this application's own HTTP API and
-nothing more. Pushing a draft to the machine stays what it was: a button a
-person presses, on a page showing the diff they are approving.
+nothing more. Putting a draft on the board is a button a
+person presses, on a page showing the diff they are approving; the next pull with the
+switch on does the push.
 
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.
+
+## The board sync
+
+The app owns a **profile board**: one row per profile it means the machine to hold, with
+the version that is current, whether it belongs on the machine's home screen, and which
+file on the machine stands for it. Profiles are edited in the app, never on the machine.
+Editing the board (putting an approved draft on it, turning the home-screen flag on or
+off, deleting a profile) writes to the archive only, and works with the switch off.
+
+With the switch on, every pull ends by making the machine's profiles match the board,
+in this order:
+
+1. **Adoption**, once, on the first pull with the switch on: every profile the machine
+   holds becomes a board row exactly as it is, its favourite star being the home-screen
+   flag. A file this app saved itself (an `ok` save of that id on this host in the audit,
+   the app label, and content equal to what that save sent) becomes an app row; every other
+   profile, a label ending in the app suffix included and a copy edited on the display since
+   the app saved it, is the person's, and a person's profile is never removed. Nothing is written to the machine, and the pull ends
+   there.
+2. **Each live row**, but **only the app's own versions are ever pushed**: a row whose
+   current version came from an approved draft. When the machine holds no file with that
+   content, the version is run through the schema and the safety policy with the bounds as
+   they are now (a version that fails stays off the machine and is reported), saved, and read
+   back and compared. The file the row stood on before is then removed if it is the app's.
+   A round trip that does not match removes the copy just written through the same guarded
+   path and keeps the previous version; if that copy cannot be removed the version is not
+   tried again until the profile changes. A profile you made yourself (an adopted row) is
+   never pushed: when its file is missing or was changed on the machine the pull reports it
+   and does nothing, and its home-screen flag is still applied while the file exists. An app
+   profile edited on the machine gets the board's version saved beside the edit, and the edit
+   is left and reported.
+3. **Each deleted row**: its file is removed if it is the app's.
+4. **The home screen**: each file's star is set to its row's flag (a profile off the home
+   screen stays on the machine and leaves the carousel; the firmware has no disabled
+   state), from a fresh read when anything was written above.
+
+**A profile the app did not write is never removed, and neither is one that no longer holds
+exactly what the archive recorded for the app's save.** The delete guards are the push's
+own: an `ok` save of that id by this app in the audit, the app label, exactly that content on
+a fresh load immediately before the delete, no live board profile standing on the file (asked
+again at the moment of the delete, deleted rows' files included), no Set brewing it. A file
+that fails them stays and the pull reports which and why. The machine's selected profile is
+never removed before its successor (never a utility profile) is selected. A file the machine
+listed but could not load is neither pushed again nor forgotten: the row keeps it and the
+run records a failure.
+
+**A machine that looks reset pauses the phase.** If the app's profiles were on the machine at
+the last pull and none of their files is there now, the pull writes nothing, records "the
+machine looks reset; nothing written", and the board shows it. A person resumes it
+(`POST /api/profile-board/resume`, a route only: no chat or MCP tool reaches it); the next pull
+then pushes the board's app profiles. Adopted profiles are never pushed back. A person who
+deleted every file by hand looks the same, which is why the answer is theirs.
+
+A staged push that failed to verify before the board was adopted leaves a copy that adoption
+takes as the person's (it no longer holds what the app saved), so only the display can remove
+it. A pull that stops halfway leaves every profile old or new: a push is a save followed by a
+removal, a failure between them leaves both files on the machine, and the next pull finds the
+new one by its content and finishes the removal. Failures are values (events, an error count
+on the run), and three device failures in a row end the phase. The order of profiles on the
+machine is not synced. A draft that is on the board is refused by the staged push and
+rollback routes: the pull is its only way to the machine.
+
+The firmware simulator gate (`tests/simulator/test_profile_push.py`) covers a pull that
+pushes, replaces and clears a star on the real firmware.
 
 ## What can actually go wrong
 
