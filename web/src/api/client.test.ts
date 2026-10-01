@@ -7,11 +7,13 @@ import {
   downloadFile,
   fetchApi,
   getHealth,
+  getProfileBoard,
   getSettings,
   hasAuthenticatedSession,
   login,
   logout,
   patchSettings,
+  putOnBoard,
   setAuthToken,
 } from "@/api/client";
 
@@ -44,6 +46,37 @@ function success<T>(data: T, requestId = "req-1") {
 function failure(code: string, message: string, details?: unknown, requestId = "req-9") {
   return { ok: false, error: { code, message, details }, meta: { request_id: requestId } };
 }
+
+describe("the profile board's requests", () => {
+  beforeEach(() => {
+    __resetApiClientAuthForTests(null);
+  });
+
+  it("puts a draft on the board with its Set and major choice, only together", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(201, success({})));
+    await putOnBoard({ draftId: 4, setId: 3, major: true });
+    await putOnBoard({ draftId: 4, major: true });
+    const body = (n: number) => {
+      const init = spy.mock.calls[n]?.[1] as RequestInit;
+      return JSON.parse(String(init.body));
+    };
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board");
+    expect(body(0)).toEqual({ draft_id: 4, set_id: 3, major: true });
+    expect(body(1)).toEqual({ draft_id: 4, set_id: null });
+  });
+
+  it("reads the machine only when asked to", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(200, success({})));
+    await getProfileBoard();
+    await getProfileBoard(true);
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board");
+    expect(spy.mock.calls[1]?.[0]).toBe("/api/profile-board?live=true");
+  });
+});
 
 describe("fetchApi", () => {
   beforeEach(() => {
