@@ -200,9 +200,11 @@ class BoardLanding(BaseModel):
     #: Whether that row already holds a newer draft (current, or waiting for a sync), so a
     #: put of this one would undo it.
     holds_newer_draft: bool = False
-    #: A put that would make a new row while a live board profile has the same label: the
-    #: label it would sit beside, so the page can say "a second profile" rather than "new".
-    beside_label: str | None = None
+    #: A put the board refuses because a live board profile already carries the label this
+    #: draft would give a profile of its own (a new profile, or a version that renames the
+    #: one it continues): that label. Two live profiles never share a label, so there is no
+    #: put to offer, only a refinement of the profile that has the label, or a discard.
+    taken_label: str | None = None
     #: A put that would bring a deleted profile back (its file still waits to be dealt with).
     revives_label: str | None = None
 
@@ -213,6 +215,9 @@ class DraftLanding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft_id: int
+    #: The label of the live board profile that already holds this draft's exact document, if
+    #: one does: there is nothing to put (the document is on the board), only to discard.
+    already_on_board_label: str | None = None
     #: A put that records nothing on a Set: found through the draft's base, as the route does.
     plain: BoardLanding
     #: A put recorded on the draft's own Set: found through the Set's current version.
@@ -244,6 +249,16 @@ class BoardView(BaseModel):
     pause_recorded: bool = False
     #: For every approved draft not yet on the board, where a put would land.
     landings: list[DraftLanding] = Field(default_factory=list)
+
+
+@dataclass
+class _Destination:
+    """What a put of one draft would do: continue ``row``, bring ``revived`` back, or add."""
+
+    row: BoardRow | None = None
+    revived: BoardRow | None = None
+    #: The label of a live profile that makes the put a duplicate; the put is refused.
+    taken: str | None = None
 
 
 @dataclass
@@ -331,16 +346,28 @@ class BoardService:
     async def _landings(self) -> list[DraftLanding]:
         """Where each waiting approved draft would land, by the code a put runs.
 
-        The same ``_lineage_row`` ``put_draft`` calls, never a second implementation, so the
-        page cannot offer a put the server would place somewhere else.
+        The same ``_destination`` ``put_draft`` calls, never a second implementation, so the
+        page cannot offer a put the server would place somewhere else or refuse.
         """
         found: list[DraftLanding] = []
         for draft in await self.drafts.list_drafts(status="approved", limit=200):
             if draft.draft_version_id is None:
                 continue
             version = await self.profiles.get_version(draft.draft_version_id)
-            if version is None or await self.board.find_live_by_version(version.id) is not None:
-                continue  # already on the board: the row says so
+            if version is None:
+                continue
+            existing = await self.board.find_live_by_version(version.id)
+            if existing is not None:
+                # Its document is on the board already (this draft's own row, or another
+                # draft that made the same document): nothing to put.
+                found.append(
+                    DraftLanding(
+                        draft_id=draft.id,
+                        already_on_board_label=existing.label,
+                        plain=BoardLanding(),
+                    )
+                )
+                continue
             found.append(
                 DraftLanding(
                     draft_id=draft.id,
@@ -355,18 +382,39 @@ class BoardService:
     async def _landing(
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
     ) -> BoardLanding:
-        row = await self._lineage_row(draft, version, set_id)
+        dest = await self._destination(draft, version, set_id)
+        if dest.taken is not None:
+            return BoardLanding(taken_label=dest.taken)
+        row = dest.row
         if row is None:
-            revived = await self._revivable(version)
-            if revived is not None:
-                return BoardLanding(revives_label=revived.label)
-            beside = await self.board.find_live_by_label(version.label)
-            return BoardLanding(beside_label=None if beside is None else beside.label)
+            return BoardLanding(revives_label=None if dest.revived is None else dest.revived.label)
         newer = row.pending_draft_id is not None and row.pending_draft_id > draft.id
         if not newer:
             holder = await self.drafts.first_draft_on_version(row.current_version_id)
             newer = holder is not None and holder > draft.id
         return BoardLanding(row_id=row.id, row_label=row.label, holds_newer_draft=newer)
+
+    async def _destination(
+        self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
+    ) -> _Destination:
+        """Where a put of this draft lands, and whether the board refuses it.
+
+        The one place that decides, for the put and for the read of where a put lands:
+        the row it continues (by lineage), else a deleted row it brings back, else a new
+        row; and in every case the refusal that two live profiles never share a label. A
+        put that keeps a row's label is never refused for it (a pair that already shares a
+        label is left to be fixed, not made worse); one that would give a row a label
+        another live row holds, or add a row beside one, is.
+        """
+        row = await self._lineage_row(draft, version, set_id)
+        if row is not None:
+            if row.label == version.label:
+                return _Destination(row=row)
+            holder = await self.board.find_live_by_label(version.label, excluding=row.id)
+            return _Destination(row=row, taken=None if holder is None else holder.label)
+        revived = await self._revivable(version)
+        holder = await self.board.find_live_by_label(version.label)
+        return _Destination(revived=revived, taken=None if holder is None else holder.label)
 
     async def _revivable(self, version: ProfileVersionRow) -> BoardRow | None:
         """The deleted row a put of this version would bring back, if there is one.
@@ -425,12 +473,19 @@ class BoardService:
             if await self.board.find_live_by_version(version.id) is not None:
                 raise Conflict("That profile version is already on the board.")
 
-            row = await self._lineage_row(draft, version, set_id)
+            dest = await self._destination(draft, version, set_id)
+            if dest.taken is not None:
+                raise Conflict(
+                    f"The board already has {dest.taken}; refine this draft from it, or discard "
+                    "it.",
+                    details={"reason": "duplicate_label"},
+                )
+            row = dest.row
             pending = BoardRowPatch(
                 pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
             )
             if row is None:
-                revived = await self._revivable(version)
+                revived = dest.revived
                 if revived is not None:
                     # The same profile put back while its old file still waits to be dealt
                     # with (a Set may be brewing it): the row is the same profile again, not
@@ -545,10 +600,20 @@ class BoardService:
             if await self.board.find_live_app_by_version(version.id) is not None:
                 # A profile the app pushed already stands for exactly this content (a copy a
                 # sync has just put on the machine while the old one is still kept): a second
-                # row on it would be pushed a third copy by the next sync. A person's own
-                # identical duplicate is a different thing: the sync never pushes it, so it can
-                # be taken as theirs.
+                # row on it would be pushed a third copy by the next sync. The label is part of
+                # the content, so the label rule below would refuse it too; this says it more
+                # precisely.
                 raise Conflict("A profile on the board already stands for this exact profile.")
+            same_label = await self.board.find_live_by_label(version.label)
+            if same_label is not None:
+                # Two live profiles never share a label, the one the person made included:
+                # the machine's own display tells them apart by it. Adoption takes the
+                # machine as it is and reports the pairs instead; taking one more is a choice.
+                raise Conflict(
+                    f"The board already has {same_label.label}. Delete that one from the board "
+                    "first if this is the one you want on it.",
+                    details={"reason": "duplicate_label"},
+                )
             ours = await self._saved_by_the_app(
                 device_profile_id, version.label, version.content_hash, host=adoption.host
             )

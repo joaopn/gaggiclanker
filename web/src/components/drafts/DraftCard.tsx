@@ -81,8 +81,17 @@ export function DraftCard({
   landing?: DraftLanding;
 }) {
   const onBoard = boardRow !== null;
-  const plainBlocked = landing?.plain.holds_newer_draft === true;
-  const setBlocked = landing?.for_set?.holds_newer_draft === true;
+  // A put the server would refuse is not offered: it would undo a newer version, the board
+  // already has a profile with the label it would carry, or its exact document is there.
+  const alreadyOnBoard = landing?.already_on_board_label ?? null;
+  const plainBlocked =
+    alreadyOnBoard !== null ||
+    landing?.plain.holds_newer_draft === true ||
+    (landing?.plain.taken_label ?? null) !== null;
+  const setBlocked =
+    alreadyOnBoard !== null ||
+    landing?.for_set?.holds_newer_draft === true ||
+    (landing?.for_set?.taken_label ?? null) !== null;
   const detail = useProfileDraft(draft.id);
   const approve = useApproveDraft();
   const push = usePushDraft();
@@ -336,18 +345,18 @@ export function DraftCard({
 
         {draft.status === "approved" && adopted && !onBoard && landing ? (
           <div className="w-full space-y-1 text-sm" data-testid="draft-landing">
-            <p>
-              {plainBlocked
-                ? `${forSet !== null ? "Without the Set, p" : "P"}utting this on the board would undo a newer version of ${landing.plain.row_label ?? "this profile"} that is already there. Refine the newer one, or discard this draft.`
-                : `${forSet !== null ? "Without the Set, it" : "It"} ${landingWords(landing.plain)}.`}
-            </p>
-            {landing.for_set ? (
-              <p>
-                {setBlocked
-                  ? `Recorded for the Set, putting it on the board would undo a newer version of ${landing.for_set.row_label ?? "this profile"} that is already there.`
-                  : `Recorded for the Set, it ${landingWords(landing.for_set)}.`}
+            {alreadyOnBoard !== null ? (
+              <p data-testid="draft-already-on-board">
+                {`This exact profile is already on the board as ${alreadyOnBoard}, so there is nothing to put. Discard this draft, or refine it into something else.`}
               </p>
-            ) : null}
+            ) : (
+              <>
+                <p>{landingSentence(landing.plain, forSet !== null ? "Without the Set, " : "")}</p>
+                {landing.for_set ? (
+                  <p>{landingSentence(landing.for_set, "Recorded for the Set, ")}</p>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
 
@@ -570,28 +579,51 @@ export function DraftCard({
 }
 
 /**
- * Where the prediction ends up, said from what the archive holds rather than
- * from the button that was pressed: a draft pushed without recording it on its
- * Set, or pushed for another one, recorded nothing, and the line must not claim
- * otherwise. Nothing is said once the draft can no longer be pushed at all.
+ * Where a put lands, as a sentence. `lead` is empty for a draft without a Set, "Without the
+ * Set, " or "Recorded for the Set, " when the card shows both landings; the sentence then
+ * continues in lower case.
  */
-/** Where a put lands, in the words of the sentence it ends: "goes on as a new profile". */
-function landingWords(landing: {
-  row_id?: number | null;
-  row_label?: string | null;
-  beside_label?: string | null;
-  revives_label?: string | null;
-}): string {
+function landingSentence(
+  landing: {
+    row_id?: number | null;
+    row_label?: string | null;
+    holds_newer_draft?: boolean;
+    taken_label?: string | null;
+    revives_label?: string | null;
+  },
+  lead: string,
+): string {
+  const sentence = (lowerCase: string, upperCase: string) =>
+    lead === "" ? upperCase : `${lead}${lowerCase}`;
+  if (landing.taken_label) {
+    return sentence(
+      `the board already has ${landing.taken_label}; refine this draft from it, or discard it.`,
+      `The board already has ${landing.taken_label}; refine this draft from it, or discard it.`,
+    );
+  }
+  if (landing.holds_newer_draft) {
+    const name = landing.row_label ?? "this profile";
+    return sentence(
+      `putting this on the board would undo a newer version of ${name} that is already there. Refine the newer one, or discard this draft.`,
+      `Putting this on the board would undo a newer version of ${name} that is already there. Refine the newer one, or discard this draft.`,
+    );
+  }
+  let where: string;
   if (landing.row_id != null) {
-    return `replaces ${landing.row_label ?? "a profile"} on the board, as its next version`;
+    where = `replaces ${landing.row_label ?? "a profile"} on the board, as its next version`;
+  } else if (landing.revives_label) {
+    where = `goes back on the board as ${landing.revives_label}`;
+  } else {
+    where = "goes on the board as a new profile";
   }
-  if (landing.revives_label) return `goes back on the board as ${landing.revives_label}`;
-  if (landing.beside_label) {
-    return `goes on the board as a second profile beside ${landing.beside_label}`;
-  }
-  return "goes on the board as a new profile";
+  return lead === "" ? `It ${where}.` : `${lead}it ${where}.`;
 }
 
+/**
+ * Where the prediction ends up, said from what the archive holds rather than from the button
+ * that was pressed: a draft put on the board without recording it on its Set, or for another
+ * one, recorded nothing, and the line must not claim otherwise.
+ */
 function PredictionLanding({
   draft,
   adopted,

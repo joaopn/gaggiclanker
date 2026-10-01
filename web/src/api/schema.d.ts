@@ -3121,8 +3121,6 @@ export interface components {
          * @description Where a put of one draft would land: the row it continues, or a new profile.
          */
         BoardLanding: {
-            /** Beside Label */
-            beside_label?: string | null;
             /**
              * Holds Newer Draft
              * @default false
@@ -3134,6 +3132,8 @@ export interface components {
             row_id?: number | null;
             /** Row Label */
             row_label?: string | null;
+            /** Taken Label */
+            taken_label?: string | null;
         };
         /**
          * BoardMachineState
@@ -3874,6 +3874,8 @@ export interface components {
          * @description What putting an approved draft on the board would do, with and without its Set.
          */
         DraftLanding: {
+            /** Already On Board Label */
+            already_on_board_label?: string | null;
             /** Draft Id */
             draft_id: number;
             for_set?: components["schemas"]["BoardLanding"] | null;

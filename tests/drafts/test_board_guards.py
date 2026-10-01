@@ -33,11 +33,13 @@ from tests.drafts.test_board import (
     app_row,
     approve,
     assert_every_delete_was_ours,
+    draft_from,
     get_board,
     pull,
     put,
     row_for,
     summary_of,
+    variant_draft,
     write_frames,
 )
 from tests.drafts.test_replace import (
@@ -193,7 +195,7 @@ async def test_an_unreadable_file_is_neither_pushed_again_nor_forgotten(
     app, client, fake = adopted
     x = await app_row(app, client, fake, provider, 8)
     xfile = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
-    await put(client, await draft_of(app, client, provider, BASE_LABEL, 7))
+    await put(client, await variant_draft(app, client, "Second", 7))
     await pull(app)
     yrow = next(
         r
@@ -202,7 +204,7 @@ async def test_an_unreadable_file_is_neither_pushed_again_nor_forgotten(
     )
     yfile = yrow["machine"]["device_id"]
     await client.delete(f"/api/profile-board/{yrow['row']['id']}")
-    count = len([p for p in fake.profiles if p["label"] == APP_LABEL])
+    count = len([p for p in fake.profiles if str(p["label"]).endswith("[AI]")])
     fail_loads(fake, {xfile, yfile})
     fake.ws_requests.clear()
 
@@ -211,7 +213,7 @@ async def test_an_unreadable_file_is_neither_pushed_again_nor_forgotten(
     assert run.status == "error"
     assert {f["device_id"] for f in summary_of(run)["failures"]} == {xfile, yfile}
     assert write_frames(fake) == [], "nothing is pushed or removed for what could not be read"
-    assert len([p for p in fake.profiles if p["label"] == APP_LABEL]) == count
+    assert len([p for p in fake.profiles if str(p["label"]).endswith("[AI]")]) == count
     board = await get_board(client)
     assert [r["id"] for r in board["pending_removals"]] == [yrow["row"]["id"]]
     assert row_for(board, APP_LABEL)["row"]["device_profile_id"] == xfile
@@ -295,8 +297,8 @@ async def test_a_copy_that_does_not_verify_and_cannot_be_removed_is_not_retried_
     # A changed profile is a new try.
     fake.mutate_on_save = None
     fake.error_requests.clear()
-    newer = await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
-    assert newer["id"] == row["id"] or newer["id"] != row["id"]
+    newer = await put(client, await draft_from(app, client, provider, row, 7))
+    assert newer["id"] == row["id"], "the new version continues the same profile"
     ok = await pull(app)
     assert ok.status == "ok", ok.error
     assert len(summary_of(ok)["pushed"]) >= 1
@@ -562,7 +564,7 @@ async def test_a_machine_with_some_of_the_apps_profiles_does_not_pause(
 ) -> None:
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)
-    await app_row(app, client, fake, provider, 7)
+    await app_row(app, client, fake, provider, 7, name="Second")
     gone = next(p for p in fake.profiles if p["label"] == APP_LABEL)
     fake.profiles.remove(gone)
 
@@ -708,13 +710,19 @@ async def test_a_profile_the_person_made_stays_theirs_even_when_it_ends_in_the_a
     mine_row = row_for(await get_board(client), APP_LABEL)
     assert mine_row["row"]["origin"] == "adopted"
 
-    landed = await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
-    await pull(app)
+    # A draft of it carries the same label: refused as a duplicate, plain or for a Set, so the
+    # person's own profile is never continued, replaced or doubled.
     set_id = await make_set_on(client, "OnMine", mine_row["row"]["current_version_id"])
-    on_set = await put(client, await draft_of(app, client, provider, APP_LABEL, 6), set_id=set_id)
+    plain = await draft_of(app, client, provider, APP_LABEL, 7)
+    await approve(client, plain)
+    for_set = await draft_of(app, client, provider, APP_LABEL, 6)
+    await approve(client, for_set)
+    for body in ({"draft_id": plain["id"]}, {"draft_id": for_set["id"], "set_id": set_id}):
+        refused = await client.post("/api/profile-board", json=body)
+        assert refused.status_code == 409, refused.text
     await pull(app)
 
-    assert landed["id"] != mine_row["row"]["id"] and on_set["id"] != mine_row["row"]["id"]
+    assert row_for(await get_board(client), APP_LABEL)["row"]["id"] == mine_row["row"]["id"]
     assert "mine" in ids(fake_device)
     assert kinds(await audit(app), "profile_delete") == []
 
@@ -912,8 +920,8 @@ async def test_versions_the_policy_refuses_do_not_use_up_the_three_failure_stop(
 ) -> None:
     app, client, _ = adopted
     for bar in (9, 10, 11):
-        await put(client, await draft_of(app, client, provider, BASE_LABEL, bar))
-    await put(client, await draft_of(app, client, provider, BASE_LABEL, 7))
+        await put(client, await variant_draft(app, client, f"High {bar}", bar))
+    await put(client, await variant_draft(app, client, "Low", 7))
     await app.state.settings_service.apply({"profilePolicyPressureMaxBar": 8.5})
 
     run = await pull(app)
@@ -981,8 +989,8 @@ async def test_a_row_revived_between_the_plan_and_its_removal_keeps_its_file(
 ) -> None:
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 9)  # another app row: the machine is not "reset"
-    await app_row(app, client, fake, provider, 8)
-    rows = [r for r in (await get_board(client))["rows"] if r["row"]["label"] == APP_LABEL]
+    await app_row(app, client, fake, provider, 8, name="Second")
+    rows = [r for r in (await get_board(client))["rows"] if r["row"]["label"] == "Second [AI]"]
     victim = rows[-1]
     file = victim["machine"]["device_id"]
     await client.delete(f"/api/profile-board/{victim['row']['id']}")

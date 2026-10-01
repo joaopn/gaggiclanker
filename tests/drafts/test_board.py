@@ -12,8 +12,10 @@ earlier in the audit.**
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import dataclasses
+import json
 from typing import Any
 
 import httpx
@@ -45,6 +47,7 @@ from tests.drafts.test_replace import (
     grind_change,
     kinds,
     make_set_on,
+    manual_draft,
     set_device_ids,
 )
 from tests.llm.conftest import FakeProvider
@@ -124,15 +127,55 @@ async def adopted(
     return app, client, fake_device
 
 
+async def variant_draft(
+    app: FastAPI, client: httpx.AsyncClient, name: str, bar: float
+) -> dict[str, Any]:
+    """A draft of the person's profile carrying a label of its own (so a profile of its own).
+
+    Two live board profiles never share a label, so a test that wants several app profiles
+    off the one person's profile names each.
+    """
+    return await manual_draft(app, client, BASE_LABEL, name, bar)
+
+
+def app_label_of(name: str) -> str:
+    """What the suffix makes of a variant's label."""
+    return f"{name} [AI]"
+
+
+async def draft_from(
+    app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider, row: dict[str, Any], bar: float
+) -> dict[str, Any]:
+    """A draft of the board row's own version (not of the newest version with its label)."""
+    version = data(await client.get(f"/api/profile-versions/{row['current_version_id']}"))
+    document = dict(version["profile"])
+    document["phases"] = [dict(p) for p in document["phases"]]
+    document["phases"][0]["pump"] = {"target": "pressure", "pressure": bar, "flow": 0}
+    provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
+    response = await client.post(
+        "/api/profile-drafts",
+        json={"base_version_id": row["current_version_id"], "notes": "change it"},
+    )
+    return dict(data(response))
+
+
 async def app_row(
     app: FastAPI,
     client: httpx.AsyncClient,
     fake: FakeDevice,
     provider: FakeProvider,
     bar: float = 8,
+    name: str | None = None,
 ) -> dict[str, Any]:
-    """Put a draft of the person's profile on the board and pull: the machine holds a copy."""
-    draft = await draft_of(app, client, provider, BASE_LABEL, bar)
+    """Put a draft of the person's profile on the board and pull: the machine holds a copy.
+
+    ``name`` gives it a label of its own, for a test that wants more than one app profile.
+    """
+    draft = (
+        await draft_of(app, client, provider, BASE_LABEL, bar)
+        if name is None
+        else await variant_draft(app, client, name, bar)
+    )
     row = await put(client, draft)
     run = await pull(app)
     assert run.status == "ok", run.error
@@ -293,32 +336,41 @@ async def test_a_new_version_replaces_only_the_copy_the_app_wrote(
     await assert_every_delete_was_ours(app)
 
 
-async def test_a_draft_of_a_profile_the_person_made_lands_beside_it_even_with_the_app_label(
+async def test_a_draft_with_the_label_of_a_profile_the_person_made_waits_until_theirs_is_gone(
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
     app, client = writes_on
     # Carries the app label but was not saved by this app, as a profile made by another
-    # tool does: the board still treats it as the person's, never pushes or replaces it.
+    # tool does: the board treats it as the person's, never pushes or replaces it.
     legacy = copy.deepcopy(fake_device.profiles[0])
     legacy.update(id="legacy", label="Legacy [AI]")
     fake_device.profiles.append(legacy)
     fake_device.favorite_profile_ids.add("legacy")
     await pull(app)  # adoption (and the mirror)
     adopted_row = row_for(await get_board(client), "Legacy [AI]")
-    new = await put(client, await draft_of(app, client, provider, "Legacy [AI]", 7))
-    assert new["id"] != adopted_row["row"]["id"], "a new profile beside the person's own"
+    draft = await draft_of(app, client, provider, "Legacy [AI]", 7)
+    await approve(client, draft)
+
+    # A draft of it carries the same label, and two live profiles never share one.
+    refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
+    assert refused.status_code == 409
+    assert "The board already has Legacy [AI]" in error(refused)["message"]
+    assert len((await get_board(client))["rows"]) == len(fake_device.profiles)
+
+    # Taking the person's profile off the board (it stays on the machine) frees the label.
+    assert (
+        await client.delete(f"/api/profile-board/{adopted_row['row']['id']}")
+    ).status_code == 200
+    new = dict(data(await client.post("/api/profile-board", json={"draft_id": draft["id"]})))
+    assert new["id"] != adopted_row["row"]["id"]
     board = await get_board(client)
-    assert [a["kind"] for a in board["actions"]] == ["push"]
+    assert [a["kind"] for a in board["actions"]] == ["push", "leave"]
 
     run = await pull(app)
 
     summary = summary_of(run)
-    assert summary["left"] == [] and summary["removed"] == []
+    assert [i["label"] for i in summary["left"]] == ["Legacy [AI]"], "the person's file is left"
     assert "legacy" in [str(p["id"]) for p in fake_device.profiles]
-    assert len([p for p in fake_device.profiles if p["label"] == "Legacy [AI]"]) == 2
-    rows = (await get_board(client))["rows"]
-    assert len([r for r in rows if r["row"]["label"] == "Legacy [AI]"]) == 2
-    assert (await get_board(client))["actions"] == []
     assert kinds(await audit(app), "profile_delete") == []
 
 
@@ -554,8 +606,7 @@ async def test_three_failures_in_a_row_stop_the_phase(
 ) -> None:
     app, client, fake = adopted
     for bar in (6, 7, 8, 9):
-        draft = await draft_of(app, client, provider, BASE_LABEL, bar)
-        await put(client, draft)
+        await put(client, await variant_draft(app, client, f"Variant {bar}", bar))
     fake.error_requests.add("req:profiles:save")
 
     run = await pull(app)
@@ -819,3 +870,73 @@ async def test_a_copy_that_another_board_profile_already_stands_on_is_never_shar
     assert "survivor" in standing and len(set(standing)) == 2, "one file, never two rows"
     assert all(r["machine"]["present"] for r in rows)
     assert [i["reason"] for i in summary_of(run)["pushed"]] == ["missing"]
+
+
+# ── no two live profiles share a label ──────────────────────────────
+
+
+async def test_two_puts_of_one_label_at_once_make_one_row_and_one_refusal(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, _ = adopted
+    first = await draft_of(app, client, provider, BASE_LABEL, 7)
+    second = await draft_of(app, client, provider, BASE_LABEL, 6)
+    await approve(client, first)
+    await approve(client, second)
+
+    responses = await asyncio.gather(
+        *(client.post("/api/profile-board", json={"draft_id": d["id"]}) for d in (first, second))
+    )
+
+    assert sorted(r.status_code for r in responses) == [201, 409]
+    labels = [r["row"]["label"] for r in (await get_board(client, live=False))["rows"]]
+    assert labels.count(APP_LABEL) == 1
+
+
+async def test_a_put_and_a_take_of_one_label_at_once_leave_one_profile_with_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    draft = await draft_of(app, client, provider, BASE_LABEL, 7)
+    await approve(client, draft)
+    # A profile made on the display that carries the very label the draft would give.
+    made = copy.deepcopy(fake.profiles[0])
+    made.update(id="made", label=APP_LABEL)
+    made["temperature"] = float(made["temperature"]) + 3
+    fake.profiles.append(made)
+    await pull(app)  # the mirror learns of it
+
+    responses = await asyncio.gather(
+        client.post("/api/profile-board", json={"draft_id": draft["id"]}),
+        client.post("/api/profile-board/take", json={"device_profile_id": "made"}),
+    )
+
+    assert sorted(r.status_code for r in responses) == [201, 409]
+    labels = [r["row"]["label"] for r in (await get_board(client, live=False))["rows"]]
+    assert labels.count(APP_LABEL) == 1
+
+
+async def test_adoption_takes_two_profiles_with_one_label_and_reports_the_pair(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    original = fake_device.profiles[0]
+    twin = copy.deepcopy(original)
+    twin.update(id="twin", temperature=float(twin["temperature"]) + 1)  # same label, other file
+    fake_device.profiles.append(twin)
+    fake_device.ws_requests.clear()
+
+    run = await pull(app)
+
+    assert run.status == "ok", run.error
+    assert len(summary_of(run)["adopted"]) == len(fake_device.profiles), "nothing is refused"
+    assert write_frames(fake_device) == []
+    board = await get_board(client)
+    shared = [r for r in board["reports"] if r["reason"] == "duplicate_label"]
+    assert len(shared) == 2 and {r["label"] for r in shared} == {original["label"]}
+    assert {r["device_id"] for r in shared} == {original["id"], "twin"}
+    assert board["actions"] == [], "a pair is said, never acted on"
+    # A later sync writes nothing for it either.
+    assert write_frames(fake_device) == []
+    again = await pull(app)
+    assert summary_of(again)["pushed"] == [] and summary_of(again)["removed"] == []

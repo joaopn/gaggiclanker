@@ -60,6 +60,7 @@ __all__ = [
     "FINAL_REFUSALS",
     "NO_SUCCESSOR",
     "RESET_REASON",
+    "SHARED_LABEL",
     "BoardAction",
     "BoardPlan",
     "DeletedPlan",
@@ -75,6 +76,9 @@ NO_SUCCESSOR = "selected on the machine and no other board profile is there to s
 
 #: Why a file stays while another live board profile stands on it.
 ANOTHER_ROW = "another board profile stands on it"
+
+#: The reason of the report for two live profiles with one label.
+SHARED_LABEL = "duplicate_label"
 
 #: What the run records when a sync finds the machine looks reset.
 RESET_REASON = "the machine looks reset (none of the app's profiles is on it); nothing written"
@@ -101,7 +105,8 @@ class BoardAction(BaseModel):
     #: ``remove`` and ``leave``: ``superseded`` or ``deleted``. ``home_screen``: ``on`` or
     #: ``off``. ``report``: ``missing``, ``edited_on_machine`` (a profile the person made, not
     #: pushed), ``unreadable`` (the machine listed it and could not load it),
-    #: ``did_not_verify`` (this version did not read back last time).
+    #: ``did_not_verify`` (this version did not read back last time), ``duplicate_label``
+    #: (another live profile has the same label).
     reason: str
     #: For ``leave`` and ``report``, why, in words a person reads.
     detail: str = ""
@@ -163,6 +168,9 @@ class Computed:
     adopt: list[BoardAction] = field(default_factory=list)
     rows: list[RowPlan] = field(default_factory=list)
     deleted: list[DeletedPlan] = field(default_factory=list)
+    #: Live profiles sharing a label, said once per profile. Not a row's own report: a row
+    #: that shares a label is pushed, replaced and removed like any other.
+    labels: list[BoardAction] = field(default_factory=list)
 
     def actions(self) -> list[BoardAction]:
         if self.paused:
@@ -180,6 +188,7 @@ class Computed:
         found.extend(
             d.action for d in self.deleted if d.action is not None and d.action.kind == "report"
         )
+        found.extend(self.labels)
         return found
 
 
@@ -360,6 +369,7 @@ class PlanBuilder:
                 action = action.model_copy(update={"kind": "leave", "detail": NO_SUCCESSOR})
             plan_d.action = action
 
+        computed.labels = _shared_labels(live)
         if computed.paused is None and not adoption.resume_pending and looks_reset(live, machine):
             computed.paused = RESET_REASON
         return computed
@@ -437,6 +447,32 @@ class PlanBuilder:
 
 #: What a file the machine listed and then could not load is reported as.
 UNREADABLE = "the machine listed it but could not load it; nothing was changed for it"
+
+
+def _shared_labels(live: list[BoardRow]) -> list[BoardAction]:
+    """A report for every live profile that shares its label with another live one.
+
+    The board never makes such a pair (a put or a take that would is refused), but adoption
+    takes the machine as it is, and a machine can hold two profiles with one name. They are
+    said, not refused, and nothing is written for the sake of the pair.
+    """
+    by_label: dict[str, list[BoardRow]] = {}
+    for row in live:
+        by_label.setdefault(row.label, []).append(row)
+    return [
+        BoardAction(
+            kind="report",
+            row_id=row.id,
+            label=row.label,
+            device_id=row.device_profile_id,
+            reason=SHARED_LABEL,
+            detail=f"another profile on the board is also called {row.label}; "
+            "delete one of them so each name is used once",
+        )
+        for rows in by_label.values()
+        if len(rows) > 1
+        for row in rows
+    ]
 
 
 def looks_reset(live: list[BoardRow], machine: MachineState) -> bool:

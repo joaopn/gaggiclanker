@@ -39,6 +39,26 @@ describe("rowStateOf", () => {
     );
   });
 
+  it("says a shared label as a note and keeps the profile's own state", () => {
+    const entry = boardRowView({ row: { id: 2, origin: "adopted" } });
+    const view = boardView({
+      rows: [entry],
+      reports: [
+        boardAction({
+          kind: "report",
+          row_id: 2,
+          reason: "duplicate_label",
+          detail: "another profile on the board is also called Londinium",
+        }),
+      ],
+    });
+    expect(rowStateOf(view, entry)).toMatchObject({
+      text: "On the machine",
+      tone: "ok",
+      notes: ["Another profile on the board is also called Londinium."],
+    });
+  });
+
   it("names the old copy that goes, the one that stays and the star that moves", () => {
     const entry = boardRowView({
       row: { id: 2, origin: "draft" },

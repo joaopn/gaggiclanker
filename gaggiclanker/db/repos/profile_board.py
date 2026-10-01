@@ -167,12 +167,18 @@ class ProfileBoardRepository(Repository):
         )
         return self.to_model(BoardRow, row)
 
-    async def find_live_by_label(self, label: str) -> BoardRow | None:
-        """A live row with this label, if any (the first, for a stable answer)."""
+    async def find_live_by_label(
+        self, label: str, *, excluding: int | None = None
+    ) -> BoardRow | None:
+        """A live row with this label, if any (the first, for a stable answer).
+
+        ``excluding`` leaves one row out: the row a new version continues is not a duplicate
+        of itself.
+        """
         row = await self.db.fetch_one(
             "SELECT * FROM profile_board WHERE label = ? AND deleted_at IS NULL "
-            "ORDER BY id LIMIT 1",
-            (label,),
+            "AND id IS NOT ? ORDER BY id LIMIT 1",
+            (label, excluding),
         )
         return self.to_model(BoardRow, row)
 

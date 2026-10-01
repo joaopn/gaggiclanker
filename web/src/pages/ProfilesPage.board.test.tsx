@@ -521,6 +521,7 @@ describe("where a put would land, as the server says it", () => {
   const approved = draft({ id: 1, status: "approved" });
   const landing = (plain: object, forSet?: object) => ({
     draft_id: 1,
+    already_on_board_label: null,
     plain: { row_id: null, row_label: null, holds_newer_draft: false, ...plain },
     for_set: forSet ? { row_id: null, row_label: null, holds_newer_draft: false, ...forSet } : null,
   });
@@ -567,6 +568,59 @@ describe("where a put would land, as the server says it", () => {
     expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
   });
 
+  it("says the board already has the label, hides Put and offers Refine and Discard", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({ landings: [landing({ taken_label: "9 Bar Espresso [AI]" })] }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "The board already has 9 Bar Espresso [AI]; refine this draft from it, or discard it.",
+    );
+    expect(screen.queryByTestId("put-on-board")).toBeNull();
+    expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+    expect(screen.getByTestId("refine-draft")).toBeInTheDocument();
+  });
+
+  it("hides only the Set's put when the label is taken for the Set alone", async () => {
+    const forSet = draft({
+      id: 1,
+      status: "approved",
+      set_id: 3,
+      set_name: "Guji on the Niche",
+      set_next_minor_label: "v2.2",
+      set_next_major_label: "v3",
+    });
+    getProfileDrafts.mockResolvedValue({ items: [forSet] });
+    getProfileBoard.mockResolvedValue(
+      boardView({ landings: [landing({}, { taken_label: "Londinium [AI]" })] }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
+      "Recorded for the Set, the board already has Londinium [AI]",
+    );
+    expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();
+    expect(screen.getByTestId("put-on-board")).toBeInTheDocument();
+  });
+
+  it("says a draft whose exact document is on the board has nothing to put", async () => {
+    getProfileBoard.mockResolvedValue(
+      boardView({
+        landings: [{ ...landing({}), already_on_board_label: "9 Bar Espresso [AI]" }],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    expect(await screen.findByTestId("draft-already-on-board")).toHaveTextContent(
+      "already on the board as 9 Bar Espresso [AI]",
+    );
+    expect(screen.queryByTestId("put-on-board")).toBeNull();
+    expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+  });
+
   it("two variants of a profile of yours are both offered, since each goes on as a new profile", async () => {
     // What a guess from the draft's base got wrong: neither variant overtakes the other.
     const second = draft({ id: 2, status: "approved", created_at: "2026-03-02T09:00:00.000Z" });
@@ -606,7 +660,7 @@ describe("where a put would land, as the server says it", () => {
     expect(screen.queryByTestId("put-on-board-for-set")).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "Major change" })).toBeNull();
     expect(screen.getByTestId("draft-landing")).toHaveTextContent(
-      "Recorded for the Set, putting it on the board would undo a newer version",
+      "Recorded for the Set, putting this on the board would undo a newer version",
     );
   });
 
@@ -798,7 +852,7 @@ describe("profiles on the machine that the board does not hold", () => {
   });
 });
 
-describe("the landing words for a second and a revived profile", () => {
+describe("the landing words for a revived profile", () => {
   const withLanding = (plain: object) => {
     getProfileDrafts.mockResolvedValue({ items: [draft({ id: 1, status: "approved" })] });
     getProfileBoard.mockResolvedValue(
@@ -806,6 +860,7 @@ describe("the landing words for a second and a revived profile", () => {
         landings: [
           {
             draft_id: 1,
+            already_on_board_label: null,
             plain: { row_id: null, row_label: null, holds_newer_draft: false, ...plain },
             for_set: null,
           },
@@ -813,14 +868,6 @@ describe("the landing words for a second and a revived profile", () => {
       }),
     );
   };
-
-  it("says a second profile beside the one with the same label", async () => {
-    withLanding({ beside_label: "9 Bar Espresso [AI]" });
-    renderWithQueryClient(<ProfilesPage />);
-    expect(await screen.findByTestId("draft-landing")).toHaveTextContent(
-      "It goes on the board as a second profile beside 9 Bar Espresso [AI].",
-    );
-  });
 
   it("says a deleted profile comes back", async () => {
     withLanding({ revives_label: "9 Bar Espresso [AI]" });

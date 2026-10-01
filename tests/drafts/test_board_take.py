@@ -199,6 +199,7 @@ async def test_the_unique_index_is_the_same_refusal_never_a_500(
 
     monkeypatch.setattr(app.state.board.board, "list_rows", none)
     monkeypatch.setattr(app.state.board.board, "find_live_by_version", no_row)
+    monkeypatch.setattr(app.state.board.board, "find_live_by_label", no_row)
     response = await take(client, "later")
 
     assert response.status_code == 409, response.text
@@ -221,20 +222,72 @@ async def test_a_file_holding_what_an_app_profile_already_stands_for_is_refused(
     assert "already stands for" in response.text
 
 
-async def test_a_persons_identical_duplicate_can_be_taken_as_theirs(
+async def test_a_persons_identical_duplicate_is_refused_like_any_second_profile_of_one_label(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:
     app, client = writes_on
     await pull(app)
     twin = copy.deepcopy(fake_device.profiles[0])
     twin["id"] = "twin"
-    fake_device.profiles.append(twin)  # made on the display: the pull never pushes it
+    fake_device.profiles.append(twin)  # made on the display: a second profile of one label
     await pull(app)
 
     response = await take(client, "twin")
 
+    assert response.status_code == 409, response.text
+    assert "The board already has" in response.text
+    assert [
+        r["row"]["device_profile_id"] for r in (await get_board(client, live=False))["rows"]
+    ].count("twin") == 0
+
+
+async def test_a_profile_with_the_label_of_a_live_profile_is_refused_even_when_it_differs(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    label = str(fake_device.profiles[0]["label"])
+    other = new_file(fake_device, "other", label)
+    other["temperature"] = float(str(other.get("temperature", 90))) + 1  # another document
+    await pull(app)
+
+    response = await take(client, "other")
+
+    assert response.status_code == 409, response.text
+    assert f"The board already has {label}" in response.text
+
+
+async def test_the_label_of_a_deleted_profile_is_free_to_take_again(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    first = (await get_board(client, live=False))["rows"][0]["row"]
+    await client.delete(f"/api/profile-board/{first['id']}")
+    other = new_file(fake_device, "other", first["label"])
+    other["temperature"] = float(str(other.get("temperature", 90))) + 1
+    await pull(app)
+
+    response = await take(client, "other")
+
     assert response.status_code == 201, response.text
-    assert data(response)["origin"] == "adopted"
+
+
+async def test_two_files_with_one_label_taken_at_once_make_one_row(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    for name, bump in (("one", 1), ("two", 2), ("three", 3)):
+        twin = new_file(fake_device, name, "Made on the display")
+        twin["temperature"] = float(str(twin.get("temperature", 90))) + bump
+    await pull(app)
+
+    responses = await asyncio.gather(*(take(client, name) for name in ("one", "two", "three")))
+
+    assert sorted(r.status_code for r in responses) == [201, 409, 409]
+    labels = [r["row"]["label"] for r in (await get_board(client, live=False))["rows"]]
+    assert labels.count("Made on the display") == 1
 
 
 async def test_a_profile_the_mirror_marks_deleted_is_refused(

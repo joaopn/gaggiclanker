@@ -14,6 +14,9 @@ export function ownerOf(row: BoardRow): "app" | "yours" {
   return row.origin === "draft" ? "app" : "yours";
 }
 
+/** The server's reason for two live profiles sharing a label. */
+const SHARED_LABEL = "duplicate_label";
+
 export type RowTone = "ok" | "info" | "warn";
 
 export type RowState = {
@@ -60,7 +63,10 @@ function actionFor(
 export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
   const id = entry.row.id;
   const writesOn = view.writes_enabled;
-  const report = view.reports?.find((r) => r.row_id === id);
+  // A shared label is said as a note under whatever else the row has to say: it does not
+  // change where the profile stands on the machine.
+  const report = view.reports?.find((r) => r.row_id === id && r.reason !== SHARED_LABEL);
+  const shared = view.reports?.find((r) => r.row_id === id && r.reason === SHARED_LABEL);
   const push = entry.planned?.find((a) => a.kind === "push");
   const notes: string[] = [];
   let state: RowState;
@@ -103,6 +109,7 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
     state = { text: "Not on the machine", tone: "warn", notes };
   }
 
+  if (shared) notes.push(sentence(shared.detail));
   for (const action of entry.planned ?? []) {
     if (action.kind === "remove") {
       notes.push(
