@@ -87,7 +87,7 @@ system: |
 
      The document is put through the same schema, safety-policy and clamp checks
      as one typed by hand, and it is NOT pushed to the machine — it becomes a
-     draft somebody approves.
+     draft somebody puts on the board.
 
   5. **The three options are genuinely different, and all three are usable.**
      `conservative` is the one that will certainly make drinkable coffee: the

@@ -35,6 +35,17 @@ def test_only_the_sync_route_asks_for_a_profile_pass() -> None:
     assert callers("request_profile_sync") == ALLOWED["request_profile_sync"]
 
 
+def test_nothing_raises_the_profile_poke_but_the_engine_asking_for_one() -> None:
+    """The poke is what the loop waits on: a second raiser would start a pass from anywhere."""
+    assert callers("_profile_poke.raise_") == {"sync/engine.py"}
+    source = (PACKAGE / "sync" / "engine.py").read_text()
+    assert len(re.findall(r"_profile_poke\.raise_\(", source)) == 1, (
+        "one raiser: the request method"
+    )
+    body = source[source.index("def request_profile_sync") :].split("\n    def ", 1)[0]
+    assert "_profile_poke.raise_(reason)" in body
+
+
 def test_only_the_engine_runs_a_profile_pass() -> None:
     assert callers("sync_profiles") == ALLOWED["sync_profiles"]
 
