@@ -21,8 +21,7 @@ first (`POST /api/backup`), because there is no down-migration.
   or **Writes off** (just **on** / **off** on a tablet, and only an icon on a
   phone, where the brand name in the header gives way too). Off is the
   default and turning it off is immediate; turning it on asks first and says what
-  it allows today: pushing a profile to the machine, or rolling one back, from
-  the Profiles page. Nothing is written on its own. A change the server refuses
+  it means (see the profile board below). A change the server refuses
   (for example when sign-in is on and you are signed out) says so under the
   switch and leaves it as it was. The **Writes** card on Settings → Machine
   access is gone, and the Profiles page banner, the refusal messages and the
@@ -70,8 +69,40 @@ first (`POST /api/backup`), because there is no down-migration.
   action is a sync event and a row in the device-write audit.
 - **Schema (new migration, no reset needed):** a table for the board, a marker for the
   one-time adoption, and a summary column on sync runs. No existing data changes.
-- **Not yet reachable from the web:** the board has routes only. The staged box and its
-  per-draft push and rollback still work as before.
+- **The web for all of this is in the next section.** The staged box and its per-draft push
+  and rollback still work as before until the first adoption.
+
+### The Profiles page, the Writes switch and the Sync page, built around the board
+
+- **The Profiles page shows the board.** Once the board has been adopted (the Writes switch
+  has been on for a pull), each profile on it is one card: its name, its current version,
+  whether it is **the app's** or **yours**, and where it stands on the machine in plain
+  words: on the machine, will be pushed on the next pull, will be removed, left on the
+  machine (and why), edited on the display, did not verify, or missing. A tick puts it on or
+  takes it off the machine's home screen, and **Delete** (asked first, and saying that a
+  profile of yours is never removed from the machine) takes it off the board. A deleted
+  profile whose file is still on the machine is listed as will be removed or left. Nothing
+  here sends anything to the machine; the next pull does. Before the first adoption the page
+  is as it was: the mirror and the staged box with its push.
+- **Approved drafts get "Put on the board".** After adoption the staged push and rollback
+  buttons are gone (the server refuses them) and an approved draft is put on the board
+  instead. A draft made for a Set carries what the push carried: it is recorded as that Set's
+  next version once a pull has put it on the machine, with the "Major change" choice
+  preselected from the agent's suggestion, or **Put on the board without recording it on the
+  Set**. A draft already on the board says it reaches the machine on the next pull.
+- **The Writes switch says what on now means:** every pull makes the machine's profiles match
+  the board (it pushes the app's profiles the machine does not have, removes the app's old
+  copies and sets the home-screen stars) and never removes or overwrites a profile of yours.
+  Before turning it on, the confirmation shows a preview read from the machine just now:
+  before adoption, that the first pull takes the machine's profiles onto the board and writes
+  nothing; after, what the next pull would do (counts and the list). When the machine cannot
+  be read it says so and shows the last pull's picture. The panel stays inside the screen at
+  phone width.
+- **The Sync page shows what the last pull did to the profiles** (put on, removed, left and
+  why, home-screen changes, anything that did not work) and the profiles a pull will not touch
+  (one of yours that was edited or is missing). When the machine looks reset and pulls have
+  stopped writing, a banner says so, with **Resume**, which asks first: the next pull will push
+  the app's profiles back, and profiles of yours are never pushed.
 
 ### A push replaces the profile it supersedes
 

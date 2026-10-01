@@ -161,17 +161,20 @@ The Sync page is where a person pulls from the machine and reads what this box h
 ```
 src/
   pages/
-    SyncPage.tsx          the two sections and their anchors (#pull, #writes)
+    SyncPage.tsx          the sections and their anchors (#pull, #board, #writes)
   components/sync/
     PullSection.tsx       the shots page's PullButton, with the ledger under it
+    BoardSection.tsx      the last pull's profile summary, what a pull will not touch, Resume
     DeviceWritesSection.tsx  the audit of every write, refusals included
     ConfirmStrip.tsx      the inline "are you sure" (also used by Settings → Shot information)
 ```
 
 Two things about it are worth knowing before editing. **Nothing on it runs
-by itself**, and nothing in the web may write to the machine except a profile
-push from the Profiles page: saving a judgement never sends it, and a pull
-never deletes. **The audit renders whatever `kind` the server stored** as a
+by itself**, and nothing in the web sends anything to the machine: the board is edited
+through `/api/profile-board` and the next pull writes it (`hooks/useBoard.ts`; every mutation
+settles with `invalidateBoardWrites`, which refreshes the board, drafts, profiles, sync status
+and write audit). Saving a judgement never sends it. `lib/board.ts` words the server's plan
+and a run's summary and decides nothing. **The audit renders whatever `kind` the server stored** as a
 plain string: rows of the two kinds this box used to write (`shot_delete`,
 `notes_save`) stay readable as history.
 
@@ -184,7 +187,8 @@ src/
     usePrompts.ts     the prompt list, one prompt, save and reset
   components/
     LlmActivity.tsx   the header indicator and the sheet behind it
-    DeviceWritesSwitch.tsx  the top-bar writes switch: confirm before on, immediate off
+    DeviceWritesSwitch.tsx  the top-bar writes switch: confirm before on (with a live preview of the next pull), immediate off
+    board/BoardList.tsx     the Profiles page's board: one card per profile, home-screen tick, delete with a confirm
   pages/settings/
     LlmGroups.tsx     the provider picker and everything that depends on which one
     PromptsPage.tsx   one card per prompt: the YAML editor, an "edited" badge, reset

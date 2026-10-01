@@ -104,8 +104,8 @@ pages, in the order the sidebar lists them:
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
-| **Profiles** | `g p` | What is on the machine, what is staged for it, and every version a shot can resolve to. |
-| **Sync** | `g y` | Pull from the machine, and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
+| **Profiles** | `g p` | The profile board (each profile, whose it is, on or off the machine's home screen, where it stands on the machine), the drafts waiting to be put on it, and every version a shot can resolve to. |
+| **Sync** | `g y` | Pull from the machine, what the last pull did to its profiles (with Resume after a suspected reset), and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights the chat proposes wait there for you to confirm. |
@@ -272,9 +272,10 @@ shot's notes card and never changes a device setting.
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
 nothing. A profile a conversation drafts is a draft on the Profiles page, which
-you approve and push yourself. When it was drafted in a Set's conversation, the
-push button records it as that Set's next version with its prediction; **Push
-without recording it on the Set** tries it without touching the Set.
+you approve and then put on the board (or, before the board is adopted, push)
+yourself. When it was drafted in a Set's conversation, the button records it as
+that Set's next version with its prediction once it reaches the machine; the
+button without the Set tries it without touching the Set.
 
 The machine is a buffer, not an archive: when its storage runs low its own
 firmware deletes its oldest shots, whether or not this box has them. That is
@@ -285,10 +286,26 @@ on a pull too, and never written back.
 Nothing runs on its own: a pull only reads, and there is no timer. Every write
 attempt, refused ones included, is listed under **Recent writes** on the Sync page.
 
+### The profile board
+
+With the **Writes** switch on, every pull ends by making the machine's profiles match the
+**board** shown on the Profiles page. The first pull with the switch on takes the machine's
+profiles onto the board as they are (the home screen is each profile's star) and writes
+nothing; the switch's confirmation says so before you turn it on, and after that shows what
+the next pull would do, read from the machine at that moment. From then on a pull pushes
+the app's profiles the machine lacks, removes the app's old copies and moves the home-screen
+stars. It never removes or overwrites a profile of yours: one you made on the display is shown
+on the board and its star is followed, and if it was changed or is gone, the Sync page says so.
+You edit the board on the Profiles page: put an approved draft on it, tick a profile on or off
+the home screen, delete one. None of that touches the machine; the next pull does. If the
+machine looks reset (none of the app's profiles is on it any more), pulls stop writing until
+you press **Resume** on the Sync page.
+
 ### Putting a profile on the machine
 
-Nothing reaches the machine without passing through the **Staged for the
-machine** section of the Profiles page. A version gets there in one of three
+Before the board is adopted, nothing reaches the machine without passing through the
+**Staged for the machine** section of the Profiles page (afterwards the same drafts are put
+on the board and a pull sends them). A version gets there in one of three
 ways: **Stage as is**, for a profile that is already right and only needs to be
 on the machine; **Edit**, which opens the JSON editor and validates what you
 type against the strict schema and the safety policy; or the chat or the
