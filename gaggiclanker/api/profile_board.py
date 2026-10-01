@@ -21,7 +21,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from gaggiclanker.api.deps import BoardServiceDep, DeviceClientDep, ProfilesRepoDep, SetsRepoDep
 from gaggiclanker.api.sets import version_refused
@@ -59,6 +59,28 @@ class HomeScreenBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     on: StrictBool
+
+
+class TakeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_profile_id: str = Field(min_length=1, max_length=64)
+
+
+@router.post(
+    "/take",
+    response_model=ApiResponse[BoardRow],
+    status_code=201,
+    summary="Take a profile the machine holds onto the board, as it is",
+)
+async def take_onto_board(body: TakeBody, board: BoardServiceDep) -> JSONResponse:
+    """Person-only; the first adoption's rule, for one profile. Sends nothing to the machine.
+
+    Refused (409) for a profile already on the board and before the board has been adopted,
+    404 for one the last mirror does not show. No chat or MCP tool reaches it.
+    """
+    row = await board.take(body.device_profile_id)
+    return envelope_response(row.model_dump(mode="json"), status_code=201)
 
 
 @router.post(

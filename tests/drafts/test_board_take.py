@@ -1,0 +1,144 @@
+"""Taking one profile the machine holds onto the board, after the board has been adopted.
+
+The route reads the archive's mirror and writes nothing to the machine: every scenario also
+checks that no write frame went out.
+"""
+
+from __future__ import annotations
+
+import copy
+
+import httpx
+from fastapi import FastAPI
+
+from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWriteWrite
+from gaggiclanker.device.fake import FakeDevice
+from gaggiclanker.domain.models import Profile, profile_content_hash
+from tests.drafts.conftest import data
+from tests.drafts.test_board import get_board, pull, row_for, write_frames
+from tests.drafts.test_replace import APP_LABEL, Live
+
+
+async def take(client: httpx.AsyncClient, device_id: str) -> httpx.Response:
+    return await client.post("/api/profile-board/take", json={"device_profile_id": device_id})
+
+
+def new_file(
+    fake: FakeDevice, name: str, label: str, *, favorite: bool = False
+) -> dict[str, object]:
+    twin = copy.deepcopy(fake.profiles[0])
+    twin.update(id=name, label=label)
+    fake.profiles.append(twin)
+    if favorite:
+        fake.favorite_profile_ids.add(name)
+    return twin
+
+
+async def test_a_profile_made_on_the_display_is_taken_as_the_persons_and_nothing_is_written(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)  # adoption
+    new_file(fake_device, "later", "Made on the display", favorite=True)
+    await pull(app)  # the mirror learns of it; the board does not take it by itself
+    board = await get_board(client, live=False)
+    assert all(r["row"]["label"] != "Made on the display" for r in board["rows"])
+    before = len(write_frames(fake_device))
+
+    response = await take(client, "later")
+
+    assert response.status_code == 201, response.text
+    row = data(response)
+    assert (row["origin"], row["device_profile_id"], row["on_home_screen"]) == (
+        "adopted",
+        "later",
+        True,
+    )
+    assert len(write_frames(fake_device)) == before, "taking a profile sent something"
+    board = await get_board(client)
+    assert row_for(board, "Made on the display")["planned"] == []
+    assert board["actions"] == []
+
+
+async def test_the_apps_own_saved_copy_becomes_an_app_row_as_at_first_adoption(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    twin = new_file(fake_device, "mine", APP_LABEL)
+    await DeviceWritesRepository(app.state.db).record(
+        DeviceWriteWrite(
+            kind="profile_save",
+            host=fake_device_host(app),
+            device_id="mine",
+            payload_hash=profile_content_hash(Profile.model_validate(twin)),
+            result="ok",
+        )
+    )
+    await pull(app)
+
+    row = data(await take(client, "mine"))
+
+    assert row["origin"] == "draft"
+
+
+async def test_a_copy_that_looks_like_the_apps_but_was_never_saved_by_it_is_the_persons(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    new_file(fake_device, "legacy", APP_LABEL)
+    await pull(app)
+
+    assert data(await take(client, "legacy"))["origin"] == "adopted"
+
+
+async def test_a_profile_already_on_the_board_is_refused(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    existing = str(fake_device.profiles[0]["id"])
+
+    response = await take(client, existing)
+
+    assert response.status_code == 409
+    assert "already on the board" in response.text
+    assert len((await get_board(client, live=False))["rows"]) == len(fake_device.profiles)
+
+
+async def test_a_profile_the_mirror_does_not_show_is_not_found(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    assert (await take(client, "nope")).status_code == 404
+
+
+async def test_before_the_board_is_adopted_there_is_nothing_to_take_onto(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    _, client = writes_on
+    response = await take(client, str(fake_device.profiles[0]["id"]))
+    assert response.status_code == 409
+    assert "pull first" in response.text
+
+
+async def test_a_deleted_row_whose_file_waits_to_be_dealt_with_is_refused(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, client = writes_on
+    await pull(app)
+    board = await get_board(client, live=False)
+    row = board["rows"][0]["row"]
+    deleted = await client.delete(f"/api/profile-board/{row['id']}")
+    assert deleted.status_code == 200
+
+    response = await take(client, row["device_profile_id"])
+
+    assert response.status_code == 409
+    assert "waiting" in response.text
+
+
+def fake_device_host(app: FastAPI) -> str:
+    return str(app.state.connection.client.host)

@@ -1072,6 +1072,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-board/take": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a profile the machine holds onto the board, as it is
+         * @description Person-only; the first adoption's rule, for one profile. Sends nothing to the machine.
+         *
+         *     Refused (409) for a profile already on the board and before the board has been adopted,
+         *     404 for one the last mirror does not show. No chat or MCP tool reaches it.
+         */
+        post: operations["take_onto_board_api_profile_board_take_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-drafts": {
         parameters: {
             query?: never;
@@ -6799,6 +6822,11 @@ export interface components {
              */
             running: boolean;
         };
+        /** TakeBody */
+        TakeBody: {
+            /** Device Profile Id */
+            device_profile_id: string;
+        };
         /**
          * TargetSpec
          * @description One stop condition, in the shape the diff renders.
@@ -8964,6 +8992,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ResumeData_"];
+                };
+            };
+        };
+    };
+    take_onto_board_api_profile_board_take_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TakeBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

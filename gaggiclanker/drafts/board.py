@@ -410,6 +410,59 @@ class BoardService:
         """
         await self.board.resume()
 
+    async def _saved_by_the_app(
+        self, device_id: str, label: str, content_hash: str, *, host: str
+    ) -> bool:
+        """Whether a machine file is this app's own save, still exactly as it was saved.
+
+        One rule for the first adoption and for taking a single profile later: the app
+        label, an ``ok`` save of that id on this host, and content equal to what that save
+        sent. Anything else is the person's profile, which a pull never pushes or removes.
+        """
+        return label.rstrip().endswith(
+            APP_PROFILE_SUFFIX.strip()
+        ) and await self.writes.saved_with_content(device_id, host=host, content_hash=content_hash)
+
+    async def take(self, device_profile_id: str) -> BoardRow:
+        """Put one profile the machine holds, and the board does not, onto the board as it is.
+
+        What the first adoption does for every profile, for one that appeared afterwards
+        (made on the display, or a copy the board let go of). It reads the archive's mirror
+        and writes nothing to the machine. Refused for a profile no live mirror row has, and
+        for a file any board row (a deleted one still waiting to be dealt with included)
+        already stands on.
+        """
+        adoption = await self.board.adoption()
+        if adoption is None:
+            raise Conflict("The board has not taken the machine's profiles yet; pull first.")
+        mirrored = await self.profiles.get_device_profile(device_profile_id)
+        if mirrored is None or mirrored.deleted_at is not None:
+            raise NotFound(f"The machine has no profile {device_profile_id} as of the last pull")
+        for row in await self.board.list_rows(include_deleted=True):
+            if row.device_profile_id == device_profile_id:
+                raise Conflict(
+                    "That profile is already on the board."
+                    if row.deleted_at is None
+                    else "That profile was deleted from the board and its file is still waiting "
+                    "to be dealt with by the next pull."
+                )
+        version = await self.profiles.get_version(mirrored.current_version_id)
+        if version is None:  # pragma: no cover - a foreign key guarantees it
+            raise NotFound(f"No profile version {mirrored.current_version_id}")
+        ours = await self._saved_by_the_app(
+            device_profile_id, version.label, version.content_hash, host=adoption.host
+        )
+        return await self.board.insert(
+            BoardRowWrite(
+                label=version.label,
+                current_version_id=version.id,
+                device_profile_id=device_profile_id,
+                device_version_id=version.id,
+                on_home_screen=mirrored.favorite,
+                origin="draft" if ours else "adopted",
+            )
+        )
+
     async def set_home_screen(self, row_id: int, on: bool) -> BoardRow:
         row = await self._live_row(row_id)
         updated = await self.board.update(row.id, BoardRowPatch(on_home_screen=on))
@@ -546,10 +599,8 @@ class BoardService:
                 # that save sent. A later draft of it continues the row and replaces the copy.
                 # A file edited on the display since the save (or anything else) stays the
                 # person's, so the pull neither pushes nor removes it.
-                ours = profile.label.rstrip().endswith(
-                    APP_PROFILE_SUFFIX.strip()
-                ) and await self.writes.saved_with_content(
-                    device_id, host=phase.host, content_hash=version.content_hash
+                ours = await self._saved_by_the_app(
+                    device_id, profile.label, version.content_hash, host=phase.host
                 )
                 row = await self.board.insert(
                     BoardRowWrite(
