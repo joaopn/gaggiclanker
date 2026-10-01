@@ -10,6 +10,19 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Sync with machine
+
+- **Changed: "Pull from machine" is now "Sync with machine".** The button on the Shots page,
+  its section on the Sync page and every line that told you to pull (the Profiles page, the
+  Writes switch, the Sync page, Settings, the README and the chat agent's instructions) now say
+  sync. Nothing else changed: the API routes, stored settings and the other names are as they were.
+- **The message after a sync now says what it did to the profiles.** After the shots ("Synced: 2
+  new shots.") it says how many profiles were read from the machine and what was written to it:
+  "Read 9 profiles from the machine; wrote 2 (pushed 1, removed 1)." With writes off it says
+  "no writes (writes are off)"; with nothing to do, "no writes needed"; after a suspected reset,
+  that writes are paused; and it counts writes that failed. The profile pass of a sync now records
+  how many profiles it read, on its run in the sync ledger.
+
 ### A quick Claude Code install still says how it went
 
 - **Fixed: Settings → LLM could miss the "installed" message.** Starting an install answers at once, and when the download finished before that answer was put together it said "done" already, so the page never saw the install end and showed no message. The answer is now always the install as it started, and the page reports the outcome when it sees it finish.

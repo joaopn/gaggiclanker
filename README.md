@@ -66,7 +66,9 @@ an IP for the machine's host.
    browser resolves may not resolve here.
 3. **Press "Sync with machine"** on the Shots page. The first sync walks the
    machine's whole history, which for a few hundred shots takes a minute or
-   two; when it finishes it says what it archived. Shots under 7.5 seconds
+   two; when it finishes it says what it archived, how many profiles it read from the
+   machine and how many it wrote to it ("Read 9 profiles from the machine; no writes
+   (writes are off)"). Shots under 7.5 seconds
    never appear: the firmware discards them. After that, sync whenever you have
    pulled some coffee — or drop exported files on the strip under the header,
    which is the only way back for shots the machine has already deleted.
