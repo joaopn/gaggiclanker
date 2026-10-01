@@ -21,6 +21,7 @@ const {
   putOnBoard,
   setBoardHomeScreen,
   deleteBoardRow,
+  goBackOnBoard,
   pushProfileDraft,
   takeOntoBoard,
 } = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ const {
   putOnBoard: vi.fn(),
   setBoardHomeScreen: vi.fn(),
   deleteBoardRow: vi.fn(),
+  goBackOnBoard: vi.fn(),
   pushProfileDraft: vi.fn(),
   takeOntoBoard: vi.fn(),
 }));
@@ -47,6 +49,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   putOnBoard,
   setBoardHomeScreen,
   deleteBoardRow,
+  goBackOnBoard,
   pushProfileDraft,
   takeOntoBoard,
 }));
@@ -97,6 +100,7 @@ beforeEach(() => {
   putOnBoard.mockResolvedValue(boardRow({ id: 3, label: "9 Bar Espresso [AI]" }));
   setBoardHomeScreen.mockResolvedValue(boardRow());
   deleteBoardRow.mockResolvedValue(boardRow());
+  goBackOnBoard.mockResolvedValue(boardRow({ id: 2, label: "Londinium [AI]" }));
   pushProfileDraft.mockResolvedValue({ draft: draft({ status: "pushed" }), set_version: null });
 });
 
@@ -444,6 +448,61 @@ describe("when the board cannot be read", () => {
 
     expect(await screen.findByTestId("board-list")).toBeInTheDocument();
     expect(screen.queryByTestId("board-unreadable")).toBeNull();
+  });
+});
+
+describe("going back a version", () => {
+  const replaced = boardRowView({
+    row: {
+      id: 2,
+      label: "Londinium [AI]",
+      origin: "draft",
+      current_version_id: 11,
+      previous_version_id: 7,
+    },
+  });
+
+  it("is offered on the app's profile that has an earlier version, and nowhere else", async () => {
+    const yoursWithOne = boardRowView({
+      row: { id: 1, origin: "adopted", previous_version_id: 7 },
+    });
+    const appsNeverReplaced = boardRowView({
+      row: { id: 3, origin: "draft", label: "Fresh [AI]" },
+    });
+    getProfileBoard.mockResolvedValue(
+      boardView({ rows: [yoursWithOne, replaced, appsNeverReplaced] }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    const [first, second, third] = await cards();
+
+    expect(within(first).queryByTestId("board-go-back")).toBeNull();
+    expect(within(second).getByTestId("board-go-back")).toBeInTheDocument();
+    expect(within(third).queryByTestId("board-go-back")).toBeNull();
+  });
+
+  it("asks first, says what the next sync does, and goes back on confirm", async () => {
+    const user = setupUser();
+    getProfileBoard.mockResolvedValue(boardView({ rows: [replaced] }));
+    renderWithQueryClient(<ProfilesPage />);
+    const [card] = await cards();
+
+    await user.click(within(card).getByTestId("board-go-back"));
+    const confirm = within(card).getByTestId("board-go-back-confirm");
+    expect(confirm).toHaveTextContent("The next sync puts it on the machine");
+    expect(confirm).toHaveTextContent("removes the newer copy");
+    expect(goBackOnBoard).not.toHaveBeenCalled();
+
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(goBackOnBoard).not.toHaveBeenCalled();
+
+    await user.click(within(card).getByTestId("board-go-back"));
+    await user.click(
+      within(within(card).getByTestId("board-go-back-confirm")).getByRole("button", {
+        name: "Go back",
+      }),
+    );
+    await waitFor(() => expect(goBackOnBoard).toHaveBeenCalledWith(2));
   });
 });
 

@@ -1,10 +1,10 @@
-import { AlertTriangle, Check, Clock, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Clock, Trash2, Undo2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { BoardRowView, BoardView, ProfileDraft } from "@/api/types";
 import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useDeleteBoardRow, useSetHomeScreen } from "@/hooks/useBoard";
+import { useDeleteBoardRow, useGoBackOnBoard, useSetHomeScreen } from "@/hooks/useBoard";
 import { deletedStateOf, ownerOf, type RowState, rowStateOf } from "@/lib/board";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +49,11 @@ export function BoardList({
             entry={entry}
             state={rowStateOf(view, entry)}
             version={versionName(entry.row.current_version_id)}
+            previousVersion={
+              entry.row.previous_version_id != null
+                ? versionName(entry.row.previous_version_id)
+                : null
+            }
             pendingDraft={
               entry.row.pending_draft_id != null ? draftOf(entry.row.pending_draft_id) : undefined
             }
@@ -80,17 +85,21 @@ function BoardRowCard({
   entry,
   state,
   version,
+  previousVersion,
   pendingDraft,
 }: {
   entry: BoardRowView;
   state: RowState;
   version: string | null;
+  previousVersion: string | null;
   pendingDraft: ProfileDraft | undefined;
 }) {
   const { row } = entry;
   const home = useSetHomeScreen();
   const remove = useDeleteBoardRow();
+  const back = useGoBackOnBoard();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingBack, setConfirmingBack] = useState(false);
   // Closing the confirm hands focus back to Delete, which stays rendered under it.
   const deleteRef = useRef<HTMLButtonElement>(null);
   const [restoreFocus, setRestoreFocus] = useState(false);
@@ -105,7 +114,9 @@ function BoardRowCard({
     setRestoreFocus(true);
   };
   const owner = ownerOf(row);
-  const busy = home.isPending || remove.isPending;
+  const busy = home.isPending || remove.isPending || back.isPending;
+  // Only the app's own profiles go back: the app never changes one of yours.
+  const canGoBack = owner === "app" && row.previous_version_id != null;
 
   return (
     <li className="rounded-lg border border-border p-3" data-testid="board-row" data-owner={owner}>
@@ -154,6 +165,19 @@ function BoardRowCard({
           />
           On the home screen
         </label>
+        {canGoBack ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            aria-label={`Go back to the previous version of ${row.label}`}
+            data-testid="board-go-back"
+            onClick={() => setConfirmingBack(true)}
+          >
+            <Undo2 className="size-3.5" aria-hidden="true" />
+            Go back a version
+          </Button>
+        ) : null}
         <Button
           ref={deleteRef}
           size="sm"
@@ -167,6 +191,35 @@ function BoardRowCard({
           Delete
         </Button>
       </div>
+
+      {confirmingBack ? (
+        <div className="mt-3">
+          <ConfirmStrip
+            title={`Go back to the previous version of ${row.label}?`}
+            confirmLabel="Go back"
+            testId="board-go-back-confirm"
+            focusOnOpen
+            onCancel={() => setConfirmingBack(false)}
+            onConfirm={() => {
+              setConfirmingBack(false);
+              back.mutate(row.id);
+            }}
+          >
+            {previousVersion ? (
+              <>
+                The profile becomes version <span className="font-mono">{previousVersion}</span>{" "}
+                again.{" "}
+              </>
+            ) : (
+              "The profile becomes its previous version again. "
+            )}
+            The next sync puts it on the machine and removes the newer copy there, as long as that
+            copy is still as the app saved it. The draft that made the newer version is discarded;
+            you can draft it again if you change your mind. Going back is one step: after it there
+            is no earlier version until you put another.
+          </ConfirmStrip>
+        </div>
+      ) : null}
 
       {confirming ? (
         <div className="mt-3">

@@ -46,9 +46,21 @@ class BoardRow(BaseModel):
     pending_draft_id: int | None = None
     pending_set_id: int | None = None
     pending_major: bool | None = None
+    #: The version this profile was before its newest one, which going back returns to.
+    previous_version_id: int | None = None
+    #: Set by going back: the Set whose current version recorded the version being left, so
+    #: the file holding it is not kept for that Set's sake. Cleared once the sync has dealt
+    #: with the file.
+    back_from_set_id: int | None = None
     deleted_at: str | None = None
     created_at: str
     updated_at: str
+
+    @property
+    def leaving_set_id(self) -> int | None:
+        """The Set the next sync expects to name this profile's old file: it is not a reason
+        to keep it (a Set recorded the new version, or a person is going back from one)."""
+        return self.pending_set_id if self.pending_set_id is not None else self.back_from_set_id
 
 
 class BoardRowWrite(BaseModel):
@@ -82,6 +94,8 @@ class BoardRowPatch(BaseModel):
     pending_draft_id: int | None = None
     pending_set_id: int | None = None
     pending_major: bool | None = None
+    previous_version_id: int | None = None
+    back_from_set_id: int | None = None
     deleted_at: str | None = None
 
 

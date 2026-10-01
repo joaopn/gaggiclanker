@@ -9,6 +9,8 @@ and with no machine at all. What a route that reads the machine does is read.
   mirror of it, and the response says so).
 * ``POST`` puts an approved draft on the board: a new version of the profile it descends from,
   or a new profile.
+* ``POST .../go-back`` makes a profile its previous version again (the app's own profiles
+  only); the next sync puts that version on the machine and removes the newer copy.
 * ``PUT .../home-screen`` and ``DELETE`` change one row.
 
 Chat and MCP have no route here and no tool: a person's click is the only way a profile gets
@@ -160,6 +162,21 @@ async def put_home_screen(
     row_id: int, body: HomeScreenBody, board: BoardServiceDep
 ) -> JSONResponse:
     row = await board.set_home_screen(row_id, body.on)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.post(
+    "/{row_id}/go-back",
+    response_model=ApiResponse[BoardRow],
+    summary="Go back to a profile's previous version",
+)
+async def go_back_on_board(row_id: int, board: BoardServiceDep) -> JSONResponse:
+    """Person-only. Sends nothing to the machine: the next sync does.
+
+    Refused (409) for a profile of the person's, one with no earlier version, and when the
+    earlier version would make two profiles share a label. No chat or MCP tool reaches it.
+    """
+    row = await board.go_back(row_id)
     return envelope_response(row.model_dump(mode="json"))
 
 

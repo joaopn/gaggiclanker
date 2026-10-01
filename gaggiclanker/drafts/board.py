@@ -274,6 +274,9 @@ class _Phase:
     failures_in_a_row: int = 0
     #: The file each live row holds in this plan, so one row's push never reuses another's.
     held: dict[int, str] = field(default_factory=dict)
+    #: The Set versions each row's removal of its old file stopped naming, kept for the draft
+    #: that replaced it: going back needs them to point the restored copy at the same versions.
+    cleared: dict[int, list[int]] = field(default_factory=dict)
 
 
 class BoardService:
@@ -515,6 +518,9 @@ class BoardService:
                 BoardRowPatch(
                     label=version.label,
                     current_version_id=version.id,
+                    # What the row was, so a person can go back to it.
+                    previous_version_id=row.current_version_id,
+                    back_from_set_id=None,
                     failed_version_id=None,
                     **pending.model_dump(exclude_unset=True),
                 ),
@@ -630,6 +636,85 @@ class BoardService:
                 )
             except sqlite3.IntegrityError as exc:
                 raise Conflict("That profile is already on the board.") from exc
+
+    async def go_back(self, row_id: int) -> BoardRow:
+        """Make a profile its previous version again. The next sync does it on the machine.
+
+        What the old rollback of a pushed draft did, as an edit of the board: the row's
+        current version becomes the one it was before its newest put, and the sync then
+        pushes that version and removes the newer copy through the same guards as any
+        replacement. Nothing is sent to the machine here.
+
+        Refused for a profile of the person's (the app only changes what it wrote), for one
+        with no earlier version, and when the earlier version would give two live profiles one
+        label (the newer version may have renamed the profile) or put a document on the board
+        that another profile already holds.
+
+        The record stays true in the same transaction: a version still waiting for the sync
+        is withdrawn (its draft is discarded, nothing of it reached the machine), and a Set
+        that recorded the version being left is remembered for the sync's removal guard. What
+        the sync then does to drafts and Set versions is described at ``_retire``.
+        """
+        async with self.db.transaction():
+            row = await self._live_row(row_id)
+            if row.origin != "draft":
+                raise Conflict(
+                    f"{row.label} is a profile of yours: the app only goes back on profiles it "
+                    "wrote itself."
+                )
+            if row.previous_version_id is None:
+                raise Conflict(f"{row.label} has no earlier version to go back to.")
+            previous = await self.profiles.get_version(row.previous_version_id)
+            if previous is None:  # pragma: no cover - a foreign key guarantees it
+                raise NotFound(f"No profile version {row.previous_version_id}")
+            if previous.label != row.label:
+                holder = await self.board.find_live_by_label(previous.label, excluding=row.id)
+                if holder is not None:
+                    raise Conflict(
+                        f"The board already has {holder.label}, which is what {row.label} was "
+                        "before; rename or delete that one first.",
+                        details={"reason": "duplicate_label"},
+                    )
+            on_board = await self.board.find_live_by_version(previous.id)
+            if on_board is not None and on_board.id != row.id:
+                raise Conflict(f"That earlier version is already on the board as {on_board.label}.")
+
+            back_from: int | None = None
+            if row.pending_draft_id is not None:
+                # Never reached the machine: the person withdraws it.
+                await self.drafts.discard_unsent([row.pending_draft_id])
+            if (
+                row.device_profile_id is not None
+                and row.device_version_id == row.current_version_id
+            ):
+                # The version being left is on the machine. A Set that recorded it still names
+                # it; the sync is told not to keep the file for that Set's sake.
+                for draft in await self.drafts.pushed_to_device(row.device_profile_id):
+                    recorded = await self._recorded_set(draft)
+                    if recorded is not None:
+                        back_from = recorded
+            updated = await self.board.update(
+                row.id,
+                BoardRowPatch(
+                    label=previous.label,
+                    current_version_id=previous.id,
+                    previous_version_id=None,
+                    back_from_set_id=back_from,
+                    failed_version_id=None,
+                    pending_draft_id=None,
+                    pending_set_id=None,
+                    pending_major=None,
+                ),
+            )
+            assert updated is not None  # the row was read in this transaction
+            return updated
+
+    async def _recorded_set(self, draft: ProfileDraftRow) -> int | None:
+        """The Set a draft's push recorded a version on, if it did."""
+        if draft.recorded_version_id is None:
+            return None
+        version = await self.sets.get_version(draft.recorded_version_id)
+        return None if version is None else version.set_id
 
     async def set_home_screen(self, row_id: int, on: bool) -> BoardRow:
         row = await self._live_row(row_id)
@@ -828,7 +913,7 @@ class BoardService:
                     successor=new_id,
                     row=plan.row,
                     version_id=row.device_version_id,
-                    excluding_set=row.pending_set_id,
+                    excluding_set=row.leaving_set_id,
                 )
                 settled = _is_settled(removal)
         if settled and (
@@ -838,6 +923,10 @@ class BoardService:
                 row.id,
                 BoardRowPatch(device_profile_id=new_id, device_version_id=plan.version.id),
             )
+        if settled and row.back_from_set_id is not None:
+            # The file the Set was named for has been dealt with (or will never be this app's
+            # to remove): the exemption was for this one pass.
+            await self.board.update(row.id, BoardRowPatch(back_from_set_id=None))
         if placed is not None and placed.served is not None:
             favorite = placed.served.favorite or bool(removal and removal.favorite_carried)
             selected = placed.served.selected or bool(removal and removal.selected_carried)
@@ -1026,8 +1115,11 @@ class BoardService:
             phase.machine.profiles.pop(device_id, None)
             await self.profiles.mark_one_deleted(device_id)
             cleared = await self.sets.clear_pushed_device_profile(device_id)
+            phase.cleared[row.id] = cleared
             if row.pending_draft_id is not None:
                 await self.drafts.supersede_pushed(device_id, by_draft_id=row.pending_draft_id)
+            else:
+                await self._retire(row, device_id, successor)
             phase.summary.removed.append(
                 BoardSummaryItem(
                     row_id=row.id,
@@ -1057,6 +1149,39 @@ class BoardService:
             # keeps standing on the file and the next sync tries again.
             await self._row_failed(phase, action, "remove", removal.reason, device_id=device_id)
         return removal
+
+    async def _retire(self, row: BoardRow, device_id: str, successor: str | None) -> None:
+        """Close the record of a file removed without a newer draft taking its place.
+
+        Going back to a previous version, or deleting a profile, takes a pushed draft's file
+        off the machine and no later push replaces it. What a rollback did: the draft that
+        pushed it is ``discarded`` and stops naming the file. And for going back, the Set
+        versions that named the copy this one replaced (cleared when it was replaced) name the
+        copy that has just been put back, so the history says where each of them is again.
+        """
+        going_back = row.deleted_at is None
+        found = await self.drafts.retire_pushed(
+            device_id,
+            outcome={
+                "action": "went_back" if going_back else "removed",
+                "removed_device_profile_id": device_id,
+                "lines": [
+                    f"Went back to the previous version: {device_id} is off the machine."
+                    if going_back
+                    else f"The profile was deleted from the board: {device_id} is off the machine."
+                ],
+            },
+        )
+        if not going_back or successor is None:
+            return
+        for draft in found:
+            if (
+                draft.replaced_version_id == row.current_version_id
+                and draft.cleared_set_version_ids
+            ):
+                await self.sets.restore_pushed_device_profile(
+                    [int(i) for i in draft.cleared_set_version_ids], successor
+                )
 
     async def _still_deleted(self, row_id: int) -> bool:
         """Asked again at the moment of the delete: a revived row's file is not to be removed."""
@@ -1239,6 +1364,7 @@ class BoardService:
             outcome=outcome,
             replaced_device_profile_id=replaced,
             replaced_version_id=row.device_version_id if replaced else None,
+            cleared_set_version_ids=phase.cleared.get(row.id) if replaced else None,
         )
         if pushed is not None and row.pending_set_id is not None:
             await self._record_on_set(phase, pushed, row)

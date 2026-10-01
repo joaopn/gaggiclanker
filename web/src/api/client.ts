@@ -636,6 +636,11 @@ export async function deleteBoardRow(rowId: number): Promise<BoardRow> {
   return fetchApi<BoardRow>(`/profile-board/${rowId}`, { method: "DELETE" });
 }
 
+/** Make a profile its previous version again; the next sync does it on the machine. */
+export async function goBackOnBoard(rowId: number): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/go-back`, { method: "POST" });
+}
+
 /** Let syncs write again after the machine looked reset. Sends nothing to the machine. */
 export async function resumeBoard(): Promise<{ resumed: boolean }> {
   return fetchApi<{ resumed: boolean }>("/profile-board/resume", { method: "POST" });

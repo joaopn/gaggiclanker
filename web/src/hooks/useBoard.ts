@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   deleteBoardRow,
   getProfileBoard,
+  goBackOnBoard,
   putOnBoard,
   resumeBoard,
   setBoardHomeScreen,
@@ -101,6 +102,28 @@ export function useDeleteBoardRow(): UseMutationResult<BoardRow, Error, number> 
     onSuccess: (row) => toast.success(`${row.label} is deleted from the board`),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateBoardWrites(queryClient),
+  });
+}
+
+/**
+ * Go back to a profile's previous version. Nothing is sent to the machine: the next sync puts
+ * the previous version on it and removes the newer copy. The Sets are refreshed because what
+ * the sync then records on their versions changes with it, and a draft that was waiting on
+ * the version being left is discarded.
+ */
+export function useGoBackOnBoard(): UseMutationResult<BoardRow, Error, number> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: number) => goBackOnBoard(rowId),
+    onSuccess: (row) =>
+      toast.success(`${row.label} goes back to its previous version`, {
+        description: "The next sync puts it on the machine.",
+      }),
+    onError: (error) => toast.error(error.message),
+    onSettled: () => {
+      void invalidateBoardWrites(queryClient);
+      void invalidateSets(queryClient);
+    },
   });
 }
 

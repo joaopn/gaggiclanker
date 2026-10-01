@@ -3,6 +3,7 @@ import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useDeleteBoardRow,
+  useGoBackOnBoard,
   usePutOnBoard,
   useResumeBoard,
   useSetHomeScreen,
@@ -16,15 +17,21 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { putOnBoard, setBoardHomeScreen, deleteBoardRow, resumeBoard, takeOntoBoard } = vi.hoisted(
-  () => ({
-    takeOntoBoard: vi.fn(),
-    putOnBoard: vi.fn(),
-    setBoardHomeScreen: vi.fn(),
-    deleteBoardRow: vi.fn(),
-    resumeBoard: vi.fn(),
-  }),
-);
+const {
+  putOnBoard,
+  setBoardHomeScreen,
+  deleteBoardRow,
+  resumeBoard,
+  takeOntoBoard,
+  goBackOnBoard,
+} = vi.hoisted(() => ({
+  goBackOnBoard: vi.fn(),
+  takeOntoBoard: vi.fn(),
+  putOnBoard: vi.fn(),
+  setBoardHomeScreen: vi.fn(),
+  deleteBoardRow: vi.fn(),
+  resumeBoard: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   putOnBoard,
@@ -32,6 +39,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   deleteBoardRow,
   resumeBoard,
   takeOntoBoard,
+  goBackOnBoard,
 }));
 
 const row = { id: 4, label: "9 Bar Espresso [AI]" };
@@ -43,6 +51,7 @@ beforeEach(() => {
   deleteBoardRow.mockResolvedValue(row);
   resumeBoard.mockResolvedValue({ resumed: true });
   takeOntoBoard.mockResolvedValue(row);
+  goBackOnBoard.mockResolvedValue(row);
 });
 
 function spyOn(queryClient: QueryClient): readonly unknown[][] {
@@ -122,6 +131,18 @@ describe("every board mutation refreshes everything it changes", () => {
     await result.current.mutateAsync("later");
 
     for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
+  });
+
+  it("going back a version also refreshes the Sets, whose versions the sync then touches", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useGoBackOnBoard());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync(4);
+
+    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+      await waitFor(() => expect(keys).toContainEqual([...key]));
+    }
+    expect(goBackOnBoard).toHaveBeenCalledWith(4);
   });
 
   it("resuming a paused board", async () => {

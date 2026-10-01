@@ -328,7 +328,7 @@ class PlanBuilder:
                     host=host,
                     recorded_hash=recorded_hash,
                     seen_hash=hashes[old_id],
-                    excluding_set=row.pending_set_id,
+                    excluding_set=row.leaving_set_id,
                     live_claims=live_claims,
                 )
             if held is not None:

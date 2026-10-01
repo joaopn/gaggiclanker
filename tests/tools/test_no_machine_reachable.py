@@ -618,11 +618,24 @@ async def test_the_stdio_context_proposes_drafts(
 def test_no_tool_edits_the_profile_board_or_takes_a_profile_onto_it() -> None:
     """The board is edited by a person's click only: chat and MCP have no tool for it.
 
-    Putting a draft on the board, taking a machine profile onto it, a home-screen flag, a
-    delete and a resume are routes under ``/api/profile-board``; none has a tool, and no
-    tool is named for one.
+    Putting a draft on the board, taking a machine profile onto it, a home-screen flag, going
+    back a version, a delete and a resume are routes under ``/api/profile-board``; none has a
+    tool, and no tool is named for one. (What each of them does to the machine happens in the
+    board's write phase, which no tool can reach: the walk above holds the ``BoardService``.)
     """
     names = registry.names()
     assert names, "the registry is empty, so this proves nothing"
-    banned = ("board", "take_", "adopt", "resume", "home_screen", "put_on")
+    banned = (
+        "board",
+        "take_",
+        "adopt",
+        "resume",
+        "home_screen",
+        "put_on",
+        "go_back",
+        "approve",
+        "push",
+        "rollback",
+        "stage",
+    )
     assert [n for n in names if any(word in n for word in banned)] == []

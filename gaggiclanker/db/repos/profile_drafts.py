@@ -446,6 +446,31 @@ class ProfileDraftsRepository(Repository):
         )
         return cursor.rowcount
 
+    async def pushed_to_device(self, device_id: str) -> list[ProfileDraftRow]:
+        """The drafts that stand behind this file: pushed, not replaced by a later push."""
+        rows = await self.db.fetch_all(
+            f"{_SELECT} WHERE d.status = 'pushed' AND d.pushed_device_profile_id = ? "
+            "AND d.replaced_by_draft_id IS NULL ORDER BY d.id",
+            (device_id,),
+        )
+        return self.to_models(ProfileDraftRow, rows)
+
+    async def retire_pushed(
+        self, device_id: str, *, outcome: dict[str, Any]
+    ) -> list[ProfileDraftRow]:
+        """Close the drafts behind a file that is off the machine for good.
+
+        What a rollback did: a draft that pushed a profile the machine no longer has is
+        ``discarded`` (it stayed ``pushed`` once, which described a file that was gone) and
+        stops naming the file, so nothing can later act on whatever inherits the id. Returns
+        the drafts as they were just before, for what still needs their device ids.
+        """
+        found = await self.pushed_to_device(device_id)
+        for draft in found:
+            await self.set_status(draft.id, "discarded")
+            await self.clear_pushed_profile(draft.id, outcome=outcome)
+        return found
+
     async def other_pushed_claims(self, device_id: str, *, excluding: int) -> list[int]:
         """Drafts other than ``excluding`` that still stand behind this profile.
 

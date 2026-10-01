@@ -1033,6 +1033,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-board/{row_id}/go-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Go back to a profile's previous version
+         * @description Person-only. Sends nothing to the machine: the next sync does.
+         *
+         *     Refused (409) for a profile of the person's, one with no earlier version, and when the
+         *     earlier version would make two profiles share a label. No chat or MCP tool reaches it.
+         */
+        post: operations["go_back_on_board_api_profile_board__row_id__go_back_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-board/{row_id}/home-screen": {
         parameters: {
             query?: never;
@@ -3176,6 +3199,8 @@ export interface components {
          * @description One profile on the board.
          */
         BoardRow: {
+            /** Back From Set Id */
+            back_from_set_id?: number | null;
             /** Created At */
             created_at: string;
             /** Current Version Id */
@@ -3204,6 +3229,8 @@ export interface components {
             pending_major?: boolean | null;
             /** Pending Set Id */
             pending_set_id?: number | null;
+            /** Previous Version Id */
+            previous_version_id?: number | null;
             /** Updated At */
             updated_at: string;
         };
@@ -8944,6 +8971,37 @@ export interface operations {
         };
     };
     delete_from_board_api_profile_board__row_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    go_back_on_board_api_profile_board__row_id__go_back_post: {
         parameters: {
             query?: never;
             header?: never;
