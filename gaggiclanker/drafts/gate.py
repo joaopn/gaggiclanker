@@ -28,11 +28,10 @@ __all__ = ["SettingsWriteGate"]
 log = structlog.get_logger(__name__)
 
 #: What a refused write says. Long, because it is what a person sees in a toast
-#: and the useful part is where the switch is, not that there is one.
+#: and the useful part is where the switch is (the top bar), not that there is one.
 DISABLED_MESSAGE = (
-    "Writing to the machine is switched off. Turn on 'Device writes enabled' under "
-    "Settings → Machine access to let gaggiclanker write to the display. "
-    "Nothing was sent."
+    "Writing to the machine is switched off. Turn on the Writes switch in the top bar "
+    "to let gaggiclanker write to the display. Nothing was sent."
 )
 
 

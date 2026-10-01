@@ -203,15 +203,13 @@ def check_configuration(
         log.error(
             "device_writes_env_refused",
             env_key=writes_switch,
-            fix=(
-                "remove the variable and set Allow writes to the machine under "
-                "Settings → Machine access"
-            ),
+            fix=("remove the variable and turn on the Writes switch in the top bar"),
         )
         raise RuntimeError(
             f"{writes_switch} no longer allows this box to write to the machine: writes are "
-            "switched on under Settings → Machine access and the switch lives in the database. "
-            "Remove the variable from the environment and compose.yml, then set it there. "
+            "switched on with the Writes switch in the top bar, and the switch lives in the "
+            "database. "
+            "Remove the variable from the environment and compose.yml, then use the switch. "
             "Refusing to start rather than ignore a switch that used to open the one path to an "
             "espresso machine."
         )

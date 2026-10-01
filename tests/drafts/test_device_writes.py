@@ -252,6 +252,9 @@ async def test_a_delete_the_gate_refuses_never_reads_the_machine_either(
         await app.state.connection.client.delete_profile("9bar")
 
     assert "switched off" in str(caught.value)
+    # Where to turn it on is the top-bar switch; the Settings card is gone.
+    assert "Writes switch in the top bar" in str(caught.value)
+    assert "Settings" not in str(caught.value)
     assert ("profile_delete", "refused", "9bar") in await audit(app)
 
 

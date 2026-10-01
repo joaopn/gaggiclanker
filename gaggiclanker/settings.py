@@ -721,9 +721,10 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         type="bool",
         default=False,
         description=(
-            "Allow this box to write to the machine at all. Only profiles are ever written: "
-            "save a new one, delete one it created, select it, star it. Shots are never "
-            "deleted from the machine and notes are never sent to it. Off by default, and it "
+            "The Writes switch in the top bar: allow this box to write to the machine at all. "
+            "Only profiles are ever written: save a new one, delete one it created, select "
+            "it, star it. Shots are never deleted from the machine and notes are never sent to "
+            "it. Off by default, and it "
             "is the only thing standing between "
             "a bug and a display that will not brew — a profile with zero phases crashes brew "
             "start, and recovering one means a reflash plus a filesystem erase. Device "

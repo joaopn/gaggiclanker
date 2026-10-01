@@ -120,7 +120,7 @@ class DenyAllWrites:
     async def authorize(self, write: PendingWrite) -> None:
         raise DeviceWriteRefused(
             f"This client cannot write to the machine ({write.kind} was not sent). "
-            "Device writes need the app's write gate and the deviceWritesEnabled setting."
+            "Device writes need the app's write gate and the Writes switch (deviceWritesEnabled)."
         )
 
     async def record(
