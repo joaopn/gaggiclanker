@@ -11,8 +11,9 @@ import { SETTINGS_PAGES } from "@/lib/settingsPages";
 const GONE = /send(ing)? (your )?(judgement|notes)|clean(ing)? up|deleting shots|storage/i;
 
 describe("copy about what is written to the machine", () => {
-  it("the writes switch's confirmation says a profile is all it allows", () => {
-    expect(WRITES_ON_SENTENCE).toMatch(/push a profile .* roll one back/);
+  it("the writes switch's confirmation says profiles are all a pull writes", () => {
+    expect(WRITES_ON_SENTENCE).toMatch(/profiles match the board/);
+    expect(WRITES_ON_SENTENCE).toMatch(/never removes or overwrites a profile of yours/);
     expect(WRITES_ON_SENTENCE).not.toMatch(GONE);
   });
 

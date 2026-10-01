@@ -4,20 +4,23 @@ import { useEffect, useRef, useState } from "react";
 import { patchSettings } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useProfileBoard } from "@/hooks/useBoard";
 import { useSettings } from "@/hooks/useSettings";
-import { invalidateSettings } from "@/lib/invalidate";
+import { previewCounts, previewLine } from "@/lib/board";
+import { invalidateBoardWrites, invalidateSettings } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 
 /**
  * What turning the switch on allows, in the one sentence the confirmation shows.
  *
- * Kept as plain a statement of today's behaviour as it can be: the switch gates
- * every write to the machine, and the only writes that exist are a person's
- * profile pushes and rollbacks. Exported so a test pins the wording.
+ * As plain a statement of what a pull does with the switch on as it can be: it makes
+ * the machine's profiles match the board. It names the boundary a person cares about
+ * (a profile of theirs is never removed or overwritten) because that is the question
+ * somebody turning this on is asking. Exported so a test pins the wording.
  */
 export const WRITES_ON_SENTENCE =
-  "Turn on writes? For now that only lets you push a profile to the machine, or roll one back, from the Profiles page.";
+  "Turn on writes? From then on every pull makes the machine's profiles match the board on the Profiles page: it pushes the app's profiles the machine does not have, removes the app's old copies and sets the home-screen stars. It never removes or overwrites a profile of yours.";
 
 /**
  * The top-bar switch for writing to the machine.
@@ -64,12 +67,13 @@ export function DeviceWritesSwitch() {
       setPanel(null);
     },
     onError: () => setPanel("error"),
-    // Every reader of the switch, success or not: the Profiles page's banner
-    // reads the write audit's `enabled`, the settings pages read the registry,
-    // and after a failure the server is the authority on what the switch is.
+    // Every reader of the switch, success or not: the settings pages read the
+    // registry, the board and its preview carry `writes_enabled` and what the next
+    // pull would do, the Sync page and the write audit read the rest, and after a
+    // failure the server is the authority on what the switch is.
     onSettled: () => {
       void invalidateSettings(queryClient);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.device.writes() });
+      void invalidateBoardWrites(queryClient);
     },
   });
 
@@ -137,7 +141,9 @@ export function DeviceWritesSwitch() {
       <PopoverContent
         align="end"
         aria-label="Writes to the machine"
-        className="max-sm:inset-x-4 max-sm:w-auto sm:w-80"
+        // Never taller than the screen under the header: the preview's list scrolls
+        // inside the panel instead of pushing the buttons off it.
+        className="max-h-[calc(100dvh-5rem)] overflow-y-auto max-sm:inset-x-4 max-sm:w-auto sm:w-80"
       >
         {panel === "error" ? (
           <div className="space-y-3" role="alert" data-testid="device-writes-error">
@@ -155,6 +161,7 @@ export function DeviceWritesSwitch() {
         ) : (
           <div className="space-y-3">
             <p className="text-sm">{WRITES_ON_SENTENCE}</p>
+            <WritesPreview />
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="outline" onClick={() => setPanel(null)}>
                 Cancel
@@ -167,5 +174,95 @@ export function DeviceWritesSwitch() {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * What the next pull would do, read from the machine now, under the confirmation.
+ *
+ * Asked for only while the confirmation is on screen (it is the one read in the
+ * app that goes to the machine for a person's answer), and always worded from the
+ * server's own plan: before the board has been adopted the first pull writes nothing
+ * at all, so that is what it says; after, the counts and the list. A machine that
+ * cannot be read says so and falls back to what the last pull saw.
+ */
+function WritesPreview() {
+  const board = useProfileBoard({ live: true });
+
+  if (board.isPending) {
+    return (
+      <p className="text-muted-foreground text-xs" data-testid="writes-preview-loading">
+        Reading the machine to see what the next pull would do…
+      </p>
+    );
+  }
+  if (board.isError || !board.data) {
+    return (
+      <p className="text-muted-foreground text-xs" data-testid="writes-preview">
+        The board could not be read just now, so what the next pull would do is not shown.
+      </p>
+    );
+  }
+  const view = board.data;
+  const actions = view.actions ?? [];
+  const counts = previewCounts(view);
+  const fromMachine = view.machine_source === "machine";
+
+  return (
+    <div className="space-y-2 text-xs" data-testid="writes-preview">
+      {!fromMachine ? (
+        <p className="text-status-warn-text" data-testid="writes-preview-stale">
+          {view.machine_source === "mirror"
+            ? "The machine could not be read just now, so this is from the last pull."
+            : "The machine could not be read just now and nothing is known of its profiles yet."}
+        </p>
+      ) : null}
+      {!view.adopted ? (
+        <p data-testid="writes-preview-first">
+          The first pull takes the machine's profiles onto the board and writes nothing.
+          {counts.adopt > 0
+            ? ` ${counts.adopt} ${counts.adopt === 1 ? "profile is" : "profiles are"} on the machine to take.`
+            : ""}
+        </p>
+      ) : view.paused ? (
+        <p data-testid="writes-preview-paused">
+          The machine looks reset, so pulls write nothing until you resume them on the Sync page.
+        </p>
+      ) : actions.length === 0 ? (
+        <p data-testid="writes-preview-none">
+          The machine already matches the board: the next pull would change nothing.
+        </p>
+      ) : (
+        <>
+          <p data-testid="writes-preview-counts">
+            The next pull would{" "}
+            {[
+              counts.push > 0 &&
+                `push ${counts.push} ${counts.push === 1 ? "profile" : "profiles"}`,
+              counts.remove > 0 &&
+                `remove ${counts.remove} old ${counts.remove === 1 ? "copy" : "copies"}`,
+              counts.homeScreen > 0 &&
+                `change ${counts.homeScreen} home-screen ${counts.homeScreen === 1 ? "star" : "stars"}`,
+            ]
+              .filter(Boolean)
+              .join(", ") || "leave everything as it is"}
+            {counts.leave > 0 ? `, and leave ${counts.leave} on the machine` : ""}.
+          </p>
+          <ul
+            className="max-h-32 list-disc space-y-0.5 overflow-y-auto pl-5 text-muted-foreground"
+            data-testid="writes-preview-list"
+          >
+            {actions.map((action) => (
+              <li
+                key={`${action.kind}-${action.row_id ?? "x"}-${action.device_id ?? action.label}`}
+                className="break-words"
+              >
+                {previewLine(action)}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
   );
 }

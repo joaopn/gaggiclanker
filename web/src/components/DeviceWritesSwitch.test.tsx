@@ -3,16 +3,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SettingsMap } from "@/api/types";
 import { DeviceWritesSwitch, WRITES_ON_SENTENCE } from "@/components/DeviceWritesSwitch";
 import { queryKeys } from "@/lib/queryKeys";
+import { boardAction, boardView } from "@/test/boardFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
-const { getSettings, patchSettings } = vi.hoisted(() => ({
+const { getSettings, patchSettings, getProfileBoard } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   patchSettings: vi.fn(),
+  getProfileBoard: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSettings,
   patchSettings,
+  getProfileBoard,
 }));
 
 function settings(enabled: boolean): SettingsMap {
@@ -51,6 +54,10 @@ async function renderSwitch(enabled: boolean) {
 describe("DeviceWritesSwitch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Before the board is adopted, read from the machine just now.
+    getProfileBoard.mockResolvedValue(
+      boardView({ adopted: false, rows: [], machine_source: "machine" }),
+    );
   });
 
   it("shows whether writes are on or off, from the served setting", async () => {
@@ -95,7 +102,7 @@ describe("DeviceWritesSwitch", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("asks before turning on, and says what on allows today", async () => {
+  it("asks before turning on, and says what on means: every pull matches the board", async () => {
     const user = setupUser();
     await renderSwitch(false);
 
@@ -104,9 +111,153 @@ describe("DeviceWritesSwitch", () => {
     expect(patchSettings).not.toHaveBeenCalled();
     const panel = screen.getByRole("dialog", { name: "Writes to the machine" });
     expect(panel).toHaveTextContent(WRITES_ON_SENTENCE);
-    expect(panel.textContent).toMatch(/only lets you push a profile .* roll one back/);
-    // Nothing here may promise a sync that does not exist yet.
-    expect(panel.textContent ?? "").not.toMatch(/sync|every pull|automatic/i);
+    expect(panel).toHaveTextContent("every pull makes the machine's profiles match the board");
+    expect(panel).toHaveTextContent("pushes the app's profiles the machine does not have");
+    expect(panel).toHaveTextContent("removes the app's old copies");
+    expect(panel).toHaveTextContent("sets the home-screen stars");
+    expect(panel).toHaveTextContent("never removes or overwrites a profile of yours");
+    // The sentence that said the switch only allowed a person's push is gone.
+    expect(panel.textContent ?? "").not.toMatch(
+      /only lets you push|from the Profiles page|roll one back/,
+    );
+  });
+
+  describe("the preview of the next pull", () => {
+    it("before the board is adopted says the first pull writes nothing", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(
+        boardView({
+          adopted: false,
+          rows: [],
+          machine_source: "machine",
+          actions: [
+            boardAction({ kind: "adopt", label: "A" }),
+            boardAction({ kind: "adopt", label: "B" }),
+          ],
+        }),
+      );
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      const preview = await screen.findByTestId("writes-preview-first");
+      expect(preview).toHaveTextContent(
+        "The first pull takes the machine's profiles onto the board and writes nothing.",
+      );
+      expect(preview).toHaveTextContent("2 profiles are on the machine to take");
+      expect(getProfileBoard).toHaveBeenCalledWith(true);
+    });
+
+    it("after adoption gives the counts by kind and the list", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(
+        boardView({
+          machine_source: "machine",
+          actions: [
+            boardAction({ kind: "push", label: "Londinium [AI]" }),
+            boardAction({ kind: "remove", label: "Old [AI]", device_id: "o1" }),
+            boardAction({ kind: "home_screen", label: "9 Bar", on: false }),
+            boardAction({ kind: "leave", label: "Mine", detail: "not the app's" }),
+          ],
+        }),
+      );
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      const counts = await screen.findByTestId("writes-preview-counts");
+      expect(counts).toHaveTextContent(
+        "The next pull would push 1 profile, remove 1 old copy, change 1 home-screen star, and leave 1 on the machine.",
+      );
+      const list = screen.getByTestId("writes-preview-list");
+      expect(list).toHaveTextContent("Push Londinium [AI]");
+      expect(list).toHaveTextContent("Remove the old copy of Old [AI]");
+      expect(list).toHaveTextContent("Take 9 Bar off the home screen");
+      expect(screen.queryByTestId("writes-preview-stale")).toBeNull();
+    });
+
+    it("says nothing would change when the machine already matches the board", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(boardView({ machine_source: "machine" }));
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview-none")).toHaveTextContent(
+        "the next pull would change nothing",
+      );
+    });
+
+    it("falls back to the last pull and says so when the machine cannot be read", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(
+        boardView({
+          machine_source: "mirror",
+          actions: [boardAction({ kind: "push", label: "Londinium [AI]" })],
+        }),
+      );
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview-stale")).toHaveTextContent(
+        "The machine could not be read just now, so this is from the last pull.",
+      );
+      expect(screen.getByTestId("writes-preview-list")).toHaveTextContent("Push Londinium [AI]");
+    });
+
+    it("still lets you turn on when the board cannot be read at all", async () => {
+      const user = setupUser();
+      getProfileBoard.mockRejectedValue(new Error("boom"));
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview")).toHaveTextContent(
+        "could not be read just now",
+      );
+      expect(screen.getByRole("button", { name: "Turn on" })).toBeEnabled();
+    });
+
+    it("says a paused board writes nothing until resumed", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(
+        boardView({ machine_source: "machine", paused: "the machine looks reset" }),
+      );
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview-paused")).toHaveTextContent(
+        "pulls write nothing until you resume them on the Sync page",
+      );
+    });
+
+    it("does not read the machine until the confirmation is open", async () => {
+      await renderSwitch(false);
+      expect(getProfileBoard).not.toHaveBeenCalled();
+    });
+
+    it("does not read the machine to turn writes off", async () => {
+      const user = setupUser();
+      await renderSwitch(true);
+      serverAcceptsChanges();
+      await user.click(toggle());
+      await waitFor(() => expect(patchSettings).toHaveBeenCalled());
+      expect(getProfileBoard).not.toHaveBeenCalled();
+    });
+  });
+
+  it("keeps the panel inside the viewport: height-capped, scrolling inside, full width under sm", async () => {
+    const user = setupUser();
+    await renderSwitch(false);
+    await user.click(toggle());
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "max-h-[calc(100dvh-5rem)]",
+      "overflow-y-auto",
+      "max-sm:inset-x-4",
+      "max-sm:w-auto",
+    );
   });
 
   it("sends {deviceWritesEnabled: true} once confirmed", async () => {
@@ -187,7 +338,17 @@ describe("DeviceWritesSwitch", () => {
 
     const keys = spy.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toContainEqual(queryKeys.settings.all);
-    expect(keys).toContainEqual(queryKeys.device.writes());
+    expect(keys).toContainEqual(queryKeys.device.all);
+    // And what the switch changes besides the setting: the board's `writes_enabled` and
+    // its preview, the sync status, the drafts and the profile mirror.
+    for (const key of [
+      queryKeys.board.all,
+      queryKeys.sync.all,
+      queryKeys.drafts.all,
+      queryKeys.profiles.all,
+    ]) {
+      expect(keys).toContainEqual(key);
+    }
 
     spy.mockClear();
     patchSettings.mockRejectedValue(new Error("nope"));
@@ -195,6 +356,7 @@ describe("DeviceWritesSwitch", () => {
     await waitFor(() => expect(screen.getByTestId("device-writes-error")).toBeInTheDocument());
     const failedKeys = spy.mock.calls.map(([filters]) => filters?.queryKey);
     expect(failedKeys).toContainEqual(queryKeys.settings.all);
-    expect(failedKeys).toContainEqual(queryKeys.device.writes());
+    expect(failedKeys).toContainEqual(queryKeys.device.all);
+    expect(failedKeys).toContainEqual(queryKeys.board.all);
   });
 });

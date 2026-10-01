@@ -50,7 +50,7 @@ export const SETTINGS_PAGES: readonly SettingsPageInfo[] = [
     label: "Machine access",
     icon: Gauge,
     description:
-      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default and are switched with the Writes switch in the top bar. The only thing it ever writes to the machine is a profile, pushed from the Profiles page.",
+      "How gaggiclanker reaches the GaggiMate, and what it is allowed to change on it. Writes are off by default and are switched with the Writes switch in the top bar. The only thing it ever writes to the machine is a profile: with writes on, every pull makes the machine's profiles match the board on the Profiles page.",
   },
   {
     id: "llm",

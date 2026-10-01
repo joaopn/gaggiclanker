@@ -154,6 +154,8 @@ function sentence(text: string): string {
 }
 
 export type PreviewCounts = {
+  /** Machine profiles the first pull would take onto the board. */
+  adopt: number;
   push: number;
   remove: number;
   homeScreen: number;
@@ -165,6 +167,7 @@ export function previewCounts(view: BoardView): PreviewCounts {
   const count = (kind: BoardAction["kind"]) =>
     (view.actions ?? []).filter((a) => a.kind === kind).length;
   return {
+    adopt: count("adopt"),
     push: count("push"),
     remove: count("remove"),
     homeScreen: count("home_screen"),

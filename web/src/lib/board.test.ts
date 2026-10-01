@@ -133,7 +133,13 @@ describe("previewCounts", () => {
         boardAction({ kind: "leave" }),
       ],
     });
-    expect(previewCounts(view)).toEqual({ push: 2, remove: 1, homeScreen: 1, leave: 1 });
+    expect(previewCounts(view)).toEqual({
+      adopt: 0,
+      push: 2,
+      remove: 1,
+      homeScreen: 1,
+      leave: 1,
+    });
   });
 });
 
