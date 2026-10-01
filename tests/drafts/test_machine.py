@@ -1,4 +1,4 @@
-"""The write primitives, directly: ``place``, ``remove_if_ours`` and ``can_remove``.
+"""The write primitives, directly: ``place`` and ``remove_if_ours``.
 
 The staged push used to be the only way to reach them, so their guards were pinned through
 its HTTP routes. The profile board's write phase calls them now, and its own tests reach them
@@ -11,8 +11,7 @@ real audit, for what each primitive must and must never do:
 * ``remove_if_ours`` takes a file off only when this app saved that id, the label on the
   machine still carries the app suffix, the content is what the archive recorded, nobody else
   stands on it, and twice (before the star and selection move, and again just before the
-  delete); it moves the star and the selection to the successor first;
-* ``can_remove`` is the same decision without the write.
+  delete); it moves the star and the selection to the successor first.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     GONE,
     NOT_OURS,
-    can_remove,
     place,
     read_machine,
     remove_if_ours,
@@ -466,41 +464,3 @@ async def test_a_copy_that_did_not_verify_is_removed_against_what_the_machine_st
 
     assert removal.removed
     assert placed.device_id not in {str(p["id"]) for p in fake_device.profiles}
-
-
-# ── can_remove ───────────────────────────────────────────────────────
-
-
-async def test_can_remove_is_the_same_decision_without_the_write(
-    writes_on: Live, fake_device: FakeDevice
-) -> None:
-    app, _ = writes_on
-    client = app.state.connection.client
-    writes_repo = DeviceWritesRepository(app.state.db)
-    old, old_id, _, _ = await two_copies(app, fake_device)
-    mark = len(fake_device.ws_requests)
-
-    assert (
-        await can_remove(
-            client, writes_repo, device_id=old_id, expected_hash=profile_content_hash(old)
-        )
-        is None
-    )
-    blocked = await can_remove(
-        client,
-        writes_repo,
-        device_id=old_id,
-        expected_hash=profile_content_hash(old),
-        blocked="a Set is brewing it",
-    )
-    assert blocked is not None and blocked.reason == "a Set is brewing it"
-    edit_on_display(fake_device, old_id, temperature=91)
-    changed = await can_remove(
-        client, writes_repo, device_id=old_id, expected_hash=profile_content_hash(old)
-    )
-    assert changed is not None and changed.reason == CHANGED_SINCE
-    gone = await can_remove(client, writes_repo, device_id="nothing01", expected_hash=None)
-    assert gone is not None and gone.gone
-
-    assert writes(fake_device, mark) == [], "reads only"
-    assert old_id in {str(p["id"]) for p in fake_device.profiles}

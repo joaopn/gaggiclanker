@@ -228,9 +228,6 @@ async def test_services_act_on_the_new_client_after_a_swap(
     before = len(fake_b.requests)
     await new.fetch_index()
     assert any(path.startswith("/api/history/index.bin") for path in fake_b.requests[before:])
-    # And an operation registered with the connection is handed the new client.
-    async with app.state.connection.operation("a test") as held:
-        assert held is new
 
 
 # ── nothing left behind ──────────────────────────────────────────────
@@ -539,12 +536,10 @@ async def test_a_pull_holds_off_a_connection_change(
 
 
 async def test_a_host_change_with_an_invalid_value_is_a_400_even_while_busy(
-    on_a: tuple[FastAPI, httpx.AsyncClient],
+    on_a: tuple[FastAPI, httpx.AsyncClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Validation first: the person gets told what is wrong with the value, not to wait."""
     app, client = on_a
-    async with app.state.connection.operation("a profile push"):
-        response = await patch(
-            client, {"gaggimateHost": ELSEWHERE, "gaggimateTimeoutSeconds": "soon"}
-        )
+    monkeypatch.setattr(app.state.connection, "busy", lambda: "a sync")
+    response = await patch(client, {"gaggimateHost": ELSEWHERE, "gaggimateTimeoutSeconds": "soon"})
     assert response.status_code == 400

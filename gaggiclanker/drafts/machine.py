@@ -44,7 +44,6 @@ __all__ = [
     "MachineState",
     "Placed",
     "Removal",
-    "can_remove",
     "place",
     "read_machine",
     "remove_if_ours",
@@ -217,31 +216,6 @@ async def _check(
     if blocked is not None:
         return Removal(reason=blocked), None
     return None, fresh
-
-
-async def can_remove(
-    client: GaggimateClient,
-    writes: DeviceWritesRepository,
-    *,
-    device_id: str,
-    expected_hash: str | None,
-    blocked: str | None = None,
-) -> Removal | None:
-    """``None`` when :func:`remove_if_ours` would go ahead; otherwise why it would not.
-
-    Reads only: for a caller that has to know a removal would be refused before it does
-    something else first, so it never puts a copy back beside a profile it is then unable
-    to remove.
-    """
-    refusal, _ = await _check(
-        client,
-        writes,
-        device_id=device_id,
-        expected_hash=expected_hash,
-        expected_label=None,
-        blocked=blocked,
-    )
-    return refusal
 
 
 async def remove_if_ours(

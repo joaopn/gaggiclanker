@@ -12,11 +12,9 @@ Three rules shape it:
 **One lock, and a rebuild holds it.** :meth:`DeviceConnection.update` takes the
 lock, decides whether the change may be made, stores the new settings, and
 rebuilds the client and the engine from the effective values if they moved —
-all in one hold. :meth:`DeviceConnection.operation` takes the same lock to
-register a machine-bound operation, and :meth:`DeviceConnection.current_engine`
-to hand out the engine a pull is asked of. So neither an operation nor a pull
-starts between the busy check and the rebuild, and a rebuild never starts while
-one is registered.
+all in one hold. :meth:`DeviceConnection.current_engine` takes the same lock to
+hand out the engine a pull is asked of, so a pull does not start between the busy
+check and the rebuild, and a rebuild never starts while a pass is running.
 
 **Never cut a write in half.** A change that would move the connection is
 refused while anything is using the machine — a sync, the profile board's write
@@ -45,9 +43,7 @@ machine" a property of the object graph rather than of nobody having tried.
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -65,7 +61,6 @@ __all__ = [
     "DeviceConnection",
     "DeviceEngine",
     "device_config",
-    "machine_operation",
 ]
 
 log = structlog.get_logger(__name__)
@@ -148,8 +143,6 @@ class DeviceConnection[EngineT: DeviceEngine]:
         #: holds the client, so nothing outside the device layer may hold it.
         self._tasks = TaskRegistry()
         self._lock = asyncio.Lock()
-        #: Operations registered through :meth:`operation`, by phrase.
-        self._operations: Counter[str] = Counter()
         self._config: DeviceConfig | None = None
         self._client: GaggimateClient | None = None
         self._engine: EngineT | None = None
@@ -183,9 +176,6 @@ class DeviceConnection[EngineT: DeviceEngine]:
 
     def busy(self) -> str | None:
         """What is using the machine right now, as a phrase, or ``None``."""
-        for phrase, count in self._operations.items():
-            if count > 0:
-                return phrase
         if self._engine is not None:
             return self._engine.busy()
         return None
@@ -242,25 +232,6 @@ class DeviceConnection[EngineT: DeviceEngine]:
             result = await write()
             await self._rebuild_if_changed()
             return result
-
-    @asynccontextmanager
-    async def operation(self, phrase: str) -> AsyncIterator[GaggimateClient | None]:
-        """Use the machine for the length of the block, holding off any rebuild.
-
-        Registration waits for a rebuild in progress to finish, so the client
-        handed out is the one the rebuild produced; for as long as the block
-        runs, a change that would move the connection is refused naming
-        ``phrase``.
-        """
-        async with self._lock:
-            self._operations[phrase] += 1
-            client = self._client
-        try:
-            yield client
-        finally:
-            self._operations[phrase] -= 1
-            if self._operations[phrase] <= 0:
-                del self._operations[phrase]
 
     # ── internals, all under the lock ────────────────────────────────
 
@@ -333,15 +304,3 @@ class DeviceConnection[EngineT: DeviceEngine]:
                 log.warning("device_client_stop_failed", exc_info=True)
             else:
                 log.info("device_client_stopped", host=client.host)
-
-
-@asynccontextmanager
-async def machine_operation(
-    connection: DeviceConnection[Any] | None, phrase: str
-) -> AsyncIterator[GaggimateClient | None]:
-    """:meth:`DeviceConnection.operation`, or ``None`` when there is no connection at all."""
-    if connection is None:
-        yield None
-        return
-    async with connection.operation(phrase) as client:
-        yield client
