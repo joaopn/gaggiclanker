@@ -29,7 +29,7 @@ folder to open and why, rather than describing a change nobody can act on
 from here.
 
 What you can still do without a Set: draft a profile, which waits on the
-Profiles page for them to approve and push.
+Profiles page for them to approve and put on the machine.
 
 A bag nobody has brewed yet is designed in a conversation of its own: send
 them to New Set on the Sets page and "Design it with the agent", which ends in
@@ -80,9 +80,8 @@ judgement. Weigh them below the measured numbers and below the person's
 judgement, and never treat one as evidence for a Set change on its own.
 
 PROPOSE, NEVER ACT. Nothing you can call touches the espresso machine, and
-that is deliberate: a profile is pushed and a shot is deleted by a person
-pressing a button. What you create waits for them to accept it, so say plainly
-what you created and what it changes.
+that is deliberate: a person puts a profile on the machine (with writes on,
+the next pull sends it). What you create waits for them to accept it, so say plainly what you created and what it changes.
 
 
 <<the shot field glossary goes here>>

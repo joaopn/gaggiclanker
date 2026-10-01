@@ -1245,8 +1245,8 @@ class ProposeVersionOutput(_Model):
         "combined_reason. It is refused while this version's own prediction has not been "
         "graded, and while another proposal is already waiting. There is no temperature "
         "here: the machine brews at the temperature the profile states, so a temperature "
-        "change is a profile change — use draft_profile, and the person approves and "
-        "pushes it. " + MAJOR_MEANING
+        "change is a profile change — use draft_profile, and the person approves it and "
+        "puts it on the machine. " + MAJOR_MEANING
     ),
 )
 async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> ProposeVersionOutput:
@@ -1321,8 +1321,8 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
                 "nothing in this app can put an existing profile version there, so a Set "
                 "version naming it could not be brewed. list_profiles says which profiles are "
                 "on the machine (on_machine). To brew this one, use draft_profile with it as "
-                "the base: the person approves and pushes the draft for this Set, and that "
-                "push records the version."
+                "the base: the person approves the draft and puts it on the machine for this Set, "
+                "and the Set records the version when it reaches the machine."
             )
 
     proposals = SetProposalsRepository(ctx.db)
@@ -1469,7 +1469,7 @@ class DraftProfileInput(_Model):
             "Required in a conversation about one Set, where a profile change IS a change "
             "to the experiment: what should differ if this works, by roughly how much, on "
             "which recorded measure, compared with which version. It is recorded on the Set "
-            "when the person pushes this draft for that Set. Not asked for elsewhere — a "
+            "when this draft reaches the machine for that Set. Not asked for elsewhere — a "
             "draft that belongs to no experiment has nothing to be graded against."
         ),
     )
@@ -1483,10 +1483,10 @@ class DraftProfileInput(_Model):
     suggest_major: bool = Field(
         default=False,
         description=(
-            "In a conversation about one Set only: suggest that pushing this draft for the Set "
-            "records a major version rather than a minor one. A draft that tunes a parameter "
-            "is dialling in and stays minor; suggest major only for a functional change to "
-            "what the profile does, with major_reason. The person decides."
+            "In a conversation about one Set only: suggest that putting this draft on the "
+            "machine for the Set records a major version rather than a minor one. A draft that "
+            "tunes a parameter is dialling in and stays minor; suggest major only for a "
+            "functional change to what the profile does, with major_reason. The person decides."
         ),
     )
     major_reason: str = Field(
@@ -1537,7 +1537,7 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     description=(
         "Create a profile draft from an existing version plus a patch. The draft goes "
         "through the same schema, safety-policy and clamp checks as one typed by hand, "
-        "and it is NOT pushed to the machine — a person approves and pushes it. In a "
+        "and it is NOT on the machine — a person approves it and puts it there. In a "
         "conversation about one Set a profile change IS a change to the experiment, so a "
         "prediction is required and the same rules apply as to any other change: not while "
         "this version's own prediction is ungraded, and not while a proposal is already "
@@ -1573,13 +1573,13 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
     if args.suggest_major and ctx.scope.kind != "set":
         raise ValueError(
             "suggest_major only means something in a conversation about one Set: it is about "
-            "which version the push records there. Leave it out here."
+            "which version it records there. Leave it out here."
         )
     suggest_major, major_reason = _major_suggestion(args.suggest_major, args.major_reason)
     note = (
         "Nothing has been sent to the machine. This is a draft on the Profiles page: the "
-        "person reads the diff, approves it and pushes it, and only then does the machine "
-        "hold it."
+        "person reads the diff, approves it and puts it on the machine, and only then does "
+        "the machine hold it."
     )
     if ctx.scope.kind == "set":
         set_id = _resolve_set(ctx, None)
@@ -1587,8 +1587,8 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         names = await next_names(ctx.db, set_id)
         note += (
             " It is also a change to this experiment, so your prediction is recorded on the "
-            "Set as a new version when they push it for this Set — and not before. Say that: "
-            "until they push it, the Set is where it was. When they push it they choose "
+            "Set as a new version when it reaches the machine for this Set — and not before. Say "
+            "that: until then the Set is where it was. When they put it there they choose "
             f"whether it is a minor version ({names.minor}, the default for a draft) or a "
             f"major one ({names.major})"
             + (", and your suggestion of major is shown with your reason" if suggest_major else "")
@@ -1893,8 +1893,8 @@ async def propose_initial_recipe(
         note=(
             "Nothing exists yet. This is a card waiting for the person: if they accept it, it "
             "becomes this Set's version 1, and the profile is then a draft on the Profiles page "
-            "for them to approve and push — nothing brews it until they do. If they would "
-            "rather change something, propose again: a newer card replaces this one."
+            "for them to approve and put on the machine — nothing brews it until they do. "
+            "If they would rather change something, propose again: a newer card replaces this one."
         ),
     )
 
