@@ -7,13 +7,18 @@
 -- yet, and for every row that existed before this column, which cannot go back until its next
 -- put.
 --
--- `back_from_set_id` is set by going back, for the one thing the next sync needs to know: the
--- Set whose current version recorded the version being left still names its profile (and the
--- file holding it), which would otherwise keep that file from being removed. It is cleared once
--- the sync has dealt with the file.
+-- `back_from_version_id` and `back_from_set_version_id` are set by going back, for what the next
+-- sync needs to know and cannot read from the profile alone: which version was left (so the file
+-- holding it is removed as a going back, not as a delayed replacement), and the Set version that
+-- was its Set's current one at the click and recorded the version being left. That Set still names
+-- the file, which would otherwise keep it from being removed; it is exempt only while that exact
+-- Set version is still the Set's current one, and both are cleared once the sync has dealt with the
+-- file.
 --
 -- No data is lost or rewritten. No transaction control in this file: the runner wraps it plus
 -- its ledger row in one.
 
 ALTER TABLE profile_board ADD COLUMN previous_version_id INTEGER REFERENCES profile_versions(id);
-ALTER TABLE profile_board ADD COLUMN back_from_set_id INTEGER REFERENCES sets(id) ON DELETE SET NULL;
+ALTER TABLE profile_board ADD COLUMN back_from_version_id INTEGER REFERENCES profile_versions(id);
+ALTER TABLE profile_board ADD COLUMN back_from_set_version_id INTEGER
+    REFERENCES set_versions(id) ON DELETE SET NULL;

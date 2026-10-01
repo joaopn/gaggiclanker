@@ -460,6 +460,15 @@ class ProfileDraftsRepository(Repository):
         )
         return self.to_models(ProfileDraftRow, rows)
 
+    async def pusher_of_version(self, version_id: int) -> int | None:
+        """The newest draft of this document that is on the machine and still stands there."""
+        row = await self.db.fetch_one(
+            "SELECT id FROM profile_drafts WHERE status = 'pushed' AND draft_version_id = ? "
+            "AND replaced_by_draft_id IS NULL ORDER BY id DESC LIMIT 1",
+            (version_id,),
+        )
+        return None if row is None else int(row["id"])
+
     async def retire_pushed(
         self, device_id: str, *, outcome: dict[str, Any]
     ) -> list[ProfileDraftRow]:

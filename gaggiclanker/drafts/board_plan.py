@@ -146,6 +146,10 @@ class RowPlan:
     #: Something to say that is not a write (see ``report`` above).
     report: BoardAction | None = None
     home: BoardAction | None = None
+    #: The Set whose current version is expected to name the old file, and is not a reason to keep
+    #: it: the Set a put records on, or the Set a going back was made from while the Set version
+    #: that recorded the version being left is still its current one.
+    excluding_set: int | None = None
 
 
 @dataclass
@@ -262,6 +266,7 @@ class PlanBuilder:
             old_id = row.device_profile_id
             old = machine.profiles.get(old_id) if old_id else None
             plan = RowPlan(row=row, version=current)
+            plan.excluding_set = await self._exempt_set(row)
             computed.rows.append(plan)
             if old_id is not None and old_id in machine.unreadable:
                 plan.report = _report(row, current.label, "unreadable", old_id, UNREADABLE)
@@ -328,7 +333,7 @@ class PlanBuilder:
                     host=host,
                     recorded_hash=recorded_hash,
                     seen_hash=hashes[old_id],
-                    excluding_set=row.leaving_set_id,
+                    excluding_set=plan.excluding_set,
                     live_claims=live_claims,
                 )
             if held is not None:
@@ -373,6 +378,17 @@ class PlanBuilder:
         if computed.paused is None and not adoption.resume_pending and looks_reset(live, machine):
             computed.paused = RESET_REASON
         return computed
+
+    async def _exempt_set(self, row: BoardRow) -> int | None:
+        if row.pending_set_id is not None:
+            return row.pending_set_id
+        if row.back_from_set_version_id is None:
+            return None
+        recorded = await self.sets.get_version(row.back_from_set_version_id)
+        if recorded is None:
+            return None
+        current = await self.sets.current_version(recorded.set_id)
+        return recorded.set_id if current is not None and current.id == recorded.id else None
 
     async def _recorded_hash(self, row: BoardRow) -> str | None:
         if row.device_version_id is None:

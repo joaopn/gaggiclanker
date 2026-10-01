@@ -3127,8 +3127,10 @@ export interface components {
          * @description One profile on the board.
          */
         BoardRow: {
-            /** Back From Set Id */
-            back_from_set_id?: number | null;
+            /** Back From Set Version Id */
+            back_from_set_version_id?: number | null;
+            /** Back From Version Id */
+            back_from_version_id?: number | null;
             /** Created At */
             created_at: string;
             /** Current Version Id */

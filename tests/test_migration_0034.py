@@ -43,5 +43,5 @@ async def test_existing_board_rows_survive_and_cannot_go_back_yet(
 
     row = await db.fetch_one("SELECT * FROM profile_board")
     assert row is not None and row["label"] == "P" and row["current_version_id"] == 1
-    assert row["previous_version_id"] is None and row["back_from_set_id"] is None
+    assert row["previous_version_id"] is None and row["back_from_set_version_id"] is None
     assert await db.fetch_all("PRAGMA foreign_key_check") == []

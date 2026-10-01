@@ -96,7 +96,7 @@ async def test_going_back_after_a_sync_leaves_one_copy_holding_the_previous_vers
     assert board["actions"] == []
     back = row_for(board, APP_LABEL)
     assert back["row"]["device_profile_id"] == only
-    assert back["row"]["back_from_set_id"] is None
+    assert back["row"]["back_from_set_version_id"] is None
     await assert_every_delete_was_ours(app)
     # The record: the draft that made the newer version is discarded and names no file.
     stored = data(await client.get(f"/api/profile-drafts/{second['id']}"))["draft"]
@@ -164,7 +164,7 @@ async def test_the_sets_history_names_the_copies_that_are_where_they_say(
     # What the old rollback did: the version that named the removed copy names nothing, and
     # the version the replacement had stopped pointing at the copy that was put back.
     assert after == [third_file, None], "the first version names the copy put back again"
-    assert row_for(await get_board(client), APP_LABEL)["row"]["back_from_set_id"] is None
+    assert row_for(await get_board(client), APP_LABEL)["row"]["back_from_set_version_id"] is None
 
 
 async def test_a_set_that_recorded_the_newer_version_does_not_keep_its_file(
@@ -182,8 +182,13 @@ async def test_a_set_that_recorded_the_newer_version_does_not_keep_its_file(
     await pull(app)
     [second_file] = ids_labelled(fake, APP_LABEL)
 
+    left = row_for(await get_board(client), APP_LABEL)["row"]["current_version_id"]
     went = data(await go_back(client, v1["id"]))
-    assert went["back_from_set_id"] == set_id
+    current_set_version = await app.state.db.fetch_value(
+        "SELECT id FROM set_versions WHERE set_id = ? ORDER BY version_no DESC LIMIT 1", (set_id,)
+    )
+    assert went["back_from_set_version_id"] == current_set_version
+    assert went["back_from_version_id"] == left != v1["current_version_id"]
     view = row_for(await get_board(client), APP_LABEL)
     assert [a["kind"] for a in view["planned"]] == ["push", "remove"], "nothing is kept for the Set"
     await pull(app)
@@ -336,3 +341,143 @@ async def test_a_draft_that_is_approved_but_not_put_is_left_alone_by_going_back(
 
     stored = data(await client.get(f"/api/profile-drafts/{bystander['id']}"))["draft"]
     assert stored["status"] == "approved"
+
+
+# ── the Set exemption is for one Set version, and only while it is the current one ──
+
+
+async def recorded_on_set(
+    app: FastAPI, client: httpx.AsyncClient, fake: FakeDevice, provider: FakeProvider
+) -> tuple[dict[str, Any], int, str, list[int]]:
+    """v1 on the machine; Set S on v1; v2 put for S and synced: (v1 row, S, F2, S versions)."""
+    v1 = await app_row(app, client, fake, provider, 8)
+    s = await make_set_on(client, "S", v1["current_version_id"])
+    d2 = await draft_from(app, client, provider, v1, 7)
+    await app.state.db.execute("UPDATE profile_drafts SET set_id = ? WHERE id = ?", (s, d2["id"]))
+    await put(client, d2, set_id=s)
+    run = await pull(app)
+    assert run.status == "ok", run.error
+    [f2] = ids_labelled(fake, APP_LABEL)
+    rows = await app.state.db.fetch_all(
+        "SELECT id FROM set_versions WHERE set_id = ? ORDER BY version_no", (s,)
+    )
+    return v1, s, f2, [int(r["id"]) for r in rows]
+
+
+async def roll_set(client: httpx.AsyncClient, s: int, to_version: int) -> None:
+    response = await client.post(f"/api/sets/{s}/rollback", json={"to_version_id": to_version})
+    assert response.status_code < 300, response.text
+
+
+async def test_a_set_that_goes_back_onto_the_newer_version_after_the_click_keeps_its_file(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, s, f2, versions = await recorded_on_set(app, client, fake, provider)
+    assert (await go_back(client, v1["id"])).status_code == 200
+    # The person then rolls the Set back to its first version and forward to the v2 recipe:
+    # a version made after the click, which brews the newer profile by choice.
+    await roll_set(client, s, versions[0])
+    await roll_set(client, s, versions[-1])
+
+    run = await pull(app)
+
+    assert run.status == "ok", run.error
+    assert f2 in [str(p["id"]) for p in fake.profiles], "a Set brews the newer copy by choice"
+    assert row_for(await get_board(client), APP_LABEL)["row"]["back_from_set_version_id"] is None
+
+
+async def test_an_exemption_left_by_a_failed_removal_does_not_outlive_the_set_version(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, s, f2, versions = await recorded_on_set(app, client, fake, provider)
+    await go_back(client, v1["id"])
+    fake.error_requests.add("req:profiles:delete")
+    failed = await pull(app)
+    assert f2 in [str(p["id"]) for p in fake.profiles], "the removal failed at the machine"
+    assert failed.status == "error"
+    fake.error_requests.clear()
+    # Days later the person makes the Set brew the newer profile again, on purpose.
+    await roll_set(client, s, versions[0])
+    await roll_set(client, s, versions[-1])
+
+    await pull(app)
+
+    assert f2 in [str(p["id"]) for p in fake.profiles], "a stale exemption removed a brewed file"
+
+
+async def test_the_exemption_holds_while_the_recording_version_is_still_the_sets_current_one(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, _, f2, _ = await recorded_on_set(app, client, fake, provider)
+    await go_back(client, v1["id"])
+    fake.error_requests.add("req:profiles:delete")
+    await pull(app)
+    fake.error_requests.clear()
+
+    await pull(app)  # the machine recovered: the file the Set recorded still goes
+
+    assert f2 not in [str(p["id"]) for p in fake.profiles]
+    [only] = ids_labelled(fake, APP_LABEL)
+    assert pressure_of(fake, only) == 8
+
+
+# ── going back never orphans the newer copy ──
+
+
+async def kept_for_a_set(
+    app: FastAPI, client: httpx.AsyncClient, fake: FakeDevice, provider: FakeProvider
+) -> tuple[dict[str, Any], int, str, str, dict[str, Any]]:
+    """v1's file kept for Set T while v2 (put without any Set) is pushed beside it."""
+    v1 = await app_row(app, client, fake, provider, 8)
+    [f1] = ids_labelled(fake, APP_LABEL)
+    t = await make_set_on(client, "T", v1["current_version_id"])
+    d2 = await draft_from(app, client, provider, v1, 7)
+    await put(client, d2)
+    run = await pull(app)
+    assert run.status == "ok", run.error
+    [f2] = [i for i in ids_labelled(fake, APP_LABEL) if i != f1]
+    return v1, t, f1, f2, d2
+
+
+async def test_going_back_is_refused_while_the_earlier_copy_is_kept_for_a_set(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, _, f1, f2, _ = await kept_for_a_set(app, client, fake, provider)
+    row = row_for(await get_board(client), APP_LABEL)["row"]
+    assert row["device_profile_id"] == f1, "the row still stands on the kept copy"
+
+    refused = await go_back(client, v1["id"])
+
+    assert refused.status_code == 409
+    message = error(refused)["message"]
+    assert "still kept on the machine for the Set T" in message and "has moved on" in message
+    for _ in range(2):
+        await pull(app)
+    assert sorted(ids_labelled(fake, APP_LABEL)) == sorted([f1, f2]), "nothing was orphaned"
+
+
+async def test_once_the_set_moves_on_the_kept_copy_goes_and_the_newer_one_is_the_rows_file(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, t, f1, f2, d2 = await kept_for_a_set(app, client, fake, provider)
+    d1 = data(await client.get("/api/profile-drafts?status=pushed"))["items"]
+    first = next(d for d in d1 if d["pushed_device_profile_id"] == f1)
+    other = row_for(await get_board(client), BASE_LABEL)["row"]["current_version_id"]
+    moved = await client.post(f"/api/sets/{t}/versions", json={"profile_version_id": other})
+    assert moved.status_code < 300, moved.text
+
+    await pull(app)
+
+    assert ids_labelled(fake, APP_LABEL) == [f2]
+    assert row_for(await get_board(client), APP_LABEL)["row"]["device_profile_id"] == f2
+    # The delayed replacement is a replacement, not a going back: the older draft is replaced by
+    # the newer one and stays what it was.
+    older = data(await client.get(f"/api/profile-drafts/{first['id']}"))["draft"]
+    assert older["replaced_by_draft_id"] == d2["id"] and older["status"] == "pushed"
+    assert "Went back" not in " ".join((older.get("outcome") or {}).get("lines", []))
+    assert (await go_back(client, v1["id"])).status_code == 200

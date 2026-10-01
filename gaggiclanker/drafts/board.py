@@ -544,7 +544,8 @@ class BoardService:
                     current_version_id=version.id,
                     # What the row was, so a person can go back to it.
                     previous_version_id=row.current_version_id,
-                    back_from_set_id=None,
+                    back_from_version_id=None,
+                    back_from_set_version_id=None,
                     failed_version_id=None,
                     **pending.model_dump(exclude_unset=True),
                 ),
@@ -703,7 +704,29 @@ class BoardService:
             if on_board is not None and on_board.id != row.id:
                 raise Conflict(f"That earlier version is already on the board as {on_board.label}.")
 
-            back_from: int | None = None
+            if (
+                row.pending_draft_id is None
+                and row.device_profile_id is not None
+                and row.device_version_id != row.current_version_id
+            ):
+                # The newer version is on the machine already, beside an earlier copy the sync
+                # kept (a Set is brewing it). Going back now would leave the newer copy where
+                # nothing on the board stands on it: nothing could remove it.
+                using = await self.sets.sets_currently_using(
+                    row.device_profile_id, row.device_version_id
+                )
+                why = (
+                    f"for the Set {using[0]}; go back once that Set has moved on"
+                    if using
+                    else "because it could not be replaced yet; go back after a sync has settled it"
+                )
+                raise Conflict(
+                    f"The earlier copy of {row.label} is still kept on the machine {why}.",
+                    details={"reason": "earlier_copy_kept"},
+                )
+
+            back_from_version: int | None = None
+            back_from_set_version: int | None = None
             if row.pending_draft_id is not None:
                 # Never reached the machine: the person withdraws it.
                 await self.drafts.discard_unsent([row.pending_draft_id])
@@ -711,19 +734,25 @@ class BoardService:
                 row.device_profile_id is not None
                 and row.device_version_id == row.current_version_id
             ):
-                # The version being left is on the machine. A Set that recorded it still names
-                # it; the sync is told not to keep the file for that Set's sake.
+                # The version being left is on the machine, and goes there as a going back. A Set
+                # that recorded it still names it; the sync is told not to keep the file for that
+                # Set's sake for as long as the Set version current right now is still current.
+                back_from_version = row.current_version_id
                 for draft in await self.drafts.pushed_to_device(row.device_profile_id):
                     recorded = await self._recorded_set(draft)
-                    if recorded is not None:
-                        back_from = recorded
+                    current = (
+                        None if recorded is None else await self.sets.current_version(recorded)
+                    )
+                    if current is not None:
+                        back_from_set_version = current.id
             updated = await self.board.update(
                 row.id,
                 BoardRowPatch(
                     label=previous.label,
                     current_version_id=previous.id,
                     previous_version_id=None,
-                    back_from_set_id=back_from,
+                    back_from_version_id=back_from_version,
+                    back_from_set_version_id=back_from_set_version,
                     failed_version_id=None,
                     pending_draft_id=None,
                     pending_set_id=None,
@@ -937,7 +966,7 @@ class BoardService:
                     successor=new_id,
                     row=plan.row,
                     version_id=row.device_version_id,
-                    excluding_set=row.leaving_set_id,
+                    excluding_set=plan.excluding_set,
                 )
                 settled = _is_settled(removal)
         if settled and (
@@ -947,10 +976,13 @@ class BoardService:
                 row.id,
                 BoardRowPatch(device_profile_id=new_id, device_version_id=plan.version.id),
             )
-        if settled and row.back_from_set_id is not None:
-            # The file the Set was named for has been dealt with (or will never be this app's
-            # to remove): the exemption was for this one pass.
-            await self.board.update(row.id, BoardRowPatch(back_from_set_id=None))
+        if row.back_from_version_id is not None and (settled or plan.excluding_set is None):
+            # The file was dealt with (or will never be this app's to remove), or the Set version
+            # the exemption was for is no longer its Set's current one: the going back is over.
+            await self.board.update(
+                row.id,
+                BoardRowPatch(back_from_version_id=None, back_from_set_version_id=None),
+            )
         if placed is not None and placed.served is not None:
             favorite = placed.served.favorite or bool(removal and removal.favorite_carried)
             selected = placed.served.selected or bool(removal and removal.selected_carried)
@@ -1142,8 +1174,17 @@ class BoardService:
             phase.cleared[row.id] = cleared
             if row.pending_draft_id is not None:
                 await self.drafts.supersede_pushed(device_id, by_draft_id=row.pending_draft_id)
-            else:
+            elif row.deleted_at is not None or (
+                row.back_from_version_id is not None
+                and row.device_version_id == row.back_from_version_id
+            ):
                 await self._retire(row, device_id, successor)
+            else:
+                # A replacement that had to wait (the earlier copy was kept for a Set): the draft
+                # that put the current version on the machine replaces the draft behind this file.
+                newer = await self.drafts.pusher_of_version(row.current_version_id)
+                if newer is not None:
+                    await self.drafts.supersede_pushed(device_id, by_draft_id=newer)
             phase.summary.removed.append(
                 BoardSummaryItem(
                     row_id=row.id,
