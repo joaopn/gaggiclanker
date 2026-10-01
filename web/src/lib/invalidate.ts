@@ -130,6 +130,27 @@ export function invalidateDrafts(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.drafts.all }).then(() => undefined);
 }
 
+/** The board, both the mirror read and the live preview. */
+export function invalidateBoard(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.board.all }).then(() => undefined);
+}
+
+/**
+ * Everything a change to the board, or to whether pulls may write it, can change: the
+ * board and its preview, the drafts that say whether they are on it, the profile mirror
+ * the next pull rewrites, the sync status whose last run carries the summary and the pause,
+ * and the write audit.
+ */
+export async function invalidateBoardWrites(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    invalidateBoard(queryClient),
+    invalidateDrafts(queryClient),
+    invalidateProfiles(queryClient),
+    queryClient.invalidateQueries({ queryKey: queryKeys.sync.all }),
+    invalidateDeviceWrites(queryClient),
+  ]);
+}
+
 export function invalidateDeviceWrites(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: queryKeys.device.all }).then(() => undefined);
 }
@@ -177,7 +198,8 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "shot.quarantined": [queryKeys.shots.all, queryKeys.sync.all],
   "sync.progress": [queryKeys.shots.all, queryKeys.sync.all, queryKeys.device.all],
   "settings.changed": [queryKeys.settings.all],
-  "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all],
+  // A pull's write phase changes the board's machine state too (`{"board": true}`).
+  "profile.updated": [queryKeys.profiles.all, queryKeys.sync.all, queryKeys.board.all],
   // A shot's review, carried on the LLM stream. Only the shot page shows one
   // (its detail carries the reviews), so only shot details are re-read: the
   // shots list carries nothing about a review.

@@ -155,6 +155,11 @@ export const queryKeys = {
     tools: (kind: string) => ["chat", "tools", kind] as const,
   },
   imports: { all: ["imports"] as const, list: () => ["imports", "list"] as const },
+  /** The profile board; `live` is the preview that reads the machine now. */
+  board: {
+    all: ["board"] as const,
+    view: (live = false) => ["board", "view", live ? "live" : "mirror"] as const,
+  },
   device: {
     all: ["device"] as const,
     status: () => ["device", "status"] as const,

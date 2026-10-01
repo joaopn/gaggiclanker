@@ -16,6 +16,8 @@ import type {
   BackupData,
   BeanRow,
   BeanWrite,
+  BoardRow,
+  BoardView,
   ChatRun,
   ChatSendResult,
   ChatThread,
@@ -585,6 +587,50 @@ export async function pushProfileDraft(
         : {}),
     }),
   });
+}
+
+/**
+ * The profile board with each row's state on the machine and what the next pull would do.
+ *
+ * `live` reads the machine now (a list and a load per profile) and is for the preview the
+ * switch shows; the default answers from the archive's last mirror and is what a page
+ * that polls uses.
+ */
+export async function getProfileBoard(live = false): Promise<BoardView> {
+  return fetchApi<BoardView>(`/profile-board${live ? "?live=true" : ""}`);
+}
+
+/** Put an approved draft on the board. Nothing is sent to the machine: the next pull does. */
+export async function putOnBoard(body: {
+  draftId: number;
+  setId?: number;
+  major?: boolean;
+}): Promise<BoardRow> {
+  return fetchApi<BoardRow>("/profile-board", {
+    method: "POST",
+    body: JSON.stringify({
+      draft_id: body.draftId,
+      set_id: body.setId ?? null,
+      // Only with a Set, as for a push: a profile that records nothing names no version.
+      ...(body.setId !== undefined && body.major !== undefined ? { major: body.major } : {}),
+    }),
+  });
+}
+
+export async function setBoardHomeScreen(rowId: number, on: boolean): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/home-screen`, {
+    method: "PUT",
+    body: JSON.stringify({ on }),
+  });
+}
+
+export async function deleteBoardRow(rowId: number): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}`, { method: "DELETE" });
+}
+
+/** Let pulls write again after the machine looked reset. Sends nothing to the machine. */
+export async function resumeBoard(): Promise<{ resumed: boolean }> {
+  return fetchApi<{ resumed: boolean }>("/profile-board/resume", { method: "POST" });
 }
 
 export async function rollbackProfileDraft(id: number): Promise<ProfileDraft> {

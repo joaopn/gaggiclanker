@@ -476,6 +476,14 @@ export type PolicyViolation = components["schemas"]["Violation"];
 export type DeviceWrite = components["schemas"]["DeviceWriteRow"];
 export type DeviceWritesData = components["schemas"]["DeviceWritesData"];
 
+// The profile board: what the app means the machine to hold. The rows and the plan are
+// pydantic models; a run's `summary` is decoded JSON, so its shape is `BoardRunSummary` in
+// `lib/board.ts`.
+export type BoardView = components["schemas"]["BoardView"];
+export type BoardRow = components["schemas"]["BoardRow"];
+export type BoardRowView = components["schemas"]["BoardRowView"];
+export type BoardAction = components["schemas"]["BoardAction"];
+
 /** Every state a draft can be in, as the `status` CHECK spells them. */
 export type DraftStatus = "draft" | "approved" | "pushed" | "failed" | "discarded" | "superseded";
 
