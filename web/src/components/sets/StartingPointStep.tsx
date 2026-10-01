@@ -385,8 +385,8 @@ function OptionCard({
       <p className="text-muted-foreground text-xs" data-testid="option-profile">
         {option.profile ? (
           <>
-            Profile: <span className="font-medium">a new draft</span> — you approve and push it
-            before it reaches the machine.
+            Profile: <span className="font-medium">a new draft</span> — you approve it and put it on
+            the machine yourself.
           </>
         ) : option.profile_version_id ? (
           <>

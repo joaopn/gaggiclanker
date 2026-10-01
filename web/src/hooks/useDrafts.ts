@@ -158,7 +158,7 @@ export function useApproveDraft(): UseMutationResult<
   return useMutation({
     mutationFn: ({ id, acknowledgeStopChanges }) =>
       approveProfileDraft(id, acknowledgeStopChanges ?? false),
-    onSuccess: () => toast.success("Approved — ready to push"),
+    onSuccess: () => toast.success("Approved — ready to put on the machine"),
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);

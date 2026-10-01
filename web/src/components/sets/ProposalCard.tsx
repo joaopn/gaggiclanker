@@ -49,7 +49,7 @@ function absent(fromProfile: boolean, side: "before" | "after"): string {
 /** How long a turn-down may be, as the route caps it. */
 const NOTE_MAX = 500;
 
-/** Where a draft waits for a person to approve and push it. */
+/** Where a draft waits for a person to approve it and put it on the machine. */
 const DRAFTS_HREF = "/profiles#staged";
 
 /**
@@ -217,7 +217,8 @@ function DecidedDesign({ proposal }: { proposal: SetProposal }) {
         <Link to={DRAFTS_HREF} className="underline underline-offset-2">
           a draft on the Profiles page
         </Link>{" "}
-        for you to approve and push; once it is on the machine, shots brewed on it are filed here.{" "}
+        for you to approve and put on the machine; once it is there, shots brewed on it are filed
+        here.{" "}
         <span className="text-muted-foreground">{formatTime(proposal.decided_at ?? null)}</span>
       </p>
     );
@@ -555,7 +556,7 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
             {!proposal.readable
               ? "The change stored with this one is damaged and cannot be read, so there is nothing to accept. Decline it and ask in the conversation again."
               : design
-                ? "Accepting makes this the Set's version 1. The profile stays a draft on the Profiles page until you approve and push it: nothing is sent to the machine either way."
+                ? "Accepting makes this the Set's version 1. The profile stays a draft on the Profiles page until you approve it and put it on the machine: nothing is sent to the machine either way."
                 : acceptHint(proposal.changes)}
           </p>
         </>

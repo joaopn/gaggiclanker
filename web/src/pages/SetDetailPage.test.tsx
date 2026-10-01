@@ -798,7 +798,7 @@ describe("SetDetailPage, a Set being designed", () => {
 
     expect(
       await screen.findByText(
-        "No shots yet. Once the first recipe is accepted and its profile pushed, shots brewed on it are filed here.",
+        "No shots yet. Once the first recipe is accepted and its profile on the machine, shots brewed on it are filed here.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/pulled with this Set's profile/)).not.toBeInTheDocument();

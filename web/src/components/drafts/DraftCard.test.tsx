@@ -314,12 +314,14 @@ describe("DraftCard", () => {
         />,
       );
       expect(screen.getByTestId("draft-prediction-landing")).toHaveTextContent(
-        "Recorded as v2.2 of Guji on the Niche when this was pushed for it.",
+        "Recorded as v2.2 of Guji on the Niche when it reached the machine for it.",
       );
 
       rerender(<DraftCard draft={draft({ ...pushed, recorded_version_no: null })} />);
       const landing = screen.getByTestId("draft-prediction-landing");
-      expect(landing).toHaveTextContent("Pushed without recording it on Guji on the Niche");
+      expect(landing).toHaveTextContent(
+        "It reached the machine without being recorded on Guji on the Niche",
+      );
       expect(landing).not.toHaveTextContent("Recorded as");
     });
 

@@ -240,8 +240,8 @@ export function DraftCard({
 
       {draft.status === "pushed" && draft.replaced_by_draft_id != null ? (
         <p className="mt-3 text-muted-foreground text-xs" data-testid="draft-replaced">
-          A later push replaced this profile on the machine, so there is nothing left to roll back
-          here.
+          A later version replaced this profile on the machine, so there is nothing left to roll
+          back here.
         </p>
       ) : null}
 
@@ -545,8 +545,8 @@ function PredictionLanding({
     const recorded = draft.recorded_version_label ?? null;
     line =
       recorded !== null
-        ? `Recorded as ${recorded} of ${where} when this was pushed for it.`
-        : `Pushed without recording it on ${where}, so this prediction was not recorded.`;
+        ? `Recorded as ${recorded} of ${where} when it reached the machine for it.`
+        : `It reached the machine without being recorded on ${where}, so this prediction was not recorded.`;
   } else if (draft.status === "approved" && boardRow !== null) {
     // The choice has been made: say what it was, not what could still be chosen.
     line =

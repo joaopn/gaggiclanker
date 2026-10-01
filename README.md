@@ -850,7 +850,7 @@ profile of yours you did not choose. A newer card replaces the waiting one. Acce
 version 1 in place and ends the design conversation: the agent is told, and
 tells you to talk version 1's shots through in a new conversation (Discuss in chat on
 the Set page opens one rather than the design); the profile waits on the
-Profiles page for you to approve and push. Writing a version by hand, or pushing a draft for the Set, ends the design
+Profiles page for you to approve and put on the machine. Writing a version by hand, or putting a draft on the machine for the Set, ends the design
 the same way. A design nobody brewed anything under can be discarded
 (`DELETE /api/sets/{id}/design`).
 
@@ -888,7 +888,7 @@ make it so. When an option points at a profile you already have and suggests a
 temperature that profile does not brew at, the card says that taking it will
 **stage a draft** of that profile at the suggested temperature, and the new
 Set's first version points at the draft. Nothing is sent to the machine: you
-approve and push it on the Profiles page, exactly as you would any other
+approve it and put it on the machine from the Profiles page, exactly as you would any other
 draft.
 
 It will not invent a grind number. A grinder's scale is arbitrary and there is
@@ -925,7 +925,7 @@ proposes the whole first recipe as one card — a profile of its own, the grind
 the yield. Nothing exists until you accept it, in the conversation or on the
 Set page. Accepting makes it version 1 and ends the design: the agent tells you
 to start a new conversation about the shots, since one conversation is one
-version; the profile is then a draft on the Profiles page for you to approve and push,
+version; the profile is then a draft on the Profiles page for you to approve and put on the machine,
 and once it is on the machine, shots brewed on it are filed under the new Set.
 
 Until then the Set carries a **Designing** badge on the Sets list, on its page

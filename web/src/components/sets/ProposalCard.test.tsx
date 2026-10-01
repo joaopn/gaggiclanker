@@ -552,7 +552,7 @@ describe("ProposalCard, a first recipe", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(6, 8);
     const decided = await screen.findByTestId("proposal-decided");
     expect(decided).toHaveTextContent("version 1 is set");
-    expect(decided).toHaveTextContent("approve and push");
+    expect(decided).toHaveTextContent("approve and put on the machine");
     expect(decided).toHaveTextContent("shots brewed on it are filed here");
     expect(
       within(decided).getByRole("link", { name: /draft on the Profiles page/ }),

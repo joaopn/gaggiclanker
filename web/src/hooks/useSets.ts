@@ -168,7 +168,7 @@ export function useDecideProposal(): UseMutationResult<
       toast.success(
         result.proposal.kind === "design"
           ? result.version
-            ? "Version 1 is set. Its profile is a draft on the Profiles page, waiting for you to approve and push it."
+            ? "Version 1 is set. Its profile is a draft on the Profiles page, waiting for you to approve and put on the machine."
             : "First recipe declined, and its draft discarded"
           : result.version
             ? `${result.version.version_label} recorded. Nothing was sent to the machine.`

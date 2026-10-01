@@ -170,8 +170,11 @@ src/
 ```
 
 Two things about it are worth knowing before editing. **Nothing on it runs
-by itself**, and nothing in the web sends anything to the machine: the board is edited
-through `/api/profile-board` and the next pull writes it (`hooks/useBoard.ts`; every mutation
+by itself**, and what reaches the machine does so only through a person's click: the Pull
+button (with writes on, a pull also makes the machine match the board), and, until the board
+is adopted, the staged box's push and rollback on the Profiles page. Editing the board
+(`/api/profile-board`: put a draft, take a profile, home screen, delete, resume) changes the
+archive only and the next pull writes it (`hooks/useBoard.ts`; every mutation
 settles with `invalidateBoardWrites`, which refreshes the board, drafts, profiles, sync status
 and write audit). Saving a judgement never sends it. `lib/board.ts` words the server's plan
 and a run's summary and decides nothing. **The audit renders whatever `kind` the server stored** as a

@@ -243,7 +243,7 @@ export function SetDetailPage() {
         ) : (trends.data?.shots.length ?? 0) === 0 ? (
           <p className="text-muted-foreground text-sm">
             {row.designing
-              ? "No shots yet. Once the first recipe is accepted and its profile pushed, shots brewed on it are filed here."
+              ? "No shots yet. Once the first recipe is accepted and its profile on the machine, shots brewed on it are filed here."
               : "No shots yet. The next one pulled with this Set's profile files itself here."}
           </p>
         ) : (
