@@ -123,6 +123,15 @@ adherence fields no longer equal upstream's on those fixtures.
    untouched, and `DERIVATION_VERSION` 4 brings stored shots along. The
    channeling block's flow-versus-target residual (`_residual_std_vs_target`)
    still pairs `pf` with `tf` and was not changed.
+9. **The largest undershoot is clamped at 0.** Upstream reports it as
+   `abs(min(deviation))` (pressure and flow adherence and the temperature
+   block, `shot.py` lines 1392, 1405). When every sample is above its target
+   `min(deviation)` is the smallest *overshoot*, so a shot that overshot by 0.1
+   to 0.8 reported an undershoot of 0.1. Here it is `max(0, -min(deviation))`,
+   the way the overshoot is `max(0, max(deviation))`. The bands are unchanged
+   (they band a magnitude, and a real undershoot has the same magnitude as
+   before); no seed rule or band table assumed the old values, and no real
+   fixture shot changes, since each of them does dip below its target.
 
 ---
 

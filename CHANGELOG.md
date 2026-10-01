@@ -118,6 +118,11 @@ first (`POST /api/backup`), because there is no down-migration.
   of its own, matched against the profiles the archive holds), the shot is
   recalculated at once. Importing a profile on its own links none of the shots
   already in the archive.
+- **Fixed: an undershoot is 0 when the shot never fell below its target.** The
+  largest pressure, flow and temperature undershoot was worked out so that a
+  shot sitting above its target throughout showed its smallest overshoot as an
+  undershoot (an overshoot of 0.8 bar with an "undershoot" of 0.1). Such a shot
+  now shows 0. Shots that really dipped below target show what they did before.
 - **Every stored shot is recalculated once, at the first start after the
   update,** as for the resistance change above: scores, verdicts and the
   Phases line move, notes, judgements, Sets and curves do not.

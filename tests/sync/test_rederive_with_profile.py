@@ -39,8 +39,10 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
         await database.close()
 
 
-def test_the_derivation_version_moved_with_the_profile_input() -> None:
-    assert DERIVATION_VERSION == 4
+def test_the_derivation_version_moved_with_the_undershoot_and_channeling_fixes() -> None:
+    # Stored verdicts change (undershoot, the channeling flow residual): every
+    # shot derived at 4 or earlier is derived again on the next boot.
+    assert DERIVATION_VERSION == 5
 
 
 async def test_a_shot_stored_at_the_previous_version_is_derived_again_with_its_profile(

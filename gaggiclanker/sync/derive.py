@@ -67,7 +67,9 @@ log = structlog.get_logger(__name__)
 #: shot to a profile version leaves it to be derived again.
 #: 4: a sample the phase's *limit* held (a pressure phase at its flow limit, a
 #: flow phase at its pressure limit) is not graded either.
-DERIVATION_VERSION = 4
+#: 5: the largest undershoot is 0 when the shot never fell below its target
+#: (it showed the smallest overshoot).
+DERIVATION_VERSION = 5
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these

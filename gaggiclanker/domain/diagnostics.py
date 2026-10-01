@@ -1353,7 +1353,7 @@ def compute_shot_diagnostics(
         ct - tt for ct, tt in zip(brew_temps, brew_target_temps, strict=True) if tt > 0
     ]
     t_overshoot = max(temp_deviations) if temp_deviations else 0.0
-    t_undershoot = abs(min(temp_deviations)) if temp_deviations else 0.0
+    t_undershoot = -min(temp_deviations) if temp_deviations else 0.0
     t_std = _round2(_safe_std(brew_temps))
 
     temperature = TemperatureDiagnostics(
@@ -1676,7 +1676,7 @@ def _adherence_of(
     return (
         _round2(_compute_rmse(measured, targets)),
         _round2(max(0.0, max(deviations))),
-        _round2(max(0.0, abs(min(deviations)))),
+        _round2(max(0.0, -min(deviations))),
     )
 
 
