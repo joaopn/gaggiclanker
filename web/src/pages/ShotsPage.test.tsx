@@ -10,6 +10,7 @@ import type {
   ShotSamplesData,
   SyncStatusData,
 } from "@/api/types";
+import { PullButton } from "@/components/shots/PullButton";
 import { setChatQuestion } from "@/components/shots/SetChatBar";
 import { EVENT_INVALIDATIONS } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
@@ -2216,80 +2217,183 @@ describe("ShotsPage row editing", () => {
   });
 });
 
+/** One finished profile pass; `summary` is what the server records (the count, then the board). */
+function profileRun(
+  summary: Record<string, unknown> | null,
+  overrides: Record<string, unknown> = {},
+) {
+  return shotRun({
+    id: 8,
+    kind: "profiles",
+    shots_seen: 0,
+    shots_inserted: 0,
+    shots_updated: 0,
+    summary,
+    ...overrides,
+  });
+}
+
+/** The board's own keys, all empty, as the write phase records them. */
+function boardSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    profiles_read: 9,
+    adopted: [],
+    pushed: [],
+    overwritten: [],
+    removed: [],
+    left: [],
+    home_screen: [],
+    failures: [],
+    writes: 0,
+    paused: null,
+    ...overrides,
+  };
+}
+
+const item = (label: string) => ({ label, reason: "", detail: "" });
+
 describe("ShotsPage sync button", () => {
-  it("syncs, and says what landed when the run it started finishes", async () => {
+  /** Press the button on a ledger that holds runs 6 and 5, then let `runs` land as the sync's. */
+  async function syncAndFinish(runs: Record<string, unknown>) {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
-    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
-
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: { backfill: shotRun({ id: 6 }), profiles: profileRun(null, { id: 5 }) },
+      }),
+    );
     const { queryClient } = renderWithQueryClient(<ShotsPage />);
     await listed();
-
     await user.click(screen.getByTestId("pull-button"));
     await waitFor(() => expect(runSync).toHaveBeenCalledWith("all"));
 
-    // The route answers 202; the run shows up in the ledger afterwards, which
-    // is what the `sync.progress` event tells the page to re-read.
-    getSyncStatus.mockResolvedValue(
-      statusData({ last_runs: { backfill: shotRun({ id: 7, shots_inserted: 3 }) } }),
-    );
+    // The route answers 202; the runs show up in the ledger afterwards, which is what the
+    // `sync.progress` event tells the page to re-read.
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: runs as never }));
     for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
       await queryClient.invalidateQueries({ queryKey });
     }
+  }
 
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("3 new shots, 1 updated"));
+  it("is called Sync with machine, and Syncing… while it runs", async () => {
+    getShots.mockResolvedValue(listData([shot()]));
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    expect(screen.getByTestId("pull-button")).toHaveTextContent("Sync with machine");
+    expect(screen.queryByText(/Pull from/)).not.toBeInTheDocument();
   });
 
-  it("says nothing new when a sync found nothing", async () => {
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
-    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+  it("says what landed and what the profiles did when the sync it started finishes", async () => {
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 }),
+      profiles: profileRun(boardSummary({ pushed: [item("A")], removed: [item("B")], writes: 4 })),
+    });
 
-    const { queryClient } = renderWithQueryClient(<ShotsPage />);
-    await listed();
-    await user.click(screen.getByTestId("pull-button"));
-    await waitFor(() => expect(runSync).toHaveBeenCalled());
-
-    getSyncStatus.mockResolvedValue(
-      statusData({
-        last_runs: { backfill: shotRun({ id: 7, shots_inserted: 0, shots_updated: 0 }) },
-      }),
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: 2 new shots. Read 9 profiles from the machine; wrote 2 (pushed 1, removed 1).",
+      ),
     );
-    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
-      await queryClient.invalidateQueries({ queryKey });
-    }
+  });
 
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Nothing new"));
+  it("says no writes when the writes switch is off", async () => {
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 0, shots_updated: 0 }),
+      profiles: profileRun({ profiles_read: 9 }),
+    });
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: no new shots. Read 9 profiles from the machine; no writes (writes are off).",
+      ),
+    );
+  });
+
+  it("says no writes were needed when the machine already matched the board", async () => {
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 3, shots_updated: 1 }),
+      profiles: profileRun(boardSummary({ profiles_read: 1 })),
+    });
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: 3 new shots, 1 updated. Read 1 profile from the machine; no writes needed.",
+      ),
+    );
+  });
+
+  it("counts star changes, and says writes were paused after a suspected reset", async () => {
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 0, shots_updated: 0 }),
+      profiles: profileRun(boardSummary({ home_screen: [item("A"), item("B")], writes: 2 })),
+    });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: no new shots. Read 9 profiles from the machine; wrote 2 (home screen 2).",
+      ),
+    );
+  });
+
+  it("says writes are paused when the machine looked reset", async () => {
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 0, shots_updated: 0 }),
+      profiles: profileRun(boardSummary({ paused: "the machine looks reset" })),
+    });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: no new shots. Read 9 profiles from the machine; no writes (paused: the machine looks reset).",
+      ),
+    );
+  });
+
+  it("waits for the profile pass before it speaks, and does not use the previous one's", async () => {
+    // The shot pass of this sync is done but the profile pass on the ledger is still the one
+    // from before the click (run 5): no toast yet, and never one built from run 5's numbers.
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 }),
+      profiles: profileRun(boardSummary({ profiles_read: 40 }), { id: 5 }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("says how many writes failed when the board could not do all of them", async () => {
+    await syncAndFinish({
+      backfill: shotRun({ id: 7, shots_inserted: 1, shots_updated: 0 }),
+      profiles: profileRun(
+        boardSummary({ pushed: [item("A")], failures: [item("B")], writes: 2 }),
+        { status: "error", errors: 1 },
+      ),
+    });
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Shots synced: 1 new shot. Read 9 profiles from the machine; wrote 1 (pushed 1), 1 failed.",
+      ),
+    );
   });
 
   it("reports a failed sync with what the machine said", async () => {
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
-    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
-
-    const { queryClient } = renderWithQueryClient(<ShotsPage />);
-    await listed();
-    await user.click(screen.getByTestId("pull-button"));
-    await waitFor(() => expect(runSync).toHaveBeenCalled());
-
-    getSyncStatus.mockResolvedValue(
-      statusData({
-        last_runs: {
-          backfill: shotRun({
-            id: 7,
-            status: "error",
-            error: "the machine stopped answering",
-            shots_inserted: 0,
-            shots_updated: 0,
-          }),
-        },
+    await syncAndFinish({
+      backfill: shotRun({
+        id: 7,
+        status: "error",
+        error: "the machine stopped answering",
+        shots_inserted: 0,
+        shots_updated: 0,
       }),
-    );
-    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
-      await queryClient.invalidateQueries({ queryKey });
-    }
+      profiles: profileRun(null, {
+        status: "error",
+        error: "the machine stopped answering",
+      }),
+    });
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("the machine stopped answering"));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "the machine stopped answering. The machine's profiles could not be read: the machine stopped answering.",
+      ),
+    );
   });
 
   it("says what landed when a sync failed part of the way through", async () => {
@@ -2297,36 +2401,21 @@ describe("ShotsPage sync button", () => {
     // would not serve, and no message at all — the per-shot failures are
     // counted, not raised. Saying "the sync failed" would be wrong about the
     // eleven.
-    const user = setupUser();
-    getShots.mockResolvedValue(listData([shot()]));
-    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
-
-    const { queryClient } = renderWithQueryClient(<ShotsPage />);
-    await listed();
-    await user.click(screen.getByTestId("pull-button"));
-    await waitFor(() => expect(runSync).toHaveBeenCalled());
-
-    getSyncStatus.mockResolvedValue(
-      statusData({
-        last_runs: {
-          backfill: shotRun({
-            id: 7,
-            status: "error",
-            error: null,
-            shots_inserted: 11,
-            shots_updated: 0,
-            errors: 3,
-          }),
-        },
+    await syncAndFinish({
+      backfill: shotRun({
+        id: 7,
+        status: "error",
+        error: null,
+        shots_inserted: 11,
+        shots_updated: 0,
+        errors: 3,
       }),
-    );
-    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
-      await queryClient.invalidateQueries({ queryKey });
-    }
+      profiles: profileRun({ profiles_read: 9 }),
+    });
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "11 new shots, 3 failed. The Sync page has the details.",
+        "11 new shots, 3 failed. The Sync page has the details. Read 9 profiles from the machine; no writes (writes are off).",
       ),
     );
   });
@@ -2372,7 +2461,31 @@ describe("ShotsPage sync button", () => {
       await queryClient.invalidateQueries({ queryKey });
     }
 
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("2 new shots, 1 updated"));
+    // Only the shot pass was queued, so it is all there is to say.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Synced: 2 new shots, 1 updated."),
+    );
+  });
+
+  it("speaks without the profile pass when it never shows up", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(statusData({ last_runs: { backfill: shotRun({ id: 6 }) } }));
+    const { queryClient } = renderWithQueryClient(<PullButton profileGraceMs={40} />);
+    await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
+
+    await user.click(screen.getByTestId("pull-button"));
+    await waitFor(() => expect(runSync).toHaveBeenCalled());
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: { backfill: shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 }) },
+      }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Synced: 2 new shots."));
   });
 
   it("does not call an identity read a sync", async () => {

@@ -1,4 +1,5 @@
 import type { SyncRunRow, SyncStatusData } from "@/api/types";
+import { boardSummaryOf } from "@/lib/board";
 
 /**
  * Reading the sync ledger the way a person asks about it.
@@ -50,26 +51,106 @@ export function lastFinishedShotRun(status: SyncStatusData | undefined): SyncRun
   return run?.finished_at ? run : undefined;
 }
 
+/** The newest profile pass, running or finished (the pass that reads the machine's profiles). */
+export function latestProfileRun(status: SyncStatusData | undefined): SyncRunRow | undefined {
+  return status?.last_runs?.profiles;
+}
+
 /**
- * "3 new shots, 1 updated" — what a finished sync is worth saying out loud.
- *
- * Quarantined shots are counted as landed rather than left out: the bytes are
- * in the archive and the row is in the list, which is what the person who
- * pressed the button wanted to know. Why it would not parse is the shot page's
- * business.
+ * How many profiles a profile pass read from the machine, or `null` when the run did not
+ * record it (a run that could not list them, or one from before the count was kept).
  */
-export function pullSummary(run: SyncRunRow): string {
+export function profilesReadOf(run: SyncRunRow | undefined): number | null {
+  const raw = run?.summary;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const read = (raw as Record<string, unknown>).profiles_read;
+  return typeof read === "number" ? read : null;
+}
+
+/** `text` as a sentence of its own: the machine's messages come without a closing full stop. */
+function endSentence(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** What a profile pass wrote to the machine, in a phrase: "wrote 2 (pushed 1, removed 1)". */
+function writesPhrase(run: SyncRunRow): string {
+  const board = boardSummaryOf(run);
+  // No write phase ran: the switch is off, and nothing was sent.
+  if (board === null) return "no writes (writes are off)";
+  if (board.paused) return "no writes (paused: the machine looks reset)";
+
+  const parts: string[] = [];
+  if (board.pushed.length > 0) parts.push(`pushed ${board.pushed.length}`);
+  if (board.removed.length > 0) parts.push(`removed ${board.removed.length}`);
+  if (board.homeScreen.length > 0) parts.push(`home screen ${board.homeScreen.length}`);
+  const total = board.pushed.length + board.removed.length + board.homeScreen.length;
+
+  let phrase: string;
+  if (total > 0) phrase = `wrote ${total} (${parts.join(", ")})`;
+  else if (board.adopted.length > 0) phrase = "no writes (took them onto the board)";
+  else phrase = "no writes needed";
+  if (board.failures.length > 0) phrase += `, ${board.failures.length} failed`;
+  return phrase;
+}
+
+/**
+ * What a finished profile pass did, as a sentence: "Read 9 profiles from the machine; wrote 2
+ * (pushed 1, removed 1)." `null` for a pass that has not finished or is not there.
+ *
+ * Both numbers come from the run row the server recorded, never from the page's own state:
+ * the profiles read from `summary.profiles_read`, the writes from the board's summary of the
+ * same run, so what the toast says is what the Sync page shows.
+ */
+export function profilesSentence(run: SyncRunRow | undefined): string | null {
+  if (!run?.finished_at) return null;
+  const read = profilesReadOf(run);
+  if (read === null) {
+    return run.status === "ok"
+      ? null
+      : `The machine's profiles could not be read${run.error ? `: ${run.error}` : ""}.`;
+  }
+  return `Read ${plural(read, "profile")} from the machine; ${writesPhrase(run)}.`;
+}
+
+/**
+ * What a finished sync is worth saying out loud: the shots it brought in, then the profiles it
+ * read and the writes it made. "Synced: 3 new shots, 1 updated. Read 9 profiles from the
+ * machine; wrote 2 (pushed 1, removed 1)."
+ *
+ * `run` is the shot pass and `profileRun` the profile pass of the same sync (absent when the
+ * sync did not include one). Quarantined shots are counted as landed rather than left out: the
+ * bytes are in the archive and the row is in the list, which is what the person who pressed the
+ * button wanted to know. Why it would not parse is the shot page's business.
+ */
+export function pullSummary(run: SyncRunRow, profileRun?: SyncRunRow): string {
   const counts = countsSentence(run);
-  if (run.status === "ok") return counts ?? "Nothing new";
+  const profiles = profilesSentence(profileRun);
+  const tail = profiles ? ` ${profiles}` : "";
+  if (run.status === "ok") {
+    // The shots are fine; "Synced" would be wrong only if the profile pass did not end well.
+    const lead = syncSucceeded(run, profileRun) ? "Synced" : "Shots synced";
+    return `${lead}: ${counts ?? "no new shots"}.${tail}`;
+  }
 
   // A failed run is not an empty one. A pass that stored eleven shots and then
   // hit three it could not fetch ends `error`, sometimes with no message at
   // all — the per-shot failures are counted, not raised — and "The sync
   // failed" would be telling somebody nothing happened when most of it did.
-  const detail = run.error ?? "The Sync page has the details.";
-  if (counts === null) return run.error ?? "The sync failed. The Sync page has the details.";
+  const detail = endSentence(run.error ?? "The Sync page has the details.");
+  if (counts === null) {
+    return `${endSentence(run.error ?? "The sync failed. The Sync page has the details.")}${tail}`;
+  }
   const failed = run.errors > 0 ? `${run.errors} failed` : "some failed";
-  return `${counts}, ${failed}. ${detail}`;
+  return `${counts}, ${failed}. ${detail}${tail}`;
+}
+
+/** Whether a sync, shots and profiles together, ended well enough to say "Synced". */
+export function syncSucceeded(run: SyncRunRow, profileRun?: SyncRunRow): boolean {
+  return run.status === "ok" && (profileRun === undefined || profileRun.status === "ok");
 }
 
 /**

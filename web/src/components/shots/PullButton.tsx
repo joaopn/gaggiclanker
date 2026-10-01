@@ -8,7 +8,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSyncStatus } from "@/hooks/useArchive";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
 import { attempt } from "@/lib/mutations";
-import { isPulling, latestShotRun, pullSummary } from "@/lib/sync";
+import { isPulling, latestProfileRun, latestShotRun, pullSummary, syncSucceeded } from "@/lib/sync";
+
+/**
+ * How long a finished shot pass waits for its profile pass before the toast goes without it.
+ * The two passes are separate runs that take the engine's lock in turn, so the second can be
+ * a while behind (a large archive, a slow machine); a profile pass that never appears must not
+ * leave the person with no answer at all.
+ */
+export const PROFILE_PASS_GRACE_MS = 15_000;
 
 /**
  * The button that fills the archive.
@@ -32,7 +40,11 @@ import { isPulling, latestShotRun, pullSummary } from "@/lib/sync";
  * the one this click started — and waiting for a run newer than itself is a
  * toast that never arrives.
  */
-export function PullButton() {
+export function PullButton({
+  profileGraceMs = PROFILE_PASS_GRACE_MS,
+}: {
+  profileGraceMs?: number;
+}) {
   const device = useDeviceStatus();
   const sync = useSyncStatus();
   const run = latestShotRun(sync.data);
@@ -41,6 +53,14 @@ export function PullButton() {
   // state would be a render behind by then.
   const runAtClick = useRef<number | undefined>(undefined);
   runAtClick.current = run?.id;
+  const profileRun = latestProfileRun(sync.data);
+  const profileRunAtClick = useRef<number | undefined>(undefined);
+  profileRunAtClick.current = profileRun?.id;
+  // Whether the request this click made queued a profile pass, so the toast knows to wait
+  // for it. Read from the 202, which says what was queued.
+  const expectProfiles = useRef(false);
+  const [profilesAfter, setProfilesAfter] = useState(0);
+  const [gaveUp, setGaveUp] = useState(false);
 
   // The newest run id this tab has already accounted for. `null` means "not
   // waiting for anything", which is the state every tab starts in — including
@@ -52,9 +72,15 @@ export function PullButton() {
     mutationFn: () => runSync("all"),
     onMutate: () => {
       waiting.current = true;
+      expectProfiles.current = false;
+      setGaveUp(false);
       setWaitingAfter(runAtClick.current ?? 0);
+      setProfilesAfter(profileRunAtClick.current ?? 0);
     },
-    onSuccess: () => void sync.refetch(),
+    onSuccess: (queued) => {
+      expectProfiles.current = queued?.queued?.includes("profiles") ?? false;
+      void sync.refetch();
+    },
     onError: (error: Error) => {
       waiting.current = false;
       setWaitingAfter(null);
@@ -62,17 +88,30 @@ export function PullButton() {
     },
   });
 
+  // The profile pass of *this* click: newer than the one on the ledger when it was pressed,
+  // and finished. Its numbers go in the toast.
+  const profilesDone =
+    profileRun && profileRun.id > profilesAfter && profileRun.finished_at ? profileRun : undefined;
+  const shotsDone = run && waitingAfter !== null && run.id > waitingAfter && run.finished_at;
+
   useEffect(() => {
-    if (!waiting.current || waitingAfter === null) return;
-    if (!run || run.id <= waitingAfter || !run.finished_at) return;
+    if (!waiting.current || waitingAfter === null || pull.isPending) return;
+    if (!run || !shotsDone) return;
+    const wanted = expectProfiles.current;
+    if (wanted && !profilesDone && !gaveUp) {
+      const timer = setTimeout(() => setGaveUp(true), profileGraceMs);
+      return () => clearTimeout(timer);
+    }
     waiting.current = false;
     setWaitingAfter(null);
-    if (run.status === "ok") {
-      toast.success(pullSummary(run));
+    const profiles = wanted ? profilesDone : undefined;
+    const message = pullSummary(run, profiles);
+    if (syncSucceeded(run, profiles)) {
+      toast.success(message);
     } else {
-      toast.error(pullSummary(run));
+      toast.error(message);
     }
-  }, [run, waitingAfter]);
+  }, [run, shotsDone, profilesDone, waitingAfter, gaveUp, pull.isPending, profileGraceMs]);
 
   const configured = device.data?.configured ?? false;
   const connected = device.data?.connected ?? false;
