@@ -347,3 +347,91 @@ async def test_a_second_push_replaces_the_first_and_a_rollback_puts_it_back(
         for device_id in created:
             if device_id in listed:
                 await client_device.delete_profile(device_id)
+
+
+async def test_one_pull_pushes_replaces_and_clears_a_favourite_on_the_real_firmware(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    """The profile board's write phase against the real firmware, in one pull.
+
+    The first pull here, with the switch on, adopts the simulator's own profiles (nothing
+    written). Then a draft goes on the board and a pull saves it; a
+    second draft of that copy then replaces the first on the board, the person takes it
+    off the home screen, and one pull saves the new version, removes the old one and
+    clears the star the firmware gave the new one. The firmware's own `saveProfile`,
+    `deleteProfile` and favourite handling are what answer, so a quirk the fake lacks (a
+    star that does not clear, a delete that leaves the file) fails here.
+    """
+    app, client = live
+    profiles = ProfilesRepository(app.state.db)
+    device = app.state.connection.client
+    page = await profiles.list_versions(limit=200)
+    usable = next((version for version in page.items if not version.utility), None)
+    assert usable is not None, "the simulator listed no usable profile"
+
+    async def put_on_board(base_version_id: int, bar: float) -> dict[str, Any]:
+        base = await profiles.get_version(base_version_id)
+        assert base is not None and base.profile is not None
+        document: dict[str, Any] = dict(base.profile)
+        document["phases"] = [dict(phase) for phase in document["phases"]]
+        first = document["phases"][0]
+        first["pump"] = (
+            {**first["pump"], "pressure": bar}
+            if isinstance(first.get("pump"), dict)
+            else max(int(first.get("pump", 100)) - int(bar), 0)
+        )
+        provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
+        draft = data(
+            await client.post(
+                "/api/profile-drafts", json={"base_version_id": base_version_id, "notes": "edit"}
+            )
+        )
+        approved = await client.post(
+            f"/api/profile-drafts/{draft['id']}/approve", json={"acknowledge_stop_changes": True}
+        )
+        assert approved.status_code == 200, approved.text
+        row = data(await client.post("/api/profile-board", json={"draft_id": draft["id"]}))
+        return {"draft": draft, "row": row}
+
+    created: list[str] = []
+    try:
+        adoption = await app.state.connection.engine.sync_profiles(trigger="test")
+        assert adoption.status == "ok", adoption.error
+        assert (adoption.summary or {})["writes"] == 0 and (adoption.summary or {})["adopted"]
+        first = await put_on_board(usable.id, 8)
+        run = await app.state.connection.engine.sync_profiles(trigger="test")
+        assert run.status == "ok", run.error
+        [pushed] = (run.summary or {})["pushed"]
+        first_id = str(pushed["device_id"])
+        created.append(first_id)
+        assert (await device.load_profile(first_id)).favorite, "the firmware stars a new profile"
+
+        second = await put_on_board(first["draft"]["draft_version_id"], 7)
+        assert second["row"]["id"] == first["row"]["id"], "same profile, next version"
+        off = await client.put(
+            f"/api/profile-board/{second['row']['id']}/home-screen", json={"on": False}
+        )
+        assert off.status_code == 200, off.text
+
+        run = await app.state.connection.engine.sync_profiles(trigger="test")
+
+        assert run.status == "ok", run.error
+        summary = run.summary or {}
+        [pushed] = summary["pushed"]
+        second_id = str(pushed["device_id"])
+        created.append(second_id)
+        assert [item["device_id"] for item in summary["removed"]] == [first_id]
+        listed = {p.id for p in await device.list_profiles()}
+        assert second_id in listed and first_id not in listed
+        assert not (await device.load_profile(second_id)).favorite, "the star was cleared"
+        rows = await DeviceWritesRepository(app.state.db).list_writes(limit=200)
+        deletes = [r.device_id for r in rows if r.kind == "profile_delete" and r.result == "ok"]
+        assert deletes == [first_id]
+
+        quiet = await app.state.connection.engine.sync_profiles(trigger="test")
+        assert (quiet.summary or {})["writes"] == 0, "the next pull has nothing left to do"
+    finally:
+        listed = {p.id for p in await device.list_profiles()}
+        for device_id in created:
+            if device_id in listed:
+                await device.delete_profile(device_id)
