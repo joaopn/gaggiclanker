@@ -18,6 +18,10 @@ may not send `req:change-mode` — that frame is on the forbidden list in
 closed the moment the shot is saved, because the firmware allows three clients
 in total and gaggiclanker is already holding one.
 
+Profiles reach the machine the way they do in the app: a draft is put on the profile board and
+the next sync (the board's write phase) saves, verifies and replaces. Nothing here calls the
+write primitives by hand except where a test says it does.
+
 Device writes are enabled **in this test only**, through the settings service,
 the way a person would. The offline suite never turns them on except in its own
 `writes_on` fixture, so the shipped default keeps being the thing under test
@@ -99,20 +103,70 @@ async def live(
             app.state.llm,
             PromptService(app.state.drafts.prompts.repo),
             app.state.settings_service,
-            connection=app.state.connection,
             proposals=app.state.draft_proposals,
         )
         assert await app.state.connection.client.wait_connected(20.0), (
             "the simulator did not connect"
         )
-        # The mirror is taken first, with writes still off: a pull with writes on adopts
-        # the board, and once it has the staged push and rollback these tests drive are
-        # refused (profiles then go to the machine through the board).
+        # The mirror is taken first, with writes still off, so the drafts below have profiles to
+        # be made from. Then writes on, here and only here. The shipped default is off and the
+        # offline suite is what proves it stays off.
         await app.state.connection.engine.sync_profiles(trigger="test")
-        # Then writes on, here and only here. The shipped default is off and the offline
-        # suite is what proves it stays off.
         await app.state.settings_service.apply({"deviceWritesEnabled": True})
         yield app, client
+
+
+async def sync(app: FastAPI) -> dict[str, Any]:
+    """One sync (the profile pass and the board's write phase); its summary, after it ran ok."""
+    run = await app.state.connection.engine.sync_profiles(trigger="test")
+    assert run.status == "ok", run.error
+    return dict(run.summary or {})
+
+
+async def adopt(app: FastAPI) -> None:
+    """The first sync with writes on takes the simulator's own profiles and writes nothing."""
+    summary = await sync(app)
+    assert summary["writes"] == 0 and summary["adopted"], summary
+
+
+async def put_on_board(
+    app: FastAPI,
+    client: httpx.AsyncClient,
+    provider: FakeProvider,
+    base_version_id: int,
+    bar: float,
+) -> dict[str, Any]:
+    """A real edit to a real profile (one phase's pump pressure), put on the board."""
+    base = await ProfilesRepository(app.state.db).get_version(base_version_id)
+    assert base is not None and base.profile is not None
+    document: dict[str, Any] = dict(base.profile)
+    document["phases"] = [dict(phase) for phase in document["phases"]]
+    first = document["phases"][0]
+    first["pump"] = (
+        {**first["pump"], "pressure": bar}
+        if isinstance(first.get("pump"), dict)
+        else max(int(first.get("pump", 100)) - int(bar), 0)
+    )
+    provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
+    draft = data(
+        await client.post(
+            "/api/profile-drafts", json={"base_version_id": base_version_id, "notes": "edit"}
+        )
+    )
+    row = data(
+        await client.post(
+            "/api/profile-board", json={"draft_id": draft["id"], "acknowledge_stop_changes": True}
+        )
+    )
+    return {"draft": draft, "row": row}
+
+
+async def usable_version(app: FastAPI) -> int:
+    """The first non-utility profile the simulator ships: a backflush would never brew."""
+    page = await ProfilesRepository(app.state.db).list_versions(limit=200)
+    usable = next((version for version in page.items if not version.utility), None)
+    assert usable is not None, "the simulator listed no usable profile"
+    return int(usable.id)
 
 
 async def brew_with(profile_id: str) -> bool:
@@ -188,86 +242,58 @@ async def test_every_fixture_profile_survives_a_round_trip_through_the_firmware(
     assert not (set(created) & listed), "the gate left profiles on the machine"
 
 
-async def test_a_generated_draft_is_pushed_verified_brewed_and_deleted(
+async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     """The whole feature against the real firmware, one shot included.
 
-    Draft -> approve -> push -> round trip -> select -> brew to completion ->
-    roll back. The brew is what only this layer can check: a profile the
-    firmware stores faithfully and then refuses to run is a profile all three
+    Draft -> put on the board -> sync (save, round trip) -> select -> brew to completion ->
+    delete from the board -> sync (removal). The brew is what only this layer can check: a
+    profile the firmware stores faithfully and then refuses to run is a profile all three
     cheap layers call valid.
     """
     app, client = live
-    profiles = ProfilesRepository(app.state.db)
+    device = app.state.connection.client
+    await adopt(app)
+    # A real edit to a real profile, and not a stop condition: that path has its own test
+    # offline, and moving a target here would make this test require an acknowledgement.
+    placed = await put_on_board(app, client, provider, await usable_version(app), 8)
 
-    # The first non-utility profile the simulator ships. A backflush profile
-    # would draft and push fine and would never brew, which is the one thing
-    # this test is here to check.
-    page = await profiles.list_versions(limit=200)
-    usable = next((version for version in page.items if not version.utility), None)
-    assert usable is not None, "the simulator listed no usable profile"
-    base = await profiles.get_version(usable.id)
-    assert base is not None and base.profile is not None
+    summary = await sync(app)
+    [pushed] = summary["pushed"]
+    device_id = str(pushed["device_id"])
+    row_id = placed["row"]["id"]
 
-    # A real edit to a real profile: one phase's pump pressure, nothing else.
-    # Not a stop condition — that path has its own test offline, and moving a
-    # target here would make this test require an acknowledgement as well.
-    document: dict[str, Any] = dict(base.profile)
-    document["phases"] = [dict(phase) for phase in document["phases"]]
-    first = document["phases"][0]
-    if isinstance(first.get("pump"), dict):
-        first["pump"] = {**first["pump"], "pressure": 8}
-    else:
-        first["pump"] = max(int(first.get("pump", 100)) - 10, 0)
-    provider.script = [
-        json.dumps({"profile": document, "change_summary": "Eight bar instead of nine."})
-    ]
-
-    draft = data(
-        await client.post(
-            "/api/profile-drafts",
-            json={"base_version_id": base.id, "notes": "gentler peak pressure"},
-        )
-    )
-    approved = data(
-        await client.post(
-            f"/api/profile-drafts/{draft['id']}/approve",
-            json={"acknowledge_stop_changes": True},
-        )
-    )
-    assert approved["status"] == "approved"
-
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-    device_id = pushed["pushed_device_profile_id"]
-
-    # Inside the try, with everything else: a push that saved and then failed
-    # verification still has a profile on the simulator, and asserting before
-    # the cleanup is how the next run finds it there.
+    # Inside the try, with everything else: a copy that saved and then failed verification
+    # still has a profile on the simulator, and asserting before the cleanup is how the next
+    # run finds it there.
     try:
-        assert pushed["status"] == "pushed", pushed.get("error")
-        # The machine's own list agrees, which is a stronger statement than the
-        # load the push already did: `req:profiles:list` re-reads every file.
-        listed = {
-            profile.id: profile for profile in await app.state.connection.client.list_profiles()
-        }
+        draft = data(await client.get(f"/api/profile-drafts/{placed['draft']['id']}"))["draft"]
+        assert draft["status"] == "pushed", summary
+        assert draft["pushed_device_profile_id"] == device_id
+        # The machine's own list agrees, which is a stronger statement than the load the
+        # round trip already did: `req:profiles:list` re-reads every file.
+        listed = {profile.id: profile for profile in await device.list_profiles()}
         assert device_id in listed
         assert listed[device_id].label.endswith("[AI]")
 
-        # Selecting is a separate, deliberate action — a push never does it.
-        await app.state.connection.client.select_profile(device_id)
+        # Selecting is a separate, deliberate action: a sync never does it.
+        await device.select_profile(device_id)
         assert await brew_with(device_id), (
-            f"the simulator would not brew the pushed profile within {BREW_TIMEOUT_S:.0f}s; "
+            f"the simulator would not brew the synced profile within {BREW_TIMEOUT_S:.0f}s; "
             "see /tmp/gaggimate-sim.log"
         )
     finally:
-        if device_id:
-            rolled = data(await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={}))
-            assert rolled["pushed_device_profile_id"] is None
+        deleted = await client.delete(f"/api/profile-board/{row_id}")
+        assert deleted.status_code == 200, deleted.text
+        removal = await sync(app)
+        if device_id not in [i["device_id"] for i in removal["removed"]]:
+            # Whatever the sync could not take off, the test does: the simulator's filesystem
+            # persists between runs.
+            if device_id in {p.id for p in await device.list_profiles()}:
+                await device.delete_profile(device_id)
 
-    assert device_id not in {
-        profile.id for profile in await app.state.connection.client.list_profiles()
-    }
+    assert device_id not in {profile.id for profile in await device.list_profiles()}
     kinds = [
         (row.kind, row.result) for row in await DeviceWritesRepository(app.state.db).list_writes()
     ]
@@ -276,147 +302,97 @@ async def test_a_generated_draft_is_pushed_verified_brewed_and_deleted(
     assert ("profile_delete", "ok") in kinds
 
 
-async def test_a_second_push_replaces_the_first_and_a_rollback_puts_it_back(
+async def test_a_second_version_replaces_the_first_and_going_back_restores_it(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     """Replace and restore against the real firmware: star, selection, delete, save.
 
-    The first push is made from the simulator's own profile, which this app did not
-    create, so it adds a copy beside it. The second is made from that copy, so it
-    replaces it: the new profile is starred and selected first, then the old one is
-    deleted. The rollback saves the first copy again, then removes the second.
+    The first version is made from the simulator's own profile, which this app did not create,
+    so it is a copy beside it. The second is the next version of that copy, so one sync saves
+    it, moves the star and the selection to it and then deletes the first. Going back to the
+    first version saves it again as a new file and removes the second, carrying the selection
+    back: the machine ends with one copy holding the first version.
     """
     app, client = live
-    profiles = ProfilesRepository(app.state.db)
-    page = await profiles.list_versions(limit=200)
-    usable = next((version for version in page.items if not version.utility), None)
-    assert usable is not None, "the simulator listed no usable profile"
-
-    async def push_with_pressure(base_version_id: int, bar: float) -> dict[str, Any]:
-        base = await profiles.get_version(base_version_id)
-        assert base is not None and base.profile is not None
-        document: dict[str, Any] = dict(base.profile)
-        document["phases"] = [dict(phase) for phase in document["phases"]]
-        first = document["phases"][0]
-        first["pump"] = (
-            {**first["pump"], "pressure": bar}
-            if isinstance(first.get("pump"), dict)
-            else max(int(first.get("pump", 100)) - int(bar), 0)
-        )
-        provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
-        draft = data(
-            await client.post(
-                "/api/profile-drafts", json={"base_version_id": base_version_id, "notes": "edit"}
-            )
-        )
-        approved = await client.post(
-            f"/api/profile-drafts/{draft['id']}/approve", json={"acknowledge_stop_changes": True}
-        )
-        assert approved.status_code == 200, approved.text
-        return dict(
-            data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-        )
-
+    device = app.state.connection.client
+    await adopt(app)
     created: list[str] = []
-    client_device = app.state.connection.client
     try:
-        first = await push_with_pressure(usable.id, 8)
-        assert first["status"] == "pushed", first.get("error")
-        first_id = first["pushed_device_profile_id"]
+        first = await put_on_board(app, client, provider, await usable_version(app), 8)
+        [pushed] = (await sync(app))["pushed"]
+        first_id = str(pushed["device_id"])
         created.append(first_id)
-        assert first["replaced_device_profile_id"] is None  # the original is not ours
 
-        await client_device.select_profile(first_id)
-        second = await push_with_pressure(first["draft_version_id"], 7)
-        assert second["status"] == "pushed", second.get("error")
-        second_id = second["pushed_device_profile_id"]
+        await device.select_profile(first_id)
+        second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
+        assert second["row"]["id"] == first["row"]["id"], "the same profile, its next version"
+        summary = await sync(app)
+        [pushed] = summary["pushed"]
+        second_id = str(pushed["device_id"])
         created.append(second_id)
-        assert second["replaced_device_profile_id"] == first_id
-        listed = {p.id for p in await client_device.list_profiles()}
+        assert [item["device_id"] for item in summary["removed"]] == [first_id]
+        listed = {p.id for p in await device.list_profiles()}
         assert second_id in listed and first_id not in listed
-        assert (await client_device.load_profile(second_id)).selected
+        assert (await device.load_profile(second_id)).selected, "the selection moved first"
 
-        rolled = data(await client.post(f"/api/profile-drafts/{second['id']}/rollback", json={}))
-        restored_id = rolled["outcome"]["restored_device_profile_id"]
-        assert restored_id
+        went = await client.post(f"/api/profile-board/{second['row']['id']}/go-back")
+        assert went.status_code == 200, went.text
+        summary = await sync(app)
+        [pushed] = summary["pushed"]
+        restored_id = str(pushed["device_id"])
         created.append(restored_id)
-        listed = {p.id for p in await client_device.list_profiles()}
+        assert [item["device_id"] for item in summary["removed"]] == [second_id]
+        listed = {p.id for p in await device.list_profiles()}
         assert restored_id in listed and second_id not in listed
+        restored = await device.load_profile(restored_id)
+        assert restored.selected, "the selection went back with it"
+        kept = await ProfilesRepository(app.state.db).get_version(
+            first["draft"]["draft_version_id"]
+        )
+        assert kept is not None and kept.profile is not None
+        assert canonical_profile_json(restored) == canonical_profile_json(
+            Profile.model_validate(kept.profile).for_new_device_profile()
+        )
     finally:
-        listed = {p.id for p in await client_device.list_profiles()}
+        listed = {p.id for p in await device.list_profiles()}
         for device_id in created:
             if device_id in listed:
-                await client_device.delete_profile(device_id)
+                await device.delete_profile(device_id)
 
 
-async def test_one_pull_pushes_replaces_and_clears_a_favourite_on_the_real_firmware(
+async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmware(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
-    """The profile board's write phase against the real firmware, in one pull.
+    """The profile board's write phase against the real firmware, in one sync.
 
-    The first pull here, with the switch on, adopts the simulator's own profiles (nothing
-    written). Then a draft goes on the board and a pull saves it; a
-    second draft of that copy then replaces the first on the board, the person takes it
-    off the home screen, and one pull saves the new version, removes the old one and
-    clears the star the firmware gave the new one. The firmware's own `saveProfile`,
-    `deleteProfile` and favourite handling are what answer, so a quirk the fake lacks (a
-    star that does not clear, a delete that leaves the file) fails here.
+    The first sync here, with the switch on, adopts the simulator's own profiles (nothing
+    written). Then a draft goes on the board and a sync saves it; a second draft of that copy
+    replaces the first on the board, the person takes it off the home screen, and one sync
+    saves the new version, removes the old one and clears the star the firmware gave the new
+    one. The firmware's own `saveProfile`, `deleteProfile` and favourite handling are what
+    answer, so a quirk the fake lacks (a star that does not clear, a delete that leaves the
+    file) fails here.
     """
     app, client = live
-    profiles = ProfilesRepository(app.state.db)
     device = app.state.connection.client
-    page = await profiles.list_versions(limit=200)
-    usable = next((version for version in page.items if not version.utility), None)
-    assert usable is not None, "the simulator listed no usable profile"
-
-    async def put_on_board(base_version_id: int, bar: float) -> dict[str, Any]:
-        base = await profiles.get_version(base_version_id)
-        assert base is not None and base.profile is not None
-        document: dict[str, Any] = dict(base.profile)
-        document["phases"] = [dict(phase) for phase in document["phases"]]
-        first = document["phases"][0]
-        first["pump"] = (
-            {**first["pump"], "pressure": bar}
-            if isinstance(first.get("pump"), dict)
-            else max(int(first.get("pump", 100)) - int(bar), 0)
-        )
-        provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
-        draft = data(
-            await client.post(
-                "/api/profile-drafts", json={"base_version_id": base_version_id, "notes": "edit"}
-            )
-        )
-        approved = await client.post(
-            f"/api/profile-drafts/{draft['id']}/approve", json={"acknowledge_stop_changes": True}
-        )
-        assert approved.status_code == 200, approved.text
-        row = data(await client.post("/api/profile-board", json={"draft_id": draft["id"]}))
-        return {"draft": draft, "row": row}
-
     created: list[str] = []
     try:
-        adoption = await app.state.connection.engine.sync_profiles(trigger="test")
-        assert adoption.status == "ok", adoption.error
-        assert (adoption.summary or {})["writes"] == 0 and (adoption.summary or {})["adopted"]
-        first = await put_on_board(usable.id, 8)
-        run = await app.state.connection.engine.sync_profiles(trigger="test")
-        assert run.status == "ok", run.error
-        [pushed] = (run.summary or {})["pushed"]
+        await adopt(app)
+        first = await put_on_board(app, client, provider, await usable_version(app), 8)
+        [pushed] = (await sync(app))["pushed"]
         first_id = str(pushed["device_id"])
         created.append(first_id)
         assert (await device.load_profile(first_id)).favorite, "the firmware stars a new profile"
 
-        second = await put_on_board(first["draft"]["draft_version_id"], 7)
+        second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
         assert second["row"]["id"] == first["row"]["id"], "same profile, next version"
         off = await client.put(
             f"/api/profile-board/{second['row']['id']}/home-screen", json={"on": False}
         )
         assert off.status_code == 200, off.text
 
-        run = await app.state.connection.engine.sync_profiles(trigger="test")
+        summary = await sync(app)
 
-        assert run.status == "ok", run.error
-        summary = run.summary or {}
         [pushed] = summary["pushed"]
         second_id = str(pushed["device_id"])
         created.append(second_id)
@@ -428,8 +404,8 @@ async def test_one_pull_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
         deletes = [r.device_id for r in rows if r.kind == "profile_delete" and r.result == "ok"]
         assert deletes == [first_id]
 
-        quiet = await app.state.connection.engine.sync_profiles(trigger="test")
-        assert (quiet.summary or {})["writes"] == 0, "the next pull has nothing left to do"
+        quiet = await sync(app)
+        assert quiet["writes"] == 0, "the next sync has nothing left to do"
     finally:
         listed = {p.id for p in await device.list_profiles()}
         for device_id in created:

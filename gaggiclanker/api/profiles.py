@@ -1,8 +1,8 @@
 """`/api/profiles` and `/api/profile-versions` — the mirror of the machine's `/p/`.
 
-Read-only, and it stays read-only until profile push is built: the prototype
-writes nothing to the device, and a profile with zero phases crashes brew start
-on the display.
+Read-only: nothing here writes to the device. Profiles reach the machine through the profile
+board (`/api/profile-board`) and the write phase of a sync, because a profile with zero phases
+crashes brew start on the display.
 
 Two resources because a profile has two identities. `/api/profiles` is *where* a
 profile lives — a device id, its star, its position, whether it is selected.

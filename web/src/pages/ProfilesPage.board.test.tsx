@@ -22,7 +22,6 @@ const {
   setBoardHomeScreen,
   deleteBoardRow,
   goBackOnBoard,
-  pushProfileDraft,
   takeOntoBoard,
 } = vi.hoisted(() => ({
   getProfiles: vi.fn(),
@@ -35,7 +34,6 @@ const {
   setBoardHomeScreen: vi.fn(),
   deleteBoardRow: vi.fn(),
   goBackOnBoard: vi.fn(),
-  pushProfileDraft: vi.fn(),
   takeOntoBoard: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -50,7 +48,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   setBoardHomeScreen,
   deleteBoardRow,
   goBackOnBoard,
-  pushProfileDraft,
   takeOntoBoard,
 }));
 
@@ -101,7 +98,6 @@ beforeEach(() => {
   setBoardHomeScreen.mockResolvedValue(boardRow());
   deleteBoardRow.mockResolvedValue(boardRow());
   goBackOnBoard.mockResolvedValue(boardRow({ id: 2, label: "Londinium [AI]" }));
-  pushProfileDraft.mockResolvedValue({ draft: draft({ status: "pushed" }), set_version: null });
 });
 
 async function cards() {
@@ -290,7 +286,6 @@ describe("drafts once the board is adopted", () => {
 
     await user.click(button);
     await waitFor(() => expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1 }));
-    expect(pushProfileDraft).not.toHaveBeenCalled();
   });
 
   it("shows no rollback for a pushed draft", async () => {
@@ -369,7 +364,7 @@ describe("drafts once the board is adopted", () => {
   });
 });
 
-describe("before the board is adopted the page is as it was", () => {
+describe("before the board is adopted", () => {
   beforeEach(() => {
     getProfileBoard.mockResolvedValue(boardView({ adopted: false, rows: [] }));
     getProfileDrafts.mockResolvedValue({ items: [draft({ status: "approved" })] });
@@ -394,18 +389,25 @@ describe("before the board is adopted the page is as it was", () => {
     });
   });
 
-  it("keeps the staged box, its push and the mirror, and shows no board", async () => {
+  it("keeps the mirror, shows no board, and offers a draft nothing the server would refuse", async () => {
     renderWithQueryClient(<ProfilesPage />);
 
-    expect(await screen.findByTestId("push-draft")).toHaveTextContent("Push to the machine");
-    expect(screen.queryByTestId("put-on-board")).toBeNull();
+    expect(await screen.findByTestId("draft-board-not-adopted")).toHaveTextContent(
+      "Profiles reach the machine once the Writes switch is on and a sync has taken the machine's profiles onto the board.",
+    );
+    for (const id of ["push-draft", "push-draft-for-set", "put-on-board", "approve-draft"]) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+    expect(screen.getByTestId("refine-draft")).toBeInTheDocument();
     expect(screen.queryByTestId("board-list")).toBeNull();
-    expect(screen.getByText("Staged for the machine")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for you")).toBeInTheDocument();
     expect(screen.getByText("The mirror, as of the last sync.")).toBeInTheDocument();
     expect(screen.queryByText(/on the next sync/)).toBeNull();
+    expect(screen.queryByTestId("writes-disabled-banner")).toBeNull();
   });
 
-  it("shows no push button while the board is still being read", async () => {
+  it("shows no put button while the board is still being read", async () => {
     getProfileBoard.mockReturnValue(new Promise(() => {}));
     renderWithQueryClient(<ProfilesPage />);
 
@@ -425,7 +427,7 @@ describe("when the board cannot be read", () => {
     getProfileDrafts.mockResolvedValue({ items: [draft({ status: "approved" })] });
   });
 
-  it("says so, and offers neither a push nor a put", async () => {
+  it("says so, and offers no put", async () => {
     renderWithQueryClient(<ProfilesPage />);
 
     expect(await screen.findByTestId("board-unreadable")).toHaveTextContent(
@@ -856,7 +858,6 @@ describe("profiles on the machine that the board does not hold", () => {
     );
 
     await waitFor(() => expect(takeOntoBoard).toHaveBeenCalledWith("later"));
-    expect(pushProfileDraft).not.toHaveBeenCalled();
   });
 
   it("ignores a second click on Take before the first has finished", async () => {

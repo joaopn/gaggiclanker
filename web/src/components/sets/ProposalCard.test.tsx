@@ -552,7 +552,7 @@ describe("ProposalCard, a first recipe", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(6, 8);
     const decided = await screen.findByTestId("proposal-decided");
     expect(decided).toHaveTextContent("version 1 is set");
-    expect(decided).toHaveTextContent("approve and put on the machine");
+    expect(decided).toHaveTextContent("for you to put on the board");
     expect(decided).toHaveTextContent("shots brewed on it are filed here");
     expect(
       within(decided).getByRole("link", { name: /draft on the Profiles page/ }),
@@ -578,7 +578,7 @@ describe("ProposalCard, a first recipe", () => {
 
     expect(declineSetProposal).toHaveBeenCalledWith(6, 8, { note: "too long a ratio" });
     expect(await screen.findByTestId("proposal-decided")).toHaveTextContent(
-      "Declined: “too long a ratio” Its draft was discarded, unless it had already been pushed.",
+      "Declined: “too long a ratio” Its draft was discarded, unless it had already been put on the machine.",
     );
   });
 

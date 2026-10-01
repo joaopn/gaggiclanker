@@ -15,8 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfiles, useProfileVersion, useProfileVersions } from "@/hooks/useArchive";
 import { useProfileBoard } from "@/hooks/useBoard";
-import { useDeviceWrites } from "@/hooks/useDeviceStatus";
-import { useProfileDrafts, useStageVersionAsIs } from "@/hooks/useDrafts";
+import { useProfileDrafts } from "@/hooks/useDrafts";
 import { useImportFiles } from "@/hooks/useImport";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { notOnTheBoard } from "@/lib/board";
@@ -26,25 +25,23 @@ import { formatDate } from "@/lib/shots";
  * Profiles, in two shapes.
  *
  * **Once the board is adopted** (the Writes switch has been on for a sync, which took the
- * machine's profiles onto the app's board) the page is built around that board: one card
- * per profile (`BoardList`) with where it stands on the machine in plain words, the
- * home-screen tick and Delete, then the drafts waiting for a person, each with "Put on the
- * board", then the versions. A sync is the only thing that writes a profile to the machine,
- * so there is no push or rollback button any more. **Before that** the page is what it
- * was: the mirror, the staged queue with its push and rollback, the versions.
+ * machine's profiles onto the app's board) the page is built around that board: one card per
+ * profile (`BoardList`) with where it stands on the machine in plain words, the home-screen
+ * tick, going back a version and Delete, then the drafts waiting for a person, each with "Put
+ * on the board", then the versions. A sync is the only thing that writes a profile to the
+ * machine. **Before that** the page is the mirror, the drafts (which say what makes the board
+ * adopted, and offer nothing the server would refuse) and the versions.
  *
- * The rest of this comment is about the second shape. The three sections are one story read downwards. "On the machine" is the
- * mirror. "Staged for the machine" is the queue of drafts — profiles proposed
- * for the machine and what stands in the way of each — and it lives here
- * rather than on a page of its own because staging is a step between a version
- * and the machine, not a destination: everything that creates a draft starts
- * from something on this page or ends by linking back to it. "Versions" is
- * every document a shot can resolve to, and the two ways to stage one.
+ * "On the machine" is the mirror. "Waiting for you" is the queue of drafts — profiles proposed
+ * for the machine and what stands in the way of each — and it lives here rather than on a page
+ * of its own because a draft is a step between a version and the board, not a destination:
+ * everything that creates a draft starts from something on this page or ends by linking back to
+ * it. "Versions" is every document a shot can resolve to, and the way to start a draft from one.
  *
- * Nothing here writes to the machine. "Edit" and "Stage as is" both produce a
- * **draft**, which somebody approves and pushes from its card, because a
- * profile with zero phases crashes brew start on the display and a float
- * `pump: 100.0` is parsed as an object with zero targets — neither is
+ * Nothing here writes to the machine. "Edit" produces a **draft** (saving the document
+ * unchanged is allowed: that is how a version goes onto the board as it is), which somebody
+ * puts on the board from its card, because a profile with zero phases crashes brew start on the
+ * display and a float `pump: 100.0` is parsed as an object with zero targets — neither is
  * something a text box should be able to reach the machine with in one click.
  */
 
@@ -58,13 +55,6 @@ export function ProfilesPage() {
   const editingVersion = useProfileVersion(editing ?? undefined);
   const [showAllDrafts, setShowAllDrafts] = useState(false);
   const drafts = useProfileDrafts(showAllDrafts ? {} : { open: true });
-  // Asked for separately from the list above, which the toggle can widen to
-  // everything ever staged. The banner is about work that is stuck, and a page
-  // showing six pushed drafts and nothing open is not stuck. When the toggle is
-  // off these are the same query key, so it costs no second request — and
-  // "open" stays the server's definition of open rather than a second one here.
-  const openDrafts = useProfileDrafts({ open: true });
-  const writes = useDeviceWrites();
   const board = useProfileBoard();
   const importFiles = useImportFiles();
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -72,12 +62,11 @@ export function ProfilesPage() {
 
   useQueryErrorToast(profiles.error, "Could not load profiles");
   useQueryErrorToast(versions.error, "Could not load profile versions");
-  useQueryErrorToast(drafts.error, "Could not load the staging queue");
+  useQueryErrorToast(drafts.error, "Could not load the drafts");
   useQueryErrorToast(board.error, "Could not load the profile board");
 
-  // Unknown (still loading, or unreadable) is "not adopted": the page as it was. The
-  // drafts wait for the answer, though, so a push button never shows for a moment on a
-  // board that refuses it.
+  // Unknown (still loading, or unreadable) is "not adopted". The drafts wait for the answer,
+  // though, so a Put button never shows for a moment on a board that refuses it.
   const adopted = board.data?.adopted === true;
   const boardView = adopted ? board.data : undefined;
   const landingByDraft = new Map((boardView?.landings ?? []).map((l) => [l.draft_id, l]));
@@ -95,12 +84,6 @@ export function ProfilesPage() {
   };
 
   const draftItems = drafts.data?.items ?? [];
-  // The banner is about a queue that will not move, so it only speaks when
-  // there is a queue. A page with nothing open has nothing to warn about, and a
-  // permanent warning is one nobody reads by the second week.
-  const writesBlocked =
-    !adopted && writes.data?.enabled === false && (openDrafts.data?.items.length ?? 0) > 0;
-
   // Everything that creates a draft elsewhere — the starting-point wizard,
   // the JSON editor, a chat tool — comes
   // back here with `#staged`. Landing at the top of a long page and leaving the
@@ -151,25 +134,8 @@ export function ProfilesPage() {
         aria-label="Profile export files to upload"
       />
       {/* The same importer the shots page uses: a profile export becomes a
-          version, and the version appears below with its staging button. */}
+          version, and the version appears below with its edit button. */}
       {importFiles.data ? <ImportResults summary={importFiles.data} /> : null}
-
-      {writesBlocked ? (
-        <div
-          className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
-          data-testid="writes-disabled-banner"
-        >
-          <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
-            <AlertTriangle className="size-3.5" aria-hidden="true" />
-            Writing to the machine is switched off
-          </p>
-          <p className="mt-1 text-status-warn-text text-xs">
-            Staging and approving work; pushing and rolling back are refused before anything reaches
-            the wire, and the refusal is recorded in the write audit. Turn on the Writes switch in
-            the top bar.
-          </p>
-        </div>
-      ) : null}
 
       {boardView ? (
         <>
@@ -308,7 +274,7 @@ export function ProfilesPage() {
         />
       )}
 
-      <StagedForTheMachine
+      <DraftQueue
         items={draftItems}
         pending={drafts.isPending || board.isPending}
         adopted={adopted}
@@ -346,11 +312,11 @@ export function ProfilesPage() {
  * The staging queue: what has been proposed for the machine, and what is left
  * to decide about each one.
  *
- * `open` is the default view and it includes `failed` on purpose — a push that
+ * `open` is the default view and it includes `failed` on purpose — an old push that
  * did not verify left a profile on the display that somebody has to decide
  * about, and filing it under "done" is how it stays there for a month.
  */
-function StagedForTheMachine({
+function DraftQueue({
   items,
   pending,
   adopted,
@@ -377,11 +343,11 @@ function StagedForTheMachine({
     // at; keep it even when the section is empty, or the link lands nowhere.
     <section id="staged" className="scroll-mt-20">
       <SectionCard
-        title={adopted ? "Waiting for you" : "Staged for the machine"}
+        title="Waiting for you"
         description={
           adopted
             ? "Put a draft on the board: that approves it, and the next sync puts it on the machine. Nothing is ever selected for you."
-            : "Every one is saved as a new profile with an [AI] suffix — nothing is ever overwritten, and nothing is ever selected for you."
+            : "Profiles reach the machine once the Writes switch is on and a sync has taken the machine's profiles onto the board. Nothing is ever selected for you."
         }
         actions={
           <Button variant="outline" size="sm" onClick={() => onShowAllChange(!showAll)}>
@@ -397,10 +363,8 @@ function StagedForTheMachine({
         ) : items.length === 0 ? (
           <p className="text-muted-foreground text-sm" data-testid="staged-empty">
             {showAll
-              ? "Nothing has ever been staged."
-              : adopted
-                ? "Nothing waiting. Make a draft from a version below, or ask the chat to draft a profile change."
-                : "Nothing staged. Stage a version below, or ask the chat to draft a profile change."}
+              ? "There has never been a draft."
+              : "Nothing waiting. Edit a version below to make a draft, or ask the chat to draft a profile change."}
           </p>
         ) : (
           <ul className="space-y-3" data-testid="draft-list">
@@ -444,14 +408,12 @@ function ProfileVersions({
   /** Open the draft editor on this version. */
   onEdit: (versionId: number) => void;
 }) {
-  const stage = useStageVersionAsIs();
-
   if (pending) return <Skeleton className="h-24 w-full" />;
   if (items.length === 0) return null;
   return (
     <SectionCard
       title="Versions"
-      description={`Every distinct profile document the archive holds (${total}). A version is immutable and content-hashed, so a shot from March still resolves to what it was brewed with.`}
+      description={`Every distinct profile document the archive holds (${total}). A version is immutable and content-hashed, so a shot from March still resolves to what it was brewed with. Edit one and save it unchanged to make a draft of it as it is.`}
       // `relative`: the table's sr-only heading is absolutely positioned and, without a
       // positioned scroller around it, escapes the clip and widens the whole page.
       contentClassName="relative overflow-x-auto"
@@ -466,7 +428,7 @@ function ProfileVersions({
             <th className="py-2 pr-4 font-medium">Hash</th>
             <th className="py-2 pr-4 font-medium">On the machine</th>
             <th className="py-2 font-medium">
-              <span className="sr-only">Stage or edit</span>
+              <span className="sr-only">Edit</span>
             </th>
           </tr>
         </thead>
@@ -515,16 +477,6 @@ function ProfileVersions({
               </td>
               <td className="py-2">
                 <div className="flex justify-end gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    data-testid="stage-as-is"
-                    disabled={stage.isPending}
-                    aria-label={`Stage ${version.label} as is`}
-                    onClick={() => stage.mutate({ versionId: version.id, label: version.label })}
-                  >
-                    Stage as is
-                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"

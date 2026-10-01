@@ -76,7 +76,7 @@ class ProfileVersionSummary(BaseModel):
     utility: bool = False
     #: `device` (mirrored off the machine), `import` (a file someone loaded), or
     #: `draft` (this box authored it). A drafted version becomes a
-    #: mirrored one the moment it is pushed and the next profiles run sees it —
+    #: mirrored one the moment the board's write phase puts it on the machine —
     #: the hash is the same document, so it keeps the source it was created with.
     source: str = "device"
     created_at: str
@@ -439,10 +439,11 @@ class ProfilesRepository(Repository):
     async def mark_one_deleted(self, device_id: str) -> int:
         """Tombstone one device profile, by id, without a list to diff against.
 
-        The rollback path's only write to the mirror. `mark_missing_deleted`
-        infers deletions from a fresh listing, which is right for sync and wrong
-        here: we know exactly which profile we just removed, and waiting for the
-        next sweep would leave the Profiles page showing a file that is gone.
+        What the board's write phase does to the mirror when it removes a file.
+        `mark_missing_deleted` infers deletions from a fresh listing, which is right
+        for sync and wrong here: we know exactly which profile we just removed, and
+        waiting for the next sync would leave the Profiles page showing a file that is
+        gone.
 
         A tombstone rather than a DELETE, as everywhere in this table: shots and
         Set versions reference the version, and "the profile I used in March"

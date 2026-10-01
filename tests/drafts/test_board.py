@@ -40,7 +40,7 @@ from gaggiclanker.drafts.machine import (
 )
 from gaggiclanker.drafts.machine import place as real_place
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.test_replace import (
+from tests.drafts.helpers import (
     APP_LABEL,
     Live,
     audit,

@@ -145,7 +145,7 @@ def bounds_from(values: dict[str, Any]) -> PolicyBounds:
 class PolicyChange(BaseModel):
     """One number the policy moved, and what it was before.
 
-    Rendered verbatim beside the approve button. ``path`` is the address inside
+    Rendered verbatim beside the put-on-the-board button. ``path`` is the address inside
     the document (`phases[2].pump.pressure`) so the UI can point at the field
     rather than describing it.
     """

@@ -18,8 +18,8 @@ from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.infra.errors import Conflict
 from tests.drafts.conftest import data
+from tests.drafts.helpers import APP_LABEL, Live
 from tests.drafts.test_board import adopted, app_row, get_board, pull, row_for, write_frames
-from tests.drafts.test_replace import APP_LABEL, Live
 from tests.llm.conftest import FakeProvider
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module

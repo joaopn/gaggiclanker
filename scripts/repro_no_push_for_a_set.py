@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Reproduce: a profile draft made in a Set's chat can never be pushed for that Set.
+"""Reproduce: a profile draft made in a Set's chat can never be put on the board for that Set.
 
     uv run python scripts/repro_no_push_for_a_set.py
 
@@ -12,24 +12,26 @@ The bug
 
 A draft the agent proposes in a Set's conversation carries that Set and a
 prediction. The server records both as the Set's next version when the draft is
-pushed with the Set's id (``POST /api/profile-drafts/{id}/push`` with
-``set_id``), and the draft card promised exactly that: "It is recorded on the
-Set when you push this draft for that Set". But the card's only button pushed
-with no Set, so:
+put on the board with the Set's id (``POST /api/profile-board`` with ``set_id``)
+and the next sync puts it on the machine, and the draft card promised exactly
+that: "It is recorded on the Set when you put this draft on the board for that
+Set". (Before the staged push went, the same promise was made of the push, and
+the card's only button pushed with no Set, which is how this was found.) If the
+card's only button put the draft with no Set:
 
 - the Set never got the version the conversation argued for, and the prediction
   was lost;
-- shots brewed on the pushed profile were not filed under the Set, since the
-  Set still named the old profile;
-- once pushed, the card said "Recorded on the Set when this was pushed for it."
-  whatever the push had done.
+- shots brewed on the profile were not filed under the Set, since the Set still
+  named the old profile;
+- once on the machine, the card said "Recorded on the Set when this was pushed
+  for it." whatever the sync had done.
 
 The check is on the request the card sends and on what the card says after the
-push, in a focused block of the card's Vitest file: pushing a Set's draft sends
-that Set's id by default, the plain push stays available, and the pushed card
-claims the prediction was recorded only when the archive says a version of its
-Set was recorded by that push. This script runs that block and exits with its
-status; a run in which the block does not exist counts as the bug.
+sync, in a focused block of the card's Vitest file: putting a Set's draft on the
+board sends that Set's id by default, the plain put stays available, and the
+card claims the prediction was recorded only when the archive says a version of
+its Set was recorded by that sync. This script runs that block and exits with
+its status; a run in which the block does not exist counts as the bug.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 TEST = "src/components/drafts/DraftCard.test.tsx"
-BLOCK = "pushing a Set's draft"
+BLOCK = "putting a Set's draft on the board"
 # Where this project's container keeps Node; nothing is installed in the image.
 CONTAINER_NODE = Path("/workspace/.tools/node/bin")
 
@@ -88,9 +90,12 @@ def main() -> int:
     passed = results.get("numPassedTests", 0)
     failed = results.get("numFailedTests", 0)
     if passed == 0 or failed > 0:
-        print(f"FAIL: a Set's draft is not pushed for its Set ({passed} passed, {failed} failed)")
+        print(
+            f"FAIL: a Set's draft is not put on the board for its Set "
+            f"({passed} passed, {failed} failed)"
+        )
         return 1
-    print(f"PASS: a Set's draft is pushed for its Set by default ({passed} checks)")
+    print(f"PASS: a Set's draft is put on the board for its Set by default ({passed} checks)")
     return 0
 
 

@@ -19,8 +19,8 @@ starts between the busy check and the rebuild, and a rebuild never starts while
 one is registered.
 
 **Never cut a write in half.** A change that would move the connection is
-refused while anything is using the machine — a profile push or rollback, or a
-pull — with the reason, and before anything is stored. A change that leaves the
+refused while anything is using the machine — a sync, the profile board's write
+phase included — with the reason, and before anything is stored. A change that leaves the
 effective values where they were does nothing to the connection at all, busy or
 not.
 

@@ -228,8 +228,8 @@ async def test_services_act_on_the_new_client_after_a_swap(
     before = len(fake_b.requests)
     await new.fetch_index()
     assert any(path.startswith("/api/history/index.bin") for path in fake_b.requests[before:])
-    # A push would find it too: the draft service reads the connection it was given.
-    async with app.state.drafts.connection.operation("a test") as held:
+    # And an operation registered with the connection is handed the new client.
+    async with app.state.connection.operation("a test") as held:
         assert held is new
 
 

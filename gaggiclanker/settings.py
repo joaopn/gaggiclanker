@@ -679,7 +679,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "sync. mDNS (gaggimate.local) is unreliable from inside a container and is off "
             "entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation. A "
             "change applies immediately: the connection is rebuilt without a restart, and "
-            "refused while a push, a rollback or a sync is using the machine."
+            "refused while a sync (and the profile board's write phase in it) is using the machine."
         ),
         validate=lambda value: host_problem(str(value)),
     ),
@@ -710,7 +710,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         default=True,
         description=(
             "Hold the WebSocket, so the header shows whether the machine is online and syncs "
-            "and pushes can reach it. Turn off to work on an archive without touching the "
+            "can reach it. Turn off to work on an archive without touching the "
             "machine. Nothing is mirrored on its own either way: shots, profiles and notes "
             "move when a sync is asked for. A change applies immediately: off closes the "
             "connection, on opens it, with no restart."

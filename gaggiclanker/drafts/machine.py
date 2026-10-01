@@ -1,9 +1,9 @@
-"""What a push or a rollback does to the machine's own profile list.
+"""What the profile board's write phase does to the machine's own profile list.
 
 The rule this module exists for: **the machine is read again before every write, and
 nothing the archive remembers about it is trusted without that read.** The display is
 edited by hand, reset by an update and rolled over by its own housekeeping; the mirror is
-up to fifteen minutes old at best and describes a machine that may no longer exist.
+as old as the last sync and describes a machine that may no longer exist.
 
 Three operations, all built on the client's gated writes so the switch, the audit and the
 delete guard apply to every one of them:
@@ -229,8 +229,9 @@ async def can_remove(
 ) -> Removal | None:
     """``None`` when :func:`remove_if_ours` would go ahead; otherwise why it would not.
 
-    Reads only. A rollback asks this before it restores anything, so it never puts a
-    copy back beside a profile it is then unable to remove.
+    Reads only: for a caller that has to know a removal would be refused before it does
+    something else first, so it never puts a copy back beside a profile it is then unable
+    to remove.
     """
     refusal, _ = await _check(
         client,

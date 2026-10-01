@@ -469,7 +469,6 @@ export type ProfileDraft = components["schemas"]["ProfileDraftRow"];
 export type ProfileDraftDetail = components["schemas"]["ProfileDraftDetail"];
 export type ProfileDraftListData = components["schemas"]["DraftListData"];
 export type DraftPreview = components["schemas"]["DraftPreview"];
-export type DraftPushResult = components["schemas"]["PushedData"];
 export type PolicyChange = components["schemas"]["PolicyChange"];
 export type StopConditionChange = components["schemas"]["StopConditionChange"];
 export type PolicyViolation = components["schemas"]["Violation"];

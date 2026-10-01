@@ -319,7 +319,7 @@ function draftSentence(
     : "It states no brew temperature";
   return (
     `${brews}, so taking this stages a draft of it at ${option.temperature_c} °C for you to ` +
-    "approve on the Profiles page. Nothing is sent to the machine."
+    "put on the board from the Profiles page. Nothing is sent to the machine."
   );
 }
 
@@ -385,8 +385,8 @@ function OptionCard({
       <p className="text-muted-foreground text-xs" data-testid="option-profile">
         {option.profile ? (
           <>
-            Profile: <span className="font-medium">a new draft</span> — you approve it and put it on
-            the machine yourself.
+            Profile: <span className="font-medium">a new draft</span> — you put it on the board
+            yourself, and a sync sends it to the machine.
           </>
         ) : option.profile_version_id ? (
           <>

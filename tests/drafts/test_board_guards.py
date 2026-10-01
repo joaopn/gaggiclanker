@@ -27,7 +27,17 @@ from gaggiclanker.drafts.board_plan import PlanBuilder
 from gaggiclanker.drafts.machine import place as real_place
 from gaggiclanker.drafts.machine import remove_if_ours as real_remove
 from gaggiclanker.infra.errors import Conflict
-from tests.drafts.conftest import BASE_LABEL, data, error
+from tests.drafts.conftest import BASE_LABEL, data
+from tests.drafts.helpers import (
+    APP_LABEL,
+    Live,
+    audit,
+    document_of,
+    draft_of,
+    kinds,
+    make_set_on,
+    set_device_ids,
+)
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -41,16 +51,6 @@ from tests.drafts.test_board import (
     summary_of,
     variant_draft,
     write_frames,
-)
-from tests.drafts.test_replace import (
-    APP_LABEL,
-    Live,
-    audit,
-    document_of,
-    draft_of,
-    kinds,
-    make_set_on,
-    set_device_ids,
 )
 from tests.llm.conftest import FakeProvider
 
@@ -305,29 +305,6 @@ async def test_a_copy_that_does_not_verify_and_cannot_be_removed_is_not_retried_
 
 
 # ── a draft on the board is not pushed by hand ──────────────────────
-
-
-async def test_the_staged_push_and_rollback_refuse_a_draft_that_is_on_the_board(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    await app_row(app, client, fake, provider, 8)
-    vid = row_for(await get_board(client), APP_LABEL)["row"]["current_version_id"]
-    set_id = await make_set_on(client, "Twice", vid)
-    draft = await draft_of(app, client, provider, APP_LABEL, 7)
-    await put(client, draft, set_id=set_id)
-
-    pending = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": set_id})
-    assert pending.status_code == 409 and "profile board" in error(pending)["message"]
-    before = await set_device_ids(app, set_id)
-    await pull(app)
-    assert len(await set_device_ids(app, set_id)) == len(before) + 1
-
-    # Pushed by the pull, it is still the board's: neither route touches it.
-    again = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
-    assert again.status_code == 409
-    rolled = await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={})
-    assert rolled.status_code == 409 and "profile board" in error(rolled)["message"]
 
 
 async def test_a_draft_turned_down_after_it_went_on_the_board_is_pushed_but_not_recorded(
@@ -636,32 +613,25 @@ async def test_a_draft_already_pushed_by_another_path_is_not_recorded_on_the_set
     assert await set_device_ids(app, set_id) == before
 
 
-# ── the staged routes are off once the board is adopted ─────────────
+# ── a later put replaces the file an earlier one made ───────────────
 
 
-async def test_once_the_board_is_adopted_the_staged_routes_refuse_every_draft(
+async def test_each_put_replaces_the_file_the_one_before_it_made_and_only_that_one(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    await app_row(app, client, fake, provider, 8)
-    first = await draft_of(app, client, provider, APP_LABEL, 7)
-    await put(client, first)
-    await pull(app)
+    first = await app_row(app, client, fake, provider, 8)
     row_file = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
-    second = await draft_of(app, client, provider, APP_LABEL, 6)
-    await put(client, second)
-    # A rollback of the earlier, superseded draft would take the board row's file.
-    rolled = await client.post(f"/api/profile-drafts/{first['id']}/rollback", json={})
-    assert rolled.status_code == 409 and "profile board" in error(rolled)["message"]
-    # And a push of a draft made from a board file would replace that file behind the board.
-    fresh = await draft_of(app, client, provider, APP_LABEL, 5)
-    await approve(app, fresh)
-    pushed = await client.post(f"/api/profile-drafts/{fresh['id']}/push", json={})
-    assert pushed.status_code == 409 and "profile board" in error(pushed)["message"]
+    row = await put(client, await draft_from(app, client, provider, first, 7))
+    await pull(app)
+    second_file = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
+    # Two more, put before the sync reaches the machine: only the newest is pushed.
+    row = await put(client, await draft_from(app, client, provider, row, 6))
+    await put(client, await draft_from(app, client, provider, row, 5))
 
     await pull(app)
 
-    assert row_file not in ids(fake), "the pull replaced it, the only way a file goes"
+    assert row_file not in ids(fake) and second_file not in ids(fake)
     assert len([p for p in fake.profiles if p["label"] == APP_LABEL]) == 1
     await assert_every_delete_was_ours(app)
 
@@ -949,34 +919,6 @@ async def test_a_machine_in_sync_plans_no_actions_even_while_a_report_stands(
     ]
     run = await pull(app)
     assert [i["reason"] for i in summary_of(run)["left"]] == ["missing"]
-
-
-async def test_switching_writes_on_after_the_mirror_leaves_the_staged_push_working(
-    writes_on: Live, provider: FakeProvider
-) -> None:
-    """The order the firmware simulator's staged-push tests rely on: mirror, then writes on.
-
-    A pull with writes on adopts the board; a mirror taken before the switch does not, so the
-    staged push is still there until the first such pull.
-    """
-    app, client = writes_on
-    assert await app.state.board.board.adoption() is None
-
-    pushed = await client.post(
-        f"/api/profile-drafts/{(await _approved_draft(app, client, provider))['id']}/push",
-        json={},
-    )
-
-    assert pushed.status_code == 200, pushed.text
-    assert await app.state.board.board.adoption() is None
-
-
-async def _approved_draft(
-    app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider
-) -> dict[str, Any]:
-    draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await approve(app, draft)
-    return draft
 
 
 # ── races and small guards found late ───────────────────────────────

@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileVersionListData } from "@/api/types";
 import { ProfilesPage } from "@/pages/ProfilesPage";
@@ -20,7 +19,6 @@ const {
   getProfileDraft,
   getDeviceWrites,
   getProfileBoard,
-  createProfileDraft,
   importFiles,
 } = vi.hoisted(() => ({
   getProfiles: vi.fn(),
@@ -30,7 +28,6 @@ const {
   getProfileDraft: vi.fn(),
   getDeviceWrites: vi.fn(),
   getProfileBoard: vi.fn(),
-  createProfileDraft: vi.fn(),
   importFiles: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -42,7 +39,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getProfileDraft,
   getDeviceWrites,
   getProfileBoard,
-  createProfileDraft,
   importFiles,
 }));
 
@@ -88,7 +84,6 @@ beforeEach(() => {
   getDeviceWrites.mockResolvedValue({ enabled: true, items: [] });
   // Before the board is adopted: the page as it was.
   getProfileBoard.mockResolvedValue(boardView({ adopted: false, rows: [] }));
-  createProfileDraft.mockResolvedValue(draft());
   getProfiles.mockResolvedValue({
     items: [
       {
@@ -148,7 +143,7 @@ describe("ProfilesPage", () => {
   });
 });
 
-describe("ProfilesPage staging queue", () => {
+describe("ProfilesPage draft queue", () => {
   it("shows what is open by default", async () => {
     renderWithQueryClient(<ProfilesPage />);
     expect(await screen.findByTestId("draft-list")).toBeInTheDocument();
@@ -165,54 +160,16 @@ describe("ProfilesPage staging queue", () => {
     expect(getProfileDrafts).toHaveBeenLastCalledWith({});
   });
 
-  it("says so when writing to the machine is switched off", async () => {
-    // The banner is here rather than only on Settings because this is where
-    // somebody is standing when an approved draft will not push.
+  it("has no banner of its own about the Writes switch, which lives in the top bar", async () => {
+    // The staged box needed one: an approved draft could not be pushed with the switch off.
+    // Drafts are put on the board whatever the switch says (the board keeps them), so there is
+    // nothing here to warn about, and the page does not even ask.
     getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
     renderWithQueryClient(<ProfilesPage />);
-
-    const banner = await screen.findByTestId("writes-disabled-banner");
-    expect(banner).toHaveTextContent("switched off");
-    // The switch is in the top bar, not on a settings page: no link, and no
-    // pointer to the card that used to hold it.
-    expect(banner).toHaveTextContent("Turn on the Writes switch in the top bar");
-    expect(within(banner).queryByRole("link")).toBeNull();
-    expect(banner.textContent ?? "").not.toMatch(/Settings|Device writes enabled/);
-  });
-
-  it("does not nag when writes are on", async () => {
-    renderWithQueryClient(<ProfilesPage />);
-    await screen.findByTestId("draft-list");
-    expect(screen.queryByTestId("writes-disabled-banner")).not.toBeInTheDocument();
-  });
-
-  it("stays quiet about switched-off writes when nothing is still open", async () => {
-    // "Show everything" widens the list to drafts that have already been
-    // pushed or discarded. Those are not blocked by anything, and a banner
-    // that fires on them says the queue is stuck when it is empty.
-    const user = setupUser();
-    getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
-    getProfileDrafts.mockImplementation(async (params: { open?: boolean } = {}) =>
-      params.open ? { items: [] } : { items: [draft({ status: "pushed" })] },
-    );
-    renderWithQueryClient(<ProfilesPage />);
-
-    await screen.findByTestId("staged-empty");
-    await user.click(screen.getByRole("button", { name: /Show everything/ }));
 
     await screen.findByTestId("draft-list");
     expect(screen.queryByTestId("writes-disabled-banner")).not.toBeInTheDocument();
-  });
-
-  it("stays quiet about switched-off writes when nothing is staged", async () => {
-    // Nothing is queued, so nothing is blocked. A warning that is always on is
-    // one nobody reads by the second week.
-    getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
-    getProfileDrafts.mockResolvedValue({ items: [] });
-    renderWithQueryClient(<ProfilesPage />);
-
-    await screen.findByTestId("staged-empty");
-    expect(screen.queryByTestId("writes-disabled-banner")).not.toBeInTheDocument();
+    expect(getDeviceWrites).not.toHaveBeenCalled();
   });
 
   it("points an empty queue at the two ways of filling it", async () => {
@@ -220,8 +177,19 @@ describe("ProfilesPage staging queue", () => {
     renderWithQueryClient(<ProfilesPage />);
 
     expect(await screen.findByTestId("staged-empty")).toHaveTextContent(
-      "Stage a version below, or ask the chat to draft a profile change.",
+      "Edit a version below to make a draft, or ask the chat to draft a profile change.",
     );
+  });
+
+  it("says before the board is adopted what makes drafts reach the machine", async () => {
+    renderWithQueryClient(<ProfilesPage />);
+
+    const card = await screen.findByTestId("draft-card");
+    expect(card).toHaveTextContent(
+      "Profiles reach the machine once the Writes switch is on and a sync has taken the machine's profiles onto the board.",
+    );
+    expect(within(card).queryByTestId("put-on-board")).not.toBeInTheDocument();
+    expect(within(card).queryByTestId("approve-draft")).not.toBeInTheDocument();
   });
 
   it("is anchored, so a link from a draft's origin lands on it", async () => {
@@ -236,47 +204,17 @@ describe("ProfilesPage staging queue", () => {
   });
 });
 
-describe("ProfilesPage staging a version", () => {
-  it("stages a version exactly as it stands", async () => {
-    const user = setupUser();
+describe("ProfilesPage versions", () => {
+  it("offers Edit on every version and no way to stage one as it is", async () => {
     renderWithQueryClient(<ProfilesPage />);
 
     const rows = await screen.findAllByTestId("profile-version-row");
-    await user.click(within(rows[0]).getByTestId("stage-as-is"));
-
-    // The document is read first: the versions list carries summaries only.
-    await waitFor(() => expect(getProfileVersion).toHaveBeenCalledWith(7));
-    expect(createProfileDraft).toHaveBeenCalledWith({
-      base_version_id: 7,
-      profile: baseProfile(),
-      // "No edits" rather than "unchanged": nobody edited it, but the safety
-      // policy may still have moved a number, and the next test is why that
-      // distinction is not pedantry.
-      change_summary: "Staged from 9 Bar Espresso, no edits",
-    });
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Staged for the machine"));
-  });
-
-  it("says so when the safety policy moved a value on the way", async () => {
-    // A version mirrored off a machine at 118 °C is stored at 100: nobody
-    // edited it and it is still not the document that was posted. The card
-    // lists what moved; the toast is what stops the person scrolling past it.
-    const user = setupUser();
-    createProfileDraft.mockResolvedValue(
-      draft({
-        clamp_changes: [
-          { path: "temperature", from: 118, to: 100, reason: "above the policy maximum" },
-        ],
-      }),
-    );
-
-    renderWithQueryClient(<ProfilesPage />);
-    const rows = await screen.findAllByTestId("profile-version-row");
-    await user.click(within(rows[0]).getByTestId("stage-as-is"));
-
-    await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith("Staged — the safety policy moved 1 value"),
-    );
+    for (const row of rows) {
+      expect(within(row).getByTestId("edit-as-draft")).toBeInTheDocument();
+      expect(within(row).queryByTestId("stage-as-is")).not.toBeInTheDocument();
+    }
+    // The way to put a version on the board as it is: edit it and save it unchanged.
+    expect(screen.getByText(/Edit one and save it unchanged/)).toBeInTheDocument();
   });
 
   it("uploads a profile export and reports what it did", async () => {

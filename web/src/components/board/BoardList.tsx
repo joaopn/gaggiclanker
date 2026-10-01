@@ -36,7 +36,7 @@ export function BoardList({
   if (rows.length === 0 && removals.length === 0) {
     return (
       <p className="text-muted-foreground text-sm" data-testid="board-empty">
-        Nothing is on the board yet. Put an approved draft on it below.
+        Nothing is on the board yet. Put a draft on it below.
       </p>
     );
   }

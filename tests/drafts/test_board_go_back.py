@@ -17,6 +17,15 @@ from fastapi import FastAPI
 from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
+from tests.drafts.helpers import (
+    APP_LABEL,
+    audit,
+    draft_of,
+    ids_labelled,
+    kinds,
+    make_set_on,
+    set_device_ids,
+)
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -29,15 +38,6 @@ from tests.drafts.test_board import (
     row_for,
     summary_of,
     write_frames,
-)
-from tests.drafts.test_replace import (
-    APP_LABEL,
-    audit,
-    draft_of,
-    ids_labelled,
-    kinds,
-    make_set_on,
-    set_device_ids,
 )
 from tests.llm.conftest import FakeProvider
 

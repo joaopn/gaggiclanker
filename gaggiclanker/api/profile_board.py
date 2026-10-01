@@ -48,7 +48,8 @@ class BoardPut(BaseModel):
     #: Record the profile as this Set's next version when a sync puts it on the machine.
     set_id: int | None = None
     #: Whether that version is a major one; ``None`` leaves the default for a pushed draft.
-    major: bool | None = None
+    #: Strict: "yes" is not an answer to a question that decides a version's name.
+    major: StrictBool | None = None
     #: Required, and refused without, when the draft moves a stop condition: the person says
     #: they know it changes how much coffee ends up in the cup. Named for what it acknowledges
     #: so a client that sets every boolean to true has still said something specific.

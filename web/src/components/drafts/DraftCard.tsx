@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ListPlus, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { AlertTriangle, Check, ListPlus, Sparkles, Trash2 } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { BoardRow, DraftLanding, ProfileDraft, StopConditionChange } from "@/api/types";
 import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
@@ -9,14 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { usePutOnBoard } from "@/hooks/useBoard";
-import {
-  useApproveDraft,
-  useDiscardDraft,
-  useProfileDraft,
-  usePushDraft,
-  useRefineDraft,
-  useRollbackDraft,
-} from "@/hooks/useDrafts";
+import { useDiscardDraft, useProfileDraft, useRefineDraft } from "@/hooks/useDrafts";
 import { outcomeLines } from "@/lib/draftOutcome";
 import { formatTime } from "@/lib/shots";
 
@@ -26,7 +19,14 @@ import { formatTime } from "@/lib/shots";
  * The order on the card is the order the decision is made in: what it claims to
  * have changed, what it *actually* changed, what the safety policy moved on the
  * way in, and — if it moved a stop condition — the warning and the checkbox
- * that stand between it and the machine.
+ * that stand between it and the board.
+ *
+ * **One button decides.** "Put on the board" approves the draft and makes it a profile's next
+ * version in one action; the next sync puts it on the machine. Before the board has taken the
+ * machine's profiles there is nothing to put it on, so the card says what makes that happen
+ * (the Writes switch on, then a sync) and offers only what the server would not refuse:
+ * refine and discard. Nothing on this card writes to the machine, and a profile that is on it
+ * is taken off from the board (delete it, or go back a version), not from here.
  *
  * The acknowledgement is local state, not a stored preference and not a default.
  * It resets every time the card is re-rendered from a fresh row, which is the
@@ -63,13 +63,13 @@ export function DraftCard({
 }: {
   draft: ProfileDraft;
   /**
-   * The board is the machine's master: a sync writes it, so there is no push or rollback
-   * (the server refuses both) and an approved draft is put on the board instead.
+   * Whether the board has taken the machine's profiles yet. Until it has, a draft cannot be
+   * put on it, and the card says what makes that happen.
    */
   adopted?: boolean;
-  /** The board could not be read, so neither a push nor a put is offered. */
+  /** The board could not be read, so a put is not offered. */
   boardUnknown?: boolean;
-  /** The board row this draft is on, waiting for the next pull. */
+  /** The board row this draft is on, waiting for the next sync. */
   boardRow?: BoardRow | null;
   /** Whether the Writes switch is on (a sync writes nothing otherwise). */
   writesOn?: boolean;
@@ -83,7 +83,8 @@ export function DraftCard({
   const onBoard = boardRow !== null;
   // With the board adopted a draft that has not been put is put in one action (which also
   // approves it): a drafted one or one approved before that was so.
-  const waiting = adopted && !onBoard && (draft.status === "draft" || draft.status === "approved");
+  const open = !onBoard && (draft.status === "draft" || draft.status === "approved");
+  const waiting = adopted && open;
   // A put the server would refuse is not offered: it would undo a newer version, the board
   // already has a profile with the label it would carry, or its exact document is there.
   const alreadyOnBoard = landing?.already_on_board_label ?? null;
@@ -96,8 +97,6 @@ export function DraftCard({
     landing?.for_set?.holds_newer_draft === true ||
     (landing?.for_set?.taken_label ?? null) !== null;
   const detail = useProfileDraft(draft.id);
-  const approve = useApproveDraft();
-  const push = usePushDraft();
   const put = usePutOnBoard();
   // One put per click: a second click before the first has re-rendered the buttons disabled
   // would send a second request for the same draft.
@@ -113,33 +112,24 @@ export function DraftCard({
       },
     });
   };
-  const rollback = useRollbackDraft();
   const discard = useDiscardDraft();
   const refine = useRefineDraft();
 
   const [acknowledged, setAcknowledged] = useState(false);
-  const [allowStale, setAllowStale] = useState(false);
   const [notes, setNotes] = useState("");
   const [refining, setRefining] = useState(false);
-  // "Major change" on the push for the draft's Set: the person's answer once
-  // given, the agent's suggestion until then. A pushed draft tunes a profile,
+  // "Major change" on the put for the draft's Set: the person's answer once
+  // given, the agent's suggestion until then. A tuned copy is dialling in,
   // so without either it is a minor version.
   const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
   const major = majorChoice ?? draft.suggest_major;
   const acknowledgeId = useId();
-  const staleId = useId();
   const notesId = useId();
 
   const stopChanges = stopConditionChangesOf(draft);
   const clamps = clampChangesOf(draft);
   const badge = STATUS_BADGE[draft.status] ?? { label: draft.status, variant: "outline" as const };
-  const busy =
-    approve.isPending ||
-    push.isPending ||
-    put.isPending ||
-    rollback.isPending ||
-    discard.isPending ||
-    refine.isPending;
+  const busy = put.isPending || discard.isPending || refine.isPending;
   const needsAcknowledgement = stopChanges.length > 0 && !draft.acknowledged_stop_changes;
   // The generated type leaves these optional; absent and null mean the same.
   const forSet =
@@ -176,8 +166,8 @@ export function DraftCard({
 
       {/* A draft proposed inside a Set's conversation is an experiment on that
           Set, and this is what it claims. It says where the claim lands,
-          because "the prediction is recorded" is only true of a push for this
-          Set — pushing it for another one records none. */}
+          because "the prediction is recorded" is only true of a put for this
+          Set — putting it on the board for another one records none. */}
       {draft.prediction ? (
         <div
           className="mt-2 rounded-md border border-border bg-muted/40 p-2"
@@ -223,7 +213,7 @@ export function DraftCard({
 
       {stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
-      {needsAcknowledgement && draft.status === "draft" ? (
+      {needsAcknowledgement && (draft.status === "draft" || draft.status === "approved") ? (
         <label
           className="mt-3 flex items-start gap-2 text-sm"
           htmlFor={acknowledgeId}
@@ -253,28 +243,10 @@ export function DraftCard({
           </p>
           <p className="mt-1 text-status-warn-text text-xs">
             {draft.base_label ?? "It"} was edited on the display after this draft was made, so the
-            diff above is against a version the machine no longer holds.{" "}
-            {adopted
-              ? "Putting it on the board means the next sync puts this version beside whatever was changed there."
-              : "Pushing anyway proposes undoing whatever was changed there."}{" "}
-            Drafting again from the current profile is usually what you want.
+            diff above is against a version the machine no longer holds. Putting it on the board
+            means the next sync puts this version beside whatever was changed there. Drafting again
+            from the current profile is usually what you want.
           </p>
-          {draft.status === "approved" && !adopted ? (
-            <label
-              className="mt-2 flex items-start gap-2 text-sm text-status-warn-text"
-              htmlFor={staleId}
-              data-testid="allow-stale-base"
-            >
-              <input
-                id={staleId}
-                type="checkbox"
-                className="mt-1 size-4"
-                checked={allowStale}
-                onChange={(event) => setAllowStale(event.target.checked)}
-              />
-              <span>Push it anyway.</span>
-            </label>
-          ) : null}
         </div>
       ) : null}
 
@@ -290,7 +262,7 @@ export function DraftCard({
           <p className="mt-1 text-muted-foreground text-xs">
             {draft.error ?? "The profile read back differently from the one that went out."}
             {draft.pushed_device_profile_id
-              ? ` It is on the display as ${draft.pushed_device_profile_id}${adopted ? "." : "; rolling back deletes that copy."}`
+              ? ` It is on the display as ${draft.pushed_device_profile_id}, from an earlier push the app no longer makes; remove it on the display.`
               : " Its copy has already been removed from the display."}
           </p>
         </div>
@@ -298,8 +270,7 @@ export function DraftCard({
 
       {draft.status === "pushed" && draft.replaced_by_draft_id != null ? (
         <p className="mt-3 text-muted-foreground text-xs" data-testid="draft-replaced">
-          A later version replaced this profile on the machine, so there is nothing left to roll
-          back here.
+          A later version replaced this profile on the machine.
         </p>
       ) : null}
 
@@ -307,7 +278,8 @@ export function DraftCard({
         <p className="mt-3 text-muted-foreground text-xs" data-testid="draft-pushed">
           On the machine as <span className="font-mono">{draft.pushed_device_profile_id}</span>. The
           machine keeps brewing with whatever it had selected, unless that was the profile this one
-          replaced.
+          replaced. To take it off, delete the profile from the board, or go back to its previous
+          version there.
         </p>
       ) : null}
 
@@ -323,24 +295,6 @@ export function DraftCard({
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {draft.status === "draft" && !adopted ? (
-          <Button
-            size="sm"
-            disabled={busy || (needsAcknowledgement && !acknowledged)}
-            data-testid="approve-draft"
-            onClick={() => approve.mutate({ id: draft.id, acknowledgeStopChanges: acknowledged })}
-          >
-            <Check className="size-3.5" aria-hidden="true" />
-            Approve
-          </Button>
-        ) : null}
-
-        {/* A draft made in a Set's conversation is pushed for that Set unless
-            the person says otherwise: that push is what records the new
-            version and the prediction, and it is the one the prediction
-            block promises. Trying it without touching the Set stays one
-            click away. A draft whose Set has been removed has nowhere to be
-            recorded and gets the plain push. */}
         {draft.status === "approved" && onBoard ? (
           <p className="w-full text-sm" data-testid="draft-on-board">
             <Check className="mr-1 inline size-3.5" aria-hidden="true" />
@@ -352,6 +306,15 @@ export function DraftCard({
         {draft.status === "approved" && boardUnknown ? (
           <p className="w-full text-muted-foreground text-sm" data-testid="draft-board-unknown">
             The board can't be read right now, so this can't be put on the machine until it can.
+          </p>
+        ) : null}
+
+        {/* Nothing to put it on yet: say what makes that happen, and offer only refine and
+            discard, which the server does not refuse. */}
+        {!adopted && open ? (
+          <p className="w-full text-sm" data-testid="draft-board-not-adopted">
+            Profiles reach the machine once the Writes switch is on and a sync has taken the
+            machine's profiles onto the board. Then this can be put on it.
           </p>
         ) : null}
 
@@ -372,7 +335,10 @@ export function DraftCard({
           </div>
         ) : null}
 
-        {waiting || (draft.status === "draft" && !adopted) ? (
+        {/* A draft that has not been put can be turned down; one waiting on the board cannot
+            be discarded from under it. A failed one (an old push that did not verify) can be
+            cleared from the queue, its copy on the display stays for the person to remove. */}
+        {open || draft.status === "failed" ? (
           <Button
             size="sm"
             variant="ghost"
@@ -385,9 +351,9 @@ export function DraftCard({
           </Button>
         ) : null}
 
-        {/* With the board adopted a sync is the only thing that writes a profile, so an
-            approved draft goes on the board, carrying what the push carried: the Set whose
-            next version it becomes, and whether that is a major change. */}
+        {/* One click: the put approves the draft and carries what approval carried (the
+            stop-condition acknowledgement) and what a push carried: the Set whose next version
+            it becomes, and whether that is a major change. */}
         {waiting && forSet !== null ? (
           <>
             {!setBlocked && forSet.minorLabel !== null && forSet.majorLabel !== null ? (
@@ -441,85 +407,6 @@ export function DraftCard({
           >
             <ListPlus className="size-3.5" aria-hidden="true" />
             Put on the board
-          </Button>
-        ) : null}
-
-        {draft.status === "approved" && !adopted && !boardUnknown && forSet !== null ? (
-          <>
-            {forSet.minorLabel !== null && forSet.majorLabel !== null ? (
-              <div className="w-full">
-                <MajorChoice
-                  checked={major}
-                  onChange={setMajorChoice}
-                  minorLabel={forSet.minorLabel}
-                  majorLabel={forSet.majorLabel}
-                  reason={draft.suggest_major ? draft.major_reason : ""}
-                  disabled={busy}
-                />
-              </div>
-            ) : null}
-            <Button
-              size="sm"
-              disabled={busy || (!draft.base_is_current && !allowStale)}
-              data-testid="push-draft-for-set"
-              // A long Set name wraps inside the button rather than pushing the
-              // card wider than a phone.
-              className={WRAP_BUTTON}
-              onClick={() =>
-                push.mutate({ id: draft.id, setId: forSet.id, allowStaleBase: allowStale, major })
-              }
-            >
-              <Upload className="size-3.5" aria-hidden="true" />
-              Push to the machine and record it as{" "}
-              {(major ? forSet.majorLabel : forSet.minorLabel) ?? "a new version"} of {forSet.name}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || (!draft.base_is_current && !allowStale)}
-              data-testid="push-draft"
-              onClick={() => push.mutate({ id: draft.id, allowStaleBase: allowStale })}
-              className={WRAP_BUTTON}
-            >
-              Push without recording it on the Set
-            </Button>
-          </>
-        ) : null}
-
-        {draft.status === "approved" && !adopted && !boardUnknown && forSet === null ? (
-          <Button
-            size="sm"
-            disabled={busy || (!draft.base_is_current && !allowStale)}
-            data-testid="push-draft"
-            onClick={() => push.mutate({ id: draft.id, allowStaleBase: allowStale })}
-            className={WRAP_BUTTON}
-          >
-            <Upload className="size-3.5" aria-hidden="true" />
-            Push to the machine
-          </Button>
-        ) : null}
-
-        {/* Offered for a push that did not verify *and* for one that did: a
-            profile you pushed and then thought better of is the same deletion.
-            A failed draft stays failed afterwards; a pushed one becomes
-            discarded, because the machine no longer has it. */}
-        {!adopted &&
-        !boardUnknown &&
-        (draft.status === "failed" || draft.status === "pushed") &&
-        draft.pushed_device_profile_id &&
-        draft.replaced_by_draft_id == null ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={busy}
-            data-testid="rollback-draft"
-            onClick={() => rollback.mutate(draft.id)}
-            className={WRAP_BUTTON}
-          >
-            <Undo2 className="size-3.5" aria-hidden="true" />
-            {draft.replaced_device_profile_id
-              ? "Roll back: restore the previous profile"
-              : "Delete it from the machine"}
           </Button>
         ) : null}
 
@@ -646,7 +533,7 @@ function PredictionLanding({
   } else if (draft.status === "draft" || draft.status === "approved") {
     line = adopted
       ? "It is recorded on the Set when the next sync puts this draft on the machine, if you put it on the board for that Set."
-      : "It is recorded on the Set when you push this draft for that Set, and not before.";
+      : "It is recorded on the Set when you put this draft on the board for that Set and a sync then puts it on the machine, and not before.";
   }
   return line === null ? null : (
     <p className="mt-1 text-muted-foreground text-xs" data-testid="draft-prediction-landing">

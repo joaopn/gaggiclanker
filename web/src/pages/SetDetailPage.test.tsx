@@ -72,7 +72,7 @@ const {
   rollbackSet,
   getProfileVersions,
   createProfileDraft,
-  pushProfileDraft,
+  putOnBoard,
   acceptSetProposal,
   discardDesign,
 } = vi.hoisted(() => ({
@@ -91,7 +91,7 @@ const {
   // a profile on a version is bookkeeping, and the machine is written from one
   // place by one person.
   createProfileDraft: vi.fn(),
-  pushProfileDraft: vi.fn(),
+  putOnBoard: vi.fn(),
   acceptSetProposal: vi.fn(),
   discardDesign: vi.fn(),
 }));
@@ -106,7 +106,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   rollbackSet,
   getProfileVersions,
   createProfileDraft,
-  pushProfileDraft,
+  putOnBoard,
   acceptSetProposal,
   discardDesign,
 }));
@@ -320,7 +320,7 @@ describe("SetDetailPage", () => {
     await user.click(await screen.findByRole("button", { name: /Change something/ }));
     await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
 
-    // The one rule this help text protects: only a person pushes, and only
+    // The one rule this help text protects: only a person puts a profile on the board, and only
     // from the Profiles page.
     expect(screen.getByTestId("profile-help")).toHaveTextContent("changes nothing on the machine");
     expect(screen.getByTestId("profile-help")).toHaveTextContent("Profiles page");
@@ -331,8 +331,8 @@ describe("SetDetailPage", () => {
 
     await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
     expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 8 });
-    // Nothing on this path goes near a draft or the machine.
-    expect(pushProfileDraft).not.toHaveBeenCalled();
+    // Nothing on this path goes near a draft, the board or the machine.
+    expect(putOnBoard).not.toHaveBeenCalled();
     expect(createProfileDraft).not.toHaveBeenCalled();
   });
 

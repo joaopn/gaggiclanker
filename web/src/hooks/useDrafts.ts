@@ -7,45 +7,27 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  approveProfileDraft,
   createProfileDraft,
   discardProfileDraft,
   getProfileDraft,
   getProfileDrafts,
-  getProfileVersion,
   previewProfileDraft,
-  pushProfileDraft,
   refineProfileDraft,
-  rollbackProfileDraft,
 } from "@/api/client";
-import {
-  clampChangesOf,
-  type DraftCreateBody,
-  type DraftPreview,
-  type DraftPushResult,
-  type ProfileDraft,
-  type ProfileDraftDetail,
-  type ProfileDraftListData,
+import type {
+  DraftCreateBody,
+  DraftPreview,
+  ProfileDraft,
+  ProfileDraftDetail,
+  ProfileDraftListData,
 } from "@/api/types";
-import { outcomeLines, rollbackRemovedProfile } from "@/lib/draftOutcome";
-import {
-  invalidateDeviceWrites,
-  invalidateDrafts,
-  invalidateProfiles,
-  invalidateSets,
-} from "@/lib/invalidate";
+import { invalidateDrafts } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
- * The draft queue and the four buttons on it.
- *
- * One thing here is unlike every other mutation in this app and it is the
- * reason this file has a doc comment: **a successful push is not a successful
- * push.** `POST /profile-drafts/{id}/push` answers 200 whether the machine
- * stored what we sent or something else, because the profile is on the display
- * either way and only the draft's `status` says which happened. So `onSuccess`
- * branches on the row — the same rule the review hook follows for a review
- * that came back `failed`.
+ * The draft queue and what can be done to a draft before it is put on the board: draft it,
+ * refine it, discard it, validate a document. Putting it on the board (which also approves
+ * it) is `usePutOnBoard`; nothing here sends anything to the machine.
  */
 
 export function useProfileDrafts(
@@ -83,56 +65,6 @@ export function useCreateDraft(): UseMutationResult<ProfileDraft, Error, DraftCr
   });
 }
 
-/**
- * Stage a stored version with nothing edited.
- *
- * The plain path to the machine, and the common one: a profile that is already
- * right and only needs to get there should not have to go through a JSON
- * editor first. Two calls rather than one because the versions *list* carries
- * summaries — a document per row would be megabytes — so the document is read
- * here and posted straight back through the same manual draft path the editor
- * uses, which is what keeps the schema, the safety policy and the audit in the
- * way.
- *
- * **The summary says "no edits", not "unchanged".** Those are not the same
- * claim: the safety policy is narrower than the firmware, so a version
- * mirrored off a machine at 118 °C is stored at 100 and the draft genuinely
- * differs from the document that was posted. Nobody edited it, and the card's
- * clamp list is where what moved is stated — a summary promising an unchanged
- * profile beside a clamp list saying otherwise is the one sentence in this
- * flow that must not be wrong. The toast says so too, because the clamp
- * happens on a page the person may scroll straight past.
- */
-export function useStageVersionAsIs(): UseMutationResult<
-  ProfileDraft,
-  Error,
-  { versionId: number; label: string }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ versionId, label }) => {
-      const version = await getProfileVersion(versionId);
-      return createProfileDraft({
-        base_version_id: versionId,
-        profile: version.profile as Record<string, unknown>,
-        change_summary: `Staged from ${label}, no edits`,
-      });
-    },
-    onSuccess: (draft) => {
-      const clamped = clampChangesOf(draft).length;
-      toast.success(
-        clamped > 0
-          ? `Staged — the safety policy moved ${clamped} value${clamped === 1 ? "" : "s"}`
-          : "Staged for the machine",
-      );
-    },
-    onError: (error) => toast.error(error.message),
-    onSettled: () => {
-      void invalidateDrafts(queryClient);
-    },
-  });
-}
-
 export function useRefineDraft(): UseMutationResult<
   ProfileDraft,
   Error,
@@ -145,98 +77,6 @@ export function useRefineDraft(): UseMutationResult<
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);
-    },
-  });
-}
-
-export function useApproveDraft(): UseMutationResult<
-  ProfileDraft,
-  Error,
-  { id: number; acknowledgeStopChanges?: boolean }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, acknowledgeStopChanges }) =>
-      approveProfileDraft(id, acknowledgeStopChanges ?? false),
-    onSuccess: () => toast.success("Approved — ready to put on the machine"),
-    onError: (error) => toast.error(error.message),
-    onSettled: () => {
-      void invalidateDrafts(queryClient);
-    },
-  });
-}
-
-export function usePushDraft(): UseMutationResult<
-  DraftPushResult,
-  Error,
-  { id: number; setId?: number; allowStaleBase?: boolean; major?: boolean }
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, setId, allowStaleBase, major }) =>
-      pushProfileDraft(
-        id,
-        major === undefined ? { setId, allowStaleBase } : { setId, allowStaleBase, major },
-      ),
-    onSuccess: (result) => {
-      if (result.draft.status === "pushed") {
-        const message = result.set_version
-          ? `On the machine as ${result.draft.pushed_device_profile_id}, recorded as ${result.set_version.version_label} of ${result.draft.set_name ?? "its Set"}`
-          : `On the machine as ${result.draft.pushed_device_profile_id}`;
-        // The card leaves the default view once a push lands, so what the push replaced,
-        // kept or cleared is said here too.
-        const lines = outcomeLines(result.draft);
-        if (lines.length > 0) {
-          toast.success(message, { description: lines.join(" ") });
-        } else {
-          toast.success(message);
-        }
-      } else {
-        // 200, and the worst outcome this feature has: the machine took the
-        // profile and stored something else. Say so, and point at the button
-        // that removes it.
-        toast.error(
-          result.draft.error ??
-            "The machine stored something other than what was sent — roll it back",
-        );
-      }
-    },
-    onError: (error) => toast.error(error.message),
-    onSettled: () => {
-      void invalidateDrafts(queryClient);
-      void invalidateProfiles(queryClient);
-      void invalidateDeviceWrites(queryClient);
-      // A push for a Set records its next version and retires the change
-      // waiting on it; no event says so, and a Set page read before the push
-      // would otherwise keep showing the Set where it was.
-      void invalidateSets(queryClient);
-    },
-  });
-}
-
-export function useRollbackDraft(): UseMutationResult<ProfileDraft, Error, number> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => rollbackProfileDraft(id),
-    onSuccess: (draft) => {
-      // A rollback can decline to remove a profile (somebody edited it on the display,
-      // another draft or Set still uses it, or this push never saved it), so the toast
-      // says which from what the server recorded rather than claiming a removal.
-      const lines = outcomeLines(draft);
-      const description = lines.length > 0 ? lines.join(" ") : undefined;
-      if (rollbackRemovedProfile(draft)) {
-        toast.success("Rolled back on the machine", { description });
-      } else {
-        toast.warning("The profile was left on the machine", { description });
-      }
-    },
-    onError: (error) => toast.error(error.message),
-    onSettled: () => {
-      void invalidateDrafts(queryClient);
-      void invalidateProfiles(queryClient);
-      void invalidateDeviceWrites(queryClient);
-      // The rollback clears the device id from any Set version that named it.
-      void invalidateSets(queryClient);
     },
   });
 }

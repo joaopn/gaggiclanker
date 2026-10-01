@@ -1,14 +1,13 @@
-"""`/api/profile-drafts`, end to end: draft, approve, push, verify, roll back.
+"""`/api/profile-drafts`, end to end: draft, refine, validate, read, discard.
 
-Through HTTP rather than through the service, because what this feature ships is
-a sequence of button presses and the interesting failures are all at the seams:
-an approval that forgot the acknowledgement, a push with the switch off, a
-machine that stored something else. Each of those is a specific status code and
-a specific message, and a caller that got the wrong one would send somebody to
-the wrong place.
+Through HTTP rather than through the service, because what this feature ships is a sequence of
+button presses and the interesting failures are all at the seams: a draft that skipped the
+safety policy, a refinement that lost its Set, a pushed draft somebody discards while its
+profile is still on the display. What happens after a draft is put on the board is the board's
+(`test_board*.py`, `test_record_on_set.py`).
 
-The model is scripted (`FakeProvider`) and the machine is the fake. No money is
-spent and no network is touched, here or anywhere else in the offline suite.
+The model is scripted (`FakeProvider`) and the machine is the fake. No money is spent and no
+network is touched, here or anywhere else in the offline suite.
 """
 
 from __future__ import annotations
@@ -20,10 +19,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetVersionPatch
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
 from tests.drafts.conftest import (
@@ -34,7 +30,11 @@ from tests.drafts.conftest import (
     error,
     mirror_only,
 )
+from tests.drafts.helpers import APP_LABEL
+from tests.drafts.test_board import adopted, get_board, pull, put, row_for
 from tests.llm.conftest import FakeProvider
+
+__all__ = ["adopted"]  # the fixture, re-exported for this module
 
 
 async def a_draft(
@@ -212,612 +212,6 @@ async def test_a_refinement_supersedes_the_draft_it_came_from(
     assert "Dropped the pressure to 8 bar." in sent
 
 
-# ── approving ────────────────────────────────────────────────────────
-
-
-async def test_approving_a_draft_that_moves_a_stop_condition_needs_the_acknowledgement(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    """crema's rule, and the refusal carries the list it is asking about."""
-    app, client = live
-    profile = await base_profile(app)
-    document = profile.model_dump(mode="json", exclude={"annotations", "id"})
-    document["phases"][0]["targets"] = [{"type": "volumetric", "operator": "gte", "value": 44}]
-    provider.script = [json.dumps({"profile": document, "change_summary": "Longer ratio."})]
-    draft = data(
-        await client.post(
-            "/api/profile-drafts",
-            json={"base_version_id": await base_version_id(app), "notes": "longer ratio"},
-        )
-    )
-    assert len(draft["stop_condition_changes"]) == 1
-
-    refused = await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    assert refused.status_code == 409
-    body = error(refused)
-    assert "how much coffee ends up in the cup" in body["message"]
-    assert body["details"]["stop_condition_changes"][0]["after"]["value"] == 44
-
-    approved = data(
-        await client.post(
-            f"/api/profile-drafts/{draft['id']}/approve",
-            json={"acknowledge_stop_changes": True},
-        )
-    )
-    assert approved["status"] == "approved"
-    assert approved["acknowledged_stop_changes"] is True
-
-
-async def test_a_draft_that_moves_nothing_is_approved_without_a_checkbox(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    """An acknowledgement that is always required is one nobody reads."""
-    app, client = live
-    draft = await a_draft(app, client, provider)
-    assert draft["stop_condition_changes"] == []
-    approved = data(await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={}))
-    assert approved["status"] == "approved"
-    assert approved["acknowledged_stop_changes"] is False
-
-
-# ── pushing ──────────────────────────────────────────────────────────
-
-
-async def test_a_push_is_refused_while_device_writes_are_off(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
-) -> None:
-    """The default, from the outside. Nothing reaches the machine."""
-    app, client = live
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    before = len(fake_device.profiles)
-
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
-
-    assert response.status_code == 403
-    assert "switched off" in error(response)["message"]
-    assert len(fake_device.profiles) == before
-    rows = await DeviceWritesRepository(app.state.db).list_writes()
-    assert [(row.kind, row.result) for row in rows] == [("profile_save", "refused")]
-
-
-async def test_an_unapproved_draft_cannot_be_pushed(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
-    assert response.status_code == 409
-    assert "approve it first" in error(response)["message"]
-
-
-async def test_a_push_saves_a_new_profile_reads_it_back_and_mirrors_it(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
-) -> None:
-    """The happy path, with every property that makes it safe asserted.
-
-    A **new** profile — the base is still there, untouched. **Not selected** —
-    the person is still brewing with whatever they were brewing with.
-    **Verified** — the machine served back what we sent. **Mirrored** — the
-    Profiles page shows it now, rather than in fifteen minutes.
-    """
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    before = {profile["id"] for profile in fake_device.profiles}
-
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-
-    assert pushed["status"] == "pushed"
-    device_id = pushed["pushed_device_profile_id"]
-    assert device_id not in before
-    assert "9bar" in {profile["id"] for profile in fake_device.profiles}
-    assert fake_device.selected_profile_id != device_id
-
-    mirrored = data(await client.get("/api/profiles"))["items"]
-    assert any(row["device_id"] == device_id for row in mirrored)
-    assert any(row["label"] == "9 Bar Espresso [AI]" for row in mirrored)
-
-
-async def test_a_machine_that_stores_something_else_fails_with_both_documents(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
-) -> None:
-    """Layer 3, doing the only thing it can do that layers 1 and 2 cannot.
-
-    The fake is told to drop one phase on the way in. The save is acknowledged,
-    the profile exists on the machine, and it is not the profile anybody
-    approved. Only reading it back can tell.
-    """
-    app, client = writes_on
-    fake_device.mutate_on_save = lambda stored: {**stored, "temperature": 91}
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-
-    assert pushed["status"] == "failed"
-    assert "stored something other than what was sent" in pushed["error"]
-    assert pushed["verification"]["sent"]["temperature"] == 93
-    assert pushed["verification"]["loaded"]["temperature"] == 91
-    # Still on the machine, which is precisely the problem the rollback solves.
-    assert any(
-        profile["id"] == pushed["pushed_device_profile_id"] for profile in fake_device.profiles
-    )
-
-
-async def test_rollback_deletes_the_machine_s_copy_and_the_draft_stops_naming_it(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
-) -> None:
-    """One click, and the draft keeps saying `failed` — what happened, happened."""
-    app, client = writes_on
-    fake_device.mutate_on_save = lambda stored: {**stored, "temperature": 91}
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-    device_id = pushed["pushed_device_profile_id"]
-
-    rolled = data(await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={}))
-
-    assert rolled["status"] == "failed"
-    assert rolled["pushed_device_profile_id"] is None
-    assert all(profile["id"] != device_id for profile in fake_device.profiles)
-    kinds = [
-        (row.kind, row.result) for row in await DeviceWritesRepository(app.state.db).list_writes()
-    ]
-    assert ("profile_delete", "ok") in kinds
-    # And the mirror no longer lists a profile the machine does not have.
-    listed = data(await client.get("/api/profiles"))["items"]
-    assert all(row["device_id"] != device_id for row in listed)
-
-
-async def test_a_push_can_record_the_result_as_a_new_set_version(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
-) -> None:
-    """Opt-in: a person may try a draft without saying the Set now means it.
-
-    When they do say so, the version carries both identities — the
-    content-hashed profile version and the device id the firmware assigned —
-    because "what did this Set brew" and "which file on the machine is that"
-    are different questions with different answers.
-    """
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    body = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )
-
-    version = body["set_version"]
-    assert version is not None
-    assert version["profile_version_id"] == draft["draft_version_id"]
-    assert version["pushed_device_profile_id"] == body["draft"]["pushed_device_profile_id"]
-    assert version["origin"] == "manual"
-    assert version["profile_label"] == "9 Bar Espresso [AI]"
-    # Nobody predicted anything about this draft, so the version records none.
-    assert version["prediction"] == ""
-    assert version["compares_to_version_id"] is None
-
-
-async def _drafted_for(
-    app: FastAPI,
-    set_id: int | None,
-    *,
-    prediction: str = "Compared to v1: less of the dry finish, and no slower.",
-    compares_to_version_id: int | None = None,
-) -> dict[str, Any]:
-    """A draft as a Set's conversation leaves one: its Set and its prediction.
-
-    Through `DraftProposals`, which is exactly what the chat tool is handed —
-    the archive and the safety bounds, and nothing that could push.
-    """
-    profile = await base_profile(app)
-    row = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app),
-        document=lower_pressure(profile, 8.0),
-        change_summary="Down to 8 bar.",
-        notes="Proposed in chat.",
-        set_id=set_id,
-        prediction=prediction,
-        compares_to_version_id=compares_to_version_id,
-    )
-    return dict(row.model_dump(mode="json"))
-
-
-async def test_pushing_a_set_s_own_draft_records_its_prediction_on_the_version(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """A profile change argued in a Set's room becomes that Set's next experiment.
-
-    The push itself is unchanged — approve, save, read back, compare, mirror,
-    audit — and what is new is only what the Set version it records carries.
-    """
-    app, client = writes_on
-    versions = data(await client.get(f"/api/sets/{a_set}"))["versions"]
-    current_id = versions[0]["version"]["id"]
-    draft = await _drafted_for(app, a_set, compares_to_version_id=current_id)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    body = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )
-
-    assert body["draft"]["status"] == "pushed"
-    version = body["set_version"]
-    assert version["prediction"].startswith("Compared to v1")
-    assert version["compares_to_version_id"] == current_id
-    assert version["compares_to_version_no"] == 1
-    # And the rest of the version is what it always was.
-    assert version["profile_version_id"] == draft["draft_version_id"]
-    assert version["pushed_device_profile_id"] == body["draft"]["pushed_device_profile_id"]
-
-
-async def test_a_set_s_draft_says_which_version_a_push_for_it_records(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """The card names the version before the push and after it, from the archive.
-
-    Before: the Set's next number, so the button can say "record it as v2".
-    After: the version the push really recorded, so the card claims the
-    prediction landed only when it did, including after a reload.
-    """
-    app, client = writes_on
-    draft = await _drafted_for(app, a_set)
-    assert draft["set_next_version_no"] == 2
-    assert draft["recorded_version_no"] is None
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    body = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )
-
-    assert body["set_version"]["version_no"] == 2
-    assert body["draft"]["recorded_version_no"] == 2
-    reread = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
-    assert reread["recorded_version_no"] == 2
-    assert reread["set_next_version_no"] == 3
-
-
-async def test_a_push_for_a_set_records_a_minor_version_unless_marked_major(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """A pushed draft tunes a profile, so it is a minor version by default.
-
-    The card is served both names before the push, from the query the insert
-    numbers with, and the answer and the re-read say which one was recorded.
-    The person's box wins in both directions; the agent's suggestion rides on
-    the draft for the card to show and changes nothing by itself.
-    """
-    app, client = writes_on
-    profile = await base_profile(app)
-    first = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app),
-        document=lower_pressure(profile, 8.0),
-        change_summary="Down to 8 bar.",
-        set_id=a_set,
-        prediction="Compared to v1: less of the dry finish, and no slower.",
-        suggest_major=True,
-        major_reason="Eight bar is a different kind of shot from nine, not a nudge.",
-    )
-    assert (first.suggest_major, first.major_reason) == (
-        True,
-        "Eight bar is a different kind of shot from nine, not a nudge.",
-    )
-    assert (first.set_next_minor_label, first.set_next_major_label) == ("v1.1", "v2")
-    await client.post(f"/api/profile-drafts/{first.id}/approve", json={})
-
-    body = data(await client.post(f"/api/profile-drafts/{first.id}/push", json={"set_id": a_set}))
-
-    assert body["set_version"]["version_label"] == "v1.1"
-    assert body["draft"]["recorded_version_label"] == "v1.1"
-
-    second = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app),
-        document=lower_pressure(profile, 7.0),
-        change_summary="Down to 7 bar.",
-        set_id=a_set,
-        prediction="Compared to v1.1: softer still, a second or two slower.",
-    )
-    reread = data(await client.get(f"/api/profile-drafts/{second.id}"))["draft"]
-    assert (reread["set_next_minor_label"], reread["set_next_major_label"]) == ("v1.2", "v2")
-    await client.post(f"/api/profile-drafts/{second.id}/approve", json={})
-
-    body = data(
-        await client.post(
-            f"/api/profile-drafts/{second.id}/push", json={"set_id": a_set, "major": True}
-        )
-    )
-
-    assert body["set_version"]["version_label"] == "v2"
-    assert body["draft"]["recorded_version_label"] == "v2"
-    # The first draft still says where its own push landed.
-    assert (
-        data(await client.get(f"/api/profile-drafts/{first.id}"))["draft"]["recorded_version_label"]
-        == "v1.1"
-    )
-
-
-async def test_a_push_refuses_a_major_that_is_not_a_boolean(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    app, client = writes_on
-    draft = await _drafted_for(app, a_set)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    response = await client.post(
-        f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set, "major": "yes"}
-    )
-
-    assert response.status_code == 400
-    assert error(response)["code"] == "INVALID_REQUEST"
-    # Refused before the machine was touched: the draft is still approved.
-    assert (
-        data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]["status"]
-        == "approved"
-    )
-
-
-async def test_a_refinement_keeps_the_agent_s_major_suggestion(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
-) -> None:
-    """The next attempt at the same idea is no smaller a change than the first."""
-    app, client = live
-    profile = await base_profile(app)
-    parent = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app),
-        document=lower_pressure(profile, 8.0),
-        change_summary="Down to 8 bar.",
-        set_id=a_set,
-        prediction="Compared to v1: less of the dry finish, and no slower.",
-        suggest_major=True,
-        major_reason="Eight bar is a different kind of shot from nine, not a nudge.",
-    )
-    document = lower_pressure(profile, 7.5)
-    provider.script = [json.dumps({"profile": document, "change_summary": "7.5 bar instead."})]
-
-    refined = data(
-        await client.post(f"/api/profile-drafts/{parent.id}/refine", json={"notes": "Softer."})
-    )
-
-    assert (refined["suggest_major"], refined["major_reason"]) == (
-        True,
-        "Eight bar is a different kind of shot from nine, not a nudge.",
-    )
-
-
-async def test_two_drafts_of_one_profile_share_the_one_copy_on_the_machine(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int, fake_device: FakeDevice
-) -> None:
-    """Profile versions are content-hashed, so two drafts can name the same one.
-
-    The second push finds the first one's profile on the machine and saves nothing,
-    so both drafts name the same device id and the display holds one copy. Both
-    still record a version of the Set, and both find one when re-read.
-    """
-    app, client = writes_on
-    first = await _drafted_for(app, a_set)
-    second = await _drafted_for(app, a_set)
-    assert first["draft_version_id"] == second["draft_version_id"]
-    for draft in (first, second):
-        await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-
-    reread = [
-        data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
-        for draft in (first, second)
-    ]
-    assert reread[0]["pushed_device_profile_id"] == reread[1]["pushed_device_profile_id"]
-    assert [p.get("label") for p in fake_device.profiles].count(reread[0]["draft_label"]) == 1
-    assert [row["recorded_version_no"] for row in reread] == [2, 3]
-    assert len(data(await client.get(f"/api/sets/{a_set}"))["versions"]) == 3
-
-
-async def test_a_set_s_draft_pushed_without_its_set_says_it_recorded_nothing(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    app, client = writes_on
-    draft = await _drafted_for(app, a_set)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    body = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))
-
-    assert body["draft"]["status"] == "pushed"
-    assert body["set_version"] is None
-    assert body["draft"]["recorded_version_no"] is None
-    assert len(data(await client.get(f"/api/sets/{a_set}"))["versions"]) == 1
-
-
-async def test_a_set_s_draft_pushed_for_another_set_says_it_recorded_nothing_on_its_own(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """The other Set got a version, but not the one the prediction was about."""
-    app, client = writes_on
-    bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
-    other = data(
-        await client.post(
-            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False}
-        )
-    )
-    draft = await _drafted_for(app, a_set)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    body = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": other["id"]})
-    )
-
-    assert body["set_version"]["set_id"] == other["id"]
-    assert body["draft"]["recorded_version_no"] is None
-
-
-async def test_a_draft_without_a_set_has_no_version_to_record(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    assert draft["set_next_version_no"] is None
-    assert draft["recorded_version_no"] is None
-
-
-async def test_a_prediction_against_a_version_of_another_set_falls_back_to_the_current_one(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """A comparison that is not this Set's would render as a dangling reference."""
-    app, client = writes_on
-    bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
-    other = data(
-        await client.post(
-            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False}
-        )
-    )
-    theirs = data(await client.get(f"/api/sets/{other['id']}"))["versions"][0]["version"]["id"]
-    draft = await _drafted_for(app, a_set, compares_to_version_id=theirs)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    version = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )["set_version"]
-
-    mine = data(await client.get(f"/api/sets/{a_set}"))["versions"]
-    assert version["compares_to_version_id"] != theirs
-    assert version["compares_to_version_id"] in {entry["version"]["id"] for entry in mine}
-
-
-async def test_the_version_a_pushed_set_draft_records_says_the_chat_proposed_it(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """ "Did following the advice help" is a GROUP BY on origin.
-
-    A profile change the agent argued for, filed under `manual`, would credit
-    the person with the model's idea — so the version records `chat` exactly
-    when the push is also recording the agent's prediction.
-    """
-    app, client = writes_on
-    draft = await _drafted_for(app, a_set)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    version = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )["set_version"]
-
-    assert version["origin"] == "chat"
-
-
-async def test_a_hand_drafted_push_stays_manual(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
-) -> None:
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    version = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )["set_version"]
-
-    assert version["origin"] == "manual"
-
-
-async def test_a_draft_made_from_an_analysis_before_it_was_retired_stays_an_analysis(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """An older draft keeps its provenance when pushed, even with a Set and a prediction.
-
-    Nothing makes such a draft any more; one made before the per-shot analysis
-    was retired still carries `source_analysis_id`, and the version it becomes
-    says where it came from.
-    """
-    app, client = writes_on
-    profile = await base_profile(app)
-    row = await app.state.draft_proposals.create_manual(
-        base_version_id=await base_version_id(app),
-        document=lower_pressure(profile, 8.0),
-        change_summary="Down to 8 bar.",
-        set_id=a_set,
-        prediction="Compared to v1: less of the dry finish.",
-    )
-    await app.state.db.execute(
-        "UPDATE profile_drafts SET source_analysis_id = 7 WHERE id = ?", (row.id,)
-    )
-    await client.post(f"/api/profile-drafts/{row.id}/approve", json={})
-
-    version = data(await client.post(f"/api/profile-drafts/{row.id}/push", json={"set_id": a_set}))[
-        "set_version"
-    ]
-
-    assert version["origin"] == "analysis"
-    assert version["prediction"].startswith("Compared to v1")
-    # And the card still says where the prediction landed.
-    reread = data(await client.get(f"/api/profile-drafts/{row.id}"))["draft"]
-    assert reread["recorded_version_no"] == version["version_no"]
-
-
-async def test_a_push_for_a_set_retires_the_change_waiting_on_it(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """The Set moved on, so a proposal argued against the old recipe is not a question."""
-    app, client = writes_on
-    made = await SetProposalsRepository(app.state.db).create(
-        a_set,
-        ProposalWrite(
-            patch=SetVersionPatch(dose_g=18.5),
-            reason="Half a gram more.",
-            prediction="Compared to v1: a touch more body and no slower.",
-        ),
-    )
-    assert made.proposal is not None
-    draft = await _drafted_for(app, a_set)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-
-    assert await SetProposalsRepository(app.state.db).waiting(a_set) is None
-    assert data(await client.get(f"/api/sets/{a_set}"))["proposal"] is None
-
-
-async def test_a_refinement_keeps_the_set_and_the_prediction_it_was_made_for(
-    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
-) -> None:
-    """The next attempt at the same idea is an attempt on the same experiment."""
-    app, client = live
-    first = await _drafted_for(app, a_set)
-    profile = await base_profile(app)
-    provider.script = [
-        json.dumps({"profile": lower_pressure(profile, 7.5), "change_summary": "Down to 7.5 bar."})
-    ]
-
-    refined = data(
-        await client.post(
-            f"/api/profile-drafts/{first['id']}/refine", json={"notes": "softer still"}
-        )
-    )
-
-    assert refined["set_id"] == a_set
-    assert refined["prediction"] == first["prediction"]
-    assert refined["compares_to_version_id"] == first["compares_to_version_id"]
-
-
-async def test_pushing_a_set_s_draft_for_a_different_set_records_no_prediction(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], a_set: int
-) -> None:
-    """The guess was about the other experiment and says nothing about this one."""
-    app, client = writes_on
-    bean = data(await client.post("/api/beans", json={"name": "Elsewhere", "roaster": "nobody"}))
-    other = data(
-        await client.post(
-            "/api/sets", json={"name": "Another coffee", "bean_id": bean["id"], "automatch": False}
-        )
-    )
-    draft = await _drafted_for(app, a_set)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-
-    version = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": other["id"]})
-    )["set_version"]
-
-    assert version["set_id"] == other["id"]
-    assert version["prediction"] == ""
-    assert version["compares_to_version_id"] is None
-
-
 # ── the manual editor ────────────────────────────────────────────────
 
 
@@ -841,49 +235,6 @@ async def test_a_hand_edited_document_becomes_a_draft_without_calling_a_model(
     assert provider.calls == []
     assert draft["change_summary"] == "Eight bar, by hand."
     assert draft["status"] == "draft"
-
-
-async def test_a_version_staged_unchanged_reaches_the_machine_and_round_trips(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], fake_device: FakeDevice
-) -> None:
-    """The plainest path there is: this profile, as it stands, on the machine.
-
-    A profile that is already right should not have to be edited to get there,
-    so the document posted is byte-for-byte the stored version. Everything that
-    makes a push safe still applies — the suffix, a new profile rather than an
-    overwrite, nothing selected — and the machine serving back what was sent is
-    what `verified` means.
-    """
-    app, client = writes_on
-    version_id = await base_version_id(app)
-    profile = await base_profile(app)
-    document = profile.model_dump(mode="json", exclude={"annotations", "id"})
-
-    draft = data(
-        await client.post(
-            "/api/profile-drafts",
-            json={
-                "base_version_id": version_id,
-                "profile": document,
-                "change_summary": f"Staged unchanged from {BASE_LABEL}",
-            },
-        )
-    )
-    assert draft["change_summary"] == f"Staged unchanged from {BASE_LABEL}"
-    # Nothing moved, so there is nothing to acknowledge and nothing to clamp.
-    assert draft["stop_condition_changes"] == []
-    assert draft["clamp_changes"] == []
-
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    before = {entry["id"] for entry in fake_device.profiles}
-
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-
-    assert pushed["status"] == "pushed"
-    assert pushed["pushed_device_profile_id"] not in before
-    assert fake_device.selected_profile_id != pushed["pushed_device_profile_id"]
-    mirrored = data(await client.get("/api/profiles"))["items"]
-    assert any(row["label"] == f"{BASE_LABEL} [AI]" for row in mirrored)
 
 
 async def test_a_hand_edited_document_that_is_not_a_profile_names_the_field(
@@ -953,21 +304,6 @@ async def test_the_queue_lists_what_is_still_waiting_for_a_person(
     assert {row["status"] for row in everything} == {"draft", "discarded"}
 
 
-async def test_a_pushed_draft_cannot_be_discarded(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    """The row would then say `discarded` while the file was still on the display."""
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
-
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/discard", json={})
-
-    assert response.status_code == 409
-    assert "on the machine" in error(response)["message"]
-
-
 async def test_the_detail_route_carries_both_documents_for_the_diff(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
@@ -979,81 +315,29 @@ async def test_the_detail_route_carries_both_documents_for_the_diff(
     assert detail["draft_profile"]["description"] == "Softer."
 
 
-@pytest.fixture
-async def a_set(live: tuple[FastAPI, httpx.AsyncClient]) -> int:
-    """A Set with one version, so a push has somewhere to record itself."""
-    _app, client = live
-    bean = data(await client.post("/api/beans", json={"name": "Draft test", "roaster": "nobody"}))
-    stored = data(
-        await client.post(
-            "/api/sets",
-            json={
-                "name": "Draft baseline",
-                "bean_id": bean["id"],
-                "version": {"dose_g": 18.0, "target_yield_g": 36.0},
-            },
-        )
-    )
-    return int(stored["id"])
+# ── discarding ───────────────────────────────────────────────────────
 
 
-# ── taking a profile back off the machine ────────────────────────────
-
-
-async def test_rolling_back_a_pushed_draft_discards_it_rather_than_lying(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
+async def test_a_pushed_draft_cannot_be_discarded_until_its_profile_is_off_the_machine(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """A pushed draft whose profile is gone must stop saying `pushed`.
-
-    It was also a dead end: `discard` refuses a pushed draft, so before this the
-    draft could never reach a terminal state at all — rollback cleared the id and
-    left the status, and every later discard answered 409 for ever.
-    """
-    app, client = writes_on
+    """The row would then say `discarded` while the file was still on the display."""
+    app, client, _ = adopted
     draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-    device_id = pushed["pushed_device_profile_id"]
+    await put(client, draft)
+    await pull(app)
 
-    rolled = data(await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={}))
-
-    assert rolled["status"] == "discarded"
-    assert rolled["pushed_device_profile_id"] is None
-    assert all(profile["id"] != device_id for profile in fake_device.profiles)
-
-
-async def test_a_rollback_stops_every_set_version_naming_the_deleted_profile(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, a_set: int
-) -> None:
-    """A version pointing at a file the machine does not have resolves to whatever
-    inherits that id next. What it *brewed* is history and stays."""
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    body = data(
-        await client.post(f"/api/profile-drafts/{draft['id']}/push", json={"set_id": a_set})
-    )
-    version_id = body["set_version"]["id"]
-    assert body["set_version"]["pushed_device_profile_id"]
-
-    await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={})
-
-    entries = data(await client.get(f"/api/sets/{a_set}"))["versions"]
-    after = next(entry["version"] for entry in entries if entry["version"]["id"] == version_id)
-    assert after["pushed_device_profile_id"] is None
-    assert after["profile_version_id"] == draft["draft_version_id"]
-
-
-async def test_a_draft_that_was_never_pushed_cannot_be_rolled_back(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
-) -> None:
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/rollback", json={})
+    response = await client.post(f"/api/profile-drafts/{draft['id']}/discard", json={})
 
     assert response.status_code == 409
-    assert "only a pushed or failed draft" in error(response)["message"]
+    message = error(response)["message"]
+    assert "on the machine" in message and "Delete it from the board" in message
+    # Delete the profile from the board and the sync that takes its file off discards the draft.
+    row = row_for(await get_board(client), APP_LABEL)["row"]
+    await client.delete(f"/api/profile-board/{row['id']}")
+    await pull(app)
+    ended = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
+    assert ended["status"] == "discarded" and ended["pushed_device_profile_id"] is None
 
 
 # ── a base that moved underneath the draft ───────────────────────────
@@ -1097,68 +381,63 @@ async def test_a_draft_of_an_imported_profile_is_never_stale(
     assert second["base_is_current"] is True
 
 
-async def test_a_push_is_refused_once_the_base_has_changed_on_the_machine(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
+async def test_a_draft_goes_stale_when_its_base_changes_on_the_machine_and_can_still_be_put(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """The diff that was approved is a diff against a version the display dropped.
+    """The diff that was read is against a version the display dropped, and the card says so.
 
-    Pushing anyway silently proposes undoing whatever was changed there, and this
-    box does not get to decide which of the two edits was meant.
+    The board does not refuse it (the next sync puts this version beside what was changed on
+    the display, and the person's own profile is never touched): the warning is the card's.
     """
-    app, client = writes_on
+    app, client, fake_device = adopted
     draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
+    assert draft["base_is_current"] is True
 
     await edit_on_the_machine(app, fake_device, 91)
 
     detail = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
     assert detail["base_is_current"] is False
-
-    response = await client.post(f"/api/profile-drafts/{draft['id']}/push", json={})
-    assert response.status_code == 409
-    body = error(response)
-    assert "changed on the machine since" in body["message"]
-    assert body["details"]["field"] == "allow_stale_base"
-    assert body["details"]["base_device_profile_id"] == "9bar"
+    assert (await put(client, draft))["pending_draft_id"] == draft["id"]
 
 
-async def test_a_stale_push_goes_through_with_the_override(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
+async def test_a_base_gone_from_the_machine_is_not_stale(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
 ) -> None:
-    """Deliberate, and one field. The refusal is a question, not a wall."""
-    app, client = writes_on
+    """A reset display holds nothing the base could have drifted from."""
+    app, client = live
     draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
-    await edit_on_the_machine(app, fake_device, 91)
-
-    pushed = data(
-        await client.post(
-            f"/api/profile-drafts/{draft['id']}/push", json={"allow_stale_base": True}
-        )
-    )["draft"]
-
-    assert pushed["status"] == "pushed"
-
-
-async def test_a_base_gone_from_the_machine_is_not_stale_and_the_push_adds(
-    writes_on: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider, fake_device: FakeDevice
-) -> None:
-    """A reset display holds nothing the base could have drifted from.
-
-    The archive's copy of the base is what the diff was made against, and there is
-    nothing on the machine left to overwrite or to be inconsistent with, so the
-    push simply adds. Refusing would make every draft demand an override after an
-    update wipes the machine.
-    """
-    app, client = writes_on
-    draft = await a_draft(app, client, provider)
-    await client.post(f"/api/profile-drafts/{draft['id']}/approve", json={})
 
     fake_device.profiles[:] = [p for p in fake_device.profiles if p.get("label") != BASE_LABEL]
     await mirror_only(app)
 
     detail = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
     assert detail["base_is_current"] is True
-    pushed = data(await client.post(f"/api/profile-drafts/{draft['id']}/push", json={}))["draft"]
-    assert pushed["status"] == "pushed"
-    assert pushed["replaced_device_profile_id"] is None
+
+
+# ── the staged box is gone ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize("action", ["approve", "push", "rollback"])
+async def test_the_staged_routes_are_gone_and_a_draft_cannot_reach_the_machine_by_them(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+    provider: FakeProvider,
+    action: str,
+) -> None:
+    """A draft reaches the machine only by being put on the board and synced.
+
+    ``approve`` is gone because putting a draft on the board approves it; ``push`` and
+    ``rollback`` because the board's write phase replaced them (going back a version is the
+    board's rollback). A request to any of them, with the switch on and the machine
+    connected, is a 404/405 that sends nothing.
+    """
+    app, client, fake_device = adopted
+    draft = await a_draft(app, client, provider)
+    fake_device.ws_requests.clear()
+
+    response = await client.post(f"/api/profile-drafts/{draft['id']}/{action}", json={})
+
+    assert response.status_code in (404, 405), response.text
+    assert [t for t in fake_device.ws_requests if t.startswith("req:profiles:s")] == []
+    assert (
+        data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]["status"] == "draft"
+    )

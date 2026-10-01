@@ -1163,30 +1163,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/profile-drafts/{draft_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mark a draft ready to push
-         * @description Refused with a 409 when the draft moves a stop condition and nobody said so.
-         *
-         *     The refusal carries the list of changes in `details`, so a client that sent
-         *     the approval without the acknowledgement can show exactly what it is asking
-         *     the person to confirm.
-         */
-        post: operations["approve_draft_api_profile_drafts__draft_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/profile-drafts/{draft_id}/discard": {
         parameters: {
             query?: never;
@@ -1204,37 +1180,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/profile-drafts/{draft_id}/push": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Save the draft to the machine as a new profile, and read it back
-         * @description A 200 does **not** mean the push verified — read `draft.status`.
-         *
-         *     `pushed` means the machine served back what we sent. `failed` means it did
-         *     not, and the draft then carries both documents and a device id the rollback
-         *     route can delete. Both are outcomes of a completed request; only a refusal
-         *     (writes disabled, no machine, the draft not approved, a stale base) is an
-         *     error status.
-         *
-         *     A push **for a Set** that would be refused a version is refused before the
-         *     machine is touched: a Set being designed whose version 1 can no longer be
-         *     filled would otherwise leave a profile on the display and no version
-         *     recording it.
-         */
-        post: operations["push_draft_api_profile_drafts__draft_id__push_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/profile-drafts/{draft_id}/refine": {
         parameters: {
             query?: never;
@@ -1246,23 +1191,6 @@ export interface paths {
         put?: never;
         /** Draft again, with more to go on; the old draft is superseded */
         post: operations["refine_draft_api_profile_drafts__draft_id__refine_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/profile-drafts/{draft_id}/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete the machine's copy of a push that did not verify */
-        post: operations["rollback_draft_api_profile_drafts__draft_id__rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1833,7 +1761,7 @@ export interface paths {
          *     A patch touching the machine's connection settings applies them live: the
          *     connection is rebuilt from the new effective values, with no restart. If
          *     that would move the connection while something is using the machine — a
-         *     profile push or rollback, a sync — the whole patch is a
+         *     sync, the profile board's write phase included — the whole patch is a
          *     409 naming it and nothing is stored. Validation comes first, so a bad value
          *     is still a 400 whatever is running.
          *
@@ -2698,14 +2626,6 @@ export interface components {
         /** ApiResponse[PromptListData] */
         ApiResponse_PromptListData_: {
             data?: components["schemas"]["PromptListData"] | null;
-            error?: components["schemas"]["ApiError"] | null;
-            meta: components["schemas"]["ApiMeta"];
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiResponse[PushedData] */
-        ApiResponse_PushedData_: {
-            data?: components["schemas"]["PushedData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -3862,17 +3782,6 @@ export interface components {
             updated_at: string;
         };
         /**
-         * DraftApprove
-         * @description The approval, and the acknowledgement it may require.
-         */
-        DraftApprove: {
-            /**
-             * Acknowledge Stop Changes
-             * @default false
-             */
-            acknowledge_stop_changes: boolean;
-        };
-        /**
          * DraftCreate
          * @description Ask for a draft. Either the model writes it, or you did.
          *
@@ -3962,21 +3871,6 @@ export interface components {
             profile: {
                 [key: string]: unknown;
             };
-        };
-        /**
-         * DraftPush
-         * @description Where the push should land, beyond the machine.
-         */
-        DraftPush: {
-            /**
-             * Allow Stale Base
-             * @default false
-             */
-            allow_stale_base: boolean;
-            /** Major */
-            major?: boolean | null;
-            /** Set Id */
-            set_id?: number | null;
         };
         /**
          * DraftRefine
@@ -4694,7 +4588,7 @@ export interface components {
          * PolicyChange
          * @description One number the policy moved, and what it was before.
          *
-         *     Rendered verbatim beside the approve button. ``path`` is the address inside
+         *     Rendered verbatim beside the put-on-the-board button. ``path`` is the address inside
          *     the document (`phases[2].pump.pressure`) so the UI can point at the field
          *     rather than describing it.
          */
@@ -5069,14 +4963,6 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /**
-         * PushedData
-         * @description What a push produced: the draft, and the Set version if one was asked for.
-         */
-        PushedData: {
-            draft: components["schemas"]["ProfileDraftRow"];
-            set_version?: components["schemas"]["SetVersionRow"] | null;
         };
         /**
          * RateLimitData
@@ -9225,41 +9111,6 @@ export interface operations {
             };
         };
     };
-    approve_draft_api_profile_drafts__draft_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                draft_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DraftApprove"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     discard_draft_api_profile_drafts__draft_id__discard_post: {
         parameters: {
             query?: never;
@@ -9291,41 +9142,6 @@ export interface operations {
             };
         };
     };
-    push_draft_api_profile_drafts__draft_id__push_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                draft_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DraftPush"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_PushedData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     refine_draft_api_profile_drafts__draft_id__refine_post: {
         parameters: {
             query?: never;
@@ -9343,37 +9159,6 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_ProfileDraftRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rollback_draft_api_profile_drafts__draft_id__rollback_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                draft_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };

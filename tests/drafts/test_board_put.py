@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
+from tests.drafts.helpers import APP_LABEL, draft_of, make_set_on, set_device_ids
 from tests.drafts.test_board import (
     adopted,
     approve,
@@ -27,7 +28,6 @@ from tests.drafts.test_board import (
     variant_draft,
     write_frames,
 )
-from tests.drafts.test_replace import APP_LABEL, draft_of, make_set_on, set_device_ids
 from tests.llm.conftest import FakeProvider
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module

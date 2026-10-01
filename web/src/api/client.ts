@@ -29,7 +29,6 @@ import type {
   DeviceWritesData,
   DraftCreateBody,
   DraftPreview,
-  DraftPushResult,
   FlavorPicks,
   GrinderRow,
   GrinderWrite,
@@ -562,33 +561,6 @@ export async function refineProfileDraft(
   });
 }
 
-export async function approveProfileDraft(
-  id: number,
-  acknowledgeStopChanges = false,
-): Promise<ProfileDraft> {
-  return fetchApi<ProfileDraft>(`/profile-drafts/${id}/approve`, {
-    method: "POST",
-    body: JSON.stringify({ acknowledge_stop_changes: acknowledgeStopChanges }),
-  });
-}
-
-export async function pushProfileDraft(
-  id: number,
-  options: { setId?: number; allowStaleBase?: boolean; major?: boolean } = {},
-): Promise<DraftPushResult> {
-  return fetchApi<DraftPushResult>(`/profile-drafts/${id}/push`, {
-    method: "POST",
-    body: JSON.stringify({
-      set_id: options.setId ?? null,
-      allow_stale_base: options.allowStaleBase ?? false,
-      // Only with a Set: a push that records nothing on one names no version.
-      ...(options.setId !== undefined && options.major !== undefined
-        ? { major: options.major }
-        : {}),
-    }),
-  });
-}
-
 /**
  * The profile board with each row's state on the machine and what the next sync would do.
  *
@@ -650,10 +622,6 @@ export async function goBackOnBoard(rowId: number): Promise<BoardRow> {
 /** Let syncs write again after the machine looked reset. Sends nothing to the machine. */
 export async function resumeBoard(): Promise<{ resumed: boolean }> {
   return fetchApi<{ resumed: boolean }>("/profile-board/resume", { method: "POST" });
-}
-
-export async function rollbackProfileDraft(id: number): Promise<ProfileDraft> {
-  return fetchApi<ProfileDraft>(`/profile-drafts/${id}/rollback`, { method: "POST" });
 }
 
 export async function discardProfileDraft(id: number): Promise<ProfileDraft> {

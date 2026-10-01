@@ -36,7 +36,7 @@ __all__ = [
 #:
 #: * ``change`` — a recipe change a person or the agent spelled out: the Add a
 #:   version form, an accepted proposal, an accepted analysis suggestion.
-#: * ``draft`` — a profile draft pushed to the machine and recorded on the Set:
+#: * ``draft`` — a profile draft put on the machine (by the board's sync) and recorded on the Set:
 #:   a tuned copy of a profile, which is dialling in.
 #: * ``rollback`` — going back to an earlier version's recipe.
 type VersionPath = Literal["change", "draft", "rollback"]

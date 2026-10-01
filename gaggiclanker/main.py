@@ -404,7 +404,8 @@ async def _start(app: FastAPI, db: Database) -> None:
 
     # The chat and what its tools may use, built before the machine connection
     # exists and without it. A tool reads and proposes, so it is handed the
-    # proposal half of drafts (create one; never push, never roll back), and
+    # proposal half of drafts (create one; never put it on the board, never touch the
+    # machine), and
     # nothing on this side of the app holds the connection, its client or a
     # service that does.
     # A settings change that rebuilds the connection is nothing to them.
@@ -453,18 +454,16 @@ async def _start(app: FastAPI, db: Database) -> None:
     app.state.connection = build_device_connection(app, settings_service, db)
     await app.state.connection.start()
 
-    # App-scoped because it reaches the one client that can change a machine. A
-    # per-request service would have to build its own — and a client built
-    # without the gate cannot write at all, which is the right default and the
-    # wrong thing to discover from a push that silently refused. It builds and
-    # stores drafts through the same proposal object the chat holds, so there
-    # is still one place a draft document is made.
+    # App-scoped because it holds the draft model call and records a Set's version once the
+    # board's write phase has put a profile on the machine. It holds no machine connection
+    # (a draft reaches the machine only through the board), and it builds and stores drafts
+    # through the same proposal object the chat holds, so there is still one place a draft
+    # document is made.
     app.state.drafts = ProfileDraftService(
         db,
         app.state.llm,
         PromptService(PromptsRepository(db)),
         settings_service,
-        connection=app.state.connection,
         proposals=app.state.draft_proposals,
     )
 

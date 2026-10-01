@@ -4,7 +4,7 @@ The registry already refuses a tool declaring anything but ``read`` or
 ``propose``. This file pins the other half: the context a tool is handed holds
 nothing from which the device client, the connection that owns it or the sync
 engine can be reached. A propose tool that creates a draft is given the object
-that creates drafts, not the service that also pushes them, so a mistake in a
+that creates drafts, not the service that also records them on a Set, so a mistake in a
 tool cannot become a write to the machine.
 
 The check is an object-graph walk from the context, bounded, over instance
@@ -15,9 +15,11 @@ its coroutine, a coroutine hands out its frame, and a frame's locals hold the
 engine's loops keep their engine exactly there, so a registry holding them is a
 path to the machine for anybody holding the registry, with no private attribute
 touched on the way. The walk descends that path, and three controls prove it
-does: one from the push-capable draft service, one from a task spawned on the
+does: one from an object that holds the connection, one from a task spawned on the
 registry the tools are given, and one from the registry the machine's owner
-keeps to itself.
+keeps to itself. The draft service is no longer a control: it holds no connection
+at all (a draft reaches the machine only through the profile board's write phase,
+inside the sync engine's pass), and a test below says so.
 
 It runs against an app actually connected to the fake machine, with a pull held
 in flight, so a client, a connection, an engine and its running loops all exist
@@ -241,9 +243,27 @@ def test_the_walk_finds_the_machine_when_a_path_exists(
     """The control: without it, a walk that never looked would also pass."""
     app, _, _ = connected
 
-    paths = machine_paths(app.state.drafts, label="drafts")
+    class Holder:
+        def __init__(self, held: object) -> None:
+            self.held = held
 
-    assert any(path.endswith("DeviceConnection") for path in paths), paths
+    paths = machine_paths(Holder([Holder(app.state.connection)]), label="holder")
+
+    assert paths == ["holder.held[0].held -> DeviceConnection"], paths
+
+
+def test_the_draft_service_and_the_proposals_hold_nothing_that_reaches_the_machine(
+    connected: tuple[FastAPI, httpx.AsyncClient, Fixture],
+) -> None:
+    """A draft reaches the machine only through the board's write phase, inside a sync.
+
+    The staged push held the connection here; with it gone the draft service is as far from the
+    machine as the proposals the chat is handed, and this is what keeps it so.
+    """
+    app, _, _ = connected
+
+    assert machine_paths(app.state.drafts, label="drafts") == []
+    assert machine_paths(app.state.draft_proposals, label="proposals") == []
 
 
 def test_the_walk_finds_the_board_service_when_a_path_exists(
@@ -350,8 +370,9 @@ async def test_nothing_reaches_the_machine_while_a_pull_is_running(
     for label, scope in (("stdio/general", ToolScope()), ("stdio/set", ToolScope.for_thread(1))):
         stdio = stdio_tool_context(app.state.db, app.state.settings_service, scope=scope)
         assert machine_paths(stdio, label=label) == []
-    # And the control still holds with everything running: the walk is looking.
-    assert machine_paths(app.state.drafts, label="drafts") != []
+    # And the control still holds with everything running: the walk is looking. The machine's
+    # own registry holds the loops, and each loop's frame holds the engine.
+    assert machine_paths(app.state.connection.tasks, label="tasks") != []
 
 
 async def test_the_walk_follows_a_task_into_its_coroutine_frame(
@@ -425,7 +446,7 @@ async def test_nothing_the_stdio_server_hands_a_tool_reaches_the_machine(
 
 
 #: Module prefixes that put a machine within reach of whatever loaded them: the
-#: client and its write gate, the sync engine, and the draft service that
+#: client and its write gate, the sync engine, and the board whose write phase
 #: pushes. `gaggiclanker.infra.outbound` is deliberately not here — it is how
 #: `gaggiclanker.settings` refuses to let the environment smuggle a credential
 #: into an outbound request, every command needs the settings, and it knows

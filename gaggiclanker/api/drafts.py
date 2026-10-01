@@ -1,25 +1,15 @@
-"""`/api/profile-drafts` — the only route in this app that can change a machine.
+"""`/api/profile-drafts` — what a profile draft is, before a person puts it on the board.
 
 Everything here is a thin wrapper over
-:class:`~gaggiclanker.drafts.service.ProfileDraftService`, which is where the
-rules live. Two things about the shape of the surface are worth saying here,
-because they are choices rather than consequences:
+:class:`~gaggiclanker.drafts.service.ProfileDraftService`, which is where the rules live.
+**Nothing here reaches the machine, and nothing here approves a draft**: a draft becomes
+approved, and goes onto the profile board, in one action on ``/api/profile-board`` (which
+carries the stop-condition acknowledgement), and the board's write phase puts it on the
+machine at the next sync. This router drafts, refines, validates, reads and discards.
 
-**Approve and push are separate calls.** They could be one. They are not,
-because approving is where a person says "yes, this is the profile I want" and
-pushing is where the machine gets written to, and a UI that made those the same
-click would have no place to put the stop-condition acknowledgement — which is
-the whole reason this feature has an approval step at all.
-
-**Rollback is a POST on the draft, not a DELETE on the profile.** The thing
-being undone is the push, and the draft is what knows which profile on the
-machine that produced. A route that took a device id would happily delete
-something nobody here created; this one can only reach what the audit says we
-wrote.
-
-Every route runs its work inside the request. A draft call is one LLM turn — ten
-seconds, not a review's minute or two — and a push is three WebSocket frames,
-so there is nothing here worth the second place an outcome could get lost.
+Every route runs its work inside the request. A draft call is one LLM turn — ten seconds, not
+a review's minute or two — so there is nothing here worth a second place an outcome could get
+lost.
 """
 
 from __future__ import annotations
@@ -28,12 +18,10 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field
 
-from gaggiclanker.api.deps import DraftServiceDep, SetsRepoDep
-from gaggiclanker.api.sets import version_refused
+from gaggiclanker.api.deps import DraftServiceDep
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
-from gaggiclanker.db.repos.sets import SetVersionRow, VersionRefused
 from gaggiclanker.drafts.models import DraftPreview, ProfileDraftDetail
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import BadRequest
@@ -84,38 +72,6 @@ class DraftRefine(BaseModel):
     model: str = Field(default="", max_length=200)
 
 
-class DraftApprove(BaseModel):
-    """The approval, and the acknowledgement it may require."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: Required — and refused without — when the draft moved a stop condition.
-    #: Named for what it acknowledges rather than `confirm`, so a client that
-    #: sets every boolean to true has still said something specific.
-    acknowledge_stop_changes: bool = False
-
-
-class DraftPush(BaseModel):
-    """Where the push should land, beyond the machine."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    #: When given, a new Set version is created pointing at the pushed profile.
-    #: Opt-in: a person may push a draft to try it without saying that this is
-    #: now what the Set means.
-    set_id: int | None = None
-    #: Push even though the profile this was drafted from has been edited on the
-    #: display since. Refused without it, because the diff that was approved is
-    #: then a diff against something the machine no longer holds.
-    allow_stale_base: bool = False
-    #: With ``set_id``: whether the version recorded on that Set is a major one
-    #: (v1.2 → v2) rather than a minor one (v1.2 → v1.3). Left out, a pushed
-    #: draft is a minor version — it tunes a profile — and the person's answer
-    #: on the card always wins. Ignored without ``set_id``: a push that records
-    #: nothing on a Set names no version.
-    major: StrictBool | None = None
-
-
 class DraftPreviewRequest(BaseModel):
     """A document the editor has not saved, for live validation."""
 
@@ -123,15 +79,6 @@ class DraftPreviewRequest(BaseModel):
 
     base_version_id: int
     profile: dict[str, Any]
-
-
-class PushedData(BaseModel):
-    """What a push produced: the draft, and the Set version if one was asked for."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    draft: ProfileDraftRow
-    set_version: SetVersionRow | None = None
 
 
 @router.get(
@@ -221,63 +168,6 @@ async def get_draft(draft_id: int, drafts: DraftServiceDep) -> JSONResponse:
 async def refine_draft(draft_id: int, body: DraftRefine, drafts: DraftServiceDep) -> JSONResponse:
     row = await drafts.refine(draft_id, notes=body.notes, model=body.model)
     return envelope_response(row.model_dump(mode="json"), status_code=201)
-
-
-@router.post(
-    "/{draft_id}/approve",
-    response_model=ApiResponse[ProfileDraftRow],
-    summary="Mark a draft ready to push",
-)
-async def approve_draft(draft_id: int, body: DraftApprove, drafts: DraftServiceDep) -> JSONResponse:
-    """Refused with a 409 when the draft moves a stop condition and nobody said so.
-
-    The refusal carries the list of changes in `details`, so a client that sent
-    the approval without the acknowledgement can show exactly what it is asking
-    the person to confirm.
-    """
-    row = await drafts.approve(draft_id, acknowledge_stop_changes=body.acknowledge_stop_changes)
-    return envelope_response(row.model_dump(mode="json"))
-
-
-@router.post(
-    "/{draft_id}/push",
-    response_model=ApiResponse[PushedData],
-    summary="Save the draft to the machine as a new profile, and read it back",
-)
-async def push_draft(
-    draft_id: int, body: DraftPush, drafts: DraftServiceDep, sets: SetsRepoDep
-) -> JSONResponse:
-    """A 200 does **not** mean the push verified — read `draft.status`.
-
-    `pushed` means the machine served back what we sent. `failed` means it did
-    not, and the draft then carries both documents and a device id the rollback
-    route can delete. Both are outcomes of a completed request; only a refusal
-    (writes disabled, no machine, the draft not approved, a stale base) is an
-    error status.
-
-    A push **for a Set** that would be refused a version is refused before the
-    machine is touched: a Set being designed whose version 1 can no longer be
-    filled would otherwise leave a profile on the display and no version
-    recording it.
-    """
-    if body.set_id is not None:
-        refusal = await sets.design_refusal(body.set_id)
-        if refusal is not None:
-            raise version_refused(VersionRefused(refusal))
-    row, version = await drafts.push(
-        draft_id, set_id=body.set_id, allow_stale_base=body.allow_stale_base, major=body.major
-    )
-    return envelope_response(PushedData(draft=row, set_version=version).model_dump(mode="json"))
-
-
-@router.post(
-    "/{draft_id}/rollback",
-    response_model=ApiResponse[ProfileDraftRow],
-    summary="Delete the machine's copy of a push that did not verify",
-)
-async def rollback_draft(draft_id: int, drafts: DraftServiceDep) -> JSONResponse:
-    row = await drafts.rollback(draft_id)
-    return envelope_response(row.model_dump(mode="json"))
 
 
 @router.post(

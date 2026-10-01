@@ -10,14 +10,19 @@ have to special-case.
 
 What *is* here is the state machine and the evidence:
 
-    draft ──approve──> approved ──push──> pushed
-      │                   │                  └──(round trip disagreed)──> failed
-      │                   └──refine──> superseded
+    draft ──put on the board──> approved ──the sync puts it on the machine──> pushed
+      │                            │
+      │                            └──refine──> superseded
       └──discard──> discarded
 
+
 and, beside it, the three things a person has to see before they press the
-button: what the policy clamped, which stop conditions moved, and — if the push
-failed — both documents, ours and the machine's.
+button: what the policy clamped, which stop conditions moved, and — for a draft whose profile
+did not read back as sent — both documents, ours and the machine's.
+
+`failed` is only ever read now: the staged push that used to leave a draft there is gone,
+but a database may still hold one. Going back to a previous version or deleting a profile
+discards the draft behind the file the sync then takes off the machine.
 """
 
 from __future__ import annotations
@@ -470,28 +475,6 @@ class ProfileDraftsRepository(Repository):
             await self.set_status(draft.id, "discarded")
             await self.clear_pushed_profile(draft.id, outcome=outcome)
         return found
-
-    async def other_pushed_claims(self, device_id: str, *, excluding: int) -> list[int]:
-        """Drafts other than ``excluding`` that still stand behind this profile.
-
-        Pushed, not replaced by a later push, and naming this device id. Removing the
-        profile would take it away from every one of them.
-        """
-        rows = await self.db.fetch_all(
-            "SELECT id FROM profile_drafts WHERE status = 'pushed' "
-            "AND replaced_by_draft_id IS NULL AND pushed_device_profile_id = ? AND id != ? "
-            "ORDER BY id",
-            (device_id, excluding),
-        )
-        return [int(row["id"]) for row in rows]
-
-    async def set_outcome(self, draft_id: int, outcome: dict[str, Any]) -> ProfileDraftRow | None:
-        """Record what a machine action did without moving the draft."""
-        await self.db.execute(
-            "UPDATE profile_drafts SET outcome_json = ?, updated_at = ? WHERE id = ?",
-            (dumps(outcome), utc_now(), draft_id),
-        )
-        return await self.get(draft_id)
 
     async def discard_unsent(self, draft_ids: Iterable[int], *, now: str | None = None) -> int:
         """Discard these drafts, unless they have already been sent to the machine.

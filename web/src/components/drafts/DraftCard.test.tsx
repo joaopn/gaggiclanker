@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DraftCard } from "@/components/drafts/DraftCard";
+import { boardRow } from "@/test/boardFixtures";
 import { draft, draftDetail, yieldChange } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -9,19 +10,8 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const {
-  getProfileDraft,
-  approveProfileDraft,
-  pushProfileDraft,
-  rollbackProfileDraft,
-  discardProfileDraft,
-  refineProfileDraft,
-  putOnBoard,
-} = vi.hoisted(() => ({
+const { getProfileDraft, discardProfileDraft, refineProfileDraft, putOnBoard } = vi.hoisted(() => ({
   getProfileDraft: vi.fn(),
-  approveProfileDraft: vi.fn(),
-  pushProfileDraft: vi.fn(),
-  rollbackProfileDraft: vi.fn(),
   discardProfileDraft: vi.fn(),
   refineProfileDraft: vi.fn(),
   putOnBoard: vi.fn(),
@@ -29,9 +19,6 @@ const {
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getProfileDraft,
-  approveProfileDraft,
-  pushProfileDraft,
-  rollbackProfileDraft,
   discardProfileDraft,
   refineProfileDraft,
   putOnBoard,
@@ -40,12 +27,6 @@ vi.mock("@/api/client", async (importOriginal) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   getProfileDraft.mockResolvedValue(draftDetail());
-  approveProfileDraft.mockResolvedValue(draft({ status: "approved" }));
-  pushProfileDraft.mockResolvedValue({
-    draft: draft({ status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" }),
-    set_version: null,
-  });
-  rollbackProfileDraft.mockResolvedValue(draft({ status: "failed" }));
   discardProfileDraft.mockResolvedValue(draft({ status: "discarded" }));
   refineProfileDraft.mockResolvedValue(draft({ id: 2, parent_draft_id: 1 }));
   putOnBoard.mockResolvedValue({ id: 5, label: "9 Bar Espresso [AI]" });
@@ -58,6 +39,17 @@ const NEW_PROFILE = {
   for_set: null,
 };
 
+const FOR_GUJI = {
+  set_id: 3,
+  set_name: "Guji on the Niche",
+  set_next_version_no: 4,
+  set_next_minor_label: "v2.2",
+  set_next_major_label: "v3",
+  prediction: "Compared to v2.1: less of the dry finish, and no slower.",
+  compares_to_version_no: 3,
+  compares_to_version_label: "v2.1",
+};
+
 describe("putting a draft on the board is one action", () => {
   it("offers Put on a drafted draft, with no Approve step, and puts it in one click", async () => {
     const user = setupUser();
@@ -68,10 +60,31 @@ describe("putting a draft on the board is one action", () => {
     await user.click(screen.getByTestId("put-on-board"));
 
     await waitFor(() => expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1 }));
-    expect(approveProfileDraft).not.toHaveBeenCalled();
+  });
+
+  it("puts a draft approved before this was one action as it is", async () => {
+    const user = setupUser();
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({
+          status: "approved",
+          stop_condition_changes: [yieldChange()],
+          acknowledged_stop_changes: true,
+        })}
+        adopted
+        landing={NEW_PROFILE}
+      />,
+    );
+
+    expect(screen.queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("put-on-board"));
+
+    await waitFor(() => expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1 }));
   });
 
   it("asks for the stop-condition acknowledgement on the same click and sends it", async () => {
+    // crema's rule. A stop condition decides how much coffee ends up in the cup, and the
+    // button stays disabled until somebody says they meant it.
     const user = setupUser();
     renderWithQueryClient(
       <DraftCard
@@ -81,7 +94,10 @@ describe("putting a draft on the board is one action", () => {
       />,
     );
 
-    expect(screen.getByTestId("stop-condition-warning")).toBeInTheDocument();
+    expect(screen.getByTestId("stop-condition-warning")).toHaveTextContent(
+      "how much coffee is in the cup",
+    );
+    expect(screen.getByTestId("stop-condition-warning")).toHaveTextContent("volumetric");
     expect(screen.getByTestId("put-on-board")).toBeDisabled();
     await user.click(screen.getByRole("checkbox"));
     expect(screen.getByTestId("put-on-board")).not.toBeDisabled();
@@ -92,23 +108,25 @@ describe("putting a draft on the board is one action", () => {
     );
   });
 
+  it("needs no checkbox for a draft that moves nothing", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} adopted landing={NEW_PROFILE} />);
+
+    expect(screen.queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
+    expect(screen.getByTestId("put-on-board")).not.toBeDisabled();
+  });
+
   it("carries the Set and the major choice, and holds the Set's button for the acknowledgement", async () => {
     const user = setupUser();
     renderWithQueryClient(
       <DraftCard
-        draft={draft({
-          stop_condition_changes: [yieldChange()],
-          set_id: 3,
-          set_name: "Guji on the Niche",
-          set_next_minor_label: "v2.2",
-          set_next_major_label: "v3",
-        })}
+        draft={draft({ stop_condition_changes: [yieldChange()], ...FOR_GUJI })}
         adopted
         landing={{ ...NEW_PROFILE, for_set: NEW_PROFILE.plain }}
       />,
     );
 
     expect(screen.getByTestId("put-on-board-for-set")).toBeDisabled();
+    expect(screen.getByTestId("put-on-board")).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: /I understand/ }));
     await user.click(screen.getByRole("checkbox", { name: "Major change" }));
     await user.click(screen.getByTestId("put-on-board-for-set"));
@@ -137,12 +155,34 @@ describe("putting a draft on the board is one action", () => {
       "The board already has Londinium; refine this draft from it, or discard it.",
     );
   });
+});
 
-  it("still offers Approve before the board is adopted", () => {
+describe("before the board has taken the machine's profiles", () => {
+  it("says what makes it happen and offers only refine and discard", () => {
     renderWithQueryClient(<DraftCard draft={draft()} />);
 
-    expect(screen.getByTestId("approve-draft")).toBeInTheDocument();
+    expect(screen.getByTestId("draft-board-not-adopted")).toHaveTextContent(
+      "Profiles reach the machine once the Writes switch is on and a sync has taken the machine's profiles onto the board.",
+    );
     expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board-for-set")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("approve-draft")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("push-draft")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discard-draft")).toBeInTheDocument();
+    expect(screen.getByTestId("refine-draft")).toBeInTheDocument();
+  });
+
+  it("says the same of a draft approved earlier", () => {
+    renderWithQueryClient(<DraftCard draft={draft({ status: "approved" })} />);
+
+    expect(screen.getByTestId("draft-board-not-adopted")).toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
+  });
+
+  it("says it once the board is adopted no more", () => {
+    renderWithQueryClient(<DraftCard draft={draft()} adopted landing={NEW_PROFILE} />);
+
+    expect(screen.queryByTestId("draft-board-not-adopted")).not.toBeInTheDocument();
   });
 });
 
@@ -156,6 +196,7 @@ describe("DraftCard", () => {
           prediction: "Compared to v2: less of the dry finish, and no slower.",
           compares_to_version_no: 2,
         })}
+        adopted
       />,
     );
 
@@ -163,9 +204,9 @@ describe("DraftCard", () => {
     expect(block).toHaveTextContent("Guji on the Niche");
     expect(block).toHaveTextContent("compared to v2");
     expect(block).toHaveTextContent("less of the dry finish");
-    // Where it lands matters as much as what it says: pushing this draft for a
+    // Where it lands matters as much as what it says: putting this draft on the board for a
     // different Set records no prediction at all.
-    expect(block).toHaveTextContent("when you push this draft for that Set");
+    expect(block).toHaveTextContent("if you put it on the board for that Set");
   });
 
   it("says a draft made from an analysis came from one, as history and not a link", () => {
@@ -192,12 +233,14 @@ describe("DraftCard", () => {
           set_next_minor_label: "v1.3",
           set_next_major_label: "v2",
         })}
+        adopted
+        landing={{ ...NEW_PROFILE, for_set: NEW_PROFILE.plain }}
       />,
     );
 
     const card = screen.getByTestId("draft-card");
     expect(screen.getByTestId("draft-prediction")).toHaveTextContent("compared to v1.2");
-    expect(screen.getByTestId("push-draft-for-set")).toHaveTextContent("record it as v1.3");
+    expect(screen.getByTestId("put-on-board-for-set")).toHaveTextContent("record it as v1.3");
     expect(card).not.toHaveTextContent(/\bv3\b/);
     expect(card).not.toHaveTextContent(/\bv4\b/);
   });
@@ -219,35 +262,6 @@ describe("DraftCard", () => {
     expect(diff).toHaveTextContent("pressure 8 bar");
   });
 
-  it("approves a draft that moves nothing, with no checkbox in the way", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<DraftCard draft={draft()} />);
-
-    expect(screen.queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
-    await user.click(screen.getByTestId("approve-draft"));
-
-    await waitFor(() => expect(approveProfileDraft).toHaveBeenCalledWith(1, false));
-  });
-
-  it("will not let a yield change be approved until it is acknowledged", async () => {
-    // crema's rule. A stop condition decides how much coffee ends up in the
-    // cup, and the button stays disabled until somebody says they meant it.
-    const user = setupUser();
-    renderWithQueryClient(<DraftCard draft={draft({ stop_condition_changes: [yieldChange()] })} />);
-
-    expect(screen.getByTestId("stop-condition-warning")).toHaveTextContent(
-      "how much coffee is in the cup",
-    );
-    expect(screen.getByTestId("stop-condition-warning")).toHaveTextContent("volumetric");
-    expect(screen.getByTestId("approve-draft")).toBeDisabled();
-
-    await user.click(screen.getByRole("checkbox"));
-
-    expect(screen.getByTestId("approve-draft")).not.toBeDisabled();
-    await user.click(screen.getByTestId("approve-draft"));
-    await waitFor(() => expect(approveProfileDraft).toHaveBeenCalledWith(1, true));
-  });
-
   it("lists what the safety policy moved on the way in", async () => {
     renderWithQueryClient(
       <DraftCard
@@ -265,148 +279,96 @@ describe("DraftCard", () => {
       />,
     );
     // Clamping without the list is exactly the silent rewrite the policy exists
-    // to avoid, so the list is on the card next to the approve button.
+    // to avoid, so the list is on the card next to the put button.
     expect(screen.getByTestId("draft-clamps")).toHaveTextContent("140 → 100");
   });
 
-  it("offers push only once a draft is approved", async () => {
-    const user = setupUser();
-    const { rerender } = renderWithQueryClient(<DraftCard draft={draft()} />);
-    expect(screen.queryByTestId("push-draft")).not.toBeInTheDocument();
-
-    rerender(<DraftCard draft={draft({ status: "approved" })} />);
-    await user.click(screen.getByTestId("push-draft"));
-
-    await waitFor(() =>
-      expect(pushProfileDraft).toHaveBeenCalledWith(1, {
-        setId: undefined,
-        allowStaleBase: false,
-      }),
+  describe("putting a Set's draft on the board", () => {
+    const setCard = (extra: Record<string, unknown> = {}) => (
+      <DraftCard
+        draft={draft({ ...FOR_GUJI, status: "approved", ...extra })}
+        adopted
+        landing={{ ...NEW_PROFILE, for_set: NEW_PROFILE.plain }}
+      />
     );
-  });
 
-  describe("pushing a Set's draft", () => {
-    const forGuji = {
-      set_id: 3,
-      set_name: "Guji on the Niche",
-      set_next_version_no: 4,
-      set_next_minor_label: "v2.2",
-      set_next_major_label: "v3",
-      prediction: "Compared to v2.1: less of the dry finish, and no slower.",
-      compares_to_version_no: 3,
-      compares_to_version_label: "v2.1",
-    };
-
-    it("pushes it for its Set by default, and says which version it records", async () => {
+    it("puts it for its Set by default, and says which version it records", async () => {
       const user = setupUser();
-      renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
+      renderWithQueryClient(setCard());
 
-      const button = screen.getByTestId("push-draft-for-set");
-      // A pushed draft is a minor version by default, and the name is the
-      // server's, never the ordinal: this is the Set's fourth version.
+      const button = screen.getByTestId("put-on-board-for-set");
+      // A put draft is a minor version by default, and the name is the server's, never the
+      // ordinal: this is the Set's fourth version.
       expect(button).toHaveTextContent(
-        "Push to the machine and record it as v2.2 of Guji on the Niche",
+        "Put on the board and record it as v2.2 of Guji on the Niche",
       );
       expect(button).not.toHaveTextContent("v4");
       await user.click(button);
 
-      // The Set in the body is what makes the server record the version and
-      // the prediction; without it the push records nothing on the Set.
+      // The Set in the body is what makes the sync record the version and the prediction;
+      // without it nothing is recorded on the Set.
       await waitFor(() =>
-        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
-          setId: 3,
-          allowStaleBase: false,
-          major: false,
-        }),
+        expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1, setId: 3, major: false }),
       );
     });
 
-    it("pushes a draft as a minor version unless the person marks it major", async () => {
+    it("is a minor version unless the person marks it major", async () => {
       const user = setupUser();
-      renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
+      renderWithQueryClient(setCard());
 
       const box = screen.getByRole("checkbox", { name: "Major change" });
       expect(box).not.toBeChecked();
       await user.click(box);
-      const button = screen.getByTestId("push-draft-for-set");
+      const button = screen.getByTestId("put-on-board-for-set");
       expect(button).toHaveTextContent("record it as v3 of Guji on the Niche");
       await user.click(button);
 
       await waitFor(() =>
-        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
-          setId: 3,
-          allowStaleBase: false,
-          major: true,
-        }),
+        expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1, setId: 3, major: true }),
       );
     });
 
     it("preselects the agent's suggestion of major and shows its reason", () => {
       renderWithQueryClient(
-        <DraftCard
-          draft={draft({
-            ...forGuji,
-            status: "approved",
-            suggest_major: true,
-            major_reason: "Eight bar is a different kind of shot from nine.",
-          })}
-        />,
+        setCard({
+          suggest_major: true,
+          major_reason: "Eight bar is a different kind of shot from nine.",
+        }),
       );
 
       expect(screen.getByRole("checkbox", { name: "Major change" })).toBeChecked();
       expect(screen.getByTestId("major-reason")).toHaveTextContent(
         "Eight bar is a different kind of shot from nine.",
       );
-      expect(screen.getByTestId("push-draft-for-set")).toHaveTextContent("record it as v3");
+      expect(screen.getByTestId("put-on-board-for-set")).toHaveTextContent("record it as v3");
     });
 
-    it("can still be pushed without recording it on the Set", async () => {
+    it("can still be put without recording it on the Set", async () => {
       const user = setupUser();
-      renderWithQueryClient(<DraftCard draft={draft({ ...forGuji, status: "approved" })} />);
+      renderWithQueryClient(setCard());
 
-      const plain = screen.getByTestId("push-draft");
-      expect(plain).toHaveTextContent("Push without recording it on the Set");
+      const plain = screen.getByTestId("put-on-board");
+      expect(plain).toHaveTextContent("Put on the board without recording it on the Set");
       await user.click(plain);
 
-      // No version is named by a push that records nothing on the Set.
-      await waitFor(() =>
-        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
-          setId: undefined,
-          allowStaleBase: false,
-        }),
-      );
+      // No version is named by a put that records nothing on the Set.
+      await waitFor(() => expect(putOnBoard).toHaveBeenCalledWith({ draftId: 1 }));
     });
 
-    it("carries the stale-base override on the push for the Set too", async () => {
-      const user = setupUser();
+    it("offers only the plain put once the Set is gone", () => {
       renderWithQueryClient(
-        <DraftCard draft={draft({ ...forGuji, status: "approved", base_is_current: false })} />,
+        <DraftCard
+          draft={draft({ ...FOR_GUJI, set_name: null, status: "approved" })}
+          adopted
+          landing={NEW_PROFILE}
+        />,
       );
-      expect(screen.getByTestId("push-draft-for-set")).toBeDisabled();
-      expect(screen.getByTestId("push-draft")).toBeDisabled();
-
-      await user.click(screen.getByRole("checkbox", { name: "Push it anyway." }));
-      await user.click(screen.getByTestId("push-draft-for-set"));
-
-      await waitFor(() =>
-        expect(pushProfileDraft).toHaveBeenCalledWith(1, {
-          setId: 3,
-          allowStaleBase: true,
-          major: false,
-        }),
-      );
+      expect(screen.queryByTestId("put-on-board-for-set")).not.toBeInTheDocument();
+      expect(screen.getByTestId("put-on-board")).toHaveTextContent("Put on the board");
     });
 
-    it("offers only the plain push once the Set is gone", () => {
-      renderWithQueryClient(
-        <DraftCard draft={draft({ ...forGuji, set_name: null, status: "approved" })} />,
-      );
-      expect(screen.queryByTestId("push-draft-for-set")).not.toBeInTheDocument();
-      expect(screen.getByTestId("push-draft")).toHaveTextContent("Push to the machine");
-    });
-
-    it("says the prediction was recorded only when the push recorded it", () => {
-      const pushed = { ...forGuji, status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" };
+    it("says the prediction was recorded only when the sync recorded it", () => {
+      const pushed = { ...FOR_GUJI, status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" };
       const { rerender } = renderWithQueryClient(
         <DraftCard
           draft={draft({ ...pushed, recorded_version_no: 4, recorded_version_label: "v2.2" })}
@@ -424,12 +386,12 @@ describe("DraftCard", () => {
       expect(landing).not.toHaveTextContent("Recorded as");
     });
 
-    it("says nothing about where it lands once the draft can no longer be pushed", () => {
-      // A failed push recorded nothing, and a discarded draft may have been
-      // recorded before its rollback: neither sentence would be true of both.
+    it("says nothing about where it lands once the draft can no longer be put", () => {
+      // A failed push recorded nothing, and a discarded draft may have been recorded before
+      // it was taken off the machine: neither sentence would be true of both.
       for (const status of ["failed", "discarded", "superseded"]) {
         const { unmount } = renderWithQueryClient(
-          <DraftCard draft={draft({ ...forGuji, status, pushed_device_profile_id: null })} />,
+          <DraftCard draft={draft({ ...FOR_GUJI, status, pushed_device_profile_id: null })} />,
         );
         expect(screen.getByTestId("draft-prediction")).toBeInTheDocument();
         expect(screen.queryByTestId("draft-prediction-landing")).not.toBeInTheDocument();
@@ -438,12 +400,12 @@ describe("DraftCard", () => {
     });
   });
 
-  it("says what a push replaced, what it kept and why, and the startup profile note", () => {
+  it("says what the sync that put it on the machine replaced and kept", () => {
     const lines = [
       "Replaced aB3xYz90Pq: the previous copy is off the machine.",
-      "The machine's startup profile was the replaced one and the firmware cleared that setting.",
+      "Left cD4wXy12Rs on the machine: not created by this app.",
     ];
-    const { rerender } = renderWithQueryClient(
+    renderWithQueryClient(
       <DraftCard
         draft={draft({
           status: "pushed",
@@ -455,26 +417,22 @@ describe("DraftCard", () => {
     );
     expect(screen.getByTestId("draft-pushed")).toHaveTextContent("nEw1234567");
     expect(screen.getByTestId("draft-outcome")).toHaveTextContent("Replaced aB3xYz90Pq");
-    expect(screen.getByTestId("draft-outcome")).toHaveTextContent("startup profile");
-    expect(screen.getByTestId("rollback-draft")).toHaveTextContent("restore the previous profile");
-
-    rerender(
-      <DraftCard
-        draft={draft({
-          status: "pushed",
-          pushed_device_profile_id: "nEw1234567",
-          outcome: {
-            action: "push",
-            lines: ["Left aB3xYz90Pq on the machine: not created by this app."],
-          },
-        })}
-      />,
-    );
     expect(screen.getByTestId("draft-outcome")).toHaveTextContent("not created by this app");
-    expect(screen.getByTestId("rollback-draft")).toHaveTextContent("Delete it from the machine");
   });
 
-  it("offers no rollback for a draft whose profile a later push replaced", () => {
+  it("takes a profile off the machine from the board, not from the card", () => {
+    renderWithQueryClient(
+      <DraftCard draft={draft({ status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" })} />,
+    );
+
+    expect(screen.getByTestId("draft-pushed")).toHaveTextContent(
+      "delete the profile from the board, or go back to its previous version there",
+    );
+    expect(screen.queryByTestId("rollback-draft")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("discard-draft")).not.toBeInTheDocument();
+  });
+
+  it("says a later version replaced a pushed draft's profile", () => {
     renderWithQueryClient(
       <DraftCard
         draft={draft({
@@ -484,8 +442,8 @@ describe("DraftCard", () => {
         })}
       />,
     );
-    expect(screen.queryByTestId("rollback-draft")).not.toBeInTheDocument();
     expect(screen.getByTestId("draft-replaced")).toHaveTextContent("replaced this profile");
+    expect(screen.queryByTestId("draft-pushed")).not.toBeInTheDocument();
   });
 
   it("shows no outcome for a draft that has not touched the machine", () => {
@@ -493,7 +451,7 @@ describe("DraftCard", () => {
     expect(screen.queryByTestId("draft-outcome")).not.toBeInTheDocument();
   });
 
-  it("offers one click to remove a push that did not verify", async () => {
+  it("explains an old push that did not verify, leaves its copy to the display, and lets it be cleared", async () => {
     const user = setupUser();
     renderWithQueryClient(
       <DraftCard
@@ -502,22 +460,16 @@ describe("DraftCard", () => {
           pushed_device_profile_id: "aB3xYz90Pq",
           error: "the machine stored something other than what was sent",
         })}
+        adopted
       />,
     );
 
     expect(screen.getByTestId("draft-failed")).toHaveTextContent("stored something other than");
-    await user.click(screen.getByTestId("rollback-draft"));
-
-    await waitFor(() => expect(rollbackProfileDraft).toHaveBeenCalledWith(1));
-  });
-
-  it("does not offer a rollback once the machine's copy is gone", () => {
-    // The draft stays `failed` — what happened, happened — but the button must
-    // not come back, or it would delete whatever inherits that id next.
-    renderWithQueryClient(
-      <DraftCard draft={draft({ status: "failed", pushed_device_profile_id: null })} />,
-    );
+    expect(screen.getByTestId("draft-failed")).toHaveTextContent("remove it on the display");
     expect(screen.queryByTestId("rollback-draft")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("discard-draft"));
+
+    await waitFor(() => expect(discardProfileDraft).toHaveBeenCalledWith(1));
   });
 
   it("refines with notes rather than editing the draft in place", async () => {
@@ -543,47 +495,33 @@ describe("DraftCard", () => {
     await waitFor(() => expect(discardProfileDraft).toHaveBeenCalledWith(1));
   });
 
-  it("will not push a draft whose base has changed on the machine", async () => {
-    // The diff that was approved is a diff against a version the display no
-    // longer holds; pushing anyway proposes undoing whatever was changed there.
-    const user = setupUser();
+  it("warns about a base that changed on the machine, and still offers the put", () => {
+    // The diff is against a version the display no longer holds. The board does not refuse it:
+    // the next sync puts this version beside whatever was changed there.
     renderWithQueryClient(
-      <DraftCard draft={draft({ status: "approved", base_is_current: false })} />,
+      <DraftCard draft={draft({ base_is_current: false })} adopted landing={NEW_PROFILE} />,
     );
 
     expect(screen.getByTestId("stale-base-warning")).toHaveTextContent("changed on the machine");
-    expect(screen.getByTestId("push-draft")).toBeDisabled();
-
-    await user.click(screen.getByRole("checkbox"));
-    await user.click(screen.getByTestId("push-draft"));
-
-    await waitFor(() =>
-      expect(pushProfileDraft).toHaveBeenCalledWith(1, {
-        setId: undefined,
-        allowStaleBase: true,
-      }),
+    expect(screen.getByTestId("stale-base-warning")).toHaveTextContent(
+      "the next sync puts this version beside whatever was changed there",
     );
-  });
-
-  it("warns about a stale base before the draft is even approved", () => {
-    // Worth knowing while deciding whether to approve: the answer is usually
-    // "draft again from the current profile", not "approve and override".
-    renderWithQueryClient(<DraftCard draft={draft({ base_is_current: false })} />);
-    expect(screen.getByTestId("stale-base-warning")).toBeInTheDocument();
     expect(screen.queryByTestId("allow-stale-base")).not.toBeInTheDocument();
+    expect(screen.getByTestId("put-on-board")).not.toBeDisabled();
   });
 
-  it("offers to take a pushed profile back off the machine", async () => {
-    // Not only a failed one: a profile you pushed and then thought better of is
-    // the same deletion, and it leaves the draft `discarded` rather than lying.
-    const user = setupUser();
+  it("does not offer to discard a draft waiting on the board under it", () => {
     renderWithQueryClient(
-      <DraftCard draft={draft({ status: "pushed", pushed_device_profile_id: "aB3xYz90Pq" })} />,
+      <DraftCard
+        draft={draft({ status: "approved" })}
+        adopted
+        boardRow={boardRow({ id: 2, origin: "draft", pending_draft_id: 1 })}
+      />,
     );
 
-    await user.click(screen.getByTestId("rollback-draft"));
-
-    await waitFor(() => expect(rollbackProfileDraft).toHaveBeenCalledWith(1));
+    expect(screen.getByTestId("draft-on-board")).toHaveTextContent("On the board.");
+    expect(screen.queryByTestId("discard-draft")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("put-on-board")).not.toBeInTheDocument();
   });
 });
 
@@ -591,38 +529,24 @@ describe("long button labels stay inside the card at phone width", () => {
   // jsdom has no layout: what can be pinned is the classes that let a button shrink and wrap
   // (the base button is `shrink-0 whitespace-nowrap`, which made the page scroll sideways).
   const WRAPS = ["min-w-0", "max-w-full", "shrink", "whitespace-normal", "h-auto"];
-  const forGuji = {
-    set_id: 3,
-    set_name: "Guji on the Niche",
-    set_next_version_no: 4,
-    set_next_minor_label: "v2.2",
-    set_next_major_label: "v3",
-  };
 
-  it.each([
-    ["a push for the Set", false, ["push-draft-for-set", "push-draft"]],
-    ["a put for the Set", true, ["put-on-board-for-set", "put-on-board"]],
-  ])("%s", (_name, adopted, ids) => {
+  it("a put for the Set and a put without it", () => {
     renderWithQueryClient(
-      <DraftCard draft={draft({ ...forGuji, status: "approved" })} adopted={adopted} />,
+      <DraftCard
+        draft={draft({ ...FOR_GUJI, status: "approved" })}
+        adopted
+        landing={{ ...NEW_PROFILE, for_set: NEW_PROFILE.plain }}
+      />,
     );
-    for (const id of ids) {
+    for (const id of ["put-on-board-for-set", "put-on-board"]) {
       for (const cls of WRAPS) expect(screen.getByTestId(id)).toHaveClass(cls);
     }
   });
 
-  it("the plain push, the plain put and the rollback", () => {
-    const { unmount } = renderWithQueryClient(<DraftCard draft={draft({ status: "approved" })} />);
-    for (const cls of WRAPS) expect(screen.getByTestId("push-draft")).toHaveClass(cls);
-    unmount();
-    const second = renderWithQueryClient(
-      <DraftCard draft={draft({ status: "approved" })} adopted />,
+  it("the plain put", () => {
+    renderWithQueryClient(
+      <DraftCard draft={draft({ status: "approved" })} adopted landing={NEW_PROFILE} />,
     );
     for (const cls of WRAPS) expect(screen.getByTestId("put-on-board")).toHaveClass(cls);
-    second.unmount();
-    renderWithQueryClient(
-      <DraftCard draft={draft({ status: "pushed", pushed_device_profile_id: "ab12" })} />,
-    );
-    for (const cls of WRAPS) expect(screen.getByTestId("rollback-draft")).toHaveClass(cls);
   });
 });

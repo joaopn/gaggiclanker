@@ -20,6 +20,7 @@ from gaggiclanker.db.repos.profile_board import (
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
+from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -31,7 +32,6 @@ from tests.drafts.test_board import (
     row_for,
     variant_draft,
 )
-from tests.drafts.test_replace import APP_LABEL, Live, draft_of, make_set_on
 from tests.llm.conftest import FakeProvider
 
 __all__ = ["adopted"]  # the fixture, re-exported for this module
