@@ -9,6 +9,7 @@ import {
   getHealth,
   getProfileBoard,
   getSettings,
+  goBackOnBoard,
   hasAuthenticatedSession,
   login,
   logout,
@@ -66,6 +67,30 @@ describe("the profile board's requests", () => {
     expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board");
     expect(body(0)).toEqual({ draft_id: 4, set_id: 3, major: true });
     expect(body(1)).toEqual({ draft_id: 4, set_id: null });
+  });
+
+  it("sends the stop-condition acknowledgement only when it was given", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(201, success({})));
+    await putOnBoard({ draftId: 4, acknowledgeStopChanges: true });
+    await putOnBoard({ draftId: 4, acknowledgeStopChanges: false });
+    const body = (n: number) => {
+      const init = spy.mock.calls[n]?.[1] as RequestInit;
+      return JSON.parse(String(init.body));
+    };
+    expect(body(0)).toEqual({ draft_id: 4, set_id: null, acknowledge_stop_changes: true });
+    expect(body(1)).toEqual({ draft_id: 4, set_id: null });
+  });
+
+  it("goes back by the row, as a POST", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(200, success({})));
+    await goBackOnBoard(7);
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board/7/go-back");
+    const init = spy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe("POST");
   });
 
   it("takes a profile by the field the server reads", async () => {
