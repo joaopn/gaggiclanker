@@ -225,7 +225,10 @@ async def test_the_retired_device_writes_switch_refuses_the_boot(
     logged = capsys.readouterr().out
     assert name in str(caught.value)
     assert "Writes switch in the top bar" in str(caught.value)
-    assert [line for line in logged.splitlines() if "device_writes_env_refused" in line]
+    refusal = [line for line in logged.splitlines() if "device_writes_env_refused" in line]
+    assert refusal
+    # The logged fix points at the switch, not at a settings card.
+    assert "turn on the Writes switch in the top bar" in refusal[0]
     # Refused before the database was created, let alone opened.
     assert not env.database_path.exists()
 

@@ -34,8 +34,15 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from gaggiclanker.device.client import GATED_WRITE_METHODS, READ_ONLY_METHODS, GaggimateClient
-from gaggiclanker.device.writes import DenyAllWrites, DeviceWriteGate
+from gaggiclanker.device.writes import (
+    DenyAllWrites,
+    DeviceWriteGate,
+    DeviceWriteRefused,
+    PendingWrite,
+)
 
 #: Methods that are part of running the client rather than talking to the
 #: machine. They send nothing the device can act on.
@@ -169,3 +176,12 @@ def test_a_client_with_no_gate_refuses_everything() -> None:
     client = GaggimateClient("machine.test")
     assert isinstance(client._gate, DenyAllWrites)
     assert isinstance(client._gate, DeviceWriteGate)
+
+
+async def test_the_deny_all_gate_names_the_writes_switch() -> None:
+    """Where the refusal says to look is the top-bar switch, by its on-screen name."""
+    gate = DenyAllWrites()
+    with pytest.raises(DeviceWriteRefused) as caught:
+        await gate.authorize(PendingWrite(kind="profile_save", host="machine.test"))
+    assert "Writes switch" in str(caught.value)
+    assert "deviceWritesEnabled" in str(caught.value)

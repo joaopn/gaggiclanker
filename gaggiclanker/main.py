@@ -203,7 +203,7 @@ def check_configuration(
         log.error(
             "device_writes_env_refused",
             env_key=writes_switch,
-            fix=("remove the variable and turn on the Writes switch in the top bar"),
+            fix="remove the variable and turn on the Writes switch in the top bar",
         )
         raise RuntimeError(
             f"{writes_switch} no longer allows this box to write to the machine: writes are "
