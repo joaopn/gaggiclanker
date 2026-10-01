@@ -98,6 +98,18 @@ first (`POST /api/backup`), because there is no down-migration.
   nothing; after, what the next pull would do (counts and the list). When the machine cannot
   be read it says so and shows the last pull's picture. The panel stays inside the screen at
   phone width.
+- **Profiles the machine gained after the board took its own can be taken onto it:** the
+  Profiles page lists them under "On the machine, not on the board", each with **Take onto
+  the board** (new route `POST /api/profile-board/take`). It reads the last mirror, sends
+  nothing to the machine, and treats a copy this app saved itself as the app's and anything
+  else as yours, exactly as the first adoption does. Chat and MCP have no tool for it.
+- **Fixes while building it:** a pull's write phase now refreshes the drafts, Sets and write
+  audit open in the browser; the Resume banner goes away once resumed; the Sync summary reads
+  each reason by the section it is under; a board that cannot be read says so instead of
+  showing the old push buttons; a draft the board has moved past is not offered "Put on the
+  board" and can be discarded. Wording that said a person "pushes" a profile (the Set pages,
+  the draft card, the chat's prompts and tool notes) now says they put it on the machine,
+  which is true with and without the board; the agent's prompts are a little shorter.
 - **The Sync page shows what the last pull did to the profiles** (put on, removed, left and
   why, home-screen changes, anything that did not work) and the profiles a pull will not touch
   (one of yours that was edited or is missing). When the machine looks reset and pulls have
