@@ -100,10 +100,10 @@ describe("DevicePage", () => {
   });
 
   it.each([
-    ["#storage", "/sync#pull"],
-    ["#cleanup", "/sync#pull"],
-    ["#notes", "/sync#pull"],
-    ["#sync", "/sync#pull"],
+    ["#storage", "/sync#sync"],
+    ["#cleanup", "/sync#sync"],
+    ["#notes", "/sync#sync"],
+    ["#sync", "/sync#sync"],
     ["#writes", "/sync#writes"],
   ])("sends an old %s anchor to the section that moved", async (anchor, target) => {
     renderAt(`/device${anchor}`);

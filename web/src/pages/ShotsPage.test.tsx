@@ -2489,7 +2489,12 @@ describe("ShotsPage sync button", () => {
     return { user, ledger };
   }
 
-  const settle = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+  // Twice: React flushes the effect that follows a ledger update at the end of the first act,
+  // so the timer under test only starts there.
+  const settle = async (ms: number) => {
+    await act(() => new Promise((resolve) => setTimeout(resolve, 1)));
+    await act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+  };
   const running = () => profileRun(null, { status: "running", finished_at: null });
 
   it("waits for a profile pass that is running when the shot pass is done, then says its numbers", async () => {

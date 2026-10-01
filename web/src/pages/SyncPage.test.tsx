@@ -104,8 +104,23 @@ describe("SyncPage", () => {
       .getAllByText(/^(Sync with the machine|Recent writes)$/)
       .map((node) => node.textContent);
     expect(headings).toEqual(["Sync with the machine", "Recent writes"]);
-    for (const anchor of ["pull", "writes"]) {
+    for (const anchor of ["sync", "writes"]) {
       expect(container.querySelector(`#${anchor}`)).not.toBeNull();
+    }
+  });
+
+  it.each(["#sync", "#pull"])("lands on the sync section for the %s anchor", async (hash) => {
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    try {
+      renderWithQueryClient(<SyncPage />, { initialEntries: [`/sync${hash}`] });
+      await screen.findByText(/120 shots/);
+      await waitFor(() => expect(scrolled).toContain("sync"));
+    } finally {
+      Element.prototype.scrollIntoView = original;
     }
   });
 

@@ -12,7 +12,7 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
  * redirects the anchors of the cards that moved here to these.
  */
 export const SYNC_ANCHORS = {
-  pull: "pull",
+  pull: "sync",
   board: "board",
   writes: "writes",
 } as const;
@@ -35,7 +35,9 @@ export function SyncPage() {
   const connected = device.data?.connected ?? false;
 
   useEffect(() => {
-    const anchor = hash.slice(1);
+    // `#pull` is what the section was called; old bookmarks keep landing on it.
+    const raw = hash.slice(1);
+    const anchor = raw === "pull" ? SYNC_ANCHORS.pull : raw;
     if (!anchor || device.isPending) return;
     document.getElementById(anchor)?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }, [hash, device.isPending]);

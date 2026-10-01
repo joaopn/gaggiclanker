@@ -23,8 +23,8 @@ npm run gen:api     # regenerate src/api/schema.d.ts from the backend's OpenAPI
 
 `npm run dev` expects the backend on `http://127.0.0.1:8042`
 (`uv run uvicorn gaggiclanker.main:app --reload --no-access-log` from the repo
-root). For a shots list with anything in it, run the fake machine and pull from
-it — the fake holds the fixture archive, so one press of "Pull from machine"
+root). For a shots list with anything in it, run the fake machine and sync with
+it — the fake holds the fixture archive, so one press of "Sync with machine"
 fills the UI with real shots and real curves:
 
 ```bash
@@ -96,13 +96,13 @@ src/
     shotChart.ts      samples -> series and phase bands; the sparkline path
     shotFilters.ts    the filter panel's state, and how it becomes a query string
     shotColumns.ts    the columns, their tracks and widths, the stored choice and widths
-    sync.ts           reading the sync ledger: last pull, and what it archived
+    sync.ts           reading the sync ledger: last sync, and what it archived
   hooks/
     useArchive.ts     shots (paged and infinite), one shot, samples, versions
     useVirtualRows.ts the list window with one open row, and "has this row been on screen yet"
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
-    shots/            table, filters, columns, pull button, drop zone, import results, row editor,
+    shots/            table, filters, columns, sync button, drop zone, import results, row editor,
                       ShotRowPanel (an open row), ShotCurvesCard (the Curves box, shared with
                       the shot page), DecisionCell, DeviceNotesCard
 ```
@@ -156,25 +156,25 @@ The judgement form in the open panel is the exception, as on the shot page: it
 puts back every field it renders when Save is pressed, and it re-seeds from the
 server whenever the verdict changes underneath it.
 
-The Sync page is where a person pulls from the machine and reads what this box has written to it:
+The Sync page is where a person syncs with the machine and reads what this box has written to it:
 
 ```
 src/
   pages/
-    SyncPage.tsx          the sections and their anchors (#pull, #board, #writes)
+    SyncPage.tsx          the sections and their anchors (#sync, #board, #writes)
   components/sync/
     PullSection.tsx       the shots page's PullButton, with the ledger under it
-    BoardSection.tsx      the last pull's profile summary, what a pull will not touch, Resume
+    BoardSection.tsx      the last sync's profile summary, what a sync will not touch, Resume
     DeviceWritesSection.tsx  the audit of every write, refusals included
     ConfirmStrip.tsx      the inline "are you sure" (also used by Settings → Shot information)
 ```
 
 Two things about it are worth knowing before editing. **Nothing on it runs
-by itself**, and what reaches the machine does so only through a person's click: the Pull
-button (with writes on, a pull also makes the machine match the board), and, until the board
+by itself**, and what reaches the machine does so only through a person's click: the Sync
+button (with writes on, a sync also makes the machine match the board), and, until the board
 is adopted, the staged box's push and rollback on the Profiles page. Editing the board
 (`/api/profile-board`: put a draft, take a profile, home screen, delete, resume) changes the
-archive only and the next pull writes it (`hooks/useBoard.ts`; every mutation
+archive only and the next sync writes it (`hooks/useBoard.ts`; every mutation
 settles with `invalidateBoardWrites`, which refreshes the board, drafts, profiles, sync status
 and write audit). Saving a judgement never sends it. `lib/board.ts` words the server's plan
 and a run's summary and decides nothing. **The audit renders whatever `kind` the server stored** as a
@@ -190,7 +190,7 @@ src/
     usePrompts.ts     the prompt list, one prompt, save and reset
   components/
     LlmActivity.tsx   the header indicator and the sheet behind it
-    DeviceWritesSwitch.tsx  the top-bar writes switch: confirm before on (with a live preview of the next pull), immediate off
+    DeviceWritesSwitch.tsx  the top-bar writes switch: confirm before on (with a live preview of the next sync), immediate off
     board/BoardList.tsx     the Profiles page's board: one card per profile, home-screen tick, delete with a confirm
   pages/settings/
     LlmGroups.tsx     the provider picker and everything that depends on which one

@@ -18,9 +18,13 @@ first (`POST /api/backup`), because there is no down-migration.
   sync. Nothing else changed: the API routes, stored settings and the other names are as they were.
 - **The message after a sync now says what it did to the profiles.** After the shots ("Synced: 2
   new shots.") it says how many profiles were read from the machine and what was written to it:
-  "Read 9 profiles from the machine; wrote 2 (pushed 1, removed 1)." With writes off it says
+  "Read 9 profiles from the machine; wrote 2 (pushed 1, removed 1)." Writes are counted per
+  profile pushed, removed or starred, not per request to the machine. With writes off it says
   "no writes (writes are off)"; with nothing to do, "no writes needed"; after a suspected reset,
-  that writes are paused; and it counts writes that failed. The profile pass of a sync now records
+  that writes are paused; a profile already on the machine as it should be is counted apart
+  ("1 already on the machine"); and when something failed it says "nothing written, 1 failed"
+  rather than that nothing was needed. The toast waits for the sync's profile pass however long
+  it takes. The profile pass of a sync now records
   how many profiles it read, on its run in the sync ledger.
 
 ### A quick Claude Code install still says how it went
@@ -221,7 +225,7 @@ first (`POST /api/backup`), because there is no down-migration.
   graded against its profile, at medium confidence: compare scores only between
   shots that were graded. This is every imported shot whose profile the archive
   never held, and any shot the machine's profiles were not mirrored for (Sync
-  page, Pull profiles). Profiles are taken as they were mirrored: the archive
+  page, Sync with machine). Profiles are taken as they were mirrored: the archive
   does not check them against the machine. When the profile mirror links a shot
   to a profile, or an import's profile-name match does (a shot with no profile
   of its own, matched against the profiles the archive holds), the shot is
@@ -1554,9 +1558,9 @@ status poll alone. Chart.js stays for the shot, compare and Set trend charts.
 - **"Sync with machine"** in the header: disabled with a reason when no machine
   is configured or it is unreachable, a spinner while a sync is running —
   whoever started it — and a toast when the one you started finishes, counted
-  off the ledger ("3 new shots, 1 updated", "Nothing new", or what the machine
-  said when it failed). The subtitle says when the archive was last pulled into,
-  or "Never pulled".
+  off the ledger ("Synced: 3 new shots, 1 updated." and what the profiles did, or what the
+  machine said when it failed). The subtitle says when the archive was last synced
+  ("Last sync 2 minutes ago"), or "Never synced".
 - **A drop zone** under the header takes shot and profile exports — `.json`,
   `.slog` or a zip of either — with a file picker for keyboards and phones and a
   result line that unfolds into a row per file.
