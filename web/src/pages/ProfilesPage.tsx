@@ -410,7 +410,9 @@ function ProfileVersions({
     <SectionCard
       title="Versions"
       description={`Every distinct profile document the archive holds (${total}). A version is immutable and content-hashed, so a shot from March still resolves to what it was brewed with.`}
-      contentClassName="overflow-x-auto"
+      // `relative`: the table's sr-only heading is absolutely positioned and, without a
+      // positioned scroller around it, escapes the clip and widens the whole page.
+      contentClassName="relative overflow-x-auto"
     >
       <table className="w-full border-collapse text-left text-sm">
         <thead className="border-border border-b text-muted-foreground text-xs uppercase tracking-wide">
