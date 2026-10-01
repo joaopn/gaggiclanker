@@ -31,7 +31,7 @@ simulator end-to-end test, which genuinely needs the machine to brew, opens a
 throwaway socket of its own rather than widening that surface.
 
 The gate is `deviceWritesEnabled`, **off by default**, re-read on every single
-write rather than cached at boot — the person turning it off is usually the
+write rather than cached at boot (it is the **Writes** switch in the top bar) — the person turning it off is usually the
 person who has just seen something they did not like. It is the only switch.
 The gate's per-kind branch is where the narrower rules live — a profile delete
 is refused unless the audit holds a successful save for that id. A client built

@@ -263,7 +263,8 @@ follows: what is live is whatever the current recipe actually came from.
 
 ### What gaggiclanker writes to the machine, and who starts it
 
-Nothing, until **Device writes enabled** is on under Settings → Machine access. With it
+Nothing, until the **Writes** switch in the top bar, beside the machine status, is on. It
+is off by default; turning it on asks first, turning it off is immediate. With it
 on, **the only thing this box ever writes to the machine is a profile** (see
 below). It never deletes a shot from the machine, never writes a judgement to a
 shot's notes card and never changes a device setting.
@@ -295,7 +296,7 @@ starting-point wizard proposing one, which lands in the same place with
 the same buttons on it.
 
 A staged profile is then approved and pushed, and the push is refused before
-anything reaches the wire unless **Device writes enabled** is on. It is always
+anything reaches the wire unless the **Writes** switch in the top bar is on. It is always
 saved as a new profile with an `[AI]` suffix, never over an existing one. The
 machine is read again first: a profile already holding the same content is
 reused, and a later push of the same profile (for a Set: what the Set's current
@@ -1020,9 +1021,9 @@ password you want under Settings → Authentication.
 **The container exits at boot with `device_writes_env_refused`.**
 `GAGGICLANKER_DEVICE_WRITES_ENABLED` is still set — in `compose.yml`, in a
 leftover `.env` compose passes through, or in the shell that started it. It no
-longer allows anything: writes to the machine are switched on under **Settings →
-Machine access** and the switch lives in the database. Remove the variable, start the
-app, and set the switch there if you want writes on. The boot refuses rather
+longer allows anything: writes to the machine are switched on with the **Writes**
+switch in the top bar and the switch lives in the database. Remove the variable, start the
+app, and use the switch if you want writes on. The boot refuses rather
 than ignoring it because a switch that used to open the only path to your
 espresso machine must not change meaning quietly.
 

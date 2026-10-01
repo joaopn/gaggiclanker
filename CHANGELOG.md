@@ -10,6 +10,20 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### One Writes switch in the top bar
+
+- **Changed: writes to the machine are switched on and off from the top bar.**
+  The switch sits beside the machine status on every page and says **Writes on**
+  or **Writes off** (just **On** / **Off** on a narrow window). Off is the
+  default and turning it off is immediate; turning it on asks first and says what
+  it allows today: pushing a profile to the machine, or rolling one back, from
+  the Profiles page. Nothing is written on its own. A change the server refuses
+  (for example when sign-in is on and you are signed out) says so under the
+  switch and leaves it as it was. The **Writes** card on Settings → Machine
+  access is gone, and the Profiles page banner, the refusal messages and the
+  README point at the switch instead. The stored setting and the API are
+  unchanged.
+
 ### A push replaces the profile it supersedes
 
 - **A push no longer piles up copies on the machine.** Before every push the
