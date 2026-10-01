@@ -266,7 +266,7 @@ class PlanBuilder:
             old_id = row.device_profile_id
             old = machine.profiles.get(old_id) if old_id else None
             plan = RowPlan(row=row, version=current)
-            plan.excluding_set = await self._exempt_set(row)
+            plan.excluding_set = await self.exempt_set(row)
             computed.rows.append(plan)
             if old_id is not None and old_id in machine.unreadable:
                 plan.report = _report(row, current.label, "unreadable", old_id, UNREADABLE)
@@ -379,7 +379,7 @@ class PlanBuilder:
             computed.paused = RESET_REASON
         return computed
 
-    async def _exempt_set(self, row: BoardRow) -> int | None:
+    async def exempt_set(self, row: BoardRow) -> int | None:
         if row.pending_set_id is not None:
             return row.pending_set_id
         if row.back_from_set_version_id is None:

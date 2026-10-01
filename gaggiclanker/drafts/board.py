@@ -42,7 +42,7 @@ import json
 import sqlite3
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -187,6 +187,9 @@ class BoardRowView(BaseModel):
     utility: bool = False
     machine: BoardMachineState
     planned: list[BoardAction] = Field(default_factory=list)
+    #: Why going back to the previous version would be refused right now (the button says so and
+    #: is disabled), or ``None`` when it would go ahead or the profile has no earlier version.
+    go_back_blocked: str | None = None
 
 
 class BoardLanding(BaseModel):
@@ -331,6 +334,7 @@ class BoardService:
                         selected=None if copy is None else copy.selected,
                     ),
                     planned=[a for a in actions if a.row_id == plan.row.id],
+                    go_back_blocked=await self._go_back_blocked(plan.row),
                 )
             )
         return BoardView(
@@ -346,6 +350,12 @@ class BoardService:
             landings=await self._landings() if computed.adopted else [],
         )
 
+    async def _go_back_blocked(self, row: BoardRow) -> str | None:
+        if row.origin != "draft" or row.previous_version_id is None:
+            return None
+        refusal = await self.go_back_refusal(row)
+        return None if refusal is None else refusal[0]
+
     async def _landings(self) -> list[DraftLanding]:
         """Where each waiting draft (drafted or approved) would land, by the code a put runs.
 
@@ -353,6 +363,8 @@ class BoardService:
         page cannot offer a put the server would place somewhere else or refuse.
         """
         found: list[DraftLanding] = []
+        # 200 is the most the drafts route can return and twice what the page asks for (100), so a
+        # draft the page shows always has a landing here and never waits for one for ever.
         waiting = [
             draft
             for draft in await self.drafts.list_drafts(open_only=True, limit=200)
@@ -662,6 +674,65 @@ class BoardService:
             except sqlite3.IntegrityError as exc:
                 raise Conflict("That profile is already on the board.") from exc
 
+    async def go_back_refusal(self, row: BoardRow) -> tuple[str, str] | None:
+        """Why this profile cannot go back right now, as ``(message, reason)``, or ``None``.
+
+        One place for the route's refusals and for the board read, which hands the message to
+        the button so it can say why it is disabled instead of offering a click that answers 409.
+        """
+        if row.origin != "draft":
+            return (
+                f"{row.label} is a profile of yours: the app only goes back on profiles it "
+                "wrote itself.",
+                "not_ours",
+            )
+        if row.previous_version_id is None:
+            return f"{row.label} has no earlier version to go back to.", "no_previous"
+        previous = await self.profiles.get_version(row.previous_version_id)
+        if previous is None:  # pragma: no cover - a foreign key guarantees it
+            return f"{row.label} has no earlier version to go back to.", "no_previous"
+        if previous.label != row.label:
+            holder = await self.board.find_live_by_label(previous.label, excluding=row.id)
+            if holder is not None:
+                return (
+                    f"The board already has {holder.label}, which is what {row.label} was "
+                    "before; rename or delete that one first.",
+                    "duplicate_label",
+                )
+        on_board = await self.board.find_live_by_version(previous.id)
+        if on_board is not None and on_board.id != row.id:
+            return f"That earlier version is already on the board as {on_board.label}.", "on_board"
+        if row.pending_draft_id is not None:
+            # Waiting for a sync, which is withdrawn by going back, unless an earlier sync
+            # stopped part-way: the file is already on the machine and nothing would stand on
+            # it once the row has gone back.
+            for held in await self.profiles.list_device_profiles():
+                if (
+                    held.current_version_id == row.current_version_id
+                    and held.device_id != row.device_profile_id
+                ):
+                    return (
+                        f"The last sync of {row.label} stopped part-way; sync again, then go back.",
+                        "sync_stopped_part_way",
+                    )
+        elif row.device_profile_id is not None and row.device_version_id != row.current_version_id:
+            # The newer version is on the machine already, beside an earlier copy the sync kept
+            # (a Set is brewing it). Going back now would leave the newer copy where nothing on
+            # the board stands on it: nothing could remove it.
+            using = await self.sets.sets_currently_using(
+                row.device_profile_id, row.device_version_id
+            )
+            why = (
+                f"for the Set {using[0]}; go back once that Set has moved on"
+                if using
+                else "because it could not be replaced yet; go back after a sync has settled it"
+            )
+            return (
+                f"The earlier copy of {row.label} is still kept on the machine {why}.",
+                "earlier_copy_kept",
+            )
+        return None
+
     async def go_back(self, row_id: int) -> BoardRow:
         """Make a profile its previous version again. The next sync does it on the machine.
 
@@ -682,48 +753,13 @@ class BoardService:
         """
         async with self.db.transaction():
             row = await self._live_row(row_id)
-            if row.origin != "draft":
-                raise Conflict(
-                    f"{row.label} is a profile of yours: the app only goes back on profiles it "
-                    "wrote itself."
-                )
-            if row.previous_version_id is None:
-                raise Conflict(f"{row.label} has no earlier version to go back to.")
+            refusal = await self.go_back_refusal(row)
+            if refusal is not None:
+                raise Conflict(refusal[0], details={"reason": refusal[1]})
+            assert row.previous_version_id is not None  # the refusal covers a missing one
             previous = await self.profiles.get_version(row.previous_version_id)
             if previous is None:  # pragma: no cover - a foreign key guarantees it
                 raise NotFound(f"No profile version {row.previous_version_id}")
-            if previous.label != row.label:
-                holder = await self.board.find_live_by_label(previous.label, excluding=row.id)
-                if holder is not None:
-                    raise Conflict(
-                        f"The board already has {holder.label}, which is what {row.label} was "
-                        "before; rename or delete that one first.",
-                        details={"reason": "duplicate_label"},
-                    )
-            on_board = await self.board.find_live_by_version(previous.id)
-            if on_board is not None and on_board.id != row.id:
-                raise Conflict(f"That earlier version is already on the board as {on_board.label}.")
-
-            if (
-                row.pending_draft_id is None
-                and row.device_profile_id is not None
-                and row.device_version_id != row.current_version_id
-            ):
-                # The newer version is on the machine already, beside an earlier copy the sync
-                # kept (a Set is brewing it). Going back now would leave the newer copy where
-                # nothing on the board stands on it: nothing could remove it.
-                using = await self.sets.sets_currently_using(
-                    row.device_profile_id, row.device_version_id
-                )
-                why = (
-                    f"for the Set {using[0]}; go back once that Set has moved on"
-                    if using
-                    else "because it could not be replaced yet; go back after a sync has settled it"
-                )
-                raise Conflict(
-                    f"The earlier copy of {row.label} is still kept on the machine {why}.",
-                    details={"reason": "earlier_copy_kept"},
-                )
 
             back_from_version: int | None = None
             back_from_set_version: int | None = None
@@ -959,6 +995,10 @@ class BoardService:
                 await self._left(phase, plan.pred)
                 settled = plan.pred.detail in FINAL_REFUSALS
             else:
+                # The exemption is read again now, not taken from the plan: a Set action during
+                # the push (a roll back onto the newer profile) can have made it stale.
+                fresh = await self.board.get(row.id)
+                exempt = None if fresh is None else await self.plans.exempt_set(fresh)
                 removal = await self._remove(
                     phase,
                     plan.pred,
@@ -966,7 +1006,7 @@ class BoardService:
                     successor=new_id,
                     row=plan.row,
                     version_id=row.device_version_id,
-                    excluding_set=plan.excluding_set,
+                    excluding_set=exempt,
                 )
                 settled = _is_settled(removal)
         if settled and (
@@ -976,7 +1016,9 @@ class BoardService:
                 row.id,
                 BoardRowPatch(device_profile_id=new_id, device_version_id=plan.version.id),
             )
-        if row.back_from_version_id is not None and (settled or plan.excluding_set is None):
+        if row.back_from_version_id is not None and (
+            settled or await self.plans.exempt_set(await self._fresh(row)) is None
+        ):
             # The file was dealt with (or will never be this app's to remove), or the Set version
             # the exemption was for is no longer its Set's current one: the going back is over.
             await self.board.update(
@@ -990,6 +1032,9 @@ class BoardService:
         await self._record(
             phase, plan, new_id, saved=placed is not None and not placed.reused, removal=removal
         )
+
+    async def _fresh(self, row: BoardRow) -> BoardRow:
+        return await self.board.get(row.id) or row
 
     async def _report(self, phase: _Phase, action: BoardAction) -> None:
         """Say what is wrong with a row the sync will not touch."""
@@ -1178,13 +1223,23 @@ class BoardService:
                 row.back_from_version_id is not None
                 and row.device_version_id == row.back_from_version_id
             ):
-                await self._retire(row, device_id, successor)
+                await self._retire(
+                    row,
+                    device_id,
+                    successor,
+                    "deleted" if row.deleted_at is not None else "went_back",
+                )
             else:
                 # A replacement that had to wait (the earlier copy was kept for a Set): the draft
                 # that put the current version on the machine replaces the draft behind this file.
                 newer = await self.drafts.pusher_of_version(row.current_version_id)
                 if newer is not None:
                     await self.drafts.supersede_pushed(device_id, by_draft_id=newer)
+                else:
+                    # Nothing newer stands behind the profile (a going back whose removal had to
+                    # wait for a Set): the copy is off the machine, so its draft is closed as a
+                    # delete closes it.
+                    await self._retire(row, device_id, successor, "removed")
             phase.summary.removed.append(
                 BoardSummaryItem(
                     row_id=row.id,
@@ -1215,7 +1270,13 @@ class BoardService:
             await self._row_failed(phase, action, "remove", removal.reason, device_id=device_id)
         return removal
 
-    async def _retire(self, row: BoardRow, device_id: str, successor: str | None) -> None:
+    async def _retire(
+        self,
+        row: BoardRow,
+        device_id: str,
+        successor: str | None,
+        how: Literal["went_back", "deleted", "removed"],
+    ) -> None:
         """Close the record of a file removed without a newer draft taking its place.
 
         Going back to a previous version, or deleting a profile, takes a pushed draft's file
@@ -1223,21 +1284,23 @@ class BoardService:
         pushed it is ``discarded`` and stops naming the file. And for going back, the Set
         versions that named the copy this one replaced (cleared when it was replaced) name the
         copy that has just been put back, so the history says where each of them is again.
+        ``removed`` is the same closing for a copy whose removal had to wait (a Set was brewing
+        it) and found nothing newer behind the profile.
         """
-        going_back = row.deleted_at is None
+        words = {
+            "went_back": f"Went back to the previous version: {device_id} is off the machine.",
+            "deleted": f"The profile was deleted from the board: {device_id} is off the machine.",
+            "removed": f"{device_id} is off the machine and nothing newer stands behind it.",
+        }
         found = await self.drafts.retire_pushed(
             device_id,
             outcome={
-                "action": "went_back" if going_back else "removed",
+                "action": how,
                 "removed_device_profile_id": device_id,
-                "lines": [
-                    f"Went back to the previous version: {device_id} is off the machine."
-                    if going_back
-                    else f"The profile was deleted from the board: {device_id} is off the machine."
-                ],
+                "lines": [words[how]],
             },
         )
-        if not going_back or successor is None:
+        if how != "went_back" or successor is None:
             return
         for draft in found:
             if (

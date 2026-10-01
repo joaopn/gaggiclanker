@@ -12,11 +12,12 @@ import asyncio
 from typing import Any
 
 import httpx
+import pytest
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
 from gaggiclanker.device.fake import FakeDevice
-from tests.drafts.conftest import BASE_LABEL, data, error
+from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data, error
 from tests.drafts.helpers import (
     APP_LABEL,
     audit,
@@ -481,3 +482,150 @@ async def test_once_the_set_moves_on_the_kept_copy_goes_and_the_newer_one_is_the
     assert older["replaced_by_draft_id"] == d2["id"] and older["status"] == "pushed"
     assert "Went back" not in " ".join((older.get("outcome") or {}).get("lines", []))
     assert (await go_back(client, v1["id"])).status_code == 200
+
+
+# ── what stays true when something happens during or between syncs ──
+
+
+async def test_the_exemption_is_read_again_just_before_the_removal(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+    provider: FakeProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The plan said the Set is exempt; during the push it rolls back onto the newer profile."""
+    from gaggiclanker.drafts import board as board_module
+
+    app, client, fake = adopted
+    v1, s, f2, versions = await recorded_on_set(app, client, fake, provider)
+    await go_back(client, v1["id"])
+    real_place = board_module.__dict__["place"]
+    fired: list[int] = []
+
+    async def place_then_roll(*args: Any, **kwargs: Any) -> Any:
+        placed = await real_place(*args, **kwargs)
+        if not fired:
+            fired.append(1)
+            await roll_set(client, s, versions[0])
+            await roll_set(client, s, versions[-1])
+        return placed
+
+    monkeypatch.setattr(board_module, "place", place_then_roll)
+
+    await pull(app)
+
+    assert fired and f2 in [str(p["id"]) for p in fake.profiles], "the Set brews it by choice now"
+
+
+async def test_going_back_is_refused_after_a_sync_that_stopped_part_way_and_orphans_nothing(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+    provider: FakeProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gaggiclanker.drafts.board import BoardService
+
+    app, client, fake = adopted
+    v1 = await app_row(app, client, fake, provider, 8)
+    await make_set_on(client, "T", v1["current_version_id"])  # keeps the earlier copy
+    await put(client, await draft_from(app, client, provider, v1, 7))
+    real = BoardService._record
+
+    async def cut_off(self: Any, phase: Any, plan: Any, *args: Any, **kwargs: Any) -> None:
+        if plan.row.pending_draft_id is not None:
+            raise RuntimeError("cut off after the push, before the record")
+        return await real(self, phase, plan, *args, **kwargs)
+
+    monkeypatch.setattr(BoardService, "_record", cut_off)
+    await pull(app)
+    monkeypatch.setattr(BoardService, "_record", real)
+    assert len(ids_labelled(fake, APP_LABEL)) == 2, "the newer copy is on the machine"
+
+    refused = await go_back(client, v1["id"])
+
+    assert refused.status_code == 409
+    assert "stopped part-way; sync again, then go back" in error(refused)["message"]
+    row = row_for(await get_board(client), APP_LABEL)
+    assert row["go_back_blocked"] and "stopped part-way" in row["go_back_blocked"]
+    for _ in range(2):
+        await pull(app)
+    assert len(ids_labelled(fake, APP_LABEL)) == 2, "nothing was orphaned or removed meanwhile"
+
+
+async def test_a_copy_removed_after_the_set_moved_on_closes_the_draft_that_pushed_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, s, f2, versions = await recorded_on_set(app, client, fake, provider)
+    pushed = data(await client.get("/api/profile-drafts?status=pushed"))["items"]
+    d2 = next(d for d in pushed if d["pushed_device_profile_id"] == f2)
+    await go_back(client, v1["id"])
+    await roll_set(client, s, versions[0])
+    await roll_set(client, s, versions[-1])
+    await pull(app)
+    assert f2 in [str(p["id"]) for p in fake.profiles]
+    other = row_for(await get_board(client), BASE_LABEL)["row"]["current_version_id"]
+    moved = await client.post(f"/api/sets/{s}/versions", json={"profile_version_id": other})
+    assert moved.status_code < 300, moved.text
+
+    await pull(app)
+
+    assert f2 not in [str(p["id"]) for p in fake.profiles]
+    closed = data(await client.get(f"/api/profile-drafts/{d2['id']}"))["draft"]
+    assert closed["status"] == "discarded" and closed["pushed_device_profile_id"] is None
+
+
+async def test_the_board_says_why_a_profile_cannot_go_back_and_nothing_when_it_can(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, _, _, _, _ = await kept_for_a_set(app, client, fake, provider)
+    row = row_for(await get_board(client), APP_LABEL)
+    assert "still kept on the machine for the Set T" in row["go_back_blocked"]
+    assert row_for(await get_board(client), BASE_LABEL)["go_back_blocked"] is None, "not offered"
+    other = row_for(await get_board(client), BASE_LABEL)["row"]["current_version_id"]
+    t = await app.state.db.fetch_value("SELECT id FROM sets WHERE name = 'T'")
+    await client.post(f"/api/sets/{t}/versions", json={"profile_version_id": other})
+    await pull(app)
+
+    assert row_for(await get_board(client), APP_LABEL)["go_back_blocked"] is None
+    assert (await go_back(client, v1["id"])).status_code == 200
+
+
+async def test_a_later_put_clears_what_a_going_back_left_for_the_sync(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    v1, _, _, _ = await recorded_on_set(app, client, fake, provider)
+    went = data(await go_back(client, v1["id"]))
+    assert went["back_from_version_id"] and went["back_from_set_version_id"]
+
+    row = await put(client, await draft_from(app, client, provider, went, 5))
+
+    assert row["back_from_version_id"] is None and row["back_from_set_version_id"] is None
+    await pull(app)
+    # The Set that recorded v2 is brewing it again as far as the sync can tell (the exemption went
+    # with the put), so its file stays beside the new one.
+    assert sorted(pressure_of(fake, i) for i in ids_labelled(fake, APP_LABEL)) == [5, 7]
+
+
+async def test_every_open_draft_the_page_can_ask_for_gets_a_landing(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """The page lists at most 100 open drafts; the board places 200, so none waits for ever."""
+    app, client, _ = adopted
+    made = []
+    for n in range(105):
+        row = await app.state.draft_proposals.create_manual(
+            base_version_id=await base_version_id(app, BASE_LABEL),
+            document={
+                **(await base_profile(app, BASE_LABEL)).model_dump(
+                    mode="json", exclude={"annotations", "id"}
+                ),
+                "label": f"Bulk {n}",
+            },
+            change_summary="bulk",
+        )
+        made.append(row.id)
+    listed = [d["id"] for d in data(await client.get("/api/profile-drafts?open=true"))["items"]]
+    landed = {x["draft_id"] for x in (await get_board(client))["landings"]}
+
+    assert len(listed) == 100 and set(listed) <= landed

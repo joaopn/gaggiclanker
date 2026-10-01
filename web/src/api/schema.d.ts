@@ -3169,6 +3169,8 @@ export interface components {
          * @description A board row, its machine state and what the next sync would do about it.
          */
         BoardRowView: {
+            /** Go Back Blocked */
+            go_back_blocked?: string | null;
             machine: components["schemas"]["BoardMachineState"];
             /** Planned */
             planned?: components["schemas"]["BoardAction"][];
