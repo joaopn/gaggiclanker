@@ -1,7 +1,8 @@
 import { AlertTriangle, FilePen, SlidersHorizontal, Star, Upload } from "lucide-react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import type { ProfileDraft, ProfileVersionSummary } from "@/api/types";
+import type { BoardRow, ProfileDraft, ProfileVersionSummary } from "@/api/types";
+import { BoardList } from "@/components/board/BoardList";
 import { DraftCard } from "@/components/drafts/DraftCard";
 import { ProfileJsonEditor } from "@/components/drafts/ProfileJsonEditor";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -12,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProfiles, useProfileVersion, useProfileVersions } from "@/hooks/useArchive";
+import { useProfileBoard } from "@/hooks/useBoard";
 import { useDeviceWrites } from "@/hooks/useDeviceStatus";
 import { useProfileDrafts, useStageVersionAsIs } from "@/hooks/useDrafts";
 import { useImportFiles } from "@/hooks/useImport";
@@ -19,10 +21,17 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { formatDate } from "@/lib/shots";
 
 /**
- * Profiles: what is on the machine, what is on its way there, and everything
- * the archive has ever held.
+ * Profiles, in two shapes.
  *
- * The three sections are one story read downwards. "On the machine" is the
+ * **Once the board is adopted** (the Writes switch has been on for a pull, which took the
+ * machine's profiles onto the app's board) the page is built around that board: one card
+ * per profile (`BoardList`) with where it stands on the machine in plain words, the
+ * home-screen tick and Delete, then the drafts waiting for a person, each with "Put on the
+ * board", then the versions. A pull is the only thing that writes a profile to the machine,
+ * so there is no push or rollback button any more. **Before that** the page is what it
+ * was: the mirror, the staged queue with its push and rollback, the versions.
+ *
+ * The rest of this comment is about the second shape. The three sections are one story read downwards. "On the machine" is the
  * mirror. "Staged for the machine" is the queue of drafts — profiles proposed
  * for the machine and what stands in the way of each — and it lives here
  * rather than on a page of its own because staging is a step between a version
@@ -54,6 +63,7 @@ export function ProfilesPage() {
   // "open" stays the server's definition of open rather than a second one here.
   const openDrafts = useProfileDrafts({ open: true });
   const writes = useDeviceWrites();
+  const board = useProfileBoard();
   const importFiles = useImportFiles();
   const uploadRef = useRef<HTMLInputElement>(null);
   const { hash } = useLocation();
@@ -61,12 +71,29 @@ export function ProfilesPage() {
   useQueryErrorToast(profiles.error, "Could not load profiles");
   useQueryErrorToast(versions.error, "Could not load profile versions");
   useQueryErrorToast(drafts.error, "Could not load the staging queue");
+  useQueryErrorToast(board.error, "Could not load the profile board");
+
+  // Unknown (still loading, or unreadable) is "not adopted": the page as it was. The
+  // drafts wait for the answer, though, so a push button never shows for a moment on a
+  // board that refuses it.
+  const adopted = board.data?.adopted === true;
+  const boardView = adopted ? board.data : undefined;
+  const boardRowByDraft = new Map(
+    (boardView?.rows ?? [])
+      .filter((entry) => entry.row.pending_draft_id != null)
+      .map((entry) => [entry.row.pending_draft_id as number, entry.row]),
+  );
+  const versionHash = (versionId: number): string | null => {
+    const found = versions.data?.items.find((version) => version.id === versionId);
+    return found ? found.content_hash.slice(0, 8) : null;
+  };
 
   const draftItems = drafts.data?.items ?? [];
   // The banner is about a queue that will not move, so it only speaks when
   // there is a queue. A page with nothing open has nothing to warn about, and a
   // permanent warning is one nobody reads by the second week.
-  const writesBlocked = writes.data?.enabled === false && (openDrafts.data?.items.length ?? 0) > 0;
+  const writesBlocked =
+    !adopted && writes.data?.enabled === false && (openDrafts.data?.items.length ?? 0) > 0;
 
   // Everything that creates a draft elsewhere — the starting-point wizard,
   // the JSON editor, a chat tool — comes
@@ -90,7 +117,11 @@ export function ProfilesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Profiles"
-        subtitle="Mirrored from the machine. Each distinct version is kept, so a shot from March still resolves to what it was brewed with."
+        subtitle={
+          adopted
+            ? "The profiles the app keeps on the machine. Change them here: they reach the machine on the next pull."
+            : "Mirrored from the machine. Each distinct version is kept, so a shot from March still resolves to what it was brewed with."
+        }
         actions={
           <Button
             variant="outline"
@@ -134,7 +165,53 @@ export function ProfilesPage() {
         </div>
       ) : null}
 
-      {profiles.isPending ? (
+      {boardView ? (
+        <>
+          {boardView.writes_enabled ? null : (
+            <div
+              className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+              data-testid="board-writes-off"
+            >
+              <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
+                <AlertTriangle className="size-3.5" aria-hidden="true" />
+                Writes are switched off
+              </p>
+              <p className="mt-1 text-status-warn-text text-xs">
+                The board keeps your changes, but a pull changes nothing on the machine until you
+                turn on the Writes switch in the top bar.
+              </p>
+            </div>
+          )}
+          {boardView.paused ? (
+            <div
+              className="rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+              data-testid="board-paused"
+            >
+              <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
+                <AlertTriangle className="size-3.5" aria-hidden="true" />
+                Pulls are not writing to the machine
+              </p>
+              <p className="mt-1 text-status-warn-text text-xs">
+                The machine looks reset, so nothing is pushed or removed until you say so.{" "}
+                <Link className="underline underline-offset-2" to="/sync">
+                  Resume it on the Sync page
+                </Link>
+                .
+              </p>
+            </div>
+          ) : null}
+          <SectionCard
+            title="On the board"
+            description={
+              boardView.machine_source === "machine"
+                ? "Read from the machine just now."
+                : "As of the last pull. A pull makes the machine match this."
+            }
+          >
+            <BoardList view={boardView} versionName={versionHash} />
+          </SectionCard>
+        </>
+      ) : profiles.isPending ? (
         <div className="space-y-2">
           {[0, 1, 2].map((row) => (
             <Skeleton key={row} className="h-8 w-full" />
@@ -203,7 +280,9 @@ export function ProfilesPage() {
 
       <StagedForTheMachine
         items={draftItems}
-        pending={drafts.isPending}
+        pending={drafts.isPending || board.isPending}
+        adopted={adopted}
+        boardRows={boardRowByDraft}
         showAll={showAllDrafts}
         onShowAllChange={setShowAllDrafts}
       />
@@ -241,11 +320,16 @@ export function ProfilesPage() {
 function StagedForTheMachine({
   items,
   pending,
+  adopted,
+  boardRows,
   showAll,
   onShowAllChange,
 }: {
   items: ProfileDraft[];
   pending: boolean;
+  adopted: boolean;
+  /** The board rows waiting on a draft, by draft id. */
+  boardRows: Map<number, BoardRow>;
   showAll: boolean;
   onShowAllChange: (next: boolean) => void;
 }) {
@@ -254,8 +338,12 @@ function StagedForTheMachine({
     // at; keep it even when the section is empty, or the link lands nowhere.
     <section id="staged" className="scroll-mt-20">
       <SectionCard
-        title="Staged for the machine"
-        description="Every one is saved as a new profile with an [AI] suffix — nothing is ever overwritten, and nothing is ever selected for you."
+        title={adopted ? "Waiting for you" : "Staged for the machine"}
+        description={
+          adopted
+            ? "Approve a draft, then put it on the board. Profiles reach the machine on the next pull; nothing is ever selected for you."
+            : "Every one is saved as a new profile with an [AI] suffix — nothing is ever overwritten, and nothing is ever selected for you."
+        }
         actions={
           <Button variant="outline" size="sm" onClick={() => onShowAllChange(!showAll)}>
             {showAll ? "Show only what is open" : "Show everything"}
@@ -271,12 +359,19 @@ function StagedForTheMachine({
           <p className="text-muted-foreground text-sm" data-testid="staged-empty">
             {showAll
               ? "Nothing has ever been staged."
-              : "Nothing staged. Stage a version below, or ask the chat to draft a profile change."}
+              : adopted
+                ? "Nothing waiting. Make a draft from a version below, or ask the chat to draft a profile change."
+                : "Nothing staged. Stage a version below, or ask the chat to draft a profile change."}
           </p>
         ) : (
           <ul className="space-y-3" data-testid="draft-list">
             {items.map((draft) => (
-              <DraftCard key={draft.id} draft={draft} />
+              <DraftCard
+                key={draft.id}
+                draft={draft}
+                adopted={adopted}
+                onBoard={boardRows.has(draft.id)}
+              />
             ))}
           </ul>
         )}

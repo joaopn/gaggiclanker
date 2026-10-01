@@ -54,7 +54,7 @@ export function usePutOnBoard(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: putOnBoard,
+    mutationFn: (body) => putOnBoard(body),
     onSuccess: (row) =>
       toast.success(`${row.label} is on the board`, {
         description: "The next pull puts it on the machine.",
@@ -83,7 +83,7 @@ export function useSetHomeScreen(): UseMutationResult<
 export function useDeleteBoardRow(): UseMutationResult<BoardRow, Error, number> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: deleteBoardRow,
+    mutationFn: (rowId: number) => deleteBoardRow(rowId),
     onSuccess: (row) => toast.success(`${row.label} is deleted from the board`),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateBoardWrites(queryClient),
@@ -93,7 +93,7 @@ export function useDeleteBoardRow(): UseMutationResult<BoardRow, Error, number> 
 export function useResumeBoard(): UseMutationResult<{ resumed: boolean }, Error, void> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: resumeBoard,
+    mutationFn: () => resumeBoard(),
     onSuccess: () =>
       toast.success("Pulls may write again", {
         description: "The next pull puts the app's profiles back on the machine.",

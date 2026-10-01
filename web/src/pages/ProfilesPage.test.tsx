@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileVersionListData } from "@/api/types";
 import { ProfilesPage } from "@/pages/ProfilesPage";
+import { boardView } from "@/test/boardFixtures";
 import { baseProfile, draft, draftDetail } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
@@ -18,6 +19,7 @@ const {
   getProfileDrafts,
   getProfileDraft,
   getDeviceWrites,
+  getProfileBoard,
   createProfileDraft,
   importFiles,
 } = vi.hoisted(() => ({
@@ -27,6 +29,7 @@ const {
   getProfileDrafts: vi.fn(),
   getProfileDraft: vi.fn(),
   getDeviceWrites: vi.fn(),
+  getProfileBoard: vi.fn(),
   createProfileDraft: vi.fn(),
   importFiles: vi.fn(),
 }));
@@ -38,6 +41,7 @@ vi.mock("@/api/client", async (importOriginal) => ({
   getProfileDrafts,
   getProfileDraft,
   getDeviceWrites,
+  getProfileBoard,
   createProfileDraft,
   importFiles,
 }));
@@ -82,6 +86,8 @@ beforeEach(() => {
   getProfileDrafts.mockResolvedValue({ items: [draft()] });
   getProfileDraft.mockResolvedValue(draftDetail());
   getDeviceWrites.mockResolvedValue({ enabled: true, items: [] });
+  // Before the board is adopted: the page as it was.
+  getProfileBoard.mockResolvedValue(boardView({ adopted: false, rows: [] }));
   createProfileDraft.mockResolvedValue(draft());
   getProfiles.mockResolvedValue({
     items: [
