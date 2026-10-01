@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -2391,7 +2391,7 @@ describe("ShotsPage sync button", () => {
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "the machine stopped answering. The machine's profiles could not be read: the machine stopped answering.",
+        "the machine stopped answering. The machine's profiles could not be read either.",
       ),
     );
   });
@@ -2465,6 +2465,140 @@ describe("ShotsPage sync button", () => {
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith("Synced: 2 new shots, 1 updated."),
     );
+  });
+
+  /** Press the button on a ledger holding runs 6 and 5, then let `runs` be the ledger. */
+  async function pressAndLedger(profileGraceMs: number) {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: { backfill: shotRun({ id: 6 }), profiles: profileRun(null, { id: 5 }) },
+      }),
+    );
+    const { queryClient } = renderWithQueryClient(<PullButton profileGraceMs={profileGraceMs} />);
+    await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
+    await user.click(screen.getByTestId("pull-button"));
+    await waitFor(() => expect(runSync).toHaveBeenCalled());
+    const ledger = async (runs: Record<string, unknown>) => {
+      getSyncStatus.mockResolvedValue(statusData({ last_runs: runs as never }));
+      for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+        await queryClient.invalidateQueries({ queryKey });
+      }
+    };
+    return { user, ledger };
+  }
+
+  const settle = (ms: number) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+  const running = () => profileRun(null, { status: "running", finished_at: null });
+
+  it("waits for a profile pass that is running when the shot pass is done, then says its numbers", async () => {
+    // The usual order: the shot pass finishes first, and this click's profile pass is already
+    // on the ledger, running.
+    const { ledger } = await pressAndLedger(40);
+    const shots = shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 });
+    await ledger({ backfill: shots, profiles: running() });
+    await settle(150);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+
+    await ledger({ backfill: shots, profiles: profileRun({ profiles_read: 9 }) });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: 2 new shots. Read 9 profiles from the machine; no writes (writes are off).",
+      ),
+    );
+  });
+
+  it("does not give up on a slow profile pass, and reports it when it fails", async () => {
+    const { ledger } = await pressAndLedger(40);
+    const shots = shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 });
+    await ledger({ backfill: shots, profiles: running() });
+    await settle(200); // well past the grace
+    expect(toast.success).not.toHaveBeenCalled();
+
+    await ledger({
+      backfill: shots,
+      profiles: profileRun(null, { status: "error", error: "machine gone", errors: 1 }),
+    });
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Shots synced: 2 new shots. The machine's profiles could not be read: machine gone.",
+      ),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("waits for the second click's profile pass instead of reusing the first click's give-up", async () => {
+    const first = await pressAndLedger(30);
+    await first.ledger({
+      backfill: shotRun({ id: 7, shots_inserted: 1, shots_updated: 0 }),
+      profiles: profileRun(null, { id: 5 }),
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Synced: 1 new shot."));
+    vi.mocked(toast.success).mockClear();
+
+    // Second click: the profile pass of this one is not on the ledger yet, and the first
+    // click's give-up must not make the toast fire at once.
+    await first.user.click(screen.getByTestId("pull-button"));
+    await first.ledger({
+      backfill: shotRun({ id: 8, shots_inserted: 2, shots_updated: 0 }),
+      profiles: profileRun(null, { id: 5 }),
+    });
+    await settle(5);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("holds the toast until the 202 says what was queued when the ledger is quicker", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: { backfill: shotRun({ id: 6 }), profiles: profileRun(null, { id: 5 }) },
+      }),
+    );
+    let accept: (value: { queued: string[] }) => void = () => {};
+    runSync.mockImplementation(
+      () =>
+        new Promise<{ queued: string[] }>((resolve) => {
+          accept = resolve;
+        }),
+    );
+    const { queryClient } = renderWithQueryClient(<PullButton profileGraceMs={5000} />);
+    await waitFor(() => expect(screen.getByTestId("pull-button")).toBeEnabled());
+    await user.click(screen.getByTestId("pull-button"));
+
+    // Both passes finish before the 202 comes back.
+    getSyncStatus.mockResolvedValue(
+      statusData({
+        last_runs: {
+          backfill: shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 }),
+          profiles: profileRun({ profiles_read: 9 }),
+        },
+      }),
+    );
+    for (const queryKey of EVENT_INVALIDATIONS["sync.progress"]) {
+      await queryClient.invalidateQueries({ queryKey });
+    }
+    await settle(50);
+    expect(toast.success).not.toHaveBeenCalled();
+
+    accept({ queued: ["shots", "profiles"] });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Synced: 2 new shots. Read 9 profiles from the machine; no writes (writes are off).",
+      ),
+    );
+  });
+
+  it("does not toast after the button is gone", async () => {
+    const { ledger } = await pressAndLedger(30);
+    const view = screen.getByTestId("pull-button");
+    expect(view).toBeInTheDocument();
+    await ledger({ backfill: shotRun({ id: 7, shots_inserted: 2, shots_updated: 0 }) });
+    cleanup();
+    await settle(100);
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("speaks without the profile pass when it never shows up", async () => {

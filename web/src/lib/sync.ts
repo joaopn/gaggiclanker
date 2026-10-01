@@ -76,25 +76,38 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** What a profile pass wrote to the machine, in a phrase: "wrote 2 (pushed 1, removed 1)". */
+/**
+ * What a profile pass wrote to the machine, in a phrase: "wrote 2 (pushed 1, removed 1)".
+ *
+ * Writes are counted per profile action (pushed, removed, home screen), not per request to
+ * the machine: a push is a save and a removal there, and it is one profile here. A push that
+ * found its identical file already on the machine sent no save, so it is said apart.
+ */
 function writesPhrase(run: SyncRunRow): string {
   const board = boardSummaryOf(run);
   // No write phase ran: the switch is off, and nothing was sent.
   if (board === null) return "no writes (writes are off)";
   if (board.paused) return "no writes (paused: the machine looks reset)";
 
+  const pushed = board.pushed.filter((item) => !item.reused).length;
+  const reused = board.pushed.length - pushed;
   const parts: string[] = [];
-  if (board.pushed.length > 0) parts.push(`pushed ${board.pushed.length}`);
+  if (pushed > 0) parts.push(`pushed ${pushed}`);
   if (board.removed.length > 0) parts.push(`removed ${board.removed.length}`);
   if (board.homeScreen.length > 0) parts.push(`home screen ${board.homeScreen.length}`);
-  const total = board.pushed.length + board.removed.length + board.homeScreen.length;
+  const total = pushed + board.removed.length + board.homeScreen.length;
+  const failed = board.failures.length;
 
-  let phrase: string;
-  if (total > 0) phrase = `wrote ${total} (${parts.join(", ")})`;
-  else if (board.adopted.length > 0) phrase = "no writes (took them onto the board)";
-  else phrase = "no writes needed";
-  if (board.failures.length > 0) phrase += `, ${board.failures.length} failed`;
-  return phrase;
+  const phrases: string[] = [];
+  if (total > 0)
+    phrases.push(`wrote ${total} (${parts.join(", ")})${failed > 0 ? `, ${failed} failed` : ""}`);
+  else if (failed > 0) {
+    // "No writes needed" would be wrong: something was needed and did not happen.
+    phrases.push(`nothing written, ${failed} failed \u2014 the Sync page has the details`);
+  } else if (board.adopted.length > 0) phrases.push("no writes (took them onto the board)");
+  else if (reused === 0) phrases.push("no writes needed");
+  if (reused > 0) phrases.push(`${reused} already on the machine`);
+  return phrases.join("; ");
 }
 
 /**
@@ -129,7 +142,17 @@ export function profilesSentence(run: SyncRunRow | undefined): string | null {
 export function pullSummary(run: SyncRunRow, profileRun?: SyncRunRow): string {
   const counts = countsSentence(run);
   const profiles = profilesSentence(profileRun);
-  const tail = profiles ? ` ${profiles}` : "";
+  // The same message from both passes (the machine went away) is said once.
+  const sameFault =
+    run.status !== "ok" &&
+    profileRun?.status !== "ok" &&
+    !!run.error &&
+    run.error === profileRun?.error;
+  const tail = sameFault
+    ? " The machine's profiles could not be read either."
+    : profiles
+      ? ` ${profiles}`
+      : "";
   if (run.status === "ok") {
     // The shots are fine; "Synced" would be wrong only if the profile pass did not end well.
     const lead = syncSucceeded(run, profileRun) ? "Synced" : "Shots synced";

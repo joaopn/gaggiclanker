@@ -92,15 +92,23 @@ export function PullButton({
   // and finished. Its numbers go in the toast.
   const profilesDone =
     profileRun && profileRun.id > profilesAfter && profileRun.finished_at ? profileRun : undefined;
+  // Whether this click's profile pass is on the ledger yet, finished or not. Once it is, it is
+  // waited for however long it takes: a slow pass must not be given up on and reported as a
+  // success without its numbers (it may yet fail). The grace below covers only a pass that
+  // never appears.
+  const profilesStarted = !!profileRun && profileRun.id > profilesAfter;
   const shotsDone = run && waitingAfter !== null && run.id > waitingAfter && run.finished_at;
 
   useEffect(() => {
     if (!waiting.current || waitingAfter === null || pull.isPending) return;
     if (!run || !shotsDone) return;
     const wanted = expectProfiles.current;
-    if (wanted && !profilesDone && !gaveUp) {
-      const timer = setTimeout(() => setGaveUp(true), profileGraceMs);
-      return () => clearTimeout(timer);
+    if (wanted && !profilesDone) {
+      if (profilesStarted) return;
+      if (!gaveUp) {
+        const timer = setTimeout(() => setGaveUp(true), profileGraceMs);
+        return () => clearTimeout(timer);
+      }
     }
     waiting.current = false;
     setWaitingAfter(null);
@@ -111,7 +119,16 @@ export function PullButton({
     } else {
       toast.error(message);
     }
-  }, [run, shotsDone, profilesDone, waitingAfter, gaveUp, pull.isPending, profileGraceMs]);
+  }, [
+    run,
+    shotsDone,
+    profilesDone,
+    profilesStarted,
+    waitingAfter,
+    gaveUp,
+    pull.isPending,
+    profileGraceMs,
+  ]);
 
   const configured = device.data?.configured ?? false;
   const connected = device.data?.connected ?? false;

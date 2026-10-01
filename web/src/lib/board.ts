@@ -200,6 +200,8 @@ export type BoardSummaryItem = {
   reason: string;
   detail: string;
   on: boolean | null;
+  /** A push that found the identical file on the machine and sent no save. */
+  reused?: boolean;
 };
 
 /** What the last sync's profile pass did to the machine: `SyncRunRow.summary` for the `profiles` run. */
@@ -226,6 +228,7 @@ function items(value: unknown): BoardSummaryItem[] {
         reason: typeof item.reason === "string" ? item.reason : "",
         detail: typeof item.detail === "string" ? item.detail : "",
         on: typeof item.on === "boolean" ? item.on : null,
+        reused: item.reused === true,
       },
     ];
   });

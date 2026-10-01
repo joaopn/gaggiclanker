@@ -222,6 +222,40 @@ describe("pullSummary", () => {
       );
     });
 
+    it("never calls a failed pass a pass that needed no writes", () => {
+      // Nothing pushed, removed or starred, but something failed (a draft the safety bounds
+      // refused, a machine that could not be read for the board).
+      const refused = profilePass(boardKeys({ pushed: [], failures: [entry("B")] }));
+      expect(profilesSentence(refused)).toBe(
+        "Read 9 profiles from the machine; nothing written, 1 failed \u2014 the Sync page has the details.",
+      );
+      const adoptedNone = profilePass(boardKeys({ adopted: [], failures: [entry("board")] }));
+      expect(profilesSentence(adoptedNone)).toContain("nothing written, 1 failed");
+      expect(profilesSentence(adoptedNone)).not.toContain("no writes needed");
+    });
+
+    it("counts a push that found its file already there apart from the writes", () => {
+      const pass = profilePass(
+        boardKeys({
+          pushed: [{ ...entry("A"), reused: true }],
+          removed: [entry("B")],
+        }),
+      );
+      expect(profilesSentence(pass)).toBe(
+        "Read 9 profiles from the machine; wrote 1 (removed 1); 1 already on the machine.",
+      );
+      expect(
+        profilesSentence(profilePass(boardKeys({ pushed: [{ ...entry("A"), reused: true }] }))),
+      ).toBe("Read 9 profiles from the machine; 1 already on the machine.");
+    });
+
+    it("says a fault both passes reported once", () => {
+      const failed = profilePass(null, { status: "error", error: "no answer" });
+      expect(pullSummary(run({ status: "error", error: "no answer" }), failed)).toBe(
+        "no answer. The machine's profiles could not be read either.",
+      );
+    });
+
     it("adds how many writes failed", () => {
       const pass = profilePass(boardKeys({ pushed: [entry("A")], failures: [entry("B")] }));
       expect(profilesSentence(pass)).toBe(
