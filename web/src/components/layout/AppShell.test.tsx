@@ -53,6 +53,16 @@ describe("AppShell", () => {
     }
   });
 
+  it("puts the writes switch in the top bar, right after the machine status", () => {
+    renderApp();
+    const pill = screen.getByTestId("device-status-pill");
+    const toggle = screen.getByRole("switch", { name: "Machine writes" });
+    expect(pill.closest("header")).toContainElement(toggle);
+    expect(pill.nextElementSibling ?? pill.parentElement?.nextElementSibling).toBe(
+      toggle.parentElement,
+    );
+  });
+
   it("lists the five rows in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];

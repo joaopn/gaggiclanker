@@ -2,6 +2,7 @@ import { ChevronRight, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { type ReactElement, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { DeviceStatusPill } from "@/components/DeviceStatusPill";
+import { DeviceWritesSwitch } from "@/components/DeviceWritesSwitch";
 import { LlmActivity } from "@/components/LlmActivity";
 import { ShortcutsDialog } from "@/components/layout/ShortcutsDialog";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -399,6 +400,7 @@ export function AppShell() {
           <span className="font-medium text-sm md:hidden">gaggiclanker</span>
           <div className="ml-auto flex items-center gap-2">
             <DeviceStatusPill />
+            <DeviceWritesSwitch />
             <LlmActivity />
             <Button
               variant="ghost"
