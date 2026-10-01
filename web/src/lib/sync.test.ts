@@ -242,11 +242,11 @@ describe("pullSummary", () => {
         }),
       );
       expect(profilesSentence(pass)).toBe(
-        "Read 9 profiles from the machine; wrote 1 (removed 1); 1 already on the machine.",
+        "Read 9 profiles from the machine; wrote 1 (removed 1); 1 was already on the machine.",
       );
       expect(
         profilesSentence(profilePass(boardKeys({ pushed: [{ ...entry("A"), reused: true }] }))),
-      ).toBe("Read 9 profiles from the machine; 1 already on the machine.");
+      ).toBe("Read 9 profiles from the machine; 1 was already on the machine.");
     });
 
     it("says a fault both passes reported once", () => {

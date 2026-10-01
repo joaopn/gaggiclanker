@@ -2554,6 +2554,50 @@ describe("ShotsPage sync button", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
+  it("does not let the first click's grace timer cut the second click's wait short", async () => {
+    // Fake time, so the order is exact: the first click's grace timer is still pending when
+    // the second click starts, and must not fire into the second click's wait.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { user, ledger } = await pressAndLedger(10_000);
+      // A first, tiny step lets React flush the effect that follows a ledger update (and so
+      // start its timer) before the clock moves.
+      const advance = async (ms: number) => {
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        await act(() => vi.advanceTimersByTimeAsync(ms));
+      };
+
+      // First click: its shot pass is done, its profile pass has not appeared; the grace runs.
+      await ledger({
+        backfill: shotRun({ id: 7, shots_inserted: 1, shots_updated: 0 }),
+        profiles: profileRun(null, { id: 5 }),
+      });
+      await advance(6_000);
+
+      // Second click inside the grace, and its shot pass finishes with no profile pass yet.
+      await user.click(screen.getByTestId("pull-button"));
+      await ledger({
+        backfill: shotRun({ id: 8, shots_inserted: 2, shots_updated: 0 }),
+        profiles: profileRun(null, { id: 5 }),
+      });
+      // The first click's timer was due 4 s ago, this click's is due in about 6 s.
+      await advance(4_500);
+      expect(toast.success).not.toHaveBeenCalledWith("Synced: 2 new shots.");
+
+      await ledger({
+        backfill: shotRun({ id: 8, shots_inserted: 2, shots_updated: 0 }),
+        profiles: profileRun({ profiles_read: 3 }),
+      });
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith(
+          "Synced: 2 new shots. Read 3 profiles from the machine; no writes (writes are off).",
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("holds the toast until the 202 says what was queued when the ledger is quicker", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));

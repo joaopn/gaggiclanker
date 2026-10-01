@@ -106,7 +106,7 @@ function writesPhrase(run: SyncRunRow): string {
     phrases.push(`nothing written, ${failed} failed \u2014 the Sync page has the details`);
   } else if (board.adopted.length > 0) phrases.push("no writes (took them onto the board)");
   else if (reused === 0) phrases.push("no writes needed");
-  if (reused > 0) phrases.push(`${reused} already on the machine`);
+  if (reused > 0) phrases.push(`${reused} ${reused === 1 ? "was" : "were"} already on the machine`);
   return phrases.join("; ");
 }
 

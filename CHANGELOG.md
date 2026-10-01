@@ -15,14 +15,15 @@ first (`POST /api/backup`), because there is no down-migration.
 - **Changed: "Pull from machine" is now "Sync with machine".** The button on the Shots page,
   its section on the Sync page and every line that told you to pull (the Profiles page, the
   Writes switch, the Sync page, Settings, the README and the chat agent's instructions) now say
-  sync. Nothing else changed: the API routes, stored settings and the other names are as they were.
+  sync. The Sync page's first section is now reached at `/sync#sync` (`#pull` still works); the API
+  routes, stored settings and the other names are as they were.
 - **The message after a sync now says what it did to the profiles.** After the shots ("Synced: 2
   new shots.") it says how many profiles were read from the machine and what was written to it:
   "Read 9 profiles from the machine; wrote 2 (pushed 1, removed 1)." Writes are counted per
   profile pushed, removed or starred, not per request to the machine. With writes off it says
   "no writes (writes are off)"; with nothing to do, "no writes needed"; after a suspected reset,
   that writes are paused; a profile already on the machine as it should be is counted apart
-  ("1 already on the machine"); and when something failed it says "nothing written, 1 failed"
+  ("1 was already on the machine"); and when something failed it says "nothing written, 1 failed"
   rather than that nothing was needed. The toast waits for the sync's profile pass however long
   it takes. The profile pass of a sync now records
   how many profiles it read, on its run in the sync ledger.
