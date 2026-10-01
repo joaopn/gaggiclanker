@@ -3117,6 +3117,21 @@ export interface components {
             row_id?: number | null;
         };
         /**
+         * BoardLanding
+         * @description Where a put of one draft would land: the row it continues, or a new profile.
+         */
+        BoardLanding: {
+            /**
+             * Holds Newer Draft
+             * @default false
+             */
+            holds_newer_draft: boolean;
+            /** Row Id */
+            row_id?: number | null;
+            /** Row Label */
+            row_label?: string | null;
+        };
+        /**
          * BoardMachineState
          * @description Where one board row stands on the machine, as of the read the preview was built from.
          */
@@ -3214,6 +3229,8 @@ export interface components {
             actions?: components["schemas"]["BoardAction"][];
             /** Adopted */
             adopted: boolean;
+            /** Landings */
+            landings?: components["schemas"]["DraftLanding"][];
             /** Machine Source */
             machine_source: string;
             /**
@@ -3847,6 +3864,16 @@ export interface components {
             profile?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * DraftLanding
+         * @description What putting an approved draft on the board would do, with and without its Set.
+         */
+        DraftLanding: {
+            /** Draft Id */
+            draft_id: number;
+            for_set?: components["schemas"]["BoardLanding"] | null;
+            plain: components["schemas"]["BoardLanding"];
         };
         /**
          * DraftListData

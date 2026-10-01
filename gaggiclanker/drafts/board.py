@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -185,6 +186,32 @@ class BoardRowView(BaseModel):
     planned: list[BoardAction] = Field(default_factory=list)
 
 
+class BoardLanding(BaseModel):
+    """Where a put of one draft would land: the row it continues, or a new profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The board row the draft would become the next version of; ``None`` for a new profile.
+    row_id: int | None = None
+    row_label: str | None = None
+    #: Whether that row already holds a newer draft (current, or waiting for a pull), so a
+    #: put of this one would undo it.
+    holds_newer_draft: bool = False
+
+
+class DraftLanding(BaseModel):
+    """What putting an approved draft on the board would do, with and without its Set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    draft_id: int
+    #: A put that records nothing on a Set: found through the draft's base, as the route does.
+    plain: BoardLanding
+    #: A put recorded on the draft's own Set: found through the Set's current version.
+    #: ``None`` for a draft that belongs to no Set.
+    for_set: BoardLanding | None = None
+
+
 class BoardView(BaseModel):
     """The board and the next pull's plan, which is what the Profiles page and the switch show."""
 
@@ -207,6 +234,8 @@ class BoardView(BaseModel):
     paused: str | None = None
     #: Whether the pause has been recorded (the board stays paused until resumed).
     pause_recorded: bool = False
+    #: For every approved draft not yet on the board, where a put would land.
+    landings: list[DraftLanding] = Field(default_factory=list)
 
 
 @dataclass
@@ -288,7 +317,45 @@ class BoardService:
             reports=computed.reports(),
             paused=computed.paused,
             pause_recorded=adoption is not None and adoption.paused_at is not None,
+            landings=await self._landings() if computed.adopted else [],
         )
+
+    async def _landings(self) -> list[DraftLanding]:
+        """Where each waiting approved draft would land, by the code a put runs.
+
+        The same ``_lineage_row`` ``put_draft`` calls, never a second implementation, so the
+        page cannot offer a put the server would place somewhere else.
+        """
+        found: list[DraftLanding] = []
+        for draft in await self.drafts.list_drafts(status="approved", limit=200):
+            if draft.draft_version_id is None:
+                continue
+            version = await self.profiles.get_version(draft.draft_version_id)
+            if version is None or await self.board.find_live_by_version(version.id) is not None:
+                continue  # already on the board: the row says so
+            found.append(
+                DraftLanding(
+                    draft_id=draft.id,
+                    plain=await self._landing(draft, version, None),
+                    for_set=None
+                    if draft.set_id is None
+                    else await self._landing(draft, version, draft.set_id),
+                )
+            )
+        return found
+
+    async def _landing(
+        self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
+    ) -> BoardLanding:
+        row = await self._lineage_row(draft, version, set_id)
+        if row is None:
+            return BoardLanding()
+        newer = row.pending_draft_id is not None and row.pending_draft_id > draft.id
+        if not newer:
+            newer = await self.drafts.has_newer_on_version(
+                row.current_version_id, after_id=draft.id
+            )
+        return BoardLanding(row_id=row.id, row_label=row.label, holds_newer_draft=newer)
 
     # ── editing the board (never the machine) ────────────────────────
 
@@ -432,36 +499,50 @@ class BoardService:
         for a file any board row (a deleted one still waiting to be dealt with included)
         already stands on.
         """
-        adoption = await self.board.adoption()
-        if adoption is None:
-            raise Conflict("The board has not taken the machine's profiles yet; pull first.")
-        mirrored = await self.profiles.get_device_profile(device_profile_id)
-        if mirrored is None or mirrored.deleted_at is not None:
-            raise NotFound(f"The machine has no profile {device_profile_id} as of the last pull")
-        for row in await self.board.list_rows(include_deleted=True):
-            if row.device_profile_id == device_profile_id:
-                raise Conflict(
-                    "That profile is already on the board."
-                    if row.deleted_at is None
-                    else "That profile was deleted from the board and its file is still waiting "
-                    "to be dealt with by the next pull."
+        # Every check and the insert in one transaction, so two takes of one file are
+        # serialised and the second finds the first's row. The unique index on a live row's
+        # file is the backstop: a violation is the same refusal, never a 500.
+        async with self.db.transaction():
+            adoption = await self.board.adoption()
+            if adoption is None:
+                raise Conflict("The board has not taken the machine's profiles yet; pull first.")
+            mirrored = await self.profiles.get_device_profile(device_profile_id)
+            if mirrored is None or mirrored.deleted_at is not None:
+                raise NotFound(
+                    f"The machine has no profile {device_profile_id} as of the last pull"
                 )
-        version = await self.profiles.get_version(mirrored.current_version_id)
-        if version is None:  # pragma: no cover - a foreign key guarantees it
-            raise NotFound(f"No profile version {mirrored.current_version_id}")
-        ours = await self._saved_by_the_app(
-            device_profile_id, version.label, version.content_hash, host=adoption.host
-        )
-        return await self.board.insert(
-            BoardRowWrite(
-                label=version.label,
-                current_version_id=version.id,
-                device_profile_id=device_profile_id,
-                device_version_id=version.id,
-                on_home_screen=mirrored.favorite,
-                origin="draft" if ours else "adopted",
+            for row in await self.board.list_rows(include_deleted=True):
+                if row.device_profile_id == device_profile_id:
+                    raise Conflict(
+                        "That profile is already on the board."
+                        if row.deleted_at is None
+                        else "That profile was deleted from the board and its file is still "
+                        "waiting to be dealt with by the next pull."
+                    )
+            version = await self.profiles.get_version(mirrored.current_version_id)
+            if version is None:  # pragma: no cover - a foreign key guarantees it
+                raise NotFound(f"No profile version {mirrored.current_version_id}")
+            if await self.board.find_live_by_version(version.id) is not None:
+                # A board profile already stands for exactly this content (a copy a pull has
+                # just put on the machine while the old one is still kept): a second row on
+                # it would be pushed a third copy by the next pull.
+                raise Conflict("A profile on the board already stands for this exact profile.")
+            ours = await self._saved_by_the_app(
+                device_profile_id, version.label, version.content_hash, host=adoption.host
             )
-        )
+            try:
+                return await self.board.insert(
+                    BoardRowWrite(
+                        label=version.label,
+                        current_version_id=version.id,
+                        device_profile_id=device_profile_id,
+                        device_version_id=version.id,
+                        on_home_screen=mirrored.favorite,
+                        origin="draft" if ours else "adopted",
+                    )
+                )
+            except sqlite3.IntegrityError as exc:
+                raise Conflict("That profile is already on the board.") from exc
 
     async def set_home_screen(self, row_id: int, on: bool) -> BoardRow:
         row = await self._live_row(row_id)

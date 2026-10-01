@@ -336,6 +336,19 @@ class ProfileDraftsRepository(Repository):
         )
         return await self._with_next_names(self.to_models(ProfileDraftRow, rows))
 
+    async def has_newer_on_version(self, version_id: int, *, after_id: int) -> bool:
+        """Whether a later approved or pushed draft made this exact document.
+
+        A board row whose current version is some draft's document "holds" that draft; a
+        draft with a lower id than a draft holding it is one the board has moved past.
+        """
+        row = await self.db.fetch_one(
+            "SELECT 1 AS found FROM profile_drafts WHERE draft_version_id = ? AND id > ? "
+            "AND status IN ('approved', 'pushed') LIMIT 1",
+            (version_id, after_id),
+        )
+        return row is not None
+
     async def set_status(
         self,
         draft_id: int,
