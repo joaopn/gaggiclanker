@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PenLine } from "lucide-react";
-import { useState } from "react";
+import { PenLine, PenOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { patchSettings } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -34,16 +34,24 @@ export const WRITES_ON_SENTENCE =
  * sign-in on, an unreachable backend) leaves the setting as it was and says so
  * in the same panel, rather than a toast that is gone before it is read.
  *
- * Width: from `lg` up it reads "Writes on" / "Writes off"; below that the word
- * "Writes" drops out and the icon, the colour and "On" / "Off" remain, which is
- * what lets it sit beside the status pill, the LLM indicator and the theme
- * toggle at a tablet or phone width. Its panel is a card under the switch from
- * `sm` up and spans the viewport under it below `sm`.
+ * Width: from `lg` up it reads "Writes on" / "Writes off"; from `sm` to `lg`
+ * "on" / "off"; below `sm` it is the icon alone (a pen when on, a crossed-out
+ * pen when off, plus the colour and `aria-checked`), because at 375 px the
+ * header has no room for text beside the status pill and the theme toggle.
+ * Its panel is a card under the switch from `sm` up and spans the viewport
+ * under it below `sm`.
  */
 export function DeviceWritesSwitch() {
   const settings = useSettings();
   const queryClient = useQueryClient();
   const [panel, setPanel] = useState<"confirm" | "error" | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // The confirmation's buttons are removed when a change fails, which would
+  // drop focus to <body>; the error's Close button takes it instead.
+  useEffect(() => {
+    if (panel === "error") closeRef.current?.focus();
+  }, [panel]);
 
   const entry = settings.data?.deviceWritesEnabled;
   const known = entry !== undefined;
@@ -76,16 +84,23 @@ export function DeviceWritesSwitch() {
   }
 
   const state = !known ? "unknown" : on ? "on" : "off";
-  const word = !known ? "…" : on ? "On" : "Off";
+  const word = !known ? "…" : on ? "on" : "off";
+  const Icon = on ? PenLine : PenOff;
 
+  // `max-sm:static` on the popover wrapper: below `sm` the panel spans the
+  // viewport, so it is positioned against the sticky header (the nearest
+  // positioned ancestor) instead of the wrapper. Nothing about it depends on
+  // the header's backdrop filter making it a containing block for fixed
+  // elements.
   return (
     <Popover
+      className="max-sm:static"
       open={panel !== null}
       onOpenChange={(open) => {
         if (!open) setPanel(null);
       }}
     >
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild popupAttributes={false}>
         <button
           type="button"
           role="switch"
@@ -112,8 +127,8 @@ export function DeviceWritesSwitch() {
               : "border-border text-muted-foreground",
           )}
         >
-          <PenLine className="size-3.5" aria-hidden="true" />
-          <span aria-hidden="true">
+          <Icon className="size-3.5" aria-hidden="true" />
+          <span aria-hidden="true" className="max-sm:sr-only">
             <span className="hidden lg:inline">Writes </span>
             {word}
           </span>
@@ -122,7 +137,7 @@ export function DeviceWritesSwitch() {
       <PopoverContent
         align="end"
         aria-label="Writes to the machine"
-        className="max-sm:fixed max-sm:inset-x-4 max-sm:top-full max-sm:w-auto sm:w-80"
+        className="max-sm:inset-x-4 max-sm:w-auto sm:w-80"
       >
         {panel === "error" ? (
           <div className="space-y-3" role="alert" data-testid="device-writes-error">
@@ -132,7 +147,7 @@ export function DeviceWritesSwitch() {
               {on ? "on" : "off"}.
             </p>
             <div className="flex justify-end">
-              <Button size="sm" variant="outline" onClick={() => setPanel(null)}>
+              <Button ref={closeRef} size="sm" variant="outline" onClick={() => setPanel(null)}>
                 Close
               </Button>
             </div>

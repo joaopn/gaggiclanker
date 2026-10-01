@@ -70,11 +70,14 @@ export function Popover({
   open: controlledOpen,
   onOpenChange,
   defaultOpen = false,
+  className,
   children,
 }: {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   defaultOpen?: boolean;
+  /** On the wrapper, e.g. `max-sm:static` to anchor the panel to an ancestor. */
+  className?: string;
   children: ReactNode;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
@@ -97,7 +100,7 @@ export function Popover({
 
   return (
     <PopoverContext.Provider value={value}>
-      <div className="relative inline-block">{children}</div>
+      <div className={cn("relative inline-block", className)}>{children}</div>
     </PopoverContext.Provider>
   );
 }
@@ -120,10 +123,16 @@ type TriggerChildProps = {
  */
 export function PopoverTrigger({
   asChild = false,
+  popupAttributes = true,
   children,
   ...props
 }: {
   asChild?: boolean;
+  /**
+   * Whether to add `aria-expanded`, `aria-controls` and `aria-haspopup`. Off
+   * for a trigger whose role does not allow them (a `switch`).
+   */
+  popupAttributes?: boolean;
   children: ReactNode;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { open, setOpen, contentId, triggerRef } = usePopover("PopoverTrigger");
@@ -132,9 +141,13 @@ export function PopoverTrigger({
     ref: (node: HTMLElement | null) => {
       triggerRef.current = node;
     },
-    "aria-expanded": open,
-    "aria-controls": open ? contentId : undefined,
-    "aria-haspopup": "dialog",
+    ...(popupAttributes
+      ? {
+          "aria-expanded": open,
+          "aria-controls": open ? contentId : undefined,
+          "aria-haspopup": "dialog" as const,
+        }
+      : {}),
   };
 
   if (asChild && isValidElement(children)) {

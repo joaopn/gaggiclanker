@@ -63,6 +63,14 @@ describe("AppShell", () => {
     );
   });
 
+  it("gives the brand text up below sm, so the top bar fits at phone width", () => {
+    renderApp();
+    const header = screen.getByTestId("device-status-pill").closest("header") as HTMLElement;
+    const brand = within(header).getByText("gaggiclanker");
+    // Shown only from sm up, and gone again from md, where the rail names it.
+    expect(brand).toHaveClass("hidden", "sm:inline", "md:hidden");
+  });
+
   it("lists the five rows in order, and nothing else", () => {
     renderApp();
     const nav = screen.getAllByRole("navigation", { name: "Main" })[0];

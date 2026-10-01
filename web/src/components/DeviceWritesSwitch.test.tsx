@@ -57,12 +57,32 @@ describe("DeviceWritesSwitch", () => {
     const { unmount } = await renderSwitch(false);
     expect(toggle()).toHaveAttribute("aria-checked", "false");
     expect(toggle()).toHaveAttribute("data-state", "off");
-    expect(toggle()).toHaveTextContent("Off");
+    expect(toggle()).toHaveTextContent("off");
     unmount();
 
     await renderSwitch(true);
     expect(toggle()).toHaveAttribute("aria-checked", "true");
-    expect(toggle()).toHaveTextContent("On");
+    expect(toggle()).toHaveTextContent("on");
+  });
+
+  it("is icon-only below sm, so the header fits at phone width", async () => {
+    await renderSwitch(false);
+    // jsdom has no layout; what can be pinned is the classes that do the work.
+    const label = toggle().querySelector("span");
+    expect(label).toHaveClass("max-sm:sr-only");
+    expect(label?.querySelector("span")).toHaveClass("hidden", "lg:inline");
+    // The state survives without the text: shape, colour and aria-checked.
+    expect(toggle()).toHaveAttribute("aria-checked", "false");
+    expect(toggle().querySelector("svg")).toHaveClass("lucide-pen-off");
+  });
+
+  it("is a plain switch: no popup attributes on it", async () => {
+    const user = setupUser();
+    await renderSwitch(false);
+    await user.click(toggle());
+    expect(toggle()).not.toHaveAttribute("aria-expanded");
+    expect(toggle()).not.toHaveAttribute("aria-haspopup");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("asks before turning on, and says what on allows today", async () => {
@@ -128,6 +148,8 @@ describe("DeviceWritesSwitch", () => {
     const alert = await screen.findByTestId("device-writes-error");
     expect(alert).toHaveTextContent("Sign in to change settings");
     expect(alert).toHaveTextContent("Writes are still off");
+    // Focus moves to Close rather than falling to <body> with the buttons gone.
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
     expect(toggle()).toHaveAttribute("aria-checked", "false");
   });
 

@@ -397,7 +397,7 @@ export function AppShell() {
             </SheetContent>
           </Sheet>
 
-          <span className="font-medium text-sm md:hidden">gaggiclanker</span>
+          <span className="hidden font-medium text-sm sm:inline md:hidden">gaggiclanker</span>
           <div className="ml-auto flex items-center gap-2">
             <DeviceStatusPill />
             <DeviceWritesSwitch />

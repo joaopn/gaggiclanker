@@ -184,6 +184,7 @@ src/
     usePrompts.ts     the prompt list, one prompt, save and reset
   components/
     LlmActivity.tsx   the header indicator and the sheet behind it
+    DeviceWritesSwitch.tsx  the top-bar writes switch: confirm before on, immediate off
   pages/settings/
     LlmGroups.tsx     the provider picker and everything that depends on which one
     PromptsPage.tsx   one card per prompt: the YAML editor, an "edited" badge, reset
@@ -514,7 +515,8 @@ registry pages are one form each over the keys `sectionFor` sends them (Machine
 access, Profile safety and Authentication by prefix, everything else to LLM), sorted
 into collapsible cards by `SETTINGS_GROUPS` in `schema.ts`; a key no group
 names lands in an "Other" card, so a new setting is editable without an edit
-here. A page folded into another leaves a `RETIRED` entry in `SettingsPage`
+here, except a key listed in `EDITED_ELSEWHERE` (`deviceWritesEnabled`, whose
+switch is in the top bar), which no page lists and the page's form never sends. A page folded into another leaves a `RETIRED` entry in `SettingsPage`
 (`/settings/general` goes to `/settings/llm`, `#card` kept). Every card starts closed, `#<card>` in a link opens that one
 (`/settings/machine#connection`), and a save that fails validation opens the cards
 holding the bad fields. A new settings page is an entry in `SETTINGS_PAGES`, a
