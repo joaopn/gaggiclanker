@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BoardSection } from "@/components/sync/BoardSection";
 import { DeviceWritesSection } from "@/components/sync/DeviceWritesSection";
 import { PullSection } from "@/components/sync/PullSection";
 import { useDeviceStatus } from "@/hooks/useDeviceStatus";
@@ -12,6 +13,7 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
  */
 export const SYNC_ANCHORS = {
   pull: "pull",
+  board: "board",
   writes: "writes",
 } as const;
 
@@ -19,9 +21,10 @@ export const SYNC_ANCHORS = {
  * The pull from the machine, and the audit of what this box has written to it.
  *
  * The rule the page makes visible: the only thing this box ever writes to the
- * machine is a profile, pushed from the Profiles page through every safety
- * layer. Everything here is a read, except that the audit lists those pushes.
- * Nothing on this page runs by itself.
+ * machine is a profile, and only a pull does it, with the Writes switch on, by
+ * making the machine match the board on the Profiles page through every safety
+ * layer. The page shows what the last pull did about that, lets a person resume
+ * a board that paused because the machine looked reset, and lists the audit.
  */
 export function SyncPage() {
   const device = useDeviceStatus();
@@ -49,11 +52,15 @@ export function SyncPage() {
       />
       <p className="text-muted-foreground text-sm">
         Shots, profiles and notes are read from the machine when you pull. The only thing this box
-        ever writes to it is a profile, pushed from the Profiles page.
+        ever writes to it is a profile: with writes on, a pull also makes the machine's profiles
+        match the board on the Profiles page.
       </p>
 
       <div id={SYNC_ANCHORS.pull} className="scroll-mt-4">
         <PullSection />
+      </div>
+      <div id={SYNC_ANCHORS.board} className="scroll-mt-4">
+        <BoardSection />
       </div>
       <div id={SYNC_ANCHORS.writes} className="scroll-mt-4">
         <DeviceWritesSection />

@@ -7,7 +7,8 @@ import { formatTime } from "@/lib/shots";
 /**
  * Recent writes: everything this box has asked the machine to change.
  *
- * Profile pushes and rollbacks from the Profiles page land here. Rows of the two
+ * Profile saves, deletes and star changes from a pull's board sync, and any pushes and
+ * rollbacks from the Profiles page's staged box, land here. Rows of the two
  * kinds this box used to write (`notes_save`, `shot_delete`) stay in the list as
  * history: the kind is rendered as the plain string the server stored.
  *

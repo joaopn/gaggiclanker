@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceStatusData, SyncStatusData } from "@/api/types";
 import { SyncPage } from "@/pages/SyncPage";
+import { boardView } from "@/test/boardFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -9,18 +10,22 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getDeviceStatus, getSyncStatus, runSync, getDeviceWrites } = vi.hoisted(() => ({
-  getDeviceStatus: vi.fn(),
-  getSyncStatus: vi.fn(),
-  runSync: vi.fn(),
-  getDeviceWrites: vi.fn(),
-}));
+const { getDeviceStatus, getSyncStatus, runSync, getDeviceWrites, getProfileBoard } = vi.hoisted(
+  () => ({
+    getDeviceStatus: vi.fn(),
+    getProfileBoard: vi.fn(),
+    getSyncStatus: vi.fn(),
+    runSync: vi.fn(),
+    getDeviceWrites: vi.fn(),
+  }),
+);
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getDeviceStatus,
   getSyncStatus,
   runSync,
   getDeviceWrites,
+  getProfileBoard,
 }));
 
 function deviceStatus(overrides: Partial<DeviceStatusData> = {}): DeviceStatusData {
@@ -87,6 +92,7 @@ beforeEach(() => {
   getSyncStatus.mockResolvedValue(syncStatus());
   runSync.mockResolvedValue({ queued: ["shots", "profiles", "identity"] });
   getDeviceWrites.mockResolvedValue({ enabled: false, items: [] });
+  getProfileBoard.mockResolvedValue(boardView({ writes_enabled: false }));
 });
 
 describe("SyncPage", () => {
@@ -117,6 +123,8 @@ describe("SyncPage", () => {
     expect(
       await screen.findByText(/The only thing this box ever writes to it is a profile/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/match the board on the Profiles page/)).toBeInTheDocument();
+    expect(screen.queryByText(/pushed from the Profiles page/)).toBeNull();
   });
 
   it("lists the last run of each pass and the archive counts", async () => {

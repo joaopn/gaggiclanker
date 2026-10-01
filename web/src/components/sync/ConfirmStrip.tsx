@@ -17,6 +17,7 @@ export function ConfirmStrip({
   onConfirm,
   onCancel,
   testId,
+  confirmVariant = "destructive",
 }: {
   title: string;
   children: ReactNode;
@@ -24,6 +25,8 @@ export function ConfirmStrip({
   onConfirm: () => void;
   onCancel: () => void;
   testId: string;
+  /** `destructive` for something that cannot be undone; `default` for a step that can. */
+  confirmVariant?: "destructive" | "default";
 }) {
   return (
     <section
@@ -34,7 +37,7 @@ export function ConfirmStrip({
       <p className="font-medium text-sm">{title}</p>
       <div className="text-sm">{children}</div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="destructive" onClick={onConfirm}>
+        <Button size="sm" variant={confirmVariant} onClick={onConfirm}>
           {confirmLabel}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>
