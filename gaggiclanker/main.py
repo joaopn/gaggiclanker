@@ -33,6 +33,7 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
+from gaggiclanker.db.repos.profile_list import ProfileListBuilder
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.sets import SetVersionRow
 from gaggiclanker.db.repos.shots import ShotsRepository
@@ -296,6 +297,9 @@ async def _start(app: FastAPI, db: Database) -> None:
     """Migrate, wire every service onto ``app.state``, and start the loops."""
     env: EnvSettings = app.state.env
     await run_migrations(db)
+    # The profile list is filled once from everything the archive stores (see
+    # `db/repos/profile_list.py`); a step rather than SQL, run before anything reads the board.
+    await ProfileListBuilder(db).build()
 
     app.state.db = db
     settings_service = SettingsService(SettingsRepository(db))

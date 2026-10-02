@@ -3152,6 +3152,11 @@ export interface components {
              * @default true
              */
             on_home_screen: boolean;
+            /**
+             * On Machine
+             * @default true
+             */
+            on_machine: boolean;
             origin: components["schemas"]["BoardOrigin"];
             /** Pending Draft Id */
             pending_draft_id?: number | null;

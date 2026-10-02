@@ -119,3 +119,44 @@ async def test_two_live_rows_cannot_stand_on_one_file_but_a_deleted_one_may(
         BoardRowWrite(label="P", current_version_id=1, device_profile_id="abc", origin="adopted")
     )
     assert again.id != first.id
+
+
+async def test_a_row_starts_on_the_machine_and_its_first_version_is_listed(
+    repo: ProfileBoardRepository,
+) -> None:
+    row = await repo.insert(
+        BoardRowWrite(label="P", current_version_id=1, origin="draft", version_source="agent")
+    )
+    assert row.on_machine is True
+    listed = await repo.list_versions(row.id)
+    assert [(v.version_id, v.source) for v in listed] == [(1, "agent")]
+    await repo.update(row.id, BoardRowPatch(on_machine=False, on_home_screen=False))
+    after = await repo.get(row.id)
+    # The two flags are independent: neither writes the other.
+    assert after is not None and (after.on_machine, after.on_home_screen) == (False, False)
+    await repo.update(row.id, BoardRowPatch(on_home_screen=True))
+    after = await repo.get(row.id)
+    assert after is not None and (after.on_machine, after.on_home_screen) == (False, True)
+
+
+async def test_a_version_is_listed_once_per_profile_and_newest_comes_first(
+    repo: ProfileBoardRepository,
+) -> None:
+    row = await repo.insert(BoardRowWrite(label="P", current_version_id=1, origin="adopted"))
+    assert await repo.add_version(row.id, 2, "edit", added_at="2099-01-01T00:00:00.000Z")
+    assert not await repo.add_version(row.id, 2, "agent")
+    assert [(v.version_id, v.source) for v in await repo.list_versions(row.id)] == [
+        (2, "edit"),
+        (1, "machine"),
+    ]
+    found = await repo.find_live_by_listed_version(2)
+    assert found is not None and found.id == row.id
+    await repo.update(row.id, BoardRowPatch(deleted_at="2026-01-01T00:00:00.000Z"))
+    assert await repo.find_live_by_listed_version(2) is None
+
+
+def test_a_version_must_say_where_it_came_from() -> None:
+    with pytest.raises(ValidationError):
+        BoardRowWrite.model_validate(
+            {"label": "P", "current_version_id": 1, "origin": "draft", "version_source": "magic"}
+        )

@@ -20,14 +20,22 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
+    "VERSION_SOURCES",
     "BoardAdoption",
     "BoardRow",
     "BoardRowPatch",
     "BoardRowWrite",
+    "BoardVersion",
     "ProfileBoardRepository",
 ]
 
+#: Where a whole profile came from. Information only: it no longer decides what a sync may
+#: push or remove (every profile the app has synced is the app's to manage).
 type BoardOrigin = Literal["adopted", "draft"]
+
+#: Where one version of a profile came from (the CHECK on `profile_board_versions.source`).
+type VersionSource = Literal["agent", "edit", "machine", "edited_on_machine", "import"]
+VERSION_SOURCES: tuple[str, ...] = ("agent", "edit", "machine", "edited_on_machine", "import")
 
 
 class BoardRow(BaseModel):
@@ -40,6 +48,9 @@ class BoardRow(BaseModel):
     current_version_id: int
     device_profile_id: str | None = None
     device_version_id: int | None = None
+    #: Whether a sync should put the profile on the machine (or take it off). Independent of
+    #: ``on_home_screen``, which is shown as "Starred" and only applies while it is on.
+    on_machine: bool = True
     on_home_screen: bool = True
     origin: BoardOrigin
     failed_version_id: int | None = None
@@ -69,11 +80,14 @@ class BoardRowWrite(BaseModel):
     current_version_id: int
     device_profile_id: str | None = None
     device_version_id: int | None = None
+    on_machine: bool = True
     on_home_screen: bool = True
     origin: BoardOrigin
     pending_draft_id: int | None = None
     pending_set_id: int | None = None
     pending_major: bool | None = None
+    #: Where the row's first version came from; it is recorded in the profile's version list.
+    version_source: VersionSource = "machine"
 
 
 class BoardRowPatch(BaseModel):
@@ -85,6 +99,7 @@ class BoardRowPatch(BaseModel):
     current_version_id: int | None = None
     device_profile_id: str | None = None
     device_version_id: int | None = None
+    on_machine: bool | None = None
     on_home_screen: bool | None = None
     origin: BoardOrigin | None = None
     failed_version_id: int | None = None
@@ -98,7 +113,18 @@ class BoardRowPatch(BaseModel):
 
 
 #: Columns a patch may name that hold a boolean, stored as 0/1.
-_BOOLEAN_COLUMNS = frozenset({"on_home_screen", "pending_major"})
+_BOOLEAN_COLUMNS = frozenset({"on_machine", "on_home_screen", "pending_major"})
+
+
+class BoardVersion(BaseModel):
+    """One version a profile has been, with where it came from."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    board_id: int
+    version_id: int
+    added_at: str
+    source: VersionSource
 
 
 class BoardAdoption(BaseModel):
@@ -218,15 +244,16 @@ class ProfileBoardRepository(Repository):
             """
             INSERT INTO profile_board
                 (label, current_version_id, device_profile_id, device_version_id,
-                 on_home_screen, origin, pending_draft_id, pending_set_id,
+                 on_machine, on_home_screen, origin, pending_draft_id, pending_set_id,
                  pending_major, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 write.label,
                 write.current_version_id,
                 write.device_profile_id,
                 write.device_version_id,
+                int(write.on_machine),
                 int(write.on_home_screen),
                 write.origin,
                 write.pending_draft_id,
@@ -239,6 +266,8 @@ class ProfileBoardRepository(Repository):
         row = await self.get(int(cursor.lastrowid or 0))
         if row is None:  # pragma: no cover - the insert above guarantees it
             raise RuntimeError("board row vanished between write and read")
+        # A profile's active version is always one of its versions.
+        await self.add_version(row.id, write.current_version_id, write.version_source)
         return row
 
     async def update(self, row_id: int, patch: BoardRowPatch) -> BoardRow | None:
@@ -254,6 +283,49 @@ class ProfileBoardRepository(Repository):
             [*params, row_id],
         )
         return await self.get(row_id)
+
+    # ── a profile's versions ─────────────────────────────────────────
+
+    async def add_version(
+        self,
+        board_id: int,
+        version_id: int,
+        source: VersionSource,
+        *,
+        added_at: str | None = None,
+    ) -> bool:
+        """Record that this profile has had this version. ``False`` when it already had it."""
+        cursor = await self.db.execute(
+            "INSERT OR IGNORE INTO profile_board_versions (board_id, version_id, added_at, source) "
+            "VALUES (?, ?, ?, ?)",
+            (board_id, version_id, added_at or utc_now(), source),
+        )
+        return cursor.rowcount > 0
+
+    async def list_versions(self, board_id: int) -> list[BoardVersion]:
+        """The profile's versions, newest first (the order the list shows them)."""
+        rows = await self.db.fetch_all(
+            "SELECT * FROM profile_board_versions WHERE board_id = ? "
+            "ORDER BY added_at DESC, version_id DESC",
+            (board_id,),
+        )
+        return self.to_models(BoardVersion, rows)
+
+    async def get_version_entry(self, board_id: int, version_id: int) -> BoardVersion | None:
+        row = await self.db.fetch_one(
+            "SELECT * FROM profile_board_versions WHERE board_id = ? AND version_id = ?",
+            (board_id, version_id),
+        )
+        return self.to_model(BoardVersion, row)
+
+    async def find_live_by_listed_version(self, version_id: int) -> BoardRow | None:
+        """The first live profile that has had this version, if any."""
+        row = await self.db.fetch_one(
+            "SELECT b.* FROM profile_board b JOIN profile_board_versions v ON v.board_id = b.id "
+            "WHERE v.version_id = ? AND b.deleted_at IS NULL ORDER BY b.id LIMIT 1",
+            (version_id,),
+        )
+        return self.to_model(BoardRow, row)
 
     # ── adoption ─────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@ export function boardRow(overrides: Partial<BoardRow> = {}): BoardRow {
     label: "9 Bar Espresso",
     current_version_id: 7,
     origin: "adopted",
+    on_machine: true,
     on_home_screen: true,
     device_profile_id: "9bar",
     device_version_id: 7,

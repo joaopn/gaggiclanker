@@ -57,6 +57,7 @@ from gaggiclanker.db.repos.profile_board import (
     ProfileBoardRepository,
 )
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
+from gaggiclanker.db.repos.profile_list import version_source_for_draft
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionRow, VersionRefused
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
@@ -523,6 +524,7 @@ class BoardService:
             pending = BoardRowPatch(
                 pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
             )
+            source = version_source_for_draft(draft.model_dump())
             if row is None:
                 revived = dest.revived
                 if revived is not None:
@@ -538,6 +540,7 @@ class BoardService:
                         ),
                     )
                     assert back is not None
+                    await self.board.add_version(back.id, version.id, source)
                     return back
                 return await self.board.insert(
                     BoardRowWrite(
@@ -547,6 +550,7 @@ class BoardService:
                         pending_draft_id=draft.id,
                         pending_set_id=set_id,
                         pending_major=major,
+                        version_source=source,
                     )
                 )
             updated = await self.board.update(
@@ -563,6 +567,7 @@ class BoardService:
                 ),
             )
             assert updated is not None  # the row was read in this transaction
+            await self.board.add_version(updated.id, version.id, source)
             return updated
 
     async def _lineage_row(
