@@ -13,12 +13,34 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 
+from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow, DeviceWritesRepository
+from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data
 from tests.llm.conftest import FakeProvider
 
 APP_LABEL = f"{BASE_LABEL} [AI]"
+
+
+async def tombstone(client: httpx.AsyncClient, row_id: int) -> httpx.Response:
+    """Mark a board row deleted, the state the sync's removal rules are written for.
+
+    Nothing in the app does this any more (a profile is switched off, never deleted), but a row
+    deleted by an earlier version can still be in a database until the list is built, and the
+    plan keeps its rules for such a row. The repository is reached through the app the client
+    is wired to, so the scenarios that pin those rules keep their setup.
+    """
+    app = client._transport.app  # type: ignore[attr-defined]
+    row = await app.state.board.board.update(
+        row_id,
+        BoardRowPatch(
+            deleted_at=utc_now(), pending_draft_id=None, pending_set_id=None, pending_major=None
+        ),
+    )
+    assert row is not None
+    return httpx.Response(200)
+
 
 Live = tuple[FastAPI, httpx.AsyncClient]
 

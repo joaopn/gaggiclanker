@@ -37,6 +37,7 @@ from tests.drafts.helpers import (
     kinds,
     make_set_on,
     set_device_ids,
+    tombstone,
 )
 from tests.drafts.test_board import (
     adopted,
@@ -134,7 +135,7 @@ async def test_putting_a_deleted_profile_back_revives_its_row_instead_of_pushing
     first = row_for(await get_board(client), APP_LABEL)
     file = first["machine"]["device_id"]
     await make_set_on(client, "Holds", first["row"]["current_version_id"])
-    await client.delete(f"/api/profile-board/{first['row']['id']}")
+    await tombstone(client, first["row"]["id"])
     again = await put(client, await staged_copy_of(app, client, fake, first["row"], file))
     assert again["id"] == first["row"]["id"], "the same profile is the same row"
 
@@ -201,7 +202,7 @@ async def test_an_unreadable_file_is_neither_pushed_again_nor_forgotten(
         if r["row"]["id"] != x["id"] and r["row"]["origin"] == "draft"
     )
     yfile = yrow["machine"]["device_id"]
-    await client.delete(f"/api/profile-board/{yrow['row']['id']}")
+    await tombstone(client, yrow["row"]["id"])
     count = len([p for p in fake.profiles if str(p["label"]).endswith("[AI]")])
     fail_loads(fake, {xfile, yfile})
     fake.ws_requests.clear()
@@ -420,7 +421,7 @@ async def test_new_profiles_are_saved_before_any_deleted_profile_is_removed(
 ) -> None:
     app, client, fake = adopted
     old = await app_row(app, client, fake, provider, 8)
-    await client.delete(f"/api/profile-board/{old['id']}")
+    await tombstone(client, old["id"])
     await put(client, await draft_of(app, client, provider, BASE_LABEL, 6))
     fake.ws_requests.clear()
 
@@ -440,7 +441,7 @@ async def test_a_deleted_copy_edited_on_the_display_is_recorded_first_and_remove
     file = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
     edited = next(p for p in fake.profiles if p["id"] == file)
     edited["temperature"] = float(edited["temperature"]) + 2
-    await client.delete(f"/api/profile-board/{row['id']}")
+    await tombstone(client, row["id"])
 
     run = await pull(app)
 
@@ -465,7 +466,7 @@ async def test_a_deleted_copy_is_kept_on_the_row_when_the_machine_could_not_dele
     app, client, fake = adopted
     row = await app_row(app, client, fake, provider, 8)
     file = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
-    await client.delete(f"/api/profile-board/{row['id']}")
+    await tombstone(client, row["id"])
     fake.error_requests.add("req:profiles:delete")
 
     failed = await pull(app)
@@ -489,7 +490,7 @@ async def test_the_successor_of_a_deleted_selected_profile_is_never_a_utility_pr
     for r in (await get_board(client))["rows"]:
         if not r["utility"] and r["row"]["id"] != mine["row"]["id"]:
             await client.put(f"/api/profile-board/{r['row']['id']}/on-machine", json={"on": False})
-    await client.delete(f"/api/profile-board/{mine['row']['id']}")
+    await tombstone(client, mine["row"]["id"])
     plan = (await get_board(client))["actions"]
     assert [(a["kind"], a["device_id"]) for a in plan if a["device_id"] == file] == [
         ("leave", file)
@@ -594,7 +595,7 @@ async def test_a_deleted_copy_edited_between_the_read_and_the_delete_is_not_dest
     app, client, fake = adopted
     row = await app_row(app, client, fake, provider, 8)
     file = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
-    await client.delete(f"/api/profile-board/{row['id']}")
+    await tombstone(client, row["id"])
     assert [a["kind"] for a in (await get_board(client))["actions"]] == ["remove"]
 
     async def edit_then_remove(*args: Any, **kwargs: Any) -> Any:
@@ -735,7 +736,7 @@ async def test_a_deleted_copy_the_app_saved_before_adoption_is_removed_under_the
     )
     await pull(app)
     row = row_for(await get_board(client), STAGED)
-    await client.delete(f"/api/profile-board/{row['row']['id']}")
+    await tombstone(client, row["row"]["id"])
 
     run = await pull(app)
 
@@ -768,7 +769,7 @@ async def test_a_copy_the_app_saved_and_the_person_edited_before_adoption_is_the
     row = row_for(await get_board(client), STAGED)
     assert row["row"]["origin"] == "adopted", "no longer what the app saved"
 
-    await client.delete(f"/api/profile-board/{row['row']['id']}")
+    await tombstone(client, row["row"]["id"])
     run = await pull(app)
 
     assert "staged1" not in ids(fake_device)
@@ -861,7 +862,7 @@ async def test_a_deleted_copy_a_set_brews_is_removed_all_the_same(
     row = row_for(await get_board(client), APP_LABEL)
     file = row["machine"]["device_id"]
     set_id = await make_set_on(client, "Brews it", row["row"]["current_version_id"])
-    await client.delete(f"/api/profile-board/{row['row']['id']}")
+    await tombstone(client, row["row"]["id"])
 
     run = await pull(app)
 
@@ -924,7 +925,7 @@ async def test_a_row_revived_between_the_plan_and_its_removal_keeps_its_file(
     rows = [r for r in (await get_board(client))["rows"] if r["row"]["label"] == "Second [AI]"]
     victim = rows[-1]
     file = victim["machine"]["device_id"]
-    await client.delete(f"/api/profile-board/{victim['row']['id']}")
+    await tombstone(client, victim["row"]["id"])
     draft = dict(
         data(
             await client.post(
@@ -969,7 +970,7 @@ async def test_putting_a_failed_version_back_tries_it_again(
     await pull(app)  # does not verify, and the copy cannot be removed
     row = row_for(await get_board(client), APP_LABEL)["row"]
     assert row["failed_version_id"] == row["current_version_id"]
-    await client.delete(f"/api/profile-board/{row['id']}")
+    await tombstone(client, row["id"])
     fake.mutate_on_save = None
     fake.error_requests.clear()
 

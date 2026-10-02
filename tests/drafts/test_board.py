@@ -51,6 +51,7 @@ from tests.drafts.helpers import (
     make_set_on,
     manual_draft,
     set_device_ids,
+    tombstone,
 )
 from tests.llm.conftest import FakeProvider
 
@@ -358,9 +359,7 @@ async def test_a_draft_with_the_label_of_an_existing_profile_waits_until_that_on
     assert len((await get_board(client))["rows"]) == len(fake_device.profiles)
 
     # Taking the person's profile off the board (it stays on the machine) frees the label.
-    assert (
-        await client.delete(f"/api/profile-board/{adopted_row['row']['id']}")
-    ).status_code == 200
+    assert (await tombstone(client, adopted_row["row"]["id"])).status_code == 200
     new = dict(data(await client.post("/api/profile-board", json={"draft_id": draft["id"]})))
     assert new["id"] != adopted_row["row"]["id"]
     board = await get_board(client)
@@ -388,7 +387,7 @@ async def test_a_deleted_rows_file_is_removed_whoever_wrote_it(
     mine_id = row_for(board, APP_LABEL)["machine"]["device_id"]
     person_id = person["machine"]["device_id"]
     for row_id in (mine["id"], person["row"]["id"]):
-        assert (await client.delete(f"/api/profile-board/{row_id}")).status_code == 200
+        assert (await tombstone(client, row_id)).status_code == 200
     preview = (await get_board(client))["actions"]
     assert {(a["kind"], a["device_id"]) for a in preview} == {
         ("remove", mine_id),
@@ -413,7 +412,7 @@ async def test_deleting_the_selected_profile_selects_another_board_profile_first
     mine = await app_row(app, client, fake, provider)
     mine_id = row_for(await get_board(client), APP_LABEL)["machine"]["device_id"]
     fake.selected_profile_id = mine_id
-    await client.delete(f"/api/profile-board/{mine['id']}")
+    await tombstone(client, mine["id"])
     fake.ws_requests.clear()
 
     run = await pull(app)
@@ -437,16 +436,16 @@ async def test_the_home_screen_flag_sets_and_clears_the_favourite(
     device_id = starred["machine"]["device_id"]
     # The fake machine starts with nothing on its home screen, so adoption took it as off.
     assert starred["row"]["on_home_screen"] is False and not fake.favorite_profile_ids
-    row_url = f"/api/profile-board/{starred['row']['id']}/home-screen"
+    row_url = f"/api/profile-board/{starred['row']['id']}/starred"
 
-    on = await client.put(row_url, json={"on": True})
+    on = await client.put(row_url, json={"starred": True})
     assert data(on)["on_home_screen"] is True
     assert write_frames(fake) == [], "editing the board sends nothing"
     run = await pull(app)
     assert run.status == "ok", run.error
     assert device_id in fake.favorite_profile_ids and "req:profiles:favorite" in fake.ws_requests
 
-    off = await client.put(row_url, json={"on": False})
+    off = await client.put(row_url, json={"starred": False})
     assert data(off)["on_home_screen"] is False
     fake.ws_requests.clear()
     assert [a["kind"] for a in (await get_board(client))["actions"]] == ["home_screen"]
@@ -463,7 +462,7 @@ async def test_a_profile_pushed_off_the_home_screen_is_unstarred_after_the_firmw
 ) -> None:
     app, client, fake = adopted
     row = await put(client, await draft_of(app, client, provider, BASE_LABEL, 8))
-    await client.put(f"/api/profile-board/{row['id']}/home-screen", json={"on": False})
+    await client.put(f"/api/profile-board/{row['id']}/starred", json={"starred": False})
 
     run = await pull(app)
 
@@ -818,9 +817,7 @@ async def test_the_plan_is_the_same_for_the_same_inputs_in_any_order(
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)
     await put(client, await draft_of(app, client, provider, APP_LABEL, 7))
-    first = await client.delete(
-        f"/api/profile-board/{row_for(await get_board(client), BASE_LABEL)['row']['id']}"
-    )
+    first = await tombstone(client, row_for(await get_board(client), BASE_LABEL)["row"]["id"])
     assert first.status_code == 200
     board = app.state.board
     machine = await read_machine(app.state.connection.client)
@@ -857,13 +854,11 @@ async def test_the_board_routes_refuse_what_cannot_go_on_the_board(
     assert again.status_code == 409
     missing = await client.post("/api/profile-board", json={"draft_id": 9999})
     assert missing.status_code == 404
-    assert (await client.delete("/api/profile-board/9999")).status_code == 404
-    bad = await client.put("/api/profile-board/1/home-screen", json={"on": "yes"})
+    bad = await client.put("/api/profile-board/1/starred", json={"starred": "yes"})
     assert bad.status_code == 400
     row_id = row_for(await get_board(client), BASE_LABEL)["row"]["id"]
-    await client.delete(f"/api/profile-board/{row_id}")
-    assert (await client.delete(f"/api/profile-board/{row_id}")).status_code == 404
-    gone = await client.put(f"/api/profile-board/{row_id}/home-screen", json={"on": False})
+    await tombstone(client, row_id)
+    gone = await client.put(f"/api/profile-board/{row_id}/starred", json={"starred": False})
     assert gone.status_code == 404
 
 
@@ -1050,29 +1045,6 @@ async def test_two_puts_of_one_label_at_once_make_one_row_and_one_refusal(
 
     responses = await asyncio.gather(
         *(client.post("/api/profile-board", json={"draft_id": d["id"]}) for d in (first, second))
-    )
-
-    assert sorted(r.status_code for r in responses) == [201, 409]
-    labels = [r["row"]["label"] for r in (await get_board(client, live=False))["rows"]]
-    assert labels.count(APP_LABEL) == 1
-
-
-async def test_a_put_and_a_take_of_one_label_at_once_leave_one_profile_with_it(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    draft = await draft_of(app, client, provider, BASE_LABEL, 7)
-    await approve(app, draft)
-    # A profile made on the display that carries the very label the draft would give.
-    made = copy.deepcopy(fake.profiles[0])
-    made.update(id="made", label=APP_LABEL)
-    made["temperature"] = float(made["temperature"]) + 3
-    fake.profiles.append(made)
-    await pull(app)  # the mirror learns of it
-
-    responses = await asyncio.gather(
-        client.post("/api/profile-board", json={"draft_id": draft["id"]}),
-        client.post("/api/profile-board/take", json={"device_profile_id": "made"}),
     )
 
     assert sorted(r.status_code for r in responses) == [201, 409]

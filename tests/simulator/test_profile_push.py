@@ -295,7 +295,7 @@ async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
             "see /tmp/gaggimate-sim.log"
         )
     finally:
-        deleted = await client.delete(f"/api/profile-board/{row_id}")
+        deleted = await client.put(f"/api/profile-board/{row_id}/on-machine", json={"on": False})
         assert deleted.status_code == 200, deleted.text
         removal = await sync(app)
         if device_id not in [i["device_id"] for i in removal["removed"]]:
@@ -313,15 +313,15 @@ async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
     assert ("profile_delete", "ok") in kinds
 
 
-async def test_a_second_version_replaces_the_first_and_going_back_restores_it(
+async def test_a_second_version_replaces_the_first_and_making_the_first_active_restores_it(
     live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
 ) -> None:
     """Replace and restore against the real firmware: star, selection, delete, save.
 
     The first version is made from the simulator's own profile, which this app did not create,
     so it is a copy beside it. The second is the next version of that copy, so one sync saves
-    it, moves the star and the selection to it and then deletes the first. Going back to the
-    first version saves it again as a new file and removes the second, carrying the selection
+    it, moves the star and the selection to it and then deletes the first. Making the first
+    version active again saves it as a new file and removes the second, carrying the selection
     back: the machine ends with one copy holding the first version.
     """
     app, client = live
@@ -346,7 +346,10 @@ async def test_a_second_version_replaces_the_first_and_going_back_restores_it(
         assert second_id in listed and first_id not in listed
         assert (await device.load_profile(second_id)).selected, "the selection moved first"
 
-        went = await client.post(f"/api/profile-board/{second['row']['id']}/go-back")
+        went = await client.put(
+            f"/api/profile-board/{second['row']['id']}/active-version",
+            json={"version_id": first["draft"]["draft_version_id"]},
+        )
         assert went.status_code == 200, went.text
         summary = await sync(app)
         [pushed] = summary["pushed"]
@@ -398,7 +401,7 @@ async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
         second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
         assert second["row"]["id"] == first["row"]["id"], "same profile, next version"
         off = await client.put(
-            f"/api/profile-board/{second['row']['id']}/home-screen", json={"on": False}
+            f"/api/profile-board/{second['row']['id']}/starred", json={"starred": False}
         )
         assert off.status_code == 200, off.text
 

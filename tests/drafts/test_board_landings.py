@@ -20,7 +20,7 @@ from gaggiclanker.db.repos.profile_board import (
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on
+from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on, tombstone
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -322,7 +322,7 @@ async def _deleted_app_row_waiting(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """An app row deleted on the board while its file is still on the machine."""
     row = await app_row(app, client, fake, provider, 8)
-    assert (await client.delete(f"/api/profile-board/{row['id']}")).status_code == 200
+    assert (await tombstone(client, row["id"])).status_code == 200
     again = await draft_from(app, client, provider, row, 8)  # the very same document
     assert again["draft_version_id"] == row["current_version_id"]
     await approve(app, again)

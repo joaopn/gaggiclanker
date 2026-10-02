@@ -9,14 +9,14 @@ and with no machine at all. What a route that reads the machine does is read.
   mirror of it, and the response says so).
 * ``POST`` puts an approved draft on the board: a new version of the profile it descends from,
   or a new profile.
-* ``POST .../go-back`` makes a profile its previous version again (the app's own profiles
-  only); the next sync puts that version on the machine and removes the newer copy.
 * ``PUT .../on-machine`` switches a profile on or off the machine and ``PUT .../starred`` stars
-  it (the machine's home-screen carousel; ``.../home-screen`` is the same route under its old
-  name); ``PUT .../active-version`` makes one of its versions the active one; ``GET
-  .../versions`` lists its versions and the proposals that would join them. The next sync does
-  what they say.
-* ``DELETE`` tombstones one row (the list has no Delete: switching a profile off is enough).
+  it (the machine's home-screen carousel); ``PUT .../active-version`` makes one of its versions
+  the active one (any version: there is no separate going back); ``GET .../versions`` lists its
+  versions and the proposals that would join them; ``GET`` and ``POST .../conflict`` show and
+  settle a profile whose file was edited outside the app. The next sync does what they say.
+
+The list has no Delete and no Take: switching a profile off is enough, and a profile the machine
+holds that the list has never seen joins it at the next sync.
 
 Chat and MCP have no route here and no tool: a person's click is the only way a profile gets
 onto the board, and the board is the only thing a sync pushes.
@@ -68,12 +68,6 @@ class ResumeData(BaseModel):
     resumed: bool
 
 
-class HomeScreenBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    on: StrictBool
-
-
 class OnMachineBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -99,28 +93,6 @@ class ConflictBody(BaseModel):
     #: The content hash of the machine's file as the person saw it; a file that changed since is
     #: refused.
     content_hash: str = Field(min_length=1, max_length=128)
-
-
-class TakeBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    device_profile_id: str = Field(min_length=1, max_length=64)
-
-
-@router.post(
-    "/take",
-    response_model=ApiResponse[BoardRow],
-    status_code=201,
-    summary="Take a profile the machine holds onto the board, as it is",
-)
-async def take_onto_board(body: TakeBody, board: BoardServiceDep) -> JSONResponse:
-    """Person-only; the first adoption's rule, for one profile. Sends nothing to the machine.
-
-    Refused (409) for a profile already on the board and before the board has been adopted,
-    404 for one the last mirror does not show. No chat or MCP tool reaches it.
-    """
-    row = await board.take(body.device_profile_id)
-    return envelope_response(row.model_dump(mode="json"), status_code=201)
 
 
 @router.post(
@@ -200,18 +172,6 @@ async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep
 
 
 @router.put(
-    "/{row_id}/home-screen",
-    response_model=ApiResponse[BoardRow],
-    summary="Put a profile on, or take it off, the machine's home screen",
-)
-async def put_home_screen(
-    row_id: int, body: HomeScreenBody, board: BoardServiceDep
-) -> JSONResponse:
-    row = await board.set_home_screen(row_id, body.on)
-    return envelope_response(row.model_dump(mode="json"))
-
-
-@router.put(
     "/{row_id}/starred",
     response_model=ApiResponse[BoardRow],
     summary="Star a profile (the machine's home-screen carousel), or take its star off",
@@ -286,30 +246,4 @@ async def resolve_conflict(row_id: int, body: ConflictBody, board: BoardServiceD
     sync replaces the machine's file with the active version. Nothing is sent to the machine
     here. Refused (409) with no conflict, or when the file changed since ``content_hash``."""
     row = await board.resolve_conflict(row_id, keep=body.keep, content_hash=body.content_hash)
-    return envelope_response(row.model_dump(mode="json"))
-
-
-@router.post(
-    "/{row_id}/go-back",
-    response_model=ApiResponse[BoardRow],
-    summary="Go back to a profile's previous version",
-)
-async def go_back_on_board(row_id: int, board: BoardServiceDep) -> JSONResponse:
-    """Person-only. Sends nothing to the machine: the next sync does.
-
-    Refused (409) for a profile of the person's, one with no earlier version, and when the
-    earlier version would make two profiles share a label. No chat or MCP tool reaches it.
-    """
-    row = await board.go_back(row_id)
-    return envelope_response(row.model_dump(mode="json"))
-
-
-@router.delete(
-    "/{row_id}",
-    response_model=ApiResponse[BoardRow],
-    summary="Delete a profile from the board",
-)
-async def delete_from_board(row_id: int, board: BoardServiceDep) -> JSONResponse:
-    """A tombstone. The next sync removes the machine's copy only when the app wrote it."""
-    row = await board.delete_row(row_id)
     return envelope_response(row.model_dump(mode="json"))

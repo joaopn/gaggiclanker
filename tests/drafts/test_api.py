@@ -30,7 +30,7 @@ from tests.drafts.conftest import (
     error,
     mirror_only,
 )
-from tests.drafts.helpers import APP_LABEL
+from tests.drafts.helpers import APP_LABEL, tombstone
 from tests.drafts.test_board import adopted, get_board, pull, put, row_for
 from tests.llm.conftest import FakeProvider
 
@@ -334,7 +334,7 @@ async def test_a_pushed_draft_cannot_be_discarded_until_its_profile_is_off_the_m
     assert "on the machine" in message and "Delete it from the board" in message
     # Delete the profile from the board and the sync that takes its file off discards the draft.
     row = row_for(await get_board(client), APP_LABEL)["row"]
-    await client.delete(f"/api/profile-board/{row['id']}")
+    await tombstone(client, row["id"])
     await pull(app)
     ended = data(await client.get(f"/api/profile-drafts/{draft['id']}"))["draft"]
     assert ended["status"] == "discarded" and ended["pushed_device_profile_id"] is None

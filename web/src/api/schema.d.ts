@@ -1016,26 +1016,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/profile-board/{row_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete a profile from the board
-         * @description A tombstone. The next sync removes the machine's copy only when the app wrote it.
-         */
-        delete: operations["delete_from_board_api_profile_board__row_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/profile-board/{row_id}/active-version": {
         parameters: {
             query?: never;
@@ -1080,46 +1060,6 @@ export interface paths {
          *     here. Refused (409) with no conflict, or when the file changed since ``content_hash``.
          */
         post: operations["resolve_conflict_api_profile_board__row_id__conflict_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/profile-board/{row_id}/go-back": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Go back to a profile's previous version
-         * @description Person-only. Sends nothing to the machine: the next sync does.
-         *
-         *     Refused (409) for a profile of the person's, one with no earlier version, and when the
-         *     earlier version would make two profiles share a label. No chat or MCP tool reaches it.
-         */
-        post: operations["go_back_on_board_api_profile_board__row_id__go_back_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/profile-board/{row_id}/home-screen": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Put a profile on, or take it off, the machine's home screen */
-        put: operations["put_home_screen_api_profile_board__row_id__home_screen_put"];
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1206,29 +1146,6 @@ export interface paths {
          *     Sends nothing to the machine. There is no chat or MCP tool for it.
          */
         post: operations["resume_board_api_profile_board_resume_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/profile-board/take": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Take a profile the machine holds onto the board, as it is
-         * @description Person-only; the first adoption's rule, for one profile. Sends nothing to the machine.
-         *
-         *     Refused (409) for a profile already on the board and before the board has been adopted,
-         *     404 for one the last mirror does not show. No chat or MCP tool reaches it.
-         */
-        post: operations["take_onto_board_api_profile_board_take_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3351,8 +3268,6 @@ export interface components {
         BoardRowView: {
             active_version: components["schemas"]["ActiveVersion"];
             conflict?: components["schemas"]["ConflictSummary"] | null;
-            /** Go Back Blocked */
-            go_back_blocked?: string | null;
             /**
              * In Conflict
              * @default false
@@ -4338,11 +4253,6 @@ export interface components {
             status: string;
             /** Version */
             version: string;
-        };
-        /** HomeScreenBody */
-        HomeScreenBody: {
-            /** On */
-            on: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -7152,11 +7062,6 @@ export interface components {
              */
             running: boolean;
         };
-        /** TakeBody */
-        TakeBody: {
-            /** Device Profile Id */
-            device_profile_id: string;
-        };
         /**
          * TargetSpec
          * @description One stop condition, in the shape the diff renders.
@@ -9242,37 +9147,6 @@ export interface operations {
             };
         };
     };
-    delete_from_board_api_profile_board__row_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                row_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     put_active_version_api_profile_board__row_id__active_version_put: {
         parameters: {
             query?: never;
@@ -9351,72 +9225,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ConflictBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    go_back_on_board_api_profile_board__row_id__go_back_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                row_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    put_home_screen_api_profile_board__row_id__home_screen_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                row_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HomeScreenBody"];
             };
         };
         responses: {
@@ -9557,39 +9365,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ResumeData_"];
-                };
-            };
-        };
-    };
-    take_onto_board_api_profile_board_take_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TakeBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

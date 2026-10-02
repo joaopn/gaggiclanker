@@ -53,7 +53,6 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.lineage import lineage_owner
 from gaggiclanker.db.repos.profile_board import (
@@ -228,9 +227,6 @@ class BoardRowView(BaseModel):
     conflict: ConflictSummary | None = None
     #: How many open drafts would become a version of this profile once made active.
     proposed_versions: int = 0
-    #: Why going back to the previous version would be refused right now (the button says so and
-    #: is disabled), or ``None`` when it would go ahead or the profile has no earlier version.
-    go_back_blocked: str | None = None
 
 
 class BoardLanding(BaseModel):
@@ -459,7 +455,6 @@ class BoardService:
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
-                    go_back_blocked=await self._go_back_blocked(plan.row),
                 )
             )
         preview = None
@@ -697,12 +692,6 @@ class BoardService:
             versions=listed,
             proposed=proposed,
         )
-
-    async def _go_back_blocked(self, row: BoardRow) -> str | None:
-        if row.origin != "draft" or row.previous_version_id is None:
-            return None
-        refusal = await self.go_back_refusal(row)
-        return None if refusal is None else refusal[0]
 
     async def _landings(self) -> list[DraftLanding]:
         """Where each waiting draft (drafted or approved) would land, by the code a put runs.
@@ -953,187 +942,6 @@ class BoardService:
             APP_PROFILE_SUFFIX.strip()
         ) and await self.writes.saved_with_content(device_id, host=host, content_hash=content_hash)
 
-    async def take(self, device_profile_id: str) -> BoardRow:
-        """Put one profile the machine holds, and the board does not, onto the board as it is.
-
-        What the first adoption does for every profile, for one that appeared afterwards
-        (made on the display, or a copy the board let go of). It reads the archive's mirror
-        and writes nothing to the machine. Refused for a profile no live mirror row has, and
-        for a file any board row (a deleted one still waiting to be dealt with included)
-        already stands on.
-        """
-        # Every check and the insert in one transaction, so two takes of one file are
-        # serialised and the second finds the first's row. The unique index on a live row's
-        # file is the backstop: a violation is the same refusal, never a 500.
-        async with self.db.transaction():
-            adoption = await self.board.adoption()
-            if adoption is None:
-                raise Conflict("The board has not taken the machine's profiles yet; sync first.")
-            mirrored = await self.profiles.get_device_profile(device_profile_id)
-            if mirrored is None or mirrored.deleted_at is not None:
-                raise NotFound(
-                    f"The machine has no profile {device_profile_id} as of the last sync"
-                )
-            for row in await self.board.list_rows(include_deleted=True):
-                if row.device_profile_id == device_profile_id:
-                    raise Conflict(
-                        "That profile is already on the board."
-                        if row.deleted_at is None
-                        else "That profile was deleted from the board and its file is still "
-                        "waiting to be dealt with by the next sync."
-                    )
-            version = await self.profiles.get_version(mirrored.current_version_id)
-            if version is None:  # pragma: no cover - a foreign key guarantees it
-                raise NotFound(f"No profile version {mirrored.current_version_id}")
-            if await self.board.find_live_app_by_version(version.id) is not None:
-                # A profile the app pushed already stands for exactly this content (a copy a
-                # sync has just put on the machine while the old one is still kept): a second
-                # row on it would be pushed a third copy by the next sync. The label is part of
-                # the content, so the label rule below would refuse it too; this says it more
-                # precisely.
-                raise Conflict("A profile on the board already stands for this exact profile.")
-            same_label = await self.board.find_live_by_label(version.label)
-            if same_label is not None:
-                # Two live profiles never share a label, the one the person made included:
-                # the machine's own display tells them apart by it. Adoption takes the
-                # machine as it is and reports the pairs instead; taking one more is a choice.
-                raise Conflict(
-                    f"The board already has {same_label.label}. Delete that one from the board "
-                    "first if this is the one you want on it.",
-                    details={"reason": "duplicate_label"},
-                )
-            ours = await self._saved_by_the_app(
-                device_profile_id, version.label, version.content_hash, host=adoption.host
-            )
-            try:
-                return await self.board.insert(
-                    BoardRowWrite(
-                        label=version.label,
-                        current_version_id=version.id,
-                        device_profile_id=device_profile_id,
-                        device_version_id=version.id,
-                        on_home_screen=mirrored.favorite,
-                        origin="draft" if ours else "adopted",
-                    )
-                )
-            except sqlite3.IntegrityError as exc:
-                raise Conflict("That profile is already on the board.") from exc
-
-    async def go_back_refusal(self, row: BoardRow) -> tuple[str, str] | None:
-        """Why this profile cannot go back right now, as ``(message, reason)``, or ``None``.
-
-        One place for the route's refusals and for the board read, which hands the message to
-        the button so it can say why it is disabled instead of offering a click that answers 409.
-        """
-        if row.origin != "draft":
-            return (
-                f"{row.label} is a profile of yours: the app only goes back on profiles it "
-                "wrote itself.",
-                "not_ours",
-            )
-        if row.previous_version_id is None:
-            return f"{row.label} has no earlier version to go back to.", "no_previous"
-        previous = await self.profiles.get_version(row.previous_version_id)
-        if previous is None:  # pragma: no cover - a foreign key guarantees it
-            return f"{row.label} has no earlier version to go back to.", "no_previous"
-        if previous.label != row.label:
-            holder = await self.board.find_live_by_label(previous.label, excluding=row.id)
-            if holder is not None:
-                return (
-                    f"The board already has {holder.label}, which is what {row.label} was "
-                    "before; rename or delete that one first.",
-                    "duplicate_label",
-                )
-        on_board = await self.board.find_live_by_version(previous.id)
-        if on_board is not None and on_board.id != row.id:
-            return f"That earlier version is already on the board as {on_board.label}.", "on_board"
-        if row.pending_draft_id is not None:
-            # Waiting for a sync, which is withdrawn by going back, unless an earlier sync
-            # stopped part-way: the file is already on the machine and nothing would stand on
-            # it once the row has gone back.
-            for held in await self.profiles.list_device_profiles():
-                if (
-                    held.current_version_id == row.current_version_id
-                    and held.device_id != row.device_profile_id
-                ):
-                    return (
-                        f"The last sync of {row.label} stopped part-way; sync again, then go back.",
-                        "sync_stopped_part_way",
-                    )
-        elif row.device_profile_id is not None and row.device_version_id != row.current_version_id:
-            # The newer version is on the machine already, beside an earlier copy the sync kept
-            # (a Set is brewing it). Going back now would leave the newer copy where nothing on
-            # the board stands on it: nothing could remove it.
-            using = await self.sets.sets_currently_using(
-                row.device_profile_id, row.device_version_id
-            )
-            why = (
-                f"for the Set {using[0]}; go back once that Set has moved on"
-                if using
-                else "because it could not be replaced yet; go back after a sync has settled it"
-            )
-            return (
-                f"The earlier copy of {row.label} is still kept on the machine {why}.",
-                "earlier_copy_kept",
-            )
-        return None
-
-    async def go_back(self, row_id: int) -> BoardRow:
-        """Make a profile its previous version again. The next sync does it on the machine.
-
-        What the old rollback of a pushed draft did, as an edit of the board: the row's
-        current version becomes the one it was before its newest put, and the sync then
-        pushes that version and removes the newer copy through the same guards as any
-        replacement. Nothing is sent to the machine here.
-
-        Refused for a profile of the person's (the app only changes what it wrote), for one
-        with no earlier version, and when the earlier version would give two live profiles one
-        label (the newer version may have renamed the profile) or put a document on the board
-        that another profile already holds.
-
-        The record stays true in the same transaction: a version still waiting for the sync
-        is withdrawn (its draft is discarded, nothing of it reached the machine), and a Set
-        that recorded the version being left is remembered for the sync's removal guard. What
-        the sync then does to drafts and Set versions is described at ``_retire``.
-        """
-        async with self.db.transaction():
-            row = await self._live_row(row_id)
-            refusal = await self.go_back_refusal(row)
-            if refusal is not None:
-                raise Conflict(refusal[0], details={"reason": refusal[1]})
-            assert row.previous_version_id is not None  # the refusal covers a missing one
-            previous = await self.profiles.get_version(row.previous_version_id)
-            if previous is None:  # pragma: no cover - a foreign key guarantees it
-                raise NotFound(f"No profile version {row.previous_version_id}")
-
-            back_from_version: int | None = None
-            if row.pending_draft_id is not None:
-                # Never reached the machine: the person withdraws it.
-                await self.drafts.discard_unsent([row.pending_draft_id])
-            if (
-                row.device_profile_id is not None
-                and row.device_version_id == row.current_version_id
-            ):
-                # The version being left is on the machine, and goes there as a going back: the
-                # drafts that pushed it are closed as a going back, not as a replacement.
-                back_from_version = row.current_version_id
-            updated = await self.board.update(
-                row.id,
-                BoardRowPatch(
-                    label=previous.label,
-                    current_version_id=previous.id,
-                    previous_version_id=None,
-                    back_from_version_id=back_from_version,
-                    back_from_set_version_id=None,
-                    failed_version_id=None,
-                    pending_draft_id=None,
-                    pending_set_id=None,
-                    pending_major=None,
-                ),
-            )
-            assert updated is not None  # the row was read in this transaction
-            return updated
-
     async def set_on_machine(self, row_id: int, on: bool) -> BoardRow:
         """Switch a profile on or off the machine. The next sync follows; nothing is sent now."""
         row = await self._live_row(row_id)
@@ -1218,21 +1026,6 @@ class BoardService:
     async def set_home_screen(self, row_id: int, on: bool) -> BoardRow:
         row = await self._live_row(row_id)
         updated = await self.board.update(row.id, BoardRowPatch(on_home_screen=on))
-        assert updated is not None
-        return updated
-
-    async def delete_row(self, row_id: int) -> BoardRow:
-        """Tombstone a profile. The next sync removes its file if the app wrote it."""
-        row = await self._live_row(row_id)
-        updated = await self.board.update(
-            row.id,
-            BoardRowPatch(
-                deleted_at=utc_now(),
-                pending_draft_id=None,
-                pending_set_id=None,
-                pending_major=None,
-            ),
-        )
         assert updated is not None
         return updated
 
