@@ -36,6 +36,7 @@ from tests.drafts.helpers import (
     draft_of,
     kinds,
     make_set_on,
+    same_name_draft,
     set_device_ids,
     tombstone,
 )
@@ -690,9 +691,11 @@ async def test_a_copy_the_app_saved_before_adoption_is_continued_by_a_later_draf
     assert len([p for p in fake_device.profiles if p["label"] == STAGED]) == 1
 
 
-async def test_a_profile_the_person_made_stays_theirs_even_when_it_ends_in_the_app_label(
+async def test_a_persons_profile_ending_in_the_app_label_is_continued_like_any_other(
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
+    """Who made a profile decides nothing: a change that keeps its name is a new version of it,
+    plain or for a Set, and the sync replaces its file under the usual guards."""
     app, client = writes_on
     mine = copy.deepcopy(next(p for p in fake_device.profiles if p["id"] == "9bar"))
     mine.update(id="mine", label=STAGED)
@@ -701,21 +704,19 @@ async def test_a_profile_the_person_made_stays_theirs_even_when_it_ends_in_the_a
     mine_row = row_for(await get_board(client), STAGED)
     assert mine_row["row"]["origin"] == "adopted"
 
-    # A draft of it carries the same label: refused as a duplicate, plain or for a Set, so the
-    # person's own profile is never continued, replaced or doubled.
     set_id = await make_set_on(client, "OnMine", mine_row["row"]["current_version_id"])
-    plain = await draft_of(app, client, provider, STAGED, 7)
-    await approve(app, plain)
-    for_set = await draft_of(app, client, provider, STAGED, 6)
-    await approve(app, for_set)
-    for body in ({"draft_id": plain["id"]}, {"draft_id": for_set["id"], "set_id": set_id}):
-        refused = await client.post("/api/profile-board", json=body)
-        assert refused.status_code == 409, refused.text
-    await pull(app)
+    plain = await same_name_draft(app, client, provider, STAGED, 7)
+    for_set = await same_name_draft(app, client, provider, STAGED, 6)
+    on_plain = await put(client, plain)
+    on_set = await put(client, for_set, set_id=set_id)
 
+    assert on_plain["id"] == on_set["id"] == mine_row["row"]["id"]
+    run = await pull(app)
+    assert run.status == "ok", run.error
     assert row_for(await get_board(client), STAGED)["row"]["id"] == mine_row["row"]["id"]
-    assert "mine" in ids(fake_device)
-    assert kinds(await audit(app), "profile_delete") == []
+    # The person's file was replaced by the new version under the same name, and nothing else.
+    assert [p["label"] for p in fake_device.profiles].count(STAGED) == 1
+    assert "mine" not in ids(fake_device)
 
 
 async def test_a_deleted_copy_the_app_saved_before_adoption_is_removed_under_the_guards(

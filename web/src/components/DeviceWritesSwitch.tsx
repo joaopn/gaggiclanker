@@ -270,7 +270,11 @@ function WritesPreview() {
                 key={`${action.kind}-${action.row_id ?? "x"}-${action.device_id ?? action.label}`}
                 className="break-words"
               >
-                {previewLine(action)}
+                {previewLine(action, {
+                  rowIsOff:
+                    action.row_id != null &&
+                    (view.rows ?? []).some((r) => r.row.id === action.row_id && !r.on_machine),
+                })}
               </li>
             ))}
           </ul>

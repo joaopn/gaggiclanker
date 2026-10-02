@@ -17,6 +17,7 @@ from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.device_writes import DeviceWriteRow, DeviceWritesRepository
 from gaggiclanker.db.repos.profile_board import BoardRowPatch
 from gaggiclanker.device.fake import FakeDevice
+from gaggiclanker.domain.models import with_app_suffix
 from tests.drafts.conftest import BASE_LABEL, base_profile, base_version_id, data
 from tests.llm.conftest import FakeProvider
 
@@ -52,10 +53,35 @@ async def draft_of(
     profile = await base_profile(app, label)
     document = profile.model_dump(mode="json", exclude={"annotations", "id"})
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": bar, "flow": 0}
+    # The agent writing a fork: a profile of its own, named with the suffix. (A change that keeps
+    # the profile's name is a version of it; ``same_name_draft`` below makes that one.)
+    document["label"] = with_app_suffix(label)
     provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
     response = await client.post(
         "/api/profile-drafts",
         json={"base_version_id": await base_version_id(app, label), "notes": "change it"},
+    )
+    return dict(data(response))
+
+
+async def same_name_draft(
+    app: FastAPI, client: httpx.AsyncClient, provider: FakeProvider, label: str, bar: float
+) -> dict[str, Any]:
+    """The agent changing a profile and keeping its name: a new version of that profile.
+
+    Based on the profile's own active version (what the agent is shown), not on whichever stored
+    version carries the label, which may be another draft's.
+    """
+    board = data(await client.get("/api/profile-board"))["rows"]
+    row = next(r["row"] for r in board if r["row"]["label"] == label)
+    version = data(await client.get(f"/api/profile-versions/{row['current_version_id']}"))
+    document = dict(version["profile"])
+    document["phases"] = [dict(p) for p in document["phases"]]
+    document["phases"][0]["pump"] = {"target": "pressure", "pressure": bar, "flow": 0}
+    provider.script = [json.dumps({"profile": document, "change_summary": f"{bar} bar."})]
+    response = await client.post(
+        "/api/profile-drafts",
+        json={"base_version_id": row["current_version_id"], "notes": "change it"},
     )
     return dict(data(response))
 

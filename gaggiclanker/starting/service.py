@@ -32,7 +32,7 @@ one from the library and suggests a temperature that profile does not brew at.
 The second is not optional politeness — the machine heats to what the document
 says, a Set version records no temperature of its own, so the only way taking
 an option can make its suggested temperature true is to draft the profile at
-it. Nothing is pushed either way; the person puts the draft on the board from the Profiles
+it. Nothing is pushed either way; the person makes the proposal active from the Profiles
 page.
 
 The accept is idempotent by refusal rather than by repetition, and the *order*
@@ -555,8 +555,8 @@ class StartingPointService:
         roast level is half of what this feature is for — and taking the option
         has to make that temperature true. A Set version records none, so the
         only place it can be true is the profile, and the only way to change a
-        profile is a draft somebody puts on the board. Nothing here reaches
-        the machine: the person puts it on the board from the Profiles page exactly as
+        profile is a proposal somebody makes active. Nothing here reaches
+        the machine: the person makes it active from the Profiles page exactly as
         they would a drafted profile of their own.
 
         Nothing is staged when the two already agree, which is the common case

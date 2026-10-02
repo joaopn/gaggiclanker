@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SettingsMap } from "@/api/types";
 import { DeviceWritesSwitch, WRITES_ON_SENTENCE } from "@/components/DeviceWritesSwitch";
 import { queryKeys } from "@/lib/queryKeys";
-import { boardAction, boardView } from "@/test/boardFixtures";
+import { boardAction, boardRowView, boardView } from "@/test/boardFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 const { getSettings, patchSettings, getProfileBoard } = vi.hoisted(() => ({
@@ -176,6 +176,26 @@ describe("DeviceWritesSwitch", () => {
       expect(list).toHaveTextContent("Remove Old [AI] from the machine");
       expect(list).toHaveTextContent("Take the star off 9 Bar");
       expect(screen.queryByTestId("writes-preview-stale")).toBeNull();
+    });
+
+    it("says a file matched to a profile that is off will be removed", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(
+        boardView({
+          machine_source: "machine",
+          rows: [boardRowView({ row: { id: 1, label: "Londinium", on_machine: false } })],
+          actions: [
+            boardAction({ kind: "adopt", reason: "attached", row_id: 1, label: "Londinium" }),
+          ],
+        }),
+      );
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview-list")).toHaveTextContent(
+        "matched to Londinium, which is off: the next sync removes it",
+      );
     });
 
     it("says profiles in conflict are left alone", async () => {

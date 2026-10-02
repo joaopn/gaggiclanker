@@ -399,8 +399,8 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
 
     Utility profiles are excluded — a backflush is not a starting point — and
     so is anything that has never been used *and* is not mirrored, because a
-    profile the machine does not have is one the person would have to put on the
-    board, and sync, before they could brew a shot with it.
+    profile the machine does not have is one the person would have to make active
+    in the list, and sync, before they could brew a shot with it.
     """
     rows = await db.fetch_all(
         f"""

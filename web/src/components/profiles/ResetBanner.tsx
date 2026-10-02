@@ -36,6 +36,9 @@ export function ResetBanner({ view }: { view: BoardView }) {
   const unread = !reading && !fromMachine;
   const preview = fromMachine ? live.data?.resume_preview : null;
   const lines = preview?.lines ?? [];
+  const offRows = new Set(
+    (live.data?.rows ?? []).filter((r) => !r.on_machine).map((r) => r.row.id),
+  );
   const putBack = preview ? plural(preview.push, "profile") : "";
   const removal = preview && preview.remove > 0 ? ` and remove ${preview.remove}` : "";
   const question = reading
@@ -90,7 +93,9 @@ export function ResetBanner({ view }: { view: BoardView }) {
                   key={`${line.kind}-${line.row_id ?? "x"}-${line.device_id ?? line.label}`}
                   className="break-words"
                 >
-                  {previewLine(line)}
+                  {previewLine(line, {
+                    rowIsOff: line.row_id != null && offRows.has(line.row_id),
+                  })}
                 </li>
               ))}
             </ul>

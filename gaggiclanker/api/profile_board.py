@@ -46,7 +46,7 @@ router = APIRouter(prefix="/profile-board", tags=["profiles"])
 
 
 class BoardPut(BaseModel):
-    """Put an approved draft on the board."""
+    """Make a proposal active."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -154,9 +154,9 @@ async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep
 
     One action for a proposal: a drafted draft is approved by it (with the stop-condition
     acknowledgement when its stop conditions moved). Refused (409) for a draft that is already
-    on the machine, discarded or overtaken, one already on the board, a stop-condition change
-    nobody acknowledged, a label the board already has, and for a Set that could no longer be
-    given a version.
+    on the machine, discarded or overtaken, one whose version is already in the list, a
+    stop-condition change nobody acknowledged, and for a Set that could no longer be given a
+    version. A proposal continues the live profile with exactly its name, or is a new profile.
     """
     if body.set_id is not None:
         refusal = await sets.design_refusal(body.set_id)

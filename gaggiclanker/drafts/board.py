@@ -53,7 +53,6 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos import lineage
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.lineage import lineage_owner
 from gaggiclanker.db.repos.profile_board import (
@@ -222,10 +221,6 @@ class BoardRowView(BaseModel):
     #: Sets whose current version brews this profile (any of its versions, or the file it stands
     #: on): changing the active version or switching it off changes what they brew.
     sets_brewing: list[SetBrewing] = Field(default_factory=list)
-    #: The profile an "Edit a copy" of this one becomes a version of (its own label, or the app's
-    #: copy of it), or ``None`` when the copy would be a profile of its own: the lineage rule's
-    #: answer, so a page can say which before saving.
-    edit_lands_on_label: str | None = None
     #: In conflict: the machine's file differs from everything the app knows, so a sync does
     #: nothing for this profile until a person chooses a side (``POST .../conflict``).
     in_conflict: bool = False
@@ -242,11 +237,6 @@ class BoardLanding(BaseModel):
     #: The board row the draft would become the next version of; ``None`` for a new profile.
     row_id: int | None = None
     row_label: str | None = None
-    #: A put the board refuses because a live board profile already carries the label this
-    #: draft would give a profile of its own (a new profile, or a version that renames the
-    #: one it continues): that label. Two live profiles never share a label, so there is no
-    #: put to offer, only a refinement of the profile that has the label, or a discard.
-    taken_label: str | None = None
     #: A put that would bring a deleted profile back (its file still waits to be dealt with).
     revives_label: str | None = None
 
@@ -274,7 +264,7 @@ class BoardProposal(BaseModel):
 
     draft: ProfileDraftRow
     #: The profile it would become a version of (by the landing a put runs); ``None`` when it
-    #: would be a new profile, or cannot land (``landing.plain.taken_label``).
+    #: would be a new profile.
     row_id: int | None = None
     landing: DraftLanding
 
@@ -334,8 +324,6 @@ class _Destination:
 
     row: BoardRow | None = None
     revived: BoardRow | None = None
-    #: The label of a live profile that makes the put a duplicate; the put is refused.
-    taken: str | None = None
 
 
 @dataclass
@@ -454,7 +442,6 @@ class BoardService:
                         profile=plan.version.profile,
                     ),
                     sets_brewing=_sets_brewing(brews, listed, plan.row.device_profile_id),
-                    edit_lands_on_label=await self._edit_lands_on(plan.row.id),
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
@@ -491,10 +478,6 @@ class BoardService:
             landings=landings,
             proposals=proposals,
         )
-
-    async def _edit_lands_on(self, row_id: int) -> str | None:
-        landed = await lineage.edit_continues(_LiveLineage(self), row_id)
-        return None if landed is None else landed.label
 
     async def _conflict_summary(self, plan: RowPlan) -> ConflictSummary | None:
         if plan.conflict_file is None or plan.conflict_hash is None:
@@ -747,8 +730,6 @@ class BoardService:
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
     ) -> BoardLanding:
         dest = await self._destination(draft, version, set_id)
-        if dest.taken is not None:
-            return BoardLanding(taken_label=dest.taken)
         row = dest.row
         if row is None:
             return BoardLanding(revives_label=None if dest.revived is None else dest.revived.label)
@@ -759,24 +740,17 @@ class BoardService:
     async def _destination(
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
     ) -> _Destination:
-        """Where a put of this draft lands, and whether the board refuses it.
+        """Where a put of this draft lands.
 
-        The one place that decides, for the put and for the read of where a put lands:
-        the row it continues (by lineage), else a deleted row it brings back, else a new
-        row; and in every case the refusal that two live profiles never share a label. A
-        put that keeps a row's label is never refused for it (a pair that already shares a
-        label is left to be fixed, not made worse); one that would give a row a label
-        another live row holds, or add a row beside one, is.
+        The one place that decides, for the put and for the read of where a put lands: the
+        live profile with exactly the draft's name (a Set's profile first), else a deleted row
+        it brings back, else a new row. Two live profiles never share a label because a put
+        continues the one that has it instead of adding a second.
         """
         row = await self._lineage_row(draft, version, set_id)
         if row is not None:
-            if row.label == version.label:
-                return _Destination(row=row)
-            holder = await self.board.find_live_by_label(version.label, excluding=row.id)
-            return _Destination(row=row, taken=None if holder is None else holder.label)
-        revived = await self._revivable(version)
-        holder = await self.board.find_live_by_label(version.label)
-        return _Destination(revived=revived, taken=None if holder is None else holder.label)
+            return _Destination(row=row)
+        return _Destination(revived=await self._revivable(version))
 
     async def _revivable(self, version: ProfileVersionRow) -> BoardRow | None:
         """The deleted row a put of this version would bring back, if there is one.
@@ -851,13 +825,6 @@ class BoardService:
                 raise Conflict("That profile version is already in the list.")
 
             dest = await self._destination(draft, version, set_id)
-            if dest.taken is not None:
-                raise Conflict(
-                    f"The list already has a profile called {dest.taken}. Open it and use Edit a "
-                    "copy on one of its versions to make the change there, or decline this "
-                    "proposal.",
-                    details={"reason": "duplicate_label"},
-                )
             row = dest.row
             if draft.status == "draft":
                 await self.drafts.set_status(
@@ -916,16 +883,10 @@ class BoardService:
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
     ) -> BoardRow | None:
         """The live profile a put of this draft continues: ``lineage_owner``, over the live list."""
-        base = await self.profiles.get_version(draft.base_version_id)
         return await lineage_owner(
             _LiveLineage(self),
             set_id=set_id,
-            base_label=None if base is None else base.label,
             version_label=version.label,
-            is_new=draft.is_new,
-            base_version_id=draft.base_version_id,
-            base_device_profile_id=draft.base_device_profile_id,
-            target_id=draft.target_board_id,
         )
 
     async def resume(self) -> None:
@@ -1971,10 +1932,6 @@ class _LiveLineage:
     def __init__(self, service: BoardService) -> None:
         self.service = service
 
-    async def by_id(self, profile_id: int) -> BoardRow | None:
-        row = await self.service.board.get(profile_id)
-        return None if row is None or row.deleted_at is not None else row
-
     async def by_set(self, set_id: int) -> BoardRow | None:
         service = self.service
         current = await service.sets.current_version(set_id)
@@ -1985,27 +1942,14 @@ class _LiveLineage:
         if found is not None:
             row = await service.board.find_live_by_device(found[0])
         if row is None:
-            row = await service.board.find_live_by_version(current.profile_version_id)
+            row = await service.board.find_live_by_listed_version(current.profile_version_id)
         return row
-
-    async def by_version(self, version_id: int) -> BoardRow | None:
-        # By the profile's version list, not only the version it is on now: a proposal based on
-        # an older version (or one that was never pushed) still belongs to its profile.
-        return await self.service.board.find_live_by_listed_version(version_id)
 
     async def by_label(self, label: str) -> BoardRow | None:
         return await self.service.board.find_live_by_label(label)
 
     def label_of(self, profile: BoardRow) -> str:
         return profile.label
-
-    async def by_device(self, device_id: str) -> BoardRow | None:
-        return await self.service.board.find_live_by_device(device_id)
-
-    def is_app_made(self, profile: BoardRow) -> bool:
-        """A new version only continues a profile the app itself pushed; a profile the person
-        made stays as it was, and a draft of it is a profile of its own beside it."""
-        return profile.origin == "draft"
 
 
 def _is_settled(removal: Removal) -> bool:

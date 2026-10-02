@@ -376,6 +376,45 @@ describe("the reset guard", () => {
     await waitFor(() => expect(api.resumeBoard).toHaveBeenCalledTimes(1));
   });
 
+  it("has a line for everything the question counts: a file matched to a profile that is off is removed", async () => {
+    const user = setupUser();
+    live(async () => ({
+      ...paused({
+        push: 1,
+        remove: 2,
+        lines: [
+          boardAction({ kind: "push", label: "Londinium" }),
+          boardAction({ kind: "remove", label: "Old default", device_id: "d1", reason: "off" }),
+          boardAction({
+            kind: "adopt",
+            label: "Display copy",
+            reason: "attached",
+            row_id: 2,
+            device_id: "d2",
+          }),
+        ],
+      }),
+      rows: [row(), row({ row: { id: 2, label: "Display copy", on_machine: false } })],
+    }));
+    renderWithQueryClient(<ProfilesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent(
+        "put back 1 profile and remove 2?",
+      ),
+    );
+
+    await user.click(screen.getByTestId("reset-lines-toggle"));
+
+    const lines = screen
+      .getAllByRole("listitem", { hidden: false })
+      .filter((li) => screen.getByTestId("reset-lines").contains(li));
+    const removing = lines.filter((li) => /remove/i.test(li.textContent ?? ""));
+    expect(removing).toHaveLength(2);
+    expect(screen.getByTestId("reset-lines")).toHaveTextContent(
+      "matched to Display copy, which is off: the next sync removes it",
+    );
+  });
+
   it("leaves out 'remove 0'", async () => {
     live(async () => paused({ remove: 0, push: 9 }));
     renderWithQueryClient(<ProfilesPage />);
@@ -823,28 +862,6 @@ describe("proposed versions", () => {
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledTimes(1));
   });
 
-  it.each([
-    [
-      "the list already has the label",
-      {
-        plain: {
-          row_id: null,
-          row_label: null,
-          taken_label: "Londinium",
-        },
-      },
-      "its name is already taken by Londinium",
-    ],
-  ])("offers no Make active when %s, and says why", async (_name, blocked, words) => {
-    const user = setupUser();
-    withProposal({}, blocked);
-    const panel = await open(user);
-
-    expect(within(panel).queryByTestId("make-proposal-active")).not.toBeInTheDocument();
-    expect(within(panel).getByTestId("proposal-blocked")).toHaveTextContent(words);
-    expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
-  });
-
   it("shows Make active on every proposal of a profile: one never blocks another", async () => {
     const user = setupUser();
     const one = proposal({ id: 11, row_id: 1 });
@@ -871,7 +888,7 @@ describe("proposed versions", () => {
     }
   });
 
-  it("hides only the Set's button when the label is taken for the Set alone", async () => {
+  it("offers the Set's button and the plain one together, as they land the same", async () => {
     const user = setupUser();
     withProposal(
       {
@@ -880,17 +897,11 @@ describe("proposed versions", () => {
         set_next_minor_label: "v1.2",
         set_next_major_label: "v2",
       },
-      {
-        for_set: {
-          row_id: null,
-          row_label: null,
-          taken_label: "Londinium",
-        },
-      },
+      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
     );
     const panel = await open(user);
 
-    expect(within(panel).queryByTestId("make-proposal-active-for-set")).not.toBeInTheDocument();
+    expect(within(panel).getByTestId("make-proposal-active-for-set")).toBeInTheDocument();
     expect(within(panel).getByTestId("make-proposal-active")).toBeInTheDocument();
   });
 
@@ -1294,11 +1305,8 @@ describe("what the page leaves out", () => {
 });
 
 describe("Edit a copy", () => {
-  async function openEditor(becomes: string | null) {
+  async function openEditor() {
     const user = setupUser();
-    api.getProfileBoard.mockResolvedValue(
-      boardView({ rows: [row({ edit_lands_on_label: becomes })] }),
-    );
     api.getBoardVersions.mockResolvedValue(
       versionsView([listedVersion({ version_id: 7, is_active: true })]),
     );
@@ -1310,69 +1318,25 @@ describe("Edit a copy", () => {
     return user;
   }
 
-  it("says a copy of a profile the app made becomes a version of it", async () => {
-    await openEditor("9 Bar Espresso");
+  it("says the copy is a proposed new version of that profile, whoever made it, and that its name is kept", async () => {
+    await openEditor();
 
     expect(
       await screen.findByText(/proposed new version of 9 Bar Espresso, not active/),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/profile of its own/)).not.toBeInTheDocument();
+    expect(screen.getByText(/a changed name makes a profile of its own/)).toBeInTheDocument();
   });
 
-  it("says a copy of any other profile becomes a profile of its own, named with [AI]", async () => {
-    await openEditor(null);
-
-    expect(
-      await screen.findByText(/profile of its own beside this one, named with \[AI\]/),
-    ).toBeInTheDocument();
-  });
-
-  it("names the app's copy when a second edit of a profile the app did not make would join it", async () => {
-    await openEditor("9 Bar Espresso [AI]");
-
-    expect(
-      await screen.findByText(/proposed new version of 9 Bar Espresso \[AI\], not active/),
-    ).toBeInTheDocument();
-  });
-
-  it("aims the saved draft at the profile it was opened from", async () => {
-    const user = await openEditor("9 Bar Espresso");
+  it("saves the copy against the version it was opened from, with nothing else naming a profile", async () => {
+    const user = await openEditor();
 
     await waitFor(() => expect(screen.getByTestId("editor-valid")).toBeInTheDocument());
     await user.click(screen.getByTestId("save-as-draft"));
 
     await waitFor(() => expect(api.createProfileDraft).toHaveBeenCalled());
-    expect(api.createProfileDraft.mock.calls[0]?.[0]).toMatchObject({
-      base_version_id: 7,
-      target_row_id: 1,
-    });
-  });
-});
-
-describe("a proposal that cannot be added", () => {
-  it("says why and what to do, not just Decline", async () => {
-    const user = setupUser();
-    const p = proposal({
-      row_id: null,
-      landing: landing({
-        plain: {
-          row_id: null,
-          row_label: null,
-          taken_label: "Londinium [AI]",
-        },
-      } as never),
-    });
-    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [p] }));
-    api.getProfileDraft.mockResolvedValue(
-      draftDetail({ draft: p.draft, draft_profile: draftProfile() }),
-    );
-    renderWithQueryClient(<ProfilesPage />);
-    await user.click(await screen.findByTestId("profile-toggle"));
-
-    const blocked = await screen.findByTestId("proposal-blocked");
-    expect(blocked).toHaveTextContent("its name is already taken by Londinium [AI]");
-    expect(blocked).toHaveTextContent("open it and use Edit a copy on one of its versions");
-    expect(blocked).toHaveTextContent("decline this proposal");
+    const body = api.createProfileDraft.mock.calls[0]?.[0];
+    expect(body).toMatchObject({ base_version_id: 7 });
+    expect(body).not.toHaveProperty("target_row_id");
   });
 });
 

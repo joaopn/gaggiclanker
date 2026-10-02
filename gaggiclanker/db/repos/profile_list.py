@@ -25,9 +25,11 @@ The grouping, in order:
    waiting on it.
 3. **The stored drafts, replayed oldest first, through the rule a put uses**
    (``lineage_owner``, shared with the live put): a version lands in the profile a put of it
-   would have landed in (the Set's chain, or the base it is an exact-label continuation of,
-   and only a profile the app made), so a firmware profile never absorbs the agent's work and a
-   renamed version of a Set's profile stays with it. What a draft replaced on the machine is
+   would have landed in (the Set's chain, or the profile whose version list has its base when
+   the name is the profile's own). A draft stored before a change could keep a profile's name
+   carries the suffix on a base that has none, so it fails the name test and is grouped as it
+   always was: a firmware profile does not absorb the agent's old work. A renamed version of a
+   Set's profile stays with it. What a draft replaced on the machine is
    the same profile. A version that would start a
    new profile joins the one that already has exactly its label, so no two profiles share a name.
 4. **What no draft made** (imports, versions the machine held before the board) joins the
@@ -256,24 +258,15 @@ class ProfileListBuilder(Repository):
             version = int(draft["draft_version_id"])
             if not eligible(version) and groups.owner_of(version) is None:
                 continue
-            base = versions.get(int(draft["base_version_id"]))
-            landed = await lineage_owner(
-                lookup,
-                set_id=draft["set_id"],
-                base_label=None if base is None else base["label"],
-                version_label=versions[version]["label"],
-                is_new=bool(draft["is_new"]),
-                base_version_id=int(draft["base_version_id"]),
-                base_device_profile_id=draft["base_device_profile_id"],
-            )
+            # A version a hard fact already placed stays where it is; otherwise the put's own
+            # rule: the profile with exactly its name (a Set's profile first), else a new one.
+            landed = groups.owner_of(version)
             if landed is None:
-                # A new profile, unless one already has exactly this name: two profiles never
-                # share a label (the live put refuses the second; the fill joins it).
-                landed = (
-                    groups.owner_of(version)
-                    or groups.with_label(versions[version]["label"])
-                    or groups.new()
+                landed = await lineage_owner(
+                    lookup, set_id=draft["set_id"], version_label=versions[version]["label"]
                 )
+            if landed is None:
+                landed = groups.new()
             groups.add(landed, version)
             # What the draft replaced on the machine is the same profile.
             replaced = draft["replaced_version_id"]
@@ -442,26 +435,12 @@ class _ReplayLookup:
         #: The last draft version replayed for each Set: the Set's chain, as it stood.
         self.last_for_set: dict[int, int] = {}
 
-    async def by_id(self, profile_id: int) -> int | None:
-        return None  # old drafts were made before a draft could name its profile
-
-    async def by_label(self, label: str) -> int | None:
-        return self.groups.with_label(label)
-
     def label_of(self, profile: int) -> str:
-        row = self.groups.rows.get(profile)
-        return "" if row is None else row.label
+        return self.groups.name_of(profile)
 
     async def by_set(self, set_id: int) -> int | None:
         version = self.last_for_set.get(set_id)
         return None if version is None else self.groups.owner_of(version)
 
-    async def by_version(self, version_id: int) -> int | None:
-        return self.groups.owner_of(version_id)
-
-    async def by_device(self, device_id: str) -> int | None:
-        return self.files_of.get(device_id)
-
-    def is_app_made(self, profile: int) -> bool:
-        row = self.groups.rows.get(profile)
-        return row is None or row.origin == "draft"
+    async def by_label(self, label: str) -> int | None:
+        return self.groups.with_label(label)

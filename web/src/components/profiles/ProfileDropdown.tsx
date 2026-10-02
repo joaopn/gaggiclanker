@@ -94,8 +94,6 @@ export function ProfileDropdown({
             if (!open) setEditing(null);
           }}
           baseVersionId={editing.version_id}
-          targetRowId={entry.row.id}
-          becomesVersionOf={entry.edit_lands_on_label ?? null}
           label={editing.label}
           document={editing.profile as Record<string, unknown>}
         />

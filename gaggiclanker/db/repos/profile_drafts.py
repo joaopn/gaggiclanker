@@ -10,7 +10,7 @@ have to special-case.
 
 What *is* here is the state machine and the evidence:
 
-    draft ──put on the board──> approved ──the sync puts it on the machine──> pushed
+    draft ──made active──> approved ──the sync puts it on the machine──> pushed
       │                            │
       │                            └──refine──> superseded
       └──discard──> discarded
@@ -78,9 +78,7 @@ class ProfileDraftWrite(BaseModel):
     #: Which file on the display the base version was mirrored under when this
     #: draft was made. NULL when it was not on the machine at all.
     base_device_profile_id: str | None = None
-    #: The profile ("Edit a copy" was opened on one of its versions) this is a new version of,
-    #: and who made the draft. See migration 0037.
-    target_board_id: int | None = None
+    #: Who made the draft (migration 0037).
     made_by: Literal["agent", "edit"] | None = None
     #: The Set this was proposed for, when it was proposed inside one Set's
     #: conversation. It is what makes the prediction below mean something: a
@@ -119,7 +117,6 @@ class ProfileDraftRow(BaseModel):
     source_suggestion_id: int | None = None
     parent_draft_id: int | None = None
     base_device_profile_id: str | None = None
-    target_board_id: int | None = None
     made_by: Literal["agent", "edit"] | None = None
     #: The Set this was proposed for, the prediction it carries, and the version
     #: that prediction is against. All three are empty on a draft nobody
@@ -279,8 +276,8 @@ class ProfileDraftsRepository(Repository):
                  parent_draft_id, base_device_profile_id, set_id, prediction,
                  compares_to_version_id, suggest_major, major_reason, is_new, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
-                 target_board_id, made_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
+                 made_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
             """,
             (
                 write.base_version_id,
@@ -299,7 +296,6 @@ class ProfileDraftsRepository(Repository):
                 dumps(write.stop_condition_changes),
                 dumps(write.clamp_changes),
                 write.notes,
-                write.target_board_id,
                 write.made_by,
                 now,
                 now,

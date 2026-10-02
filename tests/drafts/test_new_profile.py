@@ -20,9 +20,9 @@ from gaggiclanker.db.repos.profiles import (
 )
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile
-from tests.drafts.conftest import data
+from tests.drafts.conftest import BASE_LABEL, data
 from tests.drafts.helpers import APP_LABEL, manual_draft
-from tests.drafts.test_board import adopted, app_row, approve, get_board, put
+from tests.drafts.test_board import adopted, approve, get_board, put, row_for
 from tests.drafts.test_board_landings import landing
 from tests.llm.conftest import FakeProvider
 
@@ -93,23 +93,82 @@ async def test_the_detail_of_an_edit_still_serves_its_diff(
     assert detail["draft"]["base_label"] == "9 Bar Espresso"
 
 
-async def test_a_new_draft_never_continues_the_board_row_of_its_stored_base(
+async def test_a_new_draft_named_like_an_existing_profile_is_named_with_the_suffix(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
-    """The labels agree here, which is all the lineage looked at before the flag."""
-    app, client, fake = adopted
-    row = await app_row(app, client, fake, provider, 8)
-    edit = await _draft_of_row(app, client, row, new=False)
-    new = await _draft_of_row(app, client, row, new=True)
-    await approve(app, edit)
-    await approve(app, new)
+    """A profile written from scratch always gets the app's suffix, even when its name is that
+    of a profile that exists: it never continues the person's profile, and so never renames it.
+    (Named like an app profile, it is that profile's name already: see the next test.)"""
+    app, client, _ = adopted
+    firmware = row_for(await get_board(client), BASE_LABEL)["row"]
+    base = await ProfilesRepository(app.state.db).empty_base()
+    version = await ProfilesRepository(app.state.db).get_version(base)
+    assert version is not None and version.profile is not None
+    document = copy.deepcopy(version.profile)
+    document["label"] = BASE_LABEL
 
+    fresh = await app.state.draft_proposals.create_manual(
+        base_version_id=base, document=document, is_new=True
+    )
+    await approve(app, dict(fresh.model_dump(mode="json")))
+
+    assert fresh.draft_label == APP_LABEL
+    board = await get_board(client)
+    found = landing(board, dict(fresh.model_dump(mode="json")))["plain"]
+    assert found["row_id"] is None, "a new profile beside the firmware's, never a version of it"
+    assert row_for(board, BASE_LABEL)["row"]["id"] == firmware["id"]
+
+
+async def test_two_new_drafts_with_one_name_are_versions_of_one_profile(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    app, client, _ = adopted
+    base = await ProfilesRepository(app.state.db).empty_base()
+    version = await ProfilesRepository(app.state.db).get_version(base)
+    assert version is not None and version.profile is not None
+    drafts = []
+    for duration in (20, 25):
+        document = copy.deepcopy(version.profile)
+        document["label"] = "Zero"
+        document["phases"][0]["duration"] = duration
+        drafts.append(
+            await app.state.draft_proposals.create_manual(
+                base_version_id=base, document=document, is_new=True
+            )
+        )
+
+    first = await put(client, {"id": drafts[0].id})
+    second = await put(client, {"id": drafts[1].id})
+
+    assert first["label"] == "Zero [AI]" and second["id"] == first["id"]
+    versions = data(await client.get(f"/api/profile-board/{first['id']}/versions"))["versions"]
+    assert len(versions) == 2
+
+
+async def test_a_refinement_of_an_active_new_draft_is_a_version_of_its_profile(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, _ = adopted
+    base = await ProfilesRepository(app.state.db).empty_base()
+    version = await ProfilesRepository(app.state.db).get_version(base)
+    assert version is not None and version.profile is not None
+    document = copy.deepcopy(version.profile)
+    document["label"] = "Zero"
+    new = await app.state.draft_proposals.create_manual(
+        base_version_id=base, document=document, is_new=True
+    )
+    made = await put(client, {"id": new.id})
+    document["phases"][0]["duration"] = 25
+    provider.script = [json.dumps({"profile": document, "change_summary": "shorter"})]
+
+    refined = data(
+        await client.post(f"/api/profile-drafts/{new.id}/refine", json={"notes": "shorter"})
+    )
     board = await get_board(client)
 
-    assert landing(board, edit)["plain"]["row_id"] == row["id"]
-    found = landing(board, new)["plain"]
-    assert found["row_id"] is None and found["revives_label"] is None
-    assert found["taken_label"] == APP_LABEL
+    [proposal] = [p for p in board["proposals"] if p["draft"]["id"] == refined["id"]]
+    assert proposal["row_id"] == made["id"]
+    assert (await put(client, refined))["id"] == made["id"]
 
 
 async def test_a_refinement_of_a_new_draft_is_new(

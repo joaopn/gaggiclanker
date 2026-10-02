@@ -21,7 +21,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.device.fake import FakeDevice
-from gaggiclanker.domain.models import Profile
+from gaggiclanker.domain.models import Profile, with_app_suffix
 from tests.drafts.conftest import (
     BASE_LABEL,
     base_profile,
@@ -48,6 +48,7 @@ async def a_draft(
     """Ask for one draft, with the model scripted to return an edited profile."""
     profile = await base_profile(app)
     document = profile.model_dump(mode="json", exclude={"annotations", "id"})
+    document["label"] = with_app_suffix(profile.label)  # a fork, as in `lower_pressure`
     if edit:
         document.update(edit)
     provider.script = [
@@ -64,6 +65,9 @@ def lower_pressure(profile: Profile, bar: float) -> dict[str, Any]:
     """The edit every test here makes: one number, in one phase."""
     document = profile.model_dump(mode="json", exclude={"annotations", "id"})
     document["phases"][0]["pump"] = {"target": "pressure", "pressure": bar, "flow": 0}
+    # A fork written by the agent: a profile of its own, named with the suffix. A change that
+    # keeps the profile's name is a version of it, and has its own tests.
+    document["label"] = with_app_suffix(profile.label)
     return document
 
 

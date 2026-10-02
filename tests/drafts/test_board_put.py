@@ -140,20 +140,6 @@ async def test_a_draft_approved_before_the_one_click_put_is_put_as_it_is(
     assert row["pending_draft_id"] == draft["id"]
 
 
-async def test_a_refused_put_leaves_the_draft_drafted(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    first = await draft_of(app, client, provider, BASE_LABEL, 8)
-    await put(client, first)
-    second = await draft_of(app, client, provider, BASE_LABEL, 7)  # the same label
-
-    refused = await client.post("/api/profile-board", json={"draft_id": second["id"]})
-
-    assert refused.status_code == 409
-    assert (await draft_status(client, second))["status"] == "draft", "not approved by a refusal"
-
-
 async def test_only_a_drafted_or_approved_draft_can_be_put(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:

@@ -25,7 +25,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.lineage import edit_label
+from gaggiclanker.db.repos.lineage import draft_label
 from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftRow,
@@ -33,7 +33,7 @@ from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftWrite,
 )
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.domain.models import Profile, profile_content_hash, with_app_suffix
+from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
     PolicyChange,
@@ -84,10 +84,21 @@ class DraftProposals:
         resolved = await self.settings.resolve_all()
         return bounds_from({key: setting.value for key, setting in resolved.items()})
 
+    async def label_for(self, base_version_id: int, label: str) -> str:
+        """The label a draft of this base is stored under: the profile's own name when the draft
+        continues the profile the base belongs to (a version never renames a profile), else the
+        app's ``[AI]`` suffix is added, as for any profile it writes."""
+        board = ProfileBoardRepository(self.db)
+        row = await board.find_live_by_listed_version(base_version_id)
+        if row is None:
+            device = await self.profiles.find_device_id_for_version(base_version_id)
+            row = None if device is None else await board.find_live_by_device(device)
+        return draft_label(label, None if row is None else row.label)
+
     async def prepare(
-        self, base: Profile, candidate: Profile, *, is_new: bool = False, edit: bool = False
+        self, base_version_id: int, base: Profile, candidate: Profile, *, is_new: bool = False
     ) -> PreparedDraft:
-        """Clamp, re-check, suffix the label, diff the stop conditions.
+        """Clamp, re-check, name the label, diff the stop conditions.
 
         A new profile has no stop-condition changes: there is nothing it changes the stops *of*,
         and the base it is stored against is not a profile anybody brews, so a diff against it
@@ -103,7 +114,12 @@ class DraftProposals:
         violations = check(clamped, bounds)
         if violations:
             raise _rejected(violations)
-        label = edit_label(clamped.label) if edit else with_app_suffix(clamped.label)
+        # A profile written from scratch is a profile of its own: it is marked as the agent's.
+        label = (
+            draft_label(clamped.label, None)
+            if is_new
+            else await self.label_for(base_version_id, clamped.label)
+        )
         document = clamped.for_new_device_profile(label=label)
         return PreparedDraft(
             profile=document,
@@ -127,7 +143,6 @@ class DraftProposals:
         new_profile_only: bool = False,
         reusable_version_ids: Collection[int] = (),
         made_by: Literal["agent", "edit"] = "agent",
-        target_board_id: int | None = None,
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
 
@@ -160,12 +175,7 @@ class DraftProposals:
                 "That document is not a valid GaggiMate profile",
                 details={"schema_errors": schema_errors(exc)},
             ) from None
-        if (
-            target_board_id is not None
-            and await ProfileBoardRepository(self.db).get(target_board_id) is None
-        ):
-            raise NotFound(f"No profile {target_board_id} in the list")
-        prepared = await self.prepare(base, candidate, is_new=is_new, edit=made_by == "edit")
+        prepared = await self.prepare(base_version_id, base, candidate, is_new=is_new)
         if new_profile_only:
             existing = await self.profiles.get_version_by_hash(
                 profile_content_hash(prepared.profile)
@@ -189,7 +199,6 @@ class DraftProposals:
             major_reason=major_reason,
             is_new=is_new,
             made_by=made_by,
-            target_board_id=target_board_id,
         )
 
     async def store(
@@ -207,7 +216,6 @@ class DraftProposals:
         major_reason: str = "",
         is_new: bool = False,
         made_by: Literal["agent", "edit"] = "agent",
-        target_board_id: int | None = None,
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document."""
         version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
@@ -231,7 +239,6 @@ class DraftProposals:
                 is_new=is_new,
                 change_summary=change_summary,
                 made_by=made_by,
-                target_board_id=target_board_id,
                 stop_condition_changes=[
                     change.model_dump(mode="json") for change in prepared.stop_condition_changes
                 ],

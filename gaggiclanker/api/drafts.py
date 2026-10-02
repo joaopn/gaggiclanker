@@ -1,4 +1,4 @@
-"""`/api/profile-drafts` — what a profile draft is, before a person puts it on the board.
+"""`/api/profile-drafts` — what a profile draft is, before a person makes it active.
 
 Everything here is a thin wrapper over
 :class:`~gaggiclanker.drafts.service.ProfileDraftService`, which is where the rules live.
@@ -56,9 +56,6 @@ class DraftCreate(BaseModel):
     #: service, and a 422 naming the field is more useful than FastAPI's own
     #: rendering of a deeply nested union.
     profile: dict[str, Any] | None = None
-    #: The profile the editor was opened on ("Edit a copy" of one of its versions): the draft is
-    #: a new version of it, whichever version was edited. Only with `profile`.
-    target_row_id: int | None = None
     #: What the barista asked for, in their words. Goes into the prompt.
     notes: str = Field(default="", max_length=4000)
     change_summary: str = Field(default="", max_length=1000)
@@ -121,7 +118,6 @@ async def create_draft(body: DraftCreate, drafts: DraftServiceDep) -> JSONRespon
             document=body.profile,
             change_summary=body.change_summary,
             notes=body.notes,
-            target_board_id=body.target_row_id,
         )
         return envelope_response(row.model_dump(mode="json"), status_code=201)
     if not body.notes.strip():

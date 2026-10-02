@@ -27,13 +27,18 @@ first (`POST /api/backup`), because there is no down-migration.
   (the agent, an edit, the machine, edited on the machine, an import), its shots and the Sets
   that brew it, **Make active** (any version, the first included) and **Edit a copy**. The
   first version shows a summary; every later one shows what changed from the version before it.
-- **Edit a copy is aimed at the profile it was opened on** (new migration `0037` records the
-  profile and who made each draft). For a profile the app made, the copy is always a new
-  version of it, whichever version you edited, so editing an older version no longer produces a
-  proposal that cannot be added. For a profile the app did not make the first edit is a
-  separate profile named with `[AI]` and a second edit is a new version of that copy; the one
-  rule for that lives in `db/repos/lineage.py`, and the dialog says which before you save. A
-  hand edit is labelled as yours, not the agent's.
+- **A change that keeps a profile's name is a new version of that profile, whoever made it.**
+  A change finds its profile through the profile's version list (new migration `0037`
+  records who made each draft), whichever version it is based on, so editing an older version
+  no longer produces a proposal that cannot be added. The agent's changes (`draft_profile`,
+  refine, the starting point) are versions of the profile they were based on the same way. The
+  firmware's own profiles and ones made on the display are no exception: the new version keeps
+  the exact name, with no `[AI]` suffix, and the sync saves it under that name and replaces the
+  old file. A name never changes through a version: a changed name, or a profile written from
+  scratch, is a profile of its own and gets the `[AI]` suffix, so the suffix only marks profiles
+  the agent wrote, and who made a version (you or the agent) is shown on the version. A hand edit
+  is labelled as yours, not the agent's. The rule lives in `db/repos/lineage.py`; proposals
+  made before this one keep landing as they did.
 - **Proposals are independent candidates.** Making one active never blocks or undoes another
   (the "a newer draft is waiting" refusal is gone), and a proposal based on a version that is
   no longer active, or was never pushed, still lands on its profile, found through the
@@ -47,6 +52,8 @@ first (`POST /api/backup`), because there is no down-migration.
   opens on the app's version and the machine's side by side (two columns from tablet width),
   with **Keep the app's** and **Keep the machine's**. If the machine's file changed again since
   you looked, nothing is done and the panel shows the new one.
+- **The reset banner's lines account for its numbers**: a machine file matched to a profile
+  that is off says the next sync removes it.
 - **The reset question moved here**: when the machine looks reset, one banner asks "put back N
   profiles and remove M?" with one button; the Sync page's Resume banner is gone and points
   here. The Writes switch's confirmation now says what a sync does (it removes profiles that
@@ -1579,12 +1586,11 @@ person has approved it — saves it to the display as a **new** profile.
 - **Off by default.** `deviceWritesEnabled` gates every write method and is
   re-read on every write, not cached at boot. A device client built without the
   app's gate can write nothing at all, so read-only is what forgetting gives you.
-- **Never overwrites, never selects.** `save_profile` refuses a profile carrying
-  an id — the firmware upserts on the filename — so the machine always assigns
-  its own. The pushed profile sits beside whatever you were brewing with.
-- **Deletes only what it created.** Two independent proofs: the label on the
-  machine ends in ` [AI]`, and the `device_writes` audit holds a successful save
-  for that id.
+- **Never overwrites in place, never selects on its own.** `save_profile` refuses a profile
+  carrying an id — the firmware upserts on the filename — so the machine always assigns its
+  own; a replaced profile is saved as a new file first and the old one removed after.
+- **A removal is guarded by a fresh load.** The file must still hold exactly what the app last
+  recorded; a file that changed is never deleted unseen.
 - **A safety policy narrower than the firmware**, tunable from Settings:
   60–100 °C, 0–12 bar, 0–10 ml/s, phases of 0.5–120 s, at most ten of them. It
   clamps and **says what it moved**; anything a clamp cannot fix is refused

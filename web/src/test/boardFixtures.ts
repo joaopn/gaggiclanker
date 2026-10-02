@@ -81,7 +81,6 @@ export function boardRowView(
     on_machine: base.on_machine,
     starred: base.on_home_screen,
     in_conflict: false,
-    edit_lands_on_label: base.origin === "draft" ? base.label : null,
     conflict: null,
     sets_brewing: [],
     proposed_versions: 0,

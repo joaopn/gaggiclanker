@@ -152,6 +152,9 @@ async def put_on_board(
     assert base is not None and base.profile is not None
     document: dict[str, Any] = dict(base.profile)
     document["phases"] = [dict(phase) for phase in document["phases"]]
+    # A fork: the agent writing a profile of its own beside the simulator's (a change that kept
+    # the name would be a new version of that profile).
+    document["label"] = with_app_suffix(str(document["label"]))
     first = document["phases"][0]
     first["pump"] = (
         {**first["pump"], "pressure": bar}

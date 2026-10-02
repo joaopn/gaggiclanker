@@ -1,4 +1,4 @@
-"""Profile drafts: propose a profile, validate it four ways, put it on the board.
+"""Profile drafts: propose a profile, validate it four ways, make it active.
 
 The four layers are described in `docs/safety-layers.md` and they are
 spread across three packages on purpose — a layer that lives next to the thing it

@@ -19,7 +19,7 @@ from gaggiclanker.db.repos.profile_board import (
 )
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on, tombstone
+from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on, same_name_draft, tombstone
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -60,34 +60,48 @@ async def test_two_variants_of_a_profile_of_yours_with_labels_of_their_own_each_
     for draft in (first, second):
         found = landing(board, draft)
         assert found["plain"]["row_id"] is None
-        assert found["plain"]["revives_label"] is None and found["plain"]["taken_label"] is None
+        assert found["plain"]["revives_label"] is None
         assert found["for_set"] is None and found["already_on_board_label"] is None
 
 
-async def test_two_variants_with_one_label_cannot_both_go_on_the_board(
+async def test_two_forks_with_one_name_are_versions_of_one_profile(
     writes_on: Live, fake_device: FakeDevice, provider: FakeProvider
 ) -> None:
+    """A draft continues the live profile with exactly its name: the second fork lands on the
+    profile the first one made, and is not refused for a taken name."""
     app, client = writes_on
     await pull(app)
     first = await draft_of(app, client, provider, BASE_LABEL, 7)
     second = await draft_of(app, client, provider, BASE_LABEL, 6)
     await approve(app, first)
     await approve(app, second)
-    # Neither is refused while the other is not on the board: the landing is per draft.
-    board = await get_board(client)
-    assert landing(board, second)["plain"]["taken_label"] is None
+    # Neither continues anything while the other is not in the list: the landing is per draft.
+    assert landing(await get_board(client), second)["plain"]["row_id"] is None
 
-    await put(client, first)
+    made = await put(client, first)
 
     found = landing(await get_board(client), second)["plain"]
-    assert found["taken_label"] == APP_LABEL and found["row_id"] is None
-    refused = await client.post("/api/profile-board", json={"draft_id": second["id"]})
-    assert refused.status_code == 409
-    assert error(refused)["message"] == (
-        f"The list already has a profile called {APP_LABEL}. Open it and use Edit a copy on one "
-        "of its versions to make the change there, or decline this proposal."
-    )
-    assert error(refused)["details"] == {"reason": "duplicate_label"}
+    assert found["row_id"] == made["id"]
+    assert (await put(client, second))["id"] == made["id"]
+
+
+async def test_two_changes_of_a_persons_profile_that_keep_its_name_are_both_versions_of_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, _ = adopted
+    row = row_for(await get_board(client), BASE_LABEL)["row"]
+    first = await same_name_draft(app, client, provider, BASE_LABEL, 7)
+    second = await same_name_draft(app, client, provider, BASE_LABEL, 6)
+    await approve(app, first)
+    await approve(app, second)
+
+    board = await get_board(client)
+
+    for draft in (first, second):
+        found = landing(board, draft)["plain"]
+        assert found["row_id"] == row["id"]
+    await put(client, first)
+    assert (await put(client, second))["id"] == row["id"]
 
 
 async def test_a_draft_whose_document_is_already_on_the_board_says_so_and_a_put_is_refused(
@@ -106,7 +120,7 @@ async def test_a_draft_whose_document_is_already_on_the_board_says_so_and_a_put_
     for draft in (on_board, again):
         found = landing(board, draft)
         assert found["already_on_board_label"] == APP_LABEL
-        assert found["plain"]["row_id"] is None and found["plain"]["taken_label"] is None
+        assert found["plain"]["row_id"] is None
     refused = await client.post("/api/profile-board", json={"draft_id": again["id"]})
     assert refused.status_code == 409
     assert "already in the list" in error(refused)["message"]
@@ -126,33 +140,29 @@ async def test_no_landings_before_the_board_is_adopted(
     assert board["adopted"] is False and board["landings"] == []
 
 
-async def test_a_variant_beside_an_app_profile_with_the_same_label_is_refused(
+async def test_a_fork_named_like_an_app_profile_continues_that_profile(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
-    await app_row(app, client, fake, provider, 8)  # the app's "9 Bar Espresso [AI]"
-    variant = await draft_of(app, client, provider, BASE_LABEL, 7)  # of the person's own: [AI] too
+    row = await app_row(app, client, fake, provider, 8)  # the app's "9 Bar Espresso [AI]"
+    variant = await draft_of(app, client, provider, BASE_LABEL, 7)  # a fork named like it
     await approve(app, variant)
 
     found = landing(await get_board(client), variant)["plain"]
 
-    assert found["row_id"] is None and found["revives_label"] is None
-    assert found["taken_label"] == APP_LABEL
+    assert found["row_id"] == row["id"]
     rows = len((await get_board(client))["rows"])
-    assert (
-        await client.post("/api/profile-board", json={"draft_id": variant["id"]})
-    ).status_code == 409
+    assert (await put(client, variant))["id"] == row["id"]
     assert len((await get_board(client))["rows"]) == rows
 
 
-async def test_a_version_that_renames_its_profile_to_a_taken_label_is_refused(
+async def test_a_set_draft_renamed_onto_another_profiles_name_continues_that_profile(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
     app, client, fake = adopted
     first = await app_row(app, client, fake, provider, 8, name="First")
-    await app_row(app, client, fake, provider, 7, name="Second")
+    second = await app_row(app, client, fake, provider, 7, name="Second")
     set_id = await make_set_on(client, "Rename set", first["current_version_id"])
-    # A draft for the Set that continues "First [AI]" but is called "Second".
     version = data(await client.get(f"/api/profile-versions/{first['current_version_id']}"))
     document = dict(version["profile"])
     document["label"] = "Second"
@@ -175,14 +185,9 @@ async def test_a_version_that_renames_its_profile_to_a_taken_label_is_refused(
 
     found = landing(await get_board(client), renamed)
 
-    # By lineage it would continue First and rename it onto Second; as a new profile it would
-    # be a second "Second". Both are refused.
-    assert found["for_set"]["row_id"] is None and found["for_set"]["taken_label"] == "Second [AI]"
-    assert found["plain"]["taken_label"] == "Second [AI]"
-    refused = await client.post(
-        "/api/profile-board", json={"draft_id": renamed["id"], "set_id": set_id}
-    )
-    assert refused.status_code == 409, refused.text
+    # Renamed, it is not First (a name never changes through a version); it is named "Second
+    # [AI]", so it continues the profile with that name, plain or for the Set.
+    assert found["for_set"]["row_id"] == second["id"] == found["plain"]["row_id"]
     labels = [r["row"]["label"] for r in (await get_board(client))["rows"]]
     assert len(labels) == len(set(labels))
 
@@ -202,8 +207,7 @@ async def test_a_put_that_keeps_its_rows_label_is_never_refused_for_a_pair_that_
     await approve(app, newer)
 
     found = landing(await get_board(client), newer)["plain"]
-
-    assert found["taken_label"] is None and found["row_id"] == row["id"]
+    assert found["row_id"] == row["id"]
     assert (await put(client, newer))["id"] == row["id"]
 
 
@@ -281,8 +285,8 @@ async def test_a_set_draft_lands_by_the_sets_current_version_when_recorded_for_i
 
     found = landing(await get_board(client), draft)
 
-    # Without the Set it is a variant of the person's own profile: a new profile. Recorded for
-    # the Set it continues the app's profile the Set brews.
-    assert found["plain"]["row_id"] is None
+    # A fork named like the app's profile the Set brews: it continues that profile, for the Set
+    # or not, because that is the profile with exactly its name.
+    assert found["plain"]["row_id"] == row["id"]
     assert found["for_set"]["row_id"] == row["id"]
     assert (await put(client, draft, set_id=set_id))["id"] == row["id"]

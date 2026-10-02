@@ -169,7 +169,7 @@ export function previewCounts(view: BoardView): PreviewCounts {
 }
 
 /** One line per planned action, for the switch's preview and the reset banner. */
-export function previewLine(action: BoardAction): string {
+export function previewLine(action: BoardAction, options: { rowIsOff?: boolean } = {}): string {
   switch (action.kind) {
     case "push":
       return `Put ${action.label} on the machine`;
@@ -182,7 +182,11 @@ export function previewLine(action: BoardAction): string {
     case "adopt":
       // A file the list already has a profile for is matched to it, not added.
       if (action.reason === "attached") {
-        return `The machine's copy of ${action.label} is matched to ${action.label}`;
+        // A file joining a profile that is off is taken off the machine by the sync after the one
+        // that matches it (a file is never removed by the sync that finds it).
+        return options.rowIsOff
+          ? `The machine's copy of ${action.label} is matched to ${action.label}, which is off: the next sync removes it`
+          : `The machine's copy of ${action.label} is matched to ${action.label}`;
       }
       if (action.reason === "conflict") {
         return `The machine's copy of ${action.label} differs from the app's: it becomes a conflict to settle`;

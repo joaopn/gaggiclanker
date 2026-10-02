@@ -185,6 +185,13 @@ describe("previewLine for a file that joins the list", () => {
     expect(attached).toBe("The machine's copy of Londinium is matched to Londinium");
     expect(attached).not.toContain("Add");
     expect(
+      previewLine(boardAction({ kind: "adopt", label: "Londinium", reason: "attached" }), {
+        rowIsOff: true,
+      }),
+    ).toBe(
+      "The machine's copy of Londinium is matched to Londinium, which is off: the next sync removes it",
+    );
+    expect(
       previewLine(boardAction({ kind: "adopt", label: "9 Bar", reason: "conflict" })),
     ).toContain("conflict");
   });

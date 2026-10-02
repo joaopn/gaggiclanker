@@ -2,7 +2,7 @@
 
 The shape of the whole feature is a path and one invariant.
 
-    generate / create_manual  ->  put on the board (a person)  ->  the next sync (the machine)
+    generate / create_manual  ->  make active (a person)  ->  the next sync (the machine)
 
 **The invariant: every document that leaves this module has been through
 :func:`~gaggiclanker.domain.profile_policy.enforce`.** There is exactly one
@@ -13,8 +13,8 @@ constructor. That half lives in its own class, built without the machine
 connection, so the chat's tools can propose a draft without holding anything
 that could write one.
 
+This service holds no machine connection at all. A draft reaches the machine only through
 the profile list (:mod:`.board`): a person's "Make active" approves it and makes it a
-the profile board (:mod:`.board`): a person's "Put on the board" approves it and makes it a
 profile's next version, and the write phase of the next sync saves it, reads it back and
 removes what it replaces, through the primitives in :mod:`.machine`. What remains here is
 what a draft needs before that (drafting, refining, discarding) and
@@ -37,7 +37,6 @@ import structlog
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
-from gaggiclanker.db.repos.lineage import edit_label
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
@@ -126,7 +125,9 @@ class ProfileDraftService:
         bounds = await self.bounds()
         clamped, changes = clamp(candidate, bounds)
         violations = check(clamped, bounds)
-        final = clamped.for_new_device_profile(label=edit_label(clamped.label))
+        final = clamped.for_new_device_profile(
+            label=await self.proposals.label_for(base_version_id, clamped.label)
+        )
         return DraftPreview(
             valid=not violations,
             violations=violations,
@@ -144,12 +145,10 @@ class ProfileDraftService:
         document: dict[str, Any],
         change_summary: str = "",
         notes: str = "",
-        target_board_id: int | None = None,
     ) -> ProfileDraftRow:
         """A draft somebody typed into the editor. Same four layers, no model involved.
 
-        Recorded as the person's own edit (``made_by``), aimed at the profile it was opened on
-        when the editor says which.
+        Recorded as the person's own edit (``made_by``).
         """
         return await self.proposals.create_manual(
             base_version_id=base_version_id,
@@ -157,7 +156,6 @@ class ProfileDraftService:
             change_summary=change_summary,
             notes=notes,
             made_by="edit",
-            target_board_id=target_board_id,
         )
 
     async def generate(
@@ -200,7 +198,7 @@ class ProfileDraftService:
                 details={"code": result.code},
             )
         prepared: PreparedDraft = await self.proposals.prepare(
-            base, result.data.profile, is_new=is_new
+            base_version_id, base, result.data.profile, is_new=is_new
         )
         row = await self.proposals.store(
             base_version_id=base_version_id,

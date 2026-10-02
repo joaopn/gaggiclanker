@@ -487,7 +487,9 @@ async def test_an_import_or_pre_board_version_joins_the_profile_with_exactly_its
 async def test_a_sets_chain_alone_links_a_renamed_version_to_its_profile(
     db: Database, tmp_path: Path
 ) -> None:
-    """No file, no replaced version: only the Set ties the renamed version to the first."""
+    """No file, no replaced version: the Set's profile is the one its draft is named for, and a
+    renamed draft is a profile of its own (the put's rule: a name never changes through a
+    version)."""
     await _below(db, tmp_path)
     await _version(db, 1, "Base", source="device")
     await _version(db, 2, "First [AI]", source="draft")
@@ -499,8 +501,10 @@ async def test_a_sets_chain_alone_links_a_renamed_version_to_its_profile(
     await ProfileListBuilder(db).build()
 
     got = await _profiles(db)
-    made = next(p for p in got.values() if (2, "agent") in p["versions"])  # type: ignore[operator]
-    assert [v for v, _ in made["versions"]] == [2, 3]  # type: ignore[attr-defined]
+    first = next(p for p in got.values() if (2, "agent") in p["versions"])  # type: ignore[operator]
+    second = next(p for p in got.values() if (3, "agent") in p["versions"])  # type: ignore[operator]
+    assert [v for v, _ in first["versions"]] == [2] and first["label"] == "First [AI]"  # type: ignore[attr-defined]
+    assert [v for v, _ in second["versions"]] == [3] and second["label"] == "Second [AI]"  # type: ignore[attr-defined]
 
 
 async def test_a_new_draft_never_continues_the_profile_of_its_stored_base(
@@ -580,3 +584,50 @@ async def test_what_a_draft_replaced_stays_with_the_profile_that_already_owns_it
     assert list(got) == ["1"], "no second profile is made for what the row already owns"
     assert [v for v, _ in got["1"]["versions"]] == [2, 3]  # type: ignore[attr-defined]
     assert got["1"]["label"] == "Foo [AI]" and got["1"]["current"] == 2
+
+
+async def test_a_second_change_to_a_profile_of_the_persons_joins_the_first_copy(
+    db: Database, tmp_path: Path
+) -> None:
+    """The fill asks the same lineage question a put does: a draft based on a profile the app did
+    not make continues the app's copy of it (named with the suffix) when one exists."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Foo", source="device")
+    await _version(db, 2, "Foo [AI]", source="draft")
+    await _version(db, 3, "Foo [AI]", source="draft")
+    await _draft(db, 1, base=1, version=2, status="pushed", pushed="p")
+    await _draft(db, 2, base=1, version=3, status="discarded")
+    await _row(db, 1, "Foo", 1, device="d1", device_version=1, origin="adopted")
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    got = await _profiles(db)
+    assert [v for v, _ in got["1"]["versions"]] == [1]  # type: ignore[attr-defined]
+    copies = [p for k, p in got.items() if k != "1"]
+    assert len(copies) == 1 and [v for v, _ in copies[0]["versions"]] == [2, 3]  # type: ignore[attr-defined]
+    assert copies[0]["label"] == "Foo [AI]"
+
+
+async def test_a_version_a_pushed_file_placed_is_not_pulled_into_another_group_by_its_name(
+    db: Database, tmp_path: Path
+) -> None:
+    """A draft pushed as the file a profile stands on belongs to that profile. Its label happens
+    to be the name another (made) group has: the fill does not merge the two."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Bar", source="device")
+    await _version(db, 2, "Base", source="device")
+    await _version(db, 3, "Foo [AI]", source="draft")
+    await _version(db, 4, "Foo [AI]", source="draft")
+    await _draft(db, 1, base=2, version=3, status="pushed", pushed="p2")
+    await _draft(db, 2, base=2, version=4, status="discarded")
+    await _row(db, 1, "Bar", 1, device="p2", device_version=1, origin="adopted")
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    got = await _profiles(db)
+    row = got["1"]
+    assert [v for v, _ in row["versions"]] == [1, 3]  # type: ignore[attr-defined]
+    other = next(p for k, p in got.items() if k != "1" and (4, "edit") in p["versions"])  # type: ignore[operator]
+    assert [v for v, _ in other["versions"]] == [4]  # type: ignore[attr-defined]

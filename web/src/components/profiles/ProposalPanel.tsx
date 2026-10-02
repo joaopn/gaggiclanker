@@ -71,9 +71,10 @@ export function ProposalPanel({
   const busy = put.isPending || discard.isPending;
   const alreadyThere = landing?.already_on_board_label ?? null;
   // Every proposal is an independent candidate: another one being made active never blocks this
-  // one. Only a name that is taken (a new profile with the name of one that exists) does.
-  const plainBlocked = alreadyThere !== null || (landing?.plain.taken_label ?? null) !== null;
-  const setBlocked = alreadyThere !== null || (landing?.for_set?.taken_label ?? null) !== null;
+  // one, and a name never blocks it either (it continues the profile that has the name). Only a
+  // document that is already in the list leaves nothing to make active.
+  const plainBlocked = alreadyThere !== null;
+  const setBlocked = alreadyThere !== null;
   const forSet =
     draft.set_id != null && draft.set_name != null && landing?.for_set != null
       ? {
@@ -191,10 +192,6 @@ export function ProposalPanel({
           This exact profile is already in the list as {alreadyThere}, so there is nothing to make
           active. Decline this one, or edit a copy into something else.
         </p>
-      ) : plainBlocked && (forSet === null || setBlocked) ? (
-        <p className="text-sm" data-testid="proposal-blocked">
-          {blockedWords(landing)}
-        </p>
       ) : null}
 
       {forSet !== null && !rowOn ? (
@@ -266,14 +263,6 @@ export function ProposalPanel({
       </div>
     </div>
   );
-}
-
-function blockedWords(landing: DraftLanding): string {
-  const taken = landing.plain.taken_label;
-  if (taken) {
-    return `This would be a new profile, but its name is already taken by ${taken}. To change ${taken}, open it and use Edit a copy on one of its versions, so the change is made there. Or decline this proposal.`;
-  }
-  return "This proposal cannot be made active. Decline it.";
 }
 
 function StopConditionWarning({ changes }: { changes: StopConditionChange[] }) {

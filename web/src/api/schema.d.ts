@@ -1005,9 +1005,9 @@ export interface paths {
          *
          *     One action for a proposal: a drafted draft is approved by it (with the stop-condition
          *     acknowledgement when its stop conditions moved). Refused (409) for a draft that is already
-         *     on the machine, discarded or overtaken, one already on the board, a stop-condition change
-         *     nobody acknowledged, a label the board already has, and for a Set that could no longer be
-         *     given a version.
+         *     on the machine, discarded or overtaken, one whose version is already in the list, a
+         *     stop-condition change nobody acknowledged, and for a Set that could no longer be given a
+         *     version. A proposal continues the live profile with exactly its name, or is a new profile.
          */
         post: operations["put_on_board_api_profile_board_post"];
         delete?: never;
@@ -3153,8 +3153,6 @@ export interface components {
             row_id?: number | null;
             /** Row Label */
             row_label?: string | null;
-            /** Taken Label */
-            taken_label?: string | null;
         };
         /**
          * BoardMachineState
@@ -3192,7 +3190,7 @@ export interface components {
         };
         /**
          * BoardPut
-         * @description Put an approved draft on the board.
+         * @description Make a proposal active.
          */
         BoardPut: {
             /**
@@ -3263,8 +3261,6 @@ export interface components {
         BoardRowView: {
             active_version: components["schemas"]["ActiveVersion"];
             conflict?: components["schemas"]["ConflictSummary"] | null;
-            /** Edit Lands On Label */
-            edit_lands_on_label?: string | null;
             /**
              * In Conflict
              * @default false
@@ -3976,8 +3972,6 @@ export interface components {
             profile?: {
                 [key: string]: unknown;
             } | null;
-            /** Target Row Id */
-            target_row_id?: number | null;
         };
         /**
          * DraftLanding
@@ -4955,8 +4949,6 @@ export interface components {
              * @default false
              */
             suggest_major: boolean;
-            /** Target Board Id */
-            target_board_id?: number | null;
             /** Updated At */
             updated_at: string;
             verification?: components["schemas"]["JsonObject"];

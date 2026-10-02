@@ -318,12 +318,12 @@ it is.
 A profile reaches the machine only by being on in the list with an active version. A change
 starts as a proposal: **Edit a copy** on a version (the JSON editor validates what you type
 against the strict schema and the safety policy; save it unchanged to propose a version as it
-is), or the chat or the starting-point wizard proposing one. An edit is aimed at the profile
-it was opened on: for a profile the app made it is a new version of that profile, whichever
-version you edited; for one the app did not make (the machine's own, or one made on its
-display) it is a separate profile beside it, named with the `[AI]` suffix, until that is
-decided otherwise (`EDIT_CONTINUES_ANY_PROFILE` in `db/repos/lineage.py` is the one switch). It waits inside its profile's
-dropdown, marked **Proposed**, or as a row marked **New** when it is a new profile. **Make
+is), or the chat or the starting-point wizard proposing one. A change that keeps a profile's
+name is a new version of that profile, whoever made it and whichever version you edited: the
+machine's own profiles and ones made on its display included, under their exact name. A
+changed name, or a profile written from scratch, is a profile of its own named with the `[AI]`
+suffix. It waits inside its profile's dropdown, marked **Proposed**, or as a row marked **New**
+when it is a new profile. **Make
 active** is one click: it approves the proposal (asking you to tick that you understand when it
 changes when the machine stops pumping), and for a proposal made for a Set it records the Set's
 next version, with the **Major change** box, once the sync has put the profile on the machine.
@@ -332,7 +332,7 @@ going back, and no Delete: switching a profile off removes it from the machine a
 and the profile and its versions stay in the list.
 
 The next sync with the **Writes** switch in the top bar on saves the active version as a new
-profile with an `[AI]` suffix when the agent made it, never over an existing one. The machine is
+profile under its name, never over an existing file. The machine is
 read again first: a profile already holding the same content is reused, and a new version of a
 profile replaces this app's previous copy, carrying its star and selection, instead of piling
 up versions. A copy you edited on the display since is never deleted unseen: it is a conflict

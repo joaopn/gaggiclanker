@@ -408,7 +408,7 @@ async def _start(app: FastAPI, db: Database) -> None:
 
     # The chat and what its tools may use, built before the machine connection
     # exists and without it. A tool reads and proposes, so it is handed the
-    # proposal half of drafts (create one; never put it on the board, never touch the
+    # proposal half of drafts (create one; never make it active, never touch the
     # machine), and
     # nothing on this side of the app holds the connection, its client or a
     # service that does.
