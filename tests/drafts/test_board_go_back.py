@@ -286,6 +286,16 @@ async def test_a_version_that_does_not_verify_keeps_the_newer_copy_and_the_next_
     assert failed.status == "error"
     assert newer_file in ids_labelled(fake, APP_LABEL), "the newer copy stays when v1 did not land"
     fake.mutate_on_save = None
+    # The version that did not verify is not tried again by itself...
+    quiet = await pull(app)
+    assert [i["reason"] for i in summary_of(quiet)["left"]] == ["did_not_verify"]
+    assert newer_file in ids_labelled(fake, APP_LABEL)
+    # ...a person asking for it again is one more try, which lands and finishes the replacement.
+    again = await client.put(
+        f"/api/profile-board/{v1['id']}/active-version",
+        json={"version_id": v1["current_version_id"]},
+    )
+    assert again.status_code == 200, again.text
     ok = await pull(app)
     assert ok.status == "ok", ok.error
     [only] = ids_labelled(fake, APP_LABEL)

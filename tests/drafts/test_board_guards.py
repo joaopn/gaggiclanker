@@ -480,23 +480,28 @@ async def test_a_deleted_copy_is_kept_on_the_row_when_the_machine_could_not_dele
 async def test_the_successor_of_a_deleted_selected_profile_is_never_a_utility_profile(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
+    """With only a utility profile left on, the selection has nowhere to go: the file stays."""
     app, client, fake = adopted
     await app_row(app, client, fake, provider, 8)
     mine = row_for(await get_board(client), APP_LABEL)
-    fake.selected_profile_id = mine["machine"]["device_id"]
+    file = mine["machine"]["device_id"]
+    fake.selected_profile_id = file
     for r in (await get_board(client))["rows"]:
-        utility = r["utility"]
-        await client.put(
-            f"/api/profile-board/{r['row']['id']}/home-screen",
-            json={"on": utility or r["row"]["id"] == mine["row"]["id"]},
-        )
-    await pull(app)
+        if not r["utility"] and r["row"]["id"] != mine["row"]["id"]:
+            await client.put(f"/api/profile-board/{r['row']['id']}/on-machine", json={"on": False})
     await client.delete(f"/api/profile-board/{mine['row']['id']}")
+    plan = (await get_board(client))["actions"]
+    assert [(a["kind"], a["device_id"]) for a in plan if a["device_id"] == file] == [
+        ("leave", file)
+    ]
 
-    await pull(app)
+    run = await pull(app)
 
-    chosen = next(p for p in fake.profiles if p["id"] == fake.selected_profile_id)
-    assert not str(chosen["label"]).startswith("[Utility]"), chosen["label"]
+    assert file in ids(fake) and fake.selected_profile_id == file
+    assert any(
+        i["device_id"] == file and "no other profile" in i["detail"]
+        for i in summary_of(run)["left"]
+    )
 
 
 # ── a machine that looks reset ──────────────────────────────────────

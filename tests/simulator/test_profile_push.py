@@ -561,3 +561,109 @@ async def test_a_profile_edited_on_the_display_is_a_conflict_and_keeping_the_app
         for p in await device.list_profiles():
             if str(p.label).endswith("[AI]"):
                 await delete_now(device, str(p.id))
+
+
+async def snapshot_profiles(device: Any) -> list[dict[str, Any]]:
+    """Every profile on the simulator exactly as the firmware serves it: id, star, selection."""
+    return [
+        (await device.load_profile(str(p.id))).to_device() for p in await device.list_profiles()
+    ]
+
+
+async def restore_profiles(device: Any, snapshot: list[dict[str, Any]]) -> None:
+    """Put the simulator's profile files, ids, stars and selection back as they were."""
+    for p in await device.list_profiles():
+        await delete_now(device, str(p.id))
+    for document in snapshot:
+        saved = {k: v for k, v in document.items() if k not in ("selected", "favorite")}
+        await save_with_id(saved)
+    for document in snapshot:
+        profile_id = str(document["id"])
+        if document.get("favorite"):
+            await device.favorite_profile(profile_id)
+        else:
+            await device.unfavorite_profile(profile_id)
+    for document in snapshot:
+        if document.get("selected"):
+            await device.select_profile(str(document["id"]))
+
+
+async def save_with_id(document: dict[str, Any]) -> None:
+    """Save a profile under its own id, as the display does (the client never overwrites)."""
+    async with websockets.connect(f"ws://{SIM_HOST}/ws", max_size=None) as socket:
+        await socket.send(json.dumps({"tp": "req:profiles:save", "profile": document, "rid": "s"}))
+        async with asyncio.timeout(10):
+            async for raw in socket:
+                if json.loads(raw).get("rid") == "s":
+                    break
+
+
+async def test_a_firmware_default_switched_off_is_removed_and_back_on_pushed_again(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    """The machine's own selected profile, on the real firmware, starting from any state.
+
+    A fresh simulator holds a single selected "Default", which is correctly left when nothing
+    else is on the machine, so the test puts an app profile on the board first: it is pushed
+    in the same sync and takes the selection before the default goes.
+    """
+    app, client = live
+    device = app.state.connection.client
+    await adopt(app)
+    before = await snapshot_profiles(device)
+    try:
+        await put_on_board(app, client, provider, await usable_version(app), 8)
+        await sync(app)
+        board = data(await client.get("/api/profile-board?live=true"))
+        target = next(
+            r for r in board["rows"] if not r["utility"] and not r["row"]["label"].endswith("[AI]")
+        )
+        row_id, label = target["row"]["id"], target["row"]["label"]
+        file = target["machine"]["device_id"]
+        await device.select_profile(file)  # whatever earlier runs left selected
+        await client.put(f"/api/profile-board/{row_id}/on-machine", json={"on": False})
+
+        off = await sync(app)
+
+        assert [i["device_id"] for i in off["removed"]] == [file] and not off["failures"]
+        loaded = [await device.load_profile(str(p.id)) for p in await device.list_profiles()]
+        assert file not in {p.id for p in loaded}
+        assert any(p.selected for p in loaded), "the selection moved before the file went"
+
+        await client.put(f"/api/profile-board/{row_id}/on-machine", json={"on": True})
+        back = await sync(app)
+
+        [pushed] = back["pushed"]
+        assert pushed["label"] == label and not back["failures"]
+        assert (await sync(app))["writes"] == 0
+    finally:
+        await restore_profiles(device, before)
+
+
+async def test_a_wiped_machine_pauses_and_resuming_puts_the_profiles_back(
+    live: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    app, client = live
+    device = app.state.connection.client
+    await adopt(app)
+    before = await snapshot_profiles(device)
+    labels = sorted(str(d["label"]) for d in before)
+    try:
+        for p in await device.list_profiles():
+            await delete_now(device, str(p.id))
+        paused = await sync(app)
+
+        assert "looks reset" in str(paused["paused"]) and paused["writes"] == 0
+        board = data(await client.get("/api/profile-board?live=true"))
+        assert board["resume_preview"]["push"] == len(before)
+        resumed = await client.post("/api/profile-board/resume")
+        assert resumed.status_code == 200, resumed.text
+
+        back = await sync(app)
+
+        assert len(back["pushed"]) == len(before) and not back["failures"]
+        assert sorted(str(p.label) for p in await device.list_profiles()) == labels
+    finally:
+        # The simulator's files persist between runs: restore them exactly, ids and selection
+        # included, whatever happened above.
+        await restore_profiles(device, before)

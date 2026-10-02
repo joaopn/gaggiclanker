@@ -20,8 +20,9 @@ first (`POST /api/backup`), because there is no down-migration.
   including the firmware's own and ones made on the display.** The board is now a list of every
   profile you have had, each switched on or off the machine, and a sync makes the machine hold
   exactly the ones that are on. The only guard on a removal is a fresh load that must hold what
-  the archive last recorded, and a profile changed on the display is never overwritten or
-  deleted unseen: it becomes a conflict you settle (`POST /api/profile-board/{id}/conflict`).
+  the archive last recorded. A profile changed on the display to something it never had is never
+  overwritten or deleted: it becomes a conflict you settle (`POST /api/profile-board/{id}/conflict`),
+  and nothing is done for it meanwhile; an older version put back on the display is no conflict.
   Migration 0036 adds the switch and each profile's version list; at the next boot the list is
   filled once from everything stored, so old developing profiles, imports and deleted rows come
   back as profiles that are **off**, with their versions. Nothing is deleted from the archive.

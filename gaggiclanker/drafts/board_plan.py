@@ -16,16 +16,20 @@ included): a profile that is **on** is pushed with its active version, whoever m
 that is **off** is taken off the machine. What stands between a profile and its removal is not
 who made it but whether the app has *seen* what the file holds:
 
-* the file still holds the content recorded for it, or it was **edited on the display** since:
-  then the edit is recorded as a version of its profile (``edited_on_machine``), and a profile
-  that is on has its active version put beside it and the edited file removed after a fresh
-  load that matches what was just recorded, while one that is off is left for the next sync to
-  decide;
-* a file the app **has never seen** (no row stands on it) is never removed by the sync that
-  finds it: its content or its label (without the app suffix) says which profile it belongs to
-  and the file is attached to it; otherwise it joins the list as a new profile that is on and
-  starred as the machine has it. A second file for a profile that already has one is reported,
-  not touched.
+* the file holds what was recorded for it, or **content the profile has had** (somebody put an
+  older version back on the display): that is no conflict. It is recorded as what the file
+  holds (a summary line), and the profile is handled as usual: a profile that is on has its
+  active version put beside it and the file removed, after a fresh load that must match what
+  was just recorded; one that is off has the file removed the same way;
+* the file holds **content the profile never had** (edited on the display, or a never-seen file
+  carrying the profile's name): that is a **conflict**. The content is kept as a version
+  (``edited_on_machine``, not active), nothing at all is done for that profile until a person
+  keeps one side, and the other profiles sync;
+* a file the app **has never seen** (no row stands on it) is never removed or replaced by the
+  sync that finds it: content the profile has had attaches it to that profile, a profile's name
+  with other content is the machine's side of a conflict, and anything else joins the list as a
+  new profile that is on and starred as the machine has it. A second file for a profile that
+  already has one is reported, not touched.
 
 **What counts as the machine "holding" a profile**: a file with exactly the row's active
 canonical content, under any id, that no other row stands on (a deleted row's file is still
@@ -495,8 +499,8 @@ class PlanBuilder:
                 current.label,
                 "did_not_verify",
                 None,
-                "this version did not read back as sent last time and the copy could not be "
-                "removed; make another version active to try again",
+                "this version did not read back as sent, so it is not tried again until another "
+                "version is made active (making this one active again asks for one more try)",
             )
             return
         if held is None and self.policy is not None:

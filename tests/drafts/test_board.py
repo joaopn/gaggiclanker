@@ -711,10 +711,26 @@ async def test_a_round_trip_mismatch_removes_the_new_copy_and_keeps_the_previous
     drafts = data(await client.get(f"/api/profile-drafts/{second['pending_draft_id']}"))["draft"]
     assert drafts["status"] == "approved"
 
+    # Not tried again: no save is sent, and the plan says why.
     fake.mutate_on_save = None
+    fake.ws_requests.clear()
+    quiet = await pull(app)
+    assert write_frames(fake) == [] and old_id in [str(p["id"]) for p in fake.profiles]
+    assert [i["reason"] for i in summary_of(quiet)["left"]] == ["did_not_verify"]
+    assert row_for(await get_board(client), APP_LABEL)["row"]["failed_version_id"] is not None
+    # Making the same version active again asks for exactly one more try.
+    row_id = row["id"]
+    again = await client.put(
+        f"/api/profile-board/{row_id}/active-version",
+        json={"version_id": row["current_version_id"]},
+    )
+    assert again.status_code == 200 and data(again)["failed_version_id"] is None
     ok = await pull(app)
     assert ok.status == "ok", ok.error
     assert old_id not in [str(p["id"]) for p in fake.profiles]
+    assert fake.ws_requests.count("req:profiles:save") == 1
+    final = await pull(app)
+    assert summary_of(final)["pushed"] == [] and summary_of(final)["left"] == []
 
 
 async def test_a_pull_that_fails_halfway_leaves_old_and_new_and_the_next_pull_finishes(

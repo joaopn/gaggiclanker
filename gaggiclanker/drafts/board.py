@@ -25,10 +25,12 @@ What a sync does, in order:
 3. **Per profile that is on**: push its active version when the machine holds none (the safety
    policy runs again here, the save-then-load round trip too); then remove the file it stood
    on before. A round trip that does not match removes the copy just written (the same guarded
-   path), keeps the previous version on the machine and records the failure. A file edited on
-   the display is recorded as a version of its profile, and the active version is put beside it.
+   path), keeps the previous version on the machine and records the failure; that version is
+   not tried again until another is made active. A profile in conflict (a file holding content
+   it never had) is skipped entirely; a file holding an older version of it is recorded and
+   handled as usual.
 4. **Per profile that is off**: remove its file (the selection moves first to the first profile
-   that is on), unless it was edited since the last sync.
+   that is on), after the same fresh-load check.
 5. **Per deleted row**: remove its file the same way.
 6. **Stars**, only for profiles that are on, from a fresh read when anything was written above.
 
@@ -53,6 +55,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
+from gaggiclanker.db.repos.lineage import lineage_owner
 from gaggiclanker.db.repos.profile_board import (
     BoardRow,
     BoardRowPatch,
@@ -125,7 +128,6 @@ EVENT_JOINED = "board_joined"
 EVENT_RECORDED = "board_recorded"
 EVENT_CONFLICT = "board_conflict"
 EVENT_PUSHED = "board_pushed"
-EVENT_OVERWROTE = "board_overwrote"
 EVENT_REMOVED = "board_removed"
 EVENT_LEFT = "board_left"
 EVENT_HOME_SCREEN = "board_home_screen"
@@ -169,8 +171,6 @@ class BoardRunSummary(BaseModel):
     #: Content found on a file edited on the display, recorded as a version of its profile.
     recorded: list[BoardSummaryItem] = Field(default_factory=list)
     pushed: list[BoardSummaryItem] = Field(default_factory=list)
-    #: Pushed over a copy somebody had edited on the machine.
-    overwritten: list[BoardSummaryItem] = Field(default_factory=list)
     removed: list[BoardSummaryItem] = Field(default_factory=list)
     #: Files that stay on the machine (still in use, edited since the last sync, the selected
     #: profile with nothing to take over) and why.
@@ -288,7 +288,8 @@ class ResumePreview(BaseModel):
 
     #: Profiles put back on the machine.
     push: int = 0
-    #: Files taken off it.
+    #: Files taken off it, counting a file that joins a profile that is off (the sync after
+    #: the one that attaches it removes it: a file is never removed by the sync that finds it).
     remove: int = 0
     #: Stars changed.
     star: int = 0
@@ -462,9 +463,17 @@ class BoardService:
             )
         preview = None
         if computed.paused:
+            off_rows = {p.row.id for p in computed.rows if not p.row.on_machine}
             preview = ResumePreview(
                 push=sum(1 for a in would_do if a.kind == "push"),
-                remove=sum(1 for a in would_do if a.kind == "remove"),
+                # Files the plan removes now, and files that join a profile that is off: the
+                # sync after the one that attaches them takes those off the machine.
+                remove=sum(1 for a in would_do if a.kind == "remove")
+                + sum(
+                    1
+                    for a in would_do
+                    if a.kind == "adopt" and a.reason == "attached" and a.row_id in off_rows
+                ),
                 star=sum(1 for a in would_do if a.kind == "home_screen"),
                 join=sum(1 for a in would_do if a.kind == "adopt"),
                 lines=would_do,
@@ -910,27 +919,17 @@ class BoardService:
     async def _lineage_row(
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
     ) -> BoardRow | None:
-        if set_id is not None:
-            current = await self.sets.current_version(set_id)
-            if current is None or current.profile_version_id is None:
-                return None
-            found = await self.sets.current_device_profile(set_id)
-            row = None
-            if found is not None:
-                row = await self.board.find_live_by_device(found[0])
-            if row is None:
-                row = await self.board.find_live_by_version(current.profile_version_id)
-            return _only_app_row(row)
-        if draft.is_new:
-            # Never an edit of its stored base, even when the labels happen to agree.
-            return None
+        """The live profile a put of this draft continues: ``lineage_owner``, over the live list."""
         base = await self.profiles.get_version(draft.base_version_id)
-        if base is None or base.label != version.label:
-            return None
-        by_version = await self.board.find_live_by_version(base.id)
-        if by_version is None and draft.base_device_profile_id is not None:
-            by_version = await self.board.find_live_by_device(draft.base_device_profile_id)
-        return _only_app_row(by_version)
+        return await lineage_owner(
+            _LiveLineage(self),
+            set_id=set_id,
+            base_label=None if base is None else base.label,
+            version_label=version.label,
+            is_new=draft.is_new,
+            base_version_id=draft.base_version_id,
+            base_device_profile_id=draft.base_device_profile_id,
+        )
 
     async def resume(self) -> None:
         """Let the next sync write again after it paused for a suspected machine reset.
@@ -1458,16 +1457,20 @@ class BoardService:
         )
         added = await self.board.add_version(row.id, version.id, "edited_on_machine")
         await self.board.update(row.id, BoardRowPatch(device_version_id=version.id))
-        if added:
-            phase.summary.recorded.append(
-                BoardSummaryItem(
-                    row_id=row.id,
-                    label=row.label,
-                    device_id=device_id,
-                    reason="edited_on_machine",
-                    detail="what the file holds is now a version of this profile",
-                )
+        phase.summary.recorded.append(
+            BoardSummaryItem(
+                row_id=row.id,
+                label=row.label,
+                device_id=device_id,
+                reason="edited_on_machine",
+                detail=(
+                    "what the file holds is now a version of this profile"
+                    if added
+                    else "what the file holds is a version this profile has had"
+                ),
             )
+        )
+        if added:
             await self._event(
                 phase,
                 EVENT_RECORDED,
@@ -1689,12 +1692,11 @@ class BoardService:
             if cleanup.removed:
                 phase.machine.profiles.pop(placed.device_id, None)
                 await self.profiles.mark_one_deleted(placed.device_id)
-            else:
-                # A copy that did not verify and cannot be taken off again: pushing the same
-                # version every sync would add one each time.
-                await self.board.update(
-                    plan.row.id, BoardRowPatch(failed_version_id=plan.version.id)
-                )
+            # Not tried again until another version is made active (or this one is made active
+            # again, which asks for a retry): a firmware that cannot round-trip this version
+            # would otherwise be written to and cleaned up again on every sync, whether or not
+            # the bad copy could be taken off.
+            await self.board.update(plan.row.id, BoardRowPatch(failed_version_id=plan.version.id))
             await self._row_failed(
                 phase,
                 action,
@@ -1727,16 +1729,6 @@ class BoardService:
             placed.device_id,
             {"row_id": plan.row.id, "reason": action.reason, "reused": placed.reused},
         )
-        if action.reason == "edited_on_machine":
-            phase.summary.overwritten.append(item)
-            await self._event(
-                phase,
-                EVENT_OVERWROTE,
-                f"{plan.version.label} had been edited on the machine; the board's version was "
-                f"put back as {placed.device_id}.",
-                placed.device_id,
-                {"row_id": plan.row.id, "replaced_device_id": plan.row.device_profile_id},
-            )
         return placed
 
     async def _remove(
@@ -2172,13 +2164,35 @@ def _sets_brewing(
     ]
 
 
-def _only_app_row(row: BoardRow | None) -> BoardRow | None:
-    """A new version only ever continues a profile the app itself pushed.
+class _LiveLineage:
+    """The lineage rule's questions, answered from the live list and the Sets."""
 
-    A profile the person made (an adopted row) stays on the board as it was; a draft made
-    from it, or for a Set that brews it, is a profile of its own beside it.
-    """
-    return row if row is not None and row.origin == "draft" else None
+    def __init__(self, service: BoardService) -> None:
+        self.service = service
+
+    async def by_set(self, set_id: int) -> BoardRow | None:
+        service = self.service
+        current = await service.sets.current_version(set_id)
+        if current is None or current.profile_version_id is None:
+            return None
+        found = await service.sets.current_device_profile(set_id)
+        row = None
+        if found is not None:
+            row = await service.board.find_live_by_device(found[0])
+        if row is None:
+            row = await service.board.find_live_by_version(current.profile_version_id)
+        return row
+
+    async def by_version(self, version_id: int) -> BoardRow | None:
+        return await self.service.board.find_live_by_version(version_id)
+
+    async def by_device(self, device_id: str) -> BoardRow | None:
+        return await self.service.board.find_live_by_device(device_id)
+
+    def is_app_made(self, profile: BoardRow) -> bool:
+        """A new version only continues a profile the app itself pushed; a profile the person
+        made stays as it was, and a draft of it is a profile of its own beside it."""
+        return profile.origin == "draft"
 
 
 def _is_settled(removal: Removal) -> bool:

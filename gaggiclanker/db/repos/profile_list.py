@@ -22,10 +22,17 @@ The grouping, in order:
 2. **An existing row's versions first**: the ones it names (current, previous, the version its
    file held, the one that did not verify, the one it was left from by going back), and the
    versions of the drafts that were put on the machine as the file it stands on or that were
-   waiting on it. Drafts that replaced one of its versions, or were replaced by one, follow
-   (to a fixed point), unless another profile already has the version.
-3. **Then the label** with the app's `` [AI]`` suffix removed: a stored version no row has joins
-   the live profile with that label (the exact label first), else a new profile is made for it.
+   waiting on it.
+3. **The stored drafts, replayed oldest first, through the rule a put uses**
+   (``lineage_owner``, shared with the live put): a version lands in the profile a put of it
+   would have landed in (the Set's chain, or the base it is an exact-label continuation of,
+   and only a profile the app made), so a firmware profile never absorbs the agent's work and a
+   renamed version of a Set's profile stays with it. What a draft replaced on the machine is
+   the same profile. A version that would start a
+   new profile joins the one that already has exactly its label, so no two profiles share a name.
+4. **What no draft made** (imports, versions the machine held before the board) joins the
+   profile with exactly that label, else becomes a profile of its own. The suffix is never
+   stripped.
 
 A new profile is **off**, starred, with its newest version active. The synthetic base a
 design is diffed against and utility profiles are never made into a profile or a version here
@@ -44,6 +51,7 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.lineage import lineage_owner
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository, VersionSource
 from gaggiclanker.db.repos.profiles import SYNTHETIC_BASE_LABEL
 from gaggiclanker.db.repository import Repository
@@ -121,6 +129,7 @@ class ProfileListBuilder(Repository):
                 "SELECT d.id, d.base_version_id, d.draft_version_id, d.status, d.set_id, "
                 "d.source_analysis_id, d.source_suggestion_id, d.parent_draft_id, d.prediction, "
                 "d.notes, d.change_summary, d.pushed_device_profile_id, d.replaced_version_id, "
+                "d.base_device_profile_id, d.is_new, "
                 "pending.board_id AS pending_row "
                 "FROM profile_drafts d LEFT JOIN "
                 "(SELECT pending_draft_id AS pid, id AS board_id FROM profile_board "
@@ -197,21 +206,15 @@ class ProfileListBuilder(Repository):
         by_id = {r.id: r for r in rows}
         profile_rows = [by_id[i] for i in sorted({*(r.id for r in live), *(r.id for r in revived)})]
 
-        # 2. Each profile's versions: what the rows name, then what their drafts made.
-        groups: dict[int, set[int]] = {r.id: set() for r in profile_rows}
-        owner: dict[int, int] = {}
-
-        def give(row_id: int, version_id: int, *, force: bool = False) -> bool:
-            if version_id not in versions:
-                return False
-            if not force and version_id in owner and owner[version_id] != row_id:
-                return False
-            groups[row_id].add(version_id)
-            owner.setdefault(version_id, row_id)
-            return True
-
+        # 2. Group the versions: what the rows name, then the stored drafts replayed, oldest
+        # first, through the rule a put uses (`lineage_owner`), then what is left by exact label.
+        pushed_versions = {
+            int(d["draft_version_id"])
+            for d in drafts
+            if d["status"] == "pushed" and d["draft_version_id"] is not None
+        }
+        groups = _Groups(versions, {r.id: r for r in profile_rows}, pushed_versions)
         for row in rows:
-            row_id = target[row.id]
             for named in (
                 row.current_version_id,
                 row.previous_version_id,
@@ -222,48 +225,76 @@ class ProfileListBuilder(Repository):
                 if named is not None:
                     # A row's own versions are always its own, even when another row has the
                     # same document (a machine can hold two identical files).
-                    give(row_id, named, force=True)
+                    groups.seed(target[row.id], named)
         files_of: dict[str, int] = {}
         for row in rows:
             if row.device_profile_id:
                 files_of.setdefault(row.device_profile_id, target[row.id])
-        for draft in drafts:
-            version = draft["draft_version_id"]
-            if version is None:
+        replayable = [
+            d
+            for d in drafts
+            if d["draft_version_id"] is not None
+            and int(d["draft_version_id"]) in versions
+            and (
+                d["status"] not in ("draft", "approved")
+                or groups.owner_of(int(d["draft_version_id"]))
+            )
+        ]
+        # Hard facts first: a draft pushed as the file a profile stands on, or waiting on one.
+        for draft in replayable:
+            home = files_of.get(draft["pushed_device_profile_id"] or "")
+            if home is None and draft["pending_row"] is not None:
+                home = target.get(int(draft["pending_row"]))
+            if home is not None:
+                groups.add(home, int(draft["draft_version_id"]))
+        lookup = _ReplayLookup(groups, files_of, profile_rows)
+        for draft in replayable:
+            version = int(draft["draft_version_id"])
+            if not eligible(version) and groups.owner_of(version) is None:
                 continue
-            owner_row = files_of.get(draft["pushed_device_profile_id"] or "")
-            if owner_row is None and draft["pending_row"] is not None:
-                owner_row = target.get(int(draft["pending_row"]))
-            if owner_row is not None:
-                give(owner_row, int(version))
-        changed = True
-        while changed:
-            changed = False
-            for draft in drafts:
-                new = draft["draft_version_id"]
-                old = draft["replaced_version_id"]
-                if new is None or old is None:
-                    continue
-                for row_id, held in groups.items():
-                    if old in held and new not in held:
-                        changed = give(row_id, int(new)) or changed
-                    elif new in held and old not in held:
-                        changed = give(row_id, int(old)) or changed
+            base = versions.get(int(draft["base_version_id"]))
+            landed = await lineage_owner(
+                lookup,
+                set_id=draft["set_id"],
+                base_label=None if base is None else base["label"],
+                version_label=versions[version]["label"],
+                is_new=bool(draft["is_new"]),
+                base_version_id=int(draft["base_version_id"]),
+                base_device_profile_id=draft["base_device_profile_id"],
+            )
+            if landed is None:
+                # A new profile, unless one already has exactly this name: two profiles never
+                # share a label (the live put refuses the second; the fill joins it).
+                landed = (
+                    groups.owner_of(version)
+                    or groups.with_label(versions[version]["label"])
+                    or groups.new()
+                )
+            groups.add(landed, version)
+            # What the draft replaced on the machine is the same profile.
+            replaced = draft["replaced_version_id"]
+            if replaced is not None and groups.owner_of(int(replaced)) is not None:
+                groups.add(landed, int(replaced))
+            if draft["set_id"] is not None:
+                lookup.last_for_set[int(draft["set_id"])] = version
 
-        # 3. What is left, by label.
-        new_groups: dict[str, list[int]] = {}
+        # 3. What no draft made (imports, versions the machine held before the board): the
+        # profile with exactly that label, else a profile of its own. The suffix is never
+        # stripped, so a firmware profile never absorbs the agent's work.
         for version_id in sorted(versions):
-            if version_id in owner or not eligible(version_id):
+            if groups.owner_of(version_id) is not None or not eligible(version_id):
                 continue
             label = versions[version_id]["label"]
-            joins = _live_row_for(label, profile_rows)
-            if joins is not None:
-                give(joins, version_id)
-            else:
-                new_groups.setdefault(stripped_label(label), []).append(version_id)
+            home = groups.with_label(label)
+            groups.add(home if home is not None else groups.new(), version_id)
 
-        for row_id in sorted(groups):
-            for version_id in sorted(groups[row_id]):
+        # Whatever path placed a version (a Set chain that was renamed onto a name another
+        # profile holds, for one), no two profiles end with one name: a made group whose name is
+        # held by another joins that profile (an existing one first, else the older made group).
+        groups.unify_names()
+
+        for row_id in sorted(k for k in groups.members if k > 0):
+            for version_id in sorted(groups.members[row_id]):
                 await self.board.add_version(
                     row_id,
                     version_id,
@@ -271,9 +302,9 @@ class ProfileListBuilder(Repository):
                     added_at=versions[version_id]["created_at"],
                 )
         made = 0
-        for key in sorted(new_groups):
-            members = new_groups[key]
-            newest = max(members)
+        for key in sorted(k for k in groups.members if k < 0 and groups.members[k]):
+            members = groups.members[key]
+            newest = groups.active(key)
             created = await self.db.execute(
                 "INSERT INTO profile_board (label, current_version_id, on_machine, "
                 "on_home_screen, origin, created_at, updated_at) VALUES (?, ?, 0, 1, ?, ?, ?)",
@@ -286,7 +317,7 @@ class ProfileListBuilder(Repository):
                 ),
             )
             new_id = int(created.lastrowid or 0)
-            for version_id in members:
+            for version_id in sorted(members):
                 await self.board.add_version(
                     new_id,
                     version_id,
@@ -304,13 +335,119 @@ class ProfileListBuilder(Repository):
         }
 
 
-def _live_row_for(label: str, rows: list[BoardRow]) -> int | None:
-    """The profile a stored version with this label joins: exact label first, then by name."""
-    for row in rows:
-        if row.label == label:
-            return row.id
-    base = stripped_label(label)
-    for row in rows:
-        if stripped_label(row.label) == base:
-            return row.id
-    return None
+class _Groups:
+    """Versions grouped into profiles. Existing board rows are groups with a positive id (an
+    anchor); groups the replay makes have negative ids and become new profiles. Two groups that
+    each hold a board row are never merged: they stay two profiles."""
+
+    def __init__(
+        self,
+        versions: dict[int, dict[str, Any]],
+        rows: dict[int, BoardRow],
+        pushed: set[int],
+    ) -> None:
+        self.versions = versions
+        self.rows = rows
+        #: Versions a person's put took to the machine: what a made profile is active on.
+        self.pushed = pushed
+        self.members: dict[int, set[int]] = {r: set() for r in rows}
+        self._owner: dict[int, int] = {}
+        self._next = -1
+
+    def new(self) -> int:
+        gid = self._next
+        self._next -= 1
+        self.members[gid] = set()
+        return gid
+
+    def owner_of(self, version_id: int) -> int | None:
+        return self._owner.get(version_id)
+
+    def seed(self, gid: int, version_id: int) -> None:
+        if version_id in self.versions:
+            self.members[gid].add(version_id)
+            self._owner.setdefault(version_id, gid)
+
+    def add(self, gid: int, version_id: int) -> None:
+        """Put a version in a group, merging with the group that already has it when allowed."""
+        if version_id not in self.versions:
+            return
+        held = self._owner.get(version_id)
+        if held is None:
+            self.members[gid].add(version_id)
+            self._owner[version_id] = gid
+        elif held != gid:
+            self._merge(gid, held)
+
+    def _merge(self, a: int, b: int) -> None:
+        if a > 0 and b > 0:
+            return  # two profiles that exist stay two
+        keep, drop = (b, a) if b > 0 else (a, b)
+        for version_id in self.members[drop]:
+            self._owner[version_id] = keep
+        self.members[keep] |= self.members[drop]
+        self.members[drop] = set()
+
+    def active(self, gid: int) -> int:
+        """A made profile's active version: its newest pushed one, else its newest."""
+        members = self.members[gid]
+        pushed = members & self.pushed
+        return max(pushed or members)
+
+    def name_of(self, gid: int) -> str:
+        """A profile's current name, as a put reads it: the row's label, or its active version's."""
+        row = self.rows.get(gid)
+        return row.label if row is not None else str(self.versions[self.active(gid)]["label"])
+
+    def _ordered(self) -> list[int]:
+        """Profiles that exist first (by id), then made ones, oldest first."""
+        return sorted((g for g in self.members if self.members[g]), key=lambda g: (g < 0, abs(g)))
+
+    def with_label(self, label: str) -> int | None:
+        """The profile whose current name is exactly this label (never a former name)."""
+        return next((g for g in self._ordered() if self.name_of(g) == label), None)
+
+    def unify_names(self) -> None:
+        """Merge made groups into the profile that already holds their name, to a fixed point."""
+        changed = True
+        while changed:
+            changed = False
+            ordered = self._ordered()
+            for gid in ordered:
+                if gid > 0:
+                    continue
+                for other in ordered:
+                    if (
+                        other != gid
+                        and self.name_of(other) == self.name_of(gid)
+                        and (other > 0 or abs(other) < abs(gid))
+                    ):
+                        self._merge(other, gid)
+                        changed = True
+                        break
+                if changed:
+                    break
+
+
+class _ReplayLookup:
+    """`lineage_owner`'s questions, answered from the groups built so far."""
+
+    def __init__(self, groups: _Groups, files_of: dict[str, int], rows: list[BoardRow]) -> None:
+        self.groups = groups
+        self.files_of = files_of
+        #: The last draft version replayed for each Set: the Set's chain, as it stood.
+        self.last_for_set: dict[int, int] = {}
+
+    async def by_set(self, set_id: int) -> int | None:
+        version = self.last_for_set.get(set_id)
+        return None if version is None else self.groups.owner_of(version)
+
+    async def by_version(self, version_id: int) -> int | None:
+        return self.groups.owner_of(version_id)
+
+    async def by_device(self, device_id: str) -> int | None:
+        return self.files_of.get(device_id)
+
+    def is_app_made(self, profile: int) -> bool:
+        row = self.groups.rows.get(profile)
+        return row is None or row.origin == "draft"

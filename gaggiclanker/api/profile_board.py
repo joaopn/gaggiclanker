@@ -28,7 +28,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from gaggiclanker.api.deps import BoardServiceDep, DeviceClientDep, ProfilesRepoDep, SetsRepoDep
 from gaggiclanker.api.sets import version_refused
@@ -89,7 +89,7 @@ class StarredBody(BaseModel):
 class ActiveVersionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version_id: int
+    version_id: StrictInt
 
 
 class ConflictBody(BaseModel):

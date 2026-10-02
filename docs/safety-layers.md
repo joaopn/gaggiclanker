@@ -262,7 +262,9 @@ carrying an id at all and the firmware generates its own. A delete needs **one
 proof**, read from the machine and not from the archive: the profile loaded fresh, immediately
 before the delete, must hold exactly the content the archive recorded for it. Who made it
 (the label, the audit of saves) decides nothing: every profile the app has synced is the app's
-to manage, and a file somebody edited on the display since is never deleted unseen.
+to manage. A file holding content the profile never had (edited on the display) is a conflict
+and is never deleted or replaced until a person chooses; one holding an older version of the
+profile is recorded and then handled as usual.
 
 **A sync replaces, going back restores.** The machine is listed and every profile
 loaded again before each write; nothing the archive remembers about it is trusted
