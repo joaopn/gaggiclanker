@@ -3,6 +3,7 @@ import { useId, useRef, useState } from "react";
 import type { BoardRow, DraftLanding, ProfileDraft, StopConditionChange } from "@/api/types";
 import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
+import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { MajorChoice } from "@/components/sets/MajorChoice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -156,7 +157,8 @@ export function DraftCard({
         <div className="min-w-0">
           <p className="truncate font-medium text-sm">{draft.draft_label ?? "Untitled draft"}</p>
           <p className="text-muted-foreground text-xs">
-            from {draft.base_label ?? "an unknown profile"} · {formatTime(draft.created_at)}
+            {draft.is_new ? "new profile" : `from ${draft.base_label ?? "an unknown profile"}`} ·{" "}
+            {formatTime(draft.created_at)}
             {/* History only: a draft made from an analysis before the per-shot
                 analysis was retired. Its id now names a carried review, so it
                 is not shown as a link or a number. */}
@@ -189,9 +191,15 @@ export function DraftCard({
       ) : null}
 
       <div className="mt-3">
-        <h4 className="mb-1 font-medium text-sm">What changes</h4>
+        <h4 className="mb-1 font-medium text-sm">
+          {draft.is_new ? "New profile" : "What changes"}
+        </h4>
         {detail.isPending ? (
           <Skeleton className="h-12 w-full" />
+        ) : draft.is_new ? (
+          <ProfileSummary
+            profile={(detail.data?.draft_profile ?? null) as Record<string, unknown> | null}
+          />
         ) : (
           <ProfileDiff
             base={(detail.data?.base_profile ?? null) as Record<string, unknown> | null}

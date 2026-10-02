@@ -1,8 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DraftCard } from "@/components/drafts/DraftCard";
 import { boardRow } from "@/test/boardFixtures";
-import { draft, draftDetail, yieldChange } from "@/test/draftFixtures";
+import { draft, draftDetail, newDraftDetail, yieldChange } from "@/test/draftFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -111,6 +111,22 @@ describe("putting a draft on the board is one action", () => {
   it("needs no checkbox for a draft that moves nothing", () => {
     renderWithQueryClient(<DraftCard draft={draft()} adopted landing={NEW_PROFILE} />);
 
+    expect(screen.queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
+    expect(screen.getByTestId("put-on-board")).not.toBeDisabled();
+  });
+
+  it("shows no stop-condition warning for a new profile and lets it be put without one", async () => {
+    getProfileDraft.mockResolvedValue(newDraftDetail());
+    renderWithQueryClient(
+      <DraftCard
+        draft={draft({ is_new: true, base_label: null, stop_condition_changes: [] })}
+        adopted
+        landing={NEW_PROFILE}
+      />,
+    );
+
+    await screen.findByTestId("profile-summary");
+    expect(screen.queryByTestId("stop-condition-warning")).not.toBeInTheDocument();
     expect(screen.queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
     expect(screen.getByTestId("put-on-board")).not.toBeDisabled();
   });
@@ -293,6 +309,39 @@ describe("DraftCard", () => {
     // pump setpoint, not as an object path.
     expect(diff).toHaveTextContent("phase 1 · Pump · pump");
     expect(diff).toHaveTextContent("pressure 8 bar");
+  });
+
+  it("says a profile designed from scratch is new and shows the profile, not a diff", async () => {
+    getProfileDraft.mockResolvedValue(newDraftDetail());
+    renderWithQueryClient(
+      <DraftCard draft={draft({ is_new: true, base_label: null, source_analysis_id: null })} />,
+    );
+
+    const summary = await screen.findByTestId("profile-summary");
+    expect(screen.getByRole("heading", { name: "New profile" })).toBeInTheDocument();
+    expect(screen.queryByText("What changes")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("profile-diff")).not.toBeInTheDocument();
+    // The phase as the machine runs it: name, length, pump target and stop condition.
+    const phase = within(summary).getByTestId("profile-summary-phase");
+    expect(phase).toHaveTextContent("Pump");
+    expect(phase).toHaveTextContent("28 s");
+    expect(phase).toHaveTextContent("pressure 8 bar");
+    expect(phase).toHaveTextContent("ends when volumetric ≥ 36");
+    expect(phase).not.toHaveTextContent("transition");
+    expect(within(summary).getByTestId("profile-summary-ends")).toHaveTextContent(
+      "Shot ends when the last phase ends: volumetric ≥ 36, or after 28 s when volume is not measured.",
+    );
+    expect(screen.getByTestId("draft-card")).toHaveTextContent("new profile");
+    expect(screen.getByTestId("draft-card")).not.toHaveTextContent(/\bfrom\b/);
+  });
+
+  it("keeps the diff and the origin of an edit of a real profile", async () => {
+    renderWithQueryClient(<DraftCard draft={draft()} />);
+
+    expect(await screen.findByTestId("profile-diff")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What changes" })).toBeInTheDocument();
+    expect(screen.queryByTestId("profile-summary")).not.toBeInTheDocument();
+    expect(screen.getByTestId("draft-card")).toHaveTextContent("from 9 Bar Espresso");
   });
 
   it("lists what the safety policy moved on the way in", async () => {

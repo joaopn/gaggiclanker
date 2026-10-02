@@ -39,7 +39,7 @@ const PHASE_FIELDS = [
   "targets",
 ] as const;
 
-function render(value: unknown): string | null {
+export function renderValue(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value === "boolean") return value ? "yes" : "no";
   if (typeof value === "number") return String(value);
@@ -103,8 +103,8 @@ export function diffProfiles(base: Json | null, draft: Json | null): FieldChange
       changes.push({
         path: field,
         label: field,
-        before: render(base[field]),
-        after: render(draft[field]),
+        before: renderValue(base[field]),
+        after: renderValue(draft[field]),
       });
     }
   }
@@ -139,8 +139,8 @@ export function diffProfiles(base: Json | null, draft: Json | null): FieldChange
       changes.push({
         path: `phases[${index}].${field}`,
         label: `phase ${index + 1} · ${name} · ${field}`,
-        before: render(before[field]),
-        after: render(after[field]),
+        before: renderValue(before[field]),
+        after: renderValue(after[field]),
       });
     }
   }
