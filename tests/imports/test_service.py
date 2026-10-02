@@ -189,6 +189,60 @@ async def test_the_firmware_shaped_profile_imports_as_the_same_version(
     assert second.items[1].label == "9 Bar Espresso"
 
 
+async def test_an_imported_profile_joins_the_profile_list_off_and_once(
+    service: ImportService, db: Database
+) -> None:
+    """The Profiles page shows the list, so an import that is in no profile would vanish."""
+    from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
+
+    board = ProfileBoardRepository(db)
+    first = await service.import_files(files(PROFILE_FIXTURE))
+    await service.import_files(files(PROFILE_FIXTURE))
+
+    rows = await board.list_rows()
+    assert [(r.label, r.on_machine) for r in rows] == [("Cremina v2", False)]
+    assert rows[0].current_version_id == first.items[0].profile_version_id
+    assert [v.source for v in await board.list_versions(rows[0].id)] == ["import"]
+
+
+async def test_importing_a_version_a_profile_already_has_makes_no_second_profile(
+    service: ImportService, db: Database
+) -> None:
+    """A version belongs to one profile, even when that profile has been renamed since."""
+    from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
+
+    board = ProfileBoardRepository(db)
+    await service.import_files(files(PROFILE_FIXTURE))
+    (row,) = await board.list_rows()
+    await board.update(row.id, BoardRowPatch(label="Renamed since"))
+
+    await service.import_files(files(PROFILE_FIXTURE))
+
+    assert [r.label for r in await board.list_rows()] == ["Renamed since"]
+
+
+async def test_an_imported_profile_with_a_listed_label_is_a_version_of_it_not_active(
+    service: ImportService, db: Database
+) -> None:
+    """A later import of the same profile, edited, adds to the profile instead of a copy."""
+    from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
+
+    board = ProfileBoardRepository(db)
+    first = await service.import_files(files(PROFILE_FIXTURE))
+    edited = {**document(PROFILE_FIXTURE), "temperature": 91.5}
+    second = await service.import_files(
+        [ImportFile(filename="edited.json", data=json.dumps(edited).encode())]
+    )
+
+    assert second.items[0].status == "created"
+    (row,) = await board.list_rows()
+    assert row.current_version_id == first.items[0].profile_version_id
+    assert {v.version_id for v in await board.list_versions(row.id)} == {
+        first.items[0].profile_version_id,
+        second.items[0].profile_version_id,
+    }
+
+
 async def test_a_v7_export_imports_with_its_extra_fields(
     service: ImportService, db: Database
 ) -> None:

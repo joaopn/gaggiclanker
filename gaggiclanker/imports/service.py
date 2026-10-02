@@ -41,7 +41,12 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import dumps
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.notes import NotesRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
+from gaggiclanker.db.repos.profile_board import BoardRowWrite, ProfileBoardRepository
+from gaggiclanker.db.repos.profiles import (
+    SYNTHETIC_BASE_LABEL,
+    ProfilesRepository,
+    ProfileVersionRow,
+)
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotInsert, ShotsRepository
 from gaggiclanker.domain.exports import (
@@ -174,6 +179,7 @@ class ImportService:
         self.db = db
         self.shots = ShotsRepository(db)
         self.profiles = ProfilesRepository(db)
+        self.board = ProfileBoardRepository(db)
         self.notes = NotesRepository(db)
         self.sets = SetsRepository(db)
         self.judgements = JudgementsRepository(db)
@@ -642,6 +648,7 @@ class ImportService:
             version, created = await self.profiles.ensure_version(
                 profile, source=IMPORT_SOURCE, device_json=dumps(profile.to_device())
             )
+            await self._list_imported(version)
             results.append(
                 ImportResult(
                     filename=filename,
@@ -660,6 +667,35 @@ class ImportService:
                 "profile_imported", version_id=version.id, label=version.label, created=created
             )
         return results
+
+    async def _list_imported(self, version: ProfileVersionRow) -> None:
+        """Make an imported profile show up in the profile list.
+
+        The list is what the Profiles page shows, so a version that no profile has had is
+        invisible there. One that carries the label of a live profile becomes one of that
+        profile's versions (not active: a person chooses); any other becomes a profile of its
+        own, **off**, so importing a file never changes what a sync does to the machine. Reading
+        and then writing in one transaction keeps a second import of the same file from making
+        a second profile.
+        """
+        if version.utility or version.label == SYNTHETIC_BASE_LABEL:
+            return
+        async with self.db.transaction():
+            if await self.board.find_live_by_listed_version(version.id) is not None:
+                return
+            same = await self.board.find_live_by_label(version.label)
+            if same is not None:
+                await self.board.add_version(same.id, version.id, "import")
+                return
+            await self.board.insert(
+                BoardRowWrite(
+                    label=version.label,
+                    current_version_id=version.id,
+                    on_machine=False,
+                    origin="adopted",
+                    version_source="import",
+                )
+            )
 
 
 def _is_zip_noise(name: str) -> bool:
