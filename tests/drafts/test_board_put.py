@@ -166,7 +166,7 @@ async def test_only_a_drafted_or_approved_draft_can_be_put(
         refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
 
         assert refused.status_code == 409, status
-        assert f"A {status} draft cannot go on the board" in error(refused)["message"]
+        assert f"A {status} proposal cannot be made active" in error(refused)["message"]
 
 
 async def test_the_sets_version_and_the_major_choice_ride_on_the_same_request(

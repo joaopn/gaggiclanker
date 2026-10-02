@@ -33,7 +33,6 @@ export function NewProfileRow({
         <button
           type="button"
           className="flex w-full min-w-0 items-start gap-2 text-left"
-          aria-expanded={open}
           data-testid="profile-toggle"
           onClick={onToggle}
         >

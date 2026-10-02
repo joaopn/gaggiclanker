@@ -75,10 +75,14 @@ def stripped_label(label: str) -> str:
 def version_source_for_draft(draft: dict[str, Any]) -> VersionSource:
     """Whether a draft's version was the agent's or a person's own edit.
 
-    A draft does not record who made it, so this reads what only an agent's draft carries: a
-    Set, an analysis or suggestion it came from, a prediction, a refinement's parent or notes.
-    A document typed into the editor carries none of them. A heuristic, said so on the page.
+    A draft records who made it (``made_by``) and that is believed. Only a draft made before the
+    column existed has none, and for those this reads what only an agent's draft carries: a Set,
+    an analysis or suggestion it came from, a prediction, a refinement's parent or notes. A
+    document typed into the editor carries none of them. A heuristic, for history only.
     """
+    recorded = draft.get("made_by")
+    if recorded in ("agent", "edit"):
+        return recorded  # type: ignore[no-any-return]
     agent = any(
         draft.get(key) not in (None, "", 0)
         for key in (
@@ -437,6 +441,16 @@ class _ReplayLookup:
         self.files_of = files_of
         #: The last draft version replayed for each Set: the Set's chain, as it stood.
         self.last_for_set: dict[int, int] = {}
+
+    async def by_id(self, profile_id: int) -> int | None:
+        return None  # old drafts were made before a draft could name its profile
+
+    async def by_label(self, label: str) -> int | None:
+        return self.groups.with_label(label)
+
+    def label_of(self, profile: int) -> str:
+        row = self.groups.rows.get(profile)
+        return "" if row is None else row.label
 
     async def by_set(self, set_id: int) -> int | None:
         version = self.last_for_set.get(set_id)

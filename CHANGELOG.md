@@ -27,6 +27,17 @@ first (`POST /api/backup`), because there is no down-migration.
   (the agent, an edit, the machine, edited on the machine, an import), its shots and the Sets
   that brew it, **Make active** (any version, the first included) and **Edit a copy**. The
   first version shows a summary; every later one shows what changed from the version before it.
+- **Edit a copy is aimed at the profile it was opened on** (new migration `0037` records the
+  profile and who made each draft). For a profile the app made, the copy is always a new
+  version of it, whichever version you edited, so editing an older version no longer produces a
+  proposal that cannot be added. For a profile the app did not make the first edit is a
+  separate profile named with `[AI]` and a second edit is a new version of that copy; the one
+  rule for that lives in `db/repos/lineage.py`, and the dialog says which before you save. A
+  hand edit is labelled as yours, not the agent's.
+- **Proposals are independent candidates.** Making one active never blocks or undoes another
+  (the "a newer draft is waiting" refusal is gone), and a proposal based on a version that is
+  no longer active, or was never pushed, still lands on its profile, found through the
+  profile's version list instead of the version it is on now.
 - **Proposals live inside the profile**: a version the agent (or the JSON editor) proposed is
   marked **Proposed** above the versions, with **Make active** (the stop-condition acknowledgement
   and the Set recording work as the old Put on the board did) and **Decline**. A proposed new
@@ -86,43 +97,27 @@ first (`POST /api/backup`), because there is no down-migration.
   it takes. The profile pass of a sync now records
   how many profiles it read, on its run in the sync ledger.
 
-### Profiles reach the machine only through the board
+### Profiles reach the machine only through the profile list
 
 - **Breaking: the staged push is gone.** `POST /api/profile-drafts/{id}/push`,
   `.../rollback` and `.../approve` are removed (a request to one is a 404), and with them the
   Approve, Push and Roll back buttons, **Stage as is**, and the Profiles page's writes banner.
-  The only way a profile reaches the machine is the profile board: put a draft on it and the
-  next sync (with the Writes switch on) sends it. No database change needs undoing, and no
-  data is lost: drafts, Set versions and the write audit keep what they held.
-- **One click puts a draft on the board.** **Put on the board** now approves the draft in the
-  same action (`POST /api/profile-board` takes `acknowledge_stop_changes` for a draft that
-  moves when the machine stops pumping, and the checkbox sits under that warning), carries the
-  Set and the **Major change** choice as the push did, and a refused put leaves the draft as it
-  was. Before the board has taken the machine's profiles (Writes switch on, then a sync) a
-  draft card says so and offers only refine and discard. To put a version on the board as it
-  is, edit it and save it unchanged.
-- **New: go back a version** (`POST /api/profile-board/{id}/go-back`, the button on a profile's
-  card, with a confirmation). A profile the app wrote remembers the version it was before its
-  newest put; going back makes it that version again and the next sync saves it and removes the
-  newer copy through the same guards as any replacement. It is the old rollback, on the board:
-  the draft behind the removed copy is discarded and the Set versions that named it stop naming
-  it. Not offered for a profile of yours, when there is no earlier version, or while the earlier
-  copy is still kept on the machine for a Set (go back once that Set has moved on). A Set that
-  later rolls back onto the newer profile keeps its file. The button is disabled, with the reason, while going back would be refused (for example after a sync that stopped part-way). Profiles on the board have an **Edit**
-  button, which is how a change is made to one. New migration
-  `0034` adds the two columns this needs; nothing is rewritten.
-- **New: no two profiles on the board share a name.** A put that would add a second profile
-  beside one with its name (or rename one onto a name another holds) and taking a machine
-  profile whose name is already on the board are refused; the draft card says the board
-  already has that profile and offers refine or discard. A draft whose exact document is
-  already on the board says so instead of offering a put that would fail. The first sync
-  still takes the machine as it is and lists profiles that share a name instead of refusing
-  them.
-- **Changed: a person's identical duplicate can no longer be taken onto the board** (it was
-  allowed before): it is a second profile of one name.
-- **Changed: the chat and Set prompts and tool notes** say the person puts a draft on the
-  board and the next sync sends it (no approve or push step), so the agent no longer
-  describes one.
+  The only way a profile reaches the machine is the profile list: make a proposal active and
+  the next sync (with the Writes switch on) puts it on the machine. No database change needs
+  undoing, and no data is lost: drafts, Set versions and the write audit keep what they held.
+- **One click makes a proposal active.** **Make active** approves the proposal in the same
+  action (`POST /api/profile-board` takes `acknowledge_stop_changes` for one that moves when
+  the machine stops pumping, and the checkbox sits under that warning), carries the Set and the
+  **Major change** choice, and a refused request leaves the proposal as it was.
+- **No two profiles in the list share a name.** Making active a proposal that would add a
+  second profile beside one with its name (or rename one onto a name another holds) is refused,
+  and the proposal says which profile has the name and to use Edit a copy there. A proposal
+  whose exact document is already in the list says so instead of offering a request that would
+  fail. The first sync still takes the machine as it is and lists profiles that share a name
+  instead of refusing them.
+- **Changed: the chat and Set prompts and tool notes** say the person makes a proposal active
+  on the Profiles page and the next sync puts it on the machine (no approve or push step), so
+  the agent no longer describes one.
 
 ### A quick Claude Code install still says how it went
 
@@ -135,147 +130,48 @@ first (`POST /api/backup`), because there is no down-migration.
   or **Writes off** (just **on** / **off** on a tablet, and only an icon on a
   phone, where the brand name in the header gives way too). Off is the
   default and turning it off is immediate; turning it on asks first and says what
-  it means (see the profile board below). A change the server refuses
+  it means (see the profile list above). A change the server refuses
   (for example when sign-in is on and you are signed out) says so under the
   switch and leaves it as it was. The **Writes** card on Settings → Machine
   access is gone, and the Profiles page banner, the refusal messages and the
   README point at the switch instead. The stored setting and the API are
   unchanged.
 
-### The app's own profile board, synced to the machine
+### The sync makes the machine hold the profiles that are on
 
-- **The app now keeps a profile board** (new routes under `/api/profile-board`): the
-  profiles it means the machine to hold, each with its current version, whether it is
-  on the machine's home screen, and which file on the machine stands for it. Put an
-  approved draft on it (a new version of the profile it descends from, or a new
-  profile), turn a profile's home-screen flag on or off, delete a profile, or read the
-  board with each profile's state on the machine and what the next sync would do.
-  Editing the board never touches the machine.
-- **With device writes on, every sync ends by making the machine match the board.**
-  The first such sync adopts the machine's profiles as they are (the home screen is
-  each profile's star) and writes nothing. After that a sync saves a board profile the
-  machine does not hold, checking what it saved by reading it back and running it through
-  the safety policy with the current bounds first; removes the file a newer version
-  replaced and the file of a profile deleted on the board; and sets each profile's star to
-  its home-screen flag. With writes off a sync only reads, exactly as before.
-- **A sync only ever pushes versions that came from an approved draft.** A profile you
-  made on the machine is shown on the board and its home-screen flag is applied, but it is
-  never pushed back: if its file is missing or was changed, the sync says so and does
-  nothing. A machine that looks reset (none of the app's profiles is on it any more) pauses
-  the board sync until you resume it (`POST /api/profile-board/resume`).
-- **Only profiles this app pushed, still holding exactly what it saved, are removed**, by
-  the same guards as a push's replace, and never one another board profile or a Set still
-  stands on. A profile you made, or an app profile you edited on the machine, stays there
-  when it is superseded or deleted on the board, and the sync says which file and why. If a
-  sync stops halfway, each profile is left old or new and the next sync finishes it. A new
-  version that does not read back as sent is removed again and the previous version stays.
-- **Once the board is adopted, profiles reach the machine through it:** the staged push and
-  rollback refuse every draft with a message pointing at the board (before the first
-  adoption they work as before). A profile this app saved itself before adoption counts as
-  the app's own on the board when it is still exactly what was saved, so a later draft of it
-  replaces it instead of adding a duplicate; everything else, even one named like an app
-  profile or edited since, stays yours and is never removed. That includes a copy a staged
-  push left unverified before the first adoption: only the machine's display can remove it.
-- **Reading the board is cheap by default** (served from the last mirror); add `?live=true`
+- **With device writes on, every sync ends by making the machine match the profile list**
+  (routes under `/api/profile-board`). The first such sync takes the machine's profiles into the
+  list as they are (the home screen is each profile's star) and writes nothing. After that a
+  sync saves a profile's active version the machine does not hold, after running it through the
+  safety policy with the current bounds and reading what came back against what was sent;
+  removes the file a newer version replaced and the files of profiles that are switched off,
+  the machine's own included; and sets each profile's star. With writes off a sync only reads.
+- **A removal is guarded by a fresh load:** the file must still hold exactly what the app last
+  recorded, and never a file another profile or a Set still stands on, and never the selected
+  profile while no other is on. A file edited on the display is not overwritten or removed
+  unseen: it becomes a conflict you settle. If a sync stops halfway, each profile is left old
+  or new and the next one finishes it. A version that does not read back as sent is removed
+  again and the previous version stays; it is not tried again until another version is made
+  active.
+- **A machine that looks reset** (none of the files the last sync left is on it) pauses writes
+  until you resume them (`POST /api/profile-board/resume`).
+- **A sync reads before it writes.** A profile that already holds exactly the content to push
+  is reused and nothing is saved. Otherwise the new file is saved and read back, the star and
+  the selection move to it if the old one had them, and then the old copy is removed. A
+  profile's file is found by content, so the same profile under another id is not a change. The
+  firmware clears its startup-profile setting when that profile is deleted and this app never
+  writes settings; the sync's summary says when that happened.
+- **A Set's profile stays its own.** A version that changes only the grind, dose or yield, a
+  Set rollback and an accepted proposal keep naming where the profile is on the machine, and a
+  proposal for a Set finds its profile by looking back through the Set's versions. A file a Set
+  still brews is not removed while that Set's current version brews it.
+- **Reading the list is cheap by default** (served from the last mirror); add `?live=true`
   to read the machine now.
-- **Sync runs carry a summary** of what the board sync did (adopted, pushed,
-  overwritten, removed, left on the machine, home-screen changes, failures), and every
-  action is a sync event and a row in the device-write audit.
-- **Schema (new migration, no reset needed):** a table for the board, a marker for the
-  one-time adoption, and a summary column on sync runs. No existing data changes.
-- **The web for all of this is in the next section.** The staged box and its per-draft push
-  and rollback still work as before until the first adoption.
-
-### The Profiles page, the Writes switch and the Sync page, built around the board
-
-- **The Profiles page shows the board.** Once the board has been adopted (the Writes switch
-  has been on for a sync), each profile on it is one card: its name, its current version,
-  whether it is **the app's** or **yours**, and where it stands on the machine in plain
-  words: on the machine, will be pushed on the next sync, will be removed, left on the
-  machine (and why), edited on the display, did not verify, or missing. A tick puts it on or
-  takes it off the machine's home screen, and **Delete** (asked first, and saying that a
-  profile of yours is never removed from the machine) takes it off the board. A deleted
-  profile whose file is still on the machine is listed as will be removed or left. Nothing
-  here sends anything to the machine; the next sync does. Before the first adoption the page
-  is as it was: the mirror and the staged box with its push.
-- **Approved drafts get "Put on the board".** After adoption the staged push and rollback
-  buttons are gone (the server refuses them) and an approved draft is put on the board
-  instead. A draft made for a Set carries what the push carried: it is recorded as that Set's
-  next version once a sync has put it on the machine, with the "Major change" choice
-  preselected from the agent's suggestion, or **Put on the board without recording it on the
-  Set**. A draft already on the board says it reaches the machine on the next sync.
-- **The Writes switch says what on now means:** every sync makes the machine's profiles match
-  the board (it pushes the app's profiles the machine does not have, removes the app's old
-  copies and sets the home-screen stars) and never removes or overwrites a profile of yours.
-  Before turning it on, the confirmation shows a preview read from the machine just now:
-  before adoption, that the first sync takes the machine's profiles onto the board and writes
-  nothing; after, what the next sync would do (counts and the list). When the machine cannot
-  be read it says so and shows the last sync's picture. The panel stays inside the screen at
-  phone width.
-- **Profiles the machine gained after the board took its own can be taken onto it:** the
-  Profiles page lists them under "On the machine, not on the board", each with **Take onto
-  the board** (new route `POST /api/profile-board/take`). It reads the last mirror, sends
-  nothing to the machine, and treats a copy this app saved itself as the app's and anything
-  else as yours, exactly as the first adoption does. Chat and MCP have no tool for it.
-- **A draft says where it will land:** "goes on the board as a new profile" or "replaces X on
-  the board, as its next version", worked out by the server with the code a put runs (the board
-  read now carries it), and "Put on the board" is hidden only when the profile it would replace
-  already holds a newer draft. Taking a profile onto the board is atomic (two clicks make one
-  row) and is refused for a file whose exact content a board profile already stands for.
-- **Fixes while building it:** a sync's write phase now refreshes the drafts, Sets and write
-  audit open in the browser; the Resume banner goes away once resumed; the Sync summary reads
-  each reason by the section it is under; a board that cannot be read says so instead of
-  showing the old push buttons; a draft the board has moved past is not offered "Put on the
-  board" and can be discarded. Wording that said a person "pushes" a profile (the Set pages,
-  the draft card, the chat's prompts and tool notes) now says they put it on the machine,
-  which is true with and without the board; the agent's prompts are a little shorter.
-- **The Sync page shows what the last sync did to the profiles** (put on, removed, left and
-  why, home-screen changes, anything that did not work) and the profiles a sync will not touch
-  (one of yours that was edited or is missing). When the machine looks reset and syncs have
-  stopped writing, a banner says so, with **Resume**, which asks first: the next sync will push
-  the app's profiles back, and profiles of yours are never pushed.
-
-### A push replaces the profile it supersedes
-
-- **A push no longer piles up copies on the machine.** Before every push the
-  machine's profiles are read again. A profile that already holds exactly the
-  content being pushed is reused and nothing is saved. Otherwise the new profile
-  is saved and read back, the favourite star and the selection move to it if the
-  old one had them, and then the old copy is removed. The new profile keeps the
-  old one's label outside a Set. If anything fails before the removal, both stay.
-  Only a new version of the same profile replaces: for a push recorded on a Set,
-  what the Set's current version has on the machine; otherwise the profile the
-  draft was made from, and only when it carries the same label. A fork under a new
-  name adds a profile and removes nothing.
-- **Only profiles this app pushed are ever removed.** A profile you made
-  yourself is never deleted: the first push made from it adds a copy beside it,
-  and later pushes replace that copy. A copy you edited on the display since, or
-  that is already gone, is left alone, and the draft card says why.
-- **Rollback puts the replaced profile back** (saved again from the archive if it
-  is no longer on the machine) and then removes the pushed one, under the same
-  checks, and only after confirming the pushed profile can be removed. It never
-  removes a profile its own push did not save, nor one another pushed draft or
-  another Set's current version still uses. Set versions and the profile list
-  point at what is on the machine afterwards.
-- **A push and a rollback say what they did** on the draft card and in the
-  notification: what was replaced, what was kept and why, and the startup profile.
-  With device writes off, a push or rollback is refused and audited before the
-  machine is read.
-- **The startup profile.** The firmware clears its startup-profile setting when
-  that profile is deleted, and this app never writes settings; the draft card
-  tells you when that happened so you can pick one again on the display.
-- **A draft whose base profile is gone from the machine is no longer stale,** and
-  staleness is decided by content: the same profile under another id is not a
-  change. After an update wipes the machine, a push simply adds.
-- **A Set's profile stays its own.** A version that changes only the grind, dose or
-  yield, a Set rollback and an accepted proposal now keep naming where the profile
-  is on the machine, and a push for a Set finds it by looking back through the
-  Set's versions. A profile is also kept while any Set's current version brews it,
-  whether or not that Set ever pushed it.
-- **Schema:** a new migration adds columns to the drafts table and marks the
-  pushes made before it as having saved their profile; no data is lost and no
-  reset is needed. A push recorded on a Set before this update has no recorded
-  version, so rolling it back is refused while it is that Set's current version.
+- **Sync runs carry a summary** of what the write phase did (added, conflicts, recorded,
+  pushed, removed, left on the machine, home-screen changes, failures), and every action is a
+  sync event and a row in the device-write audit.
+- **Schema (new migrations, no reset needed):** the list and its markers, and a summary column
+  on sync runs. No existing data changes.
 
 ### Adherence is judged on what each phase steers by
 
@@ -776,17 +672,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **The draft card can now push a Set's draft for its Set, and does so by
   default.** A profile the agent drafted in a Set's conversation carries a
-  prediction that was to be recorded "when you push this draft for that Set",
-  but the card's only button pushed it for no Set: the Set never got the new
-  version, the prediction was lost, and shots brewed on the new profile landed
-  in "needs a Set". The button now reads **Push to the machine and record it as
-  v5 of** *the Set*, and records that version with the prediction on it. **Push
-  without recording it on the Set** tries the profile without touching the Set.
-  A draft that belongs to no Set has the one button it always had.
-- **A pushed draft says whether its prediction was recorded**, read from the
-  archive rather than from the button pressed: "Recorded as v5 of …" only when
-  that push recorded a version of the draft's Set, and "Pushed without recording
-  it on …" otherwise. It used to claim the prediction had been recorded
+  prediction that was to be recorded when you make that proposal active for
+  its Set, but the card's only button did it for no Set: the Set never got the
+  new version, the prediction was lost, and shots brewed on the new profile
+  landed in "needs a Set". The button now reads **Make active and record it as
+  v5 of** *the Set*, and records that version with the prediction on it. **Make
+  active without recording it on the Set** tries the profile without touching the
+  Set. A proposal that belongs to no Set has the one button it always had.
+- **A proposal that reached the machine says whether its prediction was recorded**,
+  read from the archive rather than from the button pressed: "Recorded as v5 of …"
+  only when it recorded a version of the proposal's Set, and "Reached the machine
+  without being recorded on …" otherwise. It used to claim the prediction had been recorded
   whatever the push did.
 
 ### Design a new Set in chat
@@ -1089,7 +985,7 @@ first (`POST /api/backup`), because there is no down-migration.
   in place of the Set's.
 - **Taking a starting point stages a draft when it has to.** An option still
   suggests a temperature, and if it points at a profile you already have that
-  brews at a different one, taking it stages a draft of that profile at the
+  brews at a different one, taking it proposes a draft of that profile at the
   suggested temperature and the new Set's first version points at the draft.
   The card says so beforehand. Nothing is sent to the machine: you approve and
   push it on the Profiles page, as with any other draft.
@@ -1483,7 +1379,7 @@ typed.
 
 **The AI starting point is folded under the form** as **Suggest a starting
 point instead**. It uses the bean and grinder already picked; asking, the three
-options and taking one behave as before, including landing on the staged draft
+options and taking one behave as before, including landing on the proposal
 when the option authored a profile.
 
 **Picking a profile fills the recipe.** Target yield and temperature come from
@@ -1577,19 +1473,15 @@ unchanged; `g i`, `g d` and `g r` do nothing now.
 - **The device page is behind the header pill**, which is where you are looking
   when you want it. The page, its route and its tests are unchanged, and the
   pill now names its destination for screen readers.
-- **Drafts are the staging queue on the Profiles page**, under **Staged for the
-  machine**. A draft is the step between a profile version and the machine, not
-  a destination: everything that creates one starts from a version or ends by
-  linking back to it. `/drafts` redirects to `/profiles#staged`, and every link
-  that used to point at the queue points at that anchor.
+- **A proposal waits inside its profile on the Profiles page.** A draft is the step
+  between a profile version and the machine, not a destination: everything that
+  creates one starts from a version or ends by linking back to it. `/drafts`
+  redirects to `/profiles#staged`, which opens the newest proposal's row, and every
+  link that used to point at the queue points at that anchor.
 
-**Two new ways to stage a profile**, both through the existing manual draft
-path, so the schema, the safety policy and the audit are unchanged:
-
-- **Stage as is** on a version row, for a profile that is already right and only
-  needs to get onto the machine without a trip through the JSON editor.
-- **Upload profile** in the Profiles header runs a profile export through the
-  importer, so a file becomes a version with its own staging button.
+**A new way to bring a profile in:** **Upload profile** in the Profiles header runs a
+profile export through the importer, so a file becomes a profile in the list,
+switched off, ready to be switched on.
 
 **A bean is a type of coffee, not a bag**, and `beans.roast_date` is gone.
 Roaster, origin, process and roast level stay true of every bag you
@@ -1709,10 +1601,9 @@ person has approved it — saves it to the display as a **new** profile.
   the real firmware compiled natively, read back, brewed, and deleted.
   `scripts/profile_gate.py` runs the same four layers over a file from a shell.
 
-New: `GET/POST /api/profile-drafts` and its approve / push / rollback / discard
-/ refine routes, `GET /api/device/writes`, a staging section on the Profiles
-page, "Draft profile" on the shot analysis panel, and "Stage as is" and "Edit"
-on a profile version. Migration `0008`.
+New: `GET/POST /api/profile-drafts` and its discard / refine routes,
+`GET /api/device/writes`, proposals on the Profiles page, "Draft profile" on the shot
+analysis panel, and "Edit a copy" on a profile version. Migration `0008`.
 
 ### Device storage cleanup
 
@@ -1942,9 +1833,9 @@ versioned Sets, and produces a per-shot LLM analysis you can act on.
 
 ### Known limitations
 
-- **Nothing is ever written to the machine.** No profile pushes, no settings, no
-  mode changes. The four-layer write path in `docs/safety-layers.md` has to
-  exist first.
+- **Only profiles are ever written to the machine, and only by a sync with the Writes
+  switch on.** No settings, no mode changes, no shot deletes. The four-layer write path
+  in `docs/safety-layers.md` guards every write.
 - One user, no roles, and no TLS of its own. Put it behind a reverse proxy if it
   is going to face the internet.
 - `cost_estimate` is recorded as NULL: nothing here knows what a token costs on

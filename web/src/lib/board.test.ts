@@ -125,13 +125,13 @@ describe("rowStateOf", () => {
     expect(text("unreadable")).toMatch(/would not give/);
   });
 
-  it("keeps the star's value in a note while the profile is off, and warns about the selected one", () => {
+  it("warns about the selected one while the profile is off, and says nothing about the star", () => {
     const entry = boardRowView({
       row: { on_machine: false },
       machine: { present: true, holds_current: true, selected: true },
     });
     const notes = rowStateOf(boardView({ rows: [entry] }), entry).notes;
-    expect(notes).toContain("Starred is kept, and applies once the profile is on the machine.");
+    expect(notes.join(" ")).not.toContain("Starred");
     expect(notes.join(" ")).toContain("selects another enabled profile first");
   });
 });

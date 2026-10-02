@@ -91,7 +91,7 @@ export function useDiscardDraft(): UseMutationResult<ProfileDraft, Error, number
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => discardProfileDraft(id),
-    onSuccess: () => toast.success("Draft discarded"),
+    onSuccess: () => toast.success("Proposal declined"),
     onError: (error) => toast.error(error.message),
     onSettled: () => {
       void invalidateDrafts(queryClient);

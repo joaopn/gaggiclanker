@@ -13,7 +13,7 @@ constructor. That half lives in its own class, built without the machine
 connection, so the chat's tools can propose a draft without holding anything
 that could write one.
 
-This service holds no machine connection at all. A draft reaches the machine only through
+the profile list (:mod:`.board`): a person's "Make active" approves it and makes it a
 the profile board (:mod:`.board`): a person's "Put on the board" approves it and makes it a
 profile's next version, and the write phase of the next sync saves it, reads it back and
 removes what it replaces, through the primitives in :mod:`.machine`. What remains here is
@@ -37,12 +37,12 @@ import structlog
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.lineage import edit_label
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch, SetVersionRow
 from gaggiclanker.domain.models import (
     Profile,
-    with_app_suffix,
 )
 from gaggiclanker.domain.profile_policy import (
     PolicyBounds,
@@ -126,7 +126,7 @@ class ProfileDraftService:
         bounds = await self.bounds()
         clamped, changes = clamp(candidate, bounds)
         violations = check(clamped, bounds)
-        final = clamped.for_new_device_profile(label=with_app_suffix(clamped.label))
+        final = clamped.for_new_device_profile(label=edit_label(clamped.label))
         return DraftPreview(
             valid=not violations,
             violations=violations,
@@ -144,13 +144,20 @@ class ProfileDraftService:
         document: dict[str, Any],
         change_summary: str = "",
         notes: str = "",
+        target_board_id: int | None = None,
     ) -> ProfileDraftRow:
-        """A draft somebody typed. Same four layers, no model involved."""
+        """A draft somebody typed into the editor. Same four layers, no model involved.
+
+        Recorded as the person's own edit (``made_by``), aimed at the profile it was opened on
+        when the editor says which.
+        """
         return await self.proposals.create_manual(
             base_version_id=base_version_id,
             document=document,
             change_summary=change_summary,
             notes=notes,
+            made_by="edit",
+            target_board_id=target_board_id,
         )
 
     async def generate(
@@ -249,15 +256,15 @@ class ProfileDraftService:
 
         A pushed draft's profile exists on the display, and a row that said
         `discarded` while the file was still there would be the archive lying
-        about the machine. Delete the profile from the board, or go back to its
-        previous version, and the sync that takes it off the machine discards the
+        about the machine. Switch the profile off, or make another version active, and
+        the sync that takes it off the machine discards the
         draft with it.
         """
         draft = await self._require(draft_id)
         if draft.status == "pushed":
             raise Conflict(
-                "That draft's profile is on the machine. Delete it from the board, or go back "
-                "to its previous version, before discarding the draft."
+                "That proposal's profile is on the machine. Switch the profile off, or make "
+                "another version active, and sync, before declining it."
             )
         return _require_row(await self.drafts.set_status(draft_id, "discarded"), draft_id)
 

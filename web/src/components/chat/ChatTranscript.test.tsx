@@ -264,7 +264,7 @@ describe("ChatTranscript", () => {
     expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
   });
 
-  it("points a drafted profile at the staging section of the profiles page", () => {
+  it("points a proposed profile change at the profiles page", () => {
     // The queue is a section rather than a page, so the link carries the
     // anchor: landing at the top of the profiles page and leaving the reader
     // to find the draft they were just told about is half a link.
@@ -294,7 +294,7 @@ describe("ChatTranscript", () => {
     );
 
     const card = screen.getByTestId("propose-card-draft");
-    expect(within(card).getByRole("link", { name: /Profile draft #12/ })).toHaveAttribute(
+    expect(within(card).getByRole("link", { name: /Proposed profile change/ })).toHaveAttribute(
       "href",
       "/profiles#staged",
     );

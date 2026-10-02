@@ -225,7 +225,7 @@ async def test_the_set_prompt_says_an_accepted_change_needs_nothing_on_the_machi
 
     Asked what to do after accepting a grind change, the agent made up a
     profile push, a staging queue and a step to log the shot against the
-    version. None exists (profiles go on the board now, and a grind change is not one): the
+    version. None exists (a profile is made active in the list, and a grind change is not one): the
     profile is already on the machine, and the next shots on it are filed under the new
     version by themselves.
     """
@@ -236,7 +236,7 @@ async def test_the_set_prompt_says_an_accepted_change_needs_nothing_on_the_machi
     assert "An accepted change puts nothing on the machine" in system
     assert "the grind, the dose or the yield needs nothing there" in system
     assert "filed under the new version by themselves" in system
-    assert "There is nothing to push, put on the board, stage or log, and no queue" in system
+    assert "There is nothing to push, make active, stage or log, and no queue" in system
     assert "never describe a step this archive does not have" in system
 
 

@@ -4,7 +4,7 @@ Twenty-one tools in two permission classes, and the third is empty on purpose.
 The read tools answer questions about the archive; the propose tools turn a
 conclusion into a row somebody still has to confirm; there are no device-write
 tools here at all, and that is the feature —
-putting a profile on the board (which the next sync sends to the machine) stays a button in the UI.
+making a profile active (which the next sync puts on the machine) stays a button in the UI.
 
 Which of the twenty-one a conversation *has* is not decided here:
 :mod:`gaggiclanker.tools.scope` decides it from the conversation's kind. What
@@ -1245,8 +1245,8 @@ class ProposeVersionOutput(_Model):
         "combined_reason. It is refused while this version's own prediction has not been "
         "graded, and while another proposal is already waiting. There is no temperature "
         "here: the machine brews at the temperature the profile states, so a temperature "
-        "change is a profile change — use draft_profile, and the person puts it on the board "
-        "(with writes on, the next sync sends it to the machine). " + MAJOR_MEANING
+        "change is a profile change — use draft_profile, and the person makes it active "
+        "(with writes on, the next sync puts it on the machine). " + MAJOR_MEANING
     ),
 )
 async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> ProposeVersionOutput:
@@ -1321,7 +1321,7 @@ async def propose_set_version(ctx: ToolContext, args: ProposeVersionInput) -> Pr
                 "nothing in this app can put an existing profile version there, so a Set "
                 "version naming it could not be brewed. list_profiles says which profiles are "
                 "on the machine (on_machine). To brew this one, use draft_profile with it as "
-                "the base: the person puts the draft on the board for this Set, and the Set "
+                "the base: the person makes the proposal active for this Set, and the Set "
                 "records the version when the next sync puts it on the machine."
             )
 
@@ -1507,11 +1507,11 @@ class DraftProfileOutput(_Model):
     prediction: str = ""
     #: The compared-to version's name, "v1.1".
     compares_to_version: str | None = None
-    #: Whether the agent suggested a major version when it is put on the board for the Set; the
+    #: Whether the agent suggested a major version when it is made active for the Set; the
     #: person decides.
     suggest_major: bool = False
     #: What the model should tell the person. A draft is further from the
-    #: machine than a proposal is from the Set: somebody has to put it on the board
+    #: machine than a proposal is from the Set: somebody has to make it active
     #: (saying which Set it is for), and a sync with writes on then sends it.
     note: str = ""
 
@@ -1538,8 +1538,8 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     description=(
         "Create a profile draft from an existing version plus a patch. The draft goes "
         "through the same schema, safety-policy and clamp checks as one typed by hand, "
-        "and it is NOT on the machine — a person puts it on the board, and with writes on the "
-        "next sync sends it. In a "
+        "and it is NOT on the machine — a person makes it active, and with writes on the "
+        "next sync puts it on the machine. In a "
         "conversation about one Set a profile change IS a change to the experiment, so a "
         "prediction is required and the same rules apply as to any other change: not while "
         "this version's own prediction is ungraded, and not while a proposal is already "
@@ -1579,9 +1579,9 @@ async def draft_profile(ctx: ToolContext, args: DraftProfileInput) -> DraftProfi
         )
     suggest_major, major_reason = _major_suggestion(args.suggest_major, args.major_reason)
     note = (
-        "Nothing has been sent to the machine. This is a draft on the Profiles page: the "
-        "person reads the diff and puts it on the board, and only after a sync with writes on "
-        "does the machine hold it."
+        "Nothing has been sent to the machine. This is a proposal on the Profiles page, "
+        "inside its profile: the person reads the diff and makes it active, and only after a "
+        "sync with writes on does the machine hold it."
     )
     if ctx.scope.kind == "set":
         set_id = _resolve_set(ctx, None)
@@ -1789,7 +1789,7 @@ async def propose_initial_recipe(
     it can fix in the same conversation, instead of as a refusal on the
     person's Accept button. It belongs to no Set on the draft side — no
     `set_id`, no prediction — because a draft that names a Set is that Set's
-    profile *change*, which putting it on the board for the Set records as a new version; this
+    profile *change*, which making it active for the Set records as a new version; this
     one is the profile version 1 already names once the card is accepted.
 
     Nothing is left behind by a refusal: the policy and the not-new check run
@@ -1897,8 +1897,8 @@ async def propose_initial_recipe(
         stop_condition_changes=[_as_dict(change) for change in draft.stop_condition_changes or []],
         note=(
             "Nothing exists yet. This is a card waiting for the person: if they accept it, it "
-            "becomes this Set's version 1, and the profile is then a draft on the Profiles page "
-            "for them to put on the board (the next sync with writes on sends it to the machine) "
+            "becomes this Set's version 1, and the profile is then a proposal on the Profiles page "
+            "for them to make active (the next sync with writes on puts it on the machine) "
             "— nothing brews it until it is there. "
             "If they would rather change something, propose again: a newer card replaces this one."
         ),

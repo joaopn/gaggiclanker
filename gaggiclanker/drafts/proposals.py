@@ -20,11 +20,13 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos.lineage import edit_label
+from gaggiclanker.db.repos.profile_board import ProfileBoardRepository
 from gaggiclanker.db.repos.profile_drafts import (
     ProfileDraftRow,
     ProfileDraftsRepository,
@@ -83,7 +85,7 @@ class DraftProposals:
         return bounds_from({key: setting.value for key, setting in resolved.items()})
 
     async def prepare(
-        self, base: Profile, candidate: Profile, *, is_new: bool = False
+        self, base: Profile, candidate: Profile, *, is_new: bool = False, edit: bool = False
     ) -> PreparedDraft:
         """Clamp, re-check, suffix the label, diff the stop conditions.
 
@@ -101,7 +103,8 @@ class DraftProposals:
         violations = check(clamped, bounds)
         if violations:
             raise _rejected(violations)
-        document = clamped.for_new_device_profile(label=with_app_suffix(clamped.label))
+        label = edit_label(clamped.label) if edit else with_app_suffix(clamped.label)
+        document = clamped.for_new_device_profile(label=label)
         return PreparedDraft(
             profile=document,
             clamp_changes=changes,
@@ -123,6 +126,8 @@ class DraftProposals:
         is_new: bool = False,
         new_profile_only: bool = False,
         reusable_version_ids: Collection[int] = (),
+        made_by: Literal["agent", "edit"] = "agent",
+        target_board_id: int | None = None,
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
 
@@ -155,7 +160,12 @@ class DraftProposals:
                 "That document is not a valid GaggiMate profile",
                 details={"schema_errors": schema_errors(exc)},
             ) from None
-        prepared = await self.prepare(base, candidate, is_new=is_new)
+        if (
+            target_board_id is not None
+            and await ProfileBoardRepository(self.db).get(target_board_id) is None
+        ):
+            raise NotFound(f"No profile {target_board_id} in the list")
+        prepared = await self.prepare(base, candidate, is_new=is_new, edit=made_by == "edit")
         if new_profile_only:
             existing = await self.profiles.get_version_by_hash(
                 profile_content_hash(prepared.profile)
@@ -178,6 +188,8 @@ class DraftProposals:
             suggest_major=suggest_major,
             major_reason=major_reason,
             is_new=is_new,
+            made_by=made_by,
+            target_board_id=target_board_id,
         )
 
     async def store(
@@ -194,6 +206,8 @@ class DraftProposals:
         suggest_major: bool = False,
         major_reason: str = "",
         is_new: bool = False,
+        made_by: Literal["agent", "edit"] = "agent",
+        target_board_id: int | None = None,
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document."""
         version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
@@ -216,6 +230,8 @@ class DraftProposals:
                 major_reason=major_reason,
                 is_new=is_new,
                 change_summary=change_summary,
+                made_by=made_by,
+                target_board_id=target_board_id,
                 stop_condition_changes=[
                     change.model_dump(mode="json") for change in prepared.stop_condition_changes
                 ],

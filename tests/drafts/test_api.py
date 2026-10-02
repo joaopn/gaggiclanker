@@ -331,7 +331,7 @@ async def test_a_pushed_draft_cannot_be_discarded_until_its_profile_is_off_the_m
 
     assert response.status_code == 409
     message = error(response)["message"]
-    assert "on the machine" in message and "Delete it from the board" in message
+    assert "on the machine" in message and "Switch the profile off" in message
     # Delete the profile from the board and the sync that takes its file off discards the draft.
     row = row_for(await get_board(client), APP_LABEL)["row"]
     await tombstone(client, row["id"])

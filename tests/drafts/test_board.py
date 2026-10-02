@@ -355,7 +355,7 @@ async def test_a_draft_with_the_label_of_an_existing_profile_waits_until_that_on
     # A draft of it carries the same label, and two live profiles never share one.
     refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
     assert refused.status_code == 409
-    assert "The board already has Legacy [AI]" in error(refused)["message"]
+    assert "The list already has a profile called Legacy [AI]" in error(refused)["message"]
     assert len((await get_board(client))["rows"]) == len(fake_device.profiles)
 
     # Taking the person's profile off the board (it stays on the machine) frees the label.
@@ -844,7 +844,8 @@ async def test_the_board_routes_refuse_what_cannot_go_on_the_board(
     discarded = dict(data(await client.post(f"/api/profile-drafts/{draft['id']}/discard")))
     refused = await client.post("/api/profile-board", json={"draft_id": discarded["id"]})
     assert (
-        refused.status_code == 409 and "discarded draft cannot go on" in error(refused)["message"]
+        refused.status_code == 409
+        and "discarded proposal cannot be made active" in error(refused)["message"]
     )
     other = await draft_of(app, client, provider, BASE_LABEL, 7)
 

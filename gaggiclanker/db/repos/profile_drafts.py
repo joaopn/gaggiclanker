@@ -78,6 +78,10 @@ class ProfileDraftWrite(BaseModel):
     #: Which file on the display the base version was mirrored under when this
     #: draft was made. NULL when it was not on the machine at all.
     base_device_profile_id: str | None = None
+    #: The profile ("Edit a copy" was opened on one of its versions) this is a new version of,
+    #: and who made the draft. See migration 0037.
+    target_board_id: int | None = None
+    made_by: Literal["agent", "edit"] | None = None
     #: The Set this was proposed for, when it was proposed inside one Set's
     #: conversation. It is what makes the prediction below mean something: a
     #: prediction is about one experiment, and pushing this draft for any other
@@ -115,6 +119,8 @@ class ProfileDraftRow(BaseModel):
     source_suggestion_id: int | None = None
     parent_draft_id: int | None = None
     base_device_profile_id: str | None = None
+    target_board_id: int | None = None
+    made_by: Literal["agent", "edit"] | None = None
     #: The Set this was proposed for, the prediction it carries, and the version
     #: that prediction is against. All three are empty on a draft nobody
     #: predicted anything about, which is most of them.
@@ -273,8 +279,8 @@ class ProfileDraftsRepository(Repository):
                  parent_draft_id, base_device_profile_id, set_id, prediction,
                  compares_to_version_id, suggest_major, major_reason, is_new, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
-                 created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+                 target_board_id, made_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
             """,
             (
                 write.base_version_id,
@@ -293,6 +299,8 @@ class ProfileDraftsRepository(Repository):
                 dumps(write.stop_condition_changes),
                 dumps(write.clamp_changes),
                 write.notes,
+                write.target_board_id,
+                write.made_by,
                 now,
                 now,
             ),
@@ -349,22 +357,6 @@ class ProfileDraftsRepository(Repository):
             [*params, limit],
         )
         return await self._with_next_names(self.to_models(ProfileDraftRow, rows))
-
-    async def first_draft_on_version(self, version_id: int) -> int | None:
-        """The id of the draft that first made this exact document, if it is still live.
-
-        A board row's current document was made by a draft; that draft is what the row
-        "holds", and a draft with a lower id is one the board has moved past. A draft that
-        merely re-staged the same document later (same content, so the same version) did not
-        change anything and is not the holder, and a discarded or superseded draft holds
-        nothing.
-        """
-        row = await self.db.fetch_one(
-            "SELECT MIN(id) AS first_id FROM profile_drafts WHERE draft_version_id = ? "
-            "AND status IN ('approved', 'pushed')",
-            (version_id,),
-        )
-        return None if row is None or row["first_id"] is None else int(row["first_id"])
 
     async def set_status(
         self,

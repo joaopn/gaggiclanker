@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBoardVersions, useSetActiveVersion } from "@/hooks/useBoard";
+import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { sourceWords } from "@/lib/board";
 import { formatTime } from "@/lib/shots";
 
@@ -93,6 +94,8 @@ export function ProfileDropdown({
             if (!open) setEditing(null);
           }}
           baseVersionId={editing.version_id}
+          targetRowId={entry.row.id}
+          becomesVersionOf={entry.edit_lands_on_label ?? null}
           label={editing.label}
           document={editing.profile as Record<string, unknown>}
         />
@@ -124,7 +127,14 @@ function VersionItem({
   const mine = makeActive.variables?.rowId === entry.row.id;
   const busy = makeActive.isPending && mine;
 
-  const choose = () => makeActive.mutate({ rowId: entry.row.id, versionId: version.version_id });
+  const once = useSingleFlight();
+  const choose = () =>
+    once((release) =>
+      makeActive.mutate(
+        { rowId: entry.row.id, versionId: version.version_id },
+        { onSettled: release },
+      ),
+    );
 
   return (
     <li
@@ -148,7 +158,6 @@ function VersionItem({
             Make active
           </Button>
         )}
-        <span className="font-mono text-muted-foreground text-xs">{version.short_hash}</span>
         <span className="text-muted-foreground text-xs">{formatTime(version.added_at)}</span>
         <span className="text-muted-foreground text-xs">· {sourceWords(version.source)}</span>
         {version.is_on_machine ? <Badge variant="outline">On the machine now</Badge> : null}
@@ -218,7 +227,6 @@ function VersionItem({
               size="sm"
               variant="ghost"
               data-testid="show-whole-profile"
-              aria-expanded={showAll}
               onClick={() => setShowAll((open) => !open)}
             >
               {showAll ? "Hide the whole profile" : "Show the whole profile"}
@@ -233,7 +241,7 @@ function VersionItem({
           size="sm"
           variant="ghost"
           data-testid="edit-a-copy"
-          aria-label={`Edit a copy of version ${version.short_hash}`}
+          aria-label={`Edit a copy of the version from ${formatTime(version.added_at)}`}
           onClick={onEdit}
         >
           <FilePen className="size-3.5" aria-hidden="true" />

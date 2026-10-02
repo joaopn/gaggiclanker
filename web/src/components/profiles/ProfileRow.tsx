@@ -7,6 +7,7 @@ import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useSetOnMachine, useSetStarred } from "@/hooks/useBoard";
+import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { rowStateOf } from "@/lib/board";
 import { profileHeadline } from "@/lib/profileInfo";
 import { cn } from "@/lib/utils";
@@ -45,13 +46,17 @@ export function ProfileRow({
   const selected = entry.machine.selected === true;
   const waiting = proposals.length > 0 ? proposals.length : (entry.proposed_versions ?? 0);
   const busy = onMachine.isPending || starred.isPending;
+  const once = useSingleFlight();
+  const onceStar = useSingleFlight();
 
+  const send = (next: boolean) =>
+    once((release) => onMachine.mutate({ rowId: row.id, on: next }, { onSettled: release }));
   const turn = (next: boolean) => {
     if (!next && (sets.length > 0 || selected)) {
       setConfirming(true);
       return;
     }
-    onMachine.mutate({ rowId: row.id, on: next });
+    send(next);
   };
 
   return (
@@ -66,7 +71,6 @@ export function ProfileRow({
         <button
           type="button"
           className="flex min-w-0 flex-1 basis-56 items-start gap-2 text-left"
-          aria-expanded={open}
           data-testid="profile-toggle"
           onClick={onToggle}
         >
@@ -117,7 +121,11 @@ export function ProfileRow({
                   : "Starred applies only while the profile is on the machine. Your choice is kept."
               }
               data-testid="starred-switch"
-              onCheckedChange={(next) => starred.mutate({ rowId: row.id, starred: next })}
+              onCheckedChange={(next) =>
+                onceStar((release) =>
+                  starred.mutate({ rowId: row.id, starred: next }, { onSettled: release }),
+                )
+              }
             />
             <span aria-hidden="true" className={entry.on_machine ? "" : "text-muted-foreground"}>
               Starred
@@ -137,7 +145,7 @@ export function ProfileRow({
             onCancel={() => setConfirming(false)}
             onConfirm={() => {
               setConfirming(false);
-              onMachine.mutate({ rowId: row.id, on: false });
+              send(false);
             }}
           >
             {sets.length > 0 ? (

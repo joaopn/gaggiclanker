@@ -33,6 +33,13 @@ import { queryKeys } from "@/lib/queryKeys";
  * active for a Set, another version active, a conflict resolved) also invalidates the Sets.
  */
 
+/** What the next sync does with a profile, said truthfully for one that is switched off. */
+function nextSyncWords(row: BoardRow): string {
+  return row.on_machine
+    ? "The next sync puts it on the machine."
+    : "It is switched off, so it stays off the machine until you switch it on.";
+}
+
 /**
  * `live` reads the machine now (the switch's preview). The default is the archive's last
  * mirror: free, so the page can ask whenever it renders.
@@ -42,7 +49,7 @@ export function useProfileBoard(
 ): UseQueryResult<BoardView, Error> {
   const live = options.live ?? false;
   return useQuery({
-    queryKey: queryKeys.board.view(live),
+    queryKey: live ? queryKeys.boardLive.view() : queryKeys.board.view(),
     queryFn: () => getProfileBoard(live),
     enabled: options.enabled ?? true,
     // A live read is a list and a load per profile on a small machine: ask once per
@@ -61,7 +68,7 @@ export function usePutOnBoard(): UseMutationResult<
     mutationFn: (body) => putOnBoard(body),
     onSuccess: (row) =>
       toast.success(`${row.label} has a new active version`, {
-        description: "The next sync puts it on the machine.",
+        description: nextSyncWords(row),
       }),
     onError: (error) => toast.error(error.message),
     onSettled: (_data, _error, variables) => {
@@ -112,7 +119,7 @@ export function useSetActiveVersion(): UseMutationResult<
     mutationFn: ({ rowId, versionId }) => setBoardActiveVersion(rowId, versionId),
     onSuccess: (row) =>
       toast.success(`${row.label} has a new active version`, {
-        description: "The next sync puts it on the machine.",
+        description: nextSyncWords(row),
       }),
     onError: (error) => toast.error(error.message),
     onSettled: () => {
@@ -168,7 +175,7 @@ export function useResolveConflict(): UseMutationResult<
           description:
             variables.keep === "machine"
               ? "The machine's version is now the active one. Nothing is sent to the machine."
-              : "The next sync puts the active version on the machine.",
+              : nextSyncWords(row),
         },
       ),
     onError: (error) => {

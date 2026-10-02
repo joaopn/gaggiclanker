@@ -679,7 +679,7 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
             "sync. mDNS (gaggimate.local) is unreliable from inside a container and is off "
             "entirely when HomeKit is enabled, so prefer a fixed IP or a DHCP reservation. A "
             "change applies immediately: the connection is rebuilt without a restart, and "
-            "refused while a sync (and the profile board's write phase in it) is using the machine."
+            "refused while a sync (and the profile list's write phase in it) is using the machine."
         ),
         validate=lambda value: host_problem(str(value)),
     ),

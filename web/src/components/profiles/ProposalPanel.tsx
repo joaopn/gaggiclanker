@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePutOnBoard } from "@/hooks/useBoard";
 import { useDiscardDraft } from "@/hooks/useDrafts";
+import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { formatTime } from "@/lib/shots";
 
 type Json = Record<string, unknown>;
@@ -56,6 +57,7 @@ export function ProposalPanel({
 }) {
   const put = usePutOnBoard();
   const discard = useDiscardDraft();
+  const onceDecline = useSingleFlight();
   // One request per click: a second click before the first has re-rendered would send a second.
   const putting = useRef(false);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -68,14 +70,10 @@ export function ProposalPanel({
   const needsAcknowledgement = stopChanges.length > 0 && !draft.acknowledged_stop_changes;
   const busy = put.isPending || discard.isPending;
   const alreadyThere = landing?.already_on_board_label ?? null;
-  const plainBlocked =
-    alreadyThere !== null ||
-    landing?.plain.holds_newer_draft === true ||
-    (landing?.plain.taken_label ?? null) !== null;
-  const setBlocked =
-    alreadyThere !== null ||
-    landing?.for_set?.holds_newer_draft === true ||
-    (landing?.for_set?.taken_label ?? null) !== null;
+  // Every proposal is an independent candidate: another one being made active never blocks this
+  // one. Only a name that is taken (a new profile with the name of one that exists) does.
+  const plainBlocked = alreadyThere !== null || (landing?.plain.taken_label ?? null) !== null;
+  const setBlocked = alreadyThere !== null || (landing?.for_set?.taken_label ?? null) !== null;
   const forSet =
     draft.set_id != null && draft.set_name != null && landing?.for_set != null
       ? {
@@ -260,7 +258,7 @@ export function ProposalPanel({
           variant="ghost"
           disabled={busy}
           data-testid="decline-proposal"
-          onClick={() => discard.mutate(draft.id)}
+          onClick={() => onceDecline((release) => discard.mutate(draft.id, { onSettled: release }))}
         >
           <Trash2 className="size-3.5" aria-hidden="true" />
           Decline
@@ -273,10 +271,9 @@ export function ProposalPanel({
 function blockedWords(landing: DraftLanding): string {
   const taken = landing.plain.taken_label;
   if (taken) {
-    return `The list already has a profile called ${taken}; make the change as a new version of that profile instead, or decline this one.`;
+    return `This would be a new profile, but its name is already taken by ${taken}. To change ${taken}, open it and use Edit a copy on one of its versions, so the change is made there. Or decline this proposal.`;
   }
-  const name = landing.plain.row_label ?? "this profile";
-  return `Making this active would undo a newer version of ${name} that is already waiting. Decline this one, or edit the newer one.`;
+  return "This proposal cannot be made active. Decline it.";
 }
 
 function StopConditionWarning({ changes }: { changes: StopConditionChange[] }) {

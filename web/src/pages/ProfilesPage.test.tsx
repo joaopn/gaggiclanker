@@ -33,7 +33,7 @@ const api = vi.hoisted(() => ({
   discardProfileDraft: vi.fn(),
   getProfileDraft: vi.fn(),
   importFiles: vi.fn(),
-  previewDraft: vi.fn(),
+  previewProfileDraft: vi.fn(),
   createProfileDraft: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
@@ -328,81 +328,150 @@ describe("the two switches", () => {
 });
 
 describe("the reset guard", () => {
-  const paused = () =>
+  const preview = (overrides = {}) => ({
+    push: 3,
+    remove: 1,
+    star: 0,
+    join: 0,
+    lines: [
+      boardAction({ kind: "push", label: "Londinium" }),
+      boardAction({ kind: "remove", label: "Old default", device_id: "d1", reason: "off" }),
+    ],
+    ...overrides,
+  });
+  const paused = (overrides = {}) =>
     boardView({
       paused: "the machine looks reset",
-      resume_preview: {
-        push: 3,
-        remove: 1,
-        star: 0,
-        join: 0,
-        lines: [
-          boardAction({ kind: "push", label: "Londinium" }),
-          boardAction({ kind: "remove", label: "Old default", device_id: "d1", reason: "off" }),
-        ],
-      },
+      machine_source: "machine",
+      resume_preview: preview(overrides),
     });
-
-  it("asks once, with the numbers, and one button resumes", async () => {
-    const user = setupUser();
-    api.getProfileBoard.mockResolvedValue(paused());
-    renderWithQueryClient(<ProfilesPage />);
-
-    expect(await screen.findByTestId("reset-question")).toHaveTextContent(
-      "The machine looks reset: put back 3 profiles and remove 1?",
-    );
-    await user.click(screen.getByTestId("reset-resume"));
-
-    await waitFor(() => expect(api.resumeBoard).toHaveBeenCalledTimes(1));
-  });
-
-  it("reads what resuming would do from the machine, not the mirror, which still lists what is gone", async () => {
-    // The mirror says nothing is missing (an empty list never wipes it); the machine says 8.
-    api.getProfileBoard.mockImplementation(async (live?: boolean) =>
-      live
-        ? paused()
+  /** The mirror says nothing is missing (an empty list never wipes it); the machine answers live. */
+  const live = (answer: () => Promise<unknown>) =>
+    api.getProfileBoard.mockImplementation(async (isLive?: boolean) =>
+      isLive
+        ? answer()
         : boardView({
             paused: "the machine looks reset",
             resume_preview: { push: 0, remove: 0, star: 0, join: 0, lines: [] },
           }),
     );
+
+  it("asks once, with the numbers from the machine, and one button that says what it does", async () => {
+    const user = setupUser();
+    live(async () => paused());
     renderWithQueryClient(<ProfilesPage />);
 
     await waitFor(() =>
       expect(screen.getByTestId("reset-question")).toHaveTextContent(
-        "put back 3 profiles and remove 1?",
+        "The machine looks reset: put back 3 profiles and remove 1?",
       ),
     );
     expect(api.getProfileBoard).toHaveBeenCalledWith(true);
+    const button = screen.getByTestId("reset-resume");
+    expect(button).toHaveTextContent(
+      "Resume syncing: the next sync puts back 3 profiles and removes 1",
+    );
+    await user.click(button);
+
+    await waitFor(() => expect(api.resumeBoard).toHaveBeenCalledTimes(1));
   });
 
-  it("falls back to the mirror's numbers when the machine cannot be read", async () => {
-    api.getProfileBoard.mockImplementation(async (live?: boolean) => {
-      if (live) throw new Error("no machine");
-      return paused();
+  it("leaves out 'remove 0'", async () => {
+    live(async () => paused({ remove: 0, push: 9 }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent(
+        "The machine looks reset: put back 9 profiles?",
+      ),
+    );
+    expect(screen.getByTestId("reset-resume")).toHaveTextContent(
+      "Resume syncing: the next sync puts back 9 profiles",
+    );
+    expect(screen.getByTestId("reset-banner")).not.toHaveTextContent("remove 0");
+  });
+
+  it("says plainly that the machine could not be read, never the stored copy's numbers", async () => {
+    live(async () => {
+      throw new Error("no machine");
     });
     renderWithQueryClient(<ProfilesPage />);
 
     await waitFor(() =>
-      expect(screen.getByTestId("reset-question")).toHaveTextContent(
-        "put back 3 profiles and remove 1?",
-      ),
+      expect(screen.getByTestId("reset-question")).toHaveTextContent("could not be read just now"),
     );
+    expect(screen.getByTestId("reset-banner")).not.toHaveTextContent("put back");
+    expect(screen.getByTestId("reset-resume")).toHaveTextContent("Resume syncing");
+  });
+
+  it("does not take a read that fell back to the mirror for the machine's answer", async () => {
+    live(async () => ({ ...paused(), machine_source: "mirror" }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent("could not be read just now"),
+    );
+    expect(screen.getByTestId("reset-banner")).not.toHaveTextContent("back 3");
+    expect(screen.getByTestId("reset-resume")).toHaveTextContent(/^Resume syncing$/);
   });
 
   it("does not read the machine when the sync is not paused", async () => {
     renderWithQueryClient(<ProfilesPage />);
 
     await screen.findByTestId("profile-row");
+    expect(screen.queryByTestId("reset-banner")).not.toBeInTheDocument();
     expect(api.getProfileBoard).not.toHaveBeenCalledWith(true);
+  });
+
+  it("does not read the machine again when a board write refreshes the page", async () => {
+    const user = setupUser();
+    live(async () => paused());
+    renderWithQueryClient(<ProfilesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent("put back 3"),
+    );
+    const liveReads = () =>
+      api.getProfileBoard.mock.calls.filter((call: unknown[]) => call[0] === true).length;
+    expect(liveReads()).toBe(1);
+
+    await user.click(await screen.findByRole("switch", { name: "9 Bar Espresso starred" }));
+    await waitFor(() => expect(api.setBoardStarred).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        api.getProfileBoard.mock.calls.filter((call: unknown[]) => call[0] !== true).length,
+      ).toBeGreaterThan(1),
+    );
+
+    expect(liveReads()).toBe(1);
+  });
+
+  it("sends one resume per double-click", async () => {
+    const user = setupUser();
+    live(async () => paused());
+    let release: (value: unknown) => void = () => {};
+    api.resumeBoard.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent("put back 3"),
+    );
+
+    await user.dblClick(screen.getByTestId("reset-resume"));
+    release({ resumed: true });
+
+    await waitFor(() => expect(api.resumeBoard).toHaveBeenCalledTimes(1));
   });
 
   it("keeps the per-profile lines one click away", async () => {
     const user = setupUser();
-    api.getProfileBoard.mockResolvedValue(paused());
+    live(async () => paused());
     renderWithQueryClient(<ProfilesPage />);
 
-    await screen.findByTestId("reset-banner");
+    await waitFor(() => expect(screen.getByTestId("reset-lines-toggle")).toBeInTheDocument());
     expect(screen.queryByTestId("reset-lines")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("reset-lines-toggle"));
     const lines = screen.getByTestId("reset-lines");
@@ -546,13 +615,13 @@ describe("the dropdown", () => {
   it("Edit a copy opens the JSON editor on that version", async () => {
     const user = setupUser();
     api.getBoardVersions.mockResolvedValue(versionsView(three()));
-    api.previewDraft.mockResolvedValue({ valid: true, profile: profileWith(8) });
+    api.previewProfileDraft.mockResolvedValue({ valid: true, profile: profileWith(8) });
     const versions = await open(user);
 
     await user.click(within(versions[1] as HTMLElement).getByTestId("edit-a-copy"));
 
     expect(await screen.findByText("Edit a copy of 9 Bar Espresso")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save as a new version" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as a proposal" })).toBeInTheDocument();
   });
 
   it("opens one row at a time", async () => {
@@ -654,7 +723,7 @@ describe("proposed versions", () => {
         set_next_major_label: "v2",
         prediction: "Less bitter",
       },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso", holds_newer_draft: false } },
+      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
     );
     const panel = await open(user);
 
@@ -679,7 +748,7 @@ describe("proposed versions", () => {
         set_next_minor_label: "v1.2",
         set_next_major_label: "v2",
       },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso", holds_newer_draft: false } },
+      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
     );
     const panel = await open(user);
 
@@ -698,7 +767,7 @@ describe("proposed versions", () => {
         set_next_minor_label: "v1.2",
         set_next_major_label: "v2",
       },
-      { for_set: { row_id: 1, row_label: "9 Bar Espresso", holds_newer_draft: false } },
+      { for_set: { row_id: 1, row_label: "9 Bar Espresso" } },
     );
     api.getProfileBoard.mockResolvedValue(
       boardView({
@@ -714,7 +783,7 @@ describe("proposed versions", () => {
             }),
             landing: landing({
               draft_id: 11,
-              for_set: { row_id: 1, row_label: "x", holds_newer_draft: false },
+              for_set: { row_id: 1, row_label: "x" },
             }),
           }),
         ],
@@ -761,16 +830,10 @@ describe("proposed versions", () => {
         plain: {
           row_id: null,
           row_label: null,
-          holds_newer_draft: false,
           taken_label: "Londinium",
         },
       },
-      "already has a profile called Londinium",
-    ],
-    [
-      "making it active would undo a newer waiting version",
-      { plain: { row_id: 1, row_label: "9 Bar Espresso", holds_newer_draft: true } },
-      "undo a newer version of 9 Bar Espresso",
+      "its name is already taken by Londinium",
     ],
   ])("offers no Make active when %s, and says why", async (_name, blocked, words) => {
     const user = setupUser();
@@ -780,6 +843,32 @@ describe("proposed versions", () => {
     expect(within(panel).queryByTestId("make-proposal-active")).not.toBeInTheDocument();
     expect(within(panel).getByTestId("proposal-blocked")).toHaveTextContent(words);
     expect(within(panel).getByTestId("decline-proposal")).toBeInTheDocument();
+  });
+
+  it("shows Make active on every proposal of a profile: one never blocks another", async () => {
+    const user = setupUser();
+    const one = proposal({ id: 11, row_id: 1 });
+    const two = proposal({ id: 12, row_id: 1 });
+    api.getProfileBoard.mockResolvedValue(
+      boardView({ rows: [row({ proposed_versions: 2 })], proposals: [one, two] }),
+    );
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 7, is_active: true })], {
+        proposed: [
+          { draft: one.draft, profile: draftProfile(), compared_to_version_id: 7 },
+          { draft: two.draft, profile: draftProfile(), compared_to_version_id: 7 },
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    const panels = await screen.findAllByTestId("proposal");
+    expect(panels).toHaveLength(2);
+    for (const panel of panels) {
+      expect(within(panel).getByTestId("make-proposal-active")).toBeInTheDocument();
+      expect(within(panel).queryByTestId("proposal-blocked")).not.toBeInTheDocument();
+    }
   });
 
   it("hides only the Set's button when the label is taken for the Set alone", async () => {
@@ -795,7 +884,6 @@ describe("proposed versions", () => {
         for_set: {
           row_id: null,
           row_label: null,
-          holds_newer_draft: false,
           taken_label: "Londinium",
         },
       },
@@ -900,6 +988,8 @@ describe("a conflict", () => {
     expect(machine).toHaveTextContent("The machine's version");
     expect(within(app).getByTestId("conflict-difference")).toHaveTextContent("pressure 9 bar");
     expect(within(machine).getByTestId("conflict-difference")).toHaveTextContent("pressure 7 bar");
+    // No content hashes: the marked differences say what differs.
+    expect(panel.textContent).not.toMatch(/abcdef01|feedface/);
     // Two columns from md up, stacked below.
     expect(within(panel).getByTestId("conflict-sides").className).toMatch(/md:grid-cols-2/);
   });
@@ -946,6 +1036,7 @@ describe("a conflict", () => {
           content_hash: "0ddba11",
           short_hash: "0ddba11",
         },
+        machine_profile: profileWith(6),
       }),
     );
     api.resolveBoardConflict.mockRejectedValueOnce(
@@ -963,7 +1054,7 @@ describe("a conflict", () => {
     await waitFor(() =>
       expect(
         within(screen.getByTestId("conflict-panel")).getByTestId("conflict-machine"),
-      ).toHaveTextContent("0ddba11"),
+      ).toHaveTextContent("pressure 6 bar"),
     );
     // The next choice carries the new hash.
     await user.click(screen.getByTestId("keep-machine"));
@@ -1043,6 +1134,291 @@ describe("links into the page", () => {
     const old = await screen.findByText("Old one");
     const li = old.closest("li") as HTMLElement;
     expect(await within(li).findByTestId("profile-dropdown")).toBeInTheDocument();
+  });
+});
+
+describe("one request per click", () => {
+  it("a double-click on On the machine sends one request", async () => {
+    const user = setupUser();
+    let release: (value: unknown) => void = () => {};
+    api.setBoardOnMachine.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await user.dblClick(
+      await screen.findByRole("switch", { name: "9 Bar Espresso on the machine" }),
+    );
+    release(row().row);
+
+    await waitFor(() => expect(api.setBoardOnMachine).toHaveBeenCalledTimes(1));
+  });
+
+  it("a double-click on Starred sends one request", async () => {
+    const user = setupUser();
+    let release: (value: unknown) => void = () => {};
+    api.setBoardStarred.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await user.dblClick(await screen.findByRole("switch", { name: "9 Bar Espresso starred" }));
+    release(row().row);
+
+    await waitFor(() => expect(api.setBoardStarred).toHaveBeenCalledTimes(1));
+  });
+
+  it("a double-click on Make active sends one request", async () => {
+    const user = setupUser();
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([
+        listedVersion({ version_id: 8, is_active: true, previous_version_id: 7 }),
+        listedVersion({ version_id: 7 }),
+      ]),
+    );
+    let release: (value: unknown) => void = () => {};
+    api.setBoardActiveVersion.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    await user.dblClick(await screen.findByTestId("make-active"));
+    release(row().row);
+
+    await waitFor(() => expect(api.setBoardActiveVersion).toHaveBeenCalledTimes(1));
+  });
+
+  it("a double-click on Decline sends one request", async () => {
+    const user = setupUser();
+    const p = proposal();
+    api.getProfileBoard.mockResolvedValue(
+      boardView({ rows: [row({ proposed_versions: 1 })], proposals: [p] }),
+    );
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 7, is_active: true })], {
+        proposed: [{ draft: p.draft, profile: draftProfile(), compared_to_version_id: 7 }],
+      }),
+    );
+    let release: (value: unknown) => void = () => {};
+    api.discardProfileDraft.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    await user.dblClick(await screen.findByTestId("decline-proposal"));
+    release(draft());
+
+    await waitFor(() => expect(api.discardProfileDraft).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("what the page leaves out", () => {
+  it("shows no content hashes, and keeps the writes sentence out of the subtitle", async () => {
+    const user = setupUser();
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 7, is_active: true, short_hash: "deadbeef" })]),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+    await screen.findByTestId("version");
+
+    expect(document.body.textContent).not.toContain("deadbeef");
+    expect(screen.getByTestId("writes-line")).toBeInTheDocument();
+    expect(screen.queryByText(/makes the machine hold exactly/)).not.toBeInTheDocument();
+  });
+
+  it("puts utility profiles last", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          row({ row: { id: 1, label: "[Utility] Backflush" }, utility: true }),
+          row({ row: { id: 2, label: "Zeta" } }),
+          row({ row: { id: 3, label: "Alpha" } }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findAllByTestId("profile-row");
+    const names = screen
+      .getAllByTestId("profile-row")
+      .map((el) => el.querySelector("span.font-medium")?.textContent);
+    expect(names).toEqual(["Alpha", "Zeta", "[Utility] Backflush"]);
+  });
+
+  it("claims aria-expanded only where its region stays in the page", async () => {
+    renderWithQueryClient(<ProfilesPage />);
+
+    const toggle = await screen.findByTestId("profile-toggle");
+    expect(toggle).not.toHaveAttribute("aria-expanded");
+  });
+
+  it("does not say a toggled-off profile will be put on the machine", async () => {
+    const { toast } = await import("sonner");
+    const user = setupUser();
+    window.localStorage.setItem("gaggiclanker.profiles.showOff", "1");
+    api.getProfileBoard.mockResolvedValue(
+      boardView({ rows: [row({ row: { on_machine: false } })] }),
+    );
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([
+        listedVersion({ version_id: 8, is_active: true, previous_version_id: 7 }),
+        listedVersion({ version_id: 7 }),
+      ]),
+    );
+    api.setBoardActiveVersion.mockResolvedValue(row({ row: { on_machine: false } }).row);
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    await user.click(await screen.findByTestId("make-active"));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    const described = vi.mocked(toast.success).mock.calls.map((call) => JSON.stringify(call[1]));
+    expect(described.join(" ")).toContain("switched off");
+    expect(described.join(" ")).not.toContain("puts it on the machine");
+  });
+});
+
+describe("Edit a copy", () => {
+  async function openEditor(becomes: string | null) {
+    const user = setupUser();
+    api.getProfileBoard.mockResolvedValue(
+      boardView({ rows: [row({ edit_lands_on_label: becomes })] }),
+    );
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 7, is_active: true })]),
+    );
+    api.previewProfileDraft.mockResolvedValue({ valid: true, profile: profileWith(9) });
+    api.createProfileDraft.mockResolvedValue(draft());
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+    await user.click(await screen.findByTestId("edit-a-copy"));
+    return user;
+  }
+
+  it("says a copy of a profile the app made becomes a version of it", async () => {
+    await openEditor("9 Bar Espresso");
+
+    expect(
+      await screen.findByText(/proposed new version of 9 Bar Espresso, not active/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/profile of its own/)).not.toBeInTheDocument();
+  });
+
+  it("says a copy of any other profile becomes a profile of its own, named with [AI]", async () => {
+    await openEditor(null);
+
+    expect(
+      await screen.findByText(/profile of its own beside this one, named with \[AI\]/),
+    ).toBeInTheDocument();
+  });
+
+  it("names the app's copy when a second edit of a profile the app did not make would join it", async () => {
+    await openEditor("9 Bar Espresso [AI]");
+
+    expect(
+      await screen.findByText(/proposed new version of 9 Bar Espresso \[AI\], not active/),
+    ).toBeInTheDocument();
+  });
+
+  it("aims the saved draft at the profile it was opened from", async () => {
+    const user = await openEditor("9 Bar Espresso");
+
+    await waitFor(() => expect(screen.getByTestId("editor-valid")).toBeInTheDocument());
+    await user.click(screen.getByTestId("save-as-draft"));
+
+    await waitFor(() => expect(api.createProfileDraft).toHaveBeenCalled());
+    expect(api.createProfileDraft.mock.calls[0]?.[0]).toMatchObject({
+      base_version_id: 7,
+      target_row_id: 1,
+    });
+  });
+});
+
+describe("a proposal that cannot be added", () => {
+  it("says why and what to do, not just Decline", async () => {
+    const user = setupUser();
+    const p = proposal({
+      row_id: null,
+      landing: landing({
+        plain: {
+          row_id: null,
+          row_label: null,
+          taken_label: "Londinium [AI]",
+        },
+      } as never),
+    });
+    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [p] }));
+    api.getProfileDraft.mockResolvedValue(
+      draftDetail({ draft: p.draft, draft_profile: draftProfile() }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    const blocked = await screen.findByTestId("proposal-blocked");
+    expect(blocked).toHaveTextContent("its name is already taken by Londinium [AI]");
+    expect(blocked).toHaveTextContent("open it and use Edit a copy on one of its versions");
+    expect(blocked).toHaveTextContent("decline this proposal");
+  });
+});
+
+describe("links into the page, once per arrival", () => {
+  it("does not reopen a row by itself after the person answers a proposal", async () => {
+    const user = setupUser();
+    const first = proposal({ id: 11, row_id: 1 });
+    const second = proposal({ id: 12, row_id: 2 });
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          row({ proposed_versions: 1 }),
+          row({ row: { id: 2, label: "Londinium" }, proposed_versions: 1 }),
+        ],
+        proposals: [first, second],
+      }),
+    );
+    api.getBoardVersions.mockImplementation(async (id: number) =>
+      versionsView([listedVersion({ version_id: 7 + id, is_active: true })], { row_id: id }),
+    );
+    const { queryClient } = renderWithQueryClient(<ProfilesPage />, {
+      initialEntries: ["/profiles#staged"],
+    });
+    await waitFor(() =>
+      expect(within(rowNamed("Londinium")).getByTestId("profile-dropdown")).toBeInTheDocument(),
+    );
+
+    // The person closes it; the newest proposal is then answered elsewhere, so another one is newest.
+    await user.click(within(rowNamed("Londinium")).getByTestId("profile-toggle"));
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [row({ proposed_versions: 1 }), row({ row: { id: 2, label: "Londinium" } })],
+        proposals: [first],
+      }),
+    );
+    const reads = api.getProfileBoard.mock.calls.length;
+    await queryClient.invalidateQueries({ queryKey: ["board"] });
+    await waitFor(() => expect(api.getProfileBoard.mock.calls.length).toBeGreaterThan(reads));
+    // Wait for the refreshed list to be on screen (Londinium no longer has a proposal), then
+    // give an effect that wrongly re-acts the chance to run.
+    await waitFor(() =>
+      expect(within(rowNamed("Londinium")).queryByTestId("proposed-badge")).not.toBeInTheDocument(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.queryAllByTestId("profile-dropdown")).toHaveLength(0);
   });
 });
 

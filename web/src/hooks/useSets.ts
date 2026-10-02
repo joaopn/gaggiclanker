@@ -169,7 +169,7 @@ export function useDecideProposal(): UseMutationResult<
         result.proposal.kind === "design"
           ? result.version
             ? "Version 1 is set. Its profile is a proposal on the Profiles page, waiting for you to make it active."
-            : "First recipe declined, and its draft discarded"
+            : "First recipe declined, and its proposal declined too"
           : result.version
             ? `${result.version.version_label} recorded. Nothing was sent to the machine.`
             : "Proposal declined",

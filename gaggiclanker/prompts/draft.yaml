@@ -21,7 +21,7 @@ description: |
 
   What this prompt does NOT have to get right: bounds. Every number the model
   returns is clamped to the safety policy afterwards and the clamps are shown to
-  the person putting the draft on the board. The bounds are quoted below anyway, because a
+  the person making the proposal active. The bounds are quoted below anyway, because a
   model told the range tends to stay inside it, and a draft that needed no
   clamping is easier to read than one that needed six.
 variables:

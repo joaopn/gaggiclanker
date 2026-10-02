@@ -53,6 +53,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.db.connection import Database
+from gaggiclanker.db.repos import lineage
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.lineage import lineage_owner
 from gaggiclanker.db.repos.profile_board import (
@@ -221,6 +222,10 @@ class BoardRowView(BaseModel):
     #: Sets whose current version brews this profile (any of its versions, or the file it stands
     #: on): changing the active version or switching it off changes what they brew.
     sets_brewing: list[SetBrewing] = Field(default_factory=list)
+    #: The profile an "Edit a copy" of this one becomes a version of (its own label, or the app's
+    #: copy of it), or ``None`` when the copy would be a profile of its own: the lineage rule's
+    #: answer, so a page can say which before saving.
+    edit_lands_on_label: str | None = None
     #: In conflict: the machine's file differs from everything the app knows, so a sync does
     #: nothing for this profile until a person chooses a side (``POST .../conflict``).
     in_conflict: bool = False
@@ -237,9 +242,6 @@ class BoardLanding(BaseModel):
     #: The board row the draft would become the next version of; ``None`` for a new profile.
     row_id: int | None = None
     row_label: str | None = None
-    #: Whether that row already holds a newer draft (current, or waiting for a sync), so a
-    #: put of this one would undo it.
-    holds_newer_draft: bool = False
     #: A put the board refuses because a live board profile already carries the label this
     #: draft would give a profile of its own (a new profile, or a version that renames the
     #: one it continues): that label. Two live profiles never share a label, so there is no
@@ -452,6 +454,7 @@ class BoardService:
                         profile=plan.version.profile,
                     ),
                     sets_brewing=_sets_brewing(brews, listed, plan.row.device_profile_id),
+                    edit_lands_on_label=await self._edit_lands_on(plan.row.id),
                     in_conflict=plan.conflict_file is not None,
                     conflict=await self._conflict_summary(plan),
                     proposed_versions=proposed_by_row.get(plan.row.id, 0),
@@ -488,6 +491,10 @@ class BoardService:
             landings=landings,
             proposals=proposals,
         )
+
+    async def _edit_lands_on(self, row_id: int) -> str | None:
+        landed = await lineage.edit_continues(_LiveLineage(self), row_id)
+        return None if landed is None else landed.label
 
     async def _conflict_summary(self, plan: RowPlan) -> ConflictSummary | None:
         if plan.conflict_file is None or plan.conflict_hash is None:
@@ -745,11 +752,9 @@ class BoardService:
         row = dest.row
         if row is None:
             return BoardLanding(revives_label=None if dest.revived is None else dest.revived.label)
-        newer = row.pending_draft_id is not None and row.pending_draft_id > draft.id
-        if not newer:
-            holder = await self.drafts.first_draft_on_version(row.current_version_id)
-            newer = holder is not None and holder > draft.id
-        return BoardLanding(row_id=row.id, row_label=row.label, holds_newer_draft=newer)
+        # Every proposal is an independent candidate: making another one active never blocks or
+        # undoes this one, so there is nothing to say about newer drafts.
+        return BoardLanding(row_id=row.id, row_label=row.label)
 
     async def _destination(
         self, draft: ProfileDraftRow, version: ProfileVersionRow, set_id: int | None
@@ -825,12 +830,12 @@ class BoardService:
             if draft is None:
                 raise NotFound(f"No profile draft {draft_id}")
             if draft.status not in ("draft", "approved"):
-                raise Conflict(f"A {draft.status} draft cannot go on the board.")
+                raise Conflict(f"A {draft.status} proposal cannot be made active.")
             changes = draft.stop_condition_changes or []
             if changes and not (draft.acknowledged_stop_changes or acknowledge_stop_changes):
                 raise Conflict(
                     "This draft changes when the machine stops pumping, which changes how much "
-                    "coffee ends up in the cup. Put it on the board again with "
+                    "coffee ends up in the cup. Make it active again with "
                     "acknowledge_stop_changes to confirm you meant that.",
                     details={
                         "field": "acknowledge_stop_changes",
@@ -838,18 +843,19 @@ class BoardService:
                     },
                 )
             if draft.draft_version_id is None:
-                raise Conflict("That draft has no document to put on the board")
+                raise Conflict("That proposal has no document to make active")
             version = await self.profiles.get_version(draft.draft_version_id)
             if version is None:  # pragma: no cover - a foreign key guarantees it
                 raise NotFound(f"No profile version {draft.draft_version_id}")
             if await self.board.find_live_by_version(version.id) is not None:
-                raise Conflict("That profile version is already on the board.")
+                raise Conflict("That profile version is already in the list.")
 
             dest = await self._destination(draft, version, set_id)
             if dest.taken is not None:
                 raise Conflict(
-                    f"The board already has {dest.taken}; make the change by editing that profile "
-                    "on the board instead, or discard this draft.",
+                    f"The list already has a profile called {dest.taken}. Open it and use Edit a "
+                    "copy on one of its versions to make the change there, or decline this "
+                    "proposal.",
                     details={"reason": "duplicate_label"},
                 )
             row = dest.row
@@ -919,13 +925,14 @@ class BoardService:
             is_new=draft.is_new,
             base_version_id=draft.base_version_id,
             base_device_profile_id=draft.base_device_profile_id,
+            target_id=draft.target_board_id,
         )
 
     async def resume(self) -> None:
         """Let the next sync write again after it paused for a suspected machine reset.
 
         A person's decision, reached only from its route. It writes to the archive and sends
-        nothing to the machine; the next sync then pushes the board's app profiles.
+        nothing to the machine; the next sync then does what the page showed.
         """
         await self.board.resume()
 
@@ -934,9 +941,9 @@ class BoardService:
     ) -> bool:
         """Whether a machine file is this app's own save, still exactly as it was saved.
 
-        One rule for the first adoption and for taking a single profile later: the app
-        label, an ``ok`` save of that id on this host, and content equal to what that save
-        sent. Anything else is the person's profile, which a sync never pushes or removes.
+        The first adoption's rule: the app label, an ``ok`` save of that id on this host, and
+        content equal to what that save sent. It only sets a profile's ``origin``, which is
+        information: a sync no longer treats the app's profiles and the person's differently.
         """
         return label.rstrip().endswith(
             APP_PROFILE_SUFFIX.strip()
@@ -1032,7 +1039,7 @@ class BoardService:
     async def _live_row(self, row_id: int) -> BoardRow:
         row = await self.board.get(row_id)
         if row is None or row.deleted_at is not None:
-            raise NotFound(f"No profile {row_id} on the board")
+            raise NotFound(f"No profile {row_id} in the list")
         return row
 
     # ── the write phase ──────────────────────────────────────────────
@@ -1056,13 +1063,13 @@ class BoardService:
         except asyncio.CancelledError:
             raise
         except DeviceError as exc:
-            self._fail(update, summary, "the machine could not be read for the board", exc)
+            self._fail(update, summary, "the machine could not be read for the profile list", exc)
         except Exception as exc:
             log.error("board_phase_crashed", exc_info=True)
             update.errors += 1
             update.error = update.error or f"{type(exc).__name__}: {exc}"
             summary.failures.append(
-                BoardSummaryItem(label="profile board", reason="crashed", detail=str(exc))
+                BoardSummaryItem(label="profile list", reason="crashed", detail=str(exc))
             )
         update.summary = summary.model_dump(mode="json")
         update.profiles_changed += summary.changed
@@ -1074,7 +1081,7 @@ class BoardService:
         update.errors += 1
         update.error = update.error or f"{step}: {exc}"
         summary.failures.append(
-            BoardSummaryItem(label="profile board", reason=step, detail=str(exc))
+            BoardSummaryItem(label="profile list", reason=step, detail=str(exc))
         )
         log.info("board_phase_failed", step=step, error=str(exc))
 
@@ -1139,7 +1146,7 @@ class BoardService:
             # list is a failed read; adopting nothing would leave the list empty for good.
             phase.summary.failures.append(
                 BoardSummaryItem(
-                    label="profile board",
+                    label="profile list",
                     reason="adoption",
                     detail="the machine listed no profiles, so nothing was adopted",
                 )
@@ -1641,7 +1648,7 @@ class BoardService:
         """
         words = {
             "went_back": f"Went back to the previous version: {device_id} is off the machine.",
-            "deleted": f"The profile was deleted from the board: {device_id} is off the machine.",
+            "deleted": f"The profile was deleted: {device_id} is off the machine.",
             "removed": f"{device_id} is off the machine and nothing newer stands behind it.",
             "switched_off": f"The profile was switched off: {device_id} is off the machine.",
         }
@@ -1816,7 +1823,7 @@ class BoardService:
         # Truthful about who saved it: a pass cut off between the save and this step finds the
         # file already there, and the audit still holds the save this app made.
         saved = saved or await self.writes.created_by_us(device_id, host=phase.host)
-        lines = [f"Put on the machine by the profile board as {device_id}."]
+        lines = [f"Put on the machine by a sync as {device_id}."]
         outcome: dict[str, Any] = {
             "action": "push",
             "reused_device_profile_id": None if saved else device_id,
@@ -1939,7 +1946,7 @@ class BoardService:
 #: What each removal reason says in an event.
 _REASON = {
     "superseded": "a newer version of the profile took its place",
-    "deleted": "the profile was deleted from the board",
+    "deleted": "the profile was deleted",
     "off": "the profile is switched off",
 }
 
@@ -1964,6 +1971,10 @@ class _LiveLineage:
     def __init__(self, service: BoardService) -> None:
         self.service = service
 
+    async def by_id(self, profile_id: int) -> BoardRow | None:
+        row = await self.service.board.get(profile_id)
+        return None if row is None or row.deleted_at is not None else row
+
     async def by_set(self, set_id: int) -> BoardRow | None:
         service = self.service
         current = await service.sets.current_version(set_id)
@@ -1978,7 +1989,15 @@ class _LiveLineage:
         return row
 
     async def by_version(self, version_id: int) -> BoardRow | None:
-        return await self.service.board.find_live_by_version(version_id)
+        # By the profile's version list, not only the version it is on now: a proposal based on
+        # an older version (or one that was never pushed) still belongs to its profile.
+        return await self.service.board.find_live_by_listed_version(version_id)
+
+    async def by_label(self, label: str) -> BoardRow | None:
+        return await self.service.board.find_live_by_label(label)
+
+    def label_of(self, profile: BoardRow) -> str:
+        return profile.label
 
     async def by_device(self, device_id: str) -> BoardRow | None:
         return await self.service.board.find_live_by_device(device_id)

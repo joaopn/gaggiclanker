@@ -113,9 +113,6 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
       "Once a sync has put it on the machine it is recorded as the next version of its Set.",
     );
   }
-  if (!on && entry.starred) {
-    notes.push("Starred is kept, and applies once the profile is on the machine.");
-  }
   if (!on && entry.machine.selected && present) {
     notes.push(
       "It is the machine's selected profile: a sync selects another enabled profile first, then removes it.",

@@ -17,7 +17,6 @@ from gaggiclanker.db.repos.profile_board import (
     BoardRowWrite,
     ProfileBoardRepository,
 )
-from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.device.fake import FakeDevice
 from tests.drafts.conftest import BASE_LABEL, data, error
 from tests.drafts.helpers import APP_LABEL, Live, draft_of, make_set_on, tombstone
@@ -60,7 +59,7 @@ async def test_two_variants_of_a_profile_of_yours_with_labels_of_their_own_each_
 
     for draft in (first, second):
         found = landing(board, draft)
-        assert (found["plain"]["row_id"], found["plain"]["holds_newer_draft"]) == (None, False)
+        assert found["plain"]["row_id"] is None
         assert found["plain"]["revives_label"] is None and found["plain"]["taken_label"] is None
         assert found["for_set"] is None and found["already_on_board_label"] is None
 
@@ -85,116 +84,10 @@ async def test_two_variants_with_one_label_cannot_both_go_on_the_board(
     refused = await client.post("/api/profile-board", json={"draft_id": second["id"]})
     assert refused.status_code == 409
     assert error(refused)["message"] == (
-        f"The board already has {APP_LABEL}; make the change by editing that profile on the board "
-        "instead, or discard this draft."
+        f"The list already has a profile called {APP_LABEL}. Open it and use Edit a copy on one "
+        "of its versions to make the change there, or decline this proposal."
     )
     assert error(refused)["details"] == {"reason": "duplicate_label"}
-
-
-async def test_an_older_draft_of_an_app_profile_is_told_its_row_holds_a_newer_one(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    row = await app_row(app, client, fake, provider, 8)
-    older = await draft_from(app, client, provider, row, 7)
-    newer = await draft_from(app, client, provider, row, 6)
-    await approve(app, older)
-    await approve(app, newer)
-
-    # Both continue the app's profile, and neither is newer than the other yet.
-    board = await get_board(client)
-    first = landing(board, older)["plain"]
-    assert (first["row_id"], first["row_label"], first["holds_newer_draft"]) == (
-        row["id"],
-        APP_LABEL,
-        False,
-    )
-    assert landing(board, newer)["plain"]["holds_newer_draft"] is False
-
-    # A row that waits on a newer draft: putting the older one would undo it.
-    await BoardRowRepoPatch(app, row["id"], pending_draft_id=newer["id"])
-    board = await get_board(client)
-    assert landing(board, older)["plain"]["holds_newer_draft"] is True
-    assert landing(board, older)["plain"]["row_id"] == row["id"]
-
-
-async def test_once_the_newer_draft_is_on_the_board_the_older_one_says_it_would_undo_it(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    """What a put does is what the read says, even when that is not what a page would guess."""
-    app, client, fake = adopted
-    row = await app_row(app, client, fake, provider, 8)
-    older = await draft_from(app, client, provider, row, 7)
-    newer = await draft_from(app, client, provider, row, 6)
-    await approve(app, older)
-    await approve(app, newer)
-    await client.post("/api/profile-board", json={"draft_id": newer["id"]})
-
-    said = landing(await get_board(client), older)["plain"]
-
-    assert said["row_id"] == row["id"] and said["holds_newer_draft"] is True
-    # ...which is exactly what a put of it would do: undo the newer one on the same row.
-    assert (await put(client, older))["id"] == row["id"]
-
-
-async def test_a_restaged_copy_of_a_document_is_not_the_draft_that_holds_it(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    first = await draft_of(app, client, provider, BASE_LABEL, 7)
-    again = await draft_of(app, client, provider, BASE_LABEL, 7)  # the same document, later
-    assert first["draft_version_id"] == again["draft_version_id"]
-    await approve(app, first)
-    await approve(app, again)
-    repo = ProfileDraftsRepository(app.state.db)
-    version = first["draft_version_id"]
-
-    assert await repo.first_draft_on_version(version) == first["id"]
-
-    # A discarded draft holds nothing: the holder is then the next live one.
-    await client.post(f"/api/profile-drafts/{first['id']}/discard")
-    assert await repo.first_draft_on_version(version) == again["id"]
-    await client.post(f"/api/profile-drafts/{again['id']}/discard")
-    assert await repo.first_draft_on_version(version) is None
-
-
-async def test_a_draft_that_restaged_the_rows_document_does_not_make_a_newer_draft_look_old(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    row = await app_row(app, client, fake, provider, 8)
-    holder = await draft_from(app, client, provider, row, 6)
-    await approve(app, holder)
-    await BoardRowRepoPatch(app, row["id"], current_version_id=holder["draft_version_id"])
-    current = dict(row) | {"current_version_id": holder["draft_version_id"]}
-    newer = await draft_from(app, client, provider, current, 5)
-    restaged = await draft_from(app, client, provider, current, 6)  # the holder's document again
-    assert restaged["draft_version_id"] == holder["draft_version_id"]
-    await approve(app, newer)
-    await approve(app, restaged)
-
-    found = landing(await get_board(client), newer)["plain"]
-
-    assert found["row_id"] == row["id"] and found["holds_newer_draft"] is False
-
-
-async def test_a_row_made_by_a_newer_draft_holds_it_and_a_discarded_one_holds_nothing(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, fake = adopted
-    row = await app_row(app, client, fake, provider, 8)
-    older = await draft_from(app, client, provider, row, 7)
-    newer = await draft_from(app, client, provider, row, 6)
-    await approve(app, older)
-    await approve(app, newer)
-    # The row now stands on the newer draft's document, with nothing pending.
-    await BoardRowRepoPatch(app, row["id"], current_version_id=newer["draft_version_id"])
-    # (its base file is still the row's file, so the older draft still finds the row)
-    assert landing(await get_board(client), older)["plain"]["holds_newer_draft"] is True
-
-    await client.post(f"/api/profile-drafts/{newer['id']}/discard")
-
-    assert landing(await get_board(client), older)["plain"]["holds_newer_draft"] is False
 
 
 async def test_a_draft_whose_document_is_already_on_the_board_says_so_and_a_put_is_refused(
@@ -216,7 +109,7 @@ async def test_a_draft_whose_document_is_already_on_the_board_says_so_and_a_put_
         assert found["plain"]["row_id"] is None and found["plain"]["taken_label"] is None
     refused = await client.post("/api/profile-board", json={"draft_id": again["id"]})
     assert refused.status_code == 409
-    assert "already on the board" in error(refused)["message"]
+    assert "already in the list" in error(refused)["message"]
 
 
 async def test_no_landings_before_the_board_is_adopted(

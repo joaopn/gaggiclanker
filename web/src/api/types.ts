@@ -504,6 +504,8 @@ export type DraftCreateBody = {
   notes?: string;
   change_summary?: string;
   model?: string;
+  /** The profile "Edit a copy" was opened from: the draft is aimed at it. */
+  target_row_id?: number;
 };
 
 /**

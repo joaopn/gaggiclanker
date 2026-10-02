@@ -127,7 +127,7 @@ redirect to the Sync page.
 A Set page is a record of experiments, one per version. A version's recipe is
 five things: the **profile** version, the grind as text and as a number, the
 dose and the target yield. A change of profile is recorded by hand from **Change something** on the Set page, or on
-its own when a draft is put on the board for that Set and a sync puts it on the machine.
+its own when a proposal is made active for that Set and a sync puts it on the machine.
 Recording one there sends nothing to the machine — that is still the Profiles page, and still you — but it
 is what keeps the next shots landing in the Set, because a shot joins its Set by
 the profile it was pulled with.
@@ -156,8 +156,8 @@ version: the next whole number (v1.2 → v2). You decide which, with the **Major
 change** box on the Add a version form, on a change card before you accept it,
 and on a draft's put for its Set; each button names the version it will record
 ("Accept as v1.3", "Accept as v2"). The box starts where the rule puts it:
-switching to a different profile is major, everything else — a draft put on
-the board for the Set included — is minor, and a roll back is major exactly when it goes back to
+switching to a different profile is major, everything else — a proposal made
+active for the Set included — is minor, and a roll back is major exactly when it goes back to
 another profile. The agent may suggest major on its card, with its reason
 beside the box, but the box is yours. Versions recorded before this existed
 keep their numbers: v3 is still v3. Everywhere a version is named — the log,
@@ -285,7 +285,7 @@ that nothing waits on the machine for long. The machine's notes cards are read
 on a sync too, and never written back.
 
 Nothing runs on its own: a sync is something you ask for, and there is no timer. With
-the Writes switch on, the one thing a sync writes is the profile board's write phase at its
+the Writes switch on, the one thing a sync writes is the profile list's write phase at its
 end (see below); nothing else, and no tool a model calls, starts a write. Every write
 attempt, refused ones included, is listed under **Recent writes** on the Sync page.
 
@@ -318,7 +318,11 @@ it is.
 A profile reaches the machine only by being on in the list with an active version. A change
 starts as a proposal: **Edit a copy** on a version (the JSON editor validates what you type
 against the strict schema and the safety policy; save it unchanged to propose a version as it
-is), or the chat or the starting-point wizard proposing one. It waits inside its profile's
+is), or the chat or the starting-point wizard proposing one. An edit is aimed at the profile
+it was opened on: for a profile the app made it is a new version of that profile, whichever
+version you edited; for one the app did not make (the machine's own, or one made on its
+display) it is a separate profile beside it, named with the `[AI]` suffix, until that is
+decided otherwise (`EDIT_CONTINUES_ANY_PROFILE` in `db/repos/lineage.py` is the one switch). It waits inside its profile's
 dropdown, marked **Proposed**, or as a row marked **New** when it is a new profile. **Make
 active** is one click: it approves the proposal (asking you to tick that you understand when it
 changes when the machine stops pumping), and for a proposal made for a Set it records the Set's
@@ -504,7 +508,7 @@ the upgrade. Two ways round it, both on the old version, before you pull:
 **The machine settings apply immediately.** Saving a new host, protocol, timeout
 or the sync switch under Settings → Machine access closes the connection and opens the
 new one, with no restart; the header pill follows within a few seconds. While a
-sync (the profile board's write phase included) is using the machine, such a
+sync (the profile list's write phase included) is using the machine, such a
 change is refused with the reason and nothing is saved — wait for it to finish
 and save again.
 
@@ -747,7 +751,7 @@ another shot on the same recipe, which needs no version. Only one proposal waits
 at a time.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
-version on the form, roll back, put a profile draft on the board for the Set — whichever it
+version on the form, roll back, make a profile proposal active for the Set — whichever it
 is, a change that was argued against the
 recipe you have just left is retired unanswered rather than sitting there with
 an Accept button that could only refuse. The log says so, and the next
@@ -759,9 +763,9 @@ package's own bytecode to keep it that way.
 A profile change is a change to the recipe too — the temperature and the
 pressure curve are as much of it as the grind — so a draft proposed inside a
 Set's conversation carries a prediction and obeys the same rules. It still lands
-on the Profiles page as an ordinary draft: you read the diff and put it on the board
+on the Profiles page as a proposal inside its profile: you read the diff and make it active
 (one click, which approves it), and the prediction is recorded on the Set when the sync puts
-the draft you put on the board for that Set on the machine.
+the proposal you made active for that Set on the machine.
 
 A conversation in **General** is the other way round: the whole archive,
 read-only. It runs SQL over the curated views, compares shots across Sets and
@@ -843,7 +847,7 @@ accept. **Eight while a Set is being designed** (below). The registry holds
 twenty-one in total: twelve both kinds have, eight that belong to one kind or the
 other, and `propose_initial_recipe`, which only a design has. None of them
 starts a shot's review: only its button does. Nothing in the chat can touch
-the machine — putting a profile on the board stays a button you press.
+the machine — making a profile active stays a button you press.
 
 **A Set can be designed in its own conversation.** `POST /api/sets/design`
 takes a bean and a grinder (both required), optionally a profile to fork, your
@@ -861,7 +865,7 @@ profile of yours you did not choose. A newer card replaces the waiting one. Acce
 version 1 in place and ends the design conversation: the agent is told, and
 tells you to talk version 1's shots through in a new conversation (Discuss in chat on
 the Set page opens one rather than the design); the profile waits on the
-Profiles page for you to put on the board. Writing a version by hand, or putting a draft on the board for the Set, ends the design
+Profiles page for you to make active. Writing a version by hand, or making a proposal active for the Set, ends the design
 the same way. A design nobody brewed anything under can be discarded
 (`DELETE /api/sets/{id}/design`).
 
@@ -899,8 +903,8 @@ make it so. When an option points at a profile you already have and suggests a
 temperature that profile does not brew at, the card says that taking it will
 **make a draft** of that profile at the suggested temperature, and the new
 Set's first version points at the draft. Nothing is sent to the machine: you
-put it on the board from the Profiles page, exactly as you would any other
-draft, and the next sync sends it.
+make it active from the Profiles page, exactly as you would any other
+proposal, and the next sync puts it on the machine.
 
 It will not invent a grind number. A grinder's scale is arbitrary and there is
 no conversion between two of them, so a figure on your dial is offered only when
@@ -908,8 +912,8 @@ your usual setting or a past Set on the same grinder anchors it; otherwise the
 answer is relative and the card says so.
 
 Taking one creates the Set with `origin=starting_point`, and — when the option
-authored a whole profile rather than pointing at one you already have — a draft
-waiting on the **Profiles** page. Nothing is pushed; you put it on the board. The Beans
+authored a whole profile rather than pointing at one you already have — a proposal
+waiting on the **Profiles** page. Nothing is pushed; you make it active. The Beans
 page has the same shortcut for the coffee you are looking at. The chat does not
 ask for starting points: a run it started had nowhere to be taken, and
 designing a Set with the agent (below) is the conversation for a new bag.
@@ -936,7 +940,7 @@ proposes the whole first recipe as one card — a profile of its own, the grind
 the yield. Nothing exists until you accept it, in the conversation or on the
 Set page. Accepting makes it version 1 and ends the design: the agent tells you
 to start a new conversation about the shots, since one conversation is one
-version; the profile is then a draft on the Profiles page for you to put on the board,
+version; the profile is then a proposal on the Profiles page for you to make active,
 and once a sync has put it on the machine, shots brewed on it are filed under the new Set.
 
 Until then the Set carries a **Designing** badge on the Sets list, on its page

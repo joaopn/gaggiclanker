@@ -81,6 +81,7 @@ export function boardRowView(
     on_machine: base.on_machine,
     starred: base.on_home_screen,
     in_conflict: false,
+    edit_lands_on_label: base.origin === "draft" ? base.label : null,
     conflict: null,
     sets_brewing: [],
     proposed_versions: 0,
@@ -188,7 +189,7 @@ export function landing(overrides: Partial<DraftLanding> = {}, rowId: number | n
   return {
     draft_id: 1,
     already_on_board_label: null,
-    plain: { row_id: rowId, row_label: "9 Bar Espresso", holds_newer_draft: false },
+    plain: { row_id: rowId, row_label: "9 Bar Espresso" },
     for_set: null,
     ...overrides,
   } as DraftLanding;

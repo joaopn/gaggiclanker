@@ -95,10 +95,10 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     const prediction = String(output.prediction ?? "");
     return {
       kind: "draft",
-      label: `Profile draft #${String(draftId)}`,
+      label: "Proposed profile change",
       detail: prediction
         ? `${String(output.change_summary ?? "")} — predicts: ${prediction}`
-        : String(output.change_summary ?? "waiting for approval"),
+        : String(output.change_summary ?? "waiting for you to make it active"),
       href: "/profiles#staged",
       icon: FilePen,
     };

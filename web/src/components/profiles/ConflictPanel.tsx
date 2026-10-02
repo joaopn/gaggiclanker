@@ -80,12 +80,10 @@ export function ConflictPanel({ rowId }: { rowId: number }) {
       <Sides
         app={{
           title: "The app's version",
-          hash: view.app_short_hash,
           profile: view.app_profile ?? {},
         }}
         machine={{
           title: "The machine's version",
-          hash: view.machine.short_hash,
           profile: view.machine_profile ?? {},
         }}
       />
@@ -126,7 +124,7 @@ export function ConflictPanel({ rowId }: { rowId: number }) {
   );
 }
 
-type Side = { title: string; hash: string; profile: Json };
+type Side = { title: string; profile: Json };
 
 function Sides({ app, machine }: { app: Side; machine: Side }) {
   const changes = diffProfiles(app.profile, machine.profile);
@@ -141,10 +139,7 @@ function Sides({ app, machine }: { app: Side; machine: Side }) {
           className="min-w-0 space-y-2 rounded-md border border-border bg-background p-3"
           data-testid={`conflict-${key}`}
         >
-          <p className="font-medium text-sm">
-            {side.title}{" "}
-            <span className="font-mono text-muted-foreground text-xs">{side.hash}</span>
-          </p>
+          <p className="font-medium text-sm">{side.title}</p>
           <ProfileSummary profile={side.profile} />
           <div>
             <h4 className="mb-1 font-medium text-xs uppercase tracking-wide">Differences</h4>

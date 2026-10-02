@@ -101,7 +101,7 @@ class ConflictBody(BaseModel):
     summary="Let syncs write again after the machine looked reset",
 )
 async def resume_board(board: BoardServiceDep) -> JSONResponse:
-    """Person-only. Clears the pause; the next sync then pushes the board's app profiles.
+    """Person-only. Clears the pause; the next sync then does what the page showed.
 
     Sends nothing to the machine. There is no chat or MCP tool for it.
     """
@@ -112,7 +112,7 @@ async def resume_board(board: BoardServiceDep) -> JSONResponse:
 @router.get(
     "",
     response_model=ApiResponse[BoardView],
-    summary="The profile board, its state on the machine and what the next sync would do",
+    summary="The profile list, its state on the machine and what the next sync would do",
 )
 async def get_board(
     board: BoardServiceDep,
@@ -147,7 +147,7 @@ async def get_board(
     "",
     response_model=ApiResponse[BoardRow],
     status_code=201,
-    summary="Put an approved draft on the board",
+    summary="Make a proposal active: a new version of a profile, or a new profile",
 )
 async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep) -> JSONResponse:
     """The next sync puts it on the machine. Nothing is sent to the machine now.

@@ -72,7 +72,7 @@ export function ProfilesPage() {
   const board = useProfileBoard();
   const importFiles = useImportFiles();
   const uploadRef = useRef<HTMLInputElement>(null);
-  const { hash } = useLocation();
+  const { hash, key: arrivalKey } = useLocation();
   const [showOff, setShowOff] = useState(readShowOff);
   const [open, setOpen] = useState<string | null>(null);
   // Rows shown at any point in this visit stay shown, so switching one off does not make it vanish.
@@ -88,13 +88,13 @@ export function ProfilesPage() {
 
   const visible = (entry: BoardRowView) =>
     showOff || entry.on_machine || needsAPerson(entry) || seen.has(entry.row.id);
-  const shown = rows
-    .filter(visible)
-    .sort(
-      (a, b) =>
-        Number(b.in_conflict) - Number(a.in_conflict) ||
-        a.row.label.localeCompare(b.row.label, undefined, { sensitivity: "base" }),
-    );
+  const shown = rows.filter(visible).sort(
+    (a, b) =>
+      Number(b.in_conflict) - Number(a.in_conflict) ||
+      // Utility profiles (a backflush) are not what you brew with: last.
+      Number(a.utility) - Number(b.utility) ||
+      a.row.label.localeCompare(b.row.label, undefined, { sensitivity: "base" }),
+  );
   const hiddenCount = rows.length - shown.length;
 
   // Remember what has been shown (a state update only when something new appears).
@@ -137,10 +137,13 @@ export function ProfilesPage() {
     return null;
   }, [hash, proposals, versionRow]);
 
+  // Acts once per arrival (per navigation), the first time the link has something to open. The
+  // target itself moves as proposals come and go (declining one makes another the newest), and
+  // a row the person closed or a proposal they just answered must not be reopened by it.
   const handled = useRef<string | null>(null);
   useEffect(() => {
-    if (target === null || handled.current === `${hash}|${target}`) return;
-    handled.current = `${hash}|${target}`;
+    if (target === null || handled.current === arrivalKey) return;
+    handled.current = arrivalKey;
     setOpen(target);
     if (target.startsWith("row-")) {
       const id = Number(target.slice(4));
@@ -154,7 +157,7 @@ export function ProfilesPage() {
       document.getElementById(id)?.scrollIntoView?.({ block: "start", behavior: "smooth" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [target, hash]);
+  }, [target, arrivalKey]);
 
   function onUpload(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -167,7 +170,7 @@ export function ProfilesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Profiles"
-        subtitle="Every profile, and whether it should be on the machine. Open one for its versions. The next sync, with writes on, makes the machine hold exactly the profiles that are on."
+        subtitle="Every profile, and whether it should be on the machine. Open one for its versions."
         actions={
           <Button
             variant="outline"

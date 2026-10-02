@@ -158,11 +158,17 @@ export const queryKeys = {
   /** The profile board; `live` is the preview that reads the machine now. */
   board: {
     all: ["board"] as const,
-    view: (live = false) => ["board", "view", live ? "live" : "mirror"] as const,
+    view: () => ["board", "view", "mirror"] as const,
     /** One profile's versions and its conflict: under `all`, so every board write refreshes them. */
     versions: (rowId: number) => ["board", "versions", rowId] as const,
     conflict: (rowId: number) => ["board", "conflict", rowId] as const,
   },
+  /**
+   * The board read from the machine itself. Deliberately outside `board`: a board write
+   * invalidates `board.all`, and a read of the machine is a list and a load per profile that
+   * no write should repeat.
+   */
+  boardLive: { all: ["board-live"] as const, view: () => ["board-live", "view"] as const },
   device: {
     all: ["device"] as const,
     status: () => ["device", "status"] as const,

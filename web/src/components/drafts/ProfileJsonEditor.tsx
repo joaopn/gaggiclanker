@@ -38,6 +38,8 @@ export function ProfileJsonEditor({
   baseVersionId,
   label,
   document,
+  targetRowId,
+  becomesVersionOf = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,6 +47,14 @@ export function ProfileJsonEditor({
   label: string;
   /** The version's stored document, as the starting text. */
   document: Record<string, unknown>;
+  /** The profile the editor was opened from: the copy is aimed at it. */
+  targetRowId?: number;
+  /**
+   * What the saved copy is, as the server's rule says for this profile: a new version of the
+   * profile with this label (its own, or the app's copy of it), or `null` for a profile of its
+   * own beside it.
+   */
+  becomesVersionOf?: string | null;
 }) {
   const [text, setText] = useState(() => JSON.stringify(document, null, 2));
   const [preview, setPreview] = useState<DraftPreview | null>(null);
@@ -95,9 +105,11 @@ export function ProfileJsonEditor({
         <DialogHeader>
           <DialogTitle>Edit a copy of {label}</DialogTitle>
           <DialogDescription>
-            Saved as a new version of this profile, proposed and not active until you make it
-            active. It goes through the same schema and the same safety policy as anything a model
-            writes.
+            {becomesVersionOf
+              ? `Saved as a proposed new version of ${becomesVersionOf}, not active until you make it active. `
+              : "Saved as a proposed profile of its own beside this one, named with [AI], not on the machine until you make it active. "}
+            It goes through the same schema and the same safety policy as anything a model writes,
+            and never over the profile on the machine.
           </DialogDescription>
         </DialogHeader>
 
@@ -179,6 +191,7 @@ export function ProfileJsonEditor({
                 base_version_id: baseVersionId,
                 profile: JSON.parse(text) as Record<string, unknown>,
                 change_summary: "Edited by hand.",
+                ...(targetRowId !== undefined ? { target_row_id: targetRowId } : {}),
               });
               if (draft) {
                 onOpenChange(false);
@@ -186,7 +199,7 @@ export function ProfileJsonEditor({
               }
             }}
           >
-            {create.isPending ? "Saving..." : "Save as a new version"}
+            {create.isPending ? "Saving..." : "Save as a proposal"}
           </Button>
         </DialogFooter>
       </DialogContent>

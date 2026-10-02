@@ -989,7 +989,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The profile board, its state on the machine and what the next sync would do
+         * The profile list, its state on the machine and what the next sync would do
          * @description Read-only. The plan is the one a sync would execute.
          *
          *     By default it is built from the archive's last mirror of the machine, which costs no
@@ -1000,7 +1000,7 @@ export interface paths {
         get: operations["get_board_api_profile_board_get"];
         put?: never;
         /**
-         * Put an approved draft on the board
+         * Make a proposal active: a new version of a profile, or a new profile
          * @description The next sync puts it on the machine. Nothing is sent to the machine now.
          *
          *     One action for a proposal: a drafted draft is approved by it (with the stop-condition
@@ -1141,7 +1141,7 @@ export interface paths {
         put?: never;
         /**
          * Let syncs write again after the machine looked reset
-         * @description Person-only. Clears the pause; the next sync then pushes the board's app profiles.
+         * @description Person-only. Clears the pause; the next sync then does what the page showed.
          *
          *     Sends nothing to the machine. There is no chat or MCP tool for it.
          */
@@ -3147,11 +3147,6 @@ export interface components {
          * @description Where a put of one draft would land: the row it continues, or a new profile.
          */
         BoardLanding: {
-            /**
-             * Holds Newer Draft
-             * @default false
-             */
-            holds_newer_draft: boolean;
             /** Revives Label */
             revives_label?: string | null;
             /** Row Id */
@@ -3268,6 +3263,8 @@ export interface components {
         BoardRowView: {
             active_version: components["schemas"]["ActiveVersion"];
             conflict?: components["schemas"]["ConflictSummary"] | null;
+            /** Edit Lands On Label */
+            edit_lands_on_label?: string | null;
             /**
              * In Conflict
              * @default false
@@ -3979,6 +3976,8 @@ export interface components {
             profile?: {
                 [key: string]: unknown;
             } | null;
+            /** Target Row Id */
+            target_row_id?: number | null;
         };
         /**
          * DraftLanding
@@ -4892,6 +4891,8 @@ export interface components {
              * @default false
              */
             is_new: boolean;
+            /** Made By */
+            made_by?: ("agent" | "edit") | null;
             /**
              * Major Reason
              * @default
@@ -4954,6 +4955,8 @@ export interface components {
              * @default false
              */
             suggest_major: boolean;
+            /** Target Board Id */
+            target_board_id?: number | null;
             /** Updated At */
             updated_at: string;
             verification?: components["schemas"]["JsonObject"];

@@ -20,21 +20,22 @@ function targetsOf(profile: Json): Target[] {
   );
 }
 
-/** "ends at 36 g", "ends on pressure ≥ 9", or "ends after 28 s" when no phase has a stop. */
+/**
+ * What ends the shot: how the **last** phase ends ("ends at 36 g", "ends on pressure ≥ 9", or
+ * "ends after 28 s" when it has no stop). An earlier phase's stop only ends that phase.
+ */
 export function endsWhen(profile: Json): string {
-  const targets = targetsOf(profile);
+  const phases = Array.isArray(profile.phases) ? (profile.phases as Json[]) : [];
+  const last = phases[phases.length - 1];
+  if (!last) return "no stop condition";
+  const targets = targetsOf({ phases: [last] });
   const volume = targets.filter((t) => t.type === "volumetric");
-  if (volume.length > 0) {
-    return `ends at ${Math.max(...volume.map((t) => t.value))} g`;
-  }
+  if (volume.length > 0) return `ends at ${Math.max(...volume.map((t) => t.value))} g`;
   const first = targets[0];
   if (first) return `ends on ${first.type} ${first.operator} ${first.value}`;
-  const phases = Array.isArray(profile.phases) ? (profile.phases as Json[]) : [];
-  const seconds = phases.reduce(
-    (total, phase) => total + (typeof phase.duration === "number" ? phase.duration : 0),
-    0,
-  );
-  return seconds > 0 ? `ends after ${seconds} s` : "no stop condition";
+  return typeof last.duration === "number" && last.duration > 0
+    ? `ends after ${last.duration} s`
+    : "no stop condition";
 }
 
 /** "standard · 3 phases · ends at 36 g". */
