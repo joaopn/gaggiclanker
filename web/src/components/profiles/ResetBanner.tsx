@@ -2,7 +2,7 @@ import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { BoardView } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { useResumeBoard } from "@/hooks/useBoard";
+import { useProfileBoard, useResumeBoard } from "@/hooks/useBoard";
 import { previewLine } from "@/lib/board";
 import { cn } from "@/lib/utils";
 
@@ -15,15 +15,24 @@ function plural(count: number, noun: string): string {
  * firmware update that wiped it, or the wrong address), a sync writes nothing. One question
  * and one button; the lines it would act on are one click away. Resuming sends nothing itself:
  * the next sync does what the lines say.
+ *
+ * What resuming would do is read from the machine now (the page's own read is the archive's
+ * mirror, which after a wipe still lists the files that are gone, so it would say "put back 0").
+ * Only while paused, once per opening of the page; a machine that cannot be read falls back to
+ * the mirror's numbers.
  */
 export function ResetBanner({ view }: { view: BoardView }) {
   const resume = useResumeBoard();
   const [showLines, setShowLines] = useState(false);
+  const live = useProfileBoard({ live: true, enabled: Boolean(view.paused) });
   if (!view.paused) return null;
-  const preview = view.resume_preview;
-  const question = preview
-    ? `The machine looks reset: put back ${plural(preview.push, "profile")} and remove ${preview.remove}?`
-    : "The machine looks reset: syncs write nothing until you say so.";
+  const preview = live.data?.resume_preview ?? view.resume_preview;
+  const reading = live.isPending;
+  const question = reading
+    ? "The machine looks reset: reading what resuming would do…"
+    : preview
+      ? `The machine looks reset: put back ${plural(preview.push, "profile")} and remove ${preview.remove}?`
+      : "The machine looks reset: syncs write nothing until you say so.";
 
   return (
     <div
@@ -78,7 +87,7 @@ export function ResetBanner({ view }: { view: BoardView }) {
         data-testid="reset-resume"
         onClick={() => resume.mutate()}
       >
-        {preview
+        {preview && !reading
           ? `Put back ${plural(preview.push, "profile")} and remove ${preview.remove}`
           : "Resume syncing"}
       </Button>

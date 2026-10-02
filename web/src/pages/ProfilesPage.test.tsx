@@ -356,6 +356,47 @@ describe("the reset guard", () => {
     await waitFor(() => expect(api.resumeBoard).toHaveBeenCalledTimes(1));
   });
 
+  it("reads what resuming would do from the machine, not the mirror, which still lists what is gone", async () => {
+    // The mirror says nothing is missing (an empty list never wipes it); the machine says 8.
+    api.getProfileBoard.mockImplementation(async (live?: boolean) =>
+      live
+        ? paused()
+        : boardView({
+            paused: "the machine looks reset",
+            resume_preview: { push: 0, remove: 0, star: 0, join: 0, lines: [] },
+          }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent(
+        "put back 3 profiles and remove 1?",
+      ),
+    );
+    expect(api.getProfileBoard).toHaveBeenCalledWith(true);
+  });
+
+  it("falls back to the mirror's numbers when the machine cannot be read", async () => {
+    api.getProfileBoard.mockImplementation(async (live?: boolean) => {
+      if (live) throw new Error("no machine");
+      return paused();
+    });
+    renderWithQueryClient(<ProfilesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent(
+        "put back 3 profiles and remove 1?",
+      ),
+    );
+  });
+
+  it("does not read the machine when the sync is not paused", async () => {
+    renderWithQueryClient(<ProfilesPage />);
+
+    await screen.findByTestId("profile-row");
+    expect(api.getProfileBoard).not.toHaveBeenCalledWith(true);
+  });
+
   it("keeps the per-profile lines one click away", async () => {
     const user = setupUser();
     api.getProfileBoard.mockResolvedValue(paused());
