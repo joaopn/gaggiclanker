@@ -16,14 +16,13 @@ what an archive is for is the hundred before it.
 The machine holds a few hundred KB of flash and deletes old shots when it runs
 low. This is the thing that remembers them.
 
-> **Status: 0.1.0, the prototype, plus profile drafts and the profile board.** Everything in this README
+> **Status: 0.1.0, the prototype, plus the profile list.** Everything in this README
 > works: sync, the shots UI, Sets and judgement, the LLM layer, a shot's review,
 > the chat, optional authentication and the container. It can now
-> also put a profile *on* the machine — you put a draft on the app's profile board and the
-> next sync saves it as a new `[AI]`-suffixed file, never over an existing one, replacing
-> only an earlier copy this app itself wrote (and selecting the new one only if that copy
-> was selected), behind a switch that is off by default and through the four layers in
-> `docs/safety-layers.md`.
+> also hold a list of your profiles and make the machine match it — you switch a profile on or
+> off the machine and make one of its versions active, and the next sync puts the active
+> version on the machine and removes the profiles that are off, behind a switch that is off by
+> default and through the four layers in `docs/safety-layers.md`.
 > `CHANGELOG.md` has what landed in each release.
 
 ## Quick start
@@ -107,8 +106,8 @@ pages, in the order the sidebar lists them:
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
 | **Taste wheel** | `g w` | The SCA/WCR Coffee Taster's Flavor Wheel, all three tiers. Pick which of its notes the shot panel offers, one list for taste and one for aroma. |
-| **Profiles** | `g p` | The profile board (each profile, whose it is, on or off the machine's home screen, where it stands on the machine), the drafts waiting to be put on it, and every version a shot can resolve to. |
-| **Sync** | `g y` | Sync with the machine, what the last sync did to its profiles (with Resume after a suspected reset), and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
+| **Profiles** | `g p` | One list of every profile you have had. Each row has two switches, **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's home-screen carousel, kept while the profile is off), what it brews, where it stands on the machine and what the next sync will do about it; profiles that are off are hidden unless you ask. A row opens to its versions, newest first: when each was made and where it came from, its shots and Sets, its information (the first as a summary, every later one as what changed from the version before it), **Make active** and **Edit a copy**. A version the agent proposed sits above them, marked **Proposed**, with **Make active** (and the Set it would be recorded on) and **Decline**; a proposed new profile is a row of its own. A profile whose file was edited on the machine shows **Conflict** and opens on both sides to choose from. After a suspected reset one banner asks whether to put the profiles back. |
+| **Sync** | `g y` | Sync with the machine, what the last sync did to its profiles, and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
 | **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights the chat proposes wait there for you to confirm. |
@@ -119,7 +118,7 @@ entry keeps its name — a tooltip for a mouse, the accessible name for everythi
 else — so nothing is lost but the fourteen rems.
 
 The old import page is now the drop zone on the Shots page, and the old drafts
-page is the drafts section of Profiles; `/import` and `/drafts` still resolve,
+page is Profiles, where a proposed profile now opens on its own row; `/import` and `/drafts` still resolve,
 by redirecting. The device page's old storage, notes, sync and writes anchors
 redirect to the Sync page.
 
@@ -274,8 +273,8 @@ shot's notes card and never changes a device setting.
 
 Nothing an agent does is on that list. A proposed change to a Set is a row in
 this archive waiting for you, and accepting it records a version — it sends
-nothing. A profile a conversation drafts is a draft on the Profiles page, which
-you put on the board yourself (that is the approval too). When it was drafted in a Set's conversation, the button records it as
+nothing. A profile a conversation proposes is a proposed version on the Profiles page, which
+you make active yourself (that is the approval too). When it was proposed in a Set's conversation, the button records it as
 that Set's next version with its prediction once it reaches the machine; the
 button without the Set tries it without touching the Set.
 
@@ -290,53 +289,57 @@ the Writes switch on, the one thing a sync writes is the profile board's write p
 end (see below); nothing else, and no tool a model calls, starts a write. Every write
 attempt, refused ones included, is listed under **Recent writes** on the Sync page.
 
-### The profile board
+### The profile list
 
-With the **Writes** switch on, every sync ends by making the machine's profiles match the
-**board** shown on the Profiles page. The first sync with the switch on takes the machine's
-profiles onto the board as they are (the home screen is each profile's star) and writes
-nothing; the switch's confirmation says so before you turn it on, and after that shows what
-the next sync would do, read from the machine at that moment. From then on a sync makes the
-machine hold exactly the profiles that are switched **on the machine**: it pushes each one's
-active version when the machine lacks it, **removes the ones switched off (the firmware's own
-profiles and ones you made on the display included)**, and sets the stars (a profile's
-**Starred** flag, applied only while it is on the machine). A file the app has never seen
-joins the list, on, and is never touched by the sync that finds it. A profile changed on the
-display is never overwritten silently: it becomes a conflict, nothing is done for it, and you
-choose which side to keep. Every removal is guarded by a fresh load that must hold exactly
-what was last recorded. If the machine looks reset (none of the files the last sync left is on
-it), syncs stop writing until you resume, and the page says what resuming would do.
+With the **Writes** switch on, every sync ends by making the machine hold exactly the
+profiles that are **on the machine** in the list on the Profiles page. The first sync with the
+switch on takes the machine's profiles into the list as they are (the home screen is each
+profile's star) and writes nothing; the switch's confirmation says so before you turn it on,
+and after that shows what the next sync would do, read from the machine at that moment. From
+then on a sync pushes each profile's active version when the machine lacks it, **removes the
+ones switched off (the firmware's own profiles and ones you made on the display included)**,
+and sets the stars (a profile's **Starred** flag, applied only while it is on the machine). A
+file the app has never seen joins the list, on, and is never touched by the sync that finds
+it. A profile changed on the display is never overwritten silently: it becomes a **conflict**,
+nothing is done for it, and you choose which side to keep (**Keep the app's**: the next sync
+replaces the machine's file; **Keep the machine's**: its content becomes the profile's active
+version; either way it is stored as a version). Every removal is guarded by a fresh load that
+must hold exactly what was last recorded. If the machine looks reset (none of the files the
+last sync left is on it), syncs stop writing and the Profiles page asks once whether to put the
+profiles back, with one button.
 
-**No two profiles on the board share a name.** A draft that would make a second profile with
-a name the board already has is refused (its card says the board already has that profile, and
-offers refine or discard), and so is taking a profile from the machine whose name is already on
-the board. A second file on the machine with a profile's name is reported and left as it is.
+**No two profiles in the list share a name.** A proposal that would make a second profile with
+a name the list already has is refused (its panel says the list already has that profile, and
+offers Decline), and a second file on the machine with a profile's name is reported and left as
+it is.
 
 ### Putting a profile on the machine
 
-Nothing reaches the machine without being put on the board first. A draft comes from **Edit**
-on a version (the JSON editor validates what you type against the strict schema and the safety
-policy; save it unchanged to put a version on the board as it is), or from the chat or the
-starting-point wizard proposing one, and it waits in the **Waiting for you** section of the
-Profiles page. **Put on the board** is one click: it approves the draft (asking you to tick that
-you understand when it changes when the machine stops pumping), and for a draft made for a Set
-it records the Set's next version, with the **Major change** box, once the sync has put the
-profile on the machine. Until the machine's profiles have been taken onto the board (the
-**Writes** switch on, then a sync) a draft card says so and offers only refine and discard.
+A profile reaches the machine only by being on in the list with an active version. A change
+starts as a proposal: **Edit a copy** on a version (the JSON editor validates what you type
+against the strict schema and the safety policy; save it unchanged to propose a version as it
+is), or the chat or the starting-point wizard proposing one. It waits inside its profile's
+dropdown, marked **Proposed**, or as a row marked **New** when it is a new profile. **Make
+active** is one click: it approves the proposal (asking you to tick that you understand when it
+changes when the machine stops pumping), and for a proposal made for a Set it records the Set's
+next version, with the **Major change** box, once the sync has put the profile on the machine.
+Any older version can be made active the same way, from the dropdown; there is no separate
+going back, and no Delete: switching a profile off removes it from the machine at the next sync,
+and the profile and its versions stay in the list.
 
-The next sync with the **Writes** switch in the top bar on saves it as a new profile with an `[AI]`
-suffix, never over an existing one. The machine is read again first: a profile already holding the
-same content is reused, and a new version of a profile replaces this app's previous copy, carrying its
-star and selection, instead of piling up versions. A copy you edited on the display since is never
-deleted unseen: it is a conflict you settle. What came back off the machine is
-compared against what was sent, and a mismatch removes the copy just written and keeps the
-previous version. **Go back a version** on a profile's card (with a confirmation) makes it its
-previous version again, and the next sync restores it and removes the newer copy: that is the
-rollback. `docs/safety-layers.md` is the whole contract.
+The next sync with the **Writes** switch in the top bar on saves the active version as a new
+profile with an `[AI]` suffix when the agent made it, never over an existing one. The machine is
+read again first: a profile already holding the same content is reused, and a new version of a
+profile replaces this app's previous copy, carrying its star and selection, instead of piling
+up versions. A copy you edited on the display since is never deleted unseen: it is a conflict
+you settle. What came back off the machine is compared against what was sent, and a mismatch
+removes the copy just written and keeps the previous version. `docs/safety-layers.md` is the
+whole contract.
 
 Profile exports can be uploaded straight into the library with **Upload
 profile** in the Profiles header — it runs them through the same importer as the
-shots page, so the new version appears below with its own edit button.
+shots page, and the profile appears in the list switched off (or, when a profile already has
+its name, as one of its versions), so importing never changes what a sync does.
 
 You do not need to create `./data` first. Docker creates a missing bind-mount
 source as `root:root`, so the container's entrypoint starts as root, hands that

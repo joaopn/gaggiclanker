@@ -14,6 +14,41 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **Fixed: a profile the agent designed from scratch no longer reads as a list of changes from "Empty baseline".** A draft always had a profile it was stored against, so a Set designed with no profile to fork (or a starting point that wrote a new profile) showed every field as a change from a profile you never had, under "from Empty baseline". Such a draft is now marked as a new profile: its card says "new profile" and shows the profile itself (type, temperature, how the shot ends, which is what the last phase stops on, and each phase with its length, pump, transition and what ends that phase) instead of a diff. It no longer warns that it "changes when the machine stops" or asks for the acknowledgement, since there is no earlier profile whose stops it could change, and it never lands on an existing board profile. Drafts you already have that were designed from scratch (those based on the empty baseline, and the starting point's own profiles) are marked on the next start, and their stop-condition warning is cleared with it. The empty baseline is no longer listed among the profile versions, and neither the agent nor the starting point is offered it as a profile. Edits of a real profile keep their diff.
 
+### Profile list (the Profiles page)
+
+- **The Profiles page is one list.** Every profile you have had is a row with two switches,
+  **On the machine** (the next sync puts it there or removes it) and **Starred** (the machine's
+  home-screen carousel; kept while the profile is off, applied only while it is on), what it
+  brews, where it stands on the machine and what the next sync will do about it. Profiles that
+  are off are hidden unless you ask ("Show profiles that are off"). Switching off a profile a
+  Set brews, or the one the machine has selected, asks first. With writes off the page says the
+  machine will follow when they are on.
+- **A row opens to the profile's versions**, newest first: when each was made, where it came from
+  (the agent, an edit, the machine, edited on the machine, an import), its shots and the Sets
+  that brew it, **Make active** (any version, the first included) and **Edit a copy**. The
+  first version shows a summary; every later one shows what changed from the version before it.
+- **Proposals live inside the profile**: a version the agent (or the JSON editor) proposed is
+  marked **Proposed** above the versions, with **Make active** (the stop-condition acknowledgement
+  and the Set recording work as the old Put on the board did) and **Decline**. A proposed new
+  profile is a row marked **New**. Links that used to land on `#staged` open the newest
+  proposal's row.
+- **Conflicts**: a profile whose file was edited on the machine shows a **Conflict** badge and
+  opens on the app's version and the machine's side by side (two columns from tablet width),
+  with **Keep the app's** and **Keep the machine's**. If the machine's file changed again since
+  you looked, nothing is done and the panel shows the new one.
+- **The reset question moved here**: when the machine looks reset, one banner asks "put back N
+  profiles and remove M?" with one button; the Sync page's Resume banner is gone and points
+  here. The Writes switch's confirmation now says what a sync does (it removes profiles that
+  are off, the machine's own included, and leaves conflicts to you).
+- **Removed**: the "yours / the app's" split, Take, Go back a version, Delete, "Waiting for
+  you", "Deleted, still on the machine", "On the machine, not on the board", the Versions table
+  and the draft status badges, and the routes behind them (`POST /api/profile-board/take`,
+  `.../go-back`, `DELETE /api/profile-board/{id}`, `PUT .../home-screen`; the star is
+  `PUT .../starred`). The board read no longer carries `go_back_blocked`.
+- A profile uploaded from a file now appears in the list, switched off (or as a version of the
+  profile that has its name), so importing never changes what a sync does to the machine.
+- The board read carries each profile's active version document, so a row can say what it brews.
+
 ### Profile list (back end)
 
 - **Breaking in behaviour: a sync with writes on now removes profiles that are switched off,

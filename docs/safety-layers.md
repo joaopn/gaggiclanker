@@ -16,8 +16,9 @@ on, **the board sync at the end of a sync**: the app keeps its own profile board
 sync makes the machine's profiles match it (see "The board sync" below). That is the one
 automatic write, and it is the only one: no timer, no machine event, no push or rollback
 route, no other hook after a sync, and no tool a language model can call starts a write.
-What a person decides is what is on the board (putting a draft on it, going back to a
-profile's previous version, deleting a profile, the home-screen flag), on pages that show
+What a person decides is what is in the profile list (switching a profile on or off the
+machine, making a version active, making a proposal active, choosing a side of a conflict, the
+star), on pages that show
 the diff they are putting there; none of those sends a byte to the machine, and each works
 with the switch off. The profile pass of a sync is started only by the Sync button's
 route (a test pins the call sites).
@@ -71,8 +72,8 @@ tool hold anything that could write: the context it is handed carries the
 object that creates drafts, and the draft service holds no machine connection at
 all; no path from the context leads to the device client, the connection that owns it
 or the board that writes through them (a test walks the graph). The connection to
-the machine is this application's own HTTP API and nothing more. Putting a draft on the
-board is one button a person presses, on a page showing the diff they are putting
+the machine is this application's own HTTP API and nothing more. Making a proposal active
+is one button a person presses, on a page showing the diff they are putting
 there (it approves the draft, and asks for the stop-condition acknowledgement when a stop
 condition moved); the next sync with the switch on does the writing.
 
@@ -227,14 +228,14 @@ ending in a volumetric or pumped stop or a bounded duration.
 
 Two functions, and the difference between them is the design. `clamp()` moves
 numbers into range **and says what it moved** — the list is stored on the draft
-and rendered beside the put-on-the-board button, because a silent clamp is a profile
+and rendered beside the Make active button, because a silent clamp is a profile
 nobody approved presented as one they did. `check()` reports what a clamp cannot
 fix, and that list is a refusal: eleven phases is *rejected*, never trimmed to
 ten, because truncating a profile would change what it brews while claiming to
 have made it safe.
 
 On top of the bounds, crema's rule: a draft that adds, removes or moves a
-`targets` entry needs an explicit acknowledgement before it can be put on the board (the put is the
+`targets` entry needs an explicit acknowledgement before it can be made active (making it active is the
 approval, so the checkbox is on that click).
 Everything else in a profile changes how a shot is pulled; a stop condition
 changes how much coffee ends up in the cup. The diff normalises numbers, so `9`
@@ -296,9 +297,9 @@ document, and what lands on the machine is checked by the same read-back.
 **4. A simulator gate in CI.**
 `tests/simulator/test_profile_push.py`: every profile fixture is saved to the
 firmware's `display-sim`, read back and compared, then one drafted profile is
-put on the board, synced to the machine, verified, selected, brewed to completion and
-deleted from the board and synced off; a second version replaces the first and going
-back restores it; and one sync pushes, replaces and clears a star. Everything it creates it
+put on the list, synced to the machine, verified, selected, brewed to completion and
+switched off and synced away; a second version replaces the first and making the first active
+again restores it; and one sync pushes, replaces and clears a star. Everything it creates it
 deletes. The simulator runs the same parser and the
 same brew code as the device, so what it accepts, the device accepts.
 `scripts/sim.sh test` is what builds and runs it.

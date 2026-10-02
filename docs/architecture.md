@@ -418,7 +418,7 @@ profile operations. **And what may be written is a rule too**: only profiles are
 ever written to the machine — no shot delete, no notes write-back — and nothing starts
 one but the board sync at the end of a sync, with the switch on
 (`/api/profile-board`: the list is edited by a person (on or off the machine, starred, which
-version is active, a conflict's side, one click to put a draft on it) and written by the sync; no timer, no machine event, no judgement save, no push or rollback route
+version is active, a conflict's side, one click to make a proposal active) and written by the sync; no timer, no machine event, no judgement save, no push or rollback route
 and no tool a model calls starts a write). See [`safety-layers.md`](safety-layers.md).
 
 ## What runs where
