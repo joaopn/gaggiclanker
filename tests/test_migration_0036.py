@@ -529,3 +529,54 @@ async def test_a_new_draft_never_continues_the_profile_of_its_stored_base(
     own = next(p for p in got.values() if (4, "edit") in p["versions"])  # type: ignore[operator]
     assert [v for v, _ in own["versions"]] == [4]  # type: ignore[attr-defined]
     await _assert_no_shared_labels(db)
+
+
+async def test_a_made_profiles_name_comes_from_its_newest_pushed_version(
+    db: Database, tmp_path: Path
+) -> None:
+    """Pushed ``A [AI]``, then a discarded rename ``B [AI]``: the profile is ``A [AI]`` for the
+    fill's own questions as well as in the row it makes, so a lone ``B [AI]`` version does not
+    join it (a profile is only ever known by its current name, never by an unpushed one)."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Base", source="device")
+    await _version(db, 7, "A [AI]", source="draft")
+    await _version(db, 8, "A [AI]", source="draft")
+    await _version(db, 9, "B [AI]", source="draft")
+    await _version(db, 10, "B [AI]", source="draft")
+    await _draft(db, 1, base=1, version=7, status="superseded")
+    await _draft(db, 2, base=7, version=8, status="pushed", pushed="p", replaced=7)
+    await _draft(db, 3, base=8, version=9, status="discarded", replaced=8)
+    # Another, unrelated draft that happens to carry the rename's name.
+    await _draft(db, 4, base=1, version=10, status="discarded")
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    got = await _profiles(db)
+    made = next(p for p in got.values() if (8, "edit") in p["versions"])  # type: ignore[operator]
+    assert made["label"] == "A [AI]" and made["current"] == 8
+    assert [v for v, _ in made["versions"]] == [7, 8, 9]  # type: ignore[attr-defined]
+    lone = next(p for p in got.values() if (10, "edit") in p["versions"])  # type: ignore[operator]
+    assert [v for v, _ in lone["versions"]] == [10]  # type: ignore[attr-defined]
+    await _assert_no_shared_labels(db)
+
+
+async def test_what_a_draft_replaced_stays_with_the_profile_that_already_owns_it(
+    db: Database, tmp_path: Path
+) -> None:
+    """A draft's version lands in a made group, and the version it replaced belongs to a profile
+    that exists: the made group joins that profile. The profile keeps every version it had; they
+    are not moved out into a new profile."""
+    await _below(db, tmp_path)
+    await _version(db, 2, "Foo [AI]", source="draft")
+    await _version(db, 3, "Renamed [AI]", source="draft")
+    await _draft(db, 2, base=2, version=3, status="pushed", pushed="p", replaced=2)
+    await _row(db, 1, "Foo [AI]", 2, device="p0", device_version=2)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    got = await _profiles(db)
+    assert list(got) == ["1"], "no second profile is made for what the row already owns"
+    assert [v for v, _ in got["1"]["versions"]] == [2, 3]  # type: ignore[attr-defined]
+    assert got["1"]["label"] == "Foo [AI]" and got["1"]["current"] == 2
