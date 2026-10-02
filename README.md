@@ -296,20 +296,21 @@ With the **Writes** switch on, every sync ends by making the machine's profiles 
 **board** shown on the Profiles page. The first sync with the switch on takes the machine's
 profiles onto the board as they are (the home screen is each profile's star) and writes
 nothing; the switch's confirmation says so before you turn it on, and after that shows what
-the next sync would do, read from the machine at that moment. From then on a sync pushes
-the app's profiles the machine lacks, removes the app's old copies and moves the home-screen
-stars. It never removes or overwrites a profile of yours: one you made on the display is shown
-on the board and its star is followed, and if it was changed or is gone, the Sync page says so.
-You edit the board on the Profiles page: put a draft on it, go back to a profile's previous
-version, tick a profile on or off the home screen, delete one. None of that touches the
-machine; the next sync does. If the machine looks reset (none of the app's profiles is on it
-any more), syncs stop writing until you press **Resume** on the Sync page.
+the next sync would do, read from the machine at that moment. From then on a sync makes the
+machine hold exactly the profiles that are switched **on the machine**: it pushes each one's
+active version when the machine lacks it, **removes the ones switched off (the firmware's own
+profiles and ones you made on the display included)**, and sets the stars (a profile's
+**Starred** flag, applied only while it is on the machine). A file the app has never seen
+joins the list, on, and is never touched by the sync that finds it. A profile changed on the
+display is never overwritten silently: it becomes a conflict, nothing is done for it, and you
+choose which side to keep. Every removal is guarded by a fresh load that must hold exactly
+what was last recorded. If the machine looks reset (none of the files the last sync left is on
+it), syncs stop writing until you resume, and the page says what resuming would do.
 
 **No two profiles on the board share a name.** A draft that would make a second profile with
 a name the board already has is refused (its card says the board already has that profile, and
 offers refine or discard), and so is taking a profile from the machine whose name is already on
-the board. If the machine already held two with one name when the board took it, the board says
-so and leaves both as they are.
+the board. A second file on the machine with a profile's name is reported and left as it is.
 
 ### Putting a profile on the machine
 
@@ -326,8 +327,8 @@ profile on the machine. Until the machine's profiles have been taken onto the bo
 The next sync with the **Writes** switch in the top bar on saves it as a new profile with an `[AI]`
 suffix, never over an existing one. The machine is read again first: a profile already holding the
 same content is reused, and a new version of a profile replaces this app's previous copy, carrying its
-star and selection, instead of piling up versions. A profile you made yourself is never deleted, and a
-copy you edited on the display since is kept; the board says which. What came back off the machine is
+star and selection, instead of piling up versions. A copy you edited on the display since is never
+deleted unseen: it is a conflict you settle. What came back off the machine is
 compared against what was sent, and a mismatch removes the copy just written and keeps the
 previous version. **Go back a version** on a profile's card (with a confirmation) makes it its
 previous version again, and the next sync restores it and removes the newer copy: that is the

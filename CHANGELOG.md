@@ -14,6 +14,24 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **Fixed: a profile the agent designed from scratch no longer reads as a list of changes from "Empty baseline".** A draft always had a profile it was stored against, so a Set designed with no profile to fork (or a starting point that wrote a new profile) showed every field as a change from a profile you never had, under "from Empty baseline". Such a draft is now marked as a new profile: its card says "new profile" and shows the profile itself (type, temperature, how the shot ends, which is what the last phase stops on, and each phase with its length, pump, transition and what ends that phase) instead of a diff. It no longer warns that it "changes when the machine stops" or asks for the acknowledgement, since there is no earlier profile whose stops it could change, and it never lands on an existing board profile. Drafts you already have that were designed from scratch (those based on the empty baseline, and the starting point's own profiles) are marked on the next start, and their stop-condition warning is cleared with it. The empty baseline is no longer listed among the profile versions, and neither the agent nor the starting point is offered it as a profile. Edits of a real profile keep their diff.
 
+### Profile list (back end)
+
+- **Breaking in behaviour: a sync with writes on now removes profiles that are switched off,
+  including the firmware's own and ones made on the display.** The board is now a list of every
+  profile you have had, each switched on or off the machine, and a sync makes the machine hold
+  exactly the ones that are on. The only guard on a removal is a fresh load that must hold what
+  the archive last recorded, and a profile changed on the display is never overwritten or
+  deleted unseen: it becomes a conflict you settle (`POST /api/profile-board/{id}/conflict`).
+  Migration 0036 adds the switch and each profile's version list; at the next boot the list is
+  filled once from everything stored, so old developing profiles, imports and deleted rows come
+  back as profiles that are **off**, with their versions. Nothing is deleted from the archive.
+- **New routes**: `PUT /api/profile-board/{id}/on-machine`, `.../starred`, `.../active-version`,
+  `GET .../versions`, `GET` and `POST .../conflict`. The board read gains, per profile, the
+  switch, the active version, the Sets that brew it, proposals waiting for it and any conflict,
+  and, while paused, what resuming would do.
+- A Set that brews a profile no longer keeps its file on the machine when the profile is
+  switched off or replaced; the board read lists those Sets so a page can warn first.
+
 ### Sync with machine
 
 - **Changed: "Pull from machine" is now "Sync with machine".** The button on the Shots page,

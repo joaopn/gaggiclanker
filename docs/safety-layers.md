@@ -38,8 +38,9 @@ throwaway socket of its own rather than widening that surface.
 The gate is `deviceWritesEnabled`, **off by default**, re-read on every single
 write rather than cached at boot (it is the **Writes** switch in the top bar) — the person turning it off is usually the
 person who has just seen something they did not like. It is the only switch.
-The gate's per-kind branch is where the narrower rules live — a profile delete
-is refused unless the audit holds a successful save for that id. A client built
+The gate holds one rule, the switch; the narrower rule for a delete lives in the client
+(`delete_profile` loads the profile fresh and refuses unless it holds exactly the content the
+caller recorded for it). A client built
 without a gate (in a test, in a script) gets `DenyAllWrites` and can write
 nothing at all, so read-only is what you get by forgetting. Every attempt,
 authorised or refused, leaves a row in `device_writes`, which the Sync page
@@ -51,9 +52,8 @@ It runs only when `deviceWritesEnabled` is on, at the end of the profile pass of
 sync, inside the sync engine's lock; with the switch off a sync sends nothing and
 reads nothing for writing. It has no machine path of its own: every save is `place`
 (`drafts/machine.py`: no duplicate, read back and compared), every removal
-`remove_if_ours` (an `ok` save of that id by this app in the audit, the app label,
-exactly the content recorded, no Set still brewing it, the star and the selection
-moved first), every star change a gated `favorite_profile`/`unfavorite_profile`, and
+`remove_profile` (a fresh load, twice, that must hold exactly the content the archive
+recorded for the file; no other profile standing on it; the selection moved first), every star change a gated `favorite_profile`/`unfavorite_profile`, and
 every one leaves its `device_writes` row. Its plan builder (`drafts/board_plan.py`) only
 reads; the same list is served as the preview before the first write. (The app used to
 have a second path, a staged push and rollback a person pressed on a draft; it was
@@ -79,92 +79,87 @@ condition moved); the next sync with the switch on does the writing.
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.
 
-## The board sync
+## The profile list and its sync
 
-The app owns a **profile board**: one row per profile it means the machine to hold, with
-the version that is current, whether it belongs on the machine's home screen, and which
-file on the machine stands for it. Profiles are edited in the app, never on the machine.
-Editing the board (putting a draft on it, going back to a profile's previous version,
-turning the home-screen flag on or off, deleting a profile) writes to the archive only, and
-works with the switch off.
+The app owns a **list of profiles**: one row per profile a person has had, switched **on the
+machine** or off, with the versions it has been, the one that is **active**, an independent
+**starred** flag (the machine's home-screen carousel), and which file on the machine stands for
+it. Editing the list (switching a profile on or off, starring it, making one of its versions
+active, putting an approved draft on it, resolving a conflict) writes to the archive only, and
+works with the switch off. A sync with the switch on makes the machine hold **exactly the
+profiles that are on**.
 
-**Two live profiles never share a label.** A put that would add a second profile beside
-one with its label, or rename a profile onto a label another holds, is refused (the card says
-the board already has that profile and offers refine or discard), and so is taking a machine
-profile whose label is already on the board. Both checks run inside the transaction that
-writes the row, so two requests at once leave one profile. It is a transactional check and
-not a unique index on purpose: adoption takes the machine as it is, and a machine can hold
-two profiles with one name, which an index could not admit (nor could it be created on a board
-that already holds such a pair). A pair that adoption took is reported on the board, not
-refused and not acted on, and a new version of one of them is allowed, since it does not
-make the pair worse.
+**Every profile the app has synced is the app's to manage**: a firmware default or a profile
+made on the display is pushed, replaced, starred and removed like one the agent made. The
+`[AI]` suffix marks agent-made profiles and decides nothing. What stands between a profile and
+its removal is whether the app has *seen* what the file holds: the one removal guard is a
+fresh load, immediately before the delete (and again inside the client's `delete_profile`),
+that must hash to the content the archive recorded for that file.
 
-**Going back.** A profile the app wrote remembers the version it was before its newest put,
-and a person can go back to it. Going back edits the board only; the sync then does what any
-replacement does (saves the earlier version, removes the newer copy through the guards below),
-and the record stays true: the draft that made the newer version is discarded, the Set
-versions that named the removed copy stop naming it, and the ones the replacement had cleared
-name the copy put back. A profile of the person's cannot go back, and a profile with no earlier
-version, or whose earlier version would repeat a label on the board, cannot either. Nor can one
-whose earlier copy the sync kept on the machine for a Set that is still brewing it while the newer
-copy sits beside it (nothing on the board would stand on the newer copy afterwards); it can go
-back once that Set has moved on. The Set that recorded the version being left is not a reason to
-keep its file only while the Set version that was current at the click is still current.
+**Two live profiles never share a label.** A put that would add a second profile beside one
+with its label, or rename a profile onto a label another holds, is refused, and so is making
+a version active that would; a transactional check, not a unique index, so a database from
+before the rule that holds such a pair keeps working (the pair is reported).
 
-With the switch on, every sync ends by making the machine's profiles match the board,
-in this order:
+**Conflicts.** A profile edited outside the app is never overwritten silently. When a machine
+file standing for a profile (or a never-seen file carrying its name) holds content that is
+neither what the app last recorded for it, nor the profile's active version, nor a version it
+has had, the profile is **in conflict**: the content is kept as a version
+(`edited_on_machine`, not active), the sync does nothing at all for that profile (no push,
+removal, star or selection) and says so, and the others sync as usual. Detection is by
+content, because the firmware keeps a profile's id when it is edited on the display. A person
+chooses (`POST /api/profile-board/{id}/conflict`): the **machine**'s version becomes the active
+one and nothing is pushed, or the **app**'s version is kept, in which case that exact machine
+content is remembered as overruled (it is not flagged again; a further edit is a new conflict)
+and the next sync replaces the file under the removal guard. The route refuses a hash that is
+not the content the person saw.
 
-1. **Adoption**, once, on the first sync with the switch on: every profile the machine
-   holds becomes a board row exactly as it is, its favourite star being the home-screen
-   flag. A file this app saved itself (an `ok` save of that id on this host in the audit,
-   the app label, and content equal to what that save sent) becomes an app row; every other
-   profile, a label ending in the app suffix included and a copy edited on the display since
-   the app saved it, is the person's, and a person's profile is never removed. Nothing is written to the machine, and the sync ends
-   there.
-2. **Each live row**, but **only the app's own versions are ever pushed**: a row whose
-   current version came from a draft a person put on the board. When the machine holds no file with that
-   content, the version is run through the schema and the safety policy with the bounds as
-   they are now (a version that fails stays off the machine and is reported), saved, and read
-   back and compared. The file the row stood on before is then removed if it is the app's.
-   A round trip that does not match removes the copy just written through the same guarded
-   path and keeps the previous version; if that copy cannot be removed the version is not
-   tried again until the profile changes. A profile you made yourself (an adopted row) is
-   never pushed: when its file is missing or was changed on the machine the sync reports it
-   and does nothing, and its home-screen flag is still applied while the file exists. An app
-   profile edited on the machine gets the board's version saved beside the edit, and the edit
-   is left and reported.
-3. **Each deleted row**: its file is removed if it is the app's.
-4. **The home screen**: each file's star is set to its row's flag (a profile off the home
-   screen stays on the machine and leaves the carousel; the firmware has no disabled
-   state), from a fresh read when anything was written above.
+With the switch on, every sync ends by making the machine match the list, in this order:
 
-**A profile the app did not write is never removed, and neither is one that no longer holds
-exactly what the archive recorded for the app's save.** The delete guards are `remove_if_ours`'s
-own: an `ok` save of that id by this app in the audit, the app label, exactly that content on
-a fresh load immediately before the delete, no live board profile standing on the file (asked
-again at the moment of the delete, deleted rows' files included), no Set brewing it. A file
-that fails them stays and the sync reports which and why. The machine's selected profile is
-never removed before its successor (never a utility profile) is selected. A file the machine
-listed but could not load is neither pushed again nor forgotten: the row keeps it and the
-run records a failure.
+1. **The first sync with the switch on** takes the machine's files into the list by the rules
+   below and writes nothing; the sync ends there.
+2. **Files the app has never seen** (no profile stands on them) join the list. A file whose
+   content is a version of an existing profile, or that fills an existing profile's missing
+   file with content it has had, is attached to it; one carrying a profile's name but other
+   content is the machine's side of a conflict; anything else becomes a new profile, **on**,
+   starred as the machine has it. A second file for a profile that already has one is reported
+   and left. **The sync that finds a file never removes or replaces it.**
+3. **Each profile that is on**, pushed with its active version whoever made it: when the
+   machine holds no file with that content, the version is run through the schema and the
+   safety policy with the bounds as they are now (a version that fails stays off the machine,
+   the plan says why, and the rest is not blocked), saved, and read back and compared. The file
+   the profile stood on before is then removed under the guard. A round trip that does not
+   match removes the copy just written through the same guarded path and keeps the previous
+   version; if that copy cannot be removed the version is not tried again until another is made
+   active.
+4. **Each profile that is off**: its file is removed under the guard. A Set brewing it does not
+   hold it back (switching a profile off, or changing its active version, is the person's
+   explicit choice; the list serves the Sets so the page can warn beforehand).
+5. **Each deleted row** (the old Delete) the same way.
+6. **Stars**, only for profiles that are on and from a fresh read when anything was written
+   above; a star is remembered while a profile is off.
 
-**A machine that looks reset pauses the phase.** If the app's profiles were on the machine at
-the last sync and none of their files is there now, the sync writes nothing, records "the
-machine looks reset; nothing written", and the board shows it. A person resumes it
-(`POST /api/profile-board/resume`, a route only: no chat or MCP tool reaches it); the next sync
-then pushes the board's app profiles. Adopted profiles are never pushed back. A person who
-deleted every file by hand looks the same, which is why the answer is theirs.
+**The machine's selected profile is never removed before its successor** (the first profile
+that is on, never a utility profile) is selected; with none, it stays and the plan says why. A
+file the machine listed but could not load is neither pushed again nor forgotten.
 
-A push made by the staged box the app used to have, which failed to verify, leaves a copy that
-adoption takes as the person's (it no longer holds what the app saved), so only the display can
-remove it; none can arise now. A sync that stops halfway leaves every profile old or new: a push
-is a save followed by a removal, a failure between them leaves both files on the machine, and the
-next sync finds the new one by its content and finishes the removal. Failures are values
-(events, an error count on the run), and three device failures in a row end the phase. The order
-of profiles on the machine is not synced.
+**A machine that looks reset pauses the phase.** If files the last sync left on the machine
+were there and none is now, the sync writes nothing, records "the machine looks reset; nothing
+written", and the list serves what resuming would do ("put back N profiles and remove M") so
+one button asks once. A person resumes it (`POST /api/profile-board/resume`, a route only: no
+chat or MCP tool reaches it); the next sync then does exactly what was served. An empty list
+(nothing synced yet) is not a reset.
+
+A sync that stops halfway leaves every profile old or new: a push is a save followed by a
+removal, a failure between them leaves both files on the machine, and the next sync finds the
+new one by its content and finishes the removal. Failures are values (events, an error count
+on the run), and three device failures in a row end the phase. The order of profiles on the
+machine is not synced.
 
 The firmware simulator gate (`tests/simulator/test_profile_push.py`) covers a sync that
-pushes, replaces and clears a star, and going back, on the real firmware.
+pushes, replaces and clears a star, going back, a file the app never saw that joins the list
+and is removed when switched off, an older version made active, and a profile edited on the
+display becoming a conflict.
 
 ## What can actually go wrong
 
@@ -263,12 +258,11 @@ sent", and the difference is only visible by reading it back.
 Two more rules live at this layer rather than in the policy, because they are
 about the machine rather than about the document. A save **never overwrites** (a replace is a new save followed by a guarded delete):
 `saveProfile` upserts on `/p/<id>.json`, so `save_profile` refuses a profile
-carrying an id at all and the firmware generates its own. A delete needs **two
-independent proofs** that the profile is ours — the label on the machine right
-now ends in ` [AI]`, and the `device_writes` audit holds a successful save for
-that id. A person can rename a profile to end in "[AI]"; an id can be reused
-after a delete. Together they mean it is the profile we pushed and it is still
-ours.
+carrying an id at all and the firmware generates its own. A delete needs **one
+proof**, read from the machine and not from the archive: the profile loaded fresh, immediately
+before the delete, must hold exactly the content the archive recorded for it. Who made it
+(the label, the audit of saves) decides nothing: every profile the app has synced is the app's
+to manage, and a file somebody edited on the display since is never deleted unseen.
 
 **A sync replaces, going back restores.** The machine is listed and every profile
 loaded again before each write; nothing the archive remembers about it is trusted
@@ -283,15 +277,11 @@ machine:
 3. Star and select the new file if the one it replaces was starred or selected, so the
    display looks the same to whoever stands at it.
 4. Remove the file the profile stood on before, and only that one: it goes only when **all**
-   of these hold on a fresh load, read again immediately before the delete: the audit holds
-   a successful save of that id by this box and its label ends in ` [AI]` (the two proofs
-   above), its content is exactly what the archive recorded for it, no other live board
-   profile stands on it, and no Set's current version still brews it (by device id or by
-   stored profile, so a Set that picked it from the library or whose latest version is a
-   grind change counts; the Set that recorded the version being left, or that a person is
-   going back from, does not count). A person's own profile is never removed. A copy edited
-   on the display since, one this app did not create, one a Set is brewing, or one already
-   gone stays, and the sync says which.
+   of these hold on a fresh load, read again immediately before the delete: its content is
+   exactly what the archive recorded for it (the one guard), no other live profile stands on
+   it, and it is not the machine's selected profile with nothing to take the selection. A
+   file edited on the display since stays (it is a conflict, see above), and the sync says
+   which.
 
 The firmware clears its startup-profile setting when that profile is deleted
 (`ProfileManager::deleteProfile`) and this app never writes settings, so the primitive reports
