@@ -172,7 +172,8 @@ class ProfileDraftService:
         """
         base = await self.proposals.base_profile(base_version_id)
         parent = await self._parent_draft(parent_draft_id)
-        rendered = await self._render(base=base, notes=notes, parent=parent)
+        is_new = parent.is_new if parent is not None else False
+        rendered = await self._render(base=base, notes=notes, parent=parent, is_new=is_new)
         result = await self.llm.call_json(
             LlmRequest(
                 messages=rendered.messages(),
@@ -180,7 +181,8 @@ class ProfileDraftService:
                 model=model,
                 purpose="draft",
                 label="draft profile",
-                subject=base.label,
+                # A new profile's base is only the one it is stored against.
+                subject=(parent.draft_label or base.label) if is_new and parent else base.label,
                 prompt_name=DRAFT_PROMPT,
                 prompt_version=rendered.version,
             )
@@ -190,7 +192,9 @@ class ProfileDraftService:
                 f"The model could not draft a profile: {result.code}: {result.message}",
                 details={"code": result.code},
             )
-        prepared: PreparedDraft = await self.proposals.prepare(base, result.data.profile)
+        prepared: PreparedDraft = await self.proposals.prepare(
+            base, result.data.profile, is_new=is_new
+        )
         row = await self.proposals.store(
             base_version_id=base_version_id,
             prepared=prepared,
@@ -210,6 +214,7 @@ class ProfileDraftService:
             # refining the same idea does not make it a smaller change.
             suggest_major=parent.suggest_major if parent is not None else False,
             major_reason=parent.major_reason if parent is not None else "",
+            is_new=is_new,
         )
         if parent is not None:
             await self.drafts.supersede(parent.id)
@@ -347,7 +352,8 @@ class ProfileDraftService:
         )
         return ProfileDraftDetail(
             draft=draft,
-            base_profile=base.profile if base else None,
+            is_new=draft.is_new,
+            base_profile=None if draft.is_new or base is None else base.profile,
             draft_profile=drafted.profile if drafted else None,
         )
 
@@ -368,6 +374,7 @@ class ProfileDraftService:
         base: Profile,
         notes: str,
         parent: ProfileDraftRow | None,
+        is_new: bool = False,
     ) -> RenderedPrompt:
         previous = "This is a first draft; there is no previous one."
         if parent is not None and parent.draft_version_id is not None:
@@ -381,7 +388,11 @@ class ProfileDraftService:
         return await self.prompts.load(
             DRAFT_PROMPT,
             {
-                "current_profile": json.dumps(base.to_device(), indent=2),
+                # A new profile is not on the machine, and its stored base is only a stand-in:
+                # the draft being refined is the document to work from.
+                "current_profile": NEW_PROFILE_NOT_ON_MACHINE
+                if is_new
+                else json.dumps(base.to_device(), indent=2),
                 # Nothing passes advice along any more; the variable is still
                 # filled because a person's edited copy of this prompt may name
                 # it, and an undefined variable refuses to render.
@@ -391,6 +402,13 @@ class ProfileDraftService:
                 "policy_bounds": _render_bounds(await self.bounds()),
             },
         )
+
+
+#: What the prompt's "profile on the machine now" says for a profile that is new.
+NEW_PROFILE_NOT_ON_MACHINE = (
+    "There is none: this is a new profile that is not on the machine. The previous draft below "
+    "is the profile you are refining; return it whole, with only the edits asked for."
+)
 
 
 def _render_bounds(bounds: PolicyBounds) -> str:

@@ -282,6 +282,9 @@ async def test_a_forked_design_starts_from_the_fork_and_the_patch_only(archive: 
     )
 
     assert await _base_of(outcome, archive.db) == fork.id
+    # An edit of the fork: its diff is the point.
+    draft = await ProfileDraftsRepository(archive.db).get(outcome.data["draft_id"])
+    assert draft is not None and not draft.is_new
     document = await _document_of(outcome, archive.db)
     assert document["phases"] == fork_doc["phases"]
     assert document["temperature"] == 91
@@ -318,6 +321,13 @@ async def test_with_no_fork_the_profile_is_written_from_zero(archive: Fixture) -
     # against a profile the person brews.
     base = await profiles.get_version(await _base_of(outcome, archive.db))
     assert base is not None and base.label == SYNTHETIC_BASE_LABEL
+    # ... and the draft says it is a new profile, so the page shows it as one.
+    draft = await ProfileDraftsRepository(archive.db).get(outcome.data["draft_id"])
+    assert draft is not None and draft.is_new and draft.base_label is None
+    # Its stops are not a change from the baseline's (a 40 ml stop against the baseline's 36):
+    # the draft and the answer the agent reads carry none.
+    assert draft.stop_condition_changes == []
+    assert outcome.data["stop_condition_changes"] == []
 
 
 async def test_with_no_fork_a_partial_document_is_refused_and_leaves_nothing(

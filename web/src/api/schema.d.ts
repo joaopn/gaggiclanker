@@ -4636,6 +4636,11 @@ export interface components {
             draft_profile?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Is New
+             * @default false
+             */
+            is_new: boolean;
         };
         /**
          * ProfileDraftRow
@@ -4681,6 +4686,11 @@ export interface components {
             error?: string | null;
             /** Id */
             id: number;
+            /**
+             * Is New
+             * @default false
+             */
+            is_new: boolean;
             /**
              * Major Reason
              * @default

@@ -1822,7 +1822,8 @@ async def propose_initial_recipe(
         document = _merge(dict(fork.profile), args.profile.patch)
     else:
         # Written from zero: the document is the patch and nothing else. The
-        # empty baseline is only the diff's other side on the Profiles page.
+        # empty baseline is only the base a draft must have; the draft is marked new, so the
+        # Profiles page shows the profile and no diff.
         base_id = await profiles.empty_base()
         document = dict(args.profile.patch)
     document["label"] = args.profile.label
@@ -1834,6 +1835,8 @@ async def propose_initial_recipe(
             document=document,
             change_summary=args.reason,
             notes=f"Designed in chat for Set “{row.name}”.",
+            # With a fork the draft is an edit of it, and its diff is the point.
+            is_new=fork_id is None,
             new_profile_only=True,
             reusable_version_ids=await proposals.design_profile_versions(set_id),
         )

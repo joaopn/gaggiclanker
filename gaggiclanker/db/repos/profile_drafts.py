@@ -95,6 +95,8 @@ class ProfileDraftWrite(BaseModel):
     #: and the person decides.
     suggest_major: bool = False
     major_reason: str = Field(default="", max_length=500)
+    #: A profile designed from scratch rather than an edit of its base. See the row.
+    is_new: bool = False
     change_summary: str = ""
     stop_condition_changes: list[Any] = Field(default_factory=list)
     clamp_changes: list[Any] = Field(default_factory=list)
@@ -131,6 +133,11 @@ class ProfileDraftRow(BaseModel):
     #: it; the person decides.
     suggest_major: bool = False
     major_reason: str = ""
+    #: A profile designed from scratch, not an edit: its base version exists only because a
+    #: draft must have one (the synthetic empty baseline, or the library's most-used profile),
+    #: so a new draft serves no base profile and no base label, and the card shows the profile
+    #: instead of a diff. Landing it on the board never continues the base's row.
+    is_new: bool = False
     #: The ordinal the version a push for this draft's Set would record right
     #: now: the Set's next one, or 1 while the Set is being designed (that
     #: version is filled, not appended to; nothing drafts for a Set being
@@ -213,7 +220,7 @@ class ProfileDraftRow(BaseModel):
 
 _SELECT = f"""
     SELECT d.*,
-           base.label AS base_label,
+           CASE WHEN d.is_new THEN NULL ELSE base.label END AS base_label,
            drafted.label AS draft_label,
            s.name AS set_name,
            cmp.version_no AS compares_to_version_no,
@@ -233,6 +240,7 @@ _SELECT = f"""
                AND rv.set_id = d.set_id
                AND d.pushed_device_profile_id IS NOT NULL) AS recorded_version_label,
            CASE
+               WHEN d.is_new THEN 1
                WHEN d.base_device_profile_id IS NULL THEN 1
                WHEN EXISTS (
                    SELECT 1 FROM device_profiles dp
@@ -263,10 +271,10 @@ class ProfileDraftsRepository(Repository):
             INSERT INTO profile_drafts
                 (base_version_id, draft_version_id, source_analysis_id, source_suggestion_id,
                  parent_draft_id, base_device_profile_id, set_id, prediction,
-                 compares_to_version_id, suggest_major, major_reason, change_summary,
+                 compares_to_version_id, suggest_major, major_reason, is_new, change_summary,
                  stop_condition_changes_json, clamp_changes_json, notes, status,
                  created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
             """,
             (
                 write.base_version_id,
@@ -280,6 +288,7 @@ class ProfileDraftsRepository(Repository):
                 write.compares_to_version_id,
                 int(write.suggest_major),
                 write.major_reason,
+                int(write.is_new),
                 write.change_summary,
                 dumps(write.stop_condition_changes),
                 dumps(write.clamp_changes),

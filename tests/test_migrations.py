@@ -1259,7 +1259,11 @@ async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
     assert "0029" in await run_migrations(db)
 
     assert await everything() == before
-    assert [tuple(r) for r in await db.fetch_all(view_sql)] == views_before
+    # 0035 later narrows v_profiles with a WHERE; everything before that clause is 0029's text.
+    views_after = [
+        (name, text.split("\n WHERE NOT (")[0]) for name, text in await db.fetch_all(view_sql)
+    ]
+    assert views_after == views_before
     assert await db.fetch_all("PRAGMA foreign_key_check") == []
     assert indexes_before == {
         str(r["name"])

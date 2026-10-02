@@ -579,6 +579,9 @@ class BoardService:
             if row is None:
                 row = await self.board.find_live_by_version(current.profile_version_id)
             return _only_app_row(row)
+        if draft.is_new:
+            # Never an edit of its stored base, even when the labels happen to agree.
+            return None
         base = await self.profiles.get_version(draft.base_version_id)
         if base is None or base.label != version.label:
             return None

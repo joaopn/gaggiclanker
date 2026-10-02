@@ -393,7 +393,7 @@ library and any profile's whole document, the knowledge tiers, and
 `propose_initial_recipe`, which proposes the whole first recipe as one card.
 Its profile starts from the one the person picked to fork, or from nothing: the
 tool takes no base from the model, and with no fork the document is written
-whole (the draft is diffed against the synthetic empty baseline, never against
+whole (the draft is marked new and shown as a profile, never as a diff against
 a profile the person brews). The library is not listed in the design context
 for the same reason.
 `ToolScope.resolve` reads the flag from the Set at the start of every turn, for

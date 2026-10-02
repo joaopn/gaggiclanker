@@ -82,8 +82,14 @@ class DraftProposals:
         resolved = await self.settings.resolve_all()
         return bounds_from({key: setting.value for key, setting in resolved.items()})
 
-    async def prepare(self, base: Profile, candidate: Profile) -> PreparedDraft:
+    async def prepare(
+        self, base: Profile, candidate: Profile, *, is_new: bool = False
+    ) -> PreparedDraft:
         """Clamp, re-check, suffix the label, diff the stop conditions.
+
+        A new profile has no stop-condition changes: there is nothing it changes the stops *of*,
+        and the base it is stored against is not a profile anybody brews, so a diff against it
+        would warn about stops "removed" from a profile the person never had.
 
         The single constructor for every draft document, whichever route asked
         for it. Raises :class:`Unprocessable` carrying every violation at once —
@@ -99,7 +105,7 @@ class DraftProposals:
         return PreparedDraft(
             profile=document,
             clamp_changes=changes,
-            stop_condition_changes=diff_stop_conditions(base, document),
+            stop_condition_changes=[] if is_new else diff_stop_conditions(base, document),
         )
 
     async def create_manual(
@@ -114,6 +120,7 @@ class DraftProposals:
         compares_to_version_id: int | None = None,
         suggest_major: bool = False,
         major_reason: str = "",
+        is_new: bool = False,
         new_profile_only: bool = False,
         reusable_version_ids: Collection[int] = (),
     ) -> ProfileDraftRow:
@@ -126,6 +133,9 @@ class DraftProposals:
         differently, and the push records that on the Set version it creates. A
         draft with none of them — typed by hand, or proposed where there is no
         experiment — is exactly what it was before.
+
+        ``is_new`` records that the document is a profile designed from scratch, so it is read
+        as one and not as an edit of the base it has to be stored against.
 
         ``new_profile_only`` refuses a document that, **as it would be stored**
         — clamped, suffixed — is a profile version the archive already has. A
@@ -145,7 +155,7 @@ class DraftProposals:
                 "That document is not a valid GaggiMate profile",
                 details={"schema_errors": schema_errors(exc)},
             ) from None
-        prepared = await self.prepare(base, candidate)
+        prepared = await self.prepare(base, candidate, is_new=is_new)
         if new_profile_only:
             existing = await self.profiles.get_version_by_hash(
                 profile_content_hash(prepared.profile)
@@ -167,6 +177,7 @@ class DraftProposals:
             compares_to_version_id=compares_to_version_id,
             suggest_major=suggest_major,
             major_reason=major_reason,
+            is_new=is_new,
         )
 
     async def store(
@@ -182,6 +193,7 @@ class DraftProposals:
         compares_to_version_id: int | None = None,
         suggest_major: bool = False,
         major_reason: str = "",
+        is_new: bool = False,
     ) -> ProfileDraftRow:
         """Insert the draft row for a prepared document."""
         version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
@@ -202,6 +214,7 @@ class DraftProposals:
                 compares_to_version_id=compares_to_version_id,
                 suggest_major=suggest_major,
                 major_reason=major_reason,
+                is_new=is_new,
                 change_summary=change_summary,
                 stop_condition_changes=[
                     change.model_dump(mode="json") for change in prepared.stop_condition_changes

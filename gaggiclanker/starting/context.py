@@ -43,7 +43,7 @@ from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrinderRow, GrindersRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.machines import MachineRepository
-from gaggiclanker.db.repos.profiles import ProfilesRepository
+from gaggiclanker.db.repos.profiles import ProfilesRepository, not_synthetic_sql
 from gaggiclanker.knowledge.rules import SetContext, render_rules, select_rules
 from gaggiclanker.knowledge.service import (
     DEFAULT_CHUNK_TOKEN_BUDGET,
@@ -403,14 +403,14 @@ async def profile_candidates(db: Database) -> list[ProfileCandidate]:
     board, and sync, before they could brew a shot with it.
     """
     rows = await db.fetch_all(
-        """
+        f"""
         SELECT pv.id, pv.label, pv.json,
                (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) AS shot_count
           FROM profile_versions pv
-         WHERE pv.utility = 0
+         WHERE pv.utility = 0 AND {not_synthetic_sql("pv")}
          ORDER BY shot_count DESC, pv.id DESC
          LIMIT ?
-        """,
+        """,  # noqa: S608 - the one interpolation is a constant fragment
         (CANDIDATE_PROFILES,),
     )
     out: list[ProfileCandidate] = []

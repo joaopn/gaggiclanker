@@ -61,6 +61,7 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     compares_to_version_label: named(overrides.compares_to_version_no),
     suggest_major: false,
     major_reason: "",
+    is_new: false,
     set_next_version_no: null,
     set_next_minor_label: null,
     set_next_major_label: null,
@@ -87,10 +88,21 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
 export function draftDetail(overrides: Partial<ProfileDraftDetail> = {}): ProfileDraftDetail {
   return {
     draft: draft(),
+    is_new: false,
     base_profile: baseProfile(),
     draft_profile: draftProfile(),
     ...overrides,
   };
+}
+
+/** The detail of a profile designed from scratch: no base profile, no base label. */
+export function newDraftDetail(overrides: Partial<ProfileDraftDetail> = {}): ProfileDraftDetail {
+  return draftDetail({
+    draft: draft({ is_new: true, base_label: null }),
+    is_new: true,
+    base_profile: null,
+    ...overrides,
+  });
 }
 
 /** The stop-condition change that makes a draft require an acknowledgement. */

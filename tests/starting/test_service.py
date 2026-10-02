@@ -539,6 +539,20 @@ async def test_a_draft_with_no_profile_in_the_library_gets_a_synthetic_base(
     assert accepted.draft.base_version_id != accepted.draft.draft_version_id
 
 
+async def test_an_authored_profile_is_a_new_draft_whatever_its_stored_base(
+    starting: StartingPointService, fixture: Fixture, provider: FakeProvider
+) -> None:
+    provider.script = [json.dumps(option_with(profile=GOOD_PROFILE))]
+
+    run = await _propose(starting, fixture)
+    accepted = await starting.accept(run.id, "recommended")  # type: ignore[attr-defined]
+
+    assert accepted.draft is not None
+    assert accepted.draft.is_new and accepted.draft.base_label is None
+    # Authored, so its stops are not a change from the library profile it is stored against.
+    assert accepted.draft.stop_condition_changes == []
+
+
 # ── the grind-value parser ───────────────────────────────────────────
 
 

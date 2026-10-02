@@ -20,6 +20,7 @@ from gaggiclanker.domain.models import Profile, canonical_profile_json, profile_
 from gaggiclanker.domain.profile_recipe import profile_recipe
 
 __all__ = [
+    "SYNTHETIC_BASE_DESCRIPTION",
     "SYNTHETIC_BASE_LABEL",
     "DeviceProfileRow",
     "DeviceProfileSummary",
@@ -27,6 +28,7 @@ __all__ = [
     "ProfileVersionRow",
     "ProfileVersionSummary",
     "ProfilesRepository",
+    "not_synthetic_sql",
 ]
 
 
@@ -34,6 +36,20 @@ __all__ = [
 #: a Set designed with no profile to fork, or any authored draft when the
 #: archive holds no profile at all. See :meth:`ProfilesRepository.empty_base`.
 SYNTHETIC_BASE_LABEL = "Empty baseline"
+
+#: Its description, word for word: the document is content-hashed, so these words are what
+#: makes the stored row *the* synthetic base rather than a person's profile with the same label.
+SYNTHETIC_BASE_DESCRIPTION = (
+    "An empty baseline, created because the archive held no profile to diff a new draft against."
+)
+
+
+def not_synthetic_sql(alias: str) -> str:
+    """A WHERE term that leaves out the synthetic base (by its label and its own description)."""
+    return (
+        f"NOT ({alias}.label = '{SYNTHETIC_BASE_LABEL}' "
+        f"AND json_extract({alias}.json, '$.description') = '{SYNTHETIC_BASE_DESCRIPTION}')"
+    )
 
 
 class ProfileVersionRow(BaseModel):
@@ -208,13 +224,13 @@ class ProfilesRepository(Repository):
         nobody's baseline. When the library is empty it is :meth:`empty_base`.
         """
         best = await self.db.fetch_value(
-            """
+            f"""
             SELECT pv.id FROM profile_versions pv
-             WHERE pv.utility = 0
+             WHERE pv.utility = 0 AND {not_synthetic_sql("pv")}
              ORDER BY (SELECT COUNT(*) FROM shots s WHERE s.profile_version_id = pv.id) DESC,
                       pv.id DESC
              LIMIT 1
-            """
+            """  # noqa: S608 - the one interpolation is a constant fragment
         )
         if best is not None:
             return int(best)
@@ -236,10 +252,7 @@ class ProfilesRepository(Repository):
                 {
                     "label": SYNTHETIC_BASE_LABEL,
                     "type": "pro",
-                    "description": (
-                        "An empty baseline, created because the archive held no profile to "
-                        "diff a new draft against."
-                    ),
+                    "description": SYNTHETIC_BASE_DESCRIPTION,
                     "temperature": 93.0,
                     "phases": [
                         {
@@ -295,7 +308,8 @@ class ProfilesRepository(Repository):
         to — including versions imported from a file, which no device profile
         points at and which would otherwise be invisible.
         """
-        where = ["1 = 1"]
+        # The synthetic base is a diff's other side, never a profile anybody has.
+        where = [not_synthetic_sql("v")]
         params: list[object] = []
         if source is not None:
             where.append("v.source = ?")

@@ -74,7 +74,12 @@ class ProfileDraftDetail(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     draft: ProfileDraftRow
-    #: The profile this was derived from, as stored on its version row.
+    #: A profile designed from scratch (the same as ``draft.is_new``, here so a reader of the
+    #: detail does not have to know which of the two documents to trust).
+    is_new: bool = False
+    #: The profile this was derived from, as stored on its version row. ``None`` for a new
+    #: profile (``draft.is_new``): it was derived from nothing, and the base it is stored
+    #: against is only there because a draft must have one.
     base_profile: dict[str, Any] | None = None
     #: The profile that would be written to the machine, suffix and all.
     draft_profile: dict[str, Any] | None = None

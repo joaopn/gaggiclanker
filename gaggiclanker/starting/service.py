@@ -533,8 +533,8 @@ class StartingPointService:
                 },
             )
         # Nothing is genuinely derived from here — the profile was authored,
-        # not edited — so the diff is read against what "what you brew now"
-        # means: the library's own default base.
+        # not edited — so the draft is marked new and shown as a profile, not as a diff.
+        # Its stored base is only the library's default one, because a draft needs a base.
         base_version_id = await ProfilesRepository(self.db).default_draft_base()
         draft: ProfileDraftRow = await self.drafts.create_manual(
             base_version_id=base_version_id,
@@ -544,6 +544,7 @@ class StartingPointService:
             document=option.profile.to_device(),
             change_summary=option.profile_note or option.headline,
             notes=f"Proposed by the starting-point wizard ({option.option}).",
+            is_new=True,
         )
         return draft
 
