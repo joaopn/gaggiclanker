@@ -107,7 +107,6 @@ const boardKeys = (overrides: Record<string, unknown> = {}) => ({
   profiles_read: 9,
   adopted: [],
   pushed: [],
-  overwritten: [],
   removed: [],
   left: [],
   home_screen: [],
@@ -211,7 +210,7 @@ describe("pullSummary", () => {
     it("does not call a first adoption a write", () => {
       const pass = profilePass(boardKeys({ adopted: [entry("A"), entry("B")] }));
       expect(profilesSentence(pass)).toBe(
-        "Read 9 profiles from the machine; no writes (took them onto the board).",
+        "Read 9 profiles from the machine; no writes (took them into the profile list).",
       );
     });
 

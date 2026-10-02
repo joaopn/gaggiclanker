@@ -102,7 +102,7 @@ describe("DeviceWritesSwitch", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("asks before turning on, and says what on means: every sync matches the board", async () => {
+  it("asks before turning on, and says what on means: every sync makes the machine hold the profiles that are on", async () => {
     const user = setupUser();
     await renderSwitch(false);
 
@@ -111,11 +111,13 @@ describe("DeviceWritesSwitch", () => {
     expect(patchSettings).not.toHaveBeenCalled();
     const panel = screen.getByRole("dialog", { name: "Writes to the machine" });
     expect(panel).toHaveTextContent(WRITES_ON_SENTENCE);
-    expect(panel).toHaveTextContent("every sync makes the machine's profiles match the board");
-    expect(panel).toHaveTextContent("pushes the app's profiles the machine does not have");
-    expect(panel).toHaveTextContent("removes the app's old copies");
-    expect(panel).toHaveTextContent("sets the home-screen stars");
-    expect(panel).toHaveTextContent("never removes or overwrites a profile of yours");
+    expect(panel).toHaveTextContent(
+      "every sync makes the machine hold exactly the profiles that are on",
+    );
+    expect(panel).toHaveTextContent("removes the profiles that are switched off");
+    expect(panel).toHaveTextContent("the machine's own included");
+    expect(panel).toHaveTextContent("edited on the machine is left alone");
+    expect(panel.textContent ?? "").not.toMatch(/never removes or overwrites/);
     // The sentence that said the switch only allowed a person's push is gone.
     expect(panel.textContent ?? "").not.toMatch(
       /only lets you push|from the Profiles page|roll one back/,
@@ -142,7 +144,7 @@ describe("DeviceWritesSwitch", () => {
 
       const preview = await screen.findByTestId("writes-preview-first");
       expect(preview).toHaveTextContent(
-        "The first sync takes the machine's profiles onto the board and writes nothing.",
+        "The first sync takes the machine's profiles into the list and writes nothing.",
       );
       expect(preview).toHaveTextContent("2 profiles are on the machine to take");
       expect(getProfileBoard).toHaveBeenCalledWith(true);
@@ -167,16 +169,33 @@ describe("DeviceWritesSwitch", () => {
 
       const counts = await screen.findByTestId("writes-preview-counts");
       expect(counts).toHaveTextContent(
-        "The next sync would push 1 profile, remove 1 old copy, change 1 home-screen star, and leave 1 on the machine.",
+        "The next sync would put 1 profile on the machine, remove 1 profile from it, change 1 star, and leave 1 on the machine.",
       );
       const list = screen.getByTestId("writes-preview-list");
-      expect(list).toHaveTextContent("Push Londinium [AI]");
-      expect(list).toHaveTextContent("Remove the old copy of Old [AI]");
-      expect(list).toHaveTextContent("Take 9 Bar off the home screen");
+      expect(list).toHaveTextContent("Put Londinium [AI] on the machine");
+      expect(list).toHaveTextContent("Remove Old [AI] from the machine");
+      expect(list).toHaveTextContent("Take the star off 9 Bar");
       expect(screen.queryByTestId("writes-preview-stale")).toBeNull();
     });
 
-    it("says nothing would change when the machine already matches the board", async () => {
+    it("says profiles in conflict are left alone", async () => {
+      const user = setupUser();
+      getProfileBoard.mockResolvedValue(
+        boardView({
+          machine_source: "machine",
+          reports: [boardAction({ kind: "report", row_id: 1, reason: "conflict" })],
+        }),
+      );
+      await renderSwitch(false);
+
+      await user.click(toggle());
+
+      expect(await screen.findByTestId("writes-preview-conflicts")).toHaveTextContent(
+        "1 profile is in conflict with the machine and will be left alone",
+      );
+    });
+
+    it("says nothing would change when the machine already matches the list", async () => {
       const user = setupUser();
       getProfileBoard.mockResolvedValue(boardView({ machine_source: "machine" }));
       await renderSwitch(false);
@@ -203,7 +222,9 @@ describe("DeviceWritesSwitch", () => {
       expect(await screen.findByTestId("writes-preview-stale")).toHaveTextContent(
         "The machine could not be read just now, so this is from the last sync.",
       );
-      expect(screen.getByTestId("writes-preview-list")).toHaveTextContent("Push Londinium [AI]");
+      expect(screen.getByTestId("writes-preview-list")).toHaveTextContent(
+        "Put Londinium [AI] on the machine",
+      );
     });
 
     it("does not say the machine matches the board when it could not be read", async () => {
@@ -242,7 +263,7 @@ describe("DeviceWritesSwitch", () => {
       await user.click(toggle());
 
       expect(await screen.findByTestId("writes-preview-paused")).toHaveTextContent(
-        "syncs write nothing until you resume them on the Sync page",
+        "syncs write nothing until you resume them on the Profiles page",
       );
     });
 

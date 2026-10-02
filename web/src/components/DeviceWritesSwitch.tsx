@@ -14,13 +14,14 @@ import { cn } from "@/lib/utils";
 /**
  * What turning the switch on allows, in the one sentence the confirmation shows.
  *
- * As plain a statement of what a sync does with the switch on as it can be: it makes
- * the machine's profiles match the board. It names the boundary a person cares about
- * (a profile of theirs is never removed or overwritten) because that is the question
- * somebody turning this on is asking. Exported so a test pins the wording.
+ * As plain a statement of what a sync does with the switch on as it can be: it makes the
+ * machine hold exactly the profiles that are on in the Profiles list. It names the two things
+ * a person turning this on is asking about: profiles that are off are removed, the firmware's
+ * own included, and a profile edited on the machine is never overwritten without asking.
+ * Exported so a test pins the wording.
  */
 export const WRITES_ON_SENTENCE =
-  "Turn on writes? From then on every sync makes the machine's profiles match the board on the Profiles page: it pushes the app's profiles the machine does not have, removes the app's old copies and sets the home-screen stars. It never removes or overwrites a profile of yours.";
+  "Turn on writes? From then on every sync makes the machine hold exactly the profiles that are on in the Profiles list: it puts back the ones it lacks, replaces a profile with its active version, sets the stars, and removes the profiles that are switched off, the machine's own included. A profile that was edited on the machine is left alone and shown as a conflict for you to decide.";
 
 /**
  * The top-bar switch for writing to the machine.
@@ -68,7 +69,7 @@ export function DeviceWritesSwitch() {
     },
     onError: () => setPanel("error"),
     // Every reader of the switch, success or not: the settings pages read the
-    // registry, the board and its preview carry `writes_enabled` and what the next
+    // registry, the profile list and its preview carry `writes_enabled` and what the next
     // sync would do, the Sync page and the write audit read the rest, and after a
     // failure the server is the authority on what the switch is.
     onSettled: () => {
@@ -199,13 +200,14 @@ function WritesPreview() {
   if (board.isError || !board.data) {
     return (
       <p className="text-muted-foreground text-xs" data-testid="writes-preview">
-        The board could not be read just now, so what the next sync would do is not shown.
+        The profile list could not be read just now, so what the next sync would do is not shown.
       </p>
     );
   }
   const view = board.data;
   const actions = view.actions ?? [];
   const counts = previewCounts(view);
+  const conflicts = (view.reports ?? []).filter((r) => r.reason === "conflict").length;
   const fromMachine = view.machine_source === "machine";
 
   return (
@@ -217,16 +219,23 @@ function WritesPreview() {
             : "The machine could not be read just now and nothing is known of its profiles yet."}
         </p>
       ) : null}
+      {conflicts > 0 ? (
+        <p className="text-status-warn-text" data-testid="writes-preview-conflicts">
+          {conflicts} {conflicts === 1 ? "profile is" : "profiles are"} in conflict with the machine
+          and will be left alone until you choose a side on the Profiles page.
+        </p>
+      ) : null}
       {!view.adopted ? (
         <p data-testid="writes-preview-first">
-          The first sync takes the machine's profiles onto the board and writes nothing.
+          The first sync takes the machine's profiles into the list and writes nothing.
           {counts.adopt > 0
             ? ` ${counts.adopt} ${counts.adopt === 1 ? "profile is" : "profiles are"} on the machine to take.`
             : ""}
         </p>
       ) : view.paused ? (
         <p data-testid="writes-preview-paused">
-          The machine looks reset, so syncs write nothing until you resume them on the Sync page.
+          The machine looks reset, so syncs write nothing until you resume them on the Profiles
+          page.
         </p>
       ) : actions.length === 0 && !fromMachine ? (
         <p data-testid="writes-preview-unknown">
@@ -234,7 +243,7 @@ function WritesPreview() {
         </p>
       ) : actions.length === 0 ? (
         <p data-testid="writes-preview-none">
-          The machine already matches the board: the next sync would change nothing.
+          The machine already matches the list: the next sync would change nothing.
         </p>
       ) : (
         <>
@@ -242,11 +251,11 @@ function WritesPreview() {
             The next sync would{" "}
             {[
               counts.push > 0 &&
-                `push ${counts.push} ${counts.push === 1 ? "profile" : "profiles"}`,
+                `put ${counts.push} ${counts.push === 1 ? "profile" : "profiles"} on the machine`,
               counts.remove > 0 &&
-                `remove ${counts.remove} old ${counts.remove === 1 ? "copy" : "copies"}`,
+                `remove ${counts.remove} ${counts.remove === 1 ? "profile" : "profiles"} from it`,
               counts.homeScreen > 0 &&
-                `change ${counts.homeScreen} home-screen ${counts.homeScreen === 1 ? "star" : "stars"}`,
+                `change ${counts.homeScreen} ${counts.homeScreen === 1 ? "star" : "stars"}`,
             ]
               .filter(Boolean)
               .join(", ") || "leave everything as it is"}

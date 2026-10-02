@@ -25,6 +25,7 @@ import type {
   ChatThreadWrite,
   ChatToolList,
   ClaudeCliStatus,
+  ConflictView,
   DeviceStatusData,
   DeviceWritesData,
   DraftCreateBody,
@@ -66,6 +67,7 @@ import type {
   ProfileVersionListData,
   ProfileVersionParams,
   ProfileVersionRow,
+  ProfileVersionsView,
   PromptData,
   PromptListData,
   ProposalDecline,
@@ -595,28 +597,50 @@ export async function putOnBoard(body: {
   });
 }
 
-/** Take one profile the machine holds onto the board as it is. Sends nothing to the machine. */
-export async function takeOntoBoard(deviceProfileId: string): Promise<BoardRow> {
-  return fetchApi<BoardRow>("/profile-board/take", {
-    method: "POST",
-    body: JSON.stringify({ device_profile_id: deviceProfileId }),
-  });
-}
-
-export async function setBoardHomeScreen(rowId: number, on: boolean): Promise<BoardRow> {
-  return fetchApi<BoardRow>(`/profile-board/${rowId}/home-screen`, {
+/** Switch a profile on or off the machine. Stored now; the next sync does it. */
+export async function setBoardOnMachine(rowId: number, on: boolean): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/on-machine`, {
     method: "PUT",
     body: JSON.stringify({ on }),
   });
 }
 
-export async function deleteBoardRow(rowId: number): Promise<BoardRow> {
-  return fetchApi<BoardRow>(`/profile-board/${rowId}`, { method: "DELETE" });
+/** Star a profile (the machine's home-screen carousel). Remembered while it is off the machine. */
+export async function setBoardStarred(rowId: number, starred: boolean): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/starred`, {
+    method: "PUT",
+    body: JSON.stringify({ starred }),
+  });
 }
 
-/** Make a profile its previous version again; the next sync does it on the machine. */
-export async function goBackOnBoard(rowId: number): Promise<BoardRow> {
-  return fetchApi<BoardRow>(`/profile-board/${rowId}/go-back`, { method: "POST" });
+/** Make one of a profile's versions its active one; the next sync puts it on the machine. */
+export async function setBoardActiveVersion(rowId: number, versionId: number): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/active-version`, {
+    method: "PUT",
+    body: JSON.stringify({ version_id: versionId }),
+  });
+}
+
+/** A profile's versions, newest first, and the proposals that would join them. */
+export async function getBoardVersions(rowId: number): Promise<ProfileVersionsView> {
+  return fetchApi<ProfileVersionsView>(`/profile-board/${rowId}/versions`);
+}
+
+/** Both sides of a profile's conflict; `null` when it has none. */
+export async function getBoardConflict(rowId: number): Promise<ConflictView | null> {
+  return fetchApi<ConflictView | null>(`/profile-board/${rowId}/conflict`);
+}
+
+/** Choose a side of a conflict; `contentHash` is the machine's file as the person saw it. */
+export async function resolveBoardConflict(
+  rowId: number,
+  keep: "app" | "machine",
+  contentHash: string,
+): Promise<BoardRow> {
+  return fetchApi<BoardRow>(`/profile-board/${rowId}/conflict`, {
+    method: "POST",
+    body: JSON.stringify({ keep, content_hash: contentHash }),
+  });
 }
 
 /** Let syncs write again after the machine looked reset. Sends nothing to the machine. */

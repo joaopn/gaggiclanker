@@ -1,30 +1,27 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SyncRunRow, SyncStatusData } from "@/api/types";
 import { SyncPage } from "@/pages/SyncPage";
 import { boardAction, boardView } from "@/test/boardFixtures";
-import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
+import { renderWithQueryClient } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
   Toaster: () => null,
 }));
 
-const { getDeviceStatus, getSyncStatus, getDeviceWrites, getProfileBoard, resumeBoard } =
-  vi.hoisted(() => ({
-    getDeviceStatus: vi.fn(),
-    getSyncStatus: vi.fn(),
-    getDeviceWrites: vi.fn(),
-    getProfileBoard: vi.fn(),
-    resumeBoard: vi.fn(),
-  }));
+const { getDeviceStatus, getSyncStatus, getDeviceWrites, getProfileBoard } = vi.hoisted(() => ({
+  getDeviceStatus: vi.fn(),
+  getSyncStatus: vi.fn(),
+  getDeviceWrites: vi.fn(),
+  getProfileBoard: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getDeviceStatus,
   getSyncStatus,
   getDeviceWrites,
   getProfileBoard,
-  resumeBoard,
 }));
 
 function profilesRun(summary: unknown): SyncRunRow {
@@ -87,7 +84,6 @@ beforeEach(() => {
   });
   getDeviceWrites.mockResolvedValue({ enabled: true, items: [] });
   getProfileBoard.mockResolvedValue(boardView());
-  resumeBoard.mockResolvedValue({ resumed: true });
   getSyncStatus.mockResolvedValue(status(null));
 });
 
@@ -127,6 +123,37 @@ describe("the Sync page's profile board", () => {
     );
   });
 
+  it("says what a sync recorded, added and left alone because of a conflict", async () => {
+    getSyncStatus.mockResolvedValue(
+      status({
+        adopted: [item("Display made", { reason: "unseen" }), item("Twin", { reason: "attached" })],
+        conflicts: [item("9 Bar", { detail: "edited on the display" })],
+        recorded: [item("Londinium", { reason: "edited_on_machine" })],
+        removed: [item("Old default", { reason: "off" })],
+        writes: 1,
+        paused: null,
+      }),
+    );
+    renderWithQueryClient(<SyncPage />);
+
+    const summary = await screen.findByTestId("board-summary");
+    expect(within(summary).getByTestId("board-summary-adopted")).toHaveTextContent(
+      "Display made: New on the machine, added to the list and switched on.",
+    );
+    expect(within(summary).getByTestId("board-summary-adopted")).toHaveTextContent(
+      "Twin: Added to the profile it belongs to.",
+    );
+    expect(within(summary).getByTestId("board-summary-conflicts")).toHaveTextContent(
+      "9 Bar: Edited on the display.",
+    );
+    expect(within(summary).getByTestId("board-summary-recorded")).toHaveTextContent(
+      "Londinium: Its content was edited on the display and is now a version.",
+    );
+    expect(within(summary).getByTestId("board-summary-removed")).toHaveTextContent(
+      "Old default: It is switched off.",
+    );
+  });
+
   it("lists the profiles a sync would not touch as needing a look", async () => {
     getProfileBoard.mockResolvedValue(
       boardView({
@@ -153,7 +180,7 @@ describe("the Sync page's profile board", () => {
     renderWithQueryClient(<SyncPage />);
 
     expect(await screen.findByTestId("board-summary-nothing")).toHaveTextContent(
-      "already matching the board",
+      "already matching the profile list",
     );
   });
 
@@ -180,99 +207,26 @@ describe("a board paused because the machine looks reset", () => {
     );
   });
 
-  it("explains why syncs stopped writing and offers Resume", async () => {
+  it("explains why syncs stopped writing and points at the Profiles page, with no Resume of its own", async () => {
     renderWithQueryClient(<SyncPage />);
 
     const banner = await screen.findByTestId("board-paused-banner");
     expect(banner).toHaveTextContent("Syncs are not writing profiles to the machine");
     expect(banner).toHaveTextContent("The machine looks reset");
-    expect(within(banner).getByRole("button", { name: "Resume" })).toBeInTheDocument();
-  });
-
-  it("asks first, saying the next sync pushes the app's profiles and never yours", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SyncPage />);
-
-    await user.click(await screen.findByTestId("board-resume"));
-
-    const confirm = screen.getByTestId("board-resume-confirm");
-    expect(confirm).toHaveTextContent(
-      "The next sync will push the app's profiles back onto the machine.",
-    );
-    expect(confirm).toHaveTextContent("Profiles of yours are never pushed.");
-    expect(resumeBoard).not.toHaveBeenCalled();
-
-    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByTestId("board-resume-confirm")).toBeNull();
-    expect(resumeBoard).not.toHaveBeenCalled();
-  });
-
-  it("moves focus into the confirm, closes on Escape and gives focus back to Resume", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SyncPage />);
-    const resume = await screen.findByTestId("board-resume");
-
-    await user.click(resume);
     expect(
-      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Cancel" }),
-    ).toHaveFocus();
-
-    await user.keyboard("{Escape}");
-    expect(screen.queryByTestId("board-resume-confirm")).toBeNull();
-    await waitFor(() => expect(screen.getByTestId("board-resume")).toHaveFocus());
-    expect(resumeBoard).not.toHaveBeenCalled();
+      within(banner).getByRole("link", { name: "Decide on the Profiles page" }),
+    ).toHaveAttribute("href", "/profiles");
+    expect(screen.queryByTestId("board-resume")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
   });
 
-  it("puts focus on the section, not the page, once Resume is confirmed", async () => {
-    const user = setupUser();
-    renderWithQueryClient(<SyncPage />);
-    await user.click(await screen.findByTestId("board-resume"));
-
-    await user.click(
-      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Resume" }),
-    );
-
-    await waitFor(() => expect(screen.getByTestId("board-section-body")).toHaveFocus());
-  });
-
-  it("resumes on confirmation and refreshes everything the resume changes", async () => {
-    const user = setupUser();
-    const { queryClient } = renderWithQueryClient(<SyncPage />);
-    const keys: unknown[] = [];
-    const original = queryClient.invalidateQueries.bind(queryClient);
-    vi.spyOn(queryClient, "invalidateQueries").mockImplementation((filters) => {
-      keys.push(filters?.queryKey);
-      return original(filters);
-    });
-
-    await user.click(await screen.findByTestId("board-resume"));
-    await user.click(
-      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Resume" }),
-    );
-
-    await waitFor(() => expect(resumeBoard).toHaveBeenCalledTimes(1));
-    await waitFor(() => {
-      expect(keys).toContainEqual(["board"]);
-      expect(keys).toContainEqual(["sync"]);
-      expect(keys).toContainEqual(["device"]);
-    });
-  });
-
-  it("drops the banner once resumed, although the last run's summary still says paused", async () => {
-    const user = setupUser();
+  it("drops the banner once the board says it is no longer paused, although the last run's summary still says paused", async () => {
     getSyncStatus.mockResolvedValue(status({ paused: "the machine looks reset", writes: 0 }));
-    resumeBoard.mockImplementation(async () => {
-      getProfileBoard.mockResolvedValue(boardView({ paused: null }));
-      return { resumed: true };
-    });
+    getProfileBoard.mockResolvedValue(boardView({ paused: null }));
     renderWithQueryClient(<SyncPage />);
 
-    await user.click(await screen.findByTestId("board-resume"));
-    await user.click(
-      within(screen.getByTestId("board-resume-confirm")).getByRole("button", { name: "Resume" }),
-    );
-
-    await waitFor(() => expect(screen.queryByTestId("board-paused-banner")).toBeNull());
+    await screen.findByTestId("board-summary-nothing");
+    expect(screen.queryByTestId("board-paused-banner")).toBeNull();
   });
 
   it("shows the banner from the last run too, when the board itself cannot be read", async () => {

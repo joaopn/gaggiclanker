@@ -93,10 +93,11 @@ export function ProfileJsonEditor({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit {label} as a draft</DialogTitle>
+          <DialogTitle>Edit a copy of {label}</DialogTitle>
           <DialogDescription>
-            Saved as a new draft, never over the profile on the machine. It goes through the same
-            schema and the same safety policy as anything a model writes.
+            Saved as a new version of this profile, proposed and not active until you make it
+            active. It goes through the same schema and the same safety policy as anything a model
+            writes.
           </DialogDescription>
         </DialogHeader>
 
@@ -185,7 +186,7 @@ export function ProfileJsonEditor({
               }
             }}
           >
-            {create.isPending ? "Saving..." : "Save as a draft"}
+            {create.isPending ? "Saving..." : "Save as a new version"}
           </Button>
         </DialogFooter>
       </DialogContent>

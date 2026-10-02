@@ -159,6 +159,9 @@ export const queryKeys = {
   board: {
     all: ["board"] as const,
     view: (live = false) => ["board", "view", live ? "live" : "mirror"] as const,
+    /** One profile's versions and its conflict: under `all`, so every board write refreshes them. */
+    versions: (rowId: number) => ["board", "versions", rowId] as const,
+    conflict: (rowId: number) => ["board", "conflict", rowId] as const,
   },
   device: {
     all: ["device"] as const,

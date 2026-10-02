@@ -483,6 +483,15 @@ export type BoardRow = components["schemas"]["BoardRow"];
 export type BoardRowView = components["schemas"]["BoardRowView"];
 export type DraftLanding = components["schemas"]["DraftLanding"];
 export type BoardAction = components["schemas"]["BoardAction"];
+export type BoardProposal = components["schemas"]["BoardProposal"];
+export type ResumePreview = components["schemas"]["ResumePreview"];
+export type ActiveVersion = components["schemas"]["ActiveVersion"];
+export type SetBrewing = components["schemas"]["SetBrewing"];
+export type ConflictSummary = components["schemas"]["ConflictSummary"];
+export type ConflictView = components["schemas"]["ConflictView"];
+export type ListedVersion = components["schemas"]["ListedVersion"];
+export type ProposedVersion = components["schemas"]["ProposedVersion"];
+export type ProfileVersionsView = components["schemas"]["ProfileVersionsView"];
 
 /** Every state a draft can be in, as the `status` CHECK spells them. */
 export type DraftStatus = "draft" | "approved" | "pushed" | "failed" | "discarded" | "superseded";

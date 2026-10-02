@@ -309,7 +309,7 @@ function stagesDraft(
   return Math.abs(stated - wanted) >= 0.05;
 }
 
-/** "It brews at 93 °C, so taking this stages a draft at 96 °C." */
+/** "It brews at 93 °C, so taking this proposes a profile at 96 °C." */
 function draftSentence(
   option: StartingPointOption,
   profile: ProfileVersionSummary | undefined,
@@ -318,8 +318,8 @@ function draftSentence(
     ? `It brews at ${profile.temperature_c} °C`
     : "It states no brew temperature";
   return (
-    `${brews}, so taking this stages a draft of it at ${option.temperature_c} °C for you to ` +
-    "put on the board from the Profiles page. Nothing is sent to the machine."
+    `${brews}, so taking this proposes a profile at ${option.temperature_c} °C for you to ` +
+    "make active on the Profiles page. Nothing is sent to the machine."
   );
 }
 
@@ -385,7 +385,7 @@ function OptionCard({
       <p className="text-muted-foreground text-xs" data-testid="option-profile">
         {option.profile ? (
           <>
-            Profile: <span className="font-medium">a new draft</span> — you put it on the board
+            Profile: <span className="font-medium">a new proposal</span> — you make it active
             yourself, and a sync sends it to the machine.
           </>
         ) : option.profile_version_id ? (

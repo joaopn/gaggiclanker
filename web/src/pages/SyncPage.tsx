@@ -22,9 +22,9 @@ export const SYNC_ANCHORS = {
  *
  * The rule the page makes visible: the only thing this box ever writes to the
  * machine is a profile, and only a sync does it, with the Writes switch on, by
- * making the machine match the board on the Profiles page through every safety
- * layer. The page shows what the last sync did about that, lets a person resume
- * a board that paused because the machine looked reset, and lists the audit.
+ * making the machine hold the profiles that are on in the Profiles list through every
+ * safety layer. The page shows what the last sync did about that (a sync that paused
+ * because the machine looked reset is resumed on the Profiles page) and lists the audit.
  */
 export function SyncPage() {
   const device = useDeviceStatus();
@@ -54,8 +54,8 @@ export function SyncPage() {
       />
       <p className="text-muted-foreground text-sm">
         Shots, profiles and notes are read from the machine when you sync. The only thing this box
-        ever writes to it is a profile: with writes on, a sync also makes the machine's profiles
-        match the board on the Profiles page.
+        ever writes to it is a profile: with writes on, a sync also makes the machine hold exactly
+        the profiles that are on in the Profiles page's list.
       </p>
 
       <div id={SYNC_ANCHORS.pull} className="scroll-mt-4">

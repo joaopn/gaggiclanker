@@ -1,28 +1,28 @@
 import { AlertTriangle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { SectionCard } from "@/components/layout/SectionCard";
-import { ConfirmStrip } from "@/components/sync/ConfirmStrip";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSyncStatus } from "@/hooks/useArchive";
-import { useProfileBoard, useResumeBoard } from "@/hooks/useBoard";
+import { useProfileBoard } from "@/hooks/useBoard";
 import { type BoardSummaryItem, boardSummaryOf, summaryLine } from "@/lib/board";
 import { formatTime } from "@/lib/shots";
 
 type Section =
   | "adopted"
+  | "conflicts"
+  | "recorded"
   | "pushed"
-  | "overwritten"
   | "removed"
   | "left"
   | "homeScreen"
   | "failures";
 
 const SECTIONS: { key: Section; title: string }[] = [
-  { key: "adopted", title: "Taken onto the board from the machine" },
+  { key: "adopted", title: "Added to the list from the machine" },
+  { key: "conflicts", title: "In conflict, left alone" },
+  { key: "recorded", title: "Edits on the machine kept as versions" },
   { key: "pushed", title: "Put on the machine" },
-  { key: "overwritten", title: "Put beside a copy that was edited on the display" },
   { key: "removed", title: "Removed from the machine" },
   { key: "left", title: "Left on the machine" },
   { key: "homeScreen", title: "Home screen" },
@@ -30,44 +30,17 @@ const SECTIONS: { key: Section; title: string }[] = [
 ];
 
 /**
- * What the last sync did to the machine's profiles, and the way back from a pause.
+ * What the last sync did to the machine's profiles.
  *
- * With the Writes switch on, a sync makes the machine's profiles match the board; this
- * says what that came to (put on, removed, left and why, stars moved, failures) from the
- * run's own summary, and what the board still cannot fix by itself (a profile of yours
- * that was edited or is missing). When the machine looks reset, with none of the app's
- * profiles on it, the sync stops writing rather than push the whole board back; the
- * banner says so and Resume (after a confirmation) lets the next sync do it.
+ * With the Writes switch on, a sync makes the machine hold exactly the profiles that are on in
+ * the Profiles list; this says what that came to (put on, removed, left and why, stars moved,
+ * conflicts left alone, failures) from the run's own summary, and what the list still cannot fix
+ * by itself. When the machine looks reset the sync stops writing; the Profiles page asks what
+ * to do, and this only points there.
  */
 export function BoardSection() {
   const sync = useSyncStatus();
   const board = useProfileBoard();
-  const resume = useResumeBoard();
-  const [confirming, setConfirming] = useState(false);
-  // The strip replaces the Resume button on screen; closing it hands focus back to the button.
-  const resumeRef = useRef<HTMLButtonElement>(null);
-  const [restoreFocus, setRestoreFocus] = useState(false);
-  useEffect(() => {
-    if (restoreFocus && !confirming) {
-      resumeRef.current?.focus();
-      setRestoreFocus(false);
-    }
-  }, [restoreFocus, confirming]);
-  const closeConfirm = () => {
-    setConfirming(false);
-    setRestoreFocus(true);
-  };
-  // After Resume is confirmed the banner (and its button) goes away once the board answers, so
-  // focus moves to the section's own body, which stays, rather than falling to the page.
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const [focusBody, setFocusBody] = useState(false);
-  useEffect(() => {
-    if (focusBody && !confirming) {
-      bodyRef.current?.focus();
-      setFocusBody(false);
-    }
-  }, [focusBody, confirming]);
-
   const run = sync.data?.last_runs?.profiles;
   const summary = boardSummaryOf(run);
   const view = board.data;
@@ -80,7 +53,7 @@ export function BoardSection() {
 
   return (
     <SectionCard
-      title="Profile board"
+      title="Profiles on the machine"
       description={
         run?.finished_at
           ? `What the last sync did to the machine's profiles (${formatTime(run.finished_at)}).`
@@ -97,15 +70,10 @@ export function BoardSection() {
       {sync.isPending || board.isPending ? (
         <Skeleton className="h-16 w-full" />
       ) : (
-        <div
-          ref={bodyRef}
-          tabIndex={-1}
-          className="space-y-3 outline-none"
-          data-testid="board-section-body"
-        >
+        <div className="space-y-3" data-testid="board-section-body">
           {paused ? (
             <div
-              className="space-y-2 rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
+              className="space-y-1 rounded-md border border-status-warn/40 bg-status-warn/10 p-3"
               data-testid="board-paused-banner"
             >
               <p className="flex items-center gap-1.5 font-medium text-sm text-status-warn-text">
@@ -113,39 +81,12 @@ export function BoardSection() {
                 Syncs are not writing profiles to the machine
               </p>
               <p className="text-status-warn-text text-xs">
-                The machine looks reset: none of the profiles the app put on it is there any more,
-                so a sync writes nothing until you say it may. This stops a sync from refilling a
-                machine somebody has just wiped without being asked.
+                The machine looks reset, so a sync writes nothing until you say it may.{" "}
+                <Link className="underline underline-offset-2" to="/profiles">
+                  Decide on the Profiles page
+                </Link>
+                .
               </p>
-              {confirming ? (
-                <ConfirmStrip
-                  title="Let syncs write again?"
-                  confirmLabel="Resume"
-                  confirmVariant="default"
-                  testId="board-resume-confirm"
-                  focusOnOpen
-                  onCancel={closeConfirm}
-                  onConfirm={() => {
-                    setConfirming(false);
-                    setFocusBody(true);
-                    resume.mutate();
-                  }}
-                >
-                  The next sync will push the app's profiles back onto the machine. Profiles of
-                  yours are never pushed.
-                </ConfirmStrip>
-              ) : null}
-              <Button
-                ref={resumeRef}
-                size="sm"
-                variant="outline"
-                hidden={confirming}
-                disabled={resume.isPending}
-                data-testid="board-resume"
-                onClick={() => setConfirming(true)}
-              >
-                Resume
-              </Button>
             </div>
           ) : null}
 
@@ -193,7 +134,7 @@ function BoardSummary({ summary }: { summary: NonNullable<ReturnType<typeof boar
       <p className="text-muted-foreground text-sm" data-testid="board-summary-nothing">
         {summary.paused
           ? "The last sync wrote nothing: the machine looked reset."
-          : "The last sync found the machine already matching the board."}
+          : "The last sync found the machine already matching the profile list."}
       </p>
     );
   }

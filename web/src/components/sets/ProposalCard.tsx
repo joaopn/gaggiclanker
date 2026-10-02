@@ -49,7 +49,7 @@ function absent(fromProfile: boolean, side: "before" | "after"): string {
 /** How long a turn-down may be, as the route caps it. */
 const NOTE_MAX = 500;
 
-/** Where a draft waits for a person to put it on the board. */
+/** Where a proposed profile waits for a person to make it active. */
 const DRAFTS_HREF = "/profiles#staged";
 
 /**
@@ -200,8 +200,8 @@ export function acceptHint(changes: FieldChange[]): string {
  * How a first recipe was answered.
  *
  * Accepted is the one that has a next step, and it is the person's: the Set now
- * has its version 1, but the profile it names is a draft until somebody
- * puts it on the board and a sync sends it, and shots brewed on it only find the Set once it
+ * has its version 1, but the profile it names is only a proposal until somebody
+ * makes it active and a sync sends it, and shots brewed on it only find the Set once it
  * is on the machine. The card says so in those words because nothing else in the
  * conversation will.
  */
@@ -215,10 +215,10 @@ function DecidedDesign({ proposal }: { proposal: SetProposal }) {
         </Link>{" "}
         is set. Its profile is{" "}
         <Link to={DRAFTS_HREF} className="underline underline-offset-2">
-          a draft on the Profiles page
+          a proposal on the Profiles page
         </Link>{" "}
-        for you to put on the board; once a sync has put it on the machine, shots brewed on it are
-        filed here.{" "}
+        for you to make active; once a sync has put it on the machine, shots brewed on it are filed
+        here.{" "}
         <span className="text-muted-foreground">{formatTime(proposal.decided_at ?? null)}</span>
       </p>
     );
@@ -556,7 +556,7 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
             {!proposal.readable
               ? "The change stored with this one is damaged and cannot be read, so there is nothing to accept. Decline it and ask in the conversation again."
               : design
-                ? "Accepting makes this the Set's version 1. The profile stays a draft on the Profiles page until you put it on the board (a sync then sends it to the machine): nothing is sent to the machine either way."
+                ? "Accepting makes this the Set's version 1. The profile stays a proposal on the Profiles page until you make it active (a sync then sends it to the machine): nothing is sent to the machine either way."
                 : acceptHint(proposal.changes)}
           </p>
         </>

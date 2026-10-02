@@ -138,7 +138,7 @@ describe("SyncPage", () => {
     expect(
       await screen.findByText(/The only thing this box ever writes to it is a profile/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/match the board on the Profiles page/)).toBeInTheDocument();
+    expect(screen.getByText(/hold exactly the profiles that are on/)).toBeInTheDocument();
     expect(screen.queryByText(/pushed from the Profiles page/)).toBeNull();
   });
 

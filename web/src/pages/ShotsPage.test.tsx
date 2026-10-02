@@ -2239,7 +2239,6 @@ function boardSummary(overrides: Record<string, unknown> = {}) {
     profiles_read: 9,
     adopted: [],
     pushed: [],
-    overwritten: [],
     removed: [],
     left: [],
     home_screen: [],

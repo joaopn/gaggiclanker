@@ -97,6 +97,7 @@ function writesPhrase(run: SyncRunRow): string {
   if (board.homeScreen.length > 0) parts.push(`home screen ${board.homeScreen.length}`);
   const total = pushed + board.removed.length + board.homeScreen.length;
   const failed = board.failures.length;
+  const conflicts = board.conflicts.length;
 
   const phrases: string[] = [];
   if (total > 0)
@@ -104,9 +105,10 @@ function writesPhrase(run: SyncRunRow): string {
   else if (failed > 0) {
     // "No writes needed" would be wrong: something was needed and did not happen.
     phrases.push(`nothing written, ${failed} failed \u2014 the Sync page has the details`);
-  } else if (board.adopted.length > 0) phrases.push("no writes (took them onto the board)");
+  } else if (board.adopted.length > 0) phrases.push("no writes (took them into the profile list)");
   else if (reused === 0) phrases.push("no writes needed");
   if (reused > 0) phrases.push(`${reused} ${reused === 1 ? "was" : "were"} already on the machine`);
+  if (conflicts > 0) phrases.push(`${plural(conflicts, "profile")} in conflict, left alone`);
   return phrases.join("; ");
 }
 

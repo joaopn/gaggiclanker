@@ -6,17 +6,21 @@ import {
   createBackup,
   downloadFile,
   fetchApi,
+  getBoardConflict,
+  getBoardVersions,
   getHealth,
   getProfileBoard,
   getSettings,
-  goBackOnBoard,
   hasAuthenticatedSession,
   login,
   logout,
   patchSettings,
   putOnBoard,
+  resolveBoardConflict,
   setAuthToken,
-  takeOntoBoard,
+  setBoardActiveVersion,
+  setBoardOnMachine,
+  setBoardStarred,
 } from "@/api/client";
 
 const { redirectToSignIn } = vi.hoisted(() => ({ redirectToSignIn: vi.fn() }));
@@ -83,25 +87,35 @@ describe("the profile board's requests", () => {
     expect(body(1)).toEqual({ draft_id: 4, set_id: null });
   });
 
-  it("goes back by the row, as a POST", async () => {
+  it("switches a profile on or off the machine and stars it by their own routes", async () => {
     const spy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async () => jsonResponse(200, success({})));
-    await goBackOnBoard(7);
-    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board/7/go-back");
-    const init = spy.mock.calls[0]?.[1] as RequestInit;
-    expect(init.method).toBe("POST");
+    await setBoardOnMachine(7, false);
+    await setBoardStarred(7, true);
+    await setBoardActiveVersion(7, 12);
+    const call = (n: number) => {
+      const init = spy.mock.calls[n]?.[1] as RequestInit;
+      return [spy.mock.calls[n]?.[0], init.method, JSON.parse(String(init.body))];
+    };
+    expect(call(0)).toEqual(["/api/profile-board/7/on-machine", "PUT", { on: false }]);
+    expect(call(1)).toEqual(["/api/profile-board/7/starred", "PUT", { starred: true }]);
+    expect(call(2)).toEqual(["/api/profile-board/7/active-version", "PUT", { version_id: 12 }]);
   });
 
-  it("takes a profile by the field the server reads", async () => {
+  it("reads a profile's versions and conflict, and resolves with the hash it saw", async () => {
     const spy = vi
       .spyOn(globalThis, "fetch")
-      .mockImplementation(async () => jsonResponse(201, success({})));
-    await takeOntoBoard("later");
-    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board/take");
-    const init = spy.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ device_profile_id: "later" });
+      .mockImplementation(async () => jsonResponse(200, success(null)));
+    await getBoardVersions(7);
+    expect(await getBoardConflict(7)).toBeNull();
+    await resolveBoardConflict(7, "machine", "abc123");
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board/7/versions");
+    expect(spy.mock.calls[1]?.[0]).toBe("/api/profile-board/7/conflict");
+    const init = spy.mock.calls[2]?.[1] as RequestInit;
+    expect(spy.mock.calls[2]?.[0]).toBe("/api/profile-board/7/conflict");
     expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ keep: "machine", content_hash: "abc123" });
   });
 
   it("reads the machine only when asked to", async () => {

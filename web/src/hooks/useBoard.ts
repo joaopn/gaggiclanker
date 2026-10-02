@@ -7,28 +7,30 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  deleteBoardRow,
+  ApiClientError,
+  getBoardConflict,
+  getBoardVersions,
   getProfileBoard,
-  goBackOnBoard,
   putOnBoard,
+  resolveBoardConflict,
   resumeBoard,
-  setBoardHomeScreen,
-  takeOntoBoard,
+  setBoardActiveVersion,
+  setBoardOnMachine,
+  setBoardStarred,
 } from "@/api/client";
-import type { BoardRow, BoardView } from "@/api/types";
+import type { BoardRow, BoardView, ConflictView, ProfileVersionsView } from "@/api/types";
 import { invalidateBoardWrites, invalidateSets } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
- * The profile board and the five things a person can do to it.
+ * The profile list and what a person can do to it.
  *
- * None of the mutations sends anything to the machine: the board is edited here and
- * the next sync writes it. What they share is what they change. Every one settles with
- * `invalidateBoardWrites`: the board and its preview, the drafts (which say whether
- * they are on it), the profile mirror, the sync status (the last run's summary and the
- * pause live there) and the write audit. Putting a draft on the board *for a Set* also
- * invalidates the Sets, since that pending record is what the sync turns into the Set's
- * next version.
+ * None of the mutations sends anything to the machine: the list is edited here and the next
+ * sync writes it. What they share is what they change. Every one settles with
+ * `invalidateBoardWrites`: the board (which includes each profile's versions and conflict),
+ * the drafts, the profile mirror, the sync status (the last run's summary and the pause live
+ * there) and the write audit. Anything that changes what a Set brews (making a proposal
+ * active for a Set, another version active, a conflict resolved) also invalidates the Sets.
  */
 
 /**
@@ -58,7 +60,7 @@ export function usePutOnBoard(): UseMutationResult<
   return useMutation({
     mutationFn: (body) => putOnBoard(body),
     onSuccess: (row) =>
-      toast.success(`${row.label} is on the board`, {
+      toast.success(`${row.label} has a new active version`, {
         description: "The next sync puts it on the machine.",
       }),
     onError: (error) => toast.error(error.message),
@@ -69,54 +71,47 @@ export function usePutOnBoard(): UseMutationResult<
   });
 }
 
-export function useTakeOntoBoard(): UseMutationResult<BoardRow, Error, string> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (deviceProfileId: string) => takeOntoBoard(deviceProfileId),
-    onSuccess: (row) =>
-      toast.success(`${row.label} is on the board`, {
-        description: "Nothing was sent to the machine.",
-      }),
-    onError: (error) => toast.error(error.message),
-    onSettled: () => void invalidateBoardWrites(queryClient),
-  });
-}
-
-export function useSetHomeScreen(): UseMutationResult<
+export function useSetOnMachine(): UseMutationResult<
   BoardRow,
   Error,
   { rowId: number; on: boolean }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ rowId, on }) => setBoardHomeScreen(rowId, on),
+    mutationFn: ({ rowId, on }) => setBoardOnMachine(rowId, on),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateBoardWrites(queryClient),
   });
 }
 
-export function useDeleteBoardRow(): UseMutationResult<BoardRow, Error, number> {
+export function useSetStarred(): UseMutationResult<
+  BoardRow,
+  Error,
+  { rowId: number; starred: boolean }
+> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (rowId: number) => deleteBoardRow(rowId),
-    onSuccess: (row) => toast.success(`${row.label} is deleted from the board`),
+    mutationFn: ({ rowId, starred }) => setBoardStarred(rowId, starred),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateBoardWrites(queryClient),
   });
 }
 
 /**
- * Go back to a profile's previous version. Nothing is sent to the machine: the next sync puts
- * the previous version on it and removes the newer copy. The Sets are refreshed because what
- * the sync then records on their versions changes with it, and a draft that was waiting on
- * the version being left is discarded.
+ * Make one of a profile's versions its active one. Nothing is sent to the machine; the next
+ * sync puts that version there. The Sets are refreshed because what a Set brews is whatever
+ * its profile's active version is once the sync has run.
  */
-export function useGoBackOnBoard(): UseMutationResult<BoardRow, Error, number> {
+export function useSetActiveVersion(): UseMutationResult<
+  BoardRow,
+  Error,
+  { rowId: number; versionId: number }
+> {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (rowId: number) => goBackOnBoard(rowId),
+    mutationFn: ({ rowId, versionId }) => setBoardActiveVersion(rowId, versionId),
     onSuccess: (row) =>
-      toast.success(`${row.label} goes back to its previous version`, {
+      toast.success(`${row.label} has a new active version`, {
         description: "The next sync puts it on the machine.",
       }),
     onError: (error) => toast.error(error.message),
@@ -127,13 +122,80 @@ export function useGoBackOnBoard(): UseMutationResult<BoardRow, Error, number> {
   });
 }
 
+/** A profile's versions and proposals; read only while its dropdown is open. */
+export function useBoardVersions(
+  rowId: number,
+  enabled: boolean,
+): UseQueryResult<ProfileVersionsView, Error> {
+  return useQuery({
+    queryKey: queryKeys.board.versions(rowId),
+    queryFn: () => getBoardVersions(rowId),
+    enabled,
+  });
+}
+
+/** Both sides of a profile's conflict; `null` when it has none. */
+export function useBoardConflict(
+  rowId: number,
+  enabled: boolean,
+): UseQueryResult<ConflictView | null, Error> {
+  return useQuery({
+    queryKey: queryKeys.board.conflict(rowId),
+    queryFn: () => getBoardConflict(rowId),
+    enabled,
+  });
+}
+
+/**
+ * Choose a side of a conflict. A refusal because the machine's file changed since it was
+ * shown re-reads the conflict (the settle below) and the panel says so; `variables` names the
+ * profile it was for.
+ */
+export function useResolveConflict(): UseMutationResult<
+  BoardRow,
+  Error,
+  { rowId: number; keep: "app" | "machine"; contentHash: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, keep, contentHash }) => resolveBoardConflict(rowId, keep, contentHash),
+    onSuccess: (row, variables) =>
+      toast.success(
+        variables.keep === "machine"
+          ? `${row.label} keeps the machine's version`
+          : `${row.label} keeps the app's version`,
+        {
+          description:
+            variables.keep === "machine"
+              ? "The machine's version is now the active one. Nothing is sent to the machine."
+              : "The next sync puts the active version on the machine.",
+        },
+      ),
+    onError: (error) => {
+      if (!isStaleConflict(error)) toast.error(error.message);
+    },
+    onSettled: () => {
+      void invalidateBoardWrites(queryClient);
+      void invalidateSets(queryClient);
+    },
+  });
+}
+
+/** The refusal for a conflict whose machine file changed after the person looked at it. */
+export function isStaleConflict(error: unknown): boolean {
+  if (!(error instanceof ApiClientError)) return false;
+  const details = error.details as { reason?: unknown } | null | undefined;
+  return details?.reason === "stale_conflict";
+}
+
 export function useResumeBoard(): UseMutationResult<{ resumed: boolean }, Error, void> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => resumeBoard(),
     onSuccess: () =>
       toast.success("Syncs may write again", {
-        description: "The next sync puts the app's profiles back on the machine.",
+        description:
+          "The next sync puts the profiles that are on back and removes the ones that are off.",
       }),
     onError: (error) => toast.error(error.message),
     onSettled: () => void invalidateBoardWrites(queryClient),

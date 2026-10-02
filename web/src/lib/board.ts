@@ -1,18 +1,12 @@
-import type { BoardAction, BoardRow, BoardRowView, BoardView, SyncRunRow } from "@/api/types";
+import type { BoardAction, BoardRowView, BoardView, SyncRunRow } from "@/api/types";
 
 /**
- * The profile board in the words a person reads.
+ * The profile list in the words a person reads.
  *
  * The server plans what the next sync would do (`BoardView`); everything here only
  * words it. Nothing decides what a sync does, so what the page says and what the sync
- * does cannot drift apart. No internal names reach the screen: a row made from a draft is
- * "the app's", one taken from the machine is "yours".
+ * does cannot drift apart.
  */
-
-/** Whose a profile is: the app wrote the machine's copy, or the person did. */
-export function ownerOf(row: BoardRow): "app" | "yours" {
-  return row.origin === "draft" ? "app" : "yours";
-}
 
 /** The server's reason for two live profiles sharing a label. */
 const SHARED_LABEL = "duplicate_label";
@@ -20,10 +14,10 @@ const SHARED_LABEL = "duplicate_label";
 export type RowTone = "ok" | "info" | "warn";
 
 export type RowState = {
-  /** What happened or will happen to the profile on the machine, in one phrase. */
+  /** What stands or will happen on the machine for this profile, in one phrase. */
   text: string;
   tone: RowTone;
-  /** Further sentences: the old copy that goes or stays, the star that changes, the server's reason. */
+  /** Further sentences: why a sync will not do something, the old copy that goes, the star. */
   notes: string[];
 };
 
@@ -34,8 +28,8 @@ function reasonWords(reason: string): string {
       return "it was not on the machine";
     case "superseded":
       return "a newer version replaced it";
-    case "deleted":
-      return "it was deleted";
+    case "off":
+      return "it is switched off";
     case "edited_on_machine":
       return "it was edited on the display";
     case "first_pull":
@@ -45,114 +39,89 @@ function reasonWords(reason: string): string {
   }
 }
 
-function actionFor(
-  view: BoardView,
-  rowId: number,
-  kind: BoardAction["kind"],
-): BoardAction | undefined {
-  return view.actions?.find((a) => a.row_id === rowId && a.kind === kind);
-}
+/** What a report on a profile means to a person; the server's own detail follows as a note. */
+const REPORT_WORDS: Record<string, string> = {
+  missing: "Missing from the machine",
+  unreadable: "The machine would not give it up to be read",
+  did_not_verify: "Did not verify, not tried again",
+  policy: "Outside the safety bounds",
+  extra_copy: "The machine holds a second copy",
+};
 
 /**
- * Where a live board profile stands on the machine.
+ * Where one profile of the list stands on the machine, and what the next sync will do.
  *
- * Order matters: a problem the sync will not fix (a profile of yours that was changed or
- * is gone) is said before anything else, then what the next sync will push, then the
- * plain "on the machine".
+ * The server plans (`planned`, `reports`); this only words it. The order says the most
+ * important thing first: a conflict (the sync leaves the profile alone), a problem the sync
+ * will not fix, then what the sync will do, then how things stand now.
  */
 export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
   const id = entry.row.id;
-  const writesOn = view.writes_enabled;
-  // A shared label is said as a note under whatever else the row has to say: it does not
-  // change where the profile stands on the machine.
-  const report = view.reports?.find((r) => r.row_id === id && r.reason !== SHARED_LABEL);
-  const shared = view.reports?.find((r) => r.row_id === id && r.reason === SHARED_LABEL);
-  const push = entry.planned?.find((a) => a.kind === "push");
+  const on = entry.on_machine;
+  const present = entry.machine.present;
   const notes: string[] = [];
+  const planned = entry.planned ?? [];
+  const report = view.reports?.find(
+    (r) => r.row_id === id && r.reason !== SHARED_LABEL && r.reason !== "conflict",
+  );
+  const shared = view.reports?.find((r) => r.row_id === id && r.reason === SHARED_LABEL);
+  const push = planned.find((a) => a.kind === "push");
+  const remove = planned.find((a) => a.kind === "remove");
   let state: RowState;
 
-  if (report) {
-    const words: Record<string, string> = {
-      edited_on_machine: "Edited on the display",
-      missing: "Missing from the machine",
-      unreadable: "The machine would not give it up to be read",
-      did_not_verify: "Did not verify",
-    };
-    state = { text: words[report.reason] ?? "Needs a look", tone: "warn", notes };
+  if (entry.in_conflict) {
+    state = { text: "Edited outside the app: choose a side", tone: "warn", notes };
+    notes.push("A sync does nothing for this profile until you choose.");
+  } else if (report) {
+    state = { text: REPORT_WORDS[report.reason] ?? "Needs a look", tone: "warn", notes };
     if (report.detail) notes.push(sentence(report.detail));
-    if (report.reason === "edited_on_machine" && ownerOf(entry.row) === "yours") {
-      notes.push("It is yours, so the app leaves it as you changed it.");
-    }
+  } else if (!on) {
+    state =
+      present && remove
+        ? { text: "Will be removed at the next sync", tone: "info", notes }
+        : present
+          ? { text: "On the machine, and switched off", tone: "warn", notes }
+          : { text: "Not on the machine", tone: "ok", notes };
   } else if (push) {
-    const edited = push.reason === "edited_on_machine";
-    state = {
-      text: edited
-        ? "Edited on the display"
-        : writesOn
-          ? "Will be pushed on the next sync"
-          : "Will be pushed once writes are turned on",
-      tone: "info",
-      notes,
-    };
-    if (edited) {
-      notes.push(
-        writesOn
-          ? "The board's version will be put beside it on the next sync."
-          : "The board's version will be put beside it once writes are turned on.",
-      );
-    }
+    state = { text: "Will be put on the machine at the next sync", tone: "info", notes };
   } else if (entry.machine.holds_current) {
     state = { text: "On the machine", tone: "ok", notes };
-  } else if (entry.machine.present) {
+  } else if (present) {
     state = { text: "On the machine, but not this version", tone: "warn", notes };
   } else {
     state = { text: "Not on the machine", tone: "warn", notes };
   }
 
   if (shared) notes.push(sentence(shared.detail));
-  for (const action of entry.planned ?? []) {
-    if (action.kind === "remove") {
+  for (const action of planned) {
+    if (action.kind === "leave") {
       notes.push(
-        `The old copy (${action.device_id}) will be removed${writesOn ? "" : " once writes are turned on"}.`,
+        `${action.device_id ? `The copy on the machine (${action.device_id}) stays` : "It stays on the machine"}: ${action.detail || reasonWords(action.reason)}.`,
       );
-    } else if (action.kind === "leave") {
+    } else if (action.kind === "remove" && on) {
       notes.push(
-        `The old copy${action.device_id ? ` (${action.device_id})` : ""} stays on the machine: ${action.detail || reasonWords(action.reason)}.`,
+        `The older copy${action.device_id ? ` (${action.device_id})` : ""} will be removed.`,
       );
-    } else if (action.kind === "home_screen") {
+    } else if (action.kind === "home_screen" && on) {
       notes.push(
-        `${action.on ? "It will be put on the home screen" : "It will be taken off the home screen"}${writesOn ? "" : " once writes are turned on"}.`,
+        action.on ? "It will be starred on the machine." : "Its star will come off on the machine.",
       );
     }
   }
+  if (entry.row.pending_set_id != null) {
+    notes.push(
+      "Once a sync has put it on the machine it is recorded as the next version of its Set.",
+    );
+  }
+  if (!on && entry.starred) {
+    notes.push("Starred is kept, and applies once the profile is on the machine.");
+  }
+  if (!on && entry.machine.selected && present) {
+    notes.push(
+      "It is the machine's selected profile: a sync selects another enabled profile first, then removes it.",
+    );
+  }
   return state;
-}
-
-/** A deleted profile whose file the sync still has to deal with, or `null` when nothing is left. */
-export function deletedStateOf(view: BoardView, row: BoardRow): RowState | null {
-  const removal = actionFor(view, row.id, "remove");
-  if (removal) {
-    return {
-      text: view.writes_enabled
-        ? "Will be removed from the machine on the next sync"
-        : "Will be removed from the machine once writes are turned on",
-      tone: "info",
-      notes: [],
-    };
-  }
-  const leave = actionFor(view, row.id, "leave");
-  if (leave) {
-    return {
-      text: "Left on the machine",
-      tone: "warn",
-      notes: [sentence(leave.detail || reasonWords(leave.reason))],
-    };
-  }
-  const report = view.reports?.find((r) => r.row_id === row.id);
-  if (report) {
-    return { text: "Left on the machine", tone: "warn", notes: [sentence(report.detail)] };
-  }
-  return null;
 }
 
 function sentence(text: string): string {
@@ -162,8 +131,26 @@ function sentence(text: string): string {
   return /[.!?]$/.test(capital) ? capital : `${capital}.`;
 }
 
+/** Where a version came from, in the words the version list uses. */
+export function sourceWords(source: string): string {
+  switch (source) {
+    case "agent":
+      return "Proposed by the agent";
+    case "edit":
+      return "Edited in the app";
+    case "machine":
+      return "Read from the machine";
+    case "edited_on_machine":
+      return "Edited on the machine";
+    case "import":
+      return "Imported from a file";
+    default:
+      return source.replaceAll("_", " ");
+  }
+}
+
 export type PreviewCounts = {
-  /** Machine profiles the first sync would take onto the board. */
+  /** Files the sync would take into the list (new profiles, or attached to one). */
   adopt: number;
   push: number;
   remove: number;
@@ -184,17 +171,19 @@ export function previewCounts(view: BoardView): PreviewCounts {
   };
 }
 
-/** One line per planned action, for the switch's preview. */
+/** One line per planned action, for the switch's preview and the reset banner. */
 export function previewLine(action: BoardAction): string {
   switch (action.kind) {
     case "push":
-      return `Push ${action.label}`;
+      return `Put ${action.label} on the machine`;
     case "remove":
-      return `Remove the old copy of ${action.label}`;
+      return `Remove ${action.label} from the machine`;
     case "home_screen":
-      return `${action.on ? "Put" : "Take"} ${action.label} ${action.on ? "on" : "off"} the home screen`;
+      return `${action.on ? "Star" : "Take the star off"} ${action.label}`;
     case "leave":
       return `Leave ${action.label} on the machine`;
+    case "adopt":
+      return `Add ${action.label} to the list`;
     default:
       return action.label;
   }
@@ -214,8 +203,9 @@ export type BoardSummaryItem = {
 /** What the last sync's profile pass did to the machine: `SyncRunRow.summary` for the `profiles` run. */
 export type BoardRunSummary = {
   adopted: BoardSummaryItem[];
+  conflicts: BoardSummaryItem[];
+  recorded: BoardSummaryItem[];
   pushed: BoardSummaryItem[];
-  overwritten: BoardSummaryItem[];
   removed: BoardSummaryItem[];
   left: BoardSummaryItem[];
   homeScreen: BoardSummaryItem[];
@@ -253,8 +243,9 @@ export function boardSummaryOf(run: SyncRunRow | undefined): BoardRunSummary | n
   if (typeof s.writes !== "number") return null;
   return {
     adopted: items(s.adopted),
+    conflicts: items(s.conflicts),
+    recorded: items(s.recorded),
     pushed: items(s.pushed),
-    overwritten: items(s.overwritten),
     removed: items(s.removed),
     left: items(s.left),
     homeScreen: items(s.home_screen),
@@ -265,13 +256,14 @@ export function boardSummaryOf(run: SyncRunRow | undefined): BoardRunSummary | n
 }
 
 type SummarySection =
+  | "conflicts"
+  | "recorded"
   | "pushed"
   | "removed"
   | "left"
   | "homeScreen"
   | "failures"
-  | "adopted"
-  | "overwritten";
+  | "adopted";
 
 /**
  * What a reason means *in the section it is listed under*: the same code reads differently
@@ -279,23 +271,27 @@ type SummarySection =
  * (it is the old one going or staying).
  */
 const SECTION_REASONS: Record<SummarySection, Record<string, string>> = {
+  conflicts: {},
+  recorded: { edited_on_machine: "its content was edited on the display and is now a version" },
   pushed: {
     missing: "it was not on the machine",
     superseded: "it replaced its older version",
     edited_on_machine: "it was put beside a copy edited on the display",
   },
-  overwritten: {
-    edited_on_machine: "it was put beside a copy edited on the display",
-  },
   removed: {
     superseded: "the old copy went after a newer version was put on",
-    deleted: "it was deleted on the board",
+    off: "it is switched off",
   },
   left: {
     superseded: "the old copy stays although a newer version replaced it",
-    deleted: "it was deleted on the board but stays on the machine",
+    off: "it is switched off but stays on the machine",
   },
-  adopted: { first_pull: "taken from the machine as it was" },
+  adopted: {
+    first_pull: "taken from the machine as it was",
+    unseen: "new on the machine, added to the list and switched on",
+    attached: "added to the profile it belongs to",
+    conflict: "it differs from every version the app has: choose a side on the Profiles page",
+  },
   homeScreen: {},
   failures: {},
 };
@@ -316,26 +312,4 @@ export function summaryLine(item: BoardSummaryItem, section: SummarySection): st
     Boolean,
   );
   return parts.length > 0 ? `${item.label}: ${parts.join(" ")}` : item.label;
-}
-
-/**
- * The machine's profiles no board row stands on: what the board has not taken.
- *
- * Read from the mirror the page already holds, minus every file a row names, a deleted
- * row still waiting on its file included, and the file a row's current content was found
- * in. Nothing here asks the machine.
- */
-export function notOnTheBoard<T extends { device_id: string; deleted_at?: string | null }>(
-  mirror: T[],
-  view: BoardView,
-): T[] {
-  const claimed = new Set<string>();
-  for (const entry of view.rows ?? []) {
-    if (entry.row.device_profile_id) claimed.add(entry.row.device_profile_id);
-    if (entry.machine.device_id) claimed.add(entry.machine.device_id);
-  }
-  for (const row of view.pending_removals ?? []) {
-    if (row.device_profile_id) claimed.add(row.device_profile_id);
-  }
-  return mirror.filter((profile) => !profile.deleted_at && !claimed.has(profile.device_id));
 }

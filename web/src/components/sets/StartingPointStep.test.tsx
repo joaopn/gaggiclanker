@@ -200,7 +200,7 @@ describe("StartingPointStep", () => {
 
     const staged = await screen.findByTestId("option-stages-draft");
     expect(staged).toHaveTextContent("It brews at 93 °C");
-    expect(staged).toHaveTextContent("stages a draft of it at 94 °C");
+    expect(staged).toHaveTextContent("proposes a profile at 94 °C");
     expect(staged).toHaveTextContent("Nothing is sent to the machine");
     // Exactly one card says it: the second option agrees with the profile, and
     // the third names no profile at all.
@@ -236,7 +236,7 @@ describe("StartingPointStep", () => {
 
     const staged = await screen.findByTestId("option-stages-draft");
     expect(staged).toHaveTextContent("It states no brew temperature");
-    expect(staged).toHaveTextContent("stages a draft of it at 94 °C");
+    expect(staged).toHaveTextContent("proposes a profile at 94 °C");
   });
 
   it("says when an option would create a draft rather than reuse a profile", async () => {
@@ -254,7 +254,7 @@ describe("StartingPointStep", () => {
     render({ runId: 11 });
     const notes = await screen.findAllByTestId("option-profile");
     expect(notes[0]).toHaveTextContent("the one you already have (9 Bar Espresso)");
-    expect(notes[1]).toHaveTextContent("a new draft");
+    expect(notes[1]).toHaveTextContent("a new proposal");
     expect(notes[2]).toHaveTextContent("whatever is selected on the machine");
   });
 

@@ -2,12 +2,12 @@ import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  useDeleteBoardRow,
-  useGoBackOnBoard,
   usePutOnBoard,
+  useResolveConflict,
   useResumeBoard,
-  useSetHomeScreen,
-  useTakeOntoBoard,
+  useSetActiveVersion,
+  useSetOnMachine,
+  useSetStarred,
 } from "@/hooks/useBoard";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
@@ -19,27 +19,27 @@ vi.mock("sonner", () => ({
 
 const {
   putOnBoard,
-  setBoardHomeScreen,
-  deleteBoardRow,
+  setBoardOnMachine,
+  setBoardStarred,
+  setBoardActiveVersion,
+  resolveBoardConflict,
   resumeBoard,
-  takeOntoBoard,
-  goBackOnBoard,
 } = vi.hoisted(() => ({
-  goBackOnBoard: vi.fn(),
-  takeOntoBoard: vi.fn(),
   putOnBoard: vi.fn(),
-  setBoardHomeScreen: vi.fn(),
-  deleteBoardRow: vi.fn(),
+  setBoardOnMachine: vi.fn(),
+  setBoardStarred: vi.fn(),
+  setBoardActiveVersion: vi.fn(),
+  resolveBoardConflict: vi.fn(),
   resumeBoard: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   putOnBoard,
-  setBoardHomeScreen,
-  deleteBoardRow,
+  setBoardOnMachine,
+  setBoardStarred,
+  setBoardActiveVersion,
+  resolveBoardConflict,
   resumeBoard,
-  takeOntoBoard,
-  goBackOnBoard,
 }));
 
 const row = { id: 4, label: "9 Bar Espresso [AI]" };
@@ -47,14 +47,14 @@ const row = { id: 4, label: "9 Bar Espresso [AI]" };
 beforeEach(() => {
   vi.clearAllMocks();
   putOnBoard.mockResolvedValue(row);
-  setBoardHomeScreen.mockResolvedValue(row);
-  deleteBoardRow.mockResolvedValue(row);
+  setBoardOnMachine.mockResolvedValue(row);
+  setBoardStarred.mockResolvedValue(row);
+  setBoardActiveVersion.mockResolvedValue(row);
+  resolveBoardConflict.mockResolvedValue(row);
   resumeBoard.mockResolvedValue({ resumed: true });
-  takeOntoBoard.mockResolvedValue(row);
-  goBackOnBoard.mockResolvedValue(row);
 });
 
-function spyOn(queryClient: QueryClient): readonly unknown[][] {
+function spyOn(queryClient: QueryClient): unknown[][] {
   const keys: unknown[][] = [];
   const original = queryClient.invalidateQueries.bind(queryClient);
   vi.spyOn(queryClient, "invalidateQueries").mockImplementation((filters) => {
@@ -106,43 +106,55 @@ describe("every board mutation refreshes everything it changes", () => {
     await waitFor(() => expect(keys).toContainEqual([...queryKeys.board.all]));
   });
 
-  it("the home-screen toggle", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useSetHomeScreen());
+  it("switching a profile on or off the machine", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetOnMachine());
     const keys = spyOn(queryClient);
 
     await result.current.mutateAsync({ rowId: 4, on: false });
 
     for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
+    expect(setBoardOnMachine).toHaveBeenCalledWith(4, false);
   });
 
-  it("deleting a profile", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useDeleteBoardRow());
+  it("starring a profile", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetStarred());
     const keys = spyOn(queryClient);
 
-    await result.current.mutateAsync(4);
+    await result.current.mutateAsync({ rowId: 4, starred: false });
 
     for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
+    expect(setBoardStarred).toHaveBeenCalledWith(4, false);
   });
 
-  it("taking a machine profile onto the board", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useTakeOntoBoard());
+  it("making a version active also refreshes the Sets, which brew whatever is active", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSetActiveVersion());
     const keys = spyOn(queryClient);
 
-    await result.current.mutateAsync("later");
-
-    for (const key of BOARD_WRITES) await waitFor(() => expect(keys).toContainEqual([...key]));
-  });
-
-  it("going back a version also refreshes the Sets, whose versions the sync then touches", async () => {
-    const { result, queryClient } = renderHookWithQueryClient(() => useGoBackOnBoard());
-    const keys = spyOn(queryClient);
-
-    await result.current.mutateAsync(4);
+    await result.current.mutateAsync({ rowId: 4, versionId: 9 });
 
     for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
       await waitFor(() => expect(keys).toContainEqual([...key]));
     }
-    expect(goBackOnBoard).toHaveBeenCalledWith(4);
+    expect(setBoardActiveVersion).toHaveBeenCalledWith(4, 9);
+  });
+
+  it("choosing a side of a conflict, and a refused choice still refreshes both sides", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useResolveConflict());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ rowId: 4, keep: "app", contentHash: "h1" });
+    for (const key of [...BOARD_WRITES, queryKeys.sets.all]) {
+      await waitFor(() => expect(keys).toContainEqual([...key]));
+    }
+    expect(resolveBoardConflict).toHaveBeenCalledWith(4, "app", "h1");
+
+    keys.length = 0;
+    resolveBoardConflict.mockRejectedValue(new Error("changed"));
+    await expect(
+      result.current.mutateAsync({ rowId: 4, keep: "machine", contentHash: "h1" }),
+    ).rejects.toThrow();
+    // The board holds the conflict query: a stale refusal re-reads what the machine has now.
+    await waitFor(() => expect(keys).toContainEqual([...queryKeys.board.all]));
   });
 
   it("resuming a paused board", async () => {

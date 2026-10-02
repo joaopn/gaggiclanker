@@ -533,7 +533,7 @@ describe("ProposalCard, a first recipe", () => {
     );
   });
 
-  it("accepts through the accept route and says version 1 is set, with the draft link", async () => {
+  it("accepts through the accept route and says version 1 is set, with the proposal link", async () => {
     const user = setupUser();
     acceptSetProposal.mockResolvedValue({
       proposal: designProposal({
@@ -552,10 +552,10 @@ describe("ProposalCard, a first recipe", () => {
     expect(acceptSetProposal).toHaveBeenCalledWith(6, 8);
     const decided = await screen.findByTestId("proposal-decided");
     expect(decided).toHaveTextContent("version 1 is set");
-    expect(decided).toHaveTextContent("for you to put on the board");
+    expect(decided).toHaveTextContent("for you to make active");
     expect(decided).toHaveTextContent("shots brewed on it are filed here");
     expect(
-      within(decided).getByRole("link", { name: /draft on the Profiles page/ }),
+      within(decided).getByRole("link", { name: /proposal on the Profiles page/ }),
     ).toHaveAttribute("href", "/profiles#staged");
     expect(within(decided).getByRole("link", { name: "version 1" })).toHaveAttribute(
       "href",

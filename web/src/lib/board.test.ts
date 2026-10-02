@@ -1,23 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  boardSummaryOf,
-  deletedStateOf,
-  ownerOf,
-  previewCounts,
-  rowStateOf,
-  summaryLine,
-} from "@/lib/board";
-import { boardAction, boardRow, boardRowView, boardView } from "@/test/boardFixtures";
-
-describe("ownerOf", () => {
-  it("a profile the app wrote is the app's and one taken from the machine is yours", () => {
-    expect(ownerOf(boardRow({ origin: "draft" }))).toBe("app");
-    expect(ownerOf(boardRow({ origin: "adopted" }))).toBe("yours");
-  });
-});
+import { boardSummaryOf, previewCounts, rowStateOf, sourceWords, summaryLine } from "@/lib/board";
+import { boardAction, boardRowView, boardView } from "@/test/boardFixtures";
 
 describe("rowStateOf", () => {
-  it("says a profile the machine holds as the board has it is on the machine", () => {
+  it("says a profile the machine holds as the list has it is on the machine", () => {
     const entry = boardRowView();
     expect(rowStateOf(boardView({ rows: [entry] }), entry)).toMatchObject({
       text: "On the machine",
@@ -25,22 +11,73 @@ describe("rowStateOf", () => {
     });
   });
 
-  it("says a planned push will happen on the next sync, or when writes are on", () => {
+  it("says a planned push will happen at the next sync", () => {
     const entry = boardRowView({
-      row: { id: 2, origin: "draft" },
+      row: { id: 2 },
       machine: { present: false, holds_current: false },
       planned: [boardAction({ row_id: 2 })],
     });
     expect(rowStateOf(boardView({ rows: [entry] }), entry).text).toBe(
-      "Will be pushed on the next sync",
-    );
-    expect(rowStateOf(boardView({ rows: [entry], writes_enabled: false }), entry).text).toBe(
-      "Will be pushed once writes are turned on",
+      "Will be put on the machine at the next sync",
     );
   });
 
+  it("says a profile that is off and still on the machine will be removed", () => {
+    const entry = boardRowView({
+      row: { on_machine: false },
+      planned: [boardAction({ kind: "remove", row_id: 1, reason: "off", device_id: "9bar" })],
+    });
+    expect(rowStateOf(boardView({ rows: [entry] }), entry).text).toBe(
+      "Will be removed at the next sync",
+    );
+  });
+
+  it("says a profile that is off and gone from the machine is not on it", () => {
+    const entry = boardRowView({
+      row: { on_machine: false },
+      machine: { present: false, holds_current: false },
+    });
+    expect(rowStateOf(boardView({ rows: [entry] }), entry)).toMatchObject({
+      text: "Not on the machine",
+      tone: "ok",
+    });
+  });
+
+  it("gives the reason a sync leaves a file where it is", () => {
+    const entry = boardRowView({
+      row: { on_machine: false },
+      planned: [
+        boardAction({
+          kind: "leave",
+          row_id: 1,
+          reason: "off",
+          device_id: "9bar",
+          detail: "it is the profile the machine has selected and no other is on",
+        }),
+      ],
+    });
+    const state = rowStateOf(boardView({ rows: [entry] }), entry);
+    expect(state.text).not.toBe("Will be removed at the next sync");
+    expect(state.notes).toContain(
+      "The copy on the machine (9bar) stays: it is the profile the machine has selected and no other is on.",
+    );
+  });
+
+  it("says a conflict first and that the sync does nothing for the profile", () => {
+    const entry = boardRowView({ in_conflict: true });
+    const state = rowStateOf(
+      boardView({
+        rows: [entry],
+        reports: [boardAction({ kind: "report", row_id: 1, reason: "conflict" })],
+      }),
+      entry,
+    );
+    expect(state.text).toBe("Edited outside the app: choose a side");
+    expect(state.notes).toEqual(["A sync does nothing for this profile until you choose."]);
+  });
+
   it("says a shared label as a note and keeps the profile's own state", () => {
-    const entry = boardRowView({ row: { id: 2, origin: "adopted" } });
+    const entry = boardRowView({ row: { id: 2 } });
     const view = boardView({
       rows: [entry],
       reports: [
@@ -48,61 +85,33 @@ describe("rowStateOf", () => {
           kind: "report",
           row_id: 2,
           reason: "duplicate_label",
-          detail: "another profile on the board is also called Londinium",
+          detail: "another profile is also called Londinium",
         }),
       ],
     });
     expect(rowStateOf(view, entry)).toMatchObject({
       text: "On the machine",
-      tone: "ok",
-      notes: ["Another profile on the board is also called Londinium."],
+      notes: ["Another profile is also called Londinium."],
     });
   });
 
-  it("names the old copy that goes, the one that stays and the star that moves", () => {
+  it("names the older copy that goes and the star that moves", () => {
     const entry = boardRowView({
-      row: { id: 2, origin: "draft" },
+      row: { id: 2 },
       machine: { present: true, holds_current: false },
       planned: [
         boardAction({ row_id: 2, reason: "superseded" }),
         boardAction({ row_id: 2, kind: "remove", device_id: "old1", reason: "superseded" }),
-        boardAction({
-          row_id: 2,
-          kind: "leave",
-          device_id: "old2",
-          detail: "a Set is still brewing it",
-        }),
         boardAction({ row_id: 2, kind: "home_screen", on: false }),
       ],
     });
-    const state = rowStateOf(boardView({ rows: [entry] }), entry);
-    expect(state.notes).toEqual([
-      "The old copy (old1) will be removed.",
-      "The old copy (old2) stays on the machine: a Set is still brewing it.",
-      "It will be taken off the home screen.",
+    expect(rowStateOf(boardView({ rows: [entry] }), entry).notes).toEqual([
+      "The older copy (old1) will be removed.",
+      "Its star will come off on the machine.",
     ]);
   });
 
-  it("says a profile changed on the display is edited, and that the app leaves one of yours", () => {
-    const entry = boardRowView({ machine: { present: true, holds_current: false } });
-    const view = boardView({
-      rows: [entry],
-      reports: [
-        boardAction({
-          kind: "report",
-          row_id: 1,
-          reason: "edited_on_machine",
-          detail: "9bar was changed on the machine since it was recorded",
-        }),
-      ],
-    });
-    const state = rowStateOf(view, entry);
-    expect(state.text).toBe("Edited on the display");
-    expect(state.tone).toBe("warn");
-    expect(state.notes).toContain("It is yours, so the app leaves it as you changed it.");
-  });
-
-  it("says missing, did not verify and unreadable in their own words", () => {
+  it("says each report in its own words", () => {
     const entry = boardRowView({ machine: { present: false, holds_current: false } });
     const text = (reason: string) =>
       rowStateOf(
@@ -110,35 +119,63 @@ describe("rowStateOf", () => {
         entry,
       ).text;
     expect(text("missing")).toBe("Missing from the machine");
-    expect(text("did_not_verify")).toBe("Did not verify");
-    expect(text("unreadable")).toMatch(/could not be read|would not give/);
+    expect(text("did_not_verify")).toBe("Did not verify, not tried again");
+    expect(text("policy")).toBe("Outside the safety bounds");
+    expect(text("extra_copy")).toBe("The machine holds a second copy");
+    expect(text("unreadable")).toMatch(/would not give/);
   });
 
-  it("says a profile with nothing planned that the machine lacks is not on it", () => {
-    const entry = boardRowView({ machine: { present: false, holds_current: false } });
-    expect(rowStateOf(boardView({ rows: [entry] }), entry).text).toBe("Not on the machine");
+  it("keeps the star's value in a note while the profile is off, and warns about the selected one", () => {
+    const entry = boardRowView({
+      row: { on_machine: false },
+      machine: { present: true, holds_current: true, selected: true },
+    });
+    const notes = rowStateOf(boardView({ rows: [entry] }), entry).notes;
+    expect(notes).toContain("Starred is kept, and applies once the profile is on the machine.");
+    expect(notes.join(" ")).toContain("selects another enabled profile first");
   });
 });
 
-describe("deletedStateOf", () => {
-  it("says a deleted profile will be removed, or is left and why, or nothing when nothing is left", () => {
-    const row = boardRow({ id: 5, deleted_at: "2026-03-02T00:00:00.000Z" });
-    const view = (actions: ReturnType<typeof boardAction>[]) => boardView({ actions });
-    expect(deletedStateOf(view([boardAction({ kind: "remove", row_id: 5 })]), row)?.text).toBe(
-      "Will be removed from the machine on the next sync",
+describe("a profile made active for a Set", () => {
+  it("says the Set's version is recorded once a sync has put it on the machine", () => {
+    const entry = boardRowView({ row: { pending_set_id: 3 } });
+    expect(rowStateOf(boardView({ rows: [entry] }), entry).notes).toContain(
+      "Once a sync has put it on the machine it is recorded as the next version of its Set.",
     );
-    expect(
-      deletedStateOf(
-        view([
-          boardAction({ kind: "leave", row_id: 5, detail: "it is not a profile the app wrote" }),
-        ]),
-        row,
-      ),
-    ).toMatchObject({
-      text: "Left on the machine",
-      notes: ["It is not a profile the app wrote."],
-    });
-    expect(deletedStateOf(view([]), row)).toBeNull();
+  });
+});
+
+describe("a version that did not verify", () => {
+  it("says it is not tried again and gives the server's reason as a note", () => {
+    const entry = boardRowView({ machine: { present: false, holds_current: false } });
+    const state = rowStateOf(
+      boardView({
+        rows: [entry],
+        reports: [
+          boardAction({
+            kind: "report",
+            row_id: 1,
+            reason: "did_not_verify",
+            detail: "this version did not read back as sent, so it is not tried again",
+          }),
+        ],
+      }),
+      entry,
+    );
+    expect(state.text).toBe("Did not verify, not tried again");
+    expect(state.notes[0]).toContain("not tried again");
+  });
+});
+
+describe("sourceWords", () => {
+  it("says where a version came from in plain words", () => {
+    expect(["agent", "edit", "machine", "edited_on_machine", "import"].map(sourceWords)).toEqual([
+      "Proposed by the agent",
+      "Edited in the app",
+      "Read from the machine",
+      "Edited on the machine",
+      "Imported from a file",
+    ]);
   });
 });
 
@@ -228,9 +265,8 @@ describe("summaryLine reads a reason by the section it is listed under", () => {
     ["pushed", "missing", "", "P: It was not on the machine."],
     ["pushed", "superseded", "", "P: It replaced its older version."],
     ["pushed", "edited_on_machine", "", "P: It was put beside a copy edited on the display."],
-    ["overwritten", "edited_on_machine", "", "P: It was put beside a copy edited on the display."],
     ["removed", "superseded", "", "P: The old copy went after a newer version was put on."],
-    ["removed", "deleted", "", "P: It was deleted on the board."],
+    ["removed", "off", "", "P: It is switched off."],
     [
       "left",
       "superseded",
@@ -239,22 +275,33 @@ describe("summaryLine reads a reason by the section it is listed under", () => {
     ],
     [
       "left",
-      "deleted",
-      "not made by the app",
-      "P: It was deleted on the board but stays on the machine. Not made by the app.",
+      "off",
+      "it is the selected profile",
+      "P: It is switched off but stays on the machine. It is the selected profile.",
     ],
     ["adopted", "first_pull", "", "P: Taken from the machine as it was."],
+    ["adopted", "unseen", "", "P: New on the machine, added to the list and switched on."],
+    ["adopted", "attached", "", "P: Added to the profile it belongs to."],
+    [
+      "adopted",
+      "conflict",
+      "",
+      "P: It differs from every version the app has: choose a side on the Profiles page.",
+    ],
+    [
+      "recorded",
+      "edited_on_machine",
+      "",
+      "P: Its content was edited on the display and is now a version.",
+    ],
   ];
   it.each(cases)("%s / %s", (section, reason, detail, expected) => {
     expect(summaryLine(item(reason, detail), section)).toBe(expected);
   });
 
   it("puts the reason before the detail, never the detail instead of it", () => {
-    const line = summaryLine(
-      item("deleted", "the favourite star moved to the new copy"),
-      "removed",
-    );
-    expect(line.indexOf("deleted on the board")).toBeLessThan(line.indexOf("favourite"));
+    const line = summaryLine(item("off", "the favourite star moved to the new copy"), "removed");
+    expect(line.indexOf("switched off")).toBeLessThan(line.indexOf("favourite"));
     expect(line).toContain("favourite");
   });
 });
