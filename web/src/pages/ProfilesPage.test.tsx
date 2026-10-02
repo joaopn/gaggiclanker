@@ -89,7 +89,7 @@ describe("the list", () => {
 
     const profile = await screen.findByTestId("profile-row");
     expect(within(profile).getByText("9 Bar Espresso")).toBeInTheDocument();
-    expect(profile).toHaveTextContent("standard · 1 phase · ends at 36 g");
+    expect(profile).toHaveTextContent("standard · 1 phase · target 36 g");
     expect(within(profile).getByTestId("profile-state")).toHaveTextContent("On the machine");
   });
 

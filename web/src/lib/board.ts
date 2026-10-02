@@ -180,6 +180,13 @@ export function previewLine(action: BoardAction): string {
     case "leave":
       return `Leave ${action.label} on the machine`;
     case "adopt":
+      // A file the list already has a profile for is matched to it, not added.
+      if (action.reason === "attached") {
+        return `The machine's copy of ${action.label} is matched to ${action.label}`;
+      }
+      if (action.reason === "conflict") {
+        return `The machine's copy of ${action.label} differs from the app's: it becomes a conflict to settle`;
+      }
       return `Add ${action.label} to the list`;
     default:
       return action.label;

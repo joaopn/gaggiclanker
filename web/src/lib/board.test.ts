@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { boardSummaryOf, previewCounts, rowStateOf, sourceWords, summaryLine } from "@/lib/board";
+import {
+  boardSummaryOf,
+  previewCounts,
+  previewLine,
+  rowStateOf,
+  sourceWords,
+  summaryLine,
+} from "@/lib/board";
 import { boardAction, boardRowView, boardView } from "@/test/boardFixtures";
 
 describe("rowStateOf", () => {
@@ -164,6 +171,22 @@ describe("a version that did not verify", () => {
     );
     expect(state.text).toBe("Did not verify, not tried again");
     expect(state.notes[0]).toContain("not tried again");
+  });
+});
+
+describe("previewLine for a file that joins the list", () => {
+  it("adds a file nobody has a profile for, and matches one a profile already has", () => {
+    expect(
+      previewLine(boardAction({ kind: "adopt", label: "Made on display", reason: "unseen" })),
+    ).toBe("Add Made on display to the list");
+    const attached = previewLine(
+      boardAction({ kind: "adopt", label: "Londinium", reason: "attached" }),
+    );
+    expect(attached).toBe("The machine's copy of Londinium is matched to Londinium");
+    expect(attached).not.toContain("Add");
+    expect(
+      previewLine(boardAction({ kind: "adopt", label: "9 Bar", reason: "conflict" })),
+    ).toContain("conflict");
   });
 });
 
