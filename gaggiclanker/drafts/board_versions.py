@@ -56,6 +56,9 @@ class ActiveVersion(BaseModel):
     source: VersionSource
     created_at: str
     shots_brewed: int = 0
+    #: The profile document, so a row of the list can say what it brews (phases, what ends the
+    #: shot) without a request per row.
+    profile: JsonObject
 
 
 class ListedVersion(BaseModel):

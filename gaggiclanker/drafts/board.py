@@ -453,6 +453,7 @@ class BoardService:
                         source=entry.source if entry is not None else "machine",
                         created_at=plan.version.created_at,
                         shots_brewed=counts.get(plan.version.id, 0),
+                        profile=plan.version.profile,
                     ),
                     sets_brewing=_sets_brewing(brews, listed, plan.row.device_profile_id),
                     in_conflict=plan.conflict_file is not None,

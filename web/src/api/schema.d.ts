@@ -2378,6 +2378,7 @@ export interface components {
             created_at: string;
             /** Label */
             label: string;
+            profile: components["schemas"]["JsonObject"];
             /** Short Hash */
             short_hash: string;
             /**

@@ -28,6 +28,29 @@ export function boardAction(overrides: Partial<BoardAction> = {}): BoardAction {
   };
 }
 
+/** A standard profile document with one volumetric stop, for what a row says it brews. */
+export function profileDocument(label = "9 Bar Espresso"): Record<string, unknown> {
+  return {
+    label,
+    type: "standard",
+    description: "",
+    temperature: 93,
+    utility: false,
+    phases: [
+      {
+        name: "Pump",
+        phase: "brew",
+        valve: 1,
+        duration: 28,
+        temperature: 0,
+        pump: { target: "pressure", pressure: 9, flow: 0 },
+        transition: { type: "instant", duration: 0, adaptive: true },
+        targets: [{ type: "volumetric", operator: "gte", value: 36 }],
+      },
+    ],
+  };
+}
+
 /** A row on the machine as the board has it, with nothing planned. */
 export function boardRowView(
   overrides: Partial<Omit<BoardRowView, "row">> & { row?: Partial<BoardRow> } = {},
@@ -61,6 +84,7 @@ export function boardRowView(
       source: "machine",
       created_at: base.created_at,
       shots_brewed: 0,
+      profile: profileDocument(base.label),
     },
     ...rest,
   };

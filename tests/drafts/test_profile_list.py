@@ -51,6 +51,10 @@ async def test_switching_a_firmware_default_off_removes_it_and_back_on_pushes_it
     default = row_for(await get_board(client), BASE_LABEL)
     file = default["machine"]["device_id"]
     assert default["row"]["origin"] == "adopted" and default["on_machine"] is True
+    # The row carries the active version's document, so the list can describe it without a
+    # request per profile.
+    document = default["active_version"]["profile"]
+    assert document["label"] == BASE_LABEL and document["phases"]
 
     assert (await on_machine(client, default["row"]["id"], False)).status_code == 200
     preview = row_for(await get_board(client), BASE_LABEL)["planned"]
