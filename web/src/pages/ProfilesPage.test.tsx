@@ -963,6 +963,68 @@ describe("proposed versions", () => {
   });
 });
 
+describe("a profile designed from scratch", () => {
+  it("shows the profile, never a diff, and is added without a stop-condition acknowledgement", async () => {
+    const user = setupUser();
+    const fresh = proposal({ id: 31, row_id: null, landing: landing({ draft_id: 31 }, null) });
+    // Even with stop changes recorded (an old draft), a new profile has no stops to acknowledge.
+    fresh.draft = draft({
+      id: 31,
+      is_new: true,
+      base_label: null,
+      draft_label: "Fresh idea [AI]",
+      stop_condition_changes: [yieldChange()],
+    });
+    api.getProfileBoard.mockResolvedValue(boardView({ rows: [], proposals: [fresh] }));
+    api.getProfileDraft.mockResolvedValue(
+      draftDetail({ draft: fresh.draft, base_profile: null, draft_profile: draftProfile() }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    const panel = await screen.findByTestId("proposal");
+    await within(panel).findByTestId("profile-summary");
+    expect(within(panel).queryByTestId("profile-diff")).not.toBeInTheDocument();
+    expect(within(panel).queryByTestId("stop-condition-warning")).not.toBeInTheDocument();
+    expect(within(panel).queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("What changes")).not.toBeInTheDocument();
+    const add = within(panel).getByTestId("make-proposal-active");
+    expect(add).toBeEnabled();
+    await user.click(add);
+    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 31 }));
+  });
+});
+
+describe("an is_new draft shown inside a profile", () => {
+  it("is still a profile written from scratch: the summary, never a diff, nothing to acknowledge", async () => {
+    const user = setupUser();
+    const p = proposal({ id: 41, row_id: 1 });
+    p.draft = draft({
+      id: 41,
+      is_new: true,
+      base_label: null,
+      draft_label: "9 Bar Espresso",
+      stop_condition_changes: [yieldChange()],
+    });
+    api.getProfileBoard.mockResolvedValue(
+      boardView({ rows: [row({ proposed_versions: 1 })], proposals: [p] }),
+    );
+    api.getBoardVersions.mockResolvedValue(
+      versionsView([listedVersion({ version_id: 7, is_active: true })], {
+        proposed: [{ draft: p.draft, profile: draftProfile(), compared_to_version_id: 7 }],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+    await user.click(await screen.findByTestId("profile-toggle"));
+
+    const panel = await screen.findByTestId("proposal");
+    expect(within(panel).queryByTestId("profile-diff")).not.toBeInTheDocument();
+    expect(within(panel).getByTestId("profile-summary")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("stop-condition-warning")).not.toBeInTheDocument();
+    expect(within(panel).getByTestId("make-proposal-active")).toBeEnabled();
+  });
+});
+
 describe("a conflict", () => {
   const conflicted = () =>
     api.getProfileBoard.mockResolvedValue(

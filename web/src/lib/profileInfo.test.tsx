@@ -1,4 +1,6 @@
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { ProfileSummary } from "@/components/drafts/ProfileSummary";
 import { endsWhen, profileHeadline } from "@/lib/profileInfo";
 import lever from "../../../tests/fixtures/profiles/docs-cremina-lever.json";
 import medium from "../../../tests/fixtures/profiles/docs-medium-18g.json";
@@ -52,5 +54,44 @@ describe("what ends the shot", () => {
     );
     expect(endsWhen({ phases: [] })).toBe("no stop condition");
     expect(endsWhen({ phases: [phase(0)] })).toBe("no stop condition");
+  });
+});
+
+describe("the one-line summary and the landed profile summary read the same stop", () => {
+  const fixtures = import.meta.glob<Record<string, unknown>>(
+    "../../../tests/fixtures/profiles/*.json",
+    { eager: true, import: "default" },
+  );
+  const lastVolume = (texts: string[]) => {
+    let found: string | undefined;
+    for (const text of texts) found = /volumetric ≥ (\d+(?:\.\d+)?)/.exec(text)?.[1] ?? found;
+    return found;
+  };
+
+  it.each(Object.entries(fixtures))("%s", (_path, profile) => {
+    const { unmount } = render(<ProfileSummary profile={profile} />);
+    const phases = screen.queryAllByTestId("profile-summary-phase").map((e) => e.textContent ?? "");
+    const ends = screen.getByTestId("profile-summary-ends").textContent ?? "";
+    unmount();
+    const headline = endsWhen(profile);
+
+    const target = lastVolume(phases);
+    if (target !== undefined) {
+      // A target exists: the headline names it, as the target, and it is the summary's last one.
+      expect(headline).toBe(`target ${target} g`);
+    } else {
+      // None: both name how the last phase ends.
+      expect(headline).not.toMatch(/^target/);
+      const after = /^ends after (\d+(?:\.\d+)?) s$/.exec(headline)?.[1];
+      if (after !== undefined) expect(ends).toContain(`after ${after} s`);
+      const on = /^ends on (\w+) (\S+) (\S+)$/.exec(headline);
+      if (on) expect(ends).toContain(`${on[1]} ${on[2]} ${on[3]}`);
+      if (headline === "no stop condition") expect(ends).not.toMatch(/after \d/);
+    }
+  });
+
+  it("says the target, not what ends the shot, for Medium 18g 1:2 (Hammer runs after 36 g)", () => {
+    expect(endsWhen(medium)).toBe("target 36 g");
+    expect(endsWhen(medium)).not.toMatch(/ends/);
   });
 });

@@ -67,7 +67,10 @@ export function ProposalPanel({
 
   const stopChanges = stopConditionChangesOf(draft);
   const clamps = clampChangesOf(draft);
-  const needsAcknowledgement = stopChanges.length > 0 && !draft.acknowledged_stop_changes;
+  // A profile designed from scratch has no stops it changes: nothing to acknowledge, and nothing
+  // to diff it against (the base it is stored with is only an anchor).
+  const fresh = isNew || draft.is_new === true;
+  const needsAcknowledgement = !fresh && stopChanges.length > 0 && !draft.acknowledged_stop_changes;
   const busy = put.isPending || discard.isPending;
   const alreadyThere = landing?.already_on_board_label ?? null;
   // Every proposal is an independent candidate: another one being made active never blocks this
@@ -84,7 +87,7 @@ export function ProposalPanel({
           majorLabel: draft.set_next_major_label ?? null,
         }
       : null;
-  const makeActive = isNew ? "Add to the list" : "Make active";
+  const makeActive = fresh ? "Add to the list" : "Make active";
 
   const act = (body: { setId?: number; major?: boolean }) => {
     if (putting.current) return;
@@ -108,7 +111,7 @@ export function ProposalPanel({
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <Badge variant="secondary">Proposed</Badge>
-        {isNew ? <Badge>New</Badge> : null}
+        {fresh ? <Badge>New</Badge> : null}
         <span className="min-w-0 break-words font-medium text-sm">
           {draft.draft_label ?? "Untitled"}
         </span>
@@ -133,10 +136,10 @@ export function ProposalPanel({
       ) : null}
 
       <div>
-        <h4 className="mb-1 font-medium text-sm">{isNew ? "The profile" : "What changes"}</h4>
+        <h4 className="mb-1 font-medium text-sm">{fresh ? "New profile" : "What changes"}</h4>
         {profile === null ? (
           <Skeleton className="h-12 w-full" />
-        ) : base !== null && !isNew ? (
+        ) : base !== null && !fresh ? (
           <ProfileDiff
             base={base}
             draft={profile}
@@ -162,7 +165,7 @@ export function ProposalPanel({
         </div>
       ) : null}
 
-      {stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
+      {!fresh && stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
       {needsAcknowledgement ? (
         <label
