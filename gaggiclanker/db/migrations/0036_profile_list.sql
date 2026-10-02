@@ -18,6 +18,11 @@
 --     them, then by label), so it is an idempotent step the application runs at boot, after
 --     migrations, once: see `db/repos/profile_list.py`.
 --
+--   * conflict_overruled_hash: the content hash of a machine file a person chose to overrule
+--     ("keep the app's version") when the file's content differed from everything the app knew.
+--     The same content is not flagged as a conflict again; a further edit on the display is a new
+--     one. NULL when nothing was overruled.
+--
 -- `origin` stays as information (where a profile came from); it no longer decides what a sync
 -- may push or remove. Its CHECK stays: rebuilding the table would only restate it.
 --
@@ -26,6 +31,7 @@
 
 ALTER TABLE profile_board ADD COLUMN on_machine INTEGER NOT NULL DEFAULT 1
     CHECK (on_machine IN (0, 1));
+ALTER TABLE profile_board ADD COLUMN conflict_overruled_hash TEXT;
 
 CREATE TABLE profile_board_versions (
     board_id   INTEGER NOT NULL REFERENCES profile_board(id) ON DELETE CASCADE,

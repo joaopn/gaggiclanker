@@ -50,23 +50,15 @@ class SettingsWriteGate:
         return bool(await self.settings.get("deviceWritesEnabled"))
 
     async def authorize(self, write: PendingWrite) -> None:
-        """Refuse unless writes are on, then apply the rule for this kind.
+        """Refuse unless writes are on.
 
-        The per-kind branches are here rather than in the routes and services
-        that call the client, and that is the point of the whole arrangement: a
-        rule enforced at the edge is a rule the next caller gets to skip, and
-        the next caller is a background task nobody is watching.
+        There is no per-kind rule left: every profile the app has synced is the app's to
+        manage, so who made a profile no longer decides whether it may be deleted. What
+        stands between a profile and its removal is the content check the client makes
+        against a fresh load (``GaggimateClient.delete_profile``).
         """
         if not await self.enabled():
             raise DeviceWriteRefused(DISABLED_MESSAGE)
-        if write.kind == "profile_delete":
-            device_id = write.device_id or ""
-            if not await self.writes.created_by_us(device_id, host=write.host or None):
-                raise DeviceWriteRefused(
-                    f"Profile {device_id!r} was not created by this box — there is no successful "
-                    "save for that id in the device-write audit. gaggiclanker deletes only the "
-                    "profiles it wrote; delete this one from the machine's own display."
-                )
 
     async def record(
         self, write: PendingWrite, *, result: Literal["ok", "refused", "failed"], error: str = ""
@@ -76,8 +68,7 @@ class SettingsWriteGate:
                 kind=write.kind,
                 host=write.host,
                 # For a save this is the id the firmware assigned, filled in by
-                # the client before it records the result — the provenance check
-                # a later delete runs is exactly this column.
+                # the client before it records the result.
                 device_id=write.device_id,
                 payload_hash=write.payload_hash,
                 result=result,

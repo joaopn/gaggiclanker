@@ -6,10 +6,10 @@ as well as for successes. The refusals are the half people forget and the half
 that answers the question actually asked of an audit: *did anything try to write
 while this was switched off?*
 
-The other job this table does is provenance. `delete_profile` will only remove a
-profile the audit says we created, which is what
-:meth:`DeviceWritesRepository.created_by_us` answers. A label can be edited on
-the machine; a row here cannot.
+The other job this table does is provenance, as information: whether a machine file is a
+copy this box saved (:meth:`DeviceWritesRepository.created_by_us`, ``saved_with_content``)
+tells a profile's origin. It no longer decides what may be deleted: every synced profile is
+the app's to manage, and a delete is guarded by the file's content instead.
 """
 
 from __future__ import annotations

@@ -59,6 +59,9 @@ class BoardRow(BaseModel):
     pending_major: bool | None = None
     #: The version this profile was before its newest one, which going back returns to.
     previous_version_id: int | None = None
+    #: The content hash of a machine file a person chose to overrule in a conflict ("keep the
+    #: app's version"): that same content is not flagged again, a further edit is a new conflict.
+    conflict_overruled_hash: str | None = None
     #: Set by going back: the version that was left (the file holding it goes as a going
     #: back, not as a delayed replacement)...
     back_from_version_id: int | None = None
@@ -107,6 +110,7 @@ class BoardRowPatch(BaseModel):
     pending_set_id: int | None = None
     pending_major: bool | None = None
     previous_version_id: int | None = None
+    conflict_overruled_hash: str | None = None
     back_from_version_id: int | None = None
     back_from_set_version_id: int | None = None
     deleted_at: str | None = None
@@ -326,6 +330,42 @@ class ProfileBoardRepository(Repository):
             (version_id,),
         )
         return self.to_model(BoardRow, row)
+
+    async def shot_counts(self, version_ids: list[int]) -> dict[int, int]:
+        """How many shots resolve to each of these versions (versions with none are absent)."""
+        if not version_ids:
+            return {}
+        marks = ", ".join("?" * len(version_ids))
+        rows = await self.db.fetch_all(
+            "SELECT profile_version_id AS v, COUNT(*) AS n FROM shots "  # noqa: S608 - placeholders only
+            f"WHERE profile_version_id IN ({marks}) GROUP BY profile_version_id",
+            version_ids,
+        )
+        return {int(r["v"]): int(r["n"]) for r in rows}
+
+    async def listed_hashes(self, board_id: int) -> set[str]:
+        """The content hashes of the versions this profile has had, but not the ones only found on
+        the machine's file (``edited_on_machine``): those are what a conflict is about, and
+        recording one must not make the conflict go away."""
+        rows = await self.db.fetch_all(
+            "SELECT pv.content_hash AS h FROM profile_board_versions v "
+            "JOIN profile_versions pv ON pv.id = v.version_id "
+            "WHERE v.board_id = ? AND v.source != 'edited_on_machine'",
+            (board_id,),
+        )
+        return {str(r["h"]) for r in rows}
+
+    async def live_version_hashes(self) -> dict[str, list[int]]:
+        """Content hash -> the live profiles (by id) that have had a version with it."""
+        rows = await self.db.fetch_all(
+            "SELECT pv.content_hash AS h, v.board_id AS b FROM profile_board_versions v "
+            "JOIN profile_board b ON b.id = v.board_id AND b.deleted_at IS NULL "
+            "JOIN profile_versions pv ON pv.id = v.version_id ORDER BY v.board_id"
+        )
+        found: dict[str, list[int]] = {}
+        for row in rows:
+            found.setdefault(str(row["h"]), []).append(int(row["b"]))
+        return found
 
     # ── adoption ─────────────────────────────────────────────────────
 

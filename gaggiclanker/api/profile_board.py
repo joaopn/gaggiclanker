@@ -11,7 +11,12 @@ and with no machine at all. What a route that reads the machine does is read.
   or a new profile.
 * ``POST .../go-back`` makes a profile its previous version again (the app's own profiles
   only); the next sync puts that version on the machine and removes the newer copy.
-* ``PUT .../home-screen`` and ``DELETE`` change one row.
+* ``PUT .../on-machine`` switches a profile on or off the machine and ``PUT .../starred`` stars
+  it (the machine's home-screen carousel; ``.../home-screen`` is the same route under its old
+  name); ``PUT .../active-version`` makes one of its versions the active one; ``GET
+  .../versions`` lists its versions and the proposals that would join them. The next sync does
+  what they say.
+* ``DELETE`` tombstones one row (the list has no Delete: switching a profile off is enough).
 
 Chat and MCP have no route here and no tool: a person's click is the only way a profile gets
 onto the board, and the board is the only thing a sync pushes.
@@ -19,7 +24,7 @@ onto the board, and the board is the only thing a sync pushes.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
@@ -31,6 +36,7 @@ from gaggiclanker.db.repos.profile_board import BoardRow
 from gaggiclanker.db.repos.sets import VersionRefused
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.drafts.board import BoardView, machine_from_mirror
+from gaggiclanker.drafts.board_versions import ConflictView, ProfileVersionsView
 from gaggiclanker.drafts.machine import MachineState, read_machine
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 
@@ -66,6 +72,33 @@ class HomeScreenBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     on: StrictBool
+
+
+class OnMachineBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    on: StrictBool
+
+
+class StarredBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    starred: StrictBool
+
+
+class ActiveVersionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version_id: int
+
+
+class ConflictBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    keep: Literal["app", "machine"]
+    #: The content hash of the machine's file as the person saw it; a file that changed since is
+    #: refused.
+    content_hash: str = Field(min_length=1, max_length=128)
 
 
 class TakeBody(BaseModel):
@@ -175,6 +208,84 @@ async def put_home_screen(
     row_id: int, body: HomeScreenBody, board: BoardServiceDep
 ) -> JSONResponse:
     row = await board.set_home_screen(row_id, body.on)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.put(
+    "/{row_id}/starred",
+    response_model=ApiResponse[BoardRow],
+    summary="Star a profile (the machine's home-screen carousel), or take its star off",
+)
+async def put_starred(row_id: int, body: StarredBody, board: BoardServiceDep) -> JSONResponse:
+    """Person-only. Stored now and applied by a sync only while the profile is on the machine;
+    remembered while it is off. Nothing is sent to the machine here."""
+    row = await board.set_home_screen(row_id, body.starred)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.put(
+    "/{row_id}/on-machine",
+    response_model=ApiResponse[BoardRow],
+    summary="Switch a profile on or off the machine",
+)
+async def put_on_machine(row_id: int, body: OnMachineBody, board: BoardServiceDep) -> JSONResponse:
+    """Person-only. The next sync puts the profile on the machine or takes it off; with the
+    Writes switch off it is only stored. Nothing is sent to the machine here. No chat or MCP
+    tool reaches it."""
+    row = await board.set_on_machine(row_id, body.on)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.put(
+    "/{row_id}/active-version",
+    response_model=ApiResponse[BoardRow],
+    summary="Make one of a profile's versions its active one",
+)
+async def put_active_version(
+    row_id: int, body: ActiveVersionBody, board: BoardServiceDep
+) -> JSONResponse:
+    """Person-only. Any version the profile has had; the next sync puts it on the machine and
+    takes the profile's other file off. Records nothing on a Set (only making a proposal active
+    through ``POST /api/profile-board`` does). Refused (409) for a version of another profile,
+    the empty baseline, a version outside the safety bounds, and a name another profile has."""
+    row = await board.set_active_version(row_id, body.version_id)
+    return envelope_response(row.model_dump(mode="json"))
+
+
+@router.get(
+    "/{row_id}/versions",
+    response_model=ApiResponse[ProfileVersionsView],
+    summary="A profile's versions, newest first, and the proposals that would join them",
+)
+async def get_versions(row_id: int, board: BoardServiceDep) -> JSONResponse:
+    """Read-only, from the archive. Each version names the one before it in the list (the
+    first has none: it is new, never a diff against anything else)."""
+    view = await board.versions(row_id)
+    return envelope_response(view.model_dump(mode="json"))
+
+
+@router.get(
+    "/{row_id}/conflict",
+    response_model=ApiResponse[ConflictView | None],
+    summary="Both sides of a profile's conflict, or null when it has none",
+)
+async def get_conflict(row_id: int, board: BoardServiceDep) -> JSONResponse:
+    """Read-only, from the archive's mirror: the machine's file as last read and the profile's
+    active version, for a side-by-side panel."""
+    view = await board.conflict(row_id)
+    return envelope_response(None if view is None else view.model_dump(mode="json"))
+
+
+@router.post(
+    "/{row_id}/conflict",
+    response_model=ApiResponse[BoardRow],
+    summary="Choose which side of a conflict to keep",
+)
+async def resolve_conflict(row_id: int, body: ConflictBody, board: BoardServiceDep) -> JSONResponse:
+    """Person-only. ``machine``: the machine's version becomes the active one. ``app``: the next
+    sync replaces the machine's file with the active version. Nothing is sent to the machine
+    here. Refused (409) with no conflict, or when the file changed since ``content_hash``."""
+    row = await board.resolve_conflict(row_id, keep=body.keep, content_hash=body.content_hash)
     return envelope_response(row.model_dump(mode="json"))
 
 

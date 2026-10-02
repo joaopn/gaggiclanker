@@ -640,9 +640,11 @@ def test_no_tool_edits_the_profile_board_or_takes_a_profile_onto_it() -> None:
     """The board is edited by a person's click only: chat and MCP have no tool for it.
 
     Putting a draft on the board, taking a machine profile onto it, a home-screen flag, going
-    back a version, a delete and a resume are routes under ``/api/profile-board``; none has a
-    tool, and no tool is named for one. (What each of them does to the machine happens in the
-    board's write phase, which no tool can reach: the walk above holds the ``BoardService``.)
+    back a version, switching a profile on or off the machine, starring it, making a version
+    active, resolving a conflict, a delete and a resume are routes under ``/api/profile-board``;
+    none has a tool, and no tool is named for one. (What each of them does to the machine
+    happens in the board's write phase, which no tool can reach: the walk above holds the
+    ``BoardService``.)
     """
     names = registry.names()
     assert names, "the registry is empty, so this proves nothing"
@@ -654,6 +656,11 @@ def test_no_tool_edits_the_profile_board_or_takes_a_profile_onto_it() -> None:
         "home_screen",
         "put_on",
         "go_back",
+        "on_machine",
+        "starred",
+        "active_version",
+        "conflict",
+        "make_active",
         "approve",
         "push",
         "rollback",

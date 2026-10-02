@@ -1,7 +1,9 @@
 """Taking one profile the machine holds onto the board, after the board has been adopted.
 
 The route reads the archive's mirror and writes nothing to the machine: every scenario also
-checks that no write frame went out.
+checks that no write frame went out. A pull with the switch on joins every file it has never
+seen by itself, so a file waits to be taken only while syncs are not writing: the scenarios
+refresh the mirror with the switch off (``mirror_only``).
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository, DeviceWr
 from gaggiclanker.device.fake import FakeDevice
 from gaggiclanker.domain.models import Profile, profile_content_hash
 from gaggiclanker.infra.errors import Conflict
-from tests.drafts.conftest import data
+from tests.drafts.conftest import data, mirror_only
 from tests.drafts.helpers import APP_LABEL, Live
 from tests.drafts.test_board import adopted, app_row, get_board, pull, row_for, write_frames
 from tests.llm.conftest import FakeProvider
@@ -46,7 +48,7 @@ async def test_a_profile_made_on_the_display_is_taken_as_the_persons_and_nothing
     app, client = writes_on
     await pull(app)  # adoption
     new_file(fake_device, "later", "Made on the display", favorite=True)
-    await pull(app)  # the mirror learns of it; the board does not take it by itself
+    await mirror_only(app)  # the mirror learns of it; only a pull with writes on joins it
     board = await get_board(client, live=False)
     assert all(r["row"]["label"] != "Made on the display" for r in board["rows"])
     before = len(write_frames(fake_device))
@@ -81,7 +83,7 @@ async def test_the_apps_own_saved_copy_becomes_an_app_row_as_at_first_adoption(
             result="ok",
         )
     )
-    await pull(app)
+    await mirror_only(app)
 
     row = data(await take(client, "mine"))
 
@@ -94,7 +96,7 @@ async def test_a_copy_that_looks_like_the_apps_but_was_never_saved_by_it_is_the_
     app, client = writes_on
     await pull(app)
     new_file(fake_device, "legacy", APP_LABEL)
-    await pull(app)
+    await mirror_only(app)
 
     assert data(await take(client, "legacy"))["origin"] == "adopted"
 
@@ -156,7 +158,7 @@ async def test_five_takes_at_once_make_one_row_and_four_refusals(
     app, client = writes_on
     await pull(app)
     new_file(fake_device, "later", "Made on the display")
-    await pull(app)
+    await mirror_only(app)
 
     responses = await asyncio.gather(*(take(client, "later") for _ in range(5)))
 
@@ -171,7 +173,7 @@ async def test_five_service_takes_at_once_make_one_row(
     app, _ = writes_on
     await pull(app)
     new_file(fake_device, "later", "Made on the display")
-    await pull(app)
+    await mirror_only(app)
 
     results = await asyncio.gather(
         *(app.state.board.take("later") for _ in range(5)), return_exceptions=True
@@ -187,7 +189,7 @@ async def test_the_unique_index_is_the_same_refusal_never_a_500(
     app, client = writes_on
     await pull(app)
     new_file(fake_device, "later", "Made on the display")
-    await pull(app)
+    await mirror_only(app)
     assert (await take(client, "later")).status_code == 201
 
     # The checks are blind to the first row, as a racing writer's would be: the index decides.
@@ -214,7 +216,7 @@ async def test_a_file_holding_what_an_app_profile_already_stands_for_is_refused(
     twin = copy.deepcopy(app_file)
     twin["id"] = "twin"
     fake.profiles.append(twin)  # the same content under another id: a third copy if taken
-    await pull(app)
+    await mirror_only(app)
 
     response = await take(client, "twin")
 
@@ -230,7 +232,7 @@ async def test_a_persons_identical_duplicate_is_refused_like_any_second_profile_
     twin = copy.deepcopy(fake_device.profiles[0])
     twin["id"] = "twin"
     fake_device.profiles.append(twin)  # made on the display: a second profile of one label
-    await pull(app)
+    await mirror_only(app)
 
     response = await take(client, "twin")
 
@@ -249,7 +251,7 @@ async def test_a_profile_with_the_label_of_a_live_profile_is_refused_even_when_i
     label = str(fake_device.profiles[0]["label"])
     other = new_file(fake_device, "other", label)
     other["temperature"] = float(str(other.get("temperature", 90))) + 1  # another document
-    await pull(app)
+    await mirror_only(app)
 
     response = await take(client, "other")
 
@@ -266,7 +268,7 @@ async def test_the_label_of_a_deleted_profile_is_free_to_take_again(
     await client.delete(f"/api/profile-board/{first['id']}")
     other = new_file(fake_device, "other", first["label"])
     other["temperature"] = float(str(other.get("temperature", 90))) + 1
-    await pull(app)
+    await mirror_only(app)
 
     response = await take(client, "other")
 
@@ -281,7 +283,7 @@ async def test_two_files_with_one_label_taken_at_once_make_one_row(
     for name, bump in (("one", 1), ("two", 2), ("three", 3)):
         twin = new_file(fake_device, name, "Made on the display")
         twin["temperature"] = float(str(twin.get("temperature", 90))) + bump
-    await pull(app)
+    await mirror_only(app)
 
     responses = await asyncio.gather(*(take(client, name) for name in ("one", "two", "three")))
 
@@ -296,8 +298,8 @@ async def test_a_profile_the_mirror_marks_deleted_is_refused(
     app, client = writes_on
     await pull(app)
     new_file(fake_device, "later", "Made on the display")
-    await pull(app)
+    await mirror_only(app)
     fake_device.profiles = [p for p in fake_device.profiles if p["id"] != "later"]
-    await pull(app)  # the mirror tombstones it
+    await mirror_only(app)  # the mirror tombstones it
 
     assert (await take(client, "later")).status_code == 404

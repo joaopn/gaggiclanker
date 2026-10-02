@@ -1,4 +1,4 @@
-"""The write primitives, directly: ``place`` and ``remove_if_ours``.
+"""The write primitives, directly: ``place`` and ``remove_profile``.
 
 The staged push used to be the only way to reach them, so their guards were pinned through
 its HTTP routes. The profile board's write phase calls them now, and its own tests reach them
@@ -8,20 +8,19 @@ real audit, for what each primitive must and must never do:
 * ``place`` saves a document unless the machine already holds its exact content, reads it back
   and says when what came back is not what went out (the profile is then on the machine either
   way);
-* ``remove_if_ours`` takes a file off only when this app saved that id, the label on the
-  machine still carries the app suffix, the content is what the archive recorded, nobody else
-  stands on it, and twice (before the star and selection move, and again just before the
-  delete); it moves the star and the selection to the successor first.
+* ``remove_profile`` takes any file off the machine (who made it and what it is called decide
+  nothing) only when the content is what the archive recorded, nobody else stands on it, and
+  twice (before the selection moves, and again just before the delete); it moves the
+  selection (and, for a replacement, the star) to the successor first, and never removes the
+  selected profile with nothing to take the selection.
 """
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 import pytest
 
-from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.device.fake import FakeDevice
@@ -29,10 +28,10 @@ from gaggiclanker.domain.models import Profile, profile_content_hash, with_app_s
 from gaggiclanker.drafts.machine import (
     CHANGED_SINCE,
     GONE,
-    NOT_OURS,
+    NO_SUCCESSOR,
     place,
     read_machine,
-    remove_if_ours,
+    remove_profile,
 )
 from tests.drafts.conftest import BASE_LABEL, base_profile
 from tests.drafts.helpers import Live, audit, kinds
@@ -182,7 +181,7 @@ async def test_place_refused_with_writes_off_sends_nothing_and_is_audited(
     assert kinds(await audit(app), "profile_save")[-1][2] == "refused"
 
 
-# ── remove_if_ours ───────────────────────────────────────────────────
+# ── remove_profile ───────────────────────────────────────────────────
 
 
 async def two_copies(app: Any, fake: FakeDevice) -> tuple[Profile, str, Profile, str]:
@@ -208,9 +207,8 @@ async def test_removal_moves_the_star_and_the_selection_before_it_deletes(
     fake_device.favorite_profile_ids.discard(new_id)
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -237,9 +235,8 @@ async def test_the_startup_profile_is_reported_only_when_the_firmware_cleared_it
     if startup:
         fake_device.device_settings["startupProfile"] = old_id
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -248,48 +245,91 @@ async def test_the_startup_profile_is_reported_only_when_the_firmware_cleared_it
     assert removal.removed and removal.startup_cleared is startup
 
 
-async def test_a_profile_the_person_made_is_never_removed_whatever_it_is_called(
+async def test_any_profile_is_removed_whoever_made_it_when_it_holds_what_was_recorded(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:
-    """The label alone proves nothing: this app never saved that id."""
+    """A firmware default, or one made on the display, has no [AI] label and no audited save."""
     app, _ = writes_on
-    handmade = copy.deepcopy(next(p for p in fake_device.profiles if p["label"] == BASE_LABEL))
-    handmade.update(id="hand0001", label="Hand made [AI]")
-    fake_device.profiles.append(handmade)
+    machine = await read_machine(app.state.connection.client)
+    default_id = "9bar"
+    assert default_id in machine.profiles
+    assert machine.profiles[default_id].label == BASE_LABEL
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
-        device_id="hand0001",
-        expected_hash=None,
+        device_id=default_id,
+        expected_hash=profile_content_hash(machine.profiles[default_id]),
         successor=None,
     )
 
-    assert not removal.removed and removal.reason == NOT_OURS
-    assert "hand0001" in {str(p["id"]) for p in fake_device.profiles}
-    assert writes(fake_device, mark) == []
-    assert kinds(await audit(app), "profile_delete") == []
+    assert removal.removed
+    assert default_id not in {str(p["id"]) for p in fake_device.profiles}
+    assert writes(fake_device, mark) == ["req:profiles:delete"]
+    assert kinds(await audit(app), "profile_delete")[-1] == ("profile_delete", default_id, "ok")
 
 
-async def test_a_copy_this_app_saved_but_renamed_on_the_display_is_not_removed(
+async def test_a_copy_renamed_on_the_display_is_a_changed_copy_and_is_kept(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:
-    """The audit alone proves nothing either: the label on the machine right now counts."""
+    """The label is part of the content: a rename is an edit like any other."""
     app, _ = writes_on
     old, old_id, _, _ = await two_copies(app, fake_device)
     edit_on_display(fake_device, old_id, label="Renamed by hand")
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=None,
     )
 
-    assert not removal.removed and removal.reason == NOT_OURS
+    assert not removal.removed and removal.reason == CHANGED_SINCE
     assert old_id in {str(p["id"]) for p in fake_device.profiles}
+
+
+async def test_the_selected_profile_is_never_removed_with_nothing_to_take_the_selection(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    app, _ = writes_on
+    old, old_id, _, _ = await two_copies(app, fake_device)
+    fake_device.selected_profile_id = old_id
+    mark = len(fake_device.ws_requests)
+
+    removal = await remove_profile(
+        app.state.connection.client,
+        device_id=old_id,
+        expected_hash=profile_content_hash(old),
+        successor=None,
+    )
+
+    assert not removal.removed and removal.reason == NO_SUCCESSOR
+    assert writes(fake_device, mark) == []
+    assert fake_device.selected_profile_id == old_id
+
+
+async def test_a_removal_that_does_not_carry_the_star_moves_only_the_selection(
+    writes_on: Live, fake_device: FakeDevice
+) -> None:
+    """Switching a profile off must not star the profile that inherits its selection."""
+    app, _ = writes_on
+    old, old_id, _, new_id = await two_copies(app, fake_device)
+    fake_device.selected_profile_id = old_id
+    fake_device.favorite_profile_ids.add(old_id)
+    fake_device.favorite_profile_ids.discard(new_id)
+    mark = len(fake_device.ws_requests)
+
+    removal = await remove_profile(
+        app.state.connection.client,
+        device_id=old_id,
+        expected_hash=profile_content_hash(old),
+        successor=new_id,
+        carry_favorite=False,
+    )
+
+    assert removal.removed and removal.selected_carried and not removal.favorite_carried
+    assert new_id not in fake_device.favorite_profile_ids
+    assert writes(fake_device, mark) == ["req:profiles:select", "req:profiles:delete"]
 
 
 async def test_a_copy_edited_on_the_display_since_is_kept(
@@ -301,9 +341,8 @@ async def test_a_copy_edited_on_the_display_since_is_kept(
     edit_on_display(fake_device, old_id, temperature=91)
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -330,9 +369,8 @@ async def test_an_edit_made_while_the_star_moves_is_not_deleted(
     monkeypatch.setattr(GaggimateClient, "select_profile", select_then_edit)
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -350,9 +388,8 @@ async def test_somebody_elses_claim_keeps_the_file_and_is_the_reason_given(
     old, old_id, _, new_id = await two_copies(app, fake_device)
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -369,9 +406,8 @@ async def test_a_profile_under_another_label_is_not_this_replacements_to_remove(
     app, _ = writes_on
     old, old_id, _, _ = await two_copies(app, fake_device)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=None,
@@ -386,11 +422,10 @@ async def test_a_profile_that_is_not_on_the_machine_is_gone_not_a_failure(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:
     app, _ = writes_on
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id="nothing01",
-        expected_hash=None,
+        expected_hash="whatever",
         successor=None,
     )
 
@@ -408,9 +443,8 @@ async def test_a_failure_between_the_carry_and_the_delete_leaves_both_profiles(
     fake_device.error_requests.add(failing)
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -429,9 +463,8 @@ async def test_a_removal_the_switch_refuses_mid_way_is_a_reason_not_an_exception
     await app.state.settings_service.apply({"deviceWritesEnabled": False})
     mark = len(fake_device.ws_requests)
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         app.state.connection.client,
-        DeviceWritesRepository(app.state.db),
         device_id=old_id,
         expected_hash=profile_content_hash(old),
         successor=new_id,
@@ -445,20 +478,19 @@ async def test_a_removal_the_switch_refuses_mid_way_is_a_reason_not_an_exception
 async def test_a_copy_that_did_not_verify_is_removed_against_what_the_machine_stored(
     writes_on: Live, fake_device: FakeDevice
 ) -> None:
-    """``expected_hash=None`` is for the one file whose content is known to differ."""
+    """The hash is what the machine served back, not what was sent."""
     app, _ = writes_on
     client = app.state.connection.client
     fake_device.mutate_on_save = lambda stored: {**stored, "temperature": 80}
     placed = await place(
         client, await app_profile(app, "Did not verify", 8), await read_machine(client)
     )
-    assert placed.problem == "mismatch"
+    assert placed.problem == "mismatch" and placed.served is not None
 
-    removal = await remove_if_ours(
+    removal = await remove_profile(
         client,
-        DeviceWritesRepository(app.state.db),
         device_id=placed.device_id,
-        expected_hash=None,
+        expected_hash=profile_content_hash(placed.served),
         successor=None,
     )
 

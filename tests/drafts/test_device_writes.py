@@ -22,9 +22,10 @@ from gaggiclanker.device.writes import DeviceWriteRefused
 from gaggiclanker.domain.models import (
     Profile,
     canonical_profile_json,
+    profile_content_hash,
     with_app_suffix,
 )
-from tests.drafts.conftest import base_profile, profile_fixture
+from tests.drafts.conftest import base_profile
 
 
 async def a_new_profile(app: FastAPI, label: str | None = None) -> Profile:
@@ -163,76 +164,59 @@ async def test_what_comes_back_from_a_save_round_trips_to_the_same_canonical_for
 # ── deleting ─────────────────────────────────────────────────────────
 
 
-async def test_a_delete_needs_the_suffix_and_the_audit(
+async def test_a_delete_needs_only_the_content_the_caller_recorded(
     writes_on: tuple[FastAPI, object], fake_device: FakeDevice
 ) -> None:
-    """A profile we created, and that still says so, is the only deletable thing."""
+    """A profile that still holds what the archive recorded for it may be deleted."""
     app, _ = writes_on
     stored = await app.state.connection.client.save_profile(await a_new_profile(app))
 
-    await app.state.connection.client.delete_profile(stored.id or "")
+    await app.state.connection.client.delete_profile(
+        stored.id or "", expected_hash=profile_content_hash(stored)
+    )
 
     assert all(profile["id"] != stored.id for profile in fake_device.profiles)
     assert ("profile_delete", "ok", stored.id) in await audit(app)
 
 
-async def test_a_delete_refuses_a_profile_this_box_did_not_create(
+async def test_a_delete_does_not_ask_who_made_the_profile(
     writes_on: tuple[FastAPI, object], fake_device: FakeDevice
 ) -> None:
-    """The provenance half. The label is right; the audit is empty.
-
-    A person can rename a profile on the display to end in "[AI]", and after
-    that the label proves nothing. The audit is what cannot be faked from the
-    machine's side.
-    """
+    """No suffix, no audited save: a firmware default is deleted like any other profile."""
     app, _ = writes_on
-    fake_device.profiles.append(
-        {**profile_fixture("firmware-9bar"), "id": "imposter", "label": "Not ours [AI]"}
-    )
+    client = app.state.connection.client
+    default = await client.load_profile("9bar")
+    assert not default.label.endswith("[AI]")
+    assert not any(kind == "profile_save" and dev == "9bar" for kind, _, dev in await audit(app))
 
-    with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.connection.client.delete_profile("imposter")
+    await client.delete_profile("9bar", expected_hash=profile_content_hash(default))
 
-    assert "not created by this box" in str(caught.value)
-    assert any(profile["id"] == "imposter" for profile in fake_device.profiles)
-    assert ("profile_delete", "refused", "imposter") in await audit(app)
+    assert all(profile["id"] != "9bar" for profile in fake_device.profiles)
+    assert ("profile_delete", "ok", "9bar") in await audit(app)
 
 
-async def test_a_delete_refuses_a_label_without_the_suffix(
+async def test_a_delete_refuses_a_profile_edited_since_it_was_recorded(
     writes_on: tuple[FastAPI, object], fake_device: FakeDevice
 ) -> None:
-    """The label half, checked against the *machine*, not against our mirror.
+    """The one guard, checked against the *machine*, not against our mirror.
 
-    Somebody renames the profile on the display after we pushed it. The audit
-    still says we created it; the display says it is now their profile. Their
-    display wins.
+    Somebody edits the profile on the display after the archive recorded it. The display wins:
+    the delete is refused, audited, and the file is left as it is.
     """
     app, _ = writes_on
-    stored = await app.state.connection.client.save_profile(await a_new_profile(app))
+    client = app.state.connection.client
+    stored = await client.save_profile(await a_new_profile(app))
+    recorded = profile_content_hash(stored)
     for profile in fake_device.profiles:
         if profile["id"] == stored.id:
             profile["label"] = "Renamed by hand"
 
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.connection.client.delete_profile(stored.id or "")
+        await client.delete_profile(stored.id or "", expected_hash=recorded)
 
-    assert "does not carry the" in str(caught.value)
+    assert "changed on the display" in str(caught.value)
     assert any(profile["id"] == stored.id for profile in fake_device.profiles)
-
-
-async def test_a_delete_of_something_that_is_not_there_says_which_rule_stopped_it(
-    writes_on: tuple[FastAPI, object],
-) -> None:
-    """An id we never created is refused by the audit, before anything is read.
-
-    The message is what matters: with the switch plainly on, "the switch is off"
-    would send somebody to the wrong place. It names the provenance rule instead.
-    """
-    app, _ = writes_on
-    with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.connection.client.delete_profile("nosuchid")
-    assert "not created by this box" in str(caught.value)
-    assert "switched off" not in str(caught.value)
+    assert ("profile_delete", "refused", stored.id) in await audit(app)
 
 
 async def test_a_delete_the_gate_refuses_never_reads_the_machine_either(
@@ -249,7 +233,7 @@ async def test_a_delete_the_gate_refuses_never_reads_the_machine_either(
     fake_device.hang_requests.add("req:profiles:load")
 
     with pytest.raises(DeviceWriteRefused) as caught:
-        await app.state.connection.client.delete_profile("9bar")
+        await app.state.connection.client.delete_profile("9bar", expected_hash="whatever")
 
     assert "switched off" in str(caught.value)
     # Where to turn it on is the top-bar switch; the Settings card is gone.

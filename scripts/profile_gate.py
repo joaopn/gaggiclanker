@@ -42,7 +42,12 @@ from pydantic import ValidationError
 
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.writes import DeviceWriteGate, PendingWrite
-from gaggiclanker.domain.models import Profile, canonical_profile_json, with_app_suffix
+from gaggiclanker.domain.models import (
+    Profile,
+    canonical_profile_json,
+    profile_content_hash,
+    with_app_suffix,
+)
 from gaggiclanker.domain.profile_policy import (
     DEFAULT_BOUNDS,
     PolicyBounds,
@@ -197,7 +202,9 @@ async def gate_one(
         # leaves litter somebody has to clean up by hand.
         if device_id is not None:
             try:
-                await client.delete_profile(device_id)
+                # The gate's own copy: deleted against what the machine holds right now.
+                held = await client.load_profile(device_id)
+                await client.delete_profile(device_id, expected_hash=profile_content_hash(held))
                 report("ok", f"deleted {device_id}")
             except Exception as exc:  # reported, never swallowed
                 report("WARN", f"could not delete {device_id}: {exc}")

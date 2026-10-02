@@ -1036,6 +1036,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-board/{row_id}/active-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make one of a profile's versions its active one
+         * @description Person-only. Any version the profile has had; the next sync puts it on the machine and
+         *     takes the profile's other file off. Records nothing on a Set (only making a proposal active
+         *     through ``POST /api/profile-board`` does). Refused (409) for a version of another profile,
+         *     the empty baseline, a version outside the safety bounds, and a name another profile has.
+         */
+        put: operations["put_active_version_api_profile_board__row_id__active_version_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/{row_id}/conflict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Both sides of a profile's conflict, or null when it has none
+         * @description Read-only, from the archive's mirror: the machine's file as last read and the profile's
+         *     active version, for a side-by-side panel.
+         */
+        get: operations["get_conflict_api_profile_board__row_id__conflict_get"];
+        put?: never;
+        /**
+         * Choose which side of a conflict to keep
+         * @description Person-only. ``machine``: the machine's version becomes the active one. ``app``: the next
+         *     sync replaces the machine's file with the active version. Nothing is sent to the machine
+         *     here. Refused (409) with no conflict, or when the file changed since ``content_hash``.
+         */
+        post: operations["resolve_conflict_api_profile_board__row_id__conflict_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profile-board/{row_id}/go-back": {
         parameters: {
             query?: never;
@@ -1069,6 +1119,70 @@ export interface paths {
         get?: never;
         /** Put a profile on, or take it off, the machine's home screen */
         put: operations["put_home_screen_api_profile_board__row_id__home_screen_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/{row_id}/on-machine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a profile on or off the machine
+         * @description Person-only. The next sync puts the profile on the machine or takes it off; with the
+         *     Writes switch off it is only stored. Nothing is sent to the machine here. No chat or MCP
+         *     tool reaches it.
+         */
+        put: operations["put_on_machine_api_profile_board__row_id__on_machine_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/{row_id}/starred": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Star a profile (the machine's home-screen carousel), or take its star off
+         * @description Person-only. Stored now and applied by a sync only while the profile is on the machine;
+         *     remembered while it is off. Nothing is sent to the machine here.
+         */
+        put: operations["put_starred_api_profile_board__row_id__starred_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-board/{row_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A profile's versions, newest first, and the proposals that would join them
+         * @description Read-only, from the archive. Each version names the one before it in the list (the
+         *     first has none: it is new, never a diff against anything else).
+         */
+        get: operations["get_versions_api_profile_board__row_id__versions_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2256,6 +2370,38 @@ export interface components {
         /** @enum {string} */
         ActionKind: "adopt" | "push" | "remove" | "leave" | "home_screen" | "report";
         /**
+         * ActiveVersion
+         * @description The active version of a profile, as a row of the list shows it.
+         */
+        ActiveVersion: {
+            /** Created At */
+            created_at: string;
+            /** Label */
+            label: string;
+            /** Short Hash */
+            short_hash: string;
+            /**
+             * Shots Brewed
+             * @default 0
+             */
+            shots_brewed: number;
+            source: components["schemas"]["VersionSource"];
+            /** Type */
+            type: string;
+            /**
+             * Utility
+             * @default false
+             */
+            utility: boolean;
+            /** Version Id */
+            version_id: number;
+        };
+        /** ActiveVersionBody */
+        ActiveVersionBody: {
+            /** Version Id */
+            version_id: number;
+        };
+        /**
          * ApiError
          * @description The error half of the envelope.
          */
@@ -2615,6 +2761,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[ProfileVersionsView] */
+        ApiResponse_ProfileVersionsView_: {
+            data?: components["schemas"]["ProfileVersionsView"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[PromptData] */
         ApiResponse_PromptData_: {
             data?: components["schemas"]["PromptData"] | null;
@@ -2887,6 +3041,14 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[Union[ConflictView, NoneType]] */
+        ApiResponse_Union_ConflictView__NoneType__: {
+            data?: components["schemas"]["ConflictView"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[UsageTotals] */
         ApiResponse_UsageTotals_: {
             data?: components["schemas"]["UsageTotals"] | null;
@@ -3106,6 +3268,16 @@ export interface components {
         /** @enum {string} */
         BoardOrigin: "adopted" | "draft";
         /**
+         * BoardProposal
+         * @description An open draft as the list shows it: a version waiting for a person.
+         */
+        BoardProposal: {
+            draft: components["schemas"]["ProfileDraftRow"];
+            landing: components["schemas"]["DraftLanding"];
+            /** Row Id */
+            row_id?: number | null;
+        };
+        /**
          * BoardPut
          * @description Put an approved draft on the board.
          */
@@ -3131,6 +3303,8 @@ export interface components {
             back_from_set_version_id?: number | null;
             /** Back From Version Id */
             back_from_version_id?: number | null;
+            /** Conflict Overruled Hash */
+            conflict_overruled_hash?: string | null;
             /** Created At */
             created_at: string;
             /** Current Version Id */
@@ -3174,12 +3348,36 @@ export interface components {
          * @description A board row, its machine state and what the next sync would do about it.
          */
         BoardRowView: {
+            active_version: components["schemas"]["ActiveVersion"];
+            conflict?: components["schemas"]["ConflictSummary"] | null;
             /** Go Back Blocked */
             go_back_blocked?: string | null;
+            /**
+             * In Conflict
+             * @default false
+             */
+            in_conflict: boolean;
             machine: components["schemas"]["BoardMachineState"];
+            /**
+             * On Machine
+             * @default true
+             */
+            on_machine: boolean;
             /** Planned */
             planned?: components["schemas"]["BoardAction"][];
+            /**
+             * Proposed Versions
+             * @default 0
+             */
+            proposed_versions: number;
             row: components["schemas"]["BoardRow"];
+            /** Sets Brewing */
+            sets_brewing?: components["schemas"]["SetBrewing"][];
+            /**
+             * Starred
+             * @default true
+             */
+            starred: boolean;
             /** Type */
             type: string;
             /**
@@ -3210,8 +3408,11 @@ export interface components {
             paused?: string | null;
             /** Pending Removals */
             pending_removals?: components["schemas"]["BoardRow"][];
+            /** Proposals */
+            proposals?: components["schemas"]["BoardProposal"][];
             /** Reports */
             reports?: components["schemas"]["BoardAction"][];
+            resume_preview?: components["schemas"]["ResumePreview"] | null;
             /** Rows */
             rows?: components["schemas"]["BoardRowView"][];
             /** Writes Enabled */
@@ -3488,6 +3689,47 @@ export interface components {
             overridden: boolean;
             /** Platform Package */
             platform_package: string | null;
+        };
+        /** ConflictBody */
+        ConflictBody: {
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Keep
+             * @enum {string}
+             */
+            keep: "app" | "machine";
+        };
+        /**
+         * ConflictSummary
+         * @description The machine's side of a conflict, as the list shows it.
+         */
+        ConflictSummary: {
+            /** Content Hash */
+            content_hash: string;
+            /** Device Id */
+            device_id: string;
+            /** Short Hash */
+            short_hash: string;
+            /** Version Id */
+            version_id?: number | null;
+        };
+        /**
+         * ConflictView
+         * @description `GET /api/profile-board/{id}/conflict`: both sides, for a side-by-side panel.
+         */
+        ConflictView: {
+            app_profile: components["schemas"]["JsonObject"];
+            /** App Short Hash */
+            app_short_hash: string;
+            /** App Version Id */
+            app_version_id: number;
+            /** Label */
+            label: string;
+            machine: components["schemas"]["ConflictSummary"];
+            machine_profile: components["schemas"]["JsonObject"];
+            /** Row Id */
+            row_id: number;
         };
         /** CredentialCheckData */
         CredentialCheckData: {
@@ -4315,6 +4557,44 @@ export interface components {
             /** Taste Notes */
             taste_notes?: string[];
         };
+        /**
+         * ListedVersion
+         * @description One version a profile has been.
+         */
+        ListedVersion: {
+            /** Added At */
+            added_at: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Did Not Verify
+             * @default false
+             */
+            did_not_verify: boolean;
+            /** Is Active */
+            is_active: boolean;
+            /** Is On Machine */
+            is_on_machine: boolean;
+            /** Label */
+            label: string;
+            /** Previous Version Id */
+            previous_version_id?: number | null;
+            profile: components["schemas"]["JsonObject"];
+            /** Sets Brewing */
+            sets_brewing?: components["schemas"]["SetBrewing"][];
+            /** Short Hash */
+            short_hash: string;
+            /**
+             * Shots Brewed
+             * @default 0
+             */
+            shots_brewed: number;
+            source: components["schemas"]["VersionSource"];
+            /** Type */
+            type: string;
+            /** Version Id */
+            version_id: number;
+        };
         /** LlmCallsData */
         LlmCallsData: {
             /** Calls */
@@ -4555,6 +4835,11 @@ export interface components {
             models: string[];
             /** Provider */
             provider: string;
+        };
+        /** OnMachineBody */
+        OnMachineBody: {
+            /** On */
+            on: boolean;
         };
         /**
          * OpenBody
@@ -4889,6 +5174,24 @@ export interface components {
              */
             utility: boolean;
         };
+        /**
+         * ProfileVersionsView
+         * @description `GET /api/profile-board/{id}/versions`.
+         */
+        ProfileVersionsView: {
+            /** Active Version Id */
+            active_version_id: number;
+            /** Label */
+            label: string;
+            /** On Machine */
+            on_machine: boolean;
+            /** Proposed */
+            proposed?: components["schemas"]["ProposedVersion"][];
+            /** Row Id */
+            row_id: number;
+            /** Versions */
+            versions: components["schemas"]["ListedVersion"][];
+        };
         /** PromptData */
         PromptData: {
             /** Content */
@@ -4968,6 +5271,16 @@ export interface components {
         /** @enum {string} */
         ProposalStatus: "proposed" | "accepted" | "declined" | "stale";
         /**
+         * ProposedVersion
+         * @description A draft that would become a version of the profile once a person makes it active.
+         */
+        ProposedVersion: {
+            /** Compared To Version Id */
+            compared_to_version_id: number;
+            draft: components["schemas"]["ProfileDraftRow"];
+            profile: components["schemas"]["JsonObject"];
+        };
+        /**
          * ProviderBody
          * @description ``{"provider": "openrouter"}``, or an empty body for the configured one.
          *
@@ -5004,6 +5317,34 @@ export interface components {
         ResumeData: {
             /** Resumed */
             resumed: boolean;
+        };
+        /**
+         * ResumePreview
+         * @description What resuming a paused sync would do, so one button can say it.
+         */
+        ResumePreview: {
+            /**
+             * Join
+             * @default 0
+             */
+            join: number;
+            /** Lines */
+            lines?: components["schemas"]["BoardAction"][];
+            /**
+             * Push
+             * @default 0
+             */
+            push: number;
+            /**
+             * Remove
+             * @default 0
+             */
+            remove: number;
+            /**
+             * Star
+             * @default 0
+             */
+            star: number;
         };
         /** @enum {string} */
         ReviewConfidence: "low" | "medium" | "high";
@@ -5155,6 +5496,16 @@ export interface components {
         SendResult: {
             message: components["schemas"]["ChatMessageRow"];
             run: components["schemas"]["ChatRunRow"];
+        };
+        /**
+         * SetBrewing
+         * @description A Set whose current version brews a profile, so a page can warn before it is changed.
+         */
+        SetBrewing: {
+            /** Name */
+            name: string;
+            /** Set Id */
+            set_id: number;
         };
         /**
          * SetCreate
@@ -6517,6 +6868,11 @@ export interface components {
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
+        /** StarredBody */
+        StarredBody: {
+            /** Starred */
+            starred: boolean;
+        };
         /**
          * StartingPointAccepted
          * @description What an accept produced.
@@ -7019,6 +7375,8 @@ export interface components {
             /** Prediction */
             prediction: string;
         };
+        /** @enum {string} */
+        VersionSource: "agent" | "edit" | "machine" | "edited_on_machine" | "import";
         /**
          * Violation
          * @description One thing :func:`clamp` could not fix, in words a person can act on.
@@ -8914,6 +9272,107 @@ export interface operations {
             };
         };
     };
+    put_active_version_api_profile_board__row_id__active_version_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveVersionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conflict_api_profile_board__row_id__conflict_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_Union_ConflictView__NoneType__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_conflict_api_profile_board__row_id__conflict_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     go_back_on_board_api_profile_board__row_id__go_back_post: {
         parameters: {
             query?: never;
@@ -8967,6 +9426,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_on_machine_api_profile_board__row_id__on_machine_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnMachineBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_starred_api_profile_board__row_id__starred_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StarredBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_BoardRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_versions_api_profile_board__row_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                row_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_ProfileVersionsView_"];
                 };
             };
             /** @description Validation Error */

@@ -65,14 +65,10 @@ PROFILE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,31}$"
 HOLD_MEASURED = -1.0
 
 #: What gaggiclanker appends to the label of every profile it writes to the
-#: machine. Two jobs, and both matter:
-#:
-#: * on the display, it is how a person tells a profile this box created from
-#:   one they authored, in a list that is otherwise just names;
-#: * in `delete_profile`, it is half of the provenance check — we delete a
-#:   profile only when its label carries this *and* the `device_writes` audit
-#:   says we created that id. Either alone is not enough: a label can be edited
-#:   on the machine, and an id can be reused after a delete.
+#: machine: a marker, on the display and in the list, that tells a profile the
+#: agent made from one a person authored. It decides nothing: every profile the
+#: app has synced is the app's to manage, and what stands between a profile and
+#: its removal is the content check against a fresh load, never this label.
 #:
 #: crema's convention, and kept identical on purpose — a shared archive of
 #: GaggiMate profiles is more useful if "[AI]" means the same thing in both.

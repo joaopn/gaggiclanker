@@ -11,9 +11,10 @@ delete guard apply to every one of them:
 * :func:`read_machine` lists the profiles and loads each one in full (reads);
 * :func:`place` puts a document on the machine unless a profile with the same canonical
   content is already there, and verifies what it saved by reading it back;
-* :func:`remove_if_ours` takes a profile off the machine, only when it is one this app
-  saved, only when it still holds exactly what the archive recorded for it, and only after
-  the favourite star and the selection have been moved to whatever replaces it.
+* :func:`remove_profile` takes a profile off the machine, only when it still holds exactly
+  what the archive recorded for it (a fresh load, twice: a file edited on the display since
+  the last read is never deleted unseen), and only after the selection (and, for a
+  replacement, the favourite star) has been moved to whatever takes over.
 
 A failure at any step is a value describing why the profile was kept, never an exception
 that leaves the caller guessing what state the machine is in.
@@ -27,11 +28,9 @@ from typing import Any, Literal
 
 import structlog
 
-from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
 from gaggiclanker.domain.models import (
-    APP_PROFILE_SUFFIX,
     Profile,
     canonical_profile_json,
     profile_content_hash,
@@ -40,21 +39,23 @@ from gaggiclanker.domain.models import (
 __all__ = [
     "CHANGED_SINCE",
     "GONE",
-    "NOT_OURS",
+    "NO_SUCCESSOR",
     "MachineState",
     "Placed",
     "Removal",
     "place",
     "read_machine",
-    "remove_if_ours",
+    "remove_profile",
 ]
 
 log = structlog.get_logger(__name__)
 
 #: The reasons a profile is left on the machine, spelled once: the push result, the
 #: rollback result and the tests all use these.
-NOT_OURS = "not created by this app"
 CHANGED_SINCE = "changed on the display since"
+#: Why a profile that is selected on the machine stays: removing it would leave the display
+#: naming a file that is gone, and no other profile is there to take the selection.
+NO_SUCCESSOR = "selected on the machine and no other profile is on the machine to select instead"
 GONE = "no longer on the machine"
 
 
@@ -183,12 +184,12 @@ class Removal:
 
 async def _check(
     client: GaggimateClient,
-    writes: DeviceWritesRepository,
     *,
     device_id: str,
-    expected_hash: str | None,
+    expected_hash: str,
     expected_label: str | None,
     blocked: str | None,
+    successor: str | None,
 ) -> tuple[Removal | None, Profile | None]:
     """Everything that must hold before a profile may be removed, from a fresh read.
 
@@ -208,77 +209,76 @@ async def _check(
         return Removal(reason=f"could not be read: {exc}"), None
     if expected_label is not None and fresh.label != expected_label:
         return Removal(unrelated=True), None
-    labelled = fresh.label.rstrip().endswith(APP_PROFILE_SUFFIX.strip())
-    if not labelled or not await writes.created_by_us(device_id, host=client.host):
-        return Removal(reason=NOT_OURS), None
-    if expected_hash is not None and profile_content_hash(fresh) != expected_hash:
+    if profile_content_hash(fresh) != expected_hash:
         return Removal(reason=CHANGED_SINCE), None
     if blocked is not None:
         return Removal(reason=blocked), None
+    if fresh.selected and successor in (None, device_id):
+        return Removal(reason=NO_SUCCESSOR), None
     return None, fresh
 
 
-async def remove_if_ours(
+async def remove_profile(
     client: GaggimateClient,
-    writes: DeviceWritesRepository,
     *,
     device_id: str,
-    expected_hash: str | None,
+    expected_hash: str,
     successor: str | None,
     expected_label: str | None = None,
     blocked: str | None = None,
+    carry_favorite: bool = True,
 ) -> Removal:
-    """Take ``device_id`` off the machine, if and only if it is safe to.
+    """Take ``device_id`` off the machine, if and only if it still holds what was recorded.
 
-    In order, and the order is the safety:
+    Every profile the app has synced is the app's to manage (firmware defaults and ones made
+    on the display included), so what stands between a profile and its removal is not who
+    made it but whether the app has *seen* its content: the one rule is a fresh load that must
+    hash to ``expected_hash``, what the archive recorded for the file. In order:
 
     1. a **fresh load** of the profile. Not on the machine: nothing to do;
     2. **the same profile**: with ``expected_label``, a profile carrying another label
        is somebody else's lineage and is not this push's to replace;
-    3. **ours**: the audit shows this box saved that id on this host, and the label on
-       the machine right now carries the app suffix. A person's own profile is never
-       removed, whatever the archive thinks it is;
-    4. **unchanged**: the fresh content hashes to ``expected_hash``, what the archive
-       recorded for it. Anything else was edited on the display, and removing it would
-       destroy that edit. ``None`` skips this check, for the one profile whose content
-       is known to differ from the record (a push whose read-back failed);
-    5. **not somebody else's**: ``blocked`` names another draft or Set still standing
-       on it, and is the reason it stays;
-    6. the favourite star and the selection move to ``successor``, so the display looks
-       the same to the person standing at it;
-    7. a **second fresh load** and the same content check, immediately before the delete,
-       so an edit made on the display while steps 1 to 6 ran is not destroyed;
-    8. the delete, through the client's own guard.
+    3. **unchanged**: the fresh content hashes to ``expected_hash``. Anything else was edited
+       on the display since the last read, and removing it would destroy that edit (the next
+       read records it as a version of its profile, and the sync after decides);
+    4. **not somebody else's**: ``blocked`` names another board profile still standing on
+       it, and is the reason it stays; and the selected profile is never removed without a
+       ``successor`` to take the selection;
+    5. the selection (and, with ``carry_favorite``, the favourite star) moves to
+       ``successor``, so the display looks the same to the person standing at it;
+    6. a **second fresh load** and the same content check, immediately before the delete,
+       so an edit made on the display while steps 1 to 5 ran is not destroyed;
+    7. the delete, through the client's own guard, which checks the content once more.
 
-    Any refusal or failure at 1 to 8, the write gate's included, leaves the profile where
+    Any refusal or failure at 1 to 7, the write gate's included, leaves the profile where
     it is and says why.
     """
     refusal, fresh = await _check(
         client,
-        writes,
         device_id=device_id,
         expected_hash=expected_hash,
         expected_label=expected_label,
         blocked=blocked,
+        successor=successor,
     )
     if refusal is not None or fresh is None:
-        return refusal or Removal(reason=NOT_OURS)  # `fresh` is None only with a refusal
+        return refusal or Removal(reason=CHANGED_SINCE)  # `fresh` is None only with a refusal
 
     result = Removal()
     startup_was_this = await _startup_profile(client) == device_id
     try:
         if successor is not None and successor != device_id:
-            if fresh.favorite:
+            if fresh.favorite and carry_favorite:
                 await client.favorite_profile(successor)
                 result.favorite_carried = True
             if fresh.selected:
                 await client.select_profile(successor)
                 result.selected_carried = True
         again = await client.load_profile(device_id)
-        if expected_hash is not None and profile_content_hash(again) != expected_hash:
+        if profile_content_hash(again) != expected_hash:
             result.reason = CHANGED_SINCE
             return result
-        await client.delete_profile(device_id)
+        await client.delete_profile(device_id, expected_hash=expected_hash)
     except DeviceError as exc:  # includes DeviceWriteRefused
         # Whatever was carried stays carried: both profiles are on the machine and the
         # successor is favourited/selected as well, which is harmless.

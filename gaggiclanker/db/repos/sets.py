@@ -1812,6 +1812,22 @@ class SetsRepository(Repository):
         )
         return [str(row["name"]) for row in rows if excluding is None or row["id"] != excluding]
 
+    async def current_brews(self) -> list[tuple[int, str, int | None, str | None]]:
+        """What every live Set brews right now: ``(set id, name, profile version, device id)``.
+
+        The Set's current version, archived Sets left out: a warning about a profile a Set no
+        longer uses would only be noise. Either column may be ``None`` (a grind-only version
+        names no device id; a Set with no profile names no version).
+        """
+        rows = await self.db.fetch_all(
+            "SELECT s.id AS id, s.name AS name, v.profile_version_id AS pv, "
+            "v.pushed_device_profile_id AS dev FROM sets s "
+            "JOIN set_versions v ON v.set_id = s.id "
+            "AND v.version_no = (SELECT MAX(version_no) FROM set_versions WHERE set_id = s.id) "
+            "WHERE s.archived = 0 ORDER BY s.id"
+        )
+        return [(int(r["id"]), str(r["name"]), r["pv"], r["dev"]) for r in rows]
+
     async def get_version(self, version_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(f"{_VERSION_SELECT} WHERE v.id = ?", (version_id,))
         return self.to_model(SetVersionRow, row)

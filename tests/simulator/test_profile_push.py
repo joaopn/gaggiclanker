@@ -42,7 +42,12 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
-from gaggiclanker.domain.models import Profile, canonical_profile_json, with_app_suffix
+from gaggiclanker.domain.models import (
+    Profile,
+    canonical_profile_json,
+    profile_content_hash,
+    with_app_suffix,
+)
 from gaggiclanker.drafts.service import ProfileDraftService
 from gaggiclanker.llm.budget import RateLimitBudget
 from gaggiclanker.llm.modes import ModeMemory
@@ -65,6 +70,12 @@ pytestmark = pytest.mark.simulator
 #: brews with is the shipped 9 Bar (28 s, volumetric 36 g) and the simulator has
 #: no scale, so it exits on duration.
 BREW_TIMEOUT_S = 90.0
+
+
+async def delete_now(client: Any, profile_id: str) -> None:
+    """Delete a profile this test made, against what the machine holds right now."""
+    held = await client.load_profile(profile_id)
+    await client.delete_profile(profile_id, expected_hash=profile_content_hash(held))
 
 
 @pytest.fixture
@@ -236,7 +247,7 @@ async def test_every_fixture_profile_survives_a_round_trip_through_the_firmware(
             await client.unfavorite_profile(stored.id)
     finally:
         for profile_id in created:
-            await client.delete_profile(profile_id)
+            await delete_now(client, profile_id)
 
     listed = {profile.id for profile in await client.list_profiles()}
     assert not (set(created) & listed), "the gate left profiles on the machine"
@@ -291,7 +302,7 @@ async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
             # Whatever the sync could not take off, the test does: the simulator's filesystem
             # persists between runs.
             if device_id in {p.id for p in await device.list_profiles()}:
-                await device.delete_profile(device_id)
+                await delete_now(device, device_id)
 
     assert device_id not in {profile.id for profile in await device.list_profiles()}
     kinds = [
@@ -357,7 +368,7 @@ async def test_a_second_version_replaces_the_first_and_going_back_restores_it(
         listed = {p.id for p in await device.list_profiles()}
         for device_id in created:
             if device_id in listed:
-                await device.delete_profile(device_id)
+                await delete_now(device, device_id)
 
 
 async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmware(
@@ -410,4 +421,143 @@ async def test_one_sync_pushes_replaces_and_clears_a_favourite_on_the_real_firmw
         listed = {p.id for p in await device.list_profiles()}
         for device_id in created:
             if device_id in listed:
-                await device.delete_profile(device_id)
+                await delete_now(device, device_id)
+
+
+# ── the profile list against the real firmware ──────────────────────
+
+
+async def display_edit(profile_id: str, **changes: Any) -> None:
+    """Edit a profile's file the way the display does: a save under the same id.
+
+    From a throwaway socket of this test's own, because `GaggimateClient` never overwrites a
+    profile (it refuses a save that carries an id), and that is what a person at the machine
+    does. The firmware keeps the id and replaces the content.
+    """
+    async with websockets.connect(f"ws://{SIM_HOST}/ws", max_size=None) as socket:
+        await socket.send(json.dumps({"tp": "req:profiles:load", "id": profile_id, "rid": "l"}))
+        document: dict[str, Any] | None = None
+        async with asyncio.timeout(10):
+            async for raw in socket:
+                message = json.loads(raw)
+                if message.get("rid") == "l":
+                    document = dict(message["profile"])
+                    break
+        assert document is not None
+        document.update(changes)
+        await socket.send(json.dumps({"tp": "req:profiles:save", "profile": document, "rid": "s"}))
+        async with asyncio.timeout(10):
+            async for raw in socket:
+                if json.loads(raw).get("rid") == "s":
+                    break
+
+
+async def made_on_the_display(device: Any, label: str) -> str:
+    """A profile the app never pushed: saved straight through the client, as a display would."""
+    base = next(p for p in await device.list_profiles() if not p.utility)
+    stored = await device.save_profile(base.for_new_device_profile(label=label))
+    assert stored.id is not None
+    return str(stored.id)
+
+
+async def test_a_file_the_app_never_saw_joins_the_list_and_switching_it_off_removes_it(
+    live: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    app, client = live
+    device = app.state.connection.client
+    await adopt(app)
+    file = await made_on_the_display(device, "Made on the display (sim)")
+    try:
+        found = await sync(app)
+        assert [i["reason"] for i in found["adopted"]] == ["unseen"]
+        assert found["removed"] == [], "the sync that finds a file never removes it"
+        board = data(await client.get("/api/profile-board"))
+        row = next(r for r in board["rows"] if r["row"]["device_profile_id"] == file)
+        assert row["on_machine"] is True
+
+        await client.put(f"/api/profile-board/{row['row']['id']}/on-machine", json={"on": False})
+        removal = await sync(app)
+
+        assert [i["device_id"] for i in removal["removed"]] == [file]
+        assert file not in {p.id for p in await device.list_profiles()}
+        # A profile switched on whose file is gone is pushed again.
+        await client.put(f"/api/profile-board/{row['row']['id']}/on-machine", json={"on": True})
+        back = await sync(app)
+        [pushed] = back["pushed"]
+        created = str(pushed["device_id"])
+        assert created != file
+    finally:
+        for p in await device.list_profiles():
+            if p.label == "Made on the display (sim)":
+                await delete_now(device, str(p.id))
+
+
+async def test_an_older_version_made_active_replaces_the_newer_file_on_the_real_firmware(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    app, client = live
+    device = app.state.connection.client
+    await adopt(app)
+    try:
+        first = await put_on_board(app, client, provider, await usable_version(app), 8)
+        await sync(app)
+        second = await put_on_board(app, client, provider, first["draft"]["draft_version_id"], 7)
+        [pushed] = (await sync(app))["pushed"]
+        newer_id = str(pushed["device_id"])
+        row_id = second["row"]["id"]
+        versions = data(await client.get(f"/api/profile-board/{row_id}/versions"))["versions"]
+        older = versions[1]
+
+        done = await client.put(
+            f"/api/profile-board/{row_id}/active-version", json={"version_id": older["version_id"]}
+        )
+        assert done.status_code == 200, done.text
+        summary = await sync(app)
+
+        [restored] = summary["pushed"]
+        assert [i["device_id"] for i in summary["removed"]] == [newer_id]
+        listed = {p.id for p in await device.list_profiles()}
+        assert str(restored["device_id"]) in listed and newer_id not in listed
+    finally:
+        for p in await device.list_profiles():
+            if str(p.label).endswith("[AI]"):
+                await delete_now(device, str(p.id))
+
+
+async def test_a_profile_edited_on_the_display_is_a_conflict_and_keeping_the_apps_side_replaces_it(
+    live: tuple[FastAPI, httpx.AsyncClient], provider: FakeProvider
+) -> None:
+    app, client = live
+    device = app.state.connection.client
+    await adopt(app)
+    try:
+        placed = await put_on_board(app, client, provider, await usable_version(app), 8)
+        [pushed] = (await sync(app))["pushed"]
+        file = str(pushed["device_id"])
+        row_id = placed["row"]["id"]
+        await display_edit(
+            file, temperature=float((await device.load_profile(file)).temperature) + 2
+        )
+
+        held = await sync(app)
+
+        assert [i["label"] for i in held["conflicts"]] == [pushed["label"]]
+        assert held["pushed"] == [] and held["removed"] == [] and held["writes"] == 0
+        assert file in {p.id for p in await device.list_profiles()}
+        seen = data(await client.get(f"/api/profile-board/{row_id}/conflict"))
+        kept = await client.post(
+            f"/api/profile-board/{row_id}/conflict",
+            json={"keep": "app", "content_hash": seen["machine"]["content_hash"]},
+        )
+        assert kept.status_code == 200, kept.text
+
+        replaced = await sync(app)
+
+        [new] = replaced["pushed"]
+        assert [i["device_id"] for i in replaced["removed"]] == [file]
+        listed = {p.id for p in await device.list_profiles()}
+        assert str(new["device_id"]) in listed and file not in listed
+    finally:
+        for p in await device.list_profiles():
+            if str(p.label).endswith("[AI]"):
+                await delete_now(device, str(p.id))

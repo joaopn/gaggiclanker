@@ -1,62 +1,66 @@
-"""What the next sync would do to the machine, worked out from the board and one read of it.
+"""What the next sync would do to the machine, worked out from the list and one read of it.
 
 Reads only. The write phase (:mod:`gaggiclanker.drafts.board`) executes exactly what this
 module computes, and the board route serves the same list as the preview, so what a person
 is shown and what a sync does cannot be two implementations.
 
-The plan is a pure function of its inputs: the board rows (in id order), the stored versions
+The plan is a pure function of its inputs: the profile rows (in id order), the stored versions
 they name, the machine as :func:`~gaggiclanker.drafts.machine.read_machine` returned it, and
-facts the archive answers (did this app save that id, which Set still brews it). The same
-inputs give the same list in the same order: rows by id, live rows before deleted ones, the
-adoption list by device id.
+the policy's verdict on a version. The same inputs give the same list in the same order: rows
+by id, on-the-machine rows before the ones switched off, then deleted ones, discoveries by
+device id.
 
-**A sync pushes only the app's own versions.** A row whose current version came from an
-approved draft (``origin = 'draft'``) is pushed, replaced and removed. A row adopted from the
-machine is a profile the person made: it is shown, its home-screen flag is applied while its
-file exists, and when its file is missing or was changed the plan reports that and does
-nothing else. Nothing that was never through the safety policy is written.
+**The machine ends up holding exactly the profiles that are switched on.** Every profile the
+app has synced is the app's to manage (firmware defaults and ones made on the display
+included): a profile that is **on** is pushed with its active version, whoever made it; one
+that is **off** is taken off the machine. What stands between a profile and its removal is not
+who made it but whether the app has *seen* what the file holds:
 
-**What counts as the machine "holding" a profile**: a file with exactly the row's current
-canonical content, under any id, that no other board row stands on (a deleted row's file is
-still standing until the sync has dealt with it) and no earlier row of this same plan took.
+* the file still holds the content recorded for it, or it was **edited on the display** since:
+  then the edit is recorded as a version of its profile (``edited_on_machine``), and a profile
+  that is on has its active version put beside it and the edited file removed after a fresh
+  load that matches what was just recorded, while one that is off is left for the next sync to
+  decide;
+* a file the app **has never seen** (no row stands on it) is never removed by the sync that
+  finds it: its content or its label (without the app suffix) says which profile it belongs to
+  and the file is attached to it; otherwise it joins the list as a new profile that is on and
+  starred as the machine has it. A second file for a profile that already has one is reported,
+  not touched.
 
-**Why an app row and the machine can differ, and what each means**:
+**What counts as the machine "holding" a profile**: a file with exactly the row's active
+canonical content, under any id, that no other row stands on (a deleted row's file is still
+standing until the sync has dealt with it) and no earlier row of this same plan took.
 
-* the machine holds nothing for the row, or holds a file that is not what the row last found
-  there: ``missing``, a push;
-* the file the row stands on still holds the content the row recorded, but the board has moved
-  to another version: ``superseded``, a push, then the old file goes if it is the app's;
-* the file the row stands on holds something the row never recorded: ``edited_on_machine``.
-  The board is the master, so the board's content is pushed; the edited file is **left** (it
-  no longer holds what the app saved, and removal expects exactly that) and reported.
+**The selected profile.** Switching off the profile the machine has selected selects the first
+profile that is on (list order, never a utility profile) first, then removes it; with no other
+profile on the machine it stays, and the plan says why.
 
-**Removal is only ever of a file the app wrote**, still holding exactly the content the archive
-recorded for it, that no live board row and no Set is standing on. Anything else is a
-``leave`` with the reason. Whether a removal is planned is a prediction made from the same
-facts the guards in :func:`~gaggiclanker.drafts.machine.remove_if_ours` read again, on fresh
-loads, before any delete; those guards have the last word.
+**Starred** is applied only while a profile is on the machine, and remembered while it is off.
 
-**A machine that looks reset pauses the phase**: when the app's profiles were on the machine
-at the last sync and none of their files is there now, nothing is pushed or removed until a
-person resumes it.
+**A machine that looks reset pauses the phase**: when profiles were on the machine at the last
+sync and none of their files is there now, nothing is pushed or removed until a person resumes
+it. The plan still says what resuming would do (``would_do``), so the person is asked once with
+the real numbers. An empty list (nothing synced yet) is not a reset.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.profile_board import BoardRow, ProfileBoardRepository
+from gaggiclanker.db.repos.profile_list import stripped_label
 from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
-from gaggiclanker.db.repos.sets import SetsRepository
-from gaggiclanker.domain.models import APP_PROFILE_SUFFIX, Profile, profile_content_hash
-from gaggiclanker.drafts.machine import CHANGED_SINCE, NOT_OURS, MachineState
+from gaggiclanker.domain.models import Profile, profile_content_hash
+from gaggiclanker.drafts.machine import NO_SUCCESSOR, MachineState
 
 __all__ = [
     "ANOTHER_ROW",
+    "CONFLICT",
+    "EDITED",
     "FINAL_REFUSALS",
     "NO_SUCCESSOR",
     "RESET_REASON",
@@ -65,28 +69,38 @@ __all__ = [
     "BoardPlan",
     "DeletedPlan",
     "PlanBuilder",
+    "PolicyCheck",
     "RowPlan",
 ]
 
 type ActionKind = Literal["adopt", "push", "remove", "leave", "home_screen", "report"]
 
-#: Why a deleted profile that is selected on the machine stays: removing it would leave the
-#: display naming a file that is gone, and nothing else on the board is there to take over.
-NO_SUCCESSOR = "selected on the machine and no other board profile is there to select instead"
+#: Says why a version may not be pushed under the safety bounds as they are now, or ``None``.
+type PolicyCheck = Callable[[ProfileVersionRow], Awaitable[str | None]]
 
-#: Why a file stays while another live board profile stands on it.
-ANOTHER_ROW = "another board profile stands on it"
+#: Why a file stays while another live profile stands on it.
+ANOTHER_ROW = "another profile stands on it"
+
+#: Why a file that was edited on the display stays this sync: its content is recorded as a
+#: version of its profile now, and the next sync decides.
+EDITED = "edited on the machine since the last sync; recorded as a version, the next sync decides"
+
+#: Why nothing is done for a profile in conflict.
+CONFLICT = (
+    "the machine's file was changed outside the app and differs from the active version; "
+    "nothing is done for this profile until you choose which one to keep"
+)
 
 #: The reason of the report for two live profiles with one label.
 SHARED_LABEL = "duplicate_label"
 
 #: What the run records when a sync finds the machine looks reset.
-RESET_REASON = "the machine looks reset (none of the app's profiles is on it); nothing written"
+RESET_REASON = "the machine looks reset (none of the profiles it held is on it); nothing written"
 
-#: Refusals that will not change by waiting, so a row lets go of the file. Anything else
-#: (a Set still brewing it, nothing to select instead, a machine that did not answer) is
-#: asked again on the next sync.
-FINAL_REFUSALS = (NOT_OURS, CHANGED_SINCE)
+#: Refusals that will not change by waiting, so a row lets go of the file. Nothing is final any
+#: more: a file that changed since it was recorded is recorded by the next sync and then
+#: decided, and one another profile stands on or that could not be asked stays on its row.
+FINAL_REFUSALS: tuple[str, ...] = ()
 
 
 class BoardAction(BaseModel):
@@ -95,18 +109,22 @@ class BoardAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: ActionKind
-    #: The board row it belongs to. ``None`` only for ``adopt``.
+    #: The profile it belongs to. ``None`` for a file that joins the list as a new profile.
     row_id: int | None = None
     label: str
     #: The file on the machine concerned: the one to remove or leave, the one whose star
-    #: changes, the one adopted. ``None`` for a push (the machine assigns the id).
+    #: changes, the one that joins the list. ``None`` for a push (the machine assigns the id).
     device_id: str | None = None
-    #: ``adopt``: ``first_pull``. ``push``: ``missing``, ``superseded``, ``edited_on_machine``.
-    #: ``remove`` and ``leave``: ``superseded`` or ``deleted``. ``home_screen``: ``on`` or
-    #: ``off``. ``report``: ``missing``, ``edited_on_machine`` (a profile the person made, not
-    #: pushed), ``unreadable`` (the machine listed it and could not load it),
-    #: ``did_not_verify`` (this version did not read back last time), ``duplicate_label``
-    #: (another live profile has the same label).
+    #: ``adopt``: ``first_pull``, ``unseen`` (a new profile), ``attached`` (to ``row_id``) or
+    #: ``conflict`` (a file with the name of ``row_id`` but content that profile never had: it is
+    #: attached as the machine's side of a conflict).
+    #: ``push``: ``missing``, ``superseded``, ``edited_on_machine``. ``remove`` and ``leave``:
+    #: ``superseded``, ``deleted``, ``off`` (switched off) or ``edited_on_machine``.
+    #: ``home_screen``: ``on`` or ``off``. ``report``: ``missing``, ``unreadable`` (the machine
+    #: listed it and could not load it), ``did_not_verify`` (this version did not read back last
+    #: time), ``policy`` (the active version is outside the safety bounds), ``duplicate_label``
+    #: (another profile has the same label), ``extra_copy`` (a second file for a profile that
+    #: has one), ``conflict`` (the machine's file differs from everything the app knows).
     reason: str
     #: For ``leave`` and ``report``, why, in words a person reads.
     detail: str = ""
@@ -115,41 +133,50 @@ class BoardAction(BaseModel):
 
 
 class BoardPlan(BaseModel):
-    """The whole preview: whether the machine's board has been adopted, and the actions."""
+    """The whole preview: whether the machine's profiles have been taken yet, and the actions."""
 
     model_config = ConfigDict(extra="forbid")
 
     adopted: bool
     #: Why a sync would write nothing at all (paused after a suspected reset), else ``None``.
     paused: str | None = None
-    #: What is wrong with a profile the sync will not touch (a profile you made that is
-    #: missing or changed, a file that could not be read, a version that did not verify).
-    #: Not writes, so a machine in sync has no actions even while a report stands.
+    #: What is wrong with a profile the sync will not touch. Not writes, so a machine in sync has
+    #: no actions even while a report stands.
     reports: list[BoardAction]
     actions: list[BoardAction]
+    #: While paused: what resuming would do, in the order a sync does it. Empty otherwise.
+    would_do: list[BoardAction] = []
 
 
 @dataclass
 class RowPlan:
-    """What one live board row needs, with the machine facts the executor needs with it."""
+    """What one live row needs, with the machine facts the executor needs with it."""
 
     row: BoardRow
     version: ProfileVersionRow
-    #: The file already holding the row's current content, when there is one.
+    #: The file already holding the row's active content, when there is one.
     held: str | None = None
     push: BoardAction | None = None
-    #: The previous file this row stood on that is to go (or stay): ``remove`` or ``leave``.
+    #: The file this row stood on that is to go (or stay): ``remove`` or ``leave``.
     pred: BoardAction | None = None
-    #: The content the archive recorded for that previous file: what the removal is told to
-    #: expect, so a file changed on the display is left.
+    #: What the removal is told to expect: the content the file holds as this plan read it.
     pred_hash: str | None = None
+    #: The profile that takes over the selection when the file that goes is the selected one: the
+    #: first profile that is on (a row id, resolved to its file when the removal runs).
+    successor_row_id: int | None = None
     #: Something to say that is not a write (see ``report`` above).
     report: BoardAction | None = None
     home: BoardAction | None = None
-    #: The Set whose current version is expected to name the old file, and is not a reason to keep
-    #: it: the Set a put records on, or the Set a going back was made from while the Set version
-    #: that recorded the version being left is still its current one.
-    excluding_set: int | None = None
+    #: The standing file holds something other than what was recorded for it: the executor
+    #: records that content as a version of this profile before it does anything else.
+    edited_file: str | None = None
+    #: A file this sync attaches to the profile. The profile is otherwise left alone this sync.
+    attached: str | None = None
+    #: The profile is in conflict: a machine file carries content the app has neither recorded
+    #: for it nor holds as a version. The write phase does nothing for it until a person chooses
+    #: a side. ``conflict_file`` is that file, ``conflict_hash`` the content it holds.
+    conflict_file: str | None = None
+    conflict_hash: str | None = None
 
 
 @dataclass
@@ -160,7 +187,8 @@ class DeletedPlan:
     #: ``remove``, ``leave`` or ``report``; ``None`` when the machine no longer holds the file.
     action: BoardAction | None = None
     expected_hash: str | None = None
-    successor_id: str | None = None
+    successor_row_id: int | None = None
+    edited_file: str | None = None
 
 
 @dataclass
@@ -169,16 +197,17 @@ class Computed:
 
     adopted: bool
     paused: str | None = None
+    #: Files that join the list: new profiles (``unseen``) and attachments (``attached``).
     adopt: list[BoardAction] = field(default_factory=list)
     rows: list[RowPlan] = field(default_factory=list)
     deleted: list[DeletedPlan] = field(default_factory=list)
-    #: Live profiles sharing a label, said once per profile. Not a row's own report: a row
-    #: that shares a label is pushed, replaced and removed like any other.
+    #: Live profiles sharing a label, said once per profile.
     labels: list[BoardAction] = field(default_factory=list)
+    #: Second files for a profile that already has one.
+    extras: list[BoardAction] = field(default_factory=list)
 
-    def actions(self) -> list[BoardAction]:
-        if self.paused:
-            return []
+    def would_do(self) -> list[BoardAction]:
+        """Every action, as a sync that is not paused would take it."""
         flat: list[BoardAction] = list(self.adopt)
         for plan in self.rows:
             flat.extend(a for a in (plan.push, plan.pred, plan.home) if a is not None)
@@ -187,12 +216,28 @@ class Computed:
         )
         return flat
 
+    def actions(self) -> list[BoardAction]:
+        return [] if self.paused else self.would_do()
+
     def reports(self) -> list[BoardAction]:
         found = [p.report for p in self.rows if p.report is not None]
+        found.extend(
+            BoardAction(
+                kind="report",
+                row_id=p.row.id,
+                label=p.row.label,
+                device_id=p.conflict_file,
+                reason="conflict",
+                detail=CONFLICT,
+            )
+            for p in self.rows
+            if p.conflict_file is not None
+        )
         found.extend(
             d.action for d in self.deleted if d.action is not None and d.action.kind == "report"
         )
         found.extend(self.labels)
+        found.extend(self.extras)
         return found
 
 
@@ -203,13 +248,13 @@ class PlanBuilder:
         self,
         board: ProfileBoardRepository,
         profiles: ProfilesRepository,
-        sets: SetsRepository,
-        writes: DeviceWritesRepository,
+        *,
+        policy: PolicyCheck | None = None,
     ) -> None:
         self.board = board
         self.profiles = profiles
-        self.sets = sets
-        self.writes = writes
+        #: The safety policy as it is now. ``None`` only in a test that is not about it.
+        self.policy = policy
 
     async def plan(self, machine: MachineState, *, host: str) -> BoardPlan:
         computed = await self.compute(machine, host=host)
@@ -218,11 +263,18 @@ class PlanBuilder:
             paused=computed.paused,
             reports=computed.reports(),
             actions=computed.actions(),
+            would_do=computed.would_do() if computed.paused else [],
         )
 
-    async def compute(self, machine: MachineState, *, host: str) -> Computed:
+    async def compute(
+        self, machine: MachineState, *, host: str, assume_adopted: bool = False
+    ) -> Computed:
+        """The plan. ``assume_adopted`` is for the first sync, which takes the machine's files
+        into the list by the same rules as every later one and then writes nothing."""
         adoption = await self.board.adoption()
-        if adoption is None:
+        rows = await self.board.list_rows(include_deleted=True)
+        live = [row for row in rows if row.deleted_at is None]
+        if adoption is None and not assume_adopted:
             return Computed(
                 adopted=False,
                 adopt=[
@@ -237,8 +289,6 @@ class PlanBuilder:
                 ],
             )
 
-        rows = await self.board.list_rows(include_deleted=True)
-        live = [row for row in rows if row.deleted_at is None]
         versions: dict[int, ProfileVersionRow] = {}
 
         async def version(version_id: int) -> ProfileVersionRow:
@@ -259,89 +309,127 @@ class PlanBuilder:
                 live_claims.setdefault(row.device_profile_id, set()).add(row.id)
         assigned: set[str] = set()
 
-        computed = Computed(adopted=True, paused=adoption.paused_reason)
-        held_by_live: list[tuple[BoardRow, str, bool]] = []
+        computed = Computed(
+            adopted=adoption is not None, paused=adoption.paused_reason if adoption else None
+        )
+        by_row: dict[int, RowPlan] = {}
         for row in live:
             current = await version(row.current_version_id)
-            old_id = row.device_profile_id
-            old = machine.profiles.get(old_id) if old_id else None
             plan = RowPlan(row=row, version=current)
-            plan.excluding_set = await self.exempt_set(row)
+            by_row[row.id] = plan
             computed.rows.append(plan)
+            old_id = row.device_profile_id
             if old_id is not None and old_id in machine.unreadable:
                 plan.report = _report(row, current.label, "unreadable", old_id, UNREADABLE)
                 continue
-            held = _held(row, current.content_hash, machine, hashes, claimed, assigned)
-            plan.held = held
-            if held is not None:
-                assigned.add(held)
-                held_by_live.append((row, held, current.utility))
+            if row.on_machine:
+                held = _held(row, current.content_hash, machine, hashes, claimed, assigned)
+                plan.held = held
+                if held is not None:
+                    assigned.add(held)
             recorded_hash = await self._recorded_hash(row)
-            edited = old is not None and hashes[old_id or ""] != recorded_hash
+            if (
+                old_id is not None
+                and old_id in machine.profiles
+                and hashes[old_id] != recorded_hash
+            ):
+                seen = hashes[old_id]
+                if seen == current.content_hash or seen in await self.board.listed_hashes(row.id):
+                    # Content the profile has had: recorded as what the file holds.
+                    plan.edited_file = old_id
+                elif seen != row.conflict_overruled_hash:
+                    plan.conflict_file, plan.conflict_hash = old_id, seen
+                # else: a person chose the app's side for this very content; it is replaced
 
-            if held is None and row.origin != "draft":
-                # A profile the person made: never pushed by a sync. Said, and left.
-                plan.report = _report(
-                    row,
-                    current.label,
-                    "edited_on_machine" if old is not None else "missing",
-                    old_id,
-                    (
-                        f"{old_id} was changed on the machine since it was recorded"
-                        if old is not None
-                        else "a profile you made is no longer on the machine as recorded"
-                    ),
-                )
-                if old is not None and old.favorite != row.on_home_screen:
-                    plan.home = _home(row, current.label, old_id, row.on_home_screen)
+        # Files nothing stands on and no profile holds: the app has never seen them.
+        listed = await self.board.live_version_hashes()
+        listed_here: dict[int, set[str]] = {}
+        for content_hash, row_ids in listed.items():
+            for row_id in row_ids:
+                listed_here.setdefault(row_id, set()).add(content_hash)
+        unseen = [
+            i
+            for i in sorted(machine.profiles)
+            if i not in claimed and i not in assigned and i not in machine.unreadable
+        ]
+        joining: dict[str, str] = {}
+        for device_id in unseen:
+            profile = machine.profiles[device_id]
+            match = _match_row(live, listed, hashes[device_id], profile.label)
+            if match is not None:
+                target = by_row[match.id]
+                if (
+                    target.attached is not None
+                    or _has_file(target, machine)
+                    or match.failed_version_id is not None
+                ):
+                    # (A profile whose last push did not verify and whose bad copy could not be
+                    # removed owns that copy: it is no conflict, only a leftover.)
+                    computed.extras.append(_extra(device_id, profile.label, match.label))
+                elif hashes[device_id] not in listed_here.get(match.id, set()):
+                    # Its name, but content this profile never had: the machine's side of a
+                    # conflict, not something to attach silently.
+                    target.attached = device_id
+                    target.conflict_file, target.conflict_hash = device_id, hashes[device_id]
+                    computed.adopt.append(
+                        BoardAction(
+                            kind="adopt",
+                            row_id=match.id,
+                            label=match.label,
+                            device_id=device_id,
+                            reason="conflict",
+                            detail=CONFLICT,
+                            on=profile.favorite,
+                        )
+                    )
+                else:
+                    target.attached = device_id
+                    computed.adopt.append(
+                        BoardAction(
+                            kind="adopt",
+                            row_id=match.id,
+                            label=match.label,
+                            device_id=device_id,
+                            reason="attached",
+                            detail=f"{device_id} holds {profile.label!r}, which is this profile",
+                            on=profile.favorite,
+                        )
+                    )
                 continue
-            if held is None and row.failed_version_id == row.current_version_id:
-                plan.report = _report(
-                    row,
-                    current.label,
-                    "did_not_verify",
-                    None,
-                    "this version did not read back as sent last time and the copy could "
-                    "not be removed; change the profile to try again",
-                )
+            key = stripped_label(profile.label)
+            if key in joining:
+                computed.extras.append(_extra(device_id, profile.label, joining[key]))
                 continue
-            if held is None:
-                plan.push = BoardAction(
-                    kind="push",
-                    row_id=row.id,
-                    label=current.label,
-                    reason=(
-                        "missing"
-                        if old is None
-                        else "edited_on_machine"
-                        if edited
-                        else "superseded"
-                    ),
-                    detail=(
-                        f"{old_id} was changed on the machine; the board's version is put beside it"
-                        if edited
-                        else ""
-                    ),
+            joining[key] = profile.label
+            computed.adopt.append(
+                BoardAction(
+                    kind="adopt",
+                    label=profile.label,
+                    device_id=device_id,
+                    reason="unseen",
+                    on=profile.favorite,
                 )
-            if old_id is not None and old is not None and old_id != held:
-                plan.pred_hash = recorded_hash
-                plan.pred = await self._removal(
-                    row,
-                    old_id,
-                    old,
-                    reason="superseded",
-                    host=host,
-                    recorded_hash=recorded_hash,
-                    seen_hash=hashes[old_id],
-                    excluding_set=plan.excluding_set,
-                    live_claims=live_claims,
-                )
-            if held is not None:
-                if machine.profiles[held].favorite != row.on_home_screen:
-                    plan.home = _home(row, current.label, held, row.on_home_screen)
-            elif not row.on_home_screen:
-                # The firmware stars every profile it saves; the board says this one is off.
-                plan.home = _home(row, current.label, None, False)
+            )
+
+        # Switched on first (pushes before any removal), then switched off.
+        for plan in computed.rows:
+            if (
+                plan.report is not None
+                or plan.attached is not None
+                or plan.conflict_file is not None
+                or not plan.row.on_machine
+            ):
+                continue
+            await self._plan_on(plan, machine, hashes, host, live_claims)
+        for plan in computed.rows:
+            if (
+                plan.report is not None
+                or plan.attached is not None
+                or plan.conflict_file is not None
+                or plan.row.on_machine
+            ):
+                continue
+            await self._plan_off(plan, computed.rows, machine, hashes, live_claims)
 
         for row in rows:
             if row.deleted_at is None or not row.device_profile_id:
@@ -356,39 +444,114 @@ class PlanBuilder:
             if old is None:
                 continue
             recorded_hash = await self._recorded_hash(row)
-            plan_d.expected_hash = recorded_hash
-            successor = _successor(held_by_live, exclude=old_id)
-            plan_d.successor_id = successor
-            action = await self._removal(
+            plan_d.expected_hash = hashes[old_id]
+            if hashes[old_id] != recorded_hash:
+                plan_d.edited_file = old_id
+                plan_d.action = BoardAction(
+                    kind="leave",
+                    row_id=row.id,
+                    label=old.label,
+                    device_id=old_id,
+                    reason="edited_on_machine",
+                    detail=EDITED,
+                )
+                continue
+            plan_d.successor_row_id = _successor_row(computed.rows, exclude=row.id)
+            plan_d.action = _removal(
                 row,
                 old_id,
                 old,
                 reason="deleted",
-                host=host,
-                recorded_hash=recorded_hash,
-                seen_hash=hashes[old_id],
-                excluding_set=None,
-                live_claims=live_claims,
+                standing_rows=live_claims.get(old_id, set()) - {row.id},
+                selected_without_successor=old.selected and plan_d.successor_row_id is None,
             )
-            if action.kind == "remove" and old.selected and successor is None:
-                action = action.model_copy(update={"kind": "leave", "detail": NO_SUCCESSOR})
-            plan_d.action = action
 
         computed.labels = _shared_labels(live)
-        if computed.paused is None and not adoption.resume_pending and looks_reset(live, machine):
+        if (
+            computed.paused is None
+            and adoption is not None
+            and not adoption.resume_pending
+            and looks_reset(live, machine)
+        ):
             computed.paused = RESET_REASON
         return computed
 
-    async def exempt_set(self, row: BoardRow) -> int | None:
-        if row.pending_set_id is not None:
-            return row.pending_set_id
-        if row.back_from_set_version_id is None:
-            return None
-        recorded = await self.sets.get_version(row.back_from_set_version_id)
-        if recorded is None:
-            return None
-        current = await self.sets.current_version(recorded.set_id)
-        return recorded.set_id if current is not None and current.id == recorded.id else None
+    async def _plan_on(
+        self,
+        plan: RowPlan,
+        machine: MachineState,
+        hashes: dict[str, str],
+        host: str,
+        live_claims: dict[str, set[int]],
+    ) -> None:
+        """A profile that is on: push its active version when the machine lacks it."""
+        row, current = plan.row, plan.version
+        old_id = row.device_profile_id
+        old = machine.profiles.get(old_id) if old_id else None
+        held = plan.held
+        if held is None and row.failed_version_id == row.current_version_id:
+            plan.report = _report(
+                row,
+                current.label,
+                "did_not_verify",
+                None,
+                "this version did not read back as sent last time and the copy could not be "
+                "removed; make another version active to try again",
+            )
+            return
+        if held is None and self.policy is not None:
+            refusal = await self.policy(current)
+            if refusal is not None:
+                plan.report = _report(row, current.label, "policy", None, f"not pushed: {refusal}")
+                return
+        if held is None:
+            plan.push = BoardAction(
+                kind="push",
+                row_id=row.id,
+                label=current.label,
+                reason="missing" if old is None else "superseded",
+            )
+        if old_id is not None and old is not None and old_id != held:
+            plan.pred_hash = hashes[old_id]
+            plan.pred = _removal(
+                row,
+                old_id,
+                old,
+                reason="superseded",
+                standing_rows=live_claims.get(old_id, set()) - {row.id},
+                selected_without_successor=False,
+            )
+        if held is not None:
+            if machine.profiles[held].favorite != row.on_home_screen:
+                plan.home = _home(row, current.label, held, row.on_home_screen)
+        elif not row.on_home_screen:
+            # The firmware stars every profile it saves; the list says this one is not starred.
+            plan.home = _home(row, current.label, None, False)
+
+    async def _plan_off(
+        self,
+        plan: RowPlan,
+        rows: list[RowPlan],
+        machine: MachineState,
+        hashes: dict[str, str],
+        live_claims: dict[str, set[int]],
+    ) -> None:
+        """A profile that is off: its file goes. Its star is remembered, never applied."""
+        row = plan.row
+        old_id = row.device_profile_id
+        old = machine.profiles.get(old_id) if old_id else None
+        if old_id is None or old is None:
+            return
+        plan.pred_hash = hashes[old_id]
+        plan.successor_row_id = _successor_row(rows, exclude=row.id)
+        plan.pred = _removal(
+            row,
+            old_id,
+            old,
+            reason="off",
+            standing_rows=live_claims.get(old_id, set()) - {row.id},
+            selected_without_successor=old.selected and plan.successor_row_id is None,
+        )
 
     async def _recorded_hash(self, row: BoardRow) -> str | None:
         if row.device_version_id is None:
@@ -396,81 +559,46 @@ class PlanBuilder:
         recorded = await self.profiles.get_version(row.device_version_id)
         return None if recorded is None else recorded.content_hash
 
-    async def _removal(
-        self,
-        row: BoardRow,
-        device_id: str,
-        copy: Profile,
-        *,
-        reason: str,
-        host: str,
-        recorded_hash: str | None,
-        seen_hash: str,
-        excluding_set: int | None,
-        live_claims: dict[str, set[int]],
-    ) -> BoardAction:
-        """``remove`` when every fact the guards read says the file may go, else ``leave``."""
-        refusal = await self.refusal(
-            device_id,
-            copy,
-            host=host,
-            version_id=row.device_version_id,
-            recorded_hash=recorded_hash,
-            seen_hash=seen_hash,
-            excluding_set=excluding_set,
-            standing_rows=live_claims.get(device_id, set()) - {row.id},
-            person_made=row.origin != "draft",
-        )
-        return BoardAction(
-            kind="leave" if refusal else "remove",
-            row_id=row.id,
-            label=copy.label,
-            device_id=device_id,
-            reason=reason,
-            detail=refusal or "",
-        )
-
-    async def refusal(
-        self,
-        device_id: str,
-        copy: Profile,
-        *,
-        host: str,
-        version_id: int | None,
-        recorded_hash: str | None,
-        seen_hash: str,
-        excluding_set: int | None,
-        standing_rows: set[int],
-        person_made: bool = False,
-    ) -> str | None:
-        """Why this file is not the app's to remove, or ``None``. Reads the archive only.
-
-        In the order the guards read: the app wrote it, it holds what the archive recorded, and
-        nobody else is standing on it.
-        """
-        labelled = copy.label.rstrip().endswith(APP_PROFILE_SUFFIX.strip())
-        if person_made or not labelled or not await self.writes.created_by_us(device_id, host=host):
-            return NOT_OURS
-        if recorded_hash is None or seen_hash != recorded_hash:
-            return CHANGED_SINCE
-        if standing_rows:
-            return ANOTHER_ROW
-        using = await self.sets.sets_currently_using(device_id, version_id, excluding=excluding_set)
-        if using:
-            return f"still the current version of the Set {using[0]!r}"
-        return None
-
 
 #: What a file the machine listed and then could not load is reported as.
 UNREADABLE = "the machine listed it but could not load it; nothing was changed for it"
 
 
+def _removal(
+    row: BoardRow,
+    device_id: str,
+    copy: Profile,
+    *,
+    reason: str,
+    standing_rows: set[int],
+    selected_without_successor: bool,
+) -> BoardAction:
+    """``remove`` when every fact the plan can read says the file may go, else ``leave``.
+
+    A prediction made from the same facts the executor reads again, on fresh loads, before any
+    delete; the guards there have the last word.
+    """
+    refusal: str | None = None
+    if standing_rows:
+        refusal = ANOTHER_ROW
+    elif selected_without_successor:
+        refusal = NO_SUCCESSOR
+    return BoardAction(
+        kind="leave" if refusal else "remove",
+        row_id=row.id,
+        label=copy.label,
+        device_id=device_id,
+        reason=reason,
+        detail=refusal or "",
+    )
+
+
 def _shared_labels(live: list[BoardRow]) -> list[BoardAction]:
     """A report for every live profile that shares its label with another live one.
 
-    The board never makes such a pair (a put or a take that would is refused), but adoption
-    takes the machine as it is, and a machine can hold two profiles with one name. They are
-    said, not refused, and nothing is written for the sake of the pair.
+    The list never makes such a pair (a put or a take that would is refused, and a file the
+    machine holds under a label a profile already has is attached to it), but a database that
+    carries one from before is said, not refused, and nothing is written for the sake of the pair.
     """
     by_label: dict[str, list[BoardRow]] = {}
     for row in live:
@@ -482,8 +610,8 @@ def _shared_labels(live: list[BoardRow]) -> list[BoardAction]:
             label=row.label,
             device_id=row.device_profile_id,
             reason=SHARED_LABEL,
-            detail=f"another profile on the board is also called {row.label}; "
-            "delete one of them so each name is used once",
+            detail=f"another profile is also called {row.label}; "
+            "rename or remove one of them so each name is used once",
         )
         for rows in by_label.values()
         if len(rows) > 1
@@ -492,11 +620,11 @@ def _shared_labels(live: list[BoardRow]) -> list[BoardAction]:
 
 
 def looks_reset(live: list[BoardRow], machine: MachineState) -> bool:
-    """Whether none of the app's profiles (with a file on record) is on the machine any more."""
-    ours = [r.device_profile_id for r in live if r.origin == "draft" and r.device_profile_id]
-    if not ours:
+    """Whether none of the files the last sync left (any profile's) is on the machine any more."""
+    standing = [r.device_profile_id for r in live if r.device_profile_id]
+    if not standing:
         return False
-    return all(i not in machine.profiles and i not in machine.unreadable for i in ours)
+    return all(i not in machine.profiles and i not in machine.unreadable for i in standing)
 
 
 def _report(
@@ -512,6 +640,47 @@ def _report(
     )
 
 
+def _extra(device_id: str, label: str, profile_label: str) -> BoardAction:
+    return BoardAction(
+        kind="report",
+        label=label,
+        device_id=device_id,
+        reason="extra_copy",
+        detail=f"{device_id} is another file for {profile_label!r}, which already has one on the "
+        "machine; it was left as it is",
+    )
+
+
+def _has_file(plan: RowPlan, machine: MachineState) -> bool:
+    """Whether the profile already stands on a file the machine holds."""
+    return plan.held is not None or (
+        plan.row.device_profile_id is not None and plan.row.device_profile_id in machine.profiles
+    )
+
+
+def _match_row(
+    live: list[BoardRow], listed: dict[str, list[int]], content_hash: str, label: str
+) -> BoardRow | None:
+    """The live profile a file the app has never seen belongs to: its content, else its name.
+
+    By content first (the file is a version the profile has had), then by exact label, then by
+    label without the app suffix; the lowest row id when several fit, so the same inputs always
+    choose the same profile.
+    """
+    ids = set(listed.get(content_hash, []))
+    for row in live:
+        if row.id in ids:
+            return row
+    for row in live:
+        if row.label == label:
+            return row
+    base = stripped_label(label)
+    for row in live:
+        if stripped_label(row.label) == base:
+            return row
+    return None
+
+
 def _held(
     row: BoardRow,
     content_hash: str,
@@ -520,7 +689,7 @@ def _held(
     claimed: dict[str, int],
     assigned: set[str],
 ) -> str | None:
-    """The file holding the row's current content: its own first, else any unspoken-for one."""
+    """The file holding the row's active content: its own first, else any unspoken-for one."""
     own = row.device_profile_id
     if own is not None and own not in assigned and hashes.get(own) == content_hash:
         return own
@@ -545,19 +714,22 @@ def _home(row: BoardRow, label: str, device_id: str | None, on: bool) -> BoardAc
     )
 
 
-def _successor(held_by_live: list[tuple[BoardRow, str, bool]], *, exclude: str) -> str | None:
-    """The file to select when a deleted profile that is selected goes: a live row's own.
+def _successor_row(rows: list[RowPlan], *, exclude: int) -> int | None:
+    """The profile that takes the selection when the selected one goes: the first that is on.
 
-    Never a utility profile (a backflush is not what to brew with), the first one on the home
-    screen, else the first at all, by board order: a choice the same inputs always make the
-    same way.
+    List order (row id), never a utility profile (a backflush is not what to brew with), and
+    only one the machine will hold: it has its file, or this sync pushes it. A choice the same
+    inputs always make the same way.
     """
-    candidates = [
-        (row, device_id)
-        for row, device_id, utility in held_by_live
-        if device_id != exclude and not utility
-    ]
-    for row, device_id in candidates:
-        if row.on_home_screen:
-            return device_id
-    return candidates[0][1] if candidates else None
+    for plan in rows:
+        if (
+            plan.row.id != exclude
+            and plan.row.on_machine
+            and not plan.version.utility
+            and plan.report is None
+            and plan.attached is None
+            and plan.conflict_file is None
+            and (plan.held is not None or plan.push is not None)
+        ):
+            return plan.row.id
+    return None

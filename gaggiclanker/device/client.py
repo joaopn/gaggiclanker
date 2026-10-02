@@ -100,13 +100,13 @@ from gaggiclanker.domain.address import machine_host
 from gaggiclanker.domain.ids import pad6, unpad
 from gaggiclanker.domain.index import parse_index
 from gaggiclanker.domain.models import (
-    APP_PROFILE_SUFFIX,
     LiveStatus,
     OtaSettings,
     Profile,
     ShotIndex,
     ShotNotes,
     canonical_profile_json,
+    profile_content_hash,
 )
 from gaggiclanker.domain.secrets import without_secrets
 from gaggiclanker.domain.slog import Slog, SlogError, header_size_for, is_html_response, parse_slog
@@ -753,20 +753,16 @@ class GaggimateClient:
         log.info("device_profile_saved", host=self.host, profile_id=stored.id, label=stored.label)
         return stored
 
-    async def delete_profile(self, profile_id: str) -> None:
-        """Delete a profile **this box created**, and nothing else.
+    async def delete_profile(self, profile_id: str, *, expected_hash: str) -> None:
+        """Delete a profile, and only while it still holds the content the caller recorded.
 
-        Two independent proofs are required, and both can be checked:
-
-        * the label on the machine right now ends in :data:`APP_PROFILE_SUFFIX`,
-          which is read here, from the device, rather than from our mirror — the
-          mirror can be stale and the display is the authority on its own files;
-        * the gate finds an `ok` `profile_save` for this id in `device_writes`,
-          which is the part a label cannot fake.
-
-        Either alone is insufficient. A person can rename a profile to end in
-        "[AI]"; an id can be reused by the firmware after a delete. Together
-        they mean this is the profile we pushed and it is still ours.
+        Every profile the app has synced is the app's to manage, so there is no rule about who
+        made it (the label, the audit of saves) any more. The one rule is read here, from the
+        device and not from our mirror (the mirror can be stale and the display is the
+        authority on its own files): the profile is loaded fresh, immediately before the
+        delete, and must hash to ``expected_hash``, what the archive last recorded for it. A
+        file somebody edited on the display since is refused and left, and the refusal is
+        audited.
         """
         write = PendingWrite(
             kind="profile_delete",
@@ -774,16 +770,15 @@ class GaggimateClient:
             device_id=profile_id,
             payload_hash=payload_hash(profile_id),
         )
-        # The gate first, before the read. A delete that the switch forbids, or
-        # that names a profile this box did not create, must not put a frame on
-        # the wire at all — and `load_profile` is a frame. The machine has three
-        # WebSocket slots and a refused write should cost it none of them.
+        # The gate first, before the read. A delete the switch forbids must not put a frame
+        # on the wire at all, and `load_profile` is a frame. The machine has three WebSocket
+        # slots and a refused write should cost it none of them.
         await self._authorize(write)
         profile = await self.load_profile(profile_id)
-        if not profile.label.rstrip().endswith(APP_PROFILE_SUFFIX.strip()):
+        if profile_content_hash(profile) != expected_hash:
             refusal = DeviceWriteRefused(
-                f"Profile {profile_id!r} is labelled {profile.label!r}, which does not carry the "
-                f"{APP_PROFILE_SUFFIX.strip()} suffix. This box only deletes profiles it wrote."
+                f"Profile {profile_id!r} no longer holds what was last recorded for it: it "
+                "changed on the display. It was left as it is."
             )
             await self._gate.record(write, result="refused", error=str(refusal))
             raise refusal

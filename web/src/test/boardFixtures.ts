@@ -46,6 +46,22 @@ export function boardRowView(
       selected: false,
     },
     planned: [],
+    on_machine: base.on_machine,
+    starred: base.on_home_screen,
+    in_conflict: false,
+    conflict: null,
+    sets_brewing: [],
+    proposed_versions: 0,
+    active_version: {
+      version_id: base.current_version_id,
+      short_hash: "abcdef01",
+      label: base.label,
+      type: "standard",
+      utility: false,
+      source: "machine",
+      created_at: base.created_at,
+      shots_brewed: 0,
+    },
     ...rest,
   };
 }
@@ -61,6 +77,8 @@ export function boardView(overrides: Partial<BoardView> = {}): BoardView {
     reports: [],
     paused: null,
     pause_recorded: false,
+    resume_preview: null,
+    proposals: [],
     ...overrides,
   };
 }

@@ -1,33 +1,36 @@
-"""The app's profile board, and the write phase of a sync that makes the machine match it.
+"""The app's profile list, and the write phase of a sync that makes the machine match it.
 
 Two halves with one rule between them.
 
-**Editing the board never touches the machine.** Putting an approved draft on the board,
-turning a profile's home-screen star on or off and deleting a profile change rows in the
-archive and nothing else; they work with the writes switch off, and with no machine at all.
+**Editing the list never touches the machine.** Switching a profile on or off the machine,
+starring it, making one of its versions active and putting an approved draft on the list change
+rows in the archive and nothing else; they work with the writes switch off, and with no machine
+at all.
 
 **The write phase is the one automatic write this app makes**, and it runs only when the
 `deviceWritesEnabled` switch is on, at the end of the profile pass of a sync, inside the sync
 engine's lock. It does not decide anything the plan has not (:mod:`.board_plan`) and it has
 no machine path of its own: every save is :func:`~gaggiclanker.drafts.machine.place`, every
-removal :func:`~gaggiclanker.drafts.machine.remove_if_ours`, so the audit, the write gate and
-the delete guards (an ``ok`` save of that id by this app, the app label, exactly the content
-recorded, no Set still brewing it) apply as they do to a person's push.
+removal :func:`~gaggiclanker.drafts.machine.remove_profile`, so the audit, the write gate and
+the one removal guard (a fresh load must hold exactly the content the archive recorded) apply
+as they do to a person's push.
 
 What a sync does, in order:
 
-1. **Adoption**, once, on the first sync with the switch on: every profile the machine holds
-   becomes a board row exactly as it is (home screen = its star). Nothing is written, and the
-   sync ends there.
-2. **Per live row**: push the row's current version when the machine holds none (schema and
-   policy ran when the draft was made; the save-then-load round trip runs here); then remove
-   the file it stood on before, when that file is the app's. A round trip that does not match
-   removes the copy just written (the same guarded path), keeps the previous version on the
-   machine and records the failure. A profile edited on the machine is overwritten by the
-   board, with an event naming it.
-3. **Per deleted row**: remove its file when it is the app's, else leave it and say why.
-4. **Home screen**: set each file's star to the row's flag, from a fresh read when anything was
-   written above.
+1. **The first sync with the switch on** takes the machine's files into the list by the
+   rules below and writes nothing; the sync ends there.
+2. **Files it has never seen** join the list (see :mod:`.board_plan`): attached to the profile
+   they belong to, or as a new profile that is on. Nothing is removed in the sync that finds a
+   file.
+3. **Per profile that is on**: push its active version when the machine holds none (the safety
+   policy runs again here, the save-then-load round trip too); then remove the file it stood
+   on before. A round trip that does not match removes the copy just written (the same guarded
+   path), keeps the previous version on the machine and records the failure. A file edited on
+   the display is recorded as a version of its profile, and the active version is put beside it.
+4. **Per profile that is off**: remove its file (the selection moves first to the first profile
+   that is on), unless it was edited since the last sync.
+5. **Per deleted row**: remove its file the same way.
+6. **Stars**, only for profiles that are on, from a fresh read when anything was written above.
 
 A sync that stops halfway leaves every profile old or new: a push is a save then a removal, and
 a failure between them leaves both files on the machine, which the next sync finishes (the row
@@ -58,16 +61,20 @@ from gaggiclanker.db.repos.profile_board import (
 )
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow, ProfileDraftsRepository
 from gaggiclanker.db.repos.profile_list import version_source_for_draft
-from gaggiclanker.db.repos.profiles import ProfilesRepository, ProfileVersionRow
+from gaggiclanker.db.repos.profiles import (
+    SYNTHETIC_BASE_LABEL,
+    ProfilesRepository,
+    ProfileVersionRow,
+)
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionRow, VersionRefused
 from gaggiclanker.db.repos.sync import SyncRepository, SyncRunUpdate
 from gaggiclanker.device.client import GaggimateClient
 from gaggiclanker.device.errors import DeviceError
-from gaggiclanker.domain.models import APP_PROFILE_SUFFIX, Profile
+from gaggiclanker.domain.models import APP_PROFILE_SUFFIX, Profile, profile_content_hash
 from gaggiclanker.domain.profile_policy import ProfileRejected, enforce
 from gaggiclanker.drafts.board_plan import (
     ANOTHER_ROW,
-    FINAL_REFUSALS,
+    CONFLICT,
     BoardAction,
     BoardPlan,
     Computed,
@@ -75,14 +82,25 @@ from gaggiclanker.drafts.board_plan import (
     PlanBuilder,
     RowPlan,
 )
+from gaggiclanker.drafts.board_versions import (
+    ActiveVersion,
+    ConflictSummary,
+    ConflictView,
+    ListedVersion,
+    ProfileVersionsView,
+    ProposedVersion,
+    SetBrewing,
+    short_hash,
+)
 from gaggiclanker.drafts.machine import (
-    NOT_OURS,
+    CHANGED_SINCE,
+    NO_SUCCESSOR,
     MachineState,
     Placed,
     Removal,
     place,
     read_machine,
-    remove_if_ours,
+    remove_profile,
 )
 from gaggiclanker.drafts.proposals import DraftProposals, profile_from_version
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
@@ -103,6 +121,9 @@ log = structlog.get_logger(__name__)
 
 #: The sync event kinds this phase writes, one per action, so the Sync page can name each.
 EVENT_ADOPTED = "board_adopted"
+EVENT_JOINED = "board_joined"
+EVENT_RECORDED = "board_recorded"
+EVENT_CONFLICT = "board_conflict"
 EVENT_PUSHED = "board_pushed"
 EVENT_OVERWROTE = "board_overwrote"
 EVENT_REMOVED = "board_removed"
@@ -115,10 +136,6 @@ EVENT_PAUSED = "board_paused"
 MAX_CONSECUTIVE_FAILURES = 3
 
 type AttachToSet = Callable[[ProfileDraftRow, int, bool | None], Awaitable[SetVersionRow | None]]
-
-
-class _OutsideBounds(Exception):
-    """A stored version the safety bounds, as they are now, would have moved."""
 
 
 class BoardSummaryItem(BaseModel):
@@ -142,13 +159,21 @@ class BoardRunSummary(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: Profiles taken onto the board by the first sync with the switch on.
+    #: Files that joined the list this run: all of the machine's on the first sync with the
+    #: switch on, and afterwards the ones the app had never seen (``unseen`` new profiles,
+    #: ``attached`` to the profile they belong to).
     adopted: list[BoardSummaryItem] = Field(default_factory=list)
+    #: Profiles in conflict this run: the machine's file differs from everything the app knows,
+    #: so nothing was done for them.
+    conflicts: list[BoardSummaryItem] = Field(default_factory=list)
+    #: Content found on a file edited on the display, recorded as a version of its profile.
+    recorded: list[BoardSummaryItem] = Field(default_factory=list)
     pushed: list[BoardSummaryItem] = Field(default_factory=list)
     #: Pushed over a copy somebody had edited on the machine.
     overwritten: list[BoardSummaryItem] = Field(default_factory=list)
     removed: list[BoardSummaryItem] = Field(default_factory=list)
-    #: Files the app did not write, or that are still in use, and so stay on the machine.
+    #: Files that stay on the machine (still in use, edited since the last sync, the selected
+    #: profile with nothing to take over) and why.
     left: list[BoardSummaryItem] = Field(default_factory=list)
     home_screen: list[BoardSummaryItem] = Field(default_factory=list)
     failures: list[BoardSummaryItem] = Field(default_factory=list)
@@ -187,7 +212,22 @@ class BoardRowView(BaseModel):
     type: str
     utility: bool = False
     machine: BoardMachineState
+    #: What the next sync would do about this profile (while paused: what resuming would do).
     planned: list[BoardAction] = Field(default_factory=list)
+    #: The two independent flags, repeated from ``row`` under the names the page uses.
+    on_machine: bool = True
+    starred: bool = True
+    #: The active version, summarised.
+    active_version: ActiveVersion
+    #: Sets whose current version brews this profile (any of its versions, or the file it stands
+    #: on): changing the active version or switching it off changes what they brew.
+    sets_brewing: list[SetBrewing] = Field(default_factory=list)
+    #: In conflict: the machine's file differs from everything the app knows, so a sync does
+    #: nothing for this profile until a person chooses a side (``POST .../conflict``).
+    in_conflict: bool = False
+    conflict: ConflictSummary | None = None
+    #: How many open drafts would become a version of this profile once made active.
+    proposed_versions: int = 0
     #: Why going back to the previous version would be refused right now (the button says so and
     #: is disabled), or ``None`` when it would go ahead or the profile has no earlier version.
     go_back_blocked: str | None = None
@@ -229,6 +269,35 @@ class DraftLanding(BaseModel):
     for_set: BoardLanding | None = None
 
 
+class BoardProposal(BaseModel):
+    """An open draft as the list shows it: a version waiting for a person."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    draft: ProfileDraftRow
+    #: The profile it would become a version of (by the landing a put runs); ``None`` when it
+    #: would be a new profile, or cannot land (``landing.plain.taken_label``).
+    row_id: int | None = None
+    landing: DraftLanding
+
+
+class ResumePreview(BaseModel):
+    """What resuming a paused sync would do, so one button can say it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Profiles put back on the machine.
+    push: int = 0
+    #: Files taken off it.
+    remove: int = 0
+    #: Stars changed.
+    star: int = 0
+    #: Files that would join the list (attached to a profile, or a new one).
+    join: int = 0
+    #: The lines, one per action, in the order a sync takes them.
+    lines: list[BoardAction] = Field(default_factory=list)
+
+
 class BoardView(BaseModel):
     """The board and the next sync's plan, which is what the Profiles page and the switch show."""
 
@@ -251,8 +320,13 @@ class BoardView(BaseModel):
     paused: str | None = None
     #: Whether the pause has been recorded (the board stays paused until resumed).
     pause_recorded: bool = False
+    #: While paused: what resuming would do ("put back N profiles and remove M"), else ``None``.
+    resume_preview: ResumePreview | None = None
     #: For every approved draft not yet on the board, where a put would land.
     landings: list[DraftLanding] = Field(default_factory=list)
+    #: The open drafts that are not a version of any profile yet, each with the profile it would
+    #: land on: the proposed versions inside a profile, and the proposed new profiles.
+    proposals: list[BoardProposal] = Field(default_factory=list)
 
 
 @dataclass
@@ -278,6 +352,9 @@ class _Phase:
     failures_in_a_row: int = 0
     #: The file each live row holds in this plan, so one row's push never reuses another's.
     held: dict[int, str] = field(default_factory=dict)
+    #: The profiles that gained a file in this sync (a new profile, or a file attached): the
+    #: sync that finds a file does nothing else to it, its star included.
+    fresh: set[int] = field(default_factory=set)
     #: The Set versions each row's removal of its old file stopped naming, kept for the draft
     #: that replaced it: going back needs them to point the restored copy at the same versions.
     cleared: dict[int, list[int]] = field(default_factory=dict)
@@ -304,24 +381,53 @@ class BoardService:
         self.drafts = ProfileDraftsRepository(db)
         self.writes = DeviceWritesRepository(db)
         self.runs = SyncRepository(db)
-        self.plans = PlanBuilder(self.board, self.profiles, self.sets, self.writes)
         self.proposals = DraftProposals(db, settings)
+        self.plans = PlanBuilder(self.board, self.profiles, policy=self.policy_refusal)
 
     # ── reading ──────────────────────────────────────────────────────
+
+    async def policy_refusal(self, version: ProfileVersionRow) -> str | None:
+        """Why this version may not be pushed under the safety bounds as they are now, if so.
+
+        A profile that was valid when it was drafted may not be under the bounds a person has
+        since tightened, and the schema may reject a document an older build stored. The plan,
+        the push and "make active" all ask this one question.
+        """
+        try:
+            profile = profile_from_version(version)
+            _, changes = enforce(profile, await self.proposals.bounds())
+        except (ProfileRejected, Unprocessable, ValidationError) as exc:
+            return str(exc)
+        if changes:
+            return "outside the current safety bounds: " + "; ".join(
+                f"{c.path} {c.before:g} -> {c.after:g}" for c in changes
+            )
+        return None
 
     async def plan(self, machine: MachineState, *, host: str) -> BoardPlan:
         """What the next sync would do. Reads the archive only; ``machine`` is already read."""
         return await self.plans.plan(machine, host=host)
 
     async def view(self, machine: MachineState, *, source: str, host: str) -> BoardView:
-        """The board, each row's machine state and the plan. Reads the archive only."""
+        """The list, each profile's machine state and the plan. Reads the archive only."""
         computed = await self.plans.compute(machine, host=host)
         adoption = await self.board.adoption()
         actions = computed.actions()
+        would_do = computed.would_do()
+        landings = await self._landings() if computed.adopted else []
+        proposals = await self._proposals(landings)
+        proposed_by_row: dict[int, int] = {}
+        for proposal in proposals:
+            if proposal.row_id is not None:
+                proposed_by_row[proposal.row_id] = proposed_by_row.get(proposal.row_id, 0) + 1
+        brews = await self.sets.current_brews()
+        counts = await self.board.shot_counts([p.version.id for p in computed.rows])
         rows: list[BoardRowView] = []
         for plan in computed.rows:
             device_id = plan.held or plan.row.device_profile_id
             copy = machine.profiles.get(device_id) if device_id else None
+            entry = await self.board.get_version_entry(plan.row.id, plan.version.id)
+            listed = {v.version_id for v in await self.board.list_versions(plan.row.id)}
             rows.append(
                 BoardRowView(
                     row=plan.row,
@@ -334,9 +440,34 @@ class BoardService:
                         favorite=None if copy is None else copy.favorite,
                         selected=None if copy is None else copy.selected,
                     ),
-                    planned=[a for a in actions if a.row_id == plan.row.id],
+                    planned=[a for a in would_do if a.row_id == plan.row.id],
+                    on_machine=plan.row.on_machine,
+                    starred=plan.row.on_home_screen,
+                    active_version=ActiveVersion(
+                        version_id=plan.version.id,
+                        short_hash=short_hash(plan.version.content_hash),
+                        label=plan.version.label,
+                        type=plan.version.type,
+                        utility=plan.version.utility,
+                        source=entry.source if entry is not None else "machine",
+                        created_at=plan.version.created_at,
+                        shots_brewed=counts.get(plan.version.id, 0),
+                    ),
+                    sets_brewing=_sets_brewing(brews, listed, plan.row.device_profile_id),
+                    in_conflict=plan.conflict_file is not None,
+                    conflict=await self._conflict_summary(plan),
+                    proposed_versions=proposed_by_row.get(plan.row.id, 0),
                     go_back_blocked=await self._go_back_blocked(plan.row),
                 )
+            )
+        preview = None
+        if computed.paused:
+            preview = ResumePreview(
+                push=sum(1 for a in would_do if a.kind == "push"),
+                remove=sum(1 for a in would_do if a.kind == "remove"),
+                star=sum(1 for a in would_do if a.kind == "home_screen"),
+                join=sum(1 for a in would_do if a.kind == "adopt"),
+                lines=would_do,
             )
         return BoardView(
             adopted=computed.adopted,
@@ -348,7 +479,213 @@ class BoardService:
             reports=computed.reports(),
             paused=computed.paused,
             pause_recorded=adoption is not None and adoption.paused_at is not None,
-            landings=await self._landings() if computed.adopted else [],
+            resume_preview=preview,
+            landings=landings,
+            proposals=proposals,
+        )
+
+    async def _conflict_summary(self, plan: RowPlan) -> ConflictSummary | None:
+        if plan.conflict_file is None or plan.conflict_hash is None:
+            return None
+        stored = await self.profiles.get_version_by_hash(plan.conflict_hash)
+        return ConflictSummary(
+            device_id=plan.conflict_file,
+            version_id=None if stored is None else stored.id,
+            content_hash=plan.conflict_hash,
+            short_hash=short_hash(plan.conflict_hash),
+        )
+
+    async def _mirror_conflict(self, row: BoardRow) -> ProfileVersionRow | None:
+        """The machine's version of a profile's file when it is in conflict, from the mirror.
+
+        The same rule the plan applies to a read of the machine: content that is neither what
+        the profile last recorded for the file, nor its active version, nor a version it has had
+        (the ones only found on the file excepted), nor what a person already overruled.
+        """
+        if row.device_profile_id is None:
+            return None
+        mirrored = await self.profiles.get_device_profile(row.device_profile_id)
+        if mirrored is None or mirrored.deleted_at is not None:
+            return None
+        version = await self.profiles.get_version(mirrored.current_version_id)
+        active = await self.profiles.get_version(row.current_version_id)
+        if version is None or active is None:  # pragma: no cover - foreign keys
+            return None
+        recorded = (
+            None
+            if row.device_version_id is None
+            else await self.profiles.get_version(row.device_version_id)
+        )
+        known = {active.content_hash, row.conflict_overruled_hash}
+        if recorded is not None:
+            known.add(recorded.content_hash)
+        known |= await self.board.listed_hashes(row.id)
+        return None if version.content_hash in known else version
+
+    async def conflict(self, row_id: int) -> ConflictView | None:
+        """Both sides of a profile's conflict, or ``None`` when it has none."""
+        row = await self._live_row(row_id)
+        machine = await self._mirror_conflict(row)
+        active = await self.profiles.get_version(row.current_version_id)
+        if machine is None or active is None or row.device_profile_id is None:
+            return None
+        return ConflictView(
+            row_id=row.id,
+            label=row.label,
+            machine=ConflictSummary(
+                device_id=row.device_profile_id,
+                version_id=machine.id,
+                content_hash=machine.content_hash,
+                short_hash=short_hash(machine.content_hash),
+            ),
+            machine_profile=machine.profile,
+            app_version_id=active.id,
+            app_short_hash=short_hash(active.content_hash),
+            app_profile=active.profile,
+        )
+
+    async def resolve_conflict(
+        self, row_id: int, *, keep: Literal["app", "machine"], content_hash: str
+    ) -> BoardRow:
+        """A person's choice in a conflict. Sends nothing to the machine.
+
+        ``machine``: the machine's version becomes the active one and the profile stands on that
+        file; nothing will be pushed. ``app``: that exact machine content is overruled (so the
+        same file is not flagged again) and the next sync replaces the file with the active
+        version, its removal guarded by a fresh load against that content. Refused when there is
+        no conflict, or when the machine's content is no longer the one the person saw.
+        """
+        async with self.db.transaction():
+            row = await self._live_row(row_id)
+            machine = await self._mirror_conflict(row)
+            if machine is None:
+                raise Conflict(
+                    f"{row.label} has no conflict to resolve.", details={"reason": "no_conflict"}
+                )
+            if machine.content_hash != content_hash:
+                raise Conflict(
+                    "The machine's file changed since you looked at it; look at it again.",
+                    details={"reason": "stale_conflict"},
+                )
+            await self.board.add_version(row.id, machine.id, "edited_on_machine")
+            if keep == "app":
+                updated = await self.board.update(
+                    row.id, BoardRowPatch(conflict_overruled_hash=machine.content_hash)
+                )
+            else:
+                if machine.label != row.label:
+                    holder = await self.board.find_live_by_label(machine.label, excluding=row.id)
+                    if holder is not None:
+                        raise Conflict(
+                            f"The list already has {holder.label}; rename or switch off that one "
+                            "first.",
+                            details={"reason": "duplicate_label"},
+                        )
+                updated = await self.board.update(
+                    row.id,
+                    BoardRowPatch(
+                        label=machine.label,
+                        current_version_id=machine.id,
+                        previous_version_id=row.current_version_id,
+                        device_version_id=machine.id,
+                        conflict_overruled_hash=None,
+                        failed_version_id=None,
+                        back_from_version_id=None,
+                        back_from_set_version_id=None,
+                        pending_draft_id=None,
+                        pending_set_id=None,
+                        pending_major=None,
+                    ),
+                )
+            assert updated is not None
+            return updated
+
+    async def _proposals(self, landings: list[DraftLanding]) -> list[BoardProposal]:
+        """Open drafts that are not yet a version of any profile, each placed by its landing.
+
+        A draft that lands on a profile is a **proposed version** of it; one that lands on none
+        is a proposed new profile. A draft whose document is already one of a profile's
+        versions is not a proposal (the version is listed), and neither is one with no document.
+        The landing is the one a put runs (``_lineage_row``), a Set draft's by its Set.
+        """
+        found: list[BoardProposal] = []
+        by_draft = {landing.draft_id: landing for landing in landings}
+        for draft in await self.drafts.list_drafts(open_only=True, limit=200):
+            if draft.status not in ("draft", "approved") or draft.draft_version_id is None:
+                continue
+            landing = by_draft.get(draft.id)
+            if landing is None or landing.already_on_board_label is not None:
+                continue
+            if await self.board.find_live_by_listed_version(draft.draft_version_id) is not None:
+                continue
+            target = landing.for_set if landing.for_set is not None else landing.plain
+            found.append(BoardProposal(draft=draft, row_id=target.row_id, landing=landing))
+        return found
+
+    # ── a profile's versions ─────────────────────────────────────────
+
+    async def versions(self, row_id: int) -> ProfileVersionsView:
+        """A profile's versions, newest first, and the proposals that would join them.
+
+        Reads the archive's mirror for which version a file on the machine holds. Each version
+        names the one before it in the list so a page can diff it; the first has none.
+        """
+        row = await self._live_row(row_id)
+        entries = await self.board.list_versions(row.id)
+        by_id = {e.version_id: e for e in entries}
+        stored = {}
+        for entry in entries:
+            found = await self.profiles.get_version(entry.version_id)
+            if found is not None:
+                stored[entry.version_id] = found
+        on_machine = {d.current_version_id for d in await self.profiles.list_device_profiles()}
+        brews = await self.sets.current_brews()
+        counts = await self.board.shot_counts(list(stored))
+        ordered = [e for e in entries if e.version_id in stored]
+        listed: list[ListedVersion] = []
+        for position, entry in enumerate(ordered):
+            version = stored[entry.version_id]
+            older = ordered[position + 1] if position + 1 < len(ordered) else None
+            listed.append(
+                ListedVersion(
+                    version_id=version.id,
+                    short_hash=short_hash(version.content_hash),
+                    label=version.label,
+                    type=version.type,
+                    created_at=version.created_at,
+                    added_at=by_id[version.id].added_at,
+                    source=by_id[version.id].source,
+                    is_active=version.id == row.current_version_id,
+                    is_on_machine=version.id in on_machine,
+                    did_not_verify=row.failed_version_id == version.id,
+                    shots_brewed=counts.get(version.id, 0),
+                    sets_brewing=_sets_brewing(brews, {version.id}, None),
+                    profile=version.profile,
+                    previous_version_id=None if older is None else older.version_id,
+                )
+            )
+        landings = await self._landings()
+        proposed: list[ProposedVersion] = []
+        for proposal in await self._proposals(landings):
+            if proposal.row_id != row.id or proposal.draft.draft_version_id is None:
+                continue
+            document = await self.profiles.get_version(proposal.draft.draft_version_id)
+            if document is None:  # pragma: no cover - a foreign key guarantees it
+                continue
+            proposed.append(
+                ProposedVersion(
+                    draft=proposal.draft,
+                    profile=document.profile,
+                    compared_to_version_id=row.current_version_id,
+                )
+            )
+        return ProfileVersionsView(
+            row_id=row.id,
+            label=row.label,
+            on_machine=row.on_machine,
+            active_version_id=row.current_version_id,
+            versions=listed,
+            proposed=proposed,
         )
 
     async def _go_back_blocked(self, row: BoardRow) -> str | None:
@@ -770,7 +1107,6 @@ class BoardService:
                 raise NotFound(f"No profile version {row.previous_version_id}")
 
             back_from_version: int | None = None
-            back_from_set_version: int | None = None
             if row.pending_draft_id is not None:
                 # Never reached the machine: the person withdraws it.
                 await self.drafts.discard_unsent([row.pending_draft_id])
@@ -778,17 +1114,9 @@ class BoardService:
                 row.device_profile_id is not None
                 and row.device_version_id == row.current_version_id
             ):
-                # The version being left is on the machine, and goes there as a going back. A Set
-                # that recorded it still names it; the sync is told not to keep the file for that
-                # Set's sake for as long as the Set version current right now is still current.
+                # The version being left is on the machine, and goes there as a going back: the
+                # drafts that pushed it are closed as a going back, not as a replacement.
                 back_from_version = row.current_version_id
-                for draft in await self.drafts.pushed_to_device(row.device_profile_id):
-                    recorded = await self._recorded_set(draft)
-                    current = (
-                        None if recorded is None else await self.sets.current_version(recorded)
-                    )
-                    if current is not None:
-                        back_from_set_version = current.id
             updated = await self.board.update(
                 row.id,
                 BoardRowPatch(
@@ -796,7 +1124,7 @@ class BoardService:
                     current_version_id=previous.id,
                     previous_version_id=None,
                     back_from_version_id=back_from_version,
-                    back_from_set_version_id=back_from_set_version,
+                    back_from_set_version_id=None,
                     failed_version_id=None,
                     pending_draft_id=None,
                     pending_set_id=None,
@@ -806,12 +1134,86 @@ class BoardService:
             assert updated is not None  # the row was read in this transaction
             return updated
 
-    async def _recorded_set(self, draft: ProfileDraftRow) -> int | None:
-        """The Set a draft's push recorded a version on, if it did."""
-        if draft.recorded_version_id is None:
-            return None
-        version = await self.sets.get_version(draft.recorded_version_id)
-        return None if version is None else version.set_id
+    async def set_on_machine(self, row_id: int, on: bool) -> BoardRow:
+        """Switch a profile on or off the machine. The next sync follows; nothing is sent now."""
+        row = await self._live_row(row_id)
+        updated = await self.board.update(row.id, BoardRowPatch(on_machine=on))
+        assert updated is not None
+        return updated
+
+    async def set_active_version(self, row_id: int, version_id: int) -> BoardRow:
+        """Make one of a profile's versions its active one. The next sync puts it on the machine.
+
+        Any version the profile has had will do, an older one included (the sync pushes it and
+        removes the file the profile stood on). It records nothing on any Set: only a proposal
+        made active through ``put_draft`` does that. Refused, each with its own sentence, for a
+        version that is not this profile's, the synthetic baseline, a version outside the safety
+        bounds as they are now, and a name another profile already has. Making the version that
+        is already active active again clears a failed verification, so the sync tries it again.
+        """
+        async with self.db.transaction():
+            row = await self._live_row(row_id)
+            version = await self.profiles.get_version(version_id)
+            if version is None:
+                raise NotFound(f"No profile version {version_id}")
+            if version.label == SYNTHETIC_BASE_LABEL:
+                raise Conflict(
+                    "That is the empty baseline new drafts are compared with, not a version of a "
+                    "profile.",
+                    details={"reason": "synthetic_base"},
+                )
+            if await self.board.get_version_entry(row.id, version.id) is None:
+                owner = await self.board.find_live_by_listed_version(version.id)
+                raise Conflict(
+                    f"That version belongs to {owner.label}, not to {row.label}."
+                    if owner is not None
+                    else f"That is not a version of {row.label}.",
+                    details={"reason": "other_profile" if owner is not None else "not_listed"},
+                )
+            if version.id == row.current_version_id:
+                if row.failed_version_id is None:
+                    return row
+                cleared = await self.board.update(row.id, BoardRowPatch(failed_version_id=None))
+                assert cleared is not None
+                return cleared
+            refusal = await self.policy_refusal(version)
+            if refusal is not None:
+                raise Conflict(
+                    f"That version cannot go on the machine: {refusal}.",
+                    details={"reason": "policy"},
+                )
+            if version.label != row.label:
+                holder = await self.board.find_live_by_label(version.label, excluding=row.id)
+                if holder is not None:
+                    raise Conflict(
+                        f"The list already has {holder.label}; rename or switch off that one "
+                        f"before making this version of {row.label} active.",
+                        details={"reason": "duplicate_label"},
+                    )
+            pending = (
+                None
+                if row.pending_draft_id is None
+                else await self.drafts.get(row.pending_draft_id)
+            )
+            # What was waiting for the sync to record is kept only when it is this very version.
+            keep_pending = pending is not None and pending.draft_version_id == version.id
+            extra = (
+                {}
+                if keep_pending
+                else {"pending_draft_id": None, "pending_set_id": None, "pending_major": None}
+            )
+            patch = BoardRowPatch(
+                label=version.label,
+                current_version_id=version.id,
+                previous_version_id=row.current_version_id,
+                back_from_version_id=None,
+                back_from_set_version_id=None,
+                failed_version_id=None,
+                **extra,
+            )
+            updated = await self.board.update(row.id, patch)
+            assert updated is not None
+            return updated
 
     async def set_home_screen(self, row_id: int, on: bool) -> BoardRow:
         row = await self._live_row(row_id)
@@ -888,10 +1290,10 @@ class BoardService:
     ) -> None:
         machine = await read_machine(client)
         phase = _Phase(client, run_id, update, summary, machine, client.host)
-        computed = await self.plans.compute(machine, host=phase.host)
-        if not computed.adopted:
-            await self._adopt(phase, computed)
+        if await self.board.adoption() is None:
+            await self._adopt(phase)
             return
+        computed = await self.plans.compute(machine, host=phase.host)
         if computed.paused:
             # Nothing is pushed or removed, and the pause outlives this sync: a person
             # resumes it, since a reset machine and a person who deleted every file by hand
@@ -900,12 +1302,21 @@ class BoardService:
             summary.paused = computed.paused
             await self._event(phase, EVENT_PAUSED, computed.paused, None, None)
             return
+        await self._join(phase, computed)
         phase.held = {p.row.id: p.held for p in computed.rows if p.held is not None}
 
+        # Profiles that are on first, so a replacement is saved before anything is removed,
+        # then the ones switched off, then the deleted ones.
         for plan in computed.rows:
             if phase.failures_in_a_row >= MAX_CONSECUTIVE_FAILURES:
                 break
-            await self._apply_row(phase, plan)
+            if plan.row.on_machine:
+                await self._apply_row(phase, plan)
+        for plan in computed.rows:
+            if phase.failures_in_a_row >= MAX_CONSECUTIVE_FAILURES:
+                break
+            if not plan.row.on_machine:
+                await self._apply_off(phase, plan)
         for deleted in computed.deleted:
             if phase.failures_in_a_row >= MAX_CONSECUTIVE_FAILURES:
                 break
@@ -918,17 +1329,21 @@ class BoardService:
             phase.machine = machine
             computed = await self.plans.compute(machine, host=phase.host)
         for plan in computed.rows:
-            if plan.home is not None and plan.home.device_id is not None:
+            if (
+                plan.home is not None
+                and plan.home.device_id is not None
+                and plan.row.id not in phase.fresh
+            ):
                 await self._apply_home(phase, plan.home)
         await self.board.settle_resume()
 
-    # ── adoption ─────────────────────────────────────────────────────
+    # ── files the app has never seen ─────────────────────────────────
 
-    async def _adopt(self, phase: _Phase, computed: Computed) -> None:
-        """Take what the machine holds onto the board, as it is. Writes nothing to it."""
+    async def _adopt(self, phase: _Phase) -> None:
+        """The first sync with the switch on: take the machine's files into the list. No writes."""
         if not phase.machine.profiles:
             # The firmware creates a Default profile on an empty filesystem, so an empty
-            # list is a failed read; adopting nothing would leave the board empty for good.
+            # list is a failed read; adopting nothing would leave the list empty for good.
             phase.summary.failures.append(
                 BoardSummaryItem(
                     label="profile board",
@@ -940,53 +1355,171 @@ class BoardService:
             phase.update.error = phase.update.error or "the machine listed no profiles"
             return
         async with self.db.transaction():
-            for action in computed.adopt:
-                device_id = action.device_id or ""
-                profile = phase.machine.profiles[device_id]
-                version, _ = await self.profiles.ensure_version(profile)
-                # A file this app saved itself is the app's profile, not the person's: an
-                # `ok` save of that id on this host, the app label, and content equal to what
-                # that save sent. A later draft of it continues the row and replaces the copy.
-                # A file edited on the display since the save (or anything else) stays the
-                # person's, so the sync neither pushes nor removes it.
-                ours = await self._saved_by_the_app(
-                    device_id, profile.label, version.content_hash, host=phase.host
-                )
-                row = await self.board.insert(
-                    BoardRowWrite(
-                        label=version.label,
-                        current_version_id=version.id,
-                        device_profile_id=device_id,
-                        device_version_id=version.id,
-                        on_home_screen=profile.favorite,
-                        origin="draft" if ours else "adopted",
-                    )
-                )
-                phase.summary.adopted.append(
-                    BoardSummaryItem(
-                        row_id=row.id,
-                        label=version.label,
-                        device_id=device_id,
-                        reason="first_pull",
-                        on=profile.favorite,
-                    )
-                )
+            computed = await self.plans.compute(phase.machine, host=phase.host, assume_adopted=True)
+            await self._join(phase, computed, first_pull=True)
             await self.board.mark_adopted(phase.host)
         await self._event(
             phase,
             EVENT_ADOPTED,
-            f"Took {len(computed.adopt)} profile(s) from the machine onto the board as they are.",
+            f"Took {len(phase.summary.adopted)} profile(s) from the machine into the list.",
             None,
-            {"count": len(computed.adopt)},
+            {"count": len(phase.summary.adopted)},
+        )
+
+    async def _join(self, phase: _Phase, computed: Computed, *, first_pull: bool = False) -> None:
+        """Take each file the app has never seen into the list. Writes nothing to the machine.
+
+        A file belongs to the profile its content or its name says (it is attached to it: the
+        profile now stands on it) and otherwise becomes a new profile that is on, starred as the
+        machine has it. Either way the profile is left alone for the rest of this sync, so the
+        sync that finds a file never removes or replaces it.
+        """
+        for action in computed.adopt:
+            device_id = action.device_id or ""
+            profile = phase.machine.profiles.get(device_id)
+            if profile is None:  # pragma: no cover - the plan read it from this machine
+                continue
+            try:
+                row = await self._join_one(phase, action, profile)
+            except sqlite3.IntegrityError:
+                # A row stood on the file in the meantime (the unique index): nothing to join.
+                continue
+            phase.fresh.add(row.id)
+            phase.summary.adopted.append(
+                BoardSummaryItem(
+                    row_id=row.id,
+                    label=row.label,
+                    device_id=device_id,
+                    reason="first_pull" if first_pull else action.reason,
+                    detail=action.detail,
+                    on=profile.favorite,
+                )
+            )
+            if not first_pull:
+                await self._event(
+                    phase,
+                    EVENT_JOINED,
+                    f"{device_id} ({profile.label}) "
+                    + (
+                        f"was attached to {row.label}."
+                        if action.reason in ("attached", "conflict")
+                        else "joined the list as a new profile."
+                    ),
+                    device_id,
+                    {"row_id": row.id, "reason": action.reason},
+                )
+
+    async def _join_one(self, phase: _Phase, action: BoardAction, profile: Profile) -> BoardRow:
+        device_id = action.device_id or ""
+        version, _ = await self.profiles.ensure_version(profile)
+        if action.reason in ("attached", "conflict") and action.row_id is not None:
+            row = await self.board.get(action.row_id)
+            assert row is not None  # the plan read it a moment ago
+            await self.board.add_version(row.id, version.id, "edited_on_machine")
+            # A conflict's file is stood on without being recorded as what the profile last held
+            # there, so the difference stays a difference until a person chooses.
+            updated = await self.board.update(
+                row.id,
+                BoardRowPatch(
+                    device_profile_id=device_id,
+                    device_version_id=None if action.reason == "conflict" else version.id,
+                ),
+            )
+            assert updated is not None
+            return updated
+        # A file this app saved itself is the app's own profile (information only).
+        ours = await self._saved_by_the_app(
+            device_id, profile.label, version.content_hash, host=phase.host
+        )
+        return await self.board.insert(
+            BoardRowWrite(
+                label=version.label,
+                current_version_id=version.id,
+                device_profile_id=device_id,
+                device_version_id=version.id,
+                on_machine=True,
+                on_home_screen=profile.favorite,
+                origin="draft" if ours else "adopted",
+                version_source="machine",
+            )
+        )
+
+    async def _record_edit(self, phase: _Phase, row: BoardRow, device_id: str) -> None:
+        """A file somebody edited on the display: keep what it holds as a version of its profile.
+
+        Done before anything is replaced or removed, so nothing the person made on the display
+        is lost, and so the removal that may follow is guarded by exactly what is recorded.
+        """
+        served = phase.machine.profiles.get(device_id)
+        if served is None:  # pragma: no cover - the plan read it from this machine
+            return
+        version, _ = await self.profiles.ensure_version(
+            served, device_json=json.dumps(served.to_device())
+        )
+        added = await self.board.add_version(row.id, version.id, "edited_on_machine")
+        await self.board.update(row.id, BoardRowPatch(device_version_id=version.id))
+        if added:
+            phase.summary.recorded.append(
+                BoardSummaryItem(
+                    row_id=row.id,
+                    label=row.label,
+                    device_id=device_id,
+                    reason="edited_on_machine",
+                    detail="what the file holds is now a version of this profile",
+                )
+            )
+            await self._event(
+                phase,
+                EVENT_RECORDED,
+                f"{device_id} ({row.label}) was edited on the machine; what it holds is kept as "
+                "a version of the profile.",
+                device_id,
+                {"row_id": row.id, "version_id": version.id},
+            )
+
+    async def _conflict(self, phase: _Phase, plan: RowPlan) -> None:
+        """A profile whose file differs from everything the app knows: keep the machine's content as
+        a version (so nothing is lost), do nothing else for the profile, and say so."""
+        row, device_id = plan.row, plan.conflict_file or ""
+        served = phase.machine.profiles.get(device_id)
+        if served is not None:
+            version, _ = await self.profiles.ensure_version(
+                served, device_json=json.dumps(served.to_device())
+            )
+            await self.board.add_version(row.id, version.id, "edited_on_machine")
+        phase.summary.conflicts.append(
+            BoardSummaryItem(
+                row_id=row.id,
+                label=row.label,
+                device_id=device_id,
+                reason="conflict",
+                detail=CONFLICT,
+            )
+        )
+        await self._event(
+            phase,
+            EVENT_CONFLICT,
+            f"{row.label} ({device_id}) was changed outside the app; nothing is done for it until "
+            "you choose which version to keep.",
+            device_id,
+            {"row_id": row.id},
         )
 
     # ── one live row ─────────────────────────────────────────────────
 
     async def _apply_row(self, phase: _Phase, plan: RowPlan) -> None:
+        """A profile that is on: put its active version on the machine, retire what it replaces."""
         row = plan.row
+        if plan.attached is not None:
+            return  # joined this sync: recorded, and otherwise left alone until the next one
+        if plan.conflict_file is not None:
+            await self._conflict(phase, plan)
+            return
         if plan.report is not None:
             await self._report(phase, plan.report)
             return
+        if plan.edited_file is not None:
+            await self._record_edit(phase, row, plan.edited_file)
         new_id = plan.held
         placed: Placed | None = None
         if plan.push is not None:
@@ -994,6 +1527,7 @@ class BoardService:
             if placed is None:
                 return  # old stays on the machine, the row stands where it was
             new_id = placed.device_id
+            phase.held[row.id] = new_id
         assert new_id is not None  # a row either holds its content or has just pushed it
 
         settled = True
@@ -1001,20 +1535,14 @@ class BoardService:
         if plan.pred is not None and plan.pred.device_id is not None:
             if plan.pred.kind == "leave":
                 await self._left(phase, plan.pred)
-                settled = plan.pred.detail in FINAL_REFUSALS
+                settled = False
             else:
-                # The exemption is read again now, not taken from the plan: a Set action during
-                # the push (a roll back onto the newer profile) can have made it stale.
-                fresh = await self.board.get(row.id)
-                exempt = None if fresh is None else await self.plans.exempt_set(fresh)
                 removal = await self._remove(
                     phase,
                     plan.pred,
                     expected_hash=plan.pred_hash,
                     successor=new_id,
                     row=plan.row,
-                    version_id=row.device_version_id,
-                    excluding_set=exempt,
                 )
                 settled = _is_settled(removal)
         if settled and (
@@ -1024,11 +1552,8 @@ class BoardService:
                 row.id,
                 BoardRowPatch(device_profile_id=new_id, device_version_id=plan.version.id),
             )
-        if row.back_from_version_id is not None and (
-            settled or await self.plans.exempt_set(await self._fresh(row)) is None
-        ):
-            # The file was dealt with (or will never be this app's to remove), or the Set version
-            # the exemption was for is no longer its Set's current one: the going back is over.
+        if row.back_from_version_id is not None and settled:
+            # The file was dealt with: the going back is over.
             await self.board.update(
                 row.id,
                 BoardRowPatch(back_from_version_id=None, back_from_set_version_id=None),
@@ -1040,6 +1565,46 @@ class BoardService:
         await self._record(
             phase, plan, new_id, saved=placed is not None and not placed.reused, removal=removal
         )
+
+    async def _apply_off(self, phase: _Phase, plan: RowPlan) -> None:
+        """A profile that is off: take its file off the machine, once the selection has moved."""
+        row = plan.row
+        if plan.attached is not None:
+            return
+        if plan.conflict_file is not None:
+            await self._conflict(phase, plan)
+            return
+        if plan.report is not None:
+            await self._report(phase, plan.report)
+            return
+        if plan.edited_file is not None:
+            await self._record_edit(phase, row, plan.edited_file)
+        action = plan.pred
+        if action is None:
+            if (
+                row.device_profile_id is not None
+                and row.device_profile_id not in phase.machine.profiles
+            ):
+                # The file is not on the machine any more: the row lets go of it.
+                await self.board.update(
+                    row.id, BoardRowPatch(device_profile_id=None, device_version_id=None)
+                )
+            return
+        if action.kind == "leave":
+            await self._left(phase, action)
+            return
+        removal = await self._remove(
+            phase,
+            action,
+            expected_hash=plan.pred_hash,
+            successor=phase.held.get(plan.successor_row_id) if plan.successor_row_id else None,
+            row=row,
+            carry_favorite=False,
+        )
+        if _is_settled(removal):
+            await self.board.update(
+                row.id, BoardRowPatch(device_profile_id=None, device_version_id=None)
+            )
 
     async def _fresh(self, row: BoardRow) -> BoardRow:
         return await self.board.get(row.id) or row
@@ -1053,9 +1618,11 @@ class BoardService:
             reason=action.reason,
             detail=action.detail,
         )
-        if action.reason == "unreadable":
+        if action.reason in ("unreadable", "policy"):
+            # Said as failures (the run is an error): the person must look. Neither is the
+            # machine's fault, so they do not count toward the three-in-a-row stop.
             await self._row_failed(
-                phase, action, "unreadable", action.detail, counts_as_device_failure=False
+                phase, action, action.reason, action.detail, counts_as_device_failure=False
             )
             return
         phase.summary.left.append(item)
@@ -1079,20 +1646,11 @@ class BoardService:
         """
         assert plan.push is not None
         action = plan.push
-        try:
-            profile = profile_from_version(plan.version)
-            bounds = await self.proposals.bounds()
-            clamped, changes = enforce(profile, bounds)
-            if changes:
-                raise _OutsideBounds(
-                    "outside the current safety bounds: "
-                    + "; ".join(f"{c.path} {c.before:g} -> {c.after:g}" for c in changes)
-                )
-        except (ProfileRejected, Unprocessable, ValidationError, _OutsideBounds) as exc:
-            await self._row_failed(
-                phase, action, "policy", str(exc), counts_as_device_failure=False
-            )
+        refusal = await self.policy_refusal(plan.version)
+        if refusal is not None:
+            await self._row_failed(phase, action, "policy", refusal, counts_as_device_failure=False)
             return None
+        clamped = profile_from_version(plan.version)
         # `place` reuses any file holding the content, and a file another board profile
         # stands on is not this row's to share: two rows on one file would have the next
         # replace of one remove the other's profile. It is shown the machine without them,
@@ -1115,20 +1673,25 @@ class BoardService:
         if placed.served is not None and placed.problem is None:
             phase.machine.profiles[placed.device_id] = placed.served
         if placed.problem is not None:
-            cleanup = await remove_if_ours(
-                phase.client,
-                self.writes,
-                device_id=placed.device_id,
-                expected_hash=None,
-                successor=None,
-            )
+            # Removed against what the machine stored (the copy that did not verify is the
+            # only thing the check can match); a copy that cannot even be read back is not
+            # one a guarded delete can be made of.
+            if placed.served is not None:
+                cleanup = await remove_profile(
+                    phase.client,
+                    device_id=placed.device_id,
+                    expected_hash=profile_content_hash(placed.served),
+                    successor=None,
+                )
+            else:
+                cleanup = Removal(reason="could not be read back")
             phase.summary.writes += 1 if cleanup.removed else 0
             if cleanup.removed:
                 phase.machine.profiles.pop(placed.device_id, None)
                 await self.profiles.mark_one_deleted(placed.device_id)
             else:
-                # A copy that did not verify and cannot be taken off again: pushing the
-                # same version every sync would add one each time.
+                # A copy that did not verify and cannot be taken off again: pushing the same
+                # version every sync would add one each time.
                 await self.board.update(
                     plan.row.id, BoardRowPatch(failed_version_id=plan.version.id)
                 )
@@ -1184,37 +1747,30 @@ class BoardService:
         expected_hash: str | None,
         successor: str | None,
         row: BoardRow,
-        version_id: int | None,
-        excluding_set: int | None,
+        carry_favorite: bool = True,
     ) -> Removal:
-        """Remove a file through the guards and say what happened.
+        """Remove a file through the one guard and say what happened.
 
         What the file must still hold is what the archive recorded for it, never what the plan
-        read. And who stands on it is asked again now: another live board profile, or a Set,
-        keeps it, whatever the plan saw a moment ago.
+        read at some other moment. And who stands on it is asked again now: another live profile
+        keeps it, whatever the plan saw a moment ago, and so does a profile switched back on.
         """
         device_id = action.device_id or ""
+        assert expected_hash is not None  # the plan sets it for every removal it makes
         blocked = None
         if action.reason == "deleted" and not await self._still_deleted(row.id):
             blocked = ANOTHER_ROW
-        elif row.origin != "draft":
-            # A person's profile, whatever the audit says about the id: never removed.
-            blocked = NOT_OURS
+        elif action.reason == "off" and not await self._still_off(row.id):
+            blocked = "switched back on since the plan was made"
         elif await self.board.other_live_on_device(device_id, excluding=row.id) is not None:
             blocked = ANOTHER_ROW
-        else:
-            using = await self.sets.sets_currently_using(
-                device_id, version_id, excluding=excluding_set
-            )
-            if using:
-                blocked = f"still the current version of the Set {using[0]!r}"
-        removal = await remove_if_ours(
+        removal = await remove_profile(
             phase.client,
-            self.writes,
             device_id=device_id,
             expected_hash=expected_hash,
             successor=successor,
             blocked=blocked,
+            carry_favorite=carry_favorite,
         )
         phase.summary.writes += (
             int(removal.favorite_carried) + int(removal.selected_carried) + int(removal.removed)
@@ -1225,7 +1781,9 @@ class BoardService:
             await self.profiles.mark_one_deleted(device_id)
             cleared = await self.sets.clear_pushed_device_profile(device_id)
             phase.cleared[row.id] = cleared
-            if row.pending_draft_id is not None:
+            if action.reason == "off":
+                await self._retire(row, device_id, successor, "switched_off")
+            elif row.pending_draft_id is not None:
                 await self.drafts.supersede_pushed(device_id, by_draft_id=row.pending_draft_id)
             elif row.deleted_at is not None or (
                 row.back_from_version_id is not None
@@ -1238,15 +1796,15 @@ class BoardService:
                     "deleted" if row.deleted_at is not None else "went_back",
                 )
             else:
-                # A replacement that had to wait (the earlier copy was kept for a Set): the draft
-                # that put the current version on the machine replaces the draft behind this file.
+                # A replacement that had to wait (the earlier copy stayed for a moment): the
+                # draft that put the current version on the machine replaces the draft behind
+                # this file.
                 newer = await self.drafts.pusher_of_version(row.current_version_id)
                 if newer is not None:
                     await self.drafts.supersede_pushed(device_id, by_draft_id=newer)
                 else:
-                    # Nothing newer stands behind the profile (a going back whose removal had to
-                    # wait for a Set): the copy is off the machine, so its draft is closed as a
-                    # delete closes it.
+                    # Nothing newer stands behind the profile: the copy is off the machine, so
+                    # its draft is closed as a delete closes it.
                     await self._retire(row, device_id, successor, "removed")
             phase.summary.removed.append(
                 BoardSummaryItem(
@@ -1268,7 +1826,7 @@ class BoardService:
             )
         elif removal.gone or removal.unrelated:
             return removal
-        elif _is_settled(removal) or _is_asked_again(removal):
+        elif _is_asked_again(removal):
             await self._left(
                 phase, action.model_copy(update={"kind": "leave", "detail": removal.reason})
             )
@@ -1283,7 +1841,7 @@ class BoardService:
         row: BoardRow,
         device_id: str,
         successor: str | None,
-        how: Literal["went_back", "deleted", "removed"],
+        how: Literal["went_back", "deleted", "removed", "switched_off"],
     ) -> None:
         """Close the record of a file removed without a newer draft taking its place.
 
@@ -1299,6 +1857,7 @@ class BoardService:
             "went_back": f"Went back to the previous version: {device_id} is off the machine.",
             "deleted": f"The profile was deleted from the board: {device_id} is off the machine.",
             "removed": f"{device_id} is off the machine and nothing newer stands behind it.",
+            "switched_off": f"The profile was switched off: {device_id} is off the machine.",
         }
         found = await self.drafts.retire_pushed(
             device_id,
@@ -1318,6 +1877,11 @@ class BoardService:
                 await self.sets.restore_pushed_device_profile(
                     [int(i) for i in draft.cleared_set_version_ids], successor
                 )
+
+    async def _still_off(self, row_id: int) -> bool:
+        """Asked again at the moment of the delete: a profile switched back on keeps its file."""
+        fresh = await self.board.get(row_id)
+        return fresh is not None and fresh.deleted_at is None and not fresh.on_machine
 
     async def _still_deleted(self, row_id: int) -> bool:
         """Asked again at the moment of the delete: a revived row's file is not to be removed."""
@@ -1357,19 +1921,20 @@ class BoardService:
         if action.kind == "report":
             await self._report(phase, action)  # not readable: neither removed nor forgotten
             return
+        if deleted.edited_file is not None:
+            await self._record_edit(phase, row, deleted.edited_file)
         if action.kind == "leave":
             await self._left(phase, action)
-            if action.detail in FINAL_REFUSALS:
-                await self.board.update(row.id, release)
             return
         removal = await self._remove(
             phase,
             action,
             expected_hash=deleted.expected_hash,
-            successor=deleted.successor_id,
+            successor=phase.held.get(deleted.successor_row_id)
+            if deleted.successor_row_id
+            else None,
             row=row,
-            version_id=row.device_version_id,
-            excluding_set=None,
+            carry_favorite=False,
         )
         if _is_settled(removal):
             await self.board.update(row.id, release)
@@ -1589,7 +2154,22 @@ class BoardService:
 _REASON = {
     "superseded": "a newer version of the profile took its place",
     "deleted": "the profile was deleted from the board",
+    "off": "the profile is switched off",
 }
+
+
+def _sets_brewing(
+    brews: list[tuple[int, str, int | None, str | None]],
+    version_ids: set[int],
+    device_id: str | None,
+) -> list[SetBrewing]:
+    """The Sets whose current version brews one of these versions, or the file given."""
+    return [
+        SetBrewing(set_id=set_id, name=name)
+        for set_id, name, version_id, file in brews
+        if (version_id is not None and version_id in version_ids)
+        or (device_id is not None and file == device_id)
+    ]
 
 
 def _only_app_row(row: BoardRow | None) -> BoardRow | None:
@@ -1602,17 +2182,22 @@ def _only_app_row(row: BoardRow | None) -> BoardRow | None:
 
 
 def _is_settled(removal: Removal) -> bool:
-    """The row may let go of the file: it is gone, or will never be this app's to remove.
+    """The row may let go of the file: it is gone.
 
-    A Set still brewing it, another board profile standing on it, or a machine that did not
-    answer are not final: the row keeps the file and the next sync asks again.
+    Another profile standing on it, a profile that is selected with nothing to take over, a file
+    that changed since it was recorded (the next sync records it and decides) and a machine that
+    did not answer are not final: the row keeps the file and the next sync asks again.
     """
-    return removal.removed or removal.gone or removal.reason in FINAL_REFUSALS
+    return removal.removed or removal.gone
 
 
 def _is_asked_again(removal: Removal) -> bool:
     """A refusal that is reported, not a failure, and repeats until what causes it passes."""
-    return removal.reason == ANOTHER_ROW or removal.reason.startswith("still the current version")
+    return removal.reason in (
+        ANOTHER_ROW,
+        NO_SUCCESSOR,
+        CHANGED_SINCE,
+    ) or removal.reason.startswith("switched back on")
 
 
 async def machine_from_mirror(profiles: ProfilesRepository) -> MachineState:
