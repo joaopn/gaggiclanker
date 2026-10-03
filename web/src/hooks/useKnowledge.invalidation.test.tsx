@@ -1,7 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useAnswerInsight } from "@/hooks/useKnowledge";
+import {
+  useAnswerInsight,
+  useDeleteKnowledgeInsight,
+  usePatchKnowledgeInsight,
+} from "@/hooks/useKnowledge";
 import { queryKeys } from "@/lib/queryKeys";
 import { knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
@@ -11,18 +15,23 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { patchKnowledgeInsight, dismissKnowledgeInsight } = vi.hoisted(() => ({
-  patchKnowledgeInsight: vi.fn(),
-  dismissKnowledgeInsight: vi.fn(),
-}));
+const { patchKnowledgeInsight, dismissKnowledgeInsight, deleteKnowledgeInsight } = vi.hoisted(
+  () => ({
+    deleteKnowledgeInsight: vi.fn(),
+    patchKnowledgeInsight: vi.fn(),
+    dismissKnowledgeInsight: vi.fn(),
+  }),
+);
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   patchKnowledgeInsight,
   dismissKnowledgeInsight,
+  deleteKnowledgeInsight,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
   patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ set_id: 3, general: false }));
   dismissKnowledgeInsight.mockResolvedValue(
     knowledgeInsight({ set_id: 3, general: false, dismissed: true }),
@@ -79,5 +88,28 @@ describe("answering a Set's insight", () => {
     expect(patchKnowledgeInsight).toHaveBeenNthCalledWith(1, 4, { confirmed: true });
     expect(patchKnowledgeInsight).toHaveBeenNthCalledWith(2, 4, { confirmed: false });
     expect(dismissKnowledgeInsight).toHaveBeenCalledWith(4);
+  });
+});
+
+describe("editing or deleting a Set's insight", () => {
+  it("an edit reaches the knowledge prefix, which holds the Set's list and the Knowledge list", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => usePatchKnowledgeInsight());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ id: 4, patch: { text: "Reworded." } });
+
+    await waitFor(() => expect(keys.length).toBe(1));
+    expect(keys).toEqual([queryKeys.knowledge.all]);
+  });
+
+  it("a delete reaches the same, and no Set or shot", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDeleteKnowledgeInsight());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync(4);
+
+    await waitFor(() => expect(keys.length).toBe(1));
+    expect(keys).toEqual([queryKeys.knowledge.all]);
+    expect(keys.flat()).not.toContain("sets");
   });
 });

@@ -77,7 +77,7 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
           About this Set only
           {row.set_version_label
             ? `, learned at ${row.set_version_label}`
-            : ", learned before versions were recorded"}
+            : ", version not recorded"}
           .
         </p>
 

@@ -65,13 +65,13 @@ describe("ChatInsightCard", () => {
     expect(card).toHaveTextContent("no other Set's");
   });
 
-  it("says when it was learned before versions were recorded", async () => {
+  it("says when no version is recorded", async () => {
     getKnowledgeInsight.mockResolvedValue(
       insight({ set_version_id: null, set_version_label: null }),
     );
     renderCard();
     expect(await screen.findByTestId("chat-insight-about")).toHaveTextContent(
-      "learned before versions were recorded",
+      "version not recorded",
     );
   });
 

@@ -4,16 +4,23 @@ import { SetInsights } from "@/components/sets/SetInsights";
 import { knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
-const { getKnowledgeInsights, patchKnowledgeInsight, dismissKnowledgeInsight } = vi.hoisted(() => ({
+const {
+  getKnowledgeInsights,
+  patchKnowledgeInsight,
+  dismissKnowledgeInsight,
+  deleteKnowledgeInsight,
+} = vi.hoisted(() => ({
   getKnowledgeInsights: vi.fn(),
   patchKnowledgeInsight: vi.fn(),
   dismissKnowledgeInsight: vi.fn(),
+  deleteKnowledgeInsight: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getKnowledgeInsights,
   patchKnowledgeInsight,
   dismissKnowledgeInsight,
+  deleteKnowledgeInsight,
 }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -41,6 +48,7 @@ beforeEach(() => {
   getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
   patchKnowledgeInsight.mockResolvedValue(knowledgeInsight());
   dismissKnowledgeInsight.mockResolvedValue(knowledgeInsight());
+  deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
 });
 
 const LABELS = ["v3", "v2", "v1"];
@@ -67,12 +75,10 @@ describe("SetInsights", () => {
     expect(groups.map((group) => group.getAttribute("data-version"))).toEqual([
       "v3",
       "v1",
-      "Learned before versions were recorded",
+      "Version not recorded",
     ]);
     expect(within(groups[0]).getByRole("heading")).toHaveTextContent("Learned at v3");
-    expect(within(groups[2]).getByRole("heading")).toHaveTextContent(
-      "Learned before versions were recorded",
-    );
+    expect(within(groups[2]).getByRole("heading")).toHaveTextContent("Version not recorded");
     expect(within(groups[1]).getAllByTestId("own-insight")).toHaveLength(2);
   });
 
@@ -165,5 +171,60 @@ describe("SetInsights", () => {
     renderSection();
     expect(await screen.findByTestId("general-insights")).toBeInTheDocument();
     expect(screen.queryByTestId("set-insights-version")).not.toBeInTheDocument();
+  });
+
+  it("edits a Set's own insight in place, as the Knowledge page does", async () => {
+    const user = setupUser();
+    getKnowledgeInsights.mockResolvedValue({ items: [own(1, "v2")], scope_keys: [] });
+    patchKnowledgeInsight.mockResolvedValue(own(1, "v2", { text: "Lesson, reworded." }));
+    renderSection();
+
+    await user.click(await screen.findByRole("button", { name: "Edit insight 1" }));
+    const box = screen.getByLabelText("Text of insight 1");
+    await user.clear(box);
+    await user.type(box, "Lesson, reworded.");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(patchKnowledgeInsight).toHaveBeenCalledWith(1, { text: "Lesson, reworded." });
+  });
+
+  it("deletes a Set's own insight", async () => {
+    const user = setupUser();
+    getKnowledgeInsights.mockResolvedValue({ items: [own(1, "v2")], scope_keys: [] });
+    renderSection();
+
+    await user.click(await screen.findByRole("button", { name: "Delete insight 1" }));
+
+    expect(deleteKnowledgeInsight).toHaveBeenCalledWith(1);
+  });
+
+  it("offers neither edit nor delete on a general insight, which is the Knowledge page's", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [knowledgeInsight({ confirmed: true })],
+      scope_keys: [],
+    });
+    renderSection();
+    await screen.findByTestId("general-insight");
+    expect(screen.queryByRole("button", { name: /Edit insight|Delete insight/ })).toBeNull();
+  });
+
+  it("sends one request however fast the second click comes", async () => {
+    const user = setupUser();
+    getKnowledgeInsights.mockResolvedValue({
+      items: [own(1, "v2", { confirmed: false })],
+      scope_keys: [],
+    });
+    let resolve: (value: unknown) => void = () => undefined;
+    patchKnowledgeInsight.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    renderSection();
+
+    await user.dblClick(await screen.findByRole("button", { name: "Add" }));
+    resolve(own(1, "v2"));
+
+    expect(patchKnowledgeInsight).toHaveBeenCalledTimes(1);
   });
 });

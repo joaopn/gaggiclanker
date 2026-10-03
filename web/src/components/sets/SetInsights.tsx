@@ -1,15 +1,22 @@
 import { Check, Undo2, X } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { KnowledgeInsight } from "@/api/types";
-import { evidenceShots, scopeLabel } from "@/components/knowledge/InsightCard";
+import {
+  evidenceShots,
+  InsightEditButtons,
+  InsightEditForm,
+  scopeLabel,
+} from "@/components/knowledge/InsightCard";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAnswerInsight, useKnowledgeInsights } from "@/hooks/useKnowledge";
+import { useSingleFlight } from "@/hooks/useSingleFlight";
 import { cn } from "@/lib/utils";
 
-/** Where an insight learned before versions were recorded is filed. */
-const UNVERSIONED = "Learned before versions were recorded";
+/** Where an insight that names no version is filed. */
+const UNVERSIONED = "Version not recorded";
 
 /**
  * What this Set has learned, by the version it was learned at.
@@ -107,7 +114,15 @@ export function SetInsights({
 
 function OwnInsight({ insight }: { insight: KnowledgeInsight }) {
   const answer = useAnswerInsight();
+  const singleFlight = useSingleFlight();
+  const [editing, setEditing] = useState(false);
   const evidence = evidenceShots(insight);
+  // One request per click, however fast the second comes: a disabled button is
+  // still clickable until React has re-rendered.
+  const send = (choice: "add" | "dismiss" | "take_back") =>
+    singleFlight((release) =>
+      answer.mutate({ id: insight.id, answer: choice }, { onSettled: release }),
+    );
   return (
     <li
       data-testid="own-insight"
@@ -133,18 +148,14 @@ function OwnInsight({ insight }: { insight: KnowledgeInsight }) {
               size="sm"
               variant="ghost"
               disabled={answer.isPending}
-              onClick={() => answer.mutate({ id: insight.id, answer: "take_back" })}
+              onClick={() => send("take_back")}
             >
               <Undo2 className="size-3.5" aria-hidden="true" />
               Take back
             </Button>
           ) : (
             <>
-              <Button
-                size="sm"
-                disabled={answer.isPending}
-                onClick={() => answer.mutate({ id: insight.id, answer: "add" })}
-              >
+              <Button size="sm" disabled={answer.isPending} onClick={() => send("add")}>
                 <Check className="size-3.5" aria-hidden="true" />
                 Add
               </Button>
@@ -152,16 +163,21 @@ function OwnInsight({ insight }: { insight: KnowledgeInsight }) {
                 size="sm"
                 variant="ghost"
                 disabled={answer.isPending}
-                onClick={() => answer.mutate({ id: insight.id, answer: "dismiss" })}
+                onClick={() => send("dismiss")}
               >
                 <X className="size-3.5" aria-hidden="true" />
                 Dismiss
               </Button>
             </>
           )}
+          <InsightEditButtons insight={insight} onEdit={() => setEditing((open) => !open)} />
         </div>
       </div>
-      <p className="mt-1.5 text-sm">{insight.text}</p>
+      {editing ? (
+        <InsightEditForm insight={insight} onDone={() => setEditing(false)} />
+      ) : (
+        <p className="mt-1.5 text-sm">{insight.text}</p>
+      )}
       {evidence.length > 0 ? (
         <p className="mt-1 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
           <span>from</span>

@@ -28,9 +28,7 @@ export function InsightCard({
   compact?: boolean;
 }) {
   const patch = usePatchKnowledgeInsight();
-  const remove = useDeleteKnowledgeInsight();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(insight.text);
 
   const evidence = evidenceShots(insight);
 
@@ -77,54 +75,13 @@ export function InsightCard({
             )}
           </Button>
           {compact ? null : (
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Edit insight ${insight.id}`}
-                onClick={() => {
-                  setDraft(insight.text);
-                  setEditing((open) => !open);
-                }}
-              >
-                <Pencil className="size-3.5" aria-hidden="true" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={remove.isPending}
-                aria-label={`Delete insight ${insight.id}`}
-                data-testid="delete-insight"
-                onClick={() => remove.mutate(insight.id)}
-              >
-                <Trash2 className="size-3.5" aria-hidden="true" />
-              </Button>
-            </>
+            <InsightEditButtons insight={insight} onEdit={() => setEditing((open) => !open)} />
           )}
         </div>
       </div>
 
       {editing ? (
-        <form
-          className="mt-2 space-y-2"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const saved = await attempt(() =>
-              patch.mutateAsync({ id: insight.id, patch: { text: draft } }),
-            );
-            if (saved) setEditing(false);
-          }}
-        >
-          <textarea
-            className="h-20 w-full rounded-md border border-input bg-background p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`Text of insight ${insight.id}`}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <Button type="submit" size="sm" disabled={patch.isPending}>
-            Save
-          </Button>
-        </form>
+        <InsightEditForm insight={insight} onDone={() => setEditing(false)} />
       ) : (
         <p className="mt-1.5 text-sm">{insight.text}</p>
       )}
@@ -144,6 +101,68 @@ export function InsightCard({
         </p>
       ) : null}
     </li>
+  );
+}
+
+/** The edit and delete buttons of an insight: the same on the Knowledge page and a Set's. */
+export function InsightEditButtons({
+  insight,
+  onEdit,
+}: {
+  insight: KnowledgeInsight;
+  onEdit: () => void;
+}) {
+  const remove = useDeleteKnowledgeInsight();
+  return (
+    <>
+      <Button size="sm" variant="ghost" aria-label={`Edit insight ${insight.id}`} onClick={onEdit}>
+        <Pencil className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={remove.isPending}
+        aria-label={`Delete insight ${insight.id}`}
+        data-testid="delete-insight"
+        onClick={() => remove.mutate(insight.id)}
+      >
+        <Trash2 className="size-3.5" aria-hidden="true" />
+      </Button>
+    </>
+  );
+}
+
+/** The text editor of an insight: a plain form, no overlay. */
+export function InsightEditForm({
+  insight,
+  onDone,
+}: {
+  insight: KnowledgeInsight;
+  onDone: () => void;
+}) {
+  const patch = usePatchKnowledgeInsight();
+  const [draft, setDraft] = useState(insight.text);
+  return (
+    <form
+      className="mt-2 space-y-2"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const saved = await attempt(() =>
+          patch.mutateAsync({ id: insight.id, patch: { text: draft } }),
+        );
+        if (saved) onDone();
+      }}
+    >
+      <textarea
+        className="h-20 w-full rounded-md border border-input bg-background p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Text of insight ${insight.id}`}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <Button type="submit" size="sm" disabled={patch.isPending}>
+        Save
+      </Button>
+    </form>
   );
 }
 
