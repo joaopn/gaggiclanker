@@ -592,6 +592,30 @@ describe("SetDetailPage — what this archive has learned", () => {
     expect(getKnowledgeInsights).toHaveBeenCalledWith({ set_id: 3 });
   });
 
+  it("lists what was learned in this Set under its version, waiting ones with their buttons", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [
+        knowledgeInsight({
+          id: 5,
+          text: "Finer helps this bag.",
+          set_id: 3,
+          set_version_id: 22,
+          set_version_label: "v2",
+          general: false,
+          scope: {},
+          confirmed: false,
+        }),
+      ],
+      scope_keys: [],
+    });
+    renderWithQueryClient(<SetDetailPage />);
+
+    const group = await screen.findByTestId("set-insights-version");
+    expect(group).toHaveAttribute("data-version", "v2");
+    expect(group).toHaveTextContent("Finer helps this bag.");
+    expect(within(group).getByRole("button", { name: "Add" })).toBeInTheDocument();
+  });
+
   it("says nothing at all when nothing has been learned about this Set", async () => {
     renderWithQueryClient(<SetDetailPage />);
 

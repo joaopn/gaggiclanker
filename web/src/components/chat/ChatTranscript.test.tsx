@@ -2,23 +2,38 @@ import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
+import { knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
-const { getSetProposals, getOutcomeProposals } = vi.hoisted(() => ({
+const { getSetProposals, getOutcomeProposals, getKnowledgeInsight } = vi.hoisted(() => ({
   getSetProposals: vi.fn(),
   getOutcomeProposals: vi.fn(),
+  getKnowledgeInsight: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSetProposals,
   getOutcomeProposals,
+  getKnowledgeInsight,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   getSetProposals.mockResolvedValue({ items: [] });
   getOutcomeProposals.mockResolvedValue({ items: [] });
+  getKnowledgeInsight.mockResolvedValue(
+    knowledgeInsight({
+      id: 7,
+      text: "Two clicks finer on the Niche.",
+      set_id: 3,
+      set_version_id: 22,
+      set_version_label: "v2",
+      general: false,
+      scope: {},
+      evidence_shot_ids: [4],
+    }),
+  );
 });
 
 /**
@@ -374,33 +389,53 @@ describe("ChatTranscript", () => {
     );
   });
 
-  it("says an insight is unconfirmed, because that is the whole rule", () => {
-    const messages: ChatMessage[] = [
-      message({
-        id: 1,
-        role: "assistant",
-        tool_calls: [{ id: "c1", name: "record_insight", arguments: { text: "finer" } }],
-      }),
-      message({
-        id: 2,
-        role: "tool",
-        tool_results: [
-          {
-            id: "c1",
-            name: "record_insight",
-            ok: true,
-            content: JSON.stringify({ insight_id: 7, text: "Two clicks finer on the Niche." }),
-          },
-        ],
-      }),
-      message({ id: 3, role: "assistant", content: "Noted." }),
-    ];
+  describe("a proposed insight", () => {
+    function learned(): ChatMessage[] {
+      return [
+        message({
+          id: 1,
+          role: "assistant",
+          tool_calls: [{ id: "c1", name: "record_insight", arguments: { text: "finer" } }],
+        }),
+        message({
+          id: 2,
+          role: "tool",
+          tool_results: [
+            {
+              id: "c1",
+              name: "record_insight",
+              ok: true,
+              content: JSON.stringify({ insight_id: 7, text: "Two clicks finer on the Niche." }),
+            },
+          ],
+        }),
+        message({ id: 3, role: "assistant", content: "Noted." }),
+      ];
+    }
 
-    renderWithQueryClient(
-      <ChatTranscript messages={messages} runs={[]} permissions={PERMISSIONS} />,
-    );
+    it("says it is waiting, because that is the whole rule, until the live row is read", () => {
+      getKnowledgeInsight.mockReturnValue(new Promise(() => undefined));
+      renderWithQueryClient(
+        <ChatTranscript messages={learned()} runs={[]} permissions={PERMISSIONS} />,
+      );
 
-    expect(screen.getByTestId("propose-card-insight")).toHaveTextContent("unconfirmed");
+      const card = screen.getByTestId("propose-card-insight");
+      expect(card).toHaveTextContent("Two clicks finer on the Niche.");
+      expect(card).toHaveTextContent("waiting for you to add or dismiss it");
+    });
+
+    it("draws the live card, with Add and Dismiss, and no link to the Knowledge page", async () => {
+      renderWithQueryClient(
+        <ChatTranscript messages={learned()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      const card = await screen.findByTestId("chat-insight");
+      expect(getKnowledgeInsight).toHaveBeenCalledWith(7);
+      expect(within(card).getByRole("button", { name: "Add" })).toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /Knowledge/ })).not.toBeInTheDocument();
+      expect(document.querySelector('a[href*="/knowledge"]')).toBeNull();
+    });
   });
 
   it("streams a live answer under the stored ones", () => {

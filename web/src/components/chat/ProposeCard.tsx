@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { FilePen, Gauge, Layers, Lightbulb, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
@@ -27,6 +28,9 @@ export type Proposal = {
   /** A proposed Set change or first recipe: which Set, and which row on it. */
   setId?: number;
   proposalId?: number;
+  /** A proposed insight: which, and what it says until the live row is read. */
+  insightId?: number;
+  insightText?: string;
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
 };
@@ -134,11 +138,16 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     return {
       kind: "insight",
       label: "Insight proposed",
-      // Unconfirmed is the whole point: it reaches no future prompt until a
-      // person says so, and a card that did not say that would be misleading.
-      detail: `${String(output.text ?? "")} — unconfirmed`,
-      href: "/knowledge?tab=insights",
+      // Waiting is the whole point: it reaches no future prompt until a person
+      // adds it, and a card that did not say that would be misleading.
+      detail: `${String(output.text ?? "")} — waiting for you to add or dismiss it`,
+      // Its own live card is drawn from the insight itself; this is only the
+      // link the fallback would carry, and the Knowledge page is no longer
+      // where a Set's insight lives.
+      href: "/sets",
       icon: Lightbulb,
+      insightId: Number(insightId),
+      insightText: String(output.text ?? ""),
     };
   }
 
@@ -181,6 +190,9 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
 
 export function ProposeCard({ proposal }: { proposal: Proposal }) {
   const Icon = proposal.icon;
+  if (proposal.kind === "insight" && proposal.insightId !== undefined) {
+    return <ChatInsightCard insightId={proposal.insightId} text={proposal.insightText ?? ""} />;
+  }
   if (proposal.kind === "outcome" && proposal.setId && proposal.proposalId && proposal.grade) {
     return (
       <OutcomeCard

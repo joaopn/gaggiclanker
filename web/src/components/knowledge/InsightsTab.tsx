@@ -11,14 +11,16 @@ import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { attempt } from "@/lib/mutations";
 
 /**
- * Tier 3: what this archive has learned about *this* kitchen.
+ * Tier 3: what this archive has learned about *this* kitchen, in general.
  *
- * The proposals come first and unconfirmed, because that is the decision
- * waiting for somebody: an insight the chat proposed is a claim about your
- * setup that nothing will act on until you say so. Confirming one puts it in
- * front of every conversation about a Set its scope matches — which is why the
- * scope badge and the evidence links are on the card rather than behind a
- * disclosure.
+ * **General knowledge only.** An insight learned in a Set's conversation belongs
+ * to that Set and lives on its page; what is here is what you wrote by hand and
+ * the agent-written insights the app could not place on a single Set. The
+ * proposals come first and unconfirmed, because that is the decision waiting for
+ * somebody: a claim about your setup that nothing will act on until you say so.
+ * Confirming one puts it in front of every conversation about a Set its scope
+ * matches — which is why the scope badge and the evidence links are on the card
+ * rather than behind a disclosure.
  */
 export function InsightsTab() {
   const insights = useKnowledgeInsights();
@@ -39,6 +41,10 @@ export function InsightsTab() {
 
   return (
     <div className="space-y-4">
+      <p className="text-muted-foreground text-sm" data-testid="insights-general-only">
+        This page holds general knowledge only. An insight learned in a Set's conversation lives on
+        that Set's page and reaches that Set alone.
+      </p>
       <SectionCard
         title="Write one yourself"
         description="Scope it with any of the keys below; an insight applies to a Set when every key it names matches. An empty scope is a claim about every shot you pull, so it should be rare."
@@ -97,15 +103,15 @@ export function InsightsTab() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={Lightbulb}
-          title="Nothing learned yet"
-          description="The chat proposes insights about a Set, and they land here unconfirmed. Nothing is put in front of the model until you confirm it."
+          title="Nothing general yet"
+          description="Write one above. Nothing is put in front of the model until it is confirmed, and what a Set's conversations learn is added or dismissed on that Set's page."
         />
       ) : (
         <>
           {proposed.length > 0 ? (
             <SectionCard
               title="Waiting for you"
-              description="Proposed by the chat (or, before it was retired, the per-shot analysis). Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
+              description="Agent-written insights the app could not place on a single Set: they fit none or several. Open the shots they were drawn from before you confirm — a claim with unchecked evidence is an opinion."
             >
               <ul className="space-y-2" data-testid="proposed-insights">
                 {proposed.map((insight) => (

@@ -32,12 +32,7 @@ export function InsightCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(insight.text);
 
-  // `evidence_shot_ids_json` is a JSON column, so OpenAPI types it as unknown[];
-  // it is always a list of shot ids, and a row from an older build that is not
-  // is skipped rather than rendered as "[object Object]".
-  const evidence = ((insight.evidence_shot_ids ?? []) as unknown[]).filter(
-    (value): value is number => typeof value === "number",
-  );
+  const evidence = evidenceShots(insight);
 
   return (
     <li
@@ -153,13 +148,26 @@ export function InsightCard({
 }
 
 /**
+ * The shots an insight was drawn from.
+ *
+ * `evidence_shot_ids_json` is a JSON column, so OpenAPI types it as unknown[];
+ * it is always a list of shot ids, and a row from an older build that is not is
+ * skipped rather than rendered as "[object Object]".
+ */
+export function evidenceShots(insight: KnowledgeInsight): number[] {
+  return ((insight.evidence_shot_ids ?? []) as unknown[]).filter(
+    (value): value is number => typeof value === "number",
+  );
+}
+
+/**
  * The scope as a badge.
  *
  * Rendered here rather than taken from the server: the row carries the scope as
  * structured fields precisely so a client can show them its own way, and a
  * pre-rendered string would be one more thing to keep in step.
  */
-function scopeLabel(insight: KnowledgeInsight): string {
+export function scopeLabel(insight: KnowledgeInsight): string {
   const scope = (insight.scope ?? {}) as Record<string, unknown>;
   const parts = Object.entries(scope)
     .filter(([, value]) => value !== null && value !== undefined)

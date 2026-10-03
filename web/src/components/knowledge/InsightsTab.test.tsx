@@ -176,7 +176,27 @@ describe("InsightsTab", () => {
     getKnowledgeInsights.mockResolvedValue({ items: [], scope_keys: [] });
     renderWithQueryClient(<InsightsTab />);
 
-    expect(await screen.findByText("Nothing learned yet")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing general yet")).toBeInTheDocument();
+  });
+
+  it("says it holds general knowledge only, and where a Set's insights live", async () => {
+    renderWithQueryClient(<InsightsTab />);
+
+    expect(await screen.findByTestId("insights-general-only")).toHaveTextContent(
+      "general knowledge only",
+    );
+    expect(screen.getByTestId("insights-general-only")).toHaveTextContent("that Set's page");
+  });
+
+  it("asks only for the general list: no Set filter, so no Set's insight is on this page", async () => {
+    renderWithQueryClient(<InsightsTab />);
+    await screen.findByTestId("proposed-insights");
+    expect(getKnowledgeInsights).toHaveBeenCalledWith({});
+  });
+
+  it("explains that what is waiting here is what could not be placed on one Set", async () => {
+    renderWithQueryClient(<InsightsTab />);
+    expect(await screen.findByText(/could not place on a single Set/)).toBeInTheDocument();
   });
 });
 
