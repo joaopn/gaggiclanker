@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InsightsTab } from "@/components/knowledge/InsightsTab";
-import { knowledgeInsight } from "@/test/knowledgeFixtures";
+import { knowledgeInsight, patternsData } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -10,11 +10,13 @@ vi.mock("sonner", () => ({
 }));
 
 const {
+  getPatterns,
   getKnowledgeInsights,
   createKnowledgeInsight,
   patchKnowledgeInsight,
   deleteKnowledgeInsight,
 } = vi.hoisted(() => ({
+  getPatterns: vi.fn(),
   getKnowledgeInsights: vi.fn(),
   createKnowledgeInsight: vi.fn(),
   patchKnowledgeInsight: vi.fn(),
@@ -22,6 +24,7 @@ const {
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
+  getPatterns,
   getKnowledgeInsights,
   createKnowledgeInsight,
   patchKnowledgeInsight,
@@ -48,6 +51,7 @@ const INSIGHTS = {
 beforeEach(() => {
   vi.clearAllMocks();
   getKnowledgeInsights.mockResolvedValue(INSIGHTS);
+  getPatterns.mockResolvedValue(patternsData({ run: null, proposals: [] }));
   createKnowledgeInsight.mockResolvedValue(knowledgeInsight({ id: 3, confirmed: true }));
   patchKnowledgeInsight.mockImplementation(async (id: number, patch: Record<string, unknown>) => ({
     ...INSIGHTS.items.find((entry) => entry.id === id),

@@ -4,6 +4,9 @@ import type {
   KnowledgeDoc,
   KnowledgeInsight,
   KnowledgeRule,
+  PatternProposal,
+  PatternRun,
+  PatternsData,
 } from "@/api/types";
 
 /**
@@ -103,6 +106,64 @@ export function insightDeletion(overrides: Partial<InsightDeletion> = {}): Insig
     status: "proposed",
     created_at: "2026-10-03T09:00:00.000Z",
     decided_at: null,
+    ...overrides,
+  };
+}
+
+/** A finished run of Find patterns across Sets that read four insights in three Sets. */
+export function patternRun(overrides: Partial<PatternRun> = {}): PatternRun {
+  return {
+    id: 5,
+    status: "done",
+    error: null,
+    provider: "openrouter",
+    model: "careful-model",
+    prompt_name: "patterns",
+    prompt_version: "1+1",
+    insights_read: 4,
+    sets_read: 3,
+    proposals_kept: 1,
+    proposals_dropped: 0,
+    dropped: {},
+    usage: null,
+    llm_call_id: null,
+    created_at: "2026-10-03T09:00:00.000Z",
+    finished_at: "2026-10-03T09:01:00.000Z",
+    ...overrides,
+  };
+}
+
+/** A waiting proposal made from two Sets' insights about one grinder. */
+export function patternProposal(overrides: Partial<PatternProposal> = {}): PatternProposal {
+  return {
+    id: 11,
+    run_id: 5,
+    text: "The Niche channels below 9 clicks with light roasts.",
+    scope: { roast_level: "light", grinder_id: 1 },
+    sources: [
+      { insight_id: 21, set_id: 3, set_name: "Guji daily", text: "Below 9 clicks it channels." },
+      { insight_id: 22, set_id: 4, set_name: "Yirg daily", text: "It gushes under 9." },
+    ],
+    replaces_id: null,
+    replaces_text: "",
+    status: "proposed",
+    insight_id: null,
+    skipped: [],
+    created_at: "2026-10-03T09:01:00.000Z",
+    decided_at: null,
+    ...overrides,
+  };
+}
+
+/** What the section reads: one finished run with one waiting proposal. */
+export function patternsData(overrides: Partial<PatternsData> = {}): PatternsData {
+  return {
+    run: patternRun(),
+    proposals: [patternProposal()],
+    new_since_last_run: 2,
+    counted_from: "2026-10-03T09:00:00.000Z",
+    sets_with_insights: 3,
+    min_sets: 2,
     ...overrides,
   };
 }

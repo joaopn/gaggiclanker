@@ -159,6 +159,12 @@ export const queryKeys = {
      */
     insightDeletions: (setId: string, threadId?: number | null) =>
       ["knowledge", "insight-deletions", setId, threadId ?? "all"] as const,
+    /**
+     * The Find patterns section: the newest run, its proposals and the count of new
+     * insights. Under `knowledge` because approving one writes a general insight and
+     * deletes Set insights, so every reader of an insight refreshes it too.
+     */
+    patterns: () => ["knowledge", "patterns"] as const,
   },
   /**
    * The chat. `tools` is outside `threads` because the tool list

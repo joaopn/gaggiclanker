@@ -63,6 +63,9 @@ import type {
   OutcomeProposalDecision,
   OutcomeProposalListData,
   PasswordData,
+  PatternProposalDecision,
+  PatternRun,
+  PatternsData,
   ProfileDraft,
   ProfileDraftDetail,
   ProfileDraftListData,
@@ -1156,6 +1159,33 @@ export async function runReview(
   return fetchApi<ShotReview>(`/shots/${shotId}/reviews`, {
     method: "POST",
     body: JSON.stringify({ model: options.model ?? "" }),
+  });
+}
+
+/** The newest pattern run, its proposals and how many insights are new since the last one. */
+export async function getPatterns(): Promise<PatternsData> {
+  return fetchApi<PatternsData>("/knowledge/patterns");
+}
+
+/** Find patterns across Sets: queues a run and answers with the running row. A person's press. */
+export async function startPatternRun(options: { model?: string } = {}): Promise<PatternRun> {
+  return fetchApi<PatternRun>("/knowledge/patterns/runs", {
+    method: "POST",
+    body: JSON.stringify({ model: options.model ?? "" }),
+  });
+}
+
+/** Approve a proposed general insight: writes it and deletes its sources. A person's press. */
+export async function approvePatternProposal(id: number): Promise<PatternProposalDecision> {
+  return fetchApi<PatternProposalDecision>(`/knowledge/patterns/proposals/${id}/approve`, {
+    method: "POST",
+  });
+}
+
+/** Turn a proposed general insight down. A person's press. */
+export async function dismissPatternProposal(id: number): Promise<PatternProposalDecision> {
+  return fetchApi<PatternProposalDecision>(`/knowledge/patterns/proposals/${id}/dismiss`, {
+    method: "POST",
   });
 }
 

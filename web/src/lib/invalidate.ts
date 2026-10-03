@@ -222,6 +222,11 @@ export const EVENT_INVALIDATIONS: Record<string, ReadonlyArray<readonly unknown[
   "review.started": [[...queryKeys.shots.all, "detail"]],
   "review.finished": [[...queryKeys.shots.all, "detail"]],
   "review.failed": [[...queryKeys.shots.all, "detail"]],
+  // Find patterns across Sets, carried on the same stream: the Knowledge page's section
+  // follows the run row and its proposals, and nothing else shows either.
+  "patterns.started": [queryKeys.knowledge.patterns()],
+  "patterns.finished": [queryKeys.knowledge.patterns()],
+  "patterns.failed": [queryKeys.knowledge.patterns()],
   // The starting-point wizard follows its own run by polling the row, so `started`
   // buys nothing there — but a run started from the chat, or in another tab,
   // has to reach the wizard too, and the key is what does it.

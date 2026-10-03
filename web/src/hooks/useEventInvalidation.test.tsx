@@ -36,6 +36,18 @@ describe("useEventInvalidation", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.shots.all });
   });
 
+  it.each(["patterns.started", "patterns.finished", "patterns.failed"])(
+    "re-reads the pattern section on %s",
+    (event) => {
+      const { queryClient } = renderHookWithQueryClient(() => useEventInvalidation("/api/events"));
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+      act(() => lastHandlers.current.onMessage?.({ event, data: { run_id: 3 } }));
+
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.knowledge.patterns() });
+    },
+  );
+
   it("ignores an event nothing maps", () => {
     const { queryClient } = renderHookWithQueryClient(() => useEventInvalidation("/api/events"));
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");

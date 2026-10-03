@@ -481,3 +481,24 @@ class TestNoAnswerWhileARunIsGoing:
             "SELECT COUNT(*) FROM pattern_proposals WHERE status = 'dismissed'"
         )
         assert count == 0
+
+
+async def test_the_llm_stream_carries_a_runs_lifecycle_and_nothing_unrelated() -> None:
+    """The header's LLM activity watches this stream, as it does for a review."""
+    from gaggiclanker.api.llm import _call_stream
+    from gaggiclanker.infra.sse import SseEvent
+    from gaggiclanker.llm.observer import LlmCallObserver
+
+    class Bus:
+        async def stream(self) -> AsyncIterator[SseEvent]:
+            for name in (
+                "patterns.started",
+                "shot.ingested",
+                "patterns.finished",
+                "patterns.failed",
+            ):
+                yield SseEvent(event=name, data={})
+
+    seen = [event.event async for event in _call_stream(LlmCallObserver(), Bus())]
+
+    assert seen == ["llm.snapshot", "patterns.started", "patterns.finished", "patterns.failed"]

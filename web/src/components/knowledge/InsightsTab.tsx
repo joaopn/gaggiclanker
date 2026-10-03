@@ -2,6 +2,7 @@ import { Lightbulb } from "lucide-react";
 import { useState } from "react";
 import type { KnowledgeInsightScope } from "@/api/types";
 import { InsightCard } from "@/components/knowledge/InsightCard";
+import { PatternsSection } from "@/components/knowledge/PatternsSection";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ export function InsightsTab() {
         This page holds general knowledge only. An insight learned in a Set's conversation lives on
         that Set's page and reaches that Set alone.
       </p>
+      <PatternsSection />
       <SectionCard
         title="Write one yourself"
         description="Scope it with any of the keys below; an insight applies to a Set when every key it names matches. An empty scope is a claim about every shot you pull, so it should be rare."

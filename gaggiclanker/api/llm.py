@@ -37,6 +37,7 @@ from gaggiclanker.llm.providers.claude_code import (
     ClaudeCodeProvider,
 )
 from gaggiclanker.llm.types import ProviderId
+from gaggiclanker.patterns.service import PATTERNS_EVENTS
 from gaggiclanker.review.service import REVIEW_EVENTS
 
 __all__ = ["router"]
@@ -242,11 +243,15 @@ async def _call_stream(observer: LlmCallObserver, bus: Any) -> AsyncIterator[Sse
         },
     )
     async for event in bus.stream():
-        # The call ring, plus the review's own lifecycle. A review is an LLM
+        # The call ring, plus the review's and the pattern run's own lifecycle. A review is an LLM
         # call with a row behind it, and a client watching this stream to
         # know what the LLM is doing should not have to open the sync stream as
         # well to learn that one started.
-        if event.event == LLM_CALL_EVENT or event.event in REVIEW_EVENTS:
+        if (
+            event.event == LLM_CALL_EVENT
+            or event.event in REVIEW_EVENTS
+            or event.event in PATTERNS_EVENTS
+        ):
             yield event
 
 
