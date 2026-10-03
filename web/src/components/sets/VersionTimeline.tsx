@@ -334,6 +334,7 @@ export function VersionTimeline({
                 setId={setId}
                 version={entry.version}
                 gradable={entry.labels.keep + entry.labels.improve > 0}
+                proposed={entry.outcome_proposal ?? null}
               />
 
               {entry.version.id !== current ? (

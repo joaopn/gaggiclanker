@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import type { SetVersionRow, VersionOutcome } from "@/api/types";
+import { Link } from "react-router-dom";
+import type { OutcomeProposal, SetVersionRow, VersionOutcome } from "@/api/types";
 import { OutcomeBadge } from "@/components/sets/OutcomeBadge";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
@@ -31,11 +32,18 @@ export function VersionOutcomeControl({
   setId,
   version,
   gradable,
+  proposed = null,
 }: {
   setId: number;
   version: SetVersionRow;
   /** Has a shot somebody labelled Keep or Improve. */
   gradable: boolean;
+  /**
+   * The grade an agent proposed for this version that nobody has answered. Shown
+   * beside the recorded outcome and never as one: it is words until a person
+   * accepts it, in the conversation it came from.
+   */
+  proposed?: OutcomeProposal | null;
 }) {
   const vocab = useVocabulary();
   const save = useSetVersionOutcome();
@@ -95,6 +103,35 @@ export function VersionOutcomeControl({
             : "Record the outcome"}
         </Button>
       </div>
+
+      {proposed ? (
+        <p className="text-sm" data-testid="version-outcome-proposed">
+          <span className="text-muted-foreground text-xs">The agent proposed </span>
+          <OutcomeBadge state={proposed.outcome} />
+          <span className="text-muted-foreground text-xs">
+            {" "}
+            on {proposed.counted_shots} counted {proposed.counted_shots === 1 ? "shot" : "shots"}.
+            {recorded && proposed.outcome !== version.outcome
+              ? " It differs from what is recorded."
+              : ""}{" "}
+            Nothing is recorded until you accept it
+            {proposed.thread_id ? (
+              <>
+                {" "}
+                —{" "}
+                <Link
+                  to={`/chat?thread=${proposed.thread_id}`}
+                  className="underline underline-offset-2"
+                  data-testid="version-outcome-proposed-link"
+                >
+                  answer it in the conversation
+                </Link>
+              </>
+            ) : null}
+            .
+          </span>
+        </p>
+      ) : null}
 
       {reason ? (
         <p id={reasonId} className="text-muted-foreground text-xs" data-testid="outcome-reason">

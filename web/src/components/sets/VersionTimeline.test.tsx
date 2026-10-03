@@ -9,6 +9,7 @@ import {
   judgement,
   labelCounts,
   minorDetail,
+  outcomeProposal,
   setDetail,
   version,
   vocabulary,
@@ -328,6 +329,73 @@ describe("VersionTimeline", () => {
     expect(entry).toHaveTextContent("shorter, still sharp");
     // A version with shots offers no prediction editor: the server refuses it.
     expect(screen.queryByRole("button", { name: "Edit prediction" })).not.toBeInTheDocument();
+  });
+
+  describe("a grade the agent proposed for a version", () => {
+    function withProposal(over: Parameters<typeof outcomeProposal>[0] = {}) {
+      const detail = setDetail();
+      detail.versions[0].version = version({
+        id: 22,
+        version_no: 2,
+        parent_version_id: 21,
+        shot_count: 3,
+        prediction: "less bitter, a shorter shot",
+        outcome_state: "open",
+      });
+      detail.versions[0].labels = labelCounts({ keep: 2, improve: 1 });
+      detail.versions[0].outcome_proposal = outcomeProposal(over);
+      return detail;
+    }
+
+    it("is shown beside the outcome and never as one, with a way into its conversation", () => {
+      const detail = withProposal();
+      renderWithQueryClient(
+        <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+      );
+
+      const outcome = screen.getAllByTestId("version-outcome")[0];
+      // The recorded outcome is untouched: it is still open.
+      expect(outcome).toHaveAttribute("data-state", "open");
+      const line = screen.getByTestId("version-outcome-proposed");
+      expect(line).toHaveTextContent("The agent proposed Partly held on 3 counted shots.");
+      expect(line).toHaveTextContent("Nothing is recorded until you accept it");
+      expect(screen.getByTestId("version-outcome-proposed-link")).toHaveAttribute(
+        "href",
+        "/chat?thread=9",
+      );
+    });
+
+    it("says when it differs from what is recorded", () => {
+      const detail = withProposal({ outcome: "failed", version_outcome: "held" });
+      detail.versions[0].version = {
+        ...detail.versions[0].version,
+        outcome: "held",
+        outcome_state: "held",
+      };
+      renderWithQueryClient(
+        <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+      );
+      expect(screen.getByTestId("version-outcome-proposed")).toHaveTextContent(
+        "It differs from what is recorded.",
+      );
+    });
+
+    it("has no link when the conversation it came from is gone", () => {
+      const detail = withProposal({ thread_id: null });
+      renderWithQueryClient(
+        <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+      );
+      expect(screen.getByTestId("version-outcome-proposed")).toBeInTheDocument();
+      expect(screen.queryByTestId("version-outcome-proposed-link")).not.toBeInTheDocument();
+    });
+
+    it("says nothing when no grade is waiting", () => {
+      const detail = setDetail();
+      renderWithQueryClient(
+        <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+      );
+      expect(screen.queryByTestId("version-outcome-proposed")).not.toBeInTheDocument();
+    });
   });
 
   it("reads a profile-only version as a change, not as nothing changed", () => {
