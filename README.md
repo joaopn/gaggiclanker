@@ -781,6 +781,32 @@ agent-written insights you already had about one coffee on the one Set each fits
 one of its evidence shots is filed there); anything scoped only by equipment, roast,
 process or origin, and anything that fits none or several Sets, stayed general.
 
+**What an insight rests on, and what happens when it ages.** An insight names the
+shots it comes from and the versions of its Set whose recorded outcome it depends
+on. The Set page and the chat card show each version with its outcome **as it
+stands now**, and when you re-recorded or cleared that outcome after the insight
+was written they show the old one beside it with a "changed since" mark ("held →
+failed", "no outcome now"); the outcome it had when written is never rewritten. An
+insight has to rest on at least one shot or one version with a recorded outcome.
+The agent is told each added insight as a line with its number, the version it was
+learned at, what it rests on and its shots, and is asked to weigh an old insight,
+or one resting on a changed outcome, below the current shots. Nothing expires by
+itself: **only you remove an added insight.** When the shots contradict one, the
+agent proposes its **replacement** (a card showing the old text above the new, "Adding
+it deletes the old insight"): your Add adds the new one and deletes the old one in
+one step, and if the old one changed in the meantime the new one is added on its
+own and the card says so. When one is no longer supported and nothing replaces it,
+the agent proposes **deleting** it with its reason (a card with **Delete** and
+**Keep**; new tool `propose_insight_deletion`, Set conversations only). Until you
+press Delete the insight stays and is still told to every conversation. At the start
+of a new version's conversation the agent is asked to look over the added insights
+and propose replacing or deleting the few the shots no longer support, never as a
+sweep of all of them. Removed means removed: nothing is kept as a retired state, a
+history row or a restore; only the conversation that proposed the removal still shows
+the text on its card and is told what you did. Deleting a conversation also deletes
+the insights it proposed that you dismissed (they existed only to stop it offering
+them again); waiting and added ones stay.
+
 **A proposal stops waiting the moment you change the Set another way.** Record a
 version on the form, roll back, make a profile proposal active for the Set — whichever it
 is, a change that was argued against the
@@ -860,13 +886,15 @@ applies from the next turn, and
 **Reset to defaults** puts every item back. Only the items you moved are stored,
 so an item a later release adds arrives at its default.
 
-**Sixteen tools in a Set's conversation** — twelve reads and four that propose:
+**Seventeen tools in a Set's conversation** — twelve reads and five that propose:
 how this conversation's version turned out (`propose_outcome`), waiting for you
 to accept, record another outcome or dismiss; one change to this Set, waiting
 for you, with the prediction that makes it gradable (the grind, the dose, the
 yield or the profile: a temperature change is a profile change, and the tool
 says so); an insight about this Set stored **unconfirmed** that reaches no
-future prompt until you add it; and a
+future prompt until you add it (naming the shots and versions it rests on, and the added
+insight it replaces, if any); the deletion of one added insight, waiting for you to
+delete or keep it; and a
 profile draft that goes through the same schema, safety-policy and clamp checks
 as one typed by hand. One of the reads is `get_profile`, a profile version's
 whole document, so the agent reads the profile it is about to change, and three
@@ -877,7 +905,7 @@ their base information (filters, ranges, bands, a sort, at most ten back).
 new bag is not worked out there: the General chat sends you to New Set →
 **Design it with the agent**, whose conversation ends in a first recipe you
 accept. **Eight while a Set is being designed** (below). The registry holds
-twenty-one in total: twelve both kinds have, eight that belong to one kind or the
+twenty-three in total: twelve both kinds have, ten that belong to one kind or the
 other, and `propose_initial_recipe`, which only a design has. None of them
 starts a shot's review: only its button does. Nothing in the chat can touch
 the machine — making a profile active stays a button you press.

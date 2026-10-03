@@ -339,6 +339,32 @@ boot by `InsightPlacementBuilder` (marker table from migration 0039), which asks
 the live `scope_matches` and the Set's filed shots rather than repeating the rule
 in SQL.
 
+**An insight rests on versions, and an agent's removal is a proposal.** Migration
+0040 adds `rests_on_json` (each version the insight rests on with the outcome it
+had when written, never rewritten), `replaces_id`, `replaces_text` and `replaced` to
+`knowledge_insights`, and a table `set_insight_deletions` shaped like the outcome
+proposals (one waiting row per insight by a partial unique index; a newer one marks
+the waiting one `superseded`; `thread_id` cascades, so the card lives and dies with
+its conversation; `insight_text` keeps the words the card showed). `InsightRow`
+reads what an insight rests on in the same query as the row (a join through
+`json_each` onto `set_versions`), so the outcome *now* is always the version's own;
+`InsightRow.render` is the one line the opening context and `get_insights` carry
+(id, learned at, rests on with the changed mark, shots). `InsightsRepository.propose`
+checks what it rests on and what it replaces inside the transaction that writes
+(this Set's versions with a recorded outcome; an *added* insight of the same Set).
+**Who may remove an added insight: a person.** Every removal is
+`InsightsRepository.delete_in_transaction`, run by the Set page's and Knowledge
+page's Delete, by `InsightDeletionsRepository.accept` (the deletion card's Delete,
+`POST /api/sets/{id}/insight-deletions/{pid}/accept`, with `/keep` its other button)
+and by the confirm of a replacement (`set_confirmed(…, True)`, one transaction that
+deletes the old one if it is still added, else adds the new one on its own and
+records `replaced = 'old_changed'`). The one delete marks every waiting deletion
+proposal for the insight `stale` and lets a waiting replacement that named it become
+an ordinary insight, so nothing waits on what is gone; a conversation's delete
+(`ChatRepository.delete_thread`) removes the insights it proposed that were
+dismissed in the same transaction. No tool reaches any of these; the registry and
+bytecode walk in `tests/tools/test_no_proposal_is_accepted_by_a_tool.py` names them.
+
 **A proposal stops waiting when the Set moves on.** Every path that appends a
 version — the Add a version form, a roll back, a profile draft put on the machine for the Set, and
 accepting a proposal itself — goes through

@@ -10,6 +10,37 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### An insight says what it rests on, and old ones can be replaced or deleted
+
+- **Each Set insight shows the versions it rests on, with their outcome as it stands now.** The
+  chat card and the Set page list the versions an insight depends on; when you re-recorded or
+  cleared a version's outcome after the insight was written, the old outcome is shown beside the
+  new one with a "changed since" mark ("held → failed", "no outcome now"). The agent's insight
+  tool takes `rests_on_versions` (versions with a recorded outcome, named like v1.2) beside the
+  shots, and an insight must now name at least one shot or one version (one with neither is
+  refused, with a sentence saying what to do instead).
+- **The agent can propose replacing an insight you added.** The card shows the old text above the
+  new and says "Adding it deletes the old insight"; your **Add** adds the new one and **deletes
+  the old one in one step**. If the old one was deleted or taken back meanwhile, the new one is
+  added on its own and the card says so. Nothing of a replaced insight is kept.
+- **The agent can propose deleting an added insight** (new tool `propose_insight_deletion`, Set
+  conversations only) with its reason, 20 to 500 characters. The card has **Delete** and
+  **Keep**; nothing is deleted until you press Delete, and the insight is still told to every
+  conversation of its Set until then. The Set page says which insight has one waiting and links
+  into the conversation.
+- **Only you remove an added insight, and removed means removed.** No tool, timer or boot step
+  deletes one; a deleted insight leaves no retired state, history row or restore, and waiting
+  proposals that named it end as "already gone". The conversation that asked is told what you did.
+  Deleting a conversation now also deletes the insights it proposed that you dismissed; waiting and
+  added ones stay.
+- **Old insights weigh less.** Each added insight reaches the agent as a line with its number, the
+  version it was learned at, what it rests on and its shots, and the Set prompt asks it to weigh an
+  old insight, or one resting on a changed outcome, below the current shots, to look over the added
+  insights early in a new version's conversation, and to propose replacing or deleting the few the
+  shots no longer support. A `chat-set` prompt you edited keeps your text on boot, so reset it on
+  the Prompts page to receive these sections. Migration 0040 only adds columns and a table; no
+  insight is lost and no database needs wiping.
+
 ### The chat proposes a version's outcome, and insights belong to their Set
 
 - **The agent's grade is a card you answer in the chat.** At the end of its grade a conversation
