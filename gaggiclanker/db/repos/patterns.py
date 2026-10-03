@@ -60,6 +60,7 @@ __all__ = [
     "PatternRunRow",
     "PatternRunStart",
     "PatternRunsRepository",
+    "PatternSetFacts",
     "PatternSkipped",
     "PatternSource",
 ]
@@ -98,6 +99,19 @@ class PatternSkipped(BaseModel):
     set_id: int | None = None
     text: str
     reason: SkipReason
+
+
+class PatternSetFacts(BaseModel):
+    """What a run is told about a Set besides its attributes: the names a person knows it by."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+    archived: bool = False
+    bean_name: str | None = None
+    roaster: str | None = None
+    grinder_name: str | None = None
 
 
 class PatternRunStart(BaseModel):
@@ -412,6 +426,26 @@ class PatternRunsRepository(Repository):
             (utc_now(),),
         )
         return cursor.rowcount
+
+    async def sets_with_confirmed_insights(self) -> list[PatternSetFacts]:
+        """The Sets a run reads, by id: not being designed, with a confirmed insight each.
+
+        Archived ones are in: what they taught is still true, or was replaced.
+        """
+        rows = await self.db.fetch_all(
+            """
+            SELECT s.id, s.name, s.archived, b.name AS bean_name, b.roaster,
+                   g.name AS grinder_name
+              FROM sets s
+              LEFT JOIN beans b ON b.id = s.bean_id
+              LEFT JOIN grinders g ON g.id = s.grinder_id
+             WHERE s.designing = 0
+               AND EXISTS (SELECT 1 FROM knowledge_insights i
+                            WHERE i.set_id = s.id AND i.confirmed = 1 AND i.dismissed = 0)
+             ORDER BY s.id
+            """
+        )
+        return self.to_models(PatternSetFacts, rows)
 
     # ── the page's two numbers ───────────────────────────────────────
 

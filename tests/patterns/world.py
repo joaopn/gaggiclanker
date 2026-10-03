@@ -20,6 +20,7 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightScope,
     InsightsRepository,
     InsightWrite,
+    RestsOn,
 )
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetVersionWrite, SetWrite
 
@@ -116,4 +117,58 @@ async def build_pattern_world(db: Database) -> PatternWorld:
         b=made[1].id,
         c=made[2].id,
         designing=draft.id,
+    )
+
+
+@dataclass(slots=True)
+class Talking:
+    """The world once its Sets have said things: ids by name."""
+
+    world: PatternWorld
+    #: A's and B's two phrasings of one finding about the grinder.
+    a_grinder: int
+    b_grinder: int
+    #: C's own lesson, and A's one that only A would say.
+    c_grinder: int
+    a_only: int
+    #: A waiting one and one in the Set being designed: neither is ever read.
+    waiting: int
+    designing: int
+    general: int
+
+
+async def build_talking(world: PatternWorld) -> Talking:
+    """Insights with known ids, a version outcome to rest on, and one general insight."""
+    version = await world.sets.get(world.a)
+    assert version is not None and version.current_version_id is not None
+    await world.db.execute(
+        "UPDATE set_versions SET outcome = 'held' WHERE id = ?", (version.current_version_id,)
+    )
+    a_grinder = await world.insights.insert(
+        InsightWrite(
+            text="Below 9 clicks the Niche channels on this bag.",
+            source="chat",
+            confirmed=True,
+            set_id=world.a,
+            set_version_id=version.current_version_id,
+            rests_on=[RestsOn(set_version_id=version.current_version_id, outcome="held")],
+        )
+    )
+    a_only = await world.own(world.a, "This bag peaks at 93 degrees.")
+    b_grinder = await world.own(world.b, "The Niche gushes under 9 with this one.")
+    c_grinder = await world.own(
+        world.c, "Anything finer than 9 on the Niche channels for this dark roast."
+    )
+    waiting = await world.own(world.b, "Not confirmed yet.", confirmed=False)
+    designing = await world.own(world.designing, "Still being designed.")
+    general = await world.general("Rinse the portafilter between shots.")
+    return Talking(
+        world=world,
+        a_grinder=a_grinder,
+        b_grinder=b_grinder,
+        c_grinder=c_grinder,
+        a_only=a_only,
+        waiting=waiting,
+        designing=designing,
+        general=general,
     )
