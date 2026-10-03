@@ -6,6 +6,7 @@ import type {
   OutcomeProposal,
   SetDetailData,
   SetProposal,
+  SetRevertRow,
   SetRow,
   SetTrends,
   SetVersionDetail,
@@ -305,6 +306,7 @@ export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
     parent_version_label: null,
     is_current: false,
     profile_version_id: 7,
+    profile_entry_id: 1,
     profile_label: "9 Bar Espresso",
     grind_setting: "22",
     grind_value: 22,
@@ -358,7 +360,9 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
         version: version({
           id: 22,
           version_major: 2,
+          is_current: true,
           parent_version_id: 21,
+          parent_version_label: "v1",
           grind_setting: "21",
           grind_value: 21,
           intent: "one click finer, chasing the sourness out",
@@ -742,7 +746,7 @@ export function trends(overrides: Partial<SetTrends> = {}): SetTrends {
   };
 }
 
-function point(
+export function point(
   id: number,
   versionId: number,
   versionNo: number,
@@ -872,6 +876,21 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
   };
 }
 
+/** One time a Set went back to an earlier version, as the Set page serves it. */
+export function revert(overrides: Partial<SetRevertRow> = {}): SetRevertRow {
+  return {
+    id: 1,
+    set_id: 3,
+    from_version_id: 24,
+    from_version_label: "v2.1",
+    to_version_id: 22,
+    to_version_label: "v1.1",
+    note: "",
+    created_at: "2026-04-10T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 /**
  * A Set whose current version is v1.2 but is its third version: two dial-in
  * changes after v1. The screens that name versions are tested against it, so a
@@ -884,6 +903,7 @@ export function minorDetail(): SetDetailData {
     version_major: 1,
     version_minor: 1,
     parent_version_id: 21,
+    parent_version_label: "v1",
     grind_setting: "21",
     grind_value: 21,
   });
@@ -891,7 +911,9 @@ export function minorDetail(): SetDetailData {
     id: 23,
     version_major: 1,
     version_minor: 2,
+    is_current: true,
     parent_version_id: 22,
+    parent_version_label: "v1.1",
     grind_setting: "20",
     grind_value: 20,
     prediction: "Compared to v1.1: a second longer, less sour.",

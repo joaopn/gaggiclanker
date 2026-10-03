@@ -11,6 +11,7 @@ import {
   designProposal,
   labelCounts,
   minorDetail,
+  point,
   proposal,
   setDetail,
   trackRecord,
@@ -32,6 +33,7 @@ vi.mock("sonner", () => ({
  */
 type ChartProps = {
   data?: { datasets?: Array<{ label?: string; yAxisID?: string }> };
+  options?: { plugins?: { annotation?: { annotations?: Record<string, { xMin?: number }> } } };
   "aria-label"?: string;
 };
 let lastChartProps: ChartProps | null = null;
@@ -123,10 +125,26 @@ beforeEach(() => {
   rollbackSet.mockResolvedValue(setDetail().versions[0].version);
   getProfileVersions.mockResolvedValue({
     items: [
-      { id: 7, label: "9 Bar Espresso", target_yield_g: 36, temperature_c: 93 },
-      { id: 8, label: "Turbo", target_yield_g: 45, temperature_c: 90 },
+      {
+        id: 7,
+        label: "9 Bar Espresso",
+        target_yield_g: 36,
+        temperature_c: 93,
+        profile_entry_id: 1,
+      },
+      { id: 8, label: "Turbo", target_yield_g: 45, temperature_c: 90, profile_entry_id: 2 },
+      // A newer version of the same list entry as 7: the same profile.
+      {
+        id: 9,
+        label: "9 Bar Espresso (tuned)",
+        target_yield_g: 36,
+        temperature_c: 92,
+        profile_entry_id: 1,
+      },
+      // In no list entry: its own profile, so a different one from 7.
+      { id: 10, label: "Loose", target_yield_g: 36, temperature_c: 92, profile_entry_id: null },
     ],
-    total: 2,
+    total: 4,
   });
 });
 
@@ -367,6 +385,113 @@ describe("SetDetailPage", () => {
     expect(addSetVersion.mock.calls[0][1]).toMatchObject({ grind_setting: "20", major: true });
   });
 
+  it("starts the Major change box by the profile's list entry, not by its version", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+    const box = screen.getByRole("checkbox", { name: "Major change" });
+
+    // Another version of the same profile is not a new profile: minor.
+    await user.selectOptions(screen.getByLabelText("Profile"), "9");
+    expect(box).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Record it as v2.1" })).toBeInTheDocument();
+    // A different list entry is: major.
+    await user.selectOptions(screen.getByLabelText("Profile"), "8");
+    expect(box).toBeChecked();
+    // A version in no entry is its own profile: major too.
+    await user.selectOptions(screen.getByLabelText("Profile"), "10");
+    expect(box).toBeChecked();
+
+    // The person's toggle wins over the default, on the same entry as well.
+    await user.selectOptions(screen.getByLabelText("Profile"), "9");
+    await user.click(box);
+    expect(box).toBeChecked();
+    await user.type(screen.getByLabelText("What are you trying?"), "a bigger rethink");
+    await user.click(screen.getByRole("button", { name: "Record it as v3" }));
+    await waitFor(() => expect(addSetVersion).toHaveBeenCalled());
+    expect(addSetVersion.mock.calls[0][1]).toMatchObject({ profile_version_id: 9, major: true });
+  });
+
+  it("marks the version the Set is on, and reads the current one from the flag", async () => {
+    const detail = setDetail();
+    // The Set went back: the older version is the current one.
+    detail.versions[0].version = { ...detail.versions[0].version, is_current: false };
+    detail.versions[1].version = { ...detail.versions[1].version, is_current: true };
+    getSet.mockResolvedValue(detail);
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    // The form's "compared to" starts on the current version, v1, not the newest.
+    await waitFor(() => expect(screen.getByLabelText("Compared to")).toHaveValue("21"));
+  });
+
+  it("starts the box on a changed profile when the current version is in no list entry", async () => {
+    const detail = setDetail();
+    detail.versions[0].version = {
+      ...detail.versions[0].version,
+      profile_version_id: 10,
+      profile_entry_id: null,
+    };
+    getSet.mockResolvedValue(detail);
+    getProfileVersions.mockResolvedValue({
+      items: [
+        { id: 10, label: "Loose", target_yield_g: 36, temperature_c: 92, profile_entry_id: null },
+        {
+          id: 11,
+          label: "Other loose",
+          target_yield_g: 36,
+          temperature_c: 92,
+          profile_entry_id: null,
+        },
+      ],
+      total: 2,
+    });
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("10"));
+    const box = screen.getByRole("checkbox", { name: "Major change" });
+    expect(box).not.toBeChecked();
+    // Two profiles that no list entry holds are two profiles.
+    await user.selectOptions(screen.getByLabelText("Profile"), "11");
+    expect(box).toBeChecked();
+  });
+
+  it("reads the header and the Discuss link from the current version, not the newest", async () => {
+    // The Set went back: v1 (id 21, grind 22) is current, v2 (id 22, grind 21) is newest.
+    const detail = setDetail();
+    detail.versions[0].version = { ...detail.versions[0].version, is_current: false };
+    detail.versions[1].version = { ...detail.versions[1].version, is_current: true };
+    getSet.mockResolvedValue(detail);
+    renderWithQueryClient(<SetDetailPage />);
+
+    await screen.findByTestId("version-timeline");
+    expect(screen.getByText("18 g in · 36 g out · grind 22 · 93 °C")).toBeInTheDocument();
+    expect(screen.getByTestId("discuss-in-chat").getAttribute("href")).toContain("version=21");
+  });
+
+  it("judges the track record by the current version, not the newest", async () => {
+    // v1 is current and going badly; v2, the newest, has a Keep shot. A page
+    // that read the first row would see no struggle and offer no way back.
+    const detail = setDetail({ rollback_target_version_id: 22 });
+    detail.versions[0].version = { ...detail.versions[0].version, is_current: false };
+    detail.versions[1].version = { ...detail.versions[1].version, is_current: true };
+    detail.versions[0].labels = labelCounts({ keep: 3 });
+    detail.versions[1].labels = labelCounts({ improve: 2 });
+    getSet.mockResolvedValue(detail);
+    renderWithQueryClient(<SetDetailPage />);
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Go back to v2, the last version with Keep shots",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("sends the person's minor on a change of profile they unticked", async () => {
     const user = setupUser();
     renderWithQueryClient(<SetDetailPage />);
@@ -491,10 +616,10 @@ describe("SetDetailPage", () => {
     renderWithQueryClient(<SetDetailPage />);
 
     const offer = await screen.findByRole("button", {
-      name: "Roll back to v1, the last version with Keep shots",
+      name: "Go back to v1, the last version with Keep shots",
     });
     await user.click(offer);
-    await user.click(screen.getAllByRole("button", { name: "Roll back to v1" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "Go back to v1" })[0]);
 
     await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
     expect(rollbackSet.mock.calls[0][1]).toEqual({
@@ -513,6 +638,62 @@ describe("SetDetailPage", () => {
     expect(
       screen.queryByRole("button", { name: /the last version with Keep shots/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("draws a boundary at every change of version, a returned-to version twice", async () => {
+    // After a revert one version's shots come in two runs: v1, v1.1, v2, v1.1.
+    getSetTrends.mockResolvedValue(
+      trends({
+        shots: [
+          point(1, 21, 1, { version_label: "v1" }),
+          point(2, 22, 1, { version_label: "v1.1" }),
+          point(3, 23, 2, { version_label: "v2" }),
+          point(4, 22, 1, { version_label: "v1.1" }),
+        ],
+      }),
+    );
+    // Two list items keyed by the same label make React warn; that is the only
+    // trace such a key leaves, so the warning is the assertion.
+    const warn = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    renderWithQueryClient(<SetDetailPage />);
+
+    const summary = await screen.findByTestId("set-trend-summary");
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("same key");
+    warn.mockRestore();
+    expect(summary).toHaveTextContent("v1.1 begins at shot 2");
+    expect(summary).toHaveTextContent("v2 begins at shot 3");
+    expect(summary).toHaveTextContent("v1.1 begins at shot 4");
+    // The drawn lines are keyed by where they fall, so v1.1's second run is a
+    // line of its own and not the first one overwritten.
+    const lines = lastChartProps?.options?.plugins?.annotation?.annotations ?? {};
+    expect(Object.values(lines).map((line) => line.xMin)).toEqual([0.5, 1.5, 2.5]);
+  });
+
+  it("starts the Add a version form again from the version the Set moved to", async () => {
+    const user = setupUser();
+    renderWithQueryClient(<SetDetailPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Change something/ }));
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("7"));
+    await user.type(screen.getByLabelText("Grind"), "20");
+    await user.type(screen.getByLabelText("What are you trying?"), "half typed");
+
+    // The Set goes back to v1, which names another profile; the page refetches.
+    const back = setDetail();
+    back.versions[0].version = { ...back.versions[0].version, is_current: false };
+    back.versions[1].version = {
+      ...back.versions[1].version,
+      is_current: true,
+      profile_version_id: 8,
+      profile_entry_id: 2,
+    };
+    getSet.mockResolvedValue(back);
+    await user.click(screen.getByRole("button", { name: "Go back to this version" }));
+    await user.click(screen.getByRole("button", { name: "Go back to v1" }));
+
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("8"));
+    expect(screen.getByLabelText("Grind")).toHaveValue("");
+    expect(screen.getByLabelText("What are you trying?")).toHaveValue("");
   });
 
   it("keeps the ratio off the duration axis so it is not a flat line", async () => {

@@ -360,7 +360,7 @@ export function ChatPage() {
             selected !== null
               ? thread.data?.thread.set_name
                 ? `About ${[thread.data.thread.set_name, thread.data.thread.set_version_label].filter(Boolean).join(" ")}` +
-                  (thread.data.thread.dead_end ? " — a dead end a later roll back went past" : "")
+                  (thread.data.thread.dead_end ? " — a dead end the Set went back past" : "")
                 : "General"
               : // Nothing selected: the first question creates the conversation,
                 // and this is the only place that says where it will land.

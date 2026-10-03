@@ -263,7 +263,7 @@ Versions are listed by when they were made, newest first, with the one the Set
 is on marked **current** and each naming the version it was made from. A name is
 an identifier, like a tag, not a position: v1.2 may have been made after v2.
 
-**Roll back to this version** puts the Set back on that version, as it was.
+**Go back to this version** puts the Set back on that version, as it was.
 Nothing new is recorded: its prediction, shots and outcome stay, new shots are
 filed under it, and a recorded outcome is not reopened. The log gets one line,
 "Went back to v1.2 (from v2.1)", with the date and an optional note. The next
@@ -848,7 +848,7 @@ finishes, so an answer given meanwhile would be lost. The model is `modelPattern
 Settings → LLM → Models, falling back to the default model.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
-version on the form, roll back, make a profile proposal active for the Set — whichever it
+version on the form, go back to a version, make a profile proposal active for the Set — whichever it
 is, a change that was argued against the
 recipe you have just left is retired unanswered rather than sitting there with
 an Accept button that could only refuse. The log says so, and the next

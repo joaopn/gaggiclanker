@@ -7,7 +7,9 @@ import { useTheme } from "@/lib/theme";
 
 /**
  * The Set's trajectory: one point per shot, in the order they were pulled, with
- * a marked boundary wherever a new version began.
+ * a marked boundary wherever the version changes from one point to the next,
+ * labelled with the version of the run that follows. After a revert the same
+ * version can begin twice, so a boundary is keyed by where it falls.
  *
  * Shot index rather than time on the x axis. A Set is pulled in bursts — six
  * shots on Saturday morning, nothing until Thursday — and a time axis spends
@@ -101,7 +103,9 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
           annotation: {
             annotations: Object.fromEntries(
               marks.map((mark) => [
-                mark.version,
+                // By position: a version can begin twice once the Set goes back
+                // to it, and a label key would draw only one of the two.
+                String(mark.at),
                 {
                   type: "line" as const,
                   xMin: mark.at - 0.5,
@@ -173,7 +177,7 @@ export function SetTrendChart({ trends, height = 220 }: { trends: SetTrends; hei
           </li>
         ))}
         {boundaries.map((mark) => (
-          <li key={mark.version}>{`${mark.version} begins at shot ${mark.at + 1}`}</li>
+          <li key={mark.at}>{`${mark.version} begins at shot ${mark.at + 1}`}</li>
         ))}
       </ul>
     </div>

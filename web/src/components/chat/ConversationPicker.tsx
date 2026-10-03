@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
  * a reader can reach.
  *
  * A row is one conversation about one version, labelled with it. A version a
- * later roll back stepped over is muted and says "dead end" in words: what was
+ * Set went back past is muted and says "dead end" in words: what was
  * argued there is still readable and is no longer the line being brewed. The
  * server decides that — it is a fact about a Set's whole line — and the page
  * renders what it is told.
@@ -389,7 +389,7 @@ function FolderList({
                     {thread.title || "New conversation"}
                   </span>
                   <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
-                    {/* In words, not only in grey: a later roll back went back
+                    {/* In words, not only in grey: the Set went back
                         past this version, so what was argued here is not the
                         line being brewed any more. */}
                     {thread.dead_end ? <span>dead end · </span> : null}

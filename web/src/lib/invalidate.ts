@@ -96,6 +96,15 @@ export function invalidateChatThreads(queryClient: QueryClient): Promise<void> {
     .then(() => undefined);
 }
 
+/**
+ * Every open conversation's transcript, and not the list: what the Chat page's
+ * heading reads (a version's label, whether it is a dead end) is on the thread
+ * detail, which a Set-side change to the current version can move.
+ */
+export function invalidateChatTranscripts(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: ["chat", "thread"] }).then(() => undefined);
+}
+
 /** One conversation's transcript and runs. */
 export function invalidateChatThread(queryClient: QueryClient, threadId: string): Promise<void> {
   return queryClient

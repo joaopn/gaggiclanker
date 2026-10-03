@@ -45,8 +45,8 @@ export function MajorChoice({
         <span>Major change</span>
       </label>
       <p id={helpId} className="text-muted-foreground text-xs" data-testid="major-choice-help">
-        A major version is a functional change to what the profile does; dialling in — the grind,
-        the dose, the yield, tuning a parameter — is a minor one. This records{" "}
+        A different profile is a major change; a newer version of the same profile, or a new grind,
+        dose or yield, is a minor one. This records{" "}
         <span className="font-medium text-foreground" data-testid="major-choice-result">
           {checked ? majorLabel : minorLabel}
         </span>

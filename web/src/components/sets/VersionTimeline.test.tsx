@@ -10,6 +10,7 @@ import {
   labelCounts,
   minorDetail,
   outcomeProposal,
+  revert,
   setDetail,
   version,
   vocabulary,
@@ -451,7 +452,7 @@ describe("VersionTimeline", () => {
     );
   });
 
-  it("mutes a version a later roll back stepped over, and still shows it", () => {
+  it("mutes a version the Set went back past, and still shows it", () => {
     const detail = setDetail();
     detail.versions[0].dead_end = true;
     renderWithQueryClient(
@@ -745,18 +746,51 @@ describe("VersionTimeline", () => {
     );
 
     // Only on an old version: the newest one is where you already are.
-    const triggers = screen.getAllByRole("button", { name: "Roll back to this version" });
+    const triggers = screen.getAllByRole("button", { name: "Go back to this version" });
     expect(triggers).toHaveLength(1);
 
     await user.click(triggers[0]);
-    expect(screen.getByTestId("rollback-confirm")).toHaveTextContent("No version is written");
+    expect(screen.getByTestId("rollback-confirm")).toHaveTextContent(
+      "your next change continues from it",
+    );
     expect(screen.getByTestId("rollback-confirm")).toHaveTextContent(
       "Nothing is sent to the machine",
     );
-    await user.click(screen.getByRole("button", { name: "Roll back to v1" }));
+    await user.click(screen.getByRole("button", { name: "Go back to v1" }));
 
     await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
+    // The note and nothing else: a revert takes no prediction.
     expect(rollbackSet.mock.calls[0]).toEqual([3, { to_version_id: 21, note: "" }]);
+  });
+
+  it("forgets a note typed and cancelled", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Go back to this version" }));
+    await user.type(screen.getByLabelText("Why? (optional)"), "changed my mind");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Go back to this version" }));
+    expect(screen.getByLabelText("Why? (optional)")).toHaveValue("");
+  });
+
+  it("sends the note the person typed, and still no prediction", async () => {
+    const user = setupUser();
+    const detail = setDetail();
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Go back to this version" }));
+    await user.type(screen.getByLabelText("Why? (optional)"), "  too bitter  ");
+    await user.click(screen.getByRole("button", { name: "Go back to v1" }));
+
+    await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
+    expect(rollbackSet.mock.calls[0][1]).toEqual({ to_version_id: 21, note: "too bitter" });
+    expect(Object.keys(rollbackSet.mock.calls[0][1]).sort()).toEqual(["note", "to_version_id"]);
   });
 });
 
@@ -778,6 +812,166 @@ describe("VersionTimeline, minor versions", () => {
     expect(timeline).toHaveTextContent("Chat about v1.2");
     expect(timeline).not.toHaveTextContent(/\bv3\b/);
     expect(timeline).not.toHaveTextContent(/\bv2\b/);
+  });
+});
+
+/**
+ * v1, v1.1, v2, v2.1 made in that order; the Set went back to v1.1 (from v2.1)
+ * and then made v1.2 from it. Newest made first, the order the server sends.
+ */
+function revertedLog() {
+  const make = (id: number, major: number, minor: number, day: number, parent: number | null) =>
+    version({
+      id,
+      version_major: major,
+      version_minor: minor,
+      parent_version_id: parent,
+      parent_version_label: parent ? `v${parent === 21 ? "1" : parent === 22 ? "1.1" : "2"}` : null,
+      created_at: `2026-04-${String(day).padStart(2, "0")}T00:00:00.000Z`,
+    });
+  const entry = (row: SetVersionDetail["version"], dead_end = false): SetVersionDetail => ({
+    version: row,
+    changes: [],
+    shots: [],
+    dead_end,
+    labels: labelCounts(),
+  });
+  const v12 = { ...make(25, 1, 2, 12, 22), is_current: true };
+  return [
+    entry(v12),
+    entry(make(24, 2, 1, 6, 23), true),
+    entry(make(23, 2, 0, 5, 21), true),
+    entry(make(22, 1, 1, 3, 21)),
+    entry(make(21, 1, 0, 1, null)),
+  ];
+}
+
+describe("VersionTimeline, the revert line and the current marker", () => {
+  it("lists by date: v1.2, the revert, v2.1, v2, v1.1, v1; the marker on v1.2", () => {
+    renderWithQueryClient(
+      <VersionTimeline
+        setId={3}
+        versions={revertedLog()}
+        judgements={{}}
+        reverts={[revert({ created_at: "2026-04-10T00:00:00.000Z" })]}
+      />,
+    );
+
+    const lines = screen.getByTestId("version-timeline").children;
+    const names = Array.from(lines).map((li) =>
+      li.getAttribute("data-testid") === "revert-entry"
+        ? "revert"
+        : li.getAttribute("data-version"),
+    );
+    expect(names).toEqual(["v1.2", "revert", "v2.1", "v2", "v1.1", "v1"]);
+    expect(screen.getByTestId("revert-entry")).toHaveTextContent("Went back to v1.1 (from v2.1)");
+    // The two versions the Set went back past are dimmed, and only they are.
+    const dead = Array.from(lines)
+      .filter((li) => li.getAttribute("data-dead-end") === "yes")
+      .map((li) => li.getAttribute("data-version"));
+    expect(dead).toEqual(["v2.1", "v2"]);
+    // Exactly one marker, on the version the Set is on.
+    expect(screen.getAllByTestId("current-version")).toHaveLength(1);
+    expect(
+      screen.getByTestId("current-version").closest("[data-testid='version-entry']"),
+    ).toHaveAttribute("data-version", "v1.2");
+  });
+
+  it("names each entry's parent, and the first version none", () => {
+    renderWithQueryClient(
+      <VersionTimeline setId={3} versions={revertedLog()} judgements={{}} reverts={[]} />,
+    );
+
+    const parents = screen
+      .getAllByTestId("version-entry")
+      .map((li) => li.querySelector("[data-testid='version-parent']")?.textContent ?? null);
+    expect(parents).toEqual(["from v1.1", "from v2", "from v1", "from v1", null]);
+  });
+
+  it("puts the marker where is_current says, not on the newest or the first", () => {
+    const log = revertedLog();
+    log[0].version = { ...log[0].version, is_current: false };
+    log[3].version = { ...log[3].version, is_current: true };
+    renderWithQueryClient(<VersionTimeline setId={3} versions={log} judgements={{}} />);
+
+    expect(
+      screen.getByTestId("current-version").closest("[data-testid='version-entry']"),
+    ).toHaveAttribute("data-version", "v1.1");
+    // The way back is offered on every version but that one, including the newest.
+    const without = screen
+      .getAllByTestId("version-entry")
+      .filter((li) => li.querySelector("[data-testid='rollback']") === null)
+      .map((li) => li.dataset.version);
+    expect(without).toEqual(["v1.1"]);
+  });
+
+  it("renders in the order served, not by id: ids and creation order disagree", () => {
+    // Served newest made first: id 5 was made last, id 9 first of these three.
+    const entry = (id: number, major: number, day: number): SetVersionDetail => ({
+      version: version({
+        id,
+        version_major: major,
+        created_at: `2026-04-0${day}T00:00:00.000Z`,
+      }),
+      changes: [],
+      shots: [],
+      dead_end: false,
+      labels: labelCounts(),
+    });
+    renderWithQueryClient(
+      <VersionTimeline
+        setId={3}
+        versions={[entry(5, 3, 7), entry(9, 2, 5), entry(7, 1, 2)]}
+        judgements={{}}
+      />,
+    );
+    expect(screen.getAllByTestId("version-entry").map((li) => li.dataset.version)).toEqual([
+      "v3",
+      "v2",
+      "v1",
+    ]);
+  });
+
+  it("offers the way back on every entry but the current one, even the newest", () => {
+    const log = revertedLog();
+    renderWithQueryClient(<VersionTimeline setId={3} versions={log} judgements={{}} />);
+
+    // v1.2 is both the newest and the current: it alone has no button.
+    const without = screen
+      .getAllByTestId("version-entry")
+      .filter((li) => li.querySelector("[data-testid='rollback']") === null)
+      .map((li) => li.dataset.version);
+    expect(without).toEqual(["v1.2"]);
+  });
+
+  it("shows the note a revert carries, and a revert with none shows no note", () => {
+    renderWithQueryClient(
+      <VersionTimeline
+        setId={3}
+        versions={revertedLog()}
+        judgements={{}}
+        reverts={[revert({ note: "too bitter" })]}
+      />,
+    );
+    expect(screen.getByTestId("revert-note")).toHaveTextContent("too bitter");
+  });
+
+  it("keeps two reverts to the same version as two lines, newest first", () => {
+    renderWithQueryClient(
+      <VersionTimeline
+        setId={3}
+        versions={revertedLog()}
+        judgements={{}}
+        reverts={[
+          revert({ id: 1, created_at: "2026-04-08T00:00:00.000Z", note: "first" }),
+          revert({ id: 2, created_at: "2026-04-09T00:00:00.000Z", note: "second" }),
+        ]}
+      />,
+    );
+    expect(screen.getAllByTestId("revert-note").map((n) => n.textContent)).toEqual([
+      "second",
+      "first",
+    ]);
   });
 });
 

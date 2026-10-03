@@ -36,7 +36,14 @@ import {
   useSetTrends,
 } from "@/hooks/useSets";
 import { attempt } from "@/lib/mutations";
-import { grindPatch, setSummary, trackRecordSentence, versionSummary } from "@/lib/sets";
+import {
+  currentVersion,
+  grindPatch,
+  sameProfile,
+  setSummary,
+  trackRecordSentence,
+  versionSummary,
+} from "@/lib/sets";
 import { cn } from "@/lib/utils";
 
 /**
@@ -98,7 +105,7 @@ export function SetDetailPage() {
   }
 
   const row = detail.data.set;
-  const current = detail.data.versions[0]?.version;
+  const current = currentVersion(detail.data.versions)?.version;
 
   return (
     <div className="space-y-4">
@@ -180,6 +187,10 @@ export function SetDetailPage() {
       >
         {versioning ? (
           <NewVersionForm
+            // Remounted when the Set goes back (or on) to another version: the
+            // untouched profile and "compared to" are inherited from the current
+            // version, and a form opened before the move would hold the old one.
+            key={current?.id}
             setId={row.id}
             versions={detail.data.versions}
             designing={row.designing}
@@ -203,7 +214,7 @@ export function SetDetailPage() {
 
       <SectionCard
         title="How it has gone"
-        description="One point per shot, oldest first, with a dashed line wherever a new version began. The execution score and your rating share the left axis on purpose: a clean shot you did not like is the interesting case."
+        description="One point per shot, oldest first, with a dashed line wherever the version changed. The execution score and your rating share the left axis on purpose: a clean shot you did not like is the interesting case."
       >
         {trends.isPending ? (
           <Skeleton className="h-56 w-full" />
@@ -243,6 +254,7 @@ export function SetDetailPage() {
           setId={row.id}
           versions={detail.data.versions}
           judgements={detail.data.judgements}
+          reverts={detail.data.reverts}
           designing={row.designing}
         />
       </SectionCard>
@@ -399,7 +411,7 @@ function DesignNotice({ set }: { set: SetRow }) {
 function TrackRecord({ detail, setId }: { detail: SetDetailData; setId: number }) {
   const sentence = trackRecordSentence(detail.track_record);
   const record = detail.track_record;
-  const current = detail.versions[0];
+  const current = currentVersion(detail.versions);
   const target = detail.versions.find(
     (entry) => entry.version.id === detail.rollback_target_version_id,
   );
@@ -423,7 +435,7 @@ function TrackRecord({ detail, setId }: { detail: SetDetailData; setId: number }
           setId={setId}
           versionId={target.version.id}
           versionLabel={target.version.version_label}
-          label={`Roll back to ${target.version.version_label}, the last version with Keep shots`}
+          label={`Go back to ${target.version.version_label}, the last version with Keep shots`}
           icon={<Undo2 className="size-3.5" aria-hidden="true" />}
         />
       ) : null}
@@ -481,7 +493,7 @@ function NewVersionForm({
   const [prediction, setPrediction] = useState("");
   // The current version, which is what "compared to" means unless somebody says
   // otherwise: this version is a change to that one.
-  const current = versions[0]?.version;
+  const current = currentVersion(versions)?.version;
   const [compare, setCompare] = useState(current ? String(current.id) : "");
   // The profile is the one recipe field that starts *filled*, because leaving a
   // select blank is not how anybody says "keep the profile I have" — the other
@@ -489,10 +501,10 @@ function NewVersionForm({
   const inheritedProfile = current?.profile_version_id ? String(current.profile_version_id) : "";
   const [profile, setProfile] = useState(inheritedProfile);
   // "Major change": the person's answer once they have given one; until then
-  // the box follows the shared rule — a different profile is a major version,
-  // grind, dose and yield are minor ones.
+  // the box follows the shared rule — a different *profile* (another entry in
+  // the profile list, not a newer version of the same one) is a major version;
+  // grind, dose, yield and a new version of the same profile are minor ones.
   const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
-  const major = majorChoice ?? profile !== inheritedProfile;
   const [filled, setFilled] = useState<AutoFilled>({ targetYieldG: null });
   const ids = {
     profile: useId(),
@@ -520,6 +532,11 @@ function NewVersionForm({
 
   const fromProfile = recipeHint({ targetYieldG: target }, filled);
   const chosenProfile = (profiles.data?.items ?? []).find((row) => String(row.id) === profile);
+  const profileIsNew = !sameProfile(
+    { versionId: profile ? Number(profile) : null, entryId: chosenProfile?.profile_entry_id },
+    { versionId: current?.profile_version_id ?? null, entryId: current?.profile_entry_id },
+  );
+  const major = majorChoice ?? profileIsNew;
 
   return (
     <form

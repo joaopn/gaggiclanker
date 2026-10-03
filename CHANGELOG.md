@@ -16,12 +16,12 @@ first (`POST /api/backup`), because there is no down-migration.
   tag, not a position: v1.2 can have been made after v2. The log is ordered by when each version
   was made, the version the Set is on is marked as current wherever it sits, and each entry says
   which version it was made from. A prediction can only be compared to a version made before it.
-- **Roll back puts the Set back on that version.** Nothing new is recorded: the version's
+- **Going back puts the Set back on that version.** The button reads "Go back to this version" and asks for an optional note. Nothing new is recorded: the version's
   prediction, shots and outcome are exactly as they were, new shots are filed under it, and a
   recorded outcome is not reopened. The log gets one line ("Went back to v1.2 (from v2.1)") with the
   date and an optional note. The next change continues that version's line: from v2.1 back to
   v1.2, the next minor is v1.3 (or the next free minor), the next major is the highest major plus
-  one. A roll back takes no prediction any more. Versions an earlier roll back already wrote keep
+  one. Going back takes no prediction. Versions an earlier roll back already wrote keep
   their names and their place. The conversation about the version you went back to is the Set's
   live one again, and tells the agent the Set came back to it, from which version and when.
 - **A major version means a different profile, not a newer version of the same one.** Adding a

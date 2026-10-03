@@ -59,6 +59,7 @@ export type SetDesignCreated = components["schemas"]["SetDesignCreated"];
 export type SetDesignDiscarded = components["schemas"]["SetDesignDiscarded"];
 export type SetListData = components["schemas"]["SetListData"];
 export type SetDetailData = components["schemas"]["SetDetailData"];
+export type SetRevertRow = components["schemas"]["SetRevertRow"];
 export type SetVersionRow = components["schemas"]["SetVersionRow"];
 export type ProfileMatchSummary = components["schemas"]["ProfileMatchSummary"];
 export type SetVersionDetail = components["schemas"]["SetVersionDetail"];

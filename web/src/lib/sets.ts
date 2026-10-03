@@ -5,6 +5,7 @@ import type {
   MeasureSpread,
   MeasureTerm,
   SetDetailData,
+  SetRevertRow,
   SetRow,
   SetVersionDetail,
   SetVersionRow,
@@ -17,6 +18,63 @@ import type {
  * dose that reads "18 g" on the Set card and "18.0g" on the timeline is drift
  * nobody notices until they are comparing two versions side by side.
  */
+
+// ── the log ──────────────────────────────────────────────────────────
+
+/**
+ * The version the Set is on, which a revert can make an older one than the
+ * newest made. The server marks it; the first entry is only the fallback for a
+ * page served without the mark.
+ */
+export function currentVersion(versions: SetVersionDetail[]): SetVersionDetail | undefined {
+  return versions.find((entry) => entry.version.is_current) ?? versions[0];
+}
+
+/** One line of the Set's log: a version, or a time the Set went back to one. */
+export type LogItem =
+  | { kind: "version"; entry: SetVersionDetail }
+  | { kind: "revert"; revert: SetRevertRow };
+
+/**
+ * The versions as the server sent them (newest made first) with each revert
+ * placed at its date. Versions are never re-sorted here: their order is the
+ * server's, and a revert only finds its place among them.
+ */
+export function logItems(versions: SetVersionDetail[], reverts: SetRevertRow[]): LogItem[] {
+  const when = (stamp: string) => Date.parse(stamp);
+  const items: LogItem[] = versions.map((entry) => ({ kind: "version", entry }));
+  // Newest first, so each lands above the ones before it; an equal stamp keeps
+  // the version above its revert, since a revert acts on versions that exist.
+  for (const revert of [...reverts].sort((a, b) => when(b.created_at) - when(a.created_at))) {
+    const at = items.findIndex(
+      (item) =>
+        item.kind === "version" && when(item.entry.version.created_at) < when(revert.created_at),
+    );
+    const position = at === -1 ? items.length : at;
+    // Two reverts at the same place stay newest-first.
+    items.splice(position, 0, { kind: "revert", revert });
+  }
+  return items;
+}
+
+/** A profile version and the profile-list entry that holds it, as the API serves both. */
+export interface ProfileRef {
+  versionId: number | null;
+  entryId: number | null | undefined;
+}
+
+/**
+ * Whether two profile versions are one profile, the rule the server applies
+ * (`same_profile`): the same version is, nothing differs from any profile, and
+ * two versions are one profile only when the profile list holds them in the
+ * same entry. A version in no entry is its own profile. This decides only which
+ * way the Major change box starts; the names come from the server.
+ */
+export function sameProfile(left: ProfileRef, right: ProfileRef): boolean {
+  if (left.versionId === right.versionId) return true;
+  if (left.versionId === null || right.versionId === null) return false;
+  return left.entryId != null && left.entryId === right.entryId;
+}
 
 // ── recipes ──────────────────────────────────────────────────────────
 

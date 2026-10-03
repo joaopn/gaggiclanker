@@ -366,7 +366,7 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     expect(keys).not.toContainEqual(queryKeys.sets.all);
   });
 
-  it("a roll back sweeps the Sets, and nothing else", async () => {
+  it("a revert sweeps the Sets, the proposals under them and the conversation list", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useRollbackSet());
     const keys = spyOn(queryClient);
 
@@ -375,11 +375,21 @@ describe("the Set-side writes invalidate no more than they changed", () => {
       body: { to_version_id: 21, note: "" },
     });
 
-    await waitFor(() => expect(keys.length).toBe(1));
-    // The whole `sets` prefix: the list's current-version row and the trend
-    // chart's version boundaries both moved. No shot did — the version a roll
-    // back appends has none — so no shot query is touched at all.
-    expect(keys).toEqual([queryKeys.sets.all]);
+    await waitFor(() => expect(keys.length).toBe(3));
+    expect(keys).toEqual([queryKeys.sets.all, queryKeys.chat.threads(), ["chat", "thread"]]);
+    // Invalidation is by prefix, so a key is refreshed when an invalidated key
+    // is its prefix. Each reader the revert changes is covered; no shot is.
+    const covered = (key: readonly unknown[]) =>
+      keys.some((prefix) => prefix.every((part, i) => key[i] === part));
+    expect(covered(queryKeys.sets.detail("3"))).toBe(true);
+    expect(covered(queryKeys.sets.list(false))).toBe(true);
+    expect(covered(queryKeys.sets.proposals("3"))).toBe(true);
+    expect(covered(queryKeys.sets.outcomeProposals("3"))).toBe(true);
+    expect(covered(queryKeys.chat.threads())).toBe(true);
+    // The open conversation's heading reads its own thread detail.
+    expect(covered(queryKeys.chat.thread("3"))).toBe(true);
+    // No shot moved: a revert files nothing, so no shot query is touched.
+    expect(covered(queryKeys.shots.all)).toBe(false);
   });
 });
 

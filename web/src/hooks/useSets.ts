@@ -61,6 +61,7 @@ import type {
 import {
   invalidateChatThread,
   invalidateChatThreads,
+  invalidateChatTranscripts,
   invalidateDrafts,
   invalidateOutcomeProposals,
   invalidateSetDetail,
@@ -378,15 +379,16 @@ export function useAddSetVersion(): UseMutationResult<
 
 /**
  * The three writes that are not a new version: the prediction, the outcome and
- * the roll back.
+ * the revert.
  *
  * Each invalidates the least that can have changed. A prediction is read on a
  * shot through that shot's own detail, so a prediction write reaches the shot
  * details and no other shots query — not the lists, not the sync counts. An
  * outcome is on the Set page alone: no list column and no chart series shows
- * one. A roll back appends a version, which does move the Sets list's current
- * version and the trend chart, so that one sweeps the whole `sets` prefix — and
- * nothing else, because the version it appends carries no shots.
+ * one. A revert writes no version but moves the Set's current one, which the
+ * Sets list, the Set page, the proposals and the conversations all read, so
+ * that one sweeps the whole `sets` prefix and the chat — and no shot query,
+ * because no shot moved.
  */
 export function useSetVersionPrediction(): UseMutationResult<
   SetVersionRow,
@@ -447,12 +449,18 @@ export function useRollbackSet(): UseMutationResult<
       toast.success(
         `The Set is back on ${version.version_label}. Nothing was sent to the machine.`,
       ),
-    onError: (error) => toast.error(`Could not roll back: ${error.message}`),
+    onError: (error) => toast.error(`Could not go back: ${error.message}`),
     onSettled: () => {
-      // The whole prefix, and only it: going back moves the Sets list's
-      // current-version row, but it moves no shot, so nothing a shot detail
-      // renders has changed.
+      // The whole `sets` prefix: the Set's detail (which version is current,
+      // the new log line), the Sets list's current-version row, the chart, and
+      // the proposal queries that live under it (a waiting card's base is no
+      // longer the current version). Then the conversation list, because the
+      // Set's live conversation is now the version's it went back to. No shot
+      // moved, so no shot query is touched.
       void invalidateSets(queryClient);
+      void invalidateChatThreads(queryClient);
+      // The open conversation's heading says whether its version is a dead end.
+      void invalidateChatTranscripts(queryClient);
     },
   });
 }
