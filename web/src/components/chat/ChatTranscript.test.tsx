@@ -103,7 +103,7 @@ describe("toTurns, as the runner stores a turn that has text beside its tool cal
     message({ id: 4, role: "assistant", content: "It held." }),
   ];
 
-  it.fails("pairs each result with the call of the message that made it", () => {
+  it("pairs each result with the call of the message that made it", () => {
     const turns = toTurns(STORED);
 
     const withCall = turns.find((turn) => turn.trace.length > 0);
@@ -115,7 +115,7 @@ describe("toTurns, as the runner stores a turn that has text beside its tool cal
     });
   });
 
-  it.fails("draws the card of a proposal made in such a message after a reload", async () => {
+  it("draws the card of a proposal made in such a message after a reload", async () => {
     getOutcomeProposals.mockResolvedValue({ items: [outcomeProposal()] });
     const messages: ChatMessage[] = [
       message({ id: 1, role: "user", content: "how did v2 do?" }),

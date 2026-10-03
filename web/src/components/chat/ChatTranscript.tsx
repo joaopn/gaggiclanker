@@ -38,9 +38,14 @@ type Turn = {
 export function toTurns(messages: ChatMessage[]): Turn[] {
   const turns: Turn[] = [];
   let pending: TraceEntry[] = [];
+  // The turn that holds the calls the next tool message answers: the runner
+  // stores text written beside tool calls as ONE assistant message, so that
+  // turn is already closed when its results arrive.
+  let holder: Turn | null = null;
 
   for (const message of messages) {
     if (message.role === "user") {
+      holder = null;
       turns.push({ key: `m${message.id}`, role: "user", content: message.content, trace: [] });
       continue;
     }
@@ -56,30 +61,43 @@ export function toTurns(messages: ChatMessage[]): Turn[] {
             arguments: (call.arguments ?? {}) as Record<string, unknown>,
           })),
         );
-        if (!message.content) continue;
+        if (!message.content) {
+          holder = null;
+          continue;
+        }
       }
-      turns.push({
+      const turn: Turn = {
         key: `m${message.id}`,
         role: "assistant",
         content: message.content,
         trace: pending,
         usage: message.usage ?? null,
-      });
+      };
+      turns.push(turn);
+      // Calls that came with this text are answered by the next tool message;
+      // the results are paired into this turn, not into a later one.
+      holder = calls.length > 0 ? turn : null;
       pending = [];
       continue;
     }
     if (message.role === "tool") {
       const results = (message.tool_results ?? []) as Array<Record<string, unknown>>;
-      pending = pending.map((entry) => {
-        const match = results.find((result) => String(result.id ?? "") === entry.id);
-        return match
-          ? {
-              ...entry,
-              ok: Boolean(match.ok),
-              content: String(match.content ?? ""),
-            }
-          : entry;
-      });
+      const pair = (entries: TraceEntry[]) =>
+        entries.map((entry) => {
+          const match = results.find((result) => String(result.id ?? "") === entry.id);
+          return match
+            ? {
+                ...entry,
+                ok: Boolean(match.ok),
+                content: String(match.content ?? ""),
+              }
+            : entry;
+        });
+      if (holder) {
+        holder.trace = pair(holder.trace);
+      } else {
+        pending = pair(pending);
+      }
     }
   }
 
