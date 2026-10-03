@@ -195,6 +195,10 @@ async def _oracle(db: Database, row: dict[str, Any]) -> list[int]:
     }
     evidence = {int(shot) for shot in json.loads(row["evidence_shot_ids_json"])}
     fits: list[int] = []
+    # About the coffee: a bean in the scope, or no scope and evidence shots.
+    # Anything else is equipment, a kind of coffee or the kitchen, and stays general.
+    if not ("bean_id" in scope or (not scope and evidence)):
+        return fits
     for candidate in await db.fetch_all(
         "SELECT s.id, s.bean_id, s.grinder_id, b.roast_level, b.process, b.origin "
         "FROM sets s LEFT JOIN beans b ON b.id = s.bean_id WHERE s.designing = 0 ORDER BY s.id"
@@ -317,7 +321,7 @@ class TestWhereEachOneLands:
             ),
             # Evidence only in the archived Set: archived counts as a candidate.
             "archived_only": await _insight(
-                kitchen, "Last bag note.", scope={"process": "natural"}, evidence=[s["c1"]]
+                kitchen, "Last bag note.", scope={"bean_id": kitchen.guji}, evidence=[s["c1"]]
             ),
             # Live and archived: ambiguous.
             "live_and_archived": await _insight(
@@ -514,6 +518,74 @@ class TestWhereEachOneLands:
         )
         await InsightPlacementBuilder(kitchen.db).build()
         assert (await _rows(kitchen.db))[insight_id]["set_version_id"] == kitchen.a_v2
+
+
+class TestOnlyInsightsAboutTheCoffeeMove:
+    """The scope names a bean, or is empty with evidence; everything else stays general."""
+
+    async def test_equipment_kind_and_kitchen_insights_stay_general_whatever_their_evidence(
+        self, db: Database
+    ) -> None:
+        bean = (
+            await BeansRepository(db).create(
+                BeanWrite(name="Only", roast_level="light", process="natural", origin="Kenya")
+            )
+        ).id
+        grinder = (
+            await GrindersRepository(db).create(
+                GrinderWrite(name="Niche", burr_type="conical", step_unit="numbers")
+            )
+        ).id
+        sets = SetsRepository(db)
+        set_id, version_id = await _set(sets, "The only Set", bean, grinder)
+        shot_id = await make_shot(db, "000001")
+        assert await sets.assign_shot(shot_id, version_id)
+        kitchen = Kitchen(
+            db=db,
+            guji=bean,
+            huila=0,
+            grinder=grinder,
+            a=set_id,
+            a_v1=version_id,
+            a_v2=0,
+            b=0,
+            b_v1=0,
+            c_archived=0,
+            c_v1=0,
+            d=0,
+            d_v1=0,
+            designing=0,
+            shots={},
+        )
+        cases: dict[str, tuple[dict[str, Any], list[int]]] = {
+            "grinder_no_evidence": ({"grinder_id": grinder}, []),
+            "grinder_with_evidence": ({"grinder_id": grinder}, [shot_id]),
+            "roast": ({"roast_level": "light"}, [shot_id]),
+            "process": ({"process": "natural"}, [shot_id]),
+            "origin": ({"origin": "Kenya"}, [shot_id]),
+            "empty_no_evidence": ({}, []),
+            # The two that do move, with this Set the only candidate:
+            "bean": ({"bean_id": bean}, []),
+            "legacy_empty_with_evidence": ({}, [shot_id]),
+        }
+        ids = {
+            name: await _insight(kitchen, name, scope=scope, evidence=evidence)
+            for name, (scope, evidence) in cases.items()
+        }
+
+        await InsightPlacementBuilder(db).build()
+
+        rows = await _rows(db)
+        assert {name: rows[i]["set_id"] for name, i in ids.items()} == {
+            "grinder_no_evidence": None,
+            "grinder_with_evidence": None,
+            "roast": None,
+            "process": None,
+            "origin": None,
+            "empty_no_evidence": None,
+            "bean": set_id,
+            "legacy_empty_with_evidence": set_id,
+        }
 
 
 class TestOnce:

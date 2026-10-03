@@ -13,9 +13,15 @@ second rule that can disagree with the first. It is idempotent by a marker row
 (``insight_placement_build``, migration 0039): it does nothing once it has run, so
 an insight a person has since moved, added or dismissed is never redone.
 
-**Fits a Set**, stated as a test: the insight's stored attribute scope matches the
-Set's attributes by :func:`scope_matches` **and**, when the insight lists evidence
-shots, at least one of them is filed in that Set. Archived Sets are candidates
+**Fits a Set**, stated as a test: the insight is *about the coffee* — its stored scope
+names a bean (``bean_id``), or its scope is empty and it lists evidence shots (how a
+Set's conversation stored an insight before insights had owners: no scope, its
+evidence in that Set) — **and** the scope matches the Set's attributes by
+:func:`scope_matches` **and**, when the insight lists evidence shots, at least one of
+them is filed in that Set. An insight scoped only by grinder, roast level, process,
+origin or style, and an empty-scope one with no evidence, is about equipment, a kind
+of coffee or the whole kitchen: it stays general whatever its evidence, so every
+future Set keeps getting it. Archived Sets are candidates
 (an insight that fits a live and an archived Set is ambiguous, and stays
 general); Sets still being designed are not (they have no shots and no insights).
 
@@ -85,6 +91,8 @@ class InsightPlacementBuilder(Repository):
         what :meth:`build` decided.
         """
         found: list[int] = []
+        if not _about_the_coffee(insight):
+            return found
         evidence = {int(shot) for shot in insight.evidence_shot_ids or [] if _is_id(shot)}
         listed = bool(insight.evidence_shot_ids)
         for set_id in await self._candidate_sets():
@@ -171,3 +179,15 @@ class InsightPlacementBuilder(Repository):
 def _is_id(value: object) -> bool:
     """A stored evidence entry that is a shot id; anything else is damage and ignored."""
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _about_the_coffee(insight: InsightRow) -> bool:
+    """Whether an insight is about one coffee, and so may move onto a Set.
+
+    A bean in its scope, or no scope at all with evidence shots to say which Set
+    it was learned in. Everything else is general knowledge and stays.
+    """
+    stated = insight.scope.stated()
+    if "bean_id" in stated:
+        return True
+    return not stated and bool(insight.evidence_shot_ids)
