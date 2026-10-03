@@ -84,6 +84,76 @@ const WITH_TOOLS: ChatMessage[] = [
   }),
 ];
 
+describe("toTurns, as the runner stores a turn that has text beside its tool calls", () => {
+  // One assistant message carries the text and the calls together; the tool
+  // message with the results follows it.
+  const STORED: ChatMessage[] = [
+    message({ id: 1, role: "user", content: "How did v3 do?" }),
+    message({
+      id: 2,
+      role: "assistant",
+      content: "Grading v3 against its prediction.",
+      tool_calls: [{ id: "c1", name: "get_shot", arguments: { shot_id: 129 } }],
+    }),
+    message({
+      id: 3,
+      role: "tool",
+      tool_results: [{ id: "c1", name: "get_shot", ok: true, content: '{"shot": 129}' }],
+    }),
+    message({ id: 4, role: "assistant", content: "It held." }),
+  ];
+
+  it.fails("pairs each result with the call of the message that made it", () => {
+    const turns = toTurns(STORED);
+
+    const withCall = turns.find((turn) => turn.trace.length > 0);
+    expect(withCall?.content).toBe("Grading v3 against its prediction.");
+    expect(withCall?.trace[0]).toMatchObject({
+      name: "get_shot",
+      ok: true,
+      content: '{"shot": 129}',
+    });
+  });
+
+  it.fails("draws the card of a proposal made in such a message after a reload", async () => {
+    getOutcomeProposals.mockResolvedValue({ items: [outcomeProposal()] });
+    const messages: ChatMessage[] = [
+      message({ id: 1, role: "user", content: "how did v2 do?" }),
+      message({
+        id: 2,
+        role: "assistant",
+        content: "Grading it now.",
+        tool_calls: [{ id: "c1", name: "propose_outcome", arguments: { outcome: "partly_held" } }],
+      }),
+      message({
+        id: 3,
+        role: "tool",
+        tool_results: [
+          {
+            id: "c1",
+            name: "propose_outcome",
+            ok: true,
+            content: JSON.stringify({
+              proposal_id: 11,
+              set_id: 3,
+              version: "v2",
+              outcome: "partly_held",
+              counted_shots: 3,
+            }),
+          },
+        ],
+      }),
+    ];
+
+    renderWithQueryClient(
+      <ChatTranscript messages={messages} runs={[]} permissions={PERMISSIONS} />,
+    );
+
+    expect(await screen.findByTestId("outcome-card")).toBeInTheDocument();
+    expect(screen.queryByText("no result")).not.toBeInTheDocument();
+  });
+});
+
 describe("toTurns", () => {
   it("folds a tool round into the answer it produced", () => {
     const turns = toTurns(WITH_TOOLS);
