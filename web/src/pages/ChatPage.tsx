@@ -309,10 +309,7 @@ export function ChatPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Chat"
-        subtitle="Ask about the archive. It reads shots, Sets and the knowledge base itself."
-      />
+      <PageHeader title="Chat" />
 
       {/* One column: the Sets as badges, the open one's conversations under
           them, then the conversation itself at the page's full width. */}

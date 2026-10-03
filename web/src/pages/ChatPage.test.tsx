@@ -362,6 +362,14 @@ describe("ChatPage folders", () => {
     expect(screen.queryByRole("button", { name: /archived Sets/ })).not.toBeInTheDocument();
   });
 
+  it("has no flavour text under the title", async () => {
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    expect(screen.getByRole("heading", { name: "Chat" })).toBeInTheDocument();
+    expect(screen.queryByText(/Ask about the archive/)).toBeNull();
+  });
+
   it("is just General when there are no Sets at all", async () => {
     getSets.mockResolvedValue({ items: [] });
     getChatThreads.mockResolvedValue([]);
