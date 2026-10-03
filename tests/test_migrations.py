@@ -1065,9 +1065,13 @@ async def test_0026_carries_finished_analyses_into_reviews_and_drops_the_rest(
             "SELECT text, source, analysis_id, confirmed FROM knowledge_insights"
         )
         assert tuple(insight) == ("this bag runs long", "analysis", 7, 1)
-        listed = (await client.get("/api/knowledge/insights")).json()["data"]["items"]
-        assert [(row["text"], row["source"]) for row in listed] == [
-            ("this bag runs long", "analysis")
+        # An analysis insight scoped to the bag, with one Set on that bag, is placed on
+        # it at boot: the Knowledge page holds general knowledge only, and the Set's own
+        # page lists it.
+        assert (await client.get("/api/knowledge/insights")).json()["data"]["items"] == []
+        listed = (await client.get("/api/knowledge/insights?set_id=1")).json()["data"]["items"]
+        assert [(row["text"], row["source"], row["general"]) for row in listed] == [
+            ("this bag runs long", "analysis", False)
         ]
         draft = await db.fetch_one(
             "SELECT source_analysis_id, source_suggestion_id FROM profile_drafts"

@@ -30,6 +30,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
+from gaggiclanker.db.repos.insight_placement import InsightPlacementBuilder
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
@@ -300,6 +301,9 @@ async def _start(app: FastAPI, db: Database) -> None:
     # The profile list is filled once from everything the archive stores (see
     # `db/repos/profile_list.py`); a step rather than SQL, run before anything reads the board.
     await ProfileListBuilder(db).build()
+    # Agent-written insights are placed on the Set they fit, once (see
+    # `db/repos/insight_placement.py`): the same shape of step, for the same reason.
+    await InsightPlacementBuilder(db).build()
 
     app.state.db = db
     settings_service = SettingsService(SettingsRepository(db))
