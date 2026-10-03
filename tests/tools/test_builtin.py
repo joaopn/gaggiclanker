@@ -828,6 +828,21 @@ async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
     assert stored.set_version_id == archive.version_id
     assert stored.scope.stated() == {}
     assert data["scope"] == "this Set, learned at v1"
+    assert stored.thread_id is None, "this context names no conversation"
+
+
+async def test_a_recorded_insight_records_the_conversation_that_wrote_it(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    cursor = await archive.db.execute(
+        "INSERT INTO chat_threads (title, set_id) VALUES ('v1', ?)", (archive.set_id,)
+    )
+    set_ctx.thread_id = int(cursor.lastrowid or 0)
+
+    data = await call(set_ctx, "record_insight", text="Finer helps.")
+
+    stored = await InsightsRepository(archive.db).get(data["insight_id"])
+    assert stored is not None and stored.thread_id == set_ctx.thread_id
 
 
 async def test_a_recorded_insight_does_not_reach_the_next_prompt(

@@ -182,6 +182,8 @@ class InsightWrite(BaseModel):
     set_id: int | None = None
     #: The version the conversation that wrote it was about.
     set_version_id: int | None = None
+    #: The conversation that wrote it, when a chat did.
+    thread_id: int | None = None
 
     @model_validator(mode="after")
     def _a_set_insight_has_no_scope(self) -> InsightWrite:
@@ -225,6 +227,8 @@ class InsightRow(BaseModel):
     #: before versions were recorded", and for a general insight.
     set_version_id: int | None = None
     set_version_label: str | None = None
+    #: The conversation that proposed it. NULL for one that was placed or written by hand.
+    thread_id: int | None = None
     #: The person turned the card down. Kept for the conversation that proposed
     #: it, shown nowhere else, reaching no prompt.
     dismissed: bool = False
@@ -298,17 +302,20 @@ class InsightsRepository(Repository):
         )
         return [self._decode(row) for row in rows]
 
-    async def proposed_at(self, version_id: int, *, limit: int = 10) -> list[InsightRow]:
-        """What the conversation about this version proposed, in every state, newest last.
+    async def proposed_in(self, thread_id: int, *, limit: int = 10) -> list[InsightRow]:
+        """What **this conversation** proposed, in every state, newest last.
+
+        Keyed by the thread that wrote the insight, so an insight placed on the
+        Set by the one-time move (which has no thread) is never told to a
+        conversation as its own.
 
         The one reader of a dismissed insight: the conversation that proposed it
         is told what the person did with it, so it does not offer it again. The
         newest ``limit`` are returned, oldest first among them.
         """
         rows = await self.db.fetch_all(
-            f"{_SELECT} WHERE i.set_version_id = ? AND i.source = 'chat' "
-            "ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
-            (version_id, limit),
+            f"{_SELECT} WHERE i.thread_id = ? ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+            (thread_id, limit),
         )
         return [self._decode(row) for row in reversed(rows)]
 
@@ -375,13 +382,16 @@ class InsightsRepository(Repository):
             """
             INSERT INTO knowledge_insights
                 (scope_json, text, evidence_shot_ids_json, source,
-                 confirmed, created_at, updated_at, confirmed_at, set_id, set_version_id)
+                 confirmed, created_at, updated_at, confirmed_at, set_id, set_version_id,
+                 thread_id)
             VALUES (:scope, :text, :evidence, :source,
-                    :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id)
+                    :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id,
+                    :thread_id)
             """,
             {
                 "set_id": insight.set_id,
                 "set_version_id": insight.set_version_id,
+                "thread_id": insight.thread_id,
                 "scope": dumps(insight.scope.stated()),
                 "text": insight.text,
                 "evidence": dumps(sorted(set(insight.evidence_shot_ids))),

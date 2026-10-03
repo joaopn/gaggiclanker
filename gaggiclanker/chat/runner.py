@@ -329,6 +329,7 @@ class ChatRunner:
                     recent_shots=int(await self.llm.settings.get("chatRecentShots")),
                     tiers=tiers,
                     curve_points=int(await self.llm.settings.get("chatCurvePoints")),
+                    thread_id=state.thread_id,
                 )
             }
             if prompt in (SET_CHAT_PROMPT, DESIGN_CHAT_PROMPT)

@@ -133,6 +133,7 @@ async def opening_context(
     recent_shots: int = RECENT_SHOTS,
     tiers: Mapping[str, Tier] | None = None,
     curve_points: int = CURVE_POINTS,
+    thread_id: int | None = None,
 ) -> str:
     """The experiment so far, as markdown, or an empty string for a general chat.
 
@@ -212,7 +213,7 @@ async def opening_context(
     ]
     lines += ["", *_gold_standard(counted, versions, dead_ends)]
     lines += ["", *await _insights_block(db, row)]
-    proposed = await _proposed_insights_block(db, version)
+    proposed = await _proposed_insights_block(db, thread_id)
     if proposed:
         lines += ["", *proposed]
     lines += [
@@ -963,15 +964,18 @@ async def _insights(db: Database, row: SetRow) -> list[Any]:
     return await InsightsRepository(db).for_set(row.id)
 
 
-async def _proposed_insights_block(db: Database, version: SetVersionRow) -> list[str]:
+async def _proposed_insights_block(db: Database, thread_id: int | None) -> list[str]:
     """What this conversation proposed as insights, and what the person did with each.
 
-    **This version's only**, like the grade: a waiting insight is not evidence,
-    and a dismissed one reaches no prompt except the conversation that proposed
-    it, which is told so that it does not offer it again. An added insight is
-    also in the confirmed list above; here it is said to have been added.
+    **This conversation's only** (keyed by the thread that wrote it): a waiting
+    insight is not evidence, and a dismissed one reaches no prompt except the
+    conversation that proposed it, which is told so that it does not offer it
+    again. An added insight is also in the confirmed list above; here it is said
+    to have been added.
     """
-    proposed = await InsightsRepository(db).proposed_at(version.id)
+    if thread_id is None:
+        return []
+    proposed = await InsightsRepository(db).proposed_in(thread_id)
     if not proposed:
         return []
     lines = ["INSIGHTS YOU PROPOSED IN THIS CONVERSATION"]

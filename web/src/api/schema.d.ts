@@ -4543,6 +4543,8 @@ export interface components {
             source: string;
             /** Text */
             text: string;
+            /** Thread Id */
+            thread_id?: number | null;
             /**
              * Updated At
              * @default

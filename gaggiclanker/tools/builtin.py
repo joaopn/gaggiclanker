@@ -2149,6 +2149,7 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
             confirmed=False,
             set_id=set_id,
             set_version_id=None if version is None else version.id,
+            thread_id=ctx.thread_id,
         )
     )
     stored = await repo.get(insight_id)

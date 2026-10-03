@@ -11,6 +11,9 @@
 --     so this is a safety net and never a way to lose one.
 --   * set_version_id: the version the insight was learned at, NULL when it is not known ("learned
 --     before versions were recorded"). SET NULL, so a version going away never takes an insight.
+--   * thread_id: the conversation that wrote it, for an insight a chat proposed. That is how a
+--     conversation is told "you proposed this" about its own insights and no others (a placed
+--     insight has none). SET NULL: deleting a conversation never deletes what it learned.
 --   * dismissed: the person turned the card down. A dismissed insight is kept for the
 --     conversation that proposed it and is shown nowhere else and reaches no prompt.
 --
@@ -28,6 +31,8 @@
 ALTER TABLE knowledge_insights ADD COLUMN set_id INTEGER REFERENCES sets(id) ON DELETE CASCADE;
 ALTER TABLE knowledge_insights
     ADD COLUMN set_version_id INTEGER REFERENCES set_versions(id) ON DELETE SET NULL;
+ALTER TABLE knowledge_insights
+    ADD COLUMN thread_id INTEGER REFERENCES chat_threads(id) ON DELETE SET NULL;
 ALTER TABLE knowledge_insights
     ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0 CHECK (dismissed IN (0, 1));
 

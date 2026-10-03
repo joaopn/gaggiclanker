@@ -53,6 +53,20 @@ def _without_blocks(text: str) -> str:
     return text
 
 
+async def _thread(experiment: Experiment, version_id: int) -> int:
+    """The conversation about a version: the one that proposes its insights."""
+    found = await experiment.db.fetch_value(
+        "SELECT id FROM chat_threads WHERE set_version_id = ?", (version_id,)
+    )
+    if found is not None:
+        return int(found)
+    cursor = await experiment.db.execute(
+        "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES ('v', ?, ?)",
+        (experiment.set_id, version_id),
+    )
+    return int(cursor.lastrowid or 0)
+
+
 async def _contexts(experiment: Experiment) -> dict[str, str]:
     ids = {
         "v1": experiment.v1,
@@ -62,7 +76,11 @@ async def _contexts(experiment: Experiment) -> dict[str, str]:
         "v5": experiment.v5,
     }
     return {
-        name: await opening_context(experiment.db, ToolScope.for_thread(experiment.set_id, vid))
+        name: await opening_context(
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, vid),
+            thread_id=await _thread(experiment, vid),
+        )
         for name, vid in ids.items()
     }
 
@@ -75,7 +93,9 @@ class TestThisVersionsConversation:
         await grades.create(experiment.set_id, experiment.v5, _grade())
 
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
 
         assert "A GRADE YOU PROPOSED IS WAITING FOR THE PERSON" in text
@@ -99,7 +119,9 @@ class TestThisVersionsConversation:
         )
 
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
         assert "1 shot counted since you wrote it" in text
 
@@ -109,7 +131,9 @@ class TestThisVersionsConversation:
         grades = OutcomeProposalsRepository(experiment.db)
         await grades.create(experiment.set_id, experiment.v3, _grade("failed"))
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v3)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v3),
+            thread_id=await _thread(experiment, experiment.v3),
         )
         assert "v2's outcome is still inconclusive, as the person recorded it." in text
 
@@ -119,7 +143,9 @@ class TestThisVersionsConversation:
         grades = OutcomeProposalsRepository(experiment.db)
         await grades.create(experiment.set_id, experiment.v5, _grade())
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
         assert "accepting that version records this grade" in text
 
@@ -145,7 +171,9 @@ class TestThisVersionsConversation:
             await grades.dismiss(experiment.set_id, stored.id, "one shot is not a result")
 
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
 
         assert "THE LAST ANSWER TO YOUR GRADE" in text
@@ -157,7 +185,9 @@ class TestThisVersionsConversation:
         await grades.create(experiment.set_id, experiment.v5, _grade("held"))
         await grades.create(experiment.set_id, experiment.v5, _grade("failed"))
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
         assert text.count("You proposed") == 1
         assert "You proposed failed" in text
@@ -166,7 +196,9 @@ class TestThisVersionsConversation:
         self, experiment: Experiment
     ) -> None:
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
         assert not any(heading in text for heading in (*GRADE_HEADINGS, INSIGHT_HEADING))
 
@@ -182,13 +214,16 @@ class TestThisVersionsConversation:
                     source="chat",
                     set_id=experiment.set_id,
                     set_version_id=experiment.v5,
+                    thread_id=await _thread(experiment, experiment.v5),
                 )
             )
         await insights.set_confirmed(ids["added"], True)
         await insights.dismiss(ids["dismissed"])
 
         text = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v5),
+            thread_id=await _thread(experiment, experiment.v5),
         )
 
         block = text.split(INSIGHT_HEADING + "\n")[1].split("\n\n")[0]
@@ -201,6 +236,73 @@ class TestThisVersionsConversation:
         confirmed = text.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0]
         assert "The added lesson." in confirmed
         assert "waiting lesson" not in confirmed and "dismissed lesson" not in confirmed
+
+
+class TestProposedInThisConversation:
+    """ "You proposed" is about the conversation that wrote it, not the version or the source."""
+
+    async def test_a_conversation_is_told_only_about_insights_its_own_thread_wrote(
+        self, experiment: Experiment
+    ) -> None:
+        mine = await _thread(experiment, experiment.v5)
+        other = (
+            await experiment.db.execute(
+                "INSERT INTO chat_threads (title, set_id, set_version_id) VALUES ('2', ?, ?)",
+                (experiment.set_id, experiment.v5),
+            )
+        ).lastrowid
+        insights = InsightsRepository(experiment.db)
+        for text, thread in (("Mine.", mine), ("Somebody else's.", other)):
+            await insights.insert(
+                InsightWrite(
+                    text=text,
+                    source="chat",
+                    set_id=experiment.set_id,
+                    set_version_id=experiment.v5,
+                    thread_id=thread,
+                )
+            )
+        scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+
+        text = await opening_context(experiment.db, scope, thread_id=mine)
+        assert "- Mine. (waiting" in text and "Somebody else's." not in text
+        # No thread, no block: nothing is anybody's own.
+        assert INSIGHT_HEADING not in await opening_context(experiment.db, scope)
+
+    async def test_a_moved_insight_is_never_told_as_the_conversations_own(
+        self, experiment: Experiment
+    ) -> None:
+        insights = InsightsRepository(experiment.db)
+        # What the one-time move leaves: agent-written, on the Set and version, no thread.
+        await insights.insert(
+            InsightWrite(
+                text="Moved, waiting.",
+                source="chat",
+                set_id=experiment.set_id,
+                set_version_id=experiment.v5,
+            )
+        )
+        confirmed = await insights.insert(
+            InsightWrite(
+                text="Moved, confirmed.",
+                source="analysis",
+                confirmed=True,
+                set_id=experiment.set_id,
+                set_version_id=experiment.v5,
+            )
+        )
+        assert confirmed
+        for version_id in (experiment.v1, experiment.v5):
+            text = await opening_context(
+                experiment.db,
+                ToolScope.for_thread(experiment.set_id, version_id),
+                thread_id=await _thread(experiment, version_id),
+            )
+            # An unconfirmed moved insight reaches no prompt at all.
+            assert "Moved, waiting." not in text
+            # A confirmed one comes through the Set's selection and only that.
+            assert "[this Set, learned at v2.2] Moved, confirmed." in text
+            assert INSIGHT_HEADING not in text
 
 
 class TestNothingUnansweredReachesAnyoneElse:
@@ -222,6 +324,7 @@ class TestNothingUnansweredReachesAnyoneElse:
                 source="chat",
                 set_id=experiment.set_id,
                 set_version_id=experiment.v5,
+                thread_id=await _thread(experiment, experiment.v5),
             )
         )
         gone = await insights.insert(
@@ -230,6 +333,7 @@ class TestNothingUnansweredReachesAnyoneElse:
                 source="chat",
                 set_id=experiment.set_id,
                 set_version_id=experiment.v2,
+                thread_id=await _thread(experiment, experiment.v2),
             )
         )
         await insights.dismiss(gone)
@@ -315,7 +419,9 @@ class TestNothingUnansweredReachesAnyoneElse:
         )
         assert result.proposal is not None
         older = await opening_context(
-            experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4)
+            experiment.db,
+            ToolScope.for_thread(experiment.set_id, experiment.v4),
+            thread_id=await _thread(experiment, experiment.v4),
         )
         assert "A PROPOSAL IS WAITING FOR THE PERSON" in older
         assert (
@@ -337,6 +443,7 @@ async def test_the_context_with_a_grade_and_insights_matches_the_golden_file(
                 source="chat",
                 set_id=experiment.set_id,
                 set_version_id=experiment.v5,
+                thread_id=await _thread(experiment, experiment.v5),
                 evidence_shot_ids=[],
             )
         )
@@ -354,7 +461,9 @@ async def test_the_context_with_a_grade_and_insights_matches_the_golden_file(
     )
 
     rendered = await opening_context(
-        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+        experiment.db,
+        ToolScope.for_thread(experiment.set_id, experiment.v5),
+        thread_id=await _thread(experiment, experiment.v5),
     )
 
     if update_golden:
