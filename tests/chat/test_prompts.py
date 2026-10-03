@@ -253,12 +253,16 @@ async def test_the_set_prompt_answers_a_declined_card_in_the_same_conversation(
     assert "never the same change again" in system
 
 
-async def test_the_general_prompt_sends_a_set_change_to_that_set_s_folder(
+async def test_the_general_prompt_sends_a_set_change_to_that_set_s_badge(
     prompts: PromptService,
 ) -> None:
     system = (await prompts.load(GENERAL_CHAT_PROMPT, {"shot_fields": ""})).system
 
     assert "YOU CANNOT CHANGE A SET HERE" in system
+    # The Chat page picks a Set with a badge above the conversation; the agent
+    # names what is on the screen, not the folders the page used to have.
+    assert "say which Set's badge to open" in " ".join(system.split())
+    assert "folder" not in system
     assert "propose_set_version" not in system
     assert "query_shots" in system
 

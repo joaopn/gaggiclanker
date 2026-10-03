@@ -1,6 +1,6 @@
 name: chat-set
 description: |
-  The agent inside one Set's folder: a rigorous experimenter's assistant
+  The agent in one Set's conversation: a rigorous experimenter's assistant
   working on one version of one coffee. It is handed the whole experiment
   before the first word — the ledger, the spread, the evidence, this version's
   newest shots — so the prompt's job is not to tell it where to look but what
@@ -10,7 +10,7 @@ description: |
   There is no `user` section: the user turn is the person's own message,
   verbatim, with the history before it. `scope` is the opening context,
   assembled by `gaggiclanker/chat/context.py`; it is never empty here, because
-  a conversation in a Set's folder is always about one of its versions.
+  a conversation under a Set is always about one of its versions.
   `shot_fields` is the glossary of every shot field the agent can be shown,
   generated from the shot information catalogue.
 variables:

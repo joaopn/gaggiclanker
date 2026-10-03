@@ -277,7 +277,7 @@ export interface paths {
         put?: never;
         /**
          * Start a conversation: general, or about one version of a Set
-         * @description Always creates. New inside a folder is a fresh session on that Set.
+         * @description Always creates. New under a Set's badge is a fresh session on that Set.
          *
          *     With a Set and no version it is filed under whatever is current, and it
          *     stays there: the conversation is the room one change was argued in, not a

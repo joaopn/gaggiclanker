@@ -3,7 +3,7 @@
 The rules are the repository's, so they are asserted there and once more
 through the routes, where a refusal has to arrive as a 422 naming the field
 rather than as a stack trace. The one that is easy to get wrong is the third
-test here: a conversation keeps the version it was created on, so a folder
+test here: a conversation keeps the version it was created on, so a Set's list
 reads as a history of what was argued rather than as a pile of rooms all
 claiming to be about today's recipe.
 """
@@ -158,7 +158,7 @@ async def test_open_creates_one_when_the_version_has_none(archive: Fixture) -> N
 
 
 async def test_a_dead_end_version_says_so_on_the_thread(archive: Fixture) -> None:
-    """A roll back steps over a version, and the folder has to grey its rooms."""
+    """A roll back steps over a version, and the Set's list has to grey its rooms."""
     sets = SetsRepository(archive.db)
     first = await sets.current_version(archive.set_id)
     assert first is not None
@@ -249,7 +249,7 @@ async def test_the_route_files_a_new_thread_under_the_current_version(
 async def test_the_list_and_the_detail_both_carry_the_version_and_the_dead_end(
     app_client: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
-    """The folder labels a row from the list and the card from the detail."""
+    """The Chat page labels a row from the list and the card from the detail."""
     _app, client, fixture = app_client
     created = body(await client.post("/api/chat/threads", json={"set_id": fixture.set_id}))
 
@@ -265,7 +265,7 @@ async def test_the_list_and_the_detail_both_carry_the_version_and_the_dead_end(
 async def test_the_served_version_stays_the_thread_s_after_the_set_moves_on(
     app_client: tuple[FastAPI, httpx.AsyncClient, Fixture],
 ) -> None:
-    """Served, not just stored: the folder labels the row from what it is sent."""
+    """Served, not just stored: the Chat page labels the row from what it is sent."""
     app, client, fixture = app_client
     created = body(await client.post("/api/chat/threads", json={"set_id": fixture.set_id}))
 

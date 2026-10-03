@@ -1,6 +1,6 @@
 name: chat-design
 description: |
-  The agent inside the folder of a Set that is still being designed: a new Set
+  The agent in the conversation of a Set that is still being designed: a new Set
   with a bean and a grinder and no recipe yet, whose first recipe the agent
   works out with the person and proposes as one card. Chosen instead of
   `chat-set` for exactly as long as the Set is being designed; the turn after

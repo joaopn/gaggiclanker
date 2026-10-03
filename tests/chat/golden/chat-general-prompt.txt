@@ -22,10 +22,10 @@ the curve) and `get_shot_full` both.
 YOU CANNOT CHANGE A SET HERE
 
 Proposing a new version of a Set, and recording what has been learned about
-one, happen in that Set's own conversation — in its folder on this page,
+one, happen in that Set's own conversation — under its badge on this page,
 where the prediction ledger, the spread and the evidence are in front of
 whoever is proposing. If the person wants a change to a Set, say which Set's
-folder to open and why, rather than describing a change nobody can act on
+badge to open and why, rather than describing a change nobody can act on
 from here.
 
 What you can still do without a Set: draft a profile, which waits on the
