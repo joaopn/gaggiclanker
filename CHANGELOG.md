@@ -10,6 +10,46 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The chat proposes a version's outcome, and insights belong to their Set
+
+- **The agent's grade is a card you answer in the chat.** At the end of its grade a conversation
+  about a version proposes one outcome (held, partly held, failed, inconclusive) for the whole
+  version, graded against all its counted (Keep or Improve) shots, with the per-claim lines under
+  it (new tool `propose_outcome`, Set conversations only). The card has **Accept**, **Record
+  another outcome** and **Dismiss**; nothing is recorded until you press one. The Set page shows a
+  waiting grade beside the outcome, never as one. Nothing an agent graded reaches a later
+  conversation, the experiment log or the track record unless you accepted it, and the agent is
+  told at the start of its next turn what you did with it.
+- **One press when the grade and the next version come together.** With a grade waiting for the
+  current version the agent may propose the next version in the same answer, and accepting that
+  version records the grade first, in the same step (the card says "Accepting also records v2's
+  outcome"). If you dismissed the grade, the version still cannot be accepted until the version
+  is graded, as before. The refusal the agent gets for an ungraded version now says to propose its
+  outcome first instead of sending it to the Set page; a profile draft in a Set chat follows the same rule.
+- **An insight belongs to the Set it was learned in.** What the agent learns in a Set's
+  conversation is stored with that Set and the version the conversation was about, and shown as a
+  card with **Add** and **Dismiss** (the link to the Knowledge page is gone). Added, it is told to
+  that Set's later conversations only. **An insight placed on a Set no longer reaches other Sets with
+  the same bean and grinder.** The Set page lists a Set's insights grouped by the version they were
+  learned at (waiting ones with Add and Dismiss, added ones with Take back), with the general
+  insights that apply beneath, marked general. The agent's insight tool no longer takes a bean,
+  grinder, roast level, process or style scope.
+- **The Knowledge page holds general knowledge only**: what you write by hand and agent-written
+  insights that could not be placed. General confirmed insights keep matching by attributes and
+  still reach every conversation whose Set they match.
+- **Existing agent-written insights moved where they could be placed, once, at the first start.**
+  An agent-written insight (from the chat, or the retired per-shot analysis) moved to the one Set
+  it fits: its stored scope matches that Set's bean, grinder, roast level, process and origin, and,
+  when it lists evidence shots, one of them is filed in that Set (archived Sets count, Sets being
+  designed do not). It keeps its text, confirmation, evidence and dates, and is shown under the
+  version of its newest evidence shot (else the version current when it was written, else "learned
+  before versions were recorded"). An insight that fits no Set or more than one stays on the
+  Knowledge page exactly as it was, and so do your own hand-written ones. Two new migrations (0038,
+  0039) only add tables and columns; nothing is lost.
+- The Set chat prompt (`chat-set`) changed: the grade ends with `propose_outcome`, the next version
+  may follow in the same answer, and insights are about this Set only. A `chat-set` prompt you
+  edited keeps your text on boot, so reset it on the Prompts page to receive these sections.
+
 ### The image builds again
 
 - **Fixed: `docker compose build` failed in the front-end stage** with "Cannot find module '../../../tests/fixtures/profiles/…'". The profile summary tests read the same profile fixtures as the Python suite, and the image's type check covers the tests but did not have those files. The front-end stage now copies them; nothing extra reaches the runtime image.

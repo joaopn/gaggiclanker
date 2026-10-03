@@ -311,6 +311,34 @@ moved on, the current version's prediction has been graded) and then appends the
 version through `SetsRepository.append_version`, which exists so that append can
 be part of somebody else's transaction rather than opening its own.
 
+**A grade an agent proposes is a row too, and only a person records it.**
+`propose_outcome` writes a `set_outcome_proposals` row (one waiting per version,
+a newer one superseding it) that changes nothing: the version's own outcome
+columns are written by a person's press (`POST /api/sets/{id}/outcome-proposals/
+{pid}/accept`, `/change` with another outcome, `/dismiss`) and by the Set page,
+through the one guarded write `SetsRepository.grade_in_transaction`, in the same
+transaction that marks the proposal. A waiting, dismissed or superseded grade is
+read by nothing but its own version's conversation (the opening context), so the
+ledger, the track record and every other version's context stay byte-identical
+to a Set without it. The open-outcome block that stops a next change reads
+`SetProposalsRepository.outcome_blocks`: a waiting grade for the current version
+lifts it, and accepting that change records the grade first, in its one
+transaction (`PROPOSAL_GRADE_UNRECORDABLE` if the shots behind it are gone). The
+Set chat's `draft_profile` reads the same function; its check lives in the tool,
+not under `drafts/`.
+
+**An insight belongs to the Set it was learned in.** `knowledge_insights` carries
+`set_id` (NULL is general), `set_version_id` and `dismissed`. `record_insight` in
+a Set chat writes the Set and the conversation's version and no attribute scope;
+`InsightsRepository.for_set` is the one selection (this Set's confirmed, then the
+confirmed general ones whose scope `scope_matches` its attributes) behind the
+opening context, `get_insights` and the Set page's `?set_id=` list, and another
+Set's insights are never in it. Add is the confirm switch, Dismiss its own route,
+and neither is a tool. The agent-written insights that existed were placed once at
+boot by `InsightPlacementBuilder` (marker table from migration 0039), which asks
+the live `scope_matches` and the Set's filed shots rather than repeating the rule
+in SQL.
+
 **A proposal stops waiting when the Set moves on.** Every path that appends a
 version — the Add a version form, a roll back, a profile draft put on the machine for the Set, and
 accepting a proposal itself — goes through

@@ -110,7 +110,7 @@ pages, in the order the sidebar lists them:
 | **Sync** | `g y` | Sync with the machine, what the last sync did to its profiles, and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
-| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and the insights learned from your shots; insights the chat proposes wait there for you to confirm. |
+| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and your **general** insights: the ones you write by hand and any agent-written one the app could not place on a single Set. Insights learned in a Set's conversation live on that Set's page instead. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
 to an icon rail and back; the choice is remembered in the browser. Folded, every
@@ -180,6 +180,20 @@ Two rules keep that number honest:
 
 The outcome is the other way round: it can be changed or taken back whenever you
 like, because a second opinion about a grade is ordinary.
+
+**The agent can propose the outcome for you to accept.** At the end of its grade
+a conversation about a version proposes one outcome for the whole version,
+worked out from all its counted (Keep or Improve) shots, with the per-claim lines
+under it. It shows as a card in the chat: **Accept** records it as written,
+**Record another outcome** records your own choice of the four, **Dismiss**
+records nothing and may say why. Nothing is recorded until you press one, the
+Set page shows a waiting proposal beside the outcome and never as one, and
+nothing an agent graded reaches a later conversation, the experiment log or the
+track record unless you accepted it. You can also set or clear the outcome on the
+Set page as before; a waiting card then shows both. When the same answer also
+proposes the next version, accepting that version records the waiting grade
+first, in the same step: one press. If you dismissed the grade, the version
+cannot be accepted until the version is graded.
 
 ### The spread: how much your shots vary anyway
 
@@ -722,9 +736,9 @@ with their predictions and outcomes, its shots, its spread, the knowledge base
 and the confirmed insights that apply. It cannot run archive-wide SQL, list your
 other coffees, or read a shot filed under another Set; a tool that would is not
 offered to it, and a shot of somebody else's Set is refused in the same words
-whether or not it exists. What it *can* do is propose the next version of this
-Set and record what has been learned about it — both waiting for you to accept
-them.
+whether or not it exists. What it *can* do is propose how this version turned out, propose the next
+version of this Set and record what has been learned about it — each a card
+waiting for you to answer.
 
 **A proposed change is a question, not a change.** The agent writes down one
 change and what it expects that change to do; the Set stays exactly where it is
@@ -749,6 +763,21 @@ did anything. While the current version's own prediction is still ungraded it
 cannot propose the next change at all: it grades that one with you, or asks for
 another shot on the same recipe, which needs no version. Only one proposal waits
 at a time.
+
+**An insight belongs to the Set it was learned in.** What the agent learns in a
+Set's conversation is stored with that Set and the version the conversation was
+about, shown as a card in the chat with **Add** and **Dismiss**, and listed on
+that Set's page under the version it was learned at (waiting ones with their
+buttons, added ones with **Take back**). Added, it is told to that Set's later
+conversations and to no other Set's, even one on the same bean and grinder; the
+design chat of a new Set and Review never see it. Nothing waiting or dismissed
+reaches a prompt. The Knowledge page holds general knowledge only: what you write
+by hand there, and any agent-written one the app could not place on a single Set;
+those keep matching by bean, grinder, roast and process and still reach every
+conversation whose Set they match. The first start of this release placed the
+agent-written insights you already had on the one Set each fits (its stored scope
+matches that Set and, when it lists evidence shots, one of them is filed in that
+Set); one that fits none or several stayed general.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
 version on the form, roll back, make a profile proposal active for the Set — whichever it
@@ -829,11 +858,13 @@ applies from the next turn, and
 **Reset to defaults** puts every item back. Only the items you moved are stored,
 so an item a later release adds arrives at its default.
 
-**Fifteen tools in a Set's conversation** — twelve reads and three that propose:
-one change to this Set, waiting for you, with the prediction that makes it
-gradable (the grind, the dose, the yield or the profile: a temperature change is
-a profile change, and the tool says so); an insight about this Set stored
-**unconfirmed** that reaches no future prompt until you confirm it; and a
+**Sixteen tools in a Set's conversation** — twelve reads and four that propose:
+how this conversation's version turned out (`propose_outcome`), waiting for you
+to accept, record another outcome or dismiss; one change to this Set, waiting
+for you, with the prediction that makes it gradable (the grind, the dose, the
+yield or the profile: a temperature change is a profile change, and the tool
+says so); an insight about this Set stored **unconfirmed** that reaches no
+future prompt until you add it; and a
 profile draft that goes through the same schema, safety-policy and clamp checks
 as one typed by hand. One of the reads is `get_profile`, a profile version's
 whole document, so the agent reads the profile it is about to change, and three
