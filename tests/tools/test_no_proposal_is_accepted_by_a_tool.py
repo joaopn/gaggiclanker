@@ -30,7 +30,15 @@ from pathlib import Path
 from types import CodeType
 
 import gaggiclanker.tools
-from gaggiclanker.api.sets import accept_proposal, decline_proposal
+from gaggiclanker.api.knowledge import dismiss_insight, patch_insight
+from gaggiclanker.api.sets import (
+    accept_outcome_proposal,
+    accept_proposal,
+    change_outcome_proposal,
+    decline_proposal,
+    dismiss_outcome_proposal,
+)
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
@@ -52,6 +60,10 @@ DECIDING = (
     "grade_in_transaction",
     "set_outcome",
     "clear_outcome",
+    # An insight a Set's conversation proposed is added (confirmed) or dismissed
+    # by a person: `set_confirmed` is the add and the take back, `dismiss` the
+    # other card button.
+    "set_confirmed",
 )
 
 
@@ -110,5 +122,15 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(SetsRepository.grade_in_transaction)
     assert callable(SetsRepository.set_outcome)
     assert callable(SetsRepository.clear_outcome)
+    assert callable(InsightsRepository.set_confirmed)
+    assert callable(InsightsRepository.dismiss)
+    for route in (
+        accept_outcome_proposal,
+        change_outcome_proposal,
+        dismiss_outcome_proposal,
+        patch_insight,
+        dismiss_insight,
+    ):
+        assert callable(route)
     assert callable(accept_proposal)
     assert callable(decline_proposal)

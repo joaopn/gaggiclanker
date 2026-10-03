@@ -32,10 +32,8 @@ from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.knowledge_insights import (
-    InsightScope,
     InsightsRepository,
     InsightWrite,
-    set_attributes,
 )
 from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalsRepository,
@@ -432,21 +430,14 @@ async def get_set(ctx: ToolContext, args: GetSetInput) -> SetOutput:
 
 
 async def _set_insights(ctx: ToolContext, row: Any) -> list[Any]:
-    """The confirmed insights that apply to a Set, through the shared matcher.
+    """The confirmed insights that apply to a Set, through the one selection.
 
-    The same ``select_insights`` the Set page uses, so the chat and the page
-    cannot disagree about which insights apply — reimplementing the rule here
-    is how the two drift.
+    The same ``InsightsRepository.for_set`` the opening context and the Set page
+    use, so the chat and the page cannot disagree about which insights apply —
+    reimplementing the rule here is how the two drift. The Set's own, then the
+    general ones whose scope matches it; never another Set's.
     """
-    bean = await BeansRepository(ctx.db).get(row.bean_id) if row.bean_id else None
-    attributes = set_attributes(
-        bean_id=row.bean_id,
-        roast_level=getattr(bean, "roast_level", None),
-        process=getattr(bean, "process", None),
-        origin=getattr(bean, "origin", None),
-        grinder_id=row.grinder_id,
-    )
-    return await InsightsRepository(ctx.db).select(attributes)
+    return await InsightsRepository(ctx.db).for_set(row.id)
 
 
 class Range(_Model):
@@ -1018,8 +1009,9 @@ class GetInsightsInput(_Model):
     set_id: int | None = Field(
         default=None,
         description=(
-            "Only the confirmed insights that apply to this Set. Defaults to the "
-            "conversation's Set; omit both to list every confirmed insight."
+            "Only the confirmed insights that apply to this Set: its own, and the general "
+            "ones whose scope matches it. Defaults to the conversation's Set; omit both to "
+            "list every confirmed general insight."
         ),
     )
     include_unconfirmed: bool = Field(
@@ -1050,10 +1042,12 @@ class GetInsightsOutput(_Model):
     "get_insights",
     permission="read",
     description=(
-        "What this archive has learned about this kitchen: confirmed insights, scoped to "
-        "a bean, a grinder, a roast level or their combination. In a conversation about "
-        "one Set it answers with the confirmed insights that apply to that Set — the same "
-        "ones the opening context lists — and nothing else."
+        "What this archive has learned about this kitchen: confirmed insights. An insight "
+        "is either about one Set (learned in its conversations) or general, scoped to a "
+        "bean, a grinder, a roast level or their combination. In a conversation about "
+        "one Set it answers with the confirmed insights that apply to that Set — its own "
+        "and the general ones that match it, the same ones the opening context lists — "
+        "and nothing else."
     ),
 )
 async def get_insights(ctx: ToolContext, args: GetInsightsInput) -> GetInsightsOutput:
@@ -1085,11 +1079,13 @@ async def get_insights(ctx: ToolContext, args: GetInsightsInput) -> GetInsightsO
             insights=[_insight_out(insight, only=mine) for insight in await _set_insights(ctx, row)]
         )
 
-    scope_id = args.set_id if args.set_id is not None else ctx.set_id
-    if scope_id is not None and not args.include_unconfirmed:
-        row = await SetsRepository(ctx.db).get(scope_id)
+    # A general conversation reads general insights, and the selection of one
+    # Set when it names it (it is read-only across the archive). Never the
+    # other Sets' own insights: those reach their Set's conversations only.
+    if args.set_id is not None and not args.include_unconfirmed:
+        row = await SetsRepository(ctx.db).get(args.set_id)
         if row is None:
-            raise ValueError(f"No Set {scope_id}.")
+            raise ValueError(f"No Set {args.set_id}.")
         rows = await _set_insights(ctx, row)
     else:
         rows = await repo.list_insights(confirmed=None if args.include_unconfirmed else True)
@@ -2049,14 +2045,19 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 class RecordInsightInput(_Model):
+    """What an insight says and what it rests on. Nothing scopes it: it is about this Set.
+
+    Extras are allowed on this one model only so that an attribute scope (a bean,
+    a grinder, a roast level) a model still reaches for gets a sentence saying
+    why it is not accepted, instead of a validation error about an unknown
+    field. The schema the model is shown names ``text`` and ``evidence_shot_ids``
+    and nothing else.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
     text: str = Field(min_length=1, max_length=2000)
     evidence_shot_ids: list[int] = Field(default_factory=list, max_length=20)
-    bean_id: int | None = None
-    roast_level: str | None = None
-    process: str | None = None
-    origin: str | None = None
-    grinder_id: int | None = None
-    profile_style: str | None = None
 
 
 class RecordInsightOutput(_Model):
@@ -2064,52 +2065,35 @@ class RecordInsightOutput(_Model):
     scope: str
     text: str
     confirmed: bool = False
+    #: What the model should tell the person.
+    note: str = ""
 
 
-#: What an insight may be scoped by in a Set's conversation, and where each
-#: value has to come from. The Set's own attributes and no others: an insight
-#: written here is about this coffee on this grinder, and one scoped by
-#: somebody else's bean would be a statement about a Set this conversation
-#: cannot see.
-_SET_SCOPE_FIELDS = ("bean_id", "grinder_id", "roast_level", "process", "origin")
+#: What used to scope an insight, and is now refused with a sentence.
+_RETIRED_SCOPE_FIELDS = (
+    "bean_id",
+    "roast_level",
+    "process",
+    "origin",
+    "grinder_id",
+    "profile_style",
+)
 
 
-async def _check_set_scope(ctx: ToolContext, set_id: int, args: RecordInsightInput) -> None:
-    """Refuse an insight scoped by anything that is not this Set's own.
+async def _check_evidence(ctx: ToolContext, set_id: int, args: RecordInsightInput) -> None:
+    """Refuse evidence that is not this Set's, in the words the shot tools use.
 
-    The evidence ids go through the same check the shot tools use, in the same
-    words: naming another Set's shot as evidence would be a way of asking
-    whether it exists.
+    Naming another Set's shot as evidence would be a way of asking whether it
+    exists.
     """
-    sets = SetsRepository(ctx.db)
-    row = await sets.get(set_id)
-    if row is None:  # pragma: no cover - the scope's Set exists by construction
-        raise ValueError(f"No Set {set_id}.")
-    if args.evidence_shot_ids:
-        mine = await sets.shot_ids(set_id)
-        for shot_id in args.evidence_shot_ids:
-            if shot_id not in mine:
-                raise ValueError(
-                    f"Shot {shot_id} is not a shot of this Set. This conversation can see "
-                    "this Set's shots only — list_set_shots is how to find them."
-                )
-    bean = await BeansRepository(ctx.db).get(row.bean_id) if row.bean_id else None
-    expected: dict[str, Any] = {
-        "bean_id": row.bean_id,
-        "grinder_id": row.grinder_id,
-        "roast_level": getattr(bean, "roast_level", None),
-        "process": getattr(bean, "process", None),
-        "origin": getattr(bean, "origin", None),
-    }
-    for key in ("bean_id", "roast_level", "process", "origin", "grinder_id", "profile_style"):
-        given = getattr(args, key)
-        if given is None:
-            continue
-        if key not in _SET_SCOPE_FIELDS or given != expected[key]:
+    if not args.evidence_shot_ids:
+        return
+    mine = await SetsRepository(ctx.db).shot_ids(set_id)
+    for shot_id in args.evidence_shot_ids:
+        if shot_id not in mine:
             raise ValueError(
-                f"An insight from this conversation is about this Set: its bean, its "
-                f"grinder, its roast level and its process. {key} is not one of them. "
-                "Leave the scope out and it is recorded against this Set's own."
+                f"Shot {shot_id} is not a shot of this Set. This conversation can see "
+                "this Set's shots only — list_set_shots is how to find them."
             )
 
 
@@ -2117,38 +2101,54 @@ async def _check_set_scope(ctx: ToolContext, set_id: int, args: RecordInsightInp
     "record_insight",
     permission="propose",
     description=(
-        "Record something learned about THIS kitchen, scoped to whatever it is about. "
-        "It is stored unconfirmed and reaches no future prompt until the user confirms "
-        "it, so propose one only when a shot or two actually supports it. In a "
-        "conversation about one Set it is about that Set: its own bean, grinder, roast "
-        "level and process, and its own shots as evidence."
+        "Record something learned about THIS Set, for the person to add or dismiss. It is "
+        "about this Set only: it is stored with this Set and the version this conversation "
+        "is about, shown to the person as a card, and — only if they add it — given to this "
+        "Set's later conversations and to no other Set's. It reaches no future prompt until "
+        "they do. Propose one only when named shots of this Set actually support it, and "
+        "name them in evidence_shot_ids; offer few. There is no scope to set."
     ),
 )
 async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordInsightOutput:
-    if ctx.scope.kind == "set":
-        await _check_set_scope(ctx, _resolve_set(ctx, None), args)
-    scope = InsightScope.model_validate(
-        {
-            key: getattr(args, key)
-            for key in (
-                "bean_id",
-                "roast_level",
-                "process",
-                "origin",
-                "grinder_id",
-                "profile_style",
-            )
-            if getattr(args, key) is not None
-        }
+    """An insight belongs to the Set it was learned in, and waits for the person.
+
+    Written with the conversation's Set and version and **no attribute scope**:
+    what is true of this coffee on this grinder is a statement about this Set,
+    and one scoped by bean would reach every other Set that shares it. Stored
+    unconfirmed; the person's Add is the only thing that makes it confirmed.
+    """
+    if ctx.scope.designing:
+        raise ValueError(DESIGN_RULE)
+    set_id = _resolve_set(ctx, None)
+    given = list(args.model_extra or {})
+    if any(key in _RETIRED_SCOPE_FIELDS for key in given):
+        raise ValueError(
+            "An insight from this conversation belongs to this Set: it is stored with this "
+            "Set and reaches this Set's later conversations only, so it has no bean, grinder, "
+            "roast level, process or style scope to set. Leave those out and call this "
+            "again."
+        )
+    if given:
+        raise ValueError(
+            f"Unknown argument{'s' if len(given) > 1 else ''}: {', '.join(sorted(given))}. "
+            "Only text and evidence_shot_ids."
+        )
+    await _check_evidence(ctx, set_id, args)
+    sets = SetsRepository(ctx.db)
+    version = (
+        await sets.version_of_set(set_id, ctx.scope.set_version_id)
+        if ctx.scope.set_version_id is not None
+        else await sets.current_version(set_id)
     )
     repo = InsightsRepository(ctx.db)
     insight_id = await repo.insert(
         InsightWrite(
-            scope=scope,
             text=args.text,
             evidence_shot_ids=args.evidence_shot_ids,
             source="chat",
             confirmed=False,
+            set_id=set_id,
+            set_version_id=None if version is None else version.id,
         )
     )
     stored = await repo.get(insight_id)
@@ -2158,4 +2158,9 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
         scope=stored.scope_label,
         text=stored.text,
         confirmed=stored.confirmed,
+        note=(
+            "Nothing is recorded as known yet: the person sees a card and adds or dismisses "
+            "it. It is about this Set only, and if they add it, only this Set's later "
+            "conversations are told it."
+        ),
     )

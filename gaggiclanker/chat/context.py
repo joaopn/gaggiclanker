@@ -40,7 +40,7 @@ from typing import Any
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrindersRepository
-from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, set_attributes
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
@@ -877,16 +877,8 @@ def _cut(text: str, limit: int) -> str:
 
 
 async def _insights(db: Database, row: SetRow) -> list[Any]:
-    """Through the shared matcher, so the chat and the Set page cannot disagree."""
-    bean = await BeansRepository(db).get(row.bean_id) if row.bean_id else None
-    attributes = set_attributes(
-        bean_id=row.bean_id,
-        roast_level=getattr(bean, "roast_level", None),
-        process=getattr(bean, "process", None),
-        origin=getattr(bean, "origin", None),
-        grinder_id=row.grinder_id,
-    )
-    return await InsightsRepository(db).select(attributes)
+    """Through the one selection, so the chat and the Set page cannot disagree."""
+    return await InsightsRepository(db).for_set(row.id)
 
 
 # ── formatting ───────────────────────────────────────────────────────

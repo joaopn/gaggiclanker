@@ -816,7 +816,6 @@ async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
         "record_insight",
         text="This grinder wants two clicks finer for anything anaerobic.",
         evidence_shot_ids=archive.shots[:2],
-        grinder_id=archive.grinder_id,
     )
 
     stored = await InsightsRepository(archive.db).get(data["insight_id"])
@@ -824,13 +823,18 @@ async def test_record_insight_lands_unconfirmed_and_sourced_to_the_chat(
     assert stored.source == "chat"
     assert stored.confirmed is False, "nothing unconfirmed reaches a prompt"
     assert stored.evidence_shot_ids == archive.shots[:2]
+    # It belongs to the Set it was learned in, at the version the chat is about.
+    assert stored.set_id == archive.set_id
+    assert stored.set_version_id == archive.version_id
+    assert stored.scope.stated() == {}
+    assert data["scope"] == "this Set, learned at v1"
 
 
 async def test_a_recorded_insight_does_not_reach_the_next_prompt(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The loop tier 3 exists to break: propose, then be believed next turn."""
-    await call(set_ctx, "record_insight", text="Always go finer.", grinder_id=archive.grinder_id)
+    await call(set_ctx, "record_insight", text="Always go finer.")
 
     listed = await call(set_ctx, "get_insights")
 

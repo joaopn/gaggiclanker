@@ -72,6 +72,11 @@ export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): Kno
     created_at: "2026-03-03T09:00:00.000Z",
     updated_at: "2026-03-03T09:00:00.000Z",
     confirmed_at: null,
+    set_id: null,
+    set_version_id: null,
+    set_version_label: null,
+    dismissed: false,
+    general: true,
     ...overrides,
   };
 }

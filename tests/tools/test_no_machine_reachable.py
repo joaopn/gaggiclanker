@@ -570,7 +570,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     learned = await registry.dispatch(
         ctx,
         "record_insight",
-        {"text": "This grinder wants finer for naturals.", "grinder_id": fixture.grinder_id},
+        {"text": "This grinder wants finer for naturals."},
     )
     assert learned.ok, learned.data
     assert learned.data["confirmed"] is False

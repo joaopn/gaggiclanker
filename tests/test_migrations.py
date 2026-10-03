@@ -18,7 +18,7 @@ from gaggiclanker.db.migrations import (
     load_migrations,
     run_migrations,
 )
-from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+from gaggiclanker.db.repos.knowledge_insights import scope_matches
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.tools.sql import SqlRefused, run_query
 from tests.conftest import running_app
@@ -571,8 +571,9 @@ async def test_0016_merges_the_import_placeholder_into_the_real_machine(
     # was confirmed about.
     scope = json.loads(str(await db.fetch_value("SELECT scope_json FROM knowledge_insights")))
     assert scope == {"bean_id": 1}
-    selected = await InsightsRepository(db).select({"bean_id": 1, "grinder_id": None})
-    assert [row.text for row in selected] == ["this bag likes it finer"]
+    # The matching rule itself, on the stored document: the repository's reads
+    # are written for the latest schema, and this database stops at 0016.
+    assert scope_matches(scope, {"bean_id": 1, "grinder_id": None})
     # The sync feed's shot id carries no foreign key, so nothing else would have
     # caught it pointing at a row that is gone.
     assert await db.fetch_value("SELECT shot_id FROM sync_events") == 2

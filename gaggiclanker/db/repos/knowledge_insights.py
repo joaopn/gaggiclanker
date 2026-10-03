@@ -15,6 +15,16 @@ partial credit and no scoring: a rule that half-applies is a rule nobody can
 predict, and the point of showing these to a model is that the user knows what
 it was told.
 
+**An insight is general or belongs to one Set.** A general insight
+(``set_id`` NULL: hand-written, or an agent-written one nobody could place) keeps
+the attribute matching above and reaches every conversation whose Set it
+matches. An insight written in a Set's conversation carries that Set and the
+version the conversation was about, has no attribute scope, and is given to that
+Set's conversations only — whatever bean and grinder another Set shares with it.
+One function, :meth:`InsightsRepository.for_set`, answers "what applies to this
+Set" for the opening context, ``get_insights`` and the Set page, so the three
+cannot disagree.
+
 **Unconfirmed insights never reach a prompt.** They are proposals — by the chat
 today, and by the per-shot analysis before it was retired — and a model that
 generalises from one shot and is then believed by the next conversation has
@@ -27,9 +37,11 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from gaggiclanker.db.repos.base import JsonList, dumps, utc_now
+from gaggiclanker.db.repos.beans import BeansRepository
+from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 
 __all__ = [
@@ -164,6 +176,20 @@ class InsightWrite(BaseModel):
     evidence_shot_ids: list[int] = Field(default_factory=list)
     source: InsightSource = "user"
     confirmed: bool = False
+    #: The Set this insight belongs to, when it was learned in one. A Set's
+    #: insight states no attribute scope: it is about this Set whatever its bean
+    #: and grinder are shared with.
+    set_id: int | None = None
+    #: The version the conversation that wrote it was about.
+    set_version_id: int | None = None
+
+    @model_validator(mode="after")
+    def _a_set_insight_has_no_scope(self) -> InsightWrite:
+        if self.set_version_id is not None and self.set_id is None:
+            raise ValueError("an insight learned at a version belongs to that version's Set")
+        if self.set_id is not None and self.scope.stated():
+            raise ValueError("an insight that belongs to a Set states no attribute scope")
+        return self
 
     @field_validator("text")
     @classmethod
@@ -193,14 +219,42 @@ class InsightRow(BaseModel):
     created_at: str = ""
     updated_at: str = ""
     confirmed_at: str | None = None
+    #: The Set it belongs to; NULL is a general insight.
+    set_id: int | None = None
+    #: The version it was learned at, and its name ("v3"). NULL for "learned
+    #: before versions were recorded", and for a general insight.
+    set_version_id: int | None = None
+    set_version_label: str | None = None
+    #: The person turned the card down. Kept for the conversation that proposed
+    #: it, shown nowhere else, reaching no prompt.
+    dismissed: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def general(self) -> bool:
+        """Whether it is general knowledge rather than one Set's."""
+        return self.set_id is None
 
     @property
     def scope_label(self) -> str:
+        if self.set_id is not None:
+            return (
+                f"this Set, learned at {self.set_version_label}"
+                if self.set_version_label
+                else "this Set"
+            )
         return self.scope.label()
 
     def render(self) -> str:
         """The line a prompt carries: the scope, then the sentence."""
-        return f"[{self.scope.label()}] {self.text}"
+        return f"[{self.scope_label}] {self.text}"
+
+
+_SELECT = f"""
+    SELECT i.*, {label_sql("v")} AS set_version_label
+      FROM knowledge_insights i
+      LEFT JOIN set_versions v ON v.id = i.set_version_id
+"""  # noqa: S608 - the only interpolation is the version label expression, a constant
 
 
 class InsightsRepository(Repository):
@@ -211,31 +265,47 @@ class InsightsRepository(Repository):
         *,
         confirmed: bool | None = None,
     ) -> list[InsightRow]:
-        """Insights, oldest first.
+        """The **general** insights, oldest first.
 
         One order for every reader, including the prompt. Oldest first because
         that is the order they were learned in, and a later insight that
-        qualifies an earlier one only reads correctly after it.
+        qualifies an earlier one only reads correctly after it. General only:
+        a Set's own insights are :meth:`own`, and nothing reads both through
+        one door by accident.
         """
-        where: list[str] = ["1 = 1"]
+        where = ["i.set_id IS NULL", "i.dismissed = 0"]
         params: list[Any] = []
         if confirmed is not None:
-            where.append("confirmed = ?")
+            where.append("i.confirmed = ?")
             params.append(int(confirmed))
         rows = await self.db.fetch_all(
-            f"SELECT * FROM knowledge_insights WHERE {' AND '.join(where)} "  # noqa: S608 - clauses are literals, values are bound
-            "ORDER BY created_at, id",
+            f"{_SELECT} WHERE {' AND '.join(where)} ORDER BY i.created_at, i.id",
             params,
         )
         return [self._decode(row) for row in rows]
 
+    async def own(self, set_id: int, *, include_dismissed: bool = False) -> list[InsightRow]:
+        """What was learned **in** this Set, in any state, oldest first.
+
+        Dismissed ones only when asked: the conversation that proposed one is
+        told what happened to it, and nothing else reads them.
+        """
+        rows = await self.db.fetch_all(
+            f"{_SELECT} WHERE i.set_id = ? "
+            + ("" if include_dismissed else "AND i.dismissed = 0 ")
+            + "ORDER BY i.created_at, i.id",
+            (set_id,),
+        )
+        return [self._decode(row) for row in rows]
+
     async def select(self, attributes: dict[str, Any]) -> list[InsightRow]:
-        """The confirmed insights that apply to a Set. Deterministic order.
+        """The confirmed **general** insights that apply to a Set's attributes.
 
         Filtered in Python, like tier 1's rule selection and for the same
         reason: the rule is "every stated key matches", the table is small, and
         a WHERE clause that could express it over a JSON column would be both
-        unreadable and hard to prove deterministic.
+        unreadable and hard to prove deterministic. A Set's own insights are
+        not here: they apply to their Set by ownership, not by attributes.
         """
         return [
             insight
@@ -243,10 +313,46 @@ class InsightsRepository(Repository):
             if scope_matches(insight.scope.stated(), attributes)
         ]
 
-    async def get(self, insight_id: int) -> InsightRow | None:
+    async def for_set(self, set_id: int) -> list[InsightRow]:
+        """What applies to a Set: its own confirmed insights, then the general ones that match.
+
+        **The one selection** for a Set's conversations (opening context and
+        ``get_insights``) and for the Set page. Another Set's insights are never
+        selected, whatever bean and grinder they share with this one; a
+        dismissed insight is never selected; an unconfirmed one never reaches a
+        prompt. Oldest first across both, so a later insight that qualifies an
+        earlier one reads after it.
+        """
+        attributes = await self.attributes_of(set_id)
+        if attributes is None:
+            return []
+        mine = [item for item in await self.own(set_id) if item.confirmed]
+        general = await self.select(attributes)
+        return sorted([*mine, *general], key=lambda item: (item.created_at, item.id))
+
+    async def attributes_of(self, set_id: int) -> dict[str, Any] | None:
+        """A Set's attributes in the shape :func:`scope_matches` reads, or ``None`` for no such Set.
+
+        ``profile_style`` is left unstated on purpose: it is detected per
+        *shot* from the profile the machine ran, so a Set has no single one, and
+        an insight scoped by style belongs on the shot page.
+        """
         row = await self.db.fetch_one(
-            "SELECT * FROM knowledge_insights WHERE id = ?", (insight_id,)
+            "SELECT bean_id, grinder_id FROM sets WHERE id = ?", (set_id,)
         )
+        if row is None:
+            return None
+        bean = await BeansRepository(self.db).get(row["bean_id"]) if row["bean_id"] else None
+        return set_attributes(
+            bean_id=row["bean_id"],
+            grinder_id=row["grinder_id"],
+            roast_level=getattr(bean, "roast_level", None),
+            process=getattr(bean, "process", None),
+            origin=getattr(bean, "origin", None),
+        )
+
+    async def get(self, insight_id: int) -> InsightRow | None:
+        row = await self.db.fetch_one(f"{_SELECT} WHERE i.id = ?", (insight_id,))
         return None if row is None else self._decode(row)
 
     async def insert(self, insight: InsightWrite) -> int:
@@ -255,11 +361,13 @@ class InsightsRepository(Repository):
             """
             INSERT INTO knowledge_insights
                 (scope_json, text, evidence_shot_ids_json, source,
-                 confirmed, created_at, updated_at, confirmed_at)
+                 confirmed, created_at, updated_at, confirmed_at, set_id, set_version_id)
             VALUES (:scope, :text, :evidence, :source,
-                    :confirmed, :now, :now, :confirmed_at)
+                    :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id)
             """,
             {
+                "set_id": insight.set_id,
+                "set_version_id": insight.set_version_id,
                 "scope": dumps(insight.scope.stated()),
                 "text": insight.text,
                 "evidence": dumps(sorted(set(insight.evidence_shot_ids))),
@@ -313,6 +421,7 @@ class InsightsRepository(Repository):
             UPDATE knowledge_insights
                SET confirmed = :confirmed,
                    confirmed_at = :confirmed_at,
+                   dismissed = CASE WHEN :confirmed = 1 THEN 0 ELSE dismissed END,
                    updated_at = :now
              WHERE id = :id
             """,
@@ -325,16 +434,41 @@ class InsightsRepository(Repository):
         )
         return cursor.rowcount > 0
 
+    async def dismiss(self, insight_id: int) -> bool:
+        """Turn a Set's insight down. Kept for the conversation that proposed it.
+
+        Never confirmed at the same time: a dismissed insight reaches no prompt
+        and is shown nowhere but in the chat that proposed it. Adding it later
+        (:meth:`set_confirmed`) undoes the dismissal.
+        """
+        now = utc_now()
+        cursor = await self.db.execute(
+            """
+            UPDATE knowledge_insights
+               SET dismissed = 1, confirmed = 0, confirmed_at = NULL, updated_at = :now
+             WHERE id = :id
+            """,
+            {"id": insight_id, "now": now},
+        )
+        return cursor.rowcount > 0
+
     async def delete(self, insight_id: int) -> bool:
         cursor = await self.db.execute("DELETE FROM knowledge_insights WHERE id = ?", (insight_id,))
         return cursor.rowcount > 0
 
     async def count(self, *, confirmed: bool | None = None) -> int:
+        """How many general insights there are: the Knowledge page's own count."""
         if confirmed is None:
-            return int(await self.db.fetch_value("SELECT COUNT(*) FROM knowledge_insights") or 0)
+            return int(
+                await self.db.fetch_value(
+                    "SELECT COUNT(*) FROM knowledge_insights WHERE set_id IS NULL"
+                )
+                or 0
+            )
         return int(
             await self.db.fetch_value(
-                "SELECT COUNT(*) FROM knowledge_insights WHERE confirmed = ?", (int(confirmed),)
+                "SELECT COUNT(*) FROM knowledge_insights WHERE set_id IS NULL AND confirmed = ?",
+                (int(confirmed),),
             )
             or 0
         )

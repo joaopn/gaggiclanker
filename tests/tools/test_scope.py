@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.tools.registry import ToolContext, registry
 from gaggiclanker.tools.scope import DESIGN_RULE, DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS, ToolScope
 from tests.review.conftest import Fixture
@@ -338,36 +339,64 @@ async def test_record_insight_refuses_another_set_s_shot_as_evidence(
     assert "not a shot of this Set" in outcome.data["detail"]
 
 
-async def test_record_insight_refuses_a_scope_that_is_not_this_set_s(
-    set_ctx: ToolContext, archive: Fixture
+@pytest.mark.parametrize(
+    "scope",
+    [
+        {"bean_id": 1},
+        {"grinder_id": 1},
+        {"roast_level": "light"},
+        {"process": "natural"},
+        {"origin": "Ethiopia"},
+        {"profile_style": "bloom"},
+    ],
+)
+async def test_record_insight_refuses_any_attribute_scope(
+    set_ctx: ToolContext, archive: Fixture, scope: dict[str, object]
 ) -> None:
-    """An insight written here is about this coffee on this grinder."""
+    """An insight written here belongs to this Set, so it has no scope to set.
+
+    Not even this Set's own bean: the scope is what used to carry an insight to
+    every other Set on the same bean and grinder.
+    """
     outcome = await registry.dispatch(
-        set_ctx,
-        "record_insight",
-        {"text": "Learned something.", "bean_id": archive.bean_id + 1},
-    )
-    styled = await registry.dispatch(
-        set_ctx, "record_insight", {"text": "Learned something.", "profile_style": "bloom"}
+        set_ctx, "record_insight", {"text": "Learned something.", **scope}
     )
 
     assert not outcome.ok
-    assert "about this Set" in outcome.data["detail"]
-    assert not styled.ok
+    assert "belongs to this Set" in outcome.data["detail"]
+    assert "reaches this Set's later conversations only" in outcome.data["detail"]
+    assert await InsightsRepository(archive.db).own(archive.set_id, include_dismissed=True) == []
 
-    # Its own attributes are accepted, and so is naming none of them.
+
+async def test_record_insight_names_no_scope_in_the_schema_the_model_is_shown() -> None:
+    spec = registry.get("record_insight")
+    assert spec is not None
+    assert set(spec.input_model.model_json_schema()["properties"]) == {
+        "text",
+        "evidence_shot_ids",
+    }
+
+
+async def test_record_insight_still_refuses_an_unknown_argument(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    outcome = await registry.dispatch(
+        set_ctx, "record_insight", {"text": "Learned something.", "colour": "red"}
+    )
+    assert not outcome.ok
+    assert "Unknown argument: colour" in outcome.data["detail"]
+
+
+async def test_record_insight_with_no_scope_is_accepted(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
     assert (
         await registry.dispatch(
             set_ctx,
             "record_insight",
-            {
-                "text": "This bean likes it finer.",
-                "bean_id": archive.bean_id,
-                "evidence_shot_ids": archive.shots[:1],
-            },
+            {"text": "This bean likes it finer.", "evidence_shot_ids": archive.shots[:1]},
         )
     ).ok
-    assert (await registry.dispatch(set_ctx, "record_insight", {"text": "Plain."})).ok
 
 
 # -- what a refusal says ---------------------------------------------------

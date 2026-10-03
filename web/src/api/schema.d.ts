@@ -622,14 +622,16 @@ export interface paths {
         };
         /**
          * What this archive has learned
-         * @description Every insight, or the ones a filter narrows to.
+         * @description The general insights, or one Set's.
          *
-         *     `?set_id=` answers the Set page's question — "what has this archive learned
-         *     that applies here" — through the same `select_insights` the chat uses, so
-         *     the page cannot show a different answer from the prompt. It matches on the
-         *     Set's own attributes only: `profile_style` is detected *per shot* from the
-         *     profile the machine ran, so a Set has no single one and an insight scoped by
-         *     style is left to the shot page.
+         *     Without `?set_id=` this is the Knowledge page's list: **general insights
+         *     only**. A Set's own insights are never on it. With it, the answer is the Set
+         *     page's — what was learned in that Set, plus the general knowledge that
+         *     applies — and the confirmed ones are exactly what the chat is told, because
+         *     both ask :meth:`InsightsRepository.for_set` and `own` and nothing else. It
+         *     matches on the Set's own attributes only: `profile_style` is detected *per
+         *     shot* from the profile the machine ran, so a Set has no single one and an
+         *     insight scoped by style is left to the shot page.
          */
         get: operations["list_insights_api_knowledge_insights_get"];
         put?: never;
@@ -648,7 +650,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * One insight, in whatever state it is
+         * @description What a card in the chat reads, so it tells the truth after the person answered elsewhere.
+         */
+        get: operations["get_insight_api_knowledge_insights__insight_id__get"];
         put?: never;
         post?: never;
         /**
@@ -672,6 +678,32 @@ export interface paths {
          *     remember, the way disabling a rule does.
          */
         patch: operations["patch_insight_api_knowledge_insights__insight_id__patch"];
+        trace?: never;
+    };
+    "/api/knowledge/insights/{insight_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a Set's insight down
+         * @description A person's press: the card's Dismiss.
+         *
+         *     Only for an insight a Set conversation proposed. It is kept, so that
+         *     conversation can be told what happened to it, and it reaches no prompt and
+         *     is shown nowhere else; a general insight has the confirm switch and the
+         *     delete, not this. Adding it afterwards (`PATCH` with `confirmed: true`)
+         *     undoes the dismissal. There is no tool for this.
+         */
+        post: operations["dismiss_insight_api_knowledge_insights__insight_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/knowledge/rules": {
@@ -4484,10 +4516,26 @@ export interface components {
              * @default
              */
             created_at: string;
+            /**
+             * Dismissed
+             * @default false
+             */
+            dismissed: boolean;
             evidence_shot_ids?: components["schemas"]["JsonList"];
+            /**
+             * General
+             * @description Whether it is general knowledge rather than one Set's.
+             */
+            readonly general: boolean;
             /** Id */
             id: number;
             scope?: components["schemas"]["InsightScope"];
+            /** Set Id */
+            set_id?: number | null;
+            /** Set Version Id */
+            set_version_id?: number | null;
+            /** Set Version Label */
+            set_version_label?: string | null;
             /**
              * Source
              * @default user
@@ -8690,7 +8738,7 @@ export interface operations {
         parameters: {
             query?: {
                 confirmed?: boolean | null;
-                /** @description Only the **confirmed** insights that apply to this Set — the same selection the Set's conversations are given. */
+                /** @description That Set's page: what was learned in this Set (waiting and confirmed, each with the version it was learned at) and the confirmed **general** insights whose scope matches it, marked `general`. The selection the Set's conversations are given is the confirmed part of this. */
                 set_id?: number | null;
             };
             header?: never;
@@ -8734,6 +8782,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_insight_api_knowledge_insights__insight_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8797,6 +8876,37 @@ export interface operations {
                 "application/json": components["schemas"]["InsightPatch"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_insight_api_knowledge_insights__insight_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -14,7 +14,12 @@ shapes because the tiers are owned by different people:
   nothing to store between the two;
 * **insights** (`/insights`) belong to this box alone. They are the one part of
   the knowledge base with a real DELETE, and the one part where confirming is a
-  distinct verb from editing: nothing unconfirmed ever reaches a prompt.
+  distinct verb from editing: nothing unconfirmed ever reaches a prompt. An
+  insight is **general** (this page, matched to a Set by its attributes) or
+  **a Set's own** (learned in that Set's conversations, listed under
+  `?set_id=` and never on this page's list): adding one is the confirm, and
+  dismissing one is a state of its own that only the conversation which
+  proposed it ever sees.
 """
 
 from __future__ import annotations
@@ -26,14 +31,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from gaggiclanker.api.deps import (
-    BeansRepoDep,
     InsightsRepoDep,
     KnowledgeDocsRepoDep,
     KnowledgeServiceDep,
     RulesRepoDep,
-    SetsRepoDep,
 )
-from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.knowledge import RuleRow, RulesRepository
 from gaggiclanker.db.repos.knowledge_docs import ChunkHit, ChunkRow, DocRow
 from gaggiclanker.db.repos.knowledge_insights import (
@@ -41,12 +43,10 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightRow,
     InsightScope,
     InsightWrite,
-    set_attributes,
 )
-from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.domain.vocab import RULE_CATEGORIES
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
-from gaggiclanker.infra.errors import BadRequest, NotFound
+from gaggiclanker.infra.errors import BadRequest, Conflict, NotFound, Unprocessable
 from gaggiclanker.knowledge.rules import seed_rules
 
 __all__ = ["router"]
@@ -366,30 +366,39 @@ class InsightPatch(BaseModel):
 )
 async def list_insights(
     insights: InsightsRepoDep,
-    sets: SetsRepoDep,
-    beans: BeansRepoDep,
     confirmed: Annotated[bool | None, Query()] = None,
     set_id: Annotated[
         int | None,
         Query(
             description=(
-                "Only the **confirmed** insights that apply to this Set — the same "
-                "selection the Set's conversations are given."
+                "That Set's page: what was learned in this Set (waiting and confirmed, each "
+                "with the version it was learned at) and the confirmed **general** insights "
+                "whose scope matches it, marked `general`. The selection the Set's "
+                "conversations are given is the confirmed part of this."
             )
         ),
     ] = None,
 ) -> JSONResponse:
-    """Every insight, or the ones a filter narrows to.
+    """The general insights, or one Set's.
 
-    `?set_id=` answers the Set page's question — "what has this archive learned
-    that applies here" — through the same `select_insights` the chat uses, so
-    the page cannot show a different answer from the prompt. It matches on the
-    Set's own attributes only: `profile_style` is detected *per shot* from the
-    profile the machine ran, so a Set has no single one and an insight scoped by
-    style is left to the shot page.
+    Without `?set_id=` this is the Knowledge page's list: **general insights
+    only**. A Set's own insights are never on it. With it, the answer is the Set
+    page's — what was learned in that Set, plus the general knowledge that
+    applies — and the confirmed ones are exactly what the chat is told, because
+    both ask :meth:`InsightsRepository.for_set` and `own` and nothing else. It
+    matches on the Set's own attributes only: `profile_style` is detected *per
+    shot* from the profile the machine ran, so a Set has no single one and an
+    insight scoped by style is left to the shot page.
     """
     if set_id is not None:
-        items = await insights.select(await _set_attributes(sets, beans, set_id))
+        if await insights.attributes_of(set_id) is None:
+            raise NotFound(f"No Set {set_id}")
+        own = await insights.own(set_id)
+        applying = {item.id for item in await insights.for_set(set_id) if item.set_id is None}
+        general = [
+            item for item in await insights.list_insights(confirmed=True) if item.id in applying
+        ]
+        items = sorted([*own, *general], key=lambda item: (item.created_at, item.id))
     else:
         items = await insights.list_insights(confirmed=confirmed)
     return envelope_response(
@@ -397,28 +406,17 @@ async def list_insights(
     )
 
 
-async def _set_attributes(
-    sets: SetsRepository, beans: BeansRepository, set_id: int
-) -> dict[str, Any]:
-    """One Set, in the flat shape :func:`scope_matches` reads.
-
-    ``None`` for anything the Set does not state, which is what stops an insight
-    about naturals reaching a bag whose roaster printed no process.
-    """
-    row = await sets.get(set_id)
-    if row is None:
-        raise NotFound(f"No Set {set_id}")
-    bean = await beans.get(row.bean_id)
-    # `profile_style` is left unstated on purpose: it is detected per *shot*
-    # from the profile the machine ran, so a Set has no single one, and an
-    # insight scoped by style belongs on the shot page.
-    return set_attributes(
-        bean_id=row.bean_id,
-        roast_level=bean.roast_level if bean else None,
-        process=bean.process if bean else None,
-        origin=bean.origin if bean else None,
-        grinder_id=row.grinder_id,
-    )
+@router.get(
+    "/insights/{insight_id}",
+    response_model=ApiResponse[InsightRow],
+    summary="One insight, in whatever state it is",
+)
+async def get_insight(insight_id: int, insights: InsightsRepoDep) -> JSONResponse:
+    """What a card in the chat reads, so it tells the truth after the person answered elsewhere."""
+    stored = await insights.get(insight_id)
+    if stored is None:
+        raise NotFound(f"No insight {insight_id}")
+    return envelope_response(stored.model_dump(mode="json"))
 
 
 @router.post(
@@ -457,8 +455,14 @@ async def patch_insight(
     matching Set; un-confirming takes it out again with nothing else to
     remember, the way disabling a rule does.
     """
-    if await insights.get(insight_id) is None:
+    existing = await insights.get(insight_id)
+    if existing is None:
         raise NotFound(f"No insight {insight_id}")
+    if existing.set_id is not None and body.scope is not None and body.scope.stated():
+        raise Unprocessable(
+            "An insight that belongs to a Set states no attribute scope",
+            details={"field": "scope", "message": "it applies to its own Set only"},
+        )
     await insights.update(
         insight_id,
         text=body.text,
@@ -467,6 +471,39 @@ async def patch_insight(
     )
     if body.confirmed is not None:
         await insights.set_confirmed(insight_id, body.confirmed)
+    stored = await insights.get(insight_id)
+    if stored is None:  # pragma: no cover - checked above, same request
+        raise NotFound(f"No insight {insight_id}")
+    return envelope_response(stored.model_dump(mode="json"))
+
+
+@router.post(
+    "/insights/{insight_id}/dismiss",
+    response_model=ApiResponse[InsightRow],
+    summary="Turn a Set's insight down",
+)
+async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONResponse:
+    """A person's press: the card's Dismiss.
+
+    Only for an insight a Set conversation proposed. It is kept, so that
+    conversation can be told what happened to it, and it reaches no prompt and
+    is shown nowhere else; a general insight has the confirm switch and the
+    delete, not this. Adding it afterwards (`PATCH` with `confirmed: true`)
+    undoes the dismissal. There is no tool for this.
+    """
+    existing = await insights.get(insight_id)
+    if existing is None:
+        raise NotFound(f"No insight {insight_id}")
+    if existing.set_id is None:
+        raise Conflict(
+            f"Insight {insight_id} is general knowledge, not a Set's",
+            code="INSIGHT_NOT_SET_OWNED",
+            details={
+                "field": "set_id",
+                "message": "general insights are confirmed or deleted on the Knowledge page",
+            },
+        )
+    await insights.dismiss(insight_id)
     stored = await insights.get(insight_id)
     if stored is None:  # pragma: no cover - checked above, same request
         raise NotFound(f"No insight {insight_id}")
