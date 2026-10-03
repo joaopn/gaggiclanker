@@ -169,7 +169,7 @@ class InsightPlacementBuilder(Repository):
             """
             SELECT id FROM set_versions
              WHERE set_id = ? AND created_at <= ?
-             ORDER BY version_no DESC LIMIT 1
+             ORDER BY created_at DESC, id DESC LIMIT 1
             """,
             (set_id, insight.created_at),
         )

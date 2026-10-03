@@ -65,7 +65,7 @@ async def test_a_put_for_a_designed_set_fills_its_version_1_once_the_sync_has_se
     draft = await ProfileDraftsRepository(app.state.db).get(draft_id)
     assert draft is not None and draft.status == "pushed"
     version = await SetsRepository(app.state.db).get_version(designed.current_version_id or 0)
-    assert version is not None and version.version_no == 1
+    assert version is not None and version.version_label == "v1"
     assert version.profile_version_id == draft.draft_version_id
     assert version.pushed_device_profile_id == draft.pushed_device_profile_id
     after = await SetsRepository(app.state.db).get(designed.id)
@@ -130,7 +130,7 @@ async def test_a_put_for_the_design_stales_the_waiting_recipe_and_discards_its_d
     await pull(app)
 
     version = await SetsRepository(app.state.db).get_version(designed.current_version_id or 0)
-    assert version is not None and version.version_no == 1
+    assert version is not None and version.version_label == "v1"
     proposal = await SetProposalsRepository(app.state.db).get(designed.id, proposal_id)
     assert proposal is not None and proposal.status == "stale"
     other = await ProfileDraftsRepository(app.state.db).get(proposed_draft.id)

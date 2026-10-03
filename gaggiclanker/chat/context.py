@@ -162,12 +162,13 @@ async def opening_context(
     if row is None:
         return ""
     versions = await sets.versions(scope.set_id)
-    version = _this_version(versions, scope.set_version_id)
+    version = _this_version(versions, scope.set_version_id, row.current_version_id)
     if version is None:
         return ""
+    current = next((item for item in versions if item.is_current), version)
 
     by_id = {item.id: item for item in versions}
-    dead_ends = dead_end_ids(versions)
+    dead_ends = dead_end_ids(versions, row.current_version_id)
     labels = await sets.label_counts(scope.set_id)
     # One pass over the counted shots feeds the spread and the evidence, exactly
     # as the Set page does it: two passes could answer with two different sets
@@ -180,10 +181,8 @@ async def opening_context(
             counted,
             spreads,
             version_id=version.id,
-            version_no=version.version_no,
             version_label=version.version_label,
             compares_to_version_id=version.compares_to_version_id,
-            compares_to_version_no=version.compares_to_version_no,
             compares_to_version_label=version.compares_to_version_label,
         )
         if version.prediction
@@ -193,7 +192,7 @@ async def opening_context(
     profile_labels = _profile_labels(versions)
     lines: list[str] = []
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
-    lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, versions[0])]
+    lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, current)]
     grade = await _grade_block(db, scope.set_id, version)
     if grade:
         lines += ["", *grade]
@@ -229,15 +228,11 @@ async def opening_context(
 
 
 def _this_version(
-    versions: Sequence[SetVersionRow], version_id: int | None
+    versions: Sequence[SetVersionRow], version_id: int | None, current_id: int | None
 ) -> SetVersionRow | None:
-    """The version the conversation is about; the current one when unsaid.
-
-    ``versions`` is newest first, so the current version is the first of them.
-    """
-    if version_id is not None:
-        return next((version for version in versions if version.id == version_id), None)
-    return versions[0] if versions else None
+    """The version the conversation is about; the Set's current one when unsaid."""
+    wanted = version_id if version_id is not None else current_id
+    return next((version for version in versions if version.id == wanted), None)
 
 
 # ── the Set and this version ─────────────────────────────────────────
@@ -282,7 +277,7 @@ async def _heading(
         "",
         f"THIS VERSION IS {version.version_label}"
         + (" (a dead end: a later roll back went back past it)" if version.id in dead_ends else "")
-        + (" — the current version of this Set" if version.id == versions[0].id else ""),
+        + (" — the current version of this Set" if version.is_current else ""),
         f"Recipe: {_recipe(version)}.",
         f"Changed against {parent.version_label}: {_changes(changes)}."
         if parent is not None
@@ -590,9 +585,8 @@ def _ledger(
     summarised as counts. A Set that has not run past the budget reads as the
     whole ledger, which is the ordinary case.
     """
-    # Oldest first by the ordinal, which is the order they were recorded in;
-    # every one is written out by its name.
-    oldest_first = sorted(versions, key=lambda version: version.version_no)
+    # Oldest first by when they were made; every one is written out by its name.
+    oldest_first = _oldest_first(versions)
     kept = {version.id for version in oldest_first[-LEDGER_VERSIONS:]}
     kept.add(this.id)
     if this.compares_to_version_id is not None:
@@ -601,7 +595,7 @@ def _ledger(
 
     lines = ["THE EXPERIMENT SO FAR (oldest first)"]
     if dropped:
-        lines.append(_dropped_line(dropped))
+        lines.append(_dropped_line(dropped, oldest_first))
     lines += [
         _ledger_line(version, dead_ends, labels, this, by_id, profile_labels)
         for version in oldest_first
@@ -611,7 +605,12 @@ def _ledger(
     return lines
 
 
-def _dropped_line(dropped: Sequence[SetVersionRow]) -> str:
+def _oldest_first(versions: Iterable[SetVersionRow]) -> list[SetVersionRow]:
+    """By `created_at`; the row id only breaks a tie and is never shown."""
+    return sorted(versions, key=lambda version: (version.created_at, version.id))
+
+
+def _dropped_line(dropped: Sequence[SetVersionRow], every: Sequence[SetVersionRow]) -> str:
     """The versions the budget left out, named exactly.
 
     Named rather than spanned: the two the budget never drops sit inside the
@@ -625,22 +624,26 @@ def _dropped_line(dropped: Sequence[SetVersionRow]) -> str:
         f"{count} {_OUTCOMES[state].split(' —')[0]}" for state, count in sorted(counted.items())
     )
     return (
-        f"- Not written out here: {_ranges(dropped)} "
+        f"- Not written out here: {_ranges(dropped, every)} "
         f"({len(dropped)} versions: {states}). get_set has them all."
     )
 
 
-def _ranges(versions: Iterable[SetVersionRow]) -> str:
-    """ "v1, v1.3 to v2.1, v3" — versions recorded one after another collapsed, in order.
+def _ranges(versions: Iterable[SetVersionRow], every: Sequence[SetVersionRow]) -> str:
+    """ "v1, v1.3 to v2.1, v3" — versions made one after another collapsed, in order.
 
-    "One after another" is by the ordinal, the order they were recorded in, so
-    a span reads from its first version's name to its last's and covers every
-    version recorded between them, minor or major.
+    "One after another" is by when they were made among **all** the Set's
+    versions (``every``, oldest first), so a span reads from its first version's
+    name to its last's and covers every version made between them, minor or
+    major.
     """
-    ordered = sorted({version.version_no: version for version in versions}.values(), key=_ordinal)
+    position = {version.id: index for index, version in enumerate(every)}
+    ordered = sorted(
+        {version.id: version for version in versions}.values(), key=lambda v: position[v.id]
+    )
     spans: list[tuple[SetVersionRow, SetVersionRow]] = []
     for version in ordered:
-        if spans and version.version_no == spans[-1][1].version_no + 1:
+        if spans and position[version.id] == position[spans[-1][1].id] + 1:
             spans[-1] = (spans[-1][0], version)
         else:
             spans.append((version, version))
@@ -648,10 +651,6 @@ def _ranges(versions: Iterable[SetVersionRow]) -> str:
         start.version_label if start is end else f"{start.version_label} to {end.version_label}"
         for start, end in spans
     )
-
-
-def _ordinal(version: SetVersionRow) -> int:
-    return version.version_no
 
 
 def _ledger_line(
@@ -854,7 +853,7 @@ async def _shots_block(
     out like the rest — "when did it go wrong" is a question it is part of the
     answer to — and says so on its own line.
     """
-    rows = await SetsRepository(db).set_shots(set_id, version_no=version.version_no, limit=recent)
+    rows = await SetsRepository(db).set_shots(set_id, version_id=version.id, limit=recent)
     # The samples only when a person moved a curve channel into base: at the
     # default tiers the opening context carries no curve and reads none.
     shots = await load_shots(
@@ -908,8 +907,10 @@ def _gold_standard(
             "No shot on the line being brewed has been labelled Keep yet, so there is no "
             "target to compare an Improve shot against.",
         ]
-    # In the order they were recorded, each by its name.
-    names = [label for _, label in sorted({(s.version_no, s.version_label) for s in keeps})]
+    # In the order they were made, each by its name.
+    by_id = {version.id: version for version in versions}
+    ids = sorted({shot.version_id for shot in keeps}, key=lambda i: (by_id[i].created_at, i))
+    names = [by_id[i].version_label for i in ids]
     averages = [
         f"{_MEASURES[measure].label.lower()} {_number(measure, _mean(keeps, measure))}"
         f"{_unit(measure)}"

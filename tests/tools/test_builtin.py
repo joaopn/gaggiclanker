@@ -305,7 +305,7 @@ async def test_propose_set_version_creates_a_proposal_and_no_version(
     assert data["change_summary"].startswith("Grind ")
     assert data["prediction"] == PREDICTION
     assert data["compares_to_version"] == before.version_label
-    # Named, never counted: no ordinal reaches the model.
+    # Named, never counted: there is no ordinal to reach the model.
     assert "compares_to_version_no" not in data
     # The whole point: the Set is where it was, and the answer says so.
     assert "Nothing has changed yet" in data["note"]
@@ -686,7 +686,7 @@ async def test_propose_set_version_takes_no_temperature_and_says_where_it_went(
 
     # And the archive is untouched: a refused call writes nothing.
     current = await SetsRepository(archive.db).current_version(archive.set_id)
-    assert current is not None and current.version_no == 1
+    assert current is not None and current.version_label == "v1"
 
 
 def _with_drafts(ctx: ToolContext) -> ToolContext:
@@ -1010,7 +1010,7 @@ async def test_a_draft_outside_a_set_cannot_suggest_a_major_version(
 async def test_the_set_tools_name_versions_and_never_count_them(
     set_ctx: ToolContext, ctx: ToolContext, archive: Fixture
 ) -> None:
-    """A model shown "version_no": 3 beside "v1.2" says "v3" sooner or later."""
+    """There is no ordinal for a model to say "v3" from: the names are all it is given."""
     sets = SetsRepository(archive.db)
     await sets.add_version(archive.set_id, SetVersionPatch(grind_setting="21"))
     await sets.add_version(

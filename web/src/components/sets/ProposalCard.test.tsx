@@ -87,7 +87,7 @@ describe("ProposalCard", () => {
       const user = setupUser();
       acceptSetProposal.mockResolvedValue({
         proposal: proposal({ status: "accepted", resulting_version_label: "v2.1" }),
-        version: { version_no: 3, version_label: "v2.1" },
+        version: { version_label: "v2.1" },
       });
       renderWithQueryClient(
         <ProposalCard setId={3} proposal={proposal({ records_outcome: outcomeProposal() })} />,
@@ -114,7 +114,7 @@ describe("ProposalCard", () => {
         resulting_version_no: 3,
         resulting_version_label: "v2.1",
       }),
-      version: { version_no: 3, version_label: "v2.1" },
+      version: { version_label: "v2.1" },
     });
     renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
 
@@ -135,7 +135,7 @@ describe("ProposalCard", () => {
         resulting_version_no: 3,
         resulting_version_label: "v2.1",
       }),
-      version: { version_no: 3, version_label: "v2.1" },
+      version: { version_label: "v2.1" },
     });
     renderWithQueryClient(
       <TellAgentContext.Provider value={tell}>
@@ -160,7 +160,7 @@ describe("ProposalCard", () => {
     const tell = vi.fn();
     acceptSetProposal.mockResolvedValue({
       proposal: designProposal({ status: "accepted" }),
-      version: { version_no: 1, version_label: "v1" },
+      version: { version_label: "v1" },
     });
     renderWithQueryClient(
       <TellAgentContext.Provider value={tell}>
@@ -482,7 +482,7 @@ describe("ProposalCard, major or minor", () => {
     const user = setupUser();
     acceptSetProposal.mockResolvedValue({
       proposal: proposal({ status: "accepted", resulting_version_label: "v3" }),
-      version: { version_no: 3, version_label: "v3" },
+      version: { version_label: "v3" },
     });
     renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
 
@@ -869,7 +869,7 @@ describe("the next step after an accept", () => {
     const tell = vi.fn();
     acceptSetProposal.mockResolvedValue({
       proposal: accepted(),
-      version: { version_no: 2, version_label: "v1.1" },
+      version: { version_label: "v1.1" },
     });
     renderWithQueryClient(
       <TellAgentContext.Provider value={tell}>

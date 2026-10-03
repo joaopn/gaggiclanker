@@ -209,7 +209,7 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
     copy_id = int(await fixture.db.fetch_value("SELECT last_insert_rowid()") or 0)
     await fixture.db.execute(
         """
-        INSERT INTO set_versions (set_id, version_no, profile_version_id, grind_setting,
+        INSERT INTO set_versions (set_id, version_major, profile_version_id, grind_setting,
                                   grind_value, dose_g, target_yield_g,
                                   intent, origin, created_at)
         SELECT ?, 1, profile_version_id, grind_setting, grind_value, dose_g, target_yield_g,
@@ -219,6 +219,9 @@ async def test_ties_break_on_shots_then_on_the_newest_version(fixture: Fixture) 
         (copy_id, fixture.versions["kenya"]),
     )
     copy_version = int(await fixture.db.fetch_value("SELECT last_insert_rowid()") or 0)
+    await fixture.db.execute(
+        "UPDATE sets SET current_version_id = ? WHERE id = ?", (copy_version, copy_id)
+    )
     # Give the copy the same five verdicts on new shots, so the two tie exactly.
     for index in range(5):
         cursor = await fixture.db.execute(

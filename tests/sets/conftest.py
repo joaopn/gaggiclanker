@@ -2,7 +2,7 @@
 
 Same rule as the rest of the suite: a real SQLite file, real migrations, no
 mocked repositories. Half of what these tests assert is a constraint —
-``UNIQUE(set_id, version_no)``, the foreign keys, the CHECK on every vocabulary
+``UNIQUE(set_id, major, minor)``, the foreign keys, the CHECK on every vocabulary
 column — and none of those exist in a mock.
 """
 

@@ -84,10 +84,10 @@ async def test_a_real_query_over_the_views_works(archive: Fixture) -> None:
 async def test_an_aggregate_across_views_works(archive: Fixture) -> None:
     result = await run_query(
         archive.db.path,
-        "SELECT v.set_version_no, COUNT(*) AS n FROM v_shots v GROUP BY v.set_version_no",
+        "SELECT v.set_version_label, COUNT(*) AS n FROM v_shots v GROUP BY v.set_version_label",
     )
 
-    assert result.columns == ["set_version_no", "n"]
+    assert result.columns == ["set_version_label", "n"]
     assert result.rows
 
 
@@ -210,8 +210,10 @@ async def test_the_version_view_carries_the_experiment_log(archive: Fixture) -> 
 
     assert {
         "prediction",
-        "compares_to_version_no",
-        "restores_version_no",
+        "compares_to_version_label",
+        "restores_version_label",
+        "parent_version_label",
+        "is_current",
         "outcome",
         "outcome_note",
     } <= set(result.columns)

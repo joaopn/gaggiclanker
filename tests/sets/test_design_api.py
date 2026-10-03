@@ -71,8 +71,8 @@ async def test_a_design_is_a_set_with_an_empty_version_1_and_its_conversation(
         "goal": "More body.",
     }
     version = created["version"]
-    assert (version["version_no"], version["profile_version_id"], version["dose_g"]) == (
-        1,
+    assert (version["version_label"], version["profile_version_id"], version["dose_g"]) == (
+        "v1",
         None,
         None,
     )
@@ -213,17 +213,17 @@ async def test_the_card_is_served_with_its_kind_and_draft_and_accepts_into_versi
     accepted = data(await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept"))
 
     assert accepted["proposal"]["status"] == "accepted"
-    assert accepted["proposal"]["resulting_version_no"] == 1
+    assert accepted["proposal"]["resulting_version_label"] == "v1"
     version = accepted["version"]
-    assert (version["id"], version["version_no"], version["origin"]) == (
+    assert (version["id"], version["version_label"], version["origin"]) == (
         created["version"]["id"],
-        1,
+        "v1",
         "chat",
     )
     assert version["profile_version_id"] == drafted
     page = data(await client.get(f"/api/sets/{set_id}"))
     assert page["set"]["designing"] is False
-    assert [item["version"]["version_no"] for item in page["versions"]] == [1]
+    assert [item["version"]["version_label"] for item in page["versions"]] == ["v1"]
     assert page["versions"][0]["chat_thread_id"] == created["thread_id"]
 
 
@@ -316,7 +316,7 @@ async def test_the_add_a_version_form_ends_the_design_and_retires_the_card(
     )
 
     version = data(response)
-    assert (version["id"], version["version_no"]) == (created["version"]["id"], 1)
+    assert (version["id"], version["version_label"]) == (created["version"]["id"], "v1")
     page = data(await client.get(f"/api/sets/{set_id}"))
     assert page["set"]["designing"] is False
     assert page["proposal"] is None

@@ -657,7 +657,7 @@ async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
     try:
         # Still one version, and the proposal names the conversation it came from.
         versions = await SetsRepository(db).versions(fixture.set_id)
-        assert [version.version_no for version in versions] == [1]
+        assert [version.version_label for version in versions] == ["v1"]
         waiting = await SetProposalsRepository(db).waiting(fixture.set_id)
         assert waiting is not None
         assert waiting.thread_id == thread_id

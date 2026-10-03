@@ -76,11 +76,11 @@ class ChatThreadRow(BaseModel):
     set_name: str | None = None
     #: The version this conversation is about. NULL exactly when ``set_id`` is.
     set_version_id: int | None = None
-    #: That version's ordinal and name, joined in: a folder row reads
-    #: "v1.1 · title", and a reader thinks in "v1.1" rather than in a row id.
-    set_version_no: int | None = None
+    #: That version's name, joined in: a folder row reads "v1.1 · title", and a
+    #: reader thinks in "v1.1" rather than in a row id.
     set_version_label: str | None = None
-    #: A later roll back stepped over this version. Derived from the Set's line,
+    #: The Set is on another line now: this version is not reachable from the one
+    #: it is on (a revert went back past it). Derived from the Set's line,
     #: never stored — it is a fact about what came after — and carried here so
     #: the folder can mute the row without a request per conversation.
     dead_end: bool = False
@@ -533,7 +533,7 @@ class ToolCallsRepository(Repository):
 
 _THREAD_SELECT = f"""
 SELECT t.id, t.title, t.set_id, s.name AS set_name,
-       t.set_version_id, v.version_no AS set_version_no,
+       t.set_version_id,
        {label_sql("v")} AS set_version_label,
        (SELECT COUNT(*) FROM chat_messages m
          WHERE m.thread_id = t.id AND m.role IN ('user', 'assistant')) AS message_count,

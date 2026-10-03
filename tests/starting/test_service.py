@@ -151,7 +151,7 @@ async def test_accepting_creates_the_set_with_origin_starting_point(
     assert accepted.set_row.name == "Kenya Nyeri on the Niche Zero"
 
     version = accepted.version
-    assert version.version_no == 1
+    assert version.version_label == "v1"
     assert version.origin == "starting_point"
     assert version.dose_g == 18.0
     assert version.target_yield_g == 45.0

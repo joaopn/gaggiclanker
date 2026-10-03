@@ -67,7 +67,7 @@ async def test_a_set_thread_is_filed_under_the_current_version(archive: Fixture)
 
     assert result.thread is not None
     assert result.thread.set_version_id == current.id
-    assert result.thread.set_version_no == current.version_no
+    assert result.thread.set_version_label == current.version_label
 
 
 async def test_a_thread_keeps_its_version_when_the_set_moves_on(archive: Fixture) -> None:
@@ -242,7 +242,7 @@ async def test_the_route_files_a_new_thread_under_the_current_version(
     created = body(await client.post("/api/chat/threads", json={"set_id": fixture.set_id}))
 
     assert created["set_version_id"] == current.id
-    assert created["set_version_no"] == current.version_no
+    assert created["set_version_label"] == current.version_label
     assert created["dead_end"] is False
 
 
@@ -256,9 +256,9 @@ async def test_the_list_and_the_detail_both_carry_the_version_and_the_dead_end(
     listed = body(await client.get("/api/chat/threads"))
     detail = body(await client.get(f"/api/chat/threads/{created['id']}"))
 
-    assert listed[0]["set_version_no"] == created["set_version_no"]
+    assert listed[0]["set_version_label"] == created["set_version_label"]
     assert listed[0]["dead_end"] is False
-    assert detail["thread"]["set_version_no"] == created["set_version_no"]
+    assert detail["thread"]["set_version_label"] == created["set_version_label"]
     assert detail["thread"]["dead_end"] is False
 
 
@@ -277,8 +277,8 @@ async def test_the_served_version_stays_the_thread_s_after_the_set_moves_on(
     detail = body(await client.get(f"/api/chat/threads/{created['id']}"))
 
     assert listed[0]["set_version_id"] == created["set_version_id"]
-    assert listed[0]["set_version_no"] == created["set_version_no"]
-    assert detail["thread"]["set_version_no"] == created["set_version_no"]
+    assert listed[0]["set_version_label"] == created["set_version_label"]
+    assert detail["thread"]["set_version_label"] == created["set_version_label"]
 
 
 async def test_the_route_answers_422_for_a_version_of_another_set(

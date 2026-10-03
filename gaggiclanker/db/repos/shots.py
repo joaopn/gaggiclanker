@@ -178,15 +178,14 @@ class ShotSetBadge(BaseModel):
 
     Nested on the list row rather than three flat columns because it is one
     fact — "this shot is Ethiopia natural v1.1" — and a row with
-    `set_name: null, set_version_no: 2` would be a shape nothing can render.
+    `set_name: null, version_label: "v2"` would be a shape nothing can render.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     set_id: int
     set_name: str
-    #: The version's ordinal, and its name ("v1.1"), which is what a badge shows.
-    version_no: int
+    #: The version's name ("v1.1"), which is what a badge shows.
     version_label: str
 
 
@@ -263,13 +262,11 @@ class ShotListRow(BaseModel):
         payload = dict(data)
         badge_set_id = payload.pop("badge_set_id", None)
         badge_set_name = payload.pop("badge_set_name", None)
-        badge_version_no = payload.pop("badge_version_no", None)
         badge_version_label = payload.pop("badge_version_label", None)
-        if badge_set_id is not None and badge_version_no is not None:
+        if badge_set_id is not None and badge_version_label is not None:
             payload["set_badge"] = {
                 "set_id": badge_set_id,
                 "set_name": badge_set_name or "",
-                "version_no": badge_version_no,
                 "version_label": badge_version_label or "",
             }
         return payload
@@ -382,7 +379,6 @@ _LIST_COLUMNS = f"""
     s.set_version_id,
     sv.set_id AS badge_set_id,
     st.name AS badge_set_name,
-    sv.version_no AS badge_version_no,
     {label_sql("sv")} AS badge_version_label,
     s.synced_at
 """

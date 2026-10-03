@@ -54,7 +54,7 @@ async def test_minor_and_major_versions_number_as_the_person_reads_them(wired: F
     set_id = await _set(wired)
     first = await wired.sets.current_version(set_id)
     assert first is not None
-    assert (first.version_no, first.version_major, first.version_minor) == (1, 1, 0)
+    assert (first.version_major, first.version_minor) == (1, 0)
     assert first.version_label == "v1"
 
     labels = [
@@ -66,17 +66,17 @@ async def test_minor_and_major_versions_number_as_the_person_reads_them(wired: F
 
     assert labels == ["v1.1", "v1.2", "v2", "v2.1"]
     versions = await wired.sets.versions(set_id)
-    # The ordinal still counts every version: it is what orders them.
-    assert [(v.version_no, v.version_major, v.version_minor) for v in versions] == [
-        (5, 2, 1),
-        (4, 2, 0),
-        (3, 1, 2),
-        (2, 1, 1),
-        (1, 1, 0),
+    # Newest made first, and the Set is on the last one made.
+    assert [(v.version_major, v.version_minor) for v in versions] == [
+        (2, 1),
+        (2, 0),
+        (1, 2),
+        (1, 1),
+        (1, 0),
     ]
     row = await wired.sets.get(set_id)
     assert row is not None
-    assert (row.current_version_no, row.current_version_label) == (5, "v2.1")
+    assert row.current_version_label == "v2.1"
 
 
 async def test_the_minor_counts_within_the_current_major_not_across_the_set(
@@ -126,7 +126,7 @@ async def test_a_design_filled_in_place_stays_v1(wired: Fixtures) -> None:
     )
 
     assert filled is not None
-    assert (filled.version_no, filled.version_major, filled.version_minor) == (1, 1, 0)
+    assert (filled.version_major, filled.version_minor) == (1, 0)
     assert await _add(wired.sets, row.id, dose_g=19) == "v1.1"
 
 
@@ -136,8 +136,8 @@ async def test_the_unique_index_refuses_a_second_copy_of_a_name(wired: Fixtures)
 
     with pytest.raises(sqlite3.IntegrityError):
         await wired.db.execute(
-            "INSERT INTO set_versions (set_id, version_no, version_major, version_minor, "
-            "created_at) VALUES (?, 99, 1, 1, 'x')",
+            "INSERT INTO set_versions (set_id, version_major, version_minor, "
+            "created_at) VALUES (?, 1, 1, 'x')",
             (set_id,),
         )
     # Another Set may of course have its own v1.1.

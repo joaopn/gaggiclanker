@@ -226,7 +226,7 @@ async def test_a_version_filter_finds_the_shots_of_that_version(
     assert newer is not None
     assert await sets.assign_shot(archive.shots[0], newer.id)
 
-    assert (newer.version_no, newer.version_label) == (2, "v1.1")
+    assert newer.version_label == "v1.1"
 
     for name in ("v1.1", "1.1", "V1.1", 1.1):
         data = await search(set_ctx, version=name)

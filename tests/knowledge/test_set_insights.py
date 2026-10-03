@@ -151,6 +151,10 @@ class TestWhatIsStored:
         await world.db.execute(
             "UPDATE set_versions SET parent_version_id = NULL WHERE id = ?", (world.a_version,)
         )
+        await world.db.execute(
+            "UPDATE sets SET current_version_id = NULL WHERE current_version_id = ?",
+            (world.a_version,),
+        )
         await world.db.execute("DELETE FROM set_versions WHERE id = ?", (world.a_version,))
         stored = await world.insights.get(insight_id)
         assert stored is not None and stored.set_version_id is None

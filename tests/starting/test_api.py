@@ -189,7 +189,7 @@ async def test_accepting_answers_201_with_the_set_and_its_version(
     data = response.json()["data"]
     assert data["set"]["bean_id"] == fixture.new_bean_id
     assert data["version"]["origin"] == "starting_point"
-    assert data["version"]["version_no"] == 1
+    assert data["version"]["version_label"] == "v1"
     assert data["draft"] is None
     assert data["run"]["accepted_option"] == "recommended"
 

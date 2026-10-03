@@ -133,7 +133,7 @@ async def set_device_ids(app: FastAPI, set_id: int) -> list[str | None]:
     """The device profile each version of a Set names, oldest first."""
     rows = await app.state.db.fetch_all(
         "SELECT pushed_device_profile_id AS d FROM set_versions "
-        "WHERE set_id = ? ORDER BY version_no",
+        "WHERE set_id = ? ORDER BY created_at, id",
         (set_id,),
     )
     return [row["d"] for row in rows]

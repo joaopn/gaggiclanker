@@ -60,7 +60,7 @@ class TestTheForm:
         assert minor.status_code == 201
         assert data(minor)["version_label"] == "v1.1"
         marked = data(await client.post(url, json={"grind_setting": "20", "major": True}))
-        assert (marked["version_label"], marked["version_no"]) == ("v2", 3)
+        assert marked["version_label"] == "v2"
         unmarked = data(await client.post(url, json={"dose_g": 19, "major": False}))
         assert unmarked["version_label"] == "v2.1"
 

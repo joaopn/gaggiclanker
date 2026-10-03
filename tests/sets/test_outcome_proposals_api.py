@@ -112,6 +112,24 @@ class TestWhatThePageReads:
         assert detail["versions"][0]["version"]["outcome"] is None
         assert detail["track_record"]["graded"] == 0
 
+    async def test_the_set_s_waiting_grade_is_the_current_versions_not_the_newest_made(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        set_id, first = await _graded_set(client, app, bean_id)
+        proposal_id = await _propose(app, set_id, first)
+        sets = SetsRepository(app.state.db)
+        newer = await sets.add_version(set_id, SetVersionPatch(grind_setting="21"))
+        assert newer is not None
+        # The Set is on v1 again while v1.1 is the version made last.
+        await app.state.db.execute(
+            "UPDATE sets SET current_version_id = ? WHERE id = ?", (first, set_id)
+        )
+
+        detail = data(await client.get(f"/api/sets/{set_id}"))
+
+        assert detail["versions"][0]["version"]["id"] == newer.id
+        assert detail["outcome_proposal"]["id"] == proposal_id
+
     async def test_the_waiting_grade_is_listed_with_the_answered_ones(
         self,
         client: httpx.AsyncClient,

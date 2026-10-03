@@ -94,7 +94,7 @@ class TestProposing:
         assert waiting.prediction == PREDICTION
         assert waiting.changed == ["the grind"]
         # Omitted means "against the version this is a change to".
-        assert waiting.compares_to_version_no == 1
+        assert waiting.compares_to_version_label == "v1"
         assert waiting.base_is_current is True
 
     async def test_only_one_proposal_waits_at_a_time(self, wired: Fixtures) -> None:
@@ -183,19 +183,19 @@ class TestAccepting:
         assert result.refused is None
         version = result.version
         assert version is not None
-        assert version.version_no == 2
+        assert version.version_label == "v1.1"
         assert version.origin == "chat"
         assert version.grind_setting == "21"
         # Everything not in the patch is inherited, as on any other version.
         assert version.dose_g == 18
         assert version.intent == "one click finer, chasing the sourness out"
         assert version.prediction == PREDICTION
-        assert version.compares_to_version_no == 1
+        assert version.compares_to_version_label == "v1"
 
         assert result.proposal is not None
         assert result.proposal.status == "accepted"
         assert result.proposal.resulting_version_id == version.id
-        assert result.proposal.resulting_version_no == 2
+        assert result.proposal.resulting_version_label == "v1.1"
         assert await proposals.waiting(set_id) is None
 
     async def test_accept_keeps_a_comparison_against_nothing(self, wired: Fixtures) -> None:
@@ -527,7 +527,7 @@ class TestTheSetMovingOnRetiresWhatWasWaiting:
         assert waiting is not None
         result = await proposals.accept(set_id, waiting.id)
         assert result.version is not None
-        assert result.version.version_no == 3
+        assert result.version.version_label == "v1.2"
 
 
 class TestTheConversationAProposalNames:

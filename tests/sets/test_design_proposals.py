@@ -127,7 +127,7 @@ async def test_the_preview_is_version_1_as_it_would_be_filled(wired: Fixtures) -
     preview = await proposals.preview(stored)
 
     assert preview is not None
-    assert (preview.id, preview.version_no) == (row.current_version_id, 1)
+    assert (preview.id, preview.version_label) == (row.current_version_id, "v1")
     assert (preview.profile_version_id, preview.profile_label) == (profile, "Designed")
     assert (preview.grind_setting, preview.dose_g, preview.target_yield_g) == ("20", 18, 40)
     assert (preview.intent, preview.origin) == ("A longer, gentler shot for more body.", "chat")
@@ -149,7 +149,7 @@ async def test_a_first_recipe_is_drawn_against_an_empty_one_before_and_after_acc
     # Version 1 is filled now, but the card's other side is still no recipe:
     # the row it was based on, with nothing in it.
     assert base is not None
-    assert (base.id, base.version_no) == (row.current_version_id, 1)
+    assert (base.id, base.version_label) == (row.current_version_id, "v1")
     assert (base.profile_version_id, base.profile_label, base.profile_temperature_c) == (
         None,
         None,
@@ -314,7 +314,7 @@ async def test_accepting_an_initial_recipe_fills_version_1_and_appends_nothing(
     assert result.proposal.resulting_version_id == v1.id
     version = result.version
     assert version is not None
-    assert (version.id, version.version_no, version.origin) == (v1.id, 1, "chat")
+    assert (version.id, version.version_label, version.origin) == (v1.id, "v1", "chat")
     assert (version.profile_version_id, version.grind_setting, version.grind_value) == (
         profile,
         "20",
@@ -426,7 +426,7 @@ async def test_writing_a_version_by_hand_stales_the_waiting_recipe_and_discards_
 
     filled = await wired.sets.add_version(row.id, SetVersionPatch(dose_g=18, grind_setting="21"))
 
-    assert filled is not None and filled.version_no == 1
+    assert filled is not None and filled.version_label == "v1"
     retired = await proposals.get(row.id, stored.id)
     assert retired is not None and retired.status == "stale"
     assert await draft_status(wired, draft_id) == "discarded"

@@ -3806,8 +3806,6 @@ export interface components {
             set_version_id?: number | null;
             /** Set Version Label */
             set_version_label?: string | null;
-            /** Set Version No */
-            set_version_no?: number | null;
             /**
              * Title
              * @default
@@ -4446,8 +4444,6 @@ export interface components {
             version_id: number;
             /** Version Label */
             version_label: string;
-            /** Version No */
-            version_no: number;
         };
         /** ExampleShot */
         ExampleShot: {
@@ -5565,8 +5561,6 @@ export interface components {
             compares_to_version_id?: number | null;
             /** Compares To Version Label */
             compares_to_version_label?: string | null;
-            /** Compares To Version No */
-            compares_to_version_no?: number | null;
             /** Created At */
             created_at: string;
             /** Draft Label */
@@ -5613,8 +5607,6 @@ export interface components {
             recorded_version_id?: number | null;
             /** Recorded Version Label */
             recorded_version_label?: string | null;
-            /** Recorded Version No */
-            recorded_version_no?: number | null;
             /** Replaced By Draft Id */
             replaced_by_draft_id?: number | null;
             /** Replaced Device Profile Id */
@@ -5629,8 +5621,6 @@ export interface components {
             set_next_major_label?: string | null;
             /** Set Next Minor Label */
             set_next_minor_label?: string | null;
-            /** Set Next Version No */
-            set_next_version_no?: number | null;
             /** Source Analysis Id */
             source_analysis_id?: number | null;
             /** Source Suggestion Id */
@@ -6272,8 +6262,6 @@ export interface components {
             base_version_id: number;
             /** Base Version Label */
             base_version_label?: string | null;
-            /** Base Version No */
-            base_version_no?: number | null;
             /**
              * Changed
              * @default []
@@ -6293,8 +6281,6 @@ export interface components {
             compares_to_version_id?: number | null;
             /** Compares To Version Label */
             compares_to_version_label?: string | null;
-            /** Compares To Version No */
-            compares_to_version_no?: number | null;
             /** Created At */
             created_at: string;
             /** Decided At */
@@ -6350,8 +6336,6 @@ export interface components {
             resulting_version_id?: number | null;
             /** Resulting Version Label */
             resulting_version_label?: string | null;
-            /** Resulting Version No */
-            resulting_version_no?: number | null;
             /** Set Id */
             set_id: number;
             /** @default proposed */
@@ -6400,11 +6384,6 @@ export interface components {
              * @default
              */
             current_version_label: string;
-            /**
-             * Current Version No
-             * @default 0
-             */
-            current_version_no: number;
             design_brief?: components["schemas"]["DesignBrief"];
             /**
              * Designing
@@ -6528,8 +6507,6 @@ export interface components {
             started_at?: string | null;
             /** Version Label */
             version_label: string;
-            /** Version No */
-            version_no: number;
         };
         /**
          * SetTrends
@@ -6577,8 +6554,6 @@ export interface components {
             shots: number;
             /** Version Label */
             version_label: string;
-            /** Version No */
-            version_no: number;
         };
         /**
          * SetVersionAdd
@@ -6675,8 +6650,6 @@ export interface components {
             compares_to_version_id?: number | null;
             /** Compares To Version Label */
             compares_to_version_label?: string | null;
-            /** Compares To Version No */
-            compares_to_version_no?: number | null;
             /** Created At */
             created_at: string;
             /** Dose G */
@@ -6692,6 +6665,11 @@ export interface components {
              * @default
              */
             intent: string;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
             /** @default manual */
             origin: components["schemas"]["SetVersionOrigin"];
             /** Origin Analysis Id */
@@ -6716,6 +6694,8 @@ export interface components {
             readonly outcome_state: components["schemas"]["OutcomeState"];
             /** Parent Version Id */
             parent_version_id?: number | null;
+            /** Parent Version Label */
+            parent_version_label?: string | null;
             /**
              * Prediction
              * @default
@@ -6735,8 +6715,6 @@ export interface components {
             restores_version_id?: number | null;
             /** Restores Version Label */
             restores_version_label?: string | null;
-            /** Restores Version No */
-            restores_version_no?: number | null;
             /** Set Id */
             set_id: number;
             /**
@@ -6758,8 +6736,6 @@ export interface components {
              * @default 0
              */
             version_minor: number;
-            /** Version No */
-            version_no: number;
         };
         /**
          * SetVersionWrite
@@ -7354,7 +7330,7 @@ export interface components {
          *
          *     Nested on the list row rather than three flat columns because it is one
          *     fact — "this shot is Ethiopia natural v1.1" — and a row with
-         *     `set_name: null, set_version_no: 2` would be a shape nothing can render.
+         *     `set_name: null, version_label: "v2"` would be a shape nothing can render.
          */
         ShotSetBadge: {
             /** Set Id */
@@ -7363,8 +7339,6 @@ export interface components {
             set_name: string;
             /** Version Label */
             version_label: string;
-            /** Version No */
-            version_no: number;
         };
         /**
          * SimilarOutcome
@@ -7473,8 +7447,6 @@ export interface components {
             target_yield_g?: number | null;
             /** Version Label */
             version_label: string;
-            /** Version No */
-            version_no: number;
         };
         /**
          * SimilarSetsData

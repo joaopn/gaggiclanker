@@ -238,14 +238,16 @@ class SetVersionRow(BaseModel):
 
     id: int
     set_id: int
-    #: The ordinal: this is the Set's Nth version. What orders the versions and
-    #: says which one is current; never shown — a reader sees `version_label`.
-    version_no: int
     #: The version's name, v<major>.<minor>. A dial-in change bumps the minor,
     #: a functional change starts the next major (`domain/sets.py`).
     version_major: int
     version_minor: int = 0
     parent_version_id: int | None = None
+    #: The parent's name, joined in: "from v1.2" in the log.
+    parent_version_label: str | None = None
+    #: Whether this is the version the Set is on now. A revert moves it, so it is
+    #: not "the newest": it is read off the Set's pointer.
+    is_current: bool = False
     profile_version_id: int | None = None
     #: The profile's label, joined in. A version that names a profile the mirror
     #: has since dropped still has its id; the label is then NULL.
@@ -274,14 +276,13 @@ class SetVersionRow(BaseModel):
     #: guess, so there is nothing here to be right or wrong about.
     prediction: str = ""
     compares_to_version_id: int | None = None
-    #: The compared-to version's ordinal and name, joined in. A reader — and a
-    #: model reading the curated view — thinks in "v1.1", never in a row id.
-    compares_to_version_no: int | None = None
+    #: The compared-to version's name, joined in. A reader — and a model reading
+    #: the curated view — thinks in "v1.1", never in a row id.
     compares_to_version_label: str | None = None
     #: The version whose recipe this one restores, when it came from a roll
-    #: back, and its ordinal and name beside it.
+    #: back made before a revert became a move of the Set's pointer (nothing
+    #: writes it any more), and its name beside it.
     restores_version_id: int | None = None
-    restores_version_no: int | None = None
     restores_version_label: str | None = None
     prediction_at: str | None = None
     outcome: VersionOutcome | None = None
@@ -521,8 +522,9 @@ class SetRow(BaseModel):
     #: made any other way.
     design_brief: DesignBrief = Field(default_factory=DesignBrief)
     created_at: str
+    #: The version the Set is on: the pointer on the Set's own row, moved by
+    #: every append and every revert.
     current_version_id: int | None = None
-    current_version_no: int = 0
     #: The current version's name, "v1.2"; empty only for a Set with no
     #: version, which does not exist outside a half-written transaction.
     current_version_label: str = ""
@@ -607,7 +609,6 @@ class SetShotRow(BaseModel):
 
     shot_id: int
     version_id: int
-    version_no: int
     version_label: str
     started_at: str | None = None
     #: Never parsed; its numbers are whatever the header happened to hold.
@@ -656,7 +657,6 @@ class SetTrendPoint(BaseModel):
     shot_id: int
     device_id: str
     set_version_id: int
-    version_no: int
     version_label: str
     started_at: str | None = None
     execution_score: float | None = None
@@ -674,7 +674,6 @@ class SetTrendVersion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     set_version_id: int
-    version_no: int
     version_label: str
     intent: str = ""
     origin: str = "manual"
@@ -812,7 +811,6 @@ class VersionNode(Protocol):
     """
 
     id: int
-    version_no: int
     parent_version_id: int | None
     restores_version_id: int | None
 
@@ -824,25 +822,25 @@ class VersionLink(BaseModel):
 
     id: int
     set_id: int
-    version_no: int
     parent_version_id: int | None = None
     restores_version_id: int | None = None
 
 
-def live_line(versions: Sequence[VersionNode]) -> list[int]:
+def live_line(versions: Sequence[VersionNode], current_id: int | None) -> list[int]:
     """The versions still on the line being brewed, newest first.
 
-    Walked back from the current version rather than filtered: a version is on
-    the line if you can reach it by stepping backwards from where the Set is
-    now. From a version that **restores** an earlier one, the step goes to what
-    it restored — everything in between was stepped over. From any other, it
-    goes to its parent.
+    Walked back from the current version (the Set's pointer, which a revert
+    moves) rather than filtered: a version is on the line if you can reach it by
+    stepping backwards from where the Set is now, through the fork history
+    (`parent_version_id`), as in version control. A row an old roll back wrote
+    (`restores_version_id`) steps to what it restored instead: everything in
+    between was stepped over.
 
     Reaching an id twice would be a cycle in data that should have none, and the
     walk stops rather than spinning: a malformed row must not hang the Set page.
     """
     by_id = {version.id: version for version in versions}
-    node = max(versions, key=lambda version: version.version_no, default=None)
+    node = by_id.get(current_id or 0)
     line: list[int] = []
     seen: set[int] = set()
     while node is not None and node.id not in seen:
@@ -852,24 +850,18 @@ def live_line(versions: Sequence[VersionNode]) -> list[int]:
     return line
 
 
-def dead_end_ids(versions: Sequence[VersionNode]) -> set[int]:
+def dead_end_ids(versions: Sequence[VersionNode], current_id: int | None) -> set[int]:
     """The versions that are not on the live line.
 
-    A roll back from v5 to v3 appends v6 whose recipe is v3's and says so in
-    `restores_version_id`. What that makes v4 and v5 is not "wrong" — they were
-    real attempts — but a branch nobody is on any more, and the log mutes them
-    so the line a reader follows is the one still being brewed.
-
-    "Off the line" rather than "between the roll back and its target", because
-    the two stop agreeing as soon as roll backs overlap: with v5 restoring v2,
-    v6 restoring v4 and v7 restoring v3, the live line is v7, v3, v2, v1 and v6
-    is a dead end even though nothing later spans it. Walking the line is the
-    definition; a span test is an approximation of it that happens to be right
-    for one roll back.
+    After a revert from v2.1 to v1.2 the Set is on v1.2, and v2 and v2.1 are
+    not wrong — they were real attempts — but a branch nobody is on any more, and
+    the log mutes them so the line a reader follows is the one still being
+    brewed. Walking the line is the definition; a span test is an approximation
+    that stops agreeing as soon as reverts overlap.
 
     Pure, over the list the page already holds.
     """
-    live = set(live_line(versions))
+    live = set(live_line(versions, current_id))
     return {version.id for version in versions if version.id not in live}
 
 
@@ -945,8 +937,6 @@ _SET_SELECT = f"""
     SELECT s.*,
            b.name AS bean_name,
            g.name AS grinder_name,
-           cur.id AS current_version_id,
-           COALESCE(cur.version_no, 0) AS current_version_no,
            COALESCE({label_sql("cur")}, '') AS current_version_label,
            {state_sql("cur")},
            cur.profile_version_id AS profile_version_id,
@@ -958,17 +948,13 @@ _SET_SELECT = f"""
     FROM sets s
     JOIN beans b ON b.id = s.bean_id
     LEFT JOIN grinders g ON g.id = s.grinder_id
-    -- The current version is the highest `version_no`, not the newest row id:
-    -- version numbers are the thing the user sees and the UNIQUE(set_id,
-    -- version_no) index is what makes "highest" unambiguous.
-    LEFT JOIN set_versions cur
-           ON cur.set_id = s.id
-          AND cur.version_no = (SELECT MAX(v3.version_no)
-                                  FROM set_versions v3 WHERE v3.set_id = s.id)
+    -- The current version is the Set's pointer, not the newest row: a revert
+    -- moves the Set back onto an older version without writing a new one.
+    LEFT JOIN set_versions cur ON cur.id = s.current_version_id
     LEFT JOIN profile_versions pv ON pv.id = cur.profile_version_id
 """  # noqa: S608 - the only interpolation is the version label expression, a constant
 
-#: The two self-joins resolve a row id into the version *number* a reader sees.
+#: The self-joins resolve a row id into the version *name* a reader sees.
 #: Joined rather than looked up by the caller, because the shot page is handed
 #: one version and has no list to resolve it against.
 _VERSION_SELECT = f"""
@@ -981,12 +967,14 @@ _VERSION_SELECT = f"""
            CASE WHEN json_type(pv.json, '$.temperature') IN ('integer', 'real')
                  AND json_extract(pv.json, '$.temperature') > 0
                 THEN json_extract(pv.json, '$.temperature') END AS profile_temperature_c,
-           cmp.version_no AS compares_to_version_no,
            {label_sql("cmp")} AS compares_to_version_label,
-           res.version_no AS restores_version_no,
            {label_sql("res")} AS restores_version_label,
+           {label_sql("par")} AS parent_version_label,
+           (cs.current_version_id = v.id) AS is_current,
            (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count
     FROM set_versions v
+    JOIN sets cs ON cs.id = v.set_id
+    LEFT JOIN set_versions par ON par.id = v.parent_version_id
     LEFT JOIN profile_versions pv ON pv.id = v.profile_version_id
     LEFT JOIN set_versions cmp ON cmp.id = v.compares_to_version_id
     LEFT JOIN set_versions res ON res.id = v.restores_version_id
@@ -1206,7 +1194,7 @@ class SetsRepository(Repository):
 
         The parent is whatever is current *now*, read inside the transaction
         that writes the child, so two versions added at once cannot both claim
-        the same parent, the same `version_no` or the same name.
+        the same parent or the same name.
         """
         async with self.db.transaction():
             version_id = await self.append_version(set_id, patch, major=major, path=path)
@@ -1325,7 +1313,8 @@ class SetsRepository(Repository):
         proposal appends a version too, and that proposal is not overtaken by
         the version it created.
 
-        **The ordinal and the name are numbered here too**, from the Set's rows
+        **The name is numbered here too, and the Set's pointer moved to the new
+        version**, from the Set's rows
         read in this same transaction, so no path numbers a version itself and
         two writers cannot mint one name (the unique index on it is the
         backstop). ``major`` is already decided by the caller's rule.
@@ -1333,7 +1322,6 @@ class SetsRepository(Repository):
         numbers = await next_numbers(self.db, set_id, major=major)
         payload: dict[str, Any] = {
             "set_id": set_id,
-            "version_no": numbers.version_no,
             "version_major": numbers.major,
             "version_minor": numbers.minor,
             "parent_version_id": parent_version_id,
@@ -1355,15 +1343,19 @@ class SetsRepository(Repository):
             f"INSERT INTO set_versions ({columns}) VALUES ({placeholders})",  # noqa: S608 - keys are the literal payload above
             payload,
         )
+        version_id = int(cursor.lastrowid or 0)
+        await self.db.execute(
+            "UPDATE sets SET current_version_id = ? WHERE id = ?", (version_id, set_id)
+        )
         await self._retire_waiting(set_id, now, keep_proposal=keep_proposal)
         log.info(
             "set_version_added",
             set_id=set_id,
-            version_no=numbers.version_no,
+            set_version_id=version_id,
             version_label=numbers.label,
             major=major,
         )
-        return int(cursor.lastrowid or 0)
+        return version_id
 
     async def _fill_design(
         self,
@@ -1500,7 +1492,7 @@ class SetsRepository(Repository):
                 else version.parent_version_id
             )
             if spec.prediction and compares_to is not None:
-                if await self.comparison_target(set_id, version.version_no, compares_to) is None:
+                if await self.comparison_target(set_id, version.id, compares_to) is None:
                     return VersionWriteResult(refused="bad_compare")
             values = _prediction_values(spec.prediction, compares_to, now=now)
             await self.db.execute(
@@ -1623,25 +1615,29 @@ class SetsRepository(Repository):
         return VersionWriteResult(version=await self.get_version(version_id))
 
     async def comparison_target(
-        self, set_id: int, version_no: int, compares_to: int
+        self, set_id: int, version_id: int, compares_to: int
     ) -> SetVersionRow | None:
-        """The version a prediction on `version_no` may name, or ``None``.
+        """The version a prediction on `version_id` may name, or ``None``.
 
         Two conditions, in one place because both routes that accept a
         comparison have to agree on them:
 
         * **the same Set.** Two Sets are two coffees, and "less bitter than v2"
           across them compares nothing anybody brewed.
-        * **older.** A prediction reads "compared to vN", and a vN that did not
-          exist yet is not something this version could have been expected to
-          improve on. This also rules out a version against itself, which is
-          the degenerate case of the same mistake.
+        * **older.** A prediction reads "compared to vN", and a vN that was made
+          after this version is not something it could have been expected to
+          improve on. Older is `created_at` (the row id only breaks a tie), never
+          the id or a name: the names are identifiers, not a sequence. This also
+          rules out a version against itself.
 
         `POST /versions` calls :meth:`version_of_set` instead, because there the
         version does not exist yet and every candidate is older by construction.
         """
         target = await self.version_of_set(set_id, compares_to)
-        if target is None or target.version_no >= version_no:
+        version = await self.version_of_set(set_id, version_id)
+        if target is None or version is None:
+            return None
+        if (target.created_at, target.id) >= (version.created_at, version.id):
             return None
         return target
 
@@ -1731,12 +1727,11 @@ class SetsRepository(Repository):
             """
             SELECT v.id FROM set_versions v
             WHERE v.set_id = :set_id
-              AND v.version_no < (SELECT MAX(v2.version_no) FROM set_versions v2
-                                   WHERE v2.set_id = :set_id)
+              AND v.id != (SELECT current_version_id FROM sets WHERE id = :set_id)
               AND EXISTS (SELECT 1 FROM shots sh
                             JOIN shot_judgements j ON j.shot_id = sh.id
                            WHERE sh.set_version_id = v.id AND j.decision = 'keep')
-            ORDER BY v.version_no DESC LIMIT 1
+            ORDER BY v.created_at DESC, v.id DESC LIMIT 1
             """,
             {"set_id": set_id},
         )
@@ -1804,7 +1799,7 @@ class SetsRepository(Repository):
         row = await self.db.fetch_one(
             "SELECT pushed_device_profile_id FROM set_versions "
             "WHERE set_id = ? AND profile_version_id = ? AND pushed_device_profile_id IS NOT NULL "
-            "ORDER BY version_no DESC LIMIT 1",
+            "ORDER BY created_at DESC, id DESC LIMIT 1",
             (set_id, profile_version_id),
         )
         return None if row is None else str(row["pushed_device_profile_id"])
@@ -1830,8 +1825,7 @@ class SetsRepository(Repository):
         """
         rows = await self.db.fetch_all(
             "SELECT s.id AS id, s.name AS name FROM sets s "
-            "JOIN set_versions v ON v.set_id = s.id "
-            "AND v.version_no = (SELECT MAX(version_no) FROM set_versions WHERE set_id = s.id) "
+            "JOIN set_versions v ON v.id = s.current_version_id "
             "WHERE v.pushed_device_profile_id = ? OR v.profile_version_id = ? ORDER BY s.id",
             (device_id, profile_version_id),
         )
@@ -1847,8 +1841,7 @@ class SetsRepository(Repository):
         rows = await self.db.fetch_all(
             "SELECT s.id AS id, s.name AS name, v.profile_version_id AS pv, "
             "v.pushed_device_profile_id AS dev FROM sets s "
-            "JOIN set_versions v ON v.set_id = s.id "
-            "AND v.version_no = (SELECT MAX(version_no) FROM set_versions WHERE set_id = s.id) "
+            "JOIN set_versions v ON v.id = s.current_version_id "
             "WHERE s.archived = 0 ORDER BY s.id"
         )
         return [(int(r["id"]), str(r["name"]), r["pv"], r["dev"]) for r in rows]
@@ -1882,26 +1875,36 @@ class SetsRepository(Repository):
             return set()
         placeholders = ", ".join("?" * len(wanted))
         rows = await self.db.fetch_all(
-            "SELECT id, set_id, version_no, parent_version_id, restores_version_id "  # noqa: S608 - placeholders are generated, the ids are bound
+            "SELECT id, set_id, parent_version_id, restores_version_id "  # noqa: S608 - placeholders are generated, the ids are bound
             f"FROM set_versions WHERE set_id IN ({placeholders})",
             wanted,
         )
+        pointers = {
+            int(row["id"]): row["current_version_id"]
+            for row in await self.db.fetch_all(
+                f"SELECT id, current_version_id FROM sets WHERE id IN ({placeholders})",  # noqa: S608 - placeholders are generated, the ids are bound
+                wanted,
+            )
+        }
         links = self.to_models(VersionLink, rows)
         dead: set[int] = set()
         for set_id in wanted:
-            dead |= dead_end_ids([link for link in links if link.set_id == set_id])
+            dead |= dead_end_ids(
+                [link for link in links if link.set_id == set_id], pointers.get(set_id)
+            )
         return dead
 
     async def versions(self, set_id: int) -> list[SetVersionRow]:
-        """Every version of a Set, newest first — the order the timeline reads in."""
+        """Every version of a Set, newest made first — the order the timeline reads in."""
         rows = await self.db.fetch_all(
-            f"{_VERSION_SELECT} WHERE v.set_id = ? ORDER BY v.version_no DESC", (set_id,)
+            f"{_VERSION_SELECT} WHERE v.set_id = ? ORDER BY v.created_at DESC, v.id DESC",
+            (set_id,),
         )
         return self.to_models(SetVersionRow, rows)
 
     async def _current_version_row(self, set_id: int) -> SetVersionRow | None:
         row = await self.db.fetch_one(
-            f"{_VERSION_SELECT} WHERE v.set_id = ? ORDER BY v.version_no DESC LIMIT 1", (set_id,)
+            f"{_VERSION_SELECT} WHERE v.id = cs.current_version_id AND v.set_id = ?", (set_id,)
         )
         return self.to_model(SetVersionRow, row)
 
@@ -1998,10 +2001,7 @@ class SetsRepository(Repository):
             JOIN sets s ON s.id = v.set_id
             WHERE s.automatch = 1 AND s.archived = 0
               AND v.profile_version_id = ?
-              AND v.version_no = (
-                  SELECT MAX(latest.version_no) FROM set_versions latest
-                  WHERE latest.set_id = v.set_id
-              )
+              AND v.id = s.current_version_id
             ORDER BY v.id
             LIMIT 2
             """,
@@ -2131,7 +2131,6 @@ class SetsRepository(Repository):
             f"""
             SELECT sh.id AS shot_id,
                    sh.set_version_id AS version_id,
-                   v.version_no,
                    {label_sql("v")} AS version_label,
                    v.profile_version_id,
                    v.grind_setting,
@@ -2238,7 +2237,7 @@ class SetsRepository(Repository):
         self,
         set_id: int,
         *,
-        version_no: int | None = None,
+        version_id: int | None = None,
         decision: Decision | None = None,
         limit: int = 50,
     ) -> list[SetShotRow]:
@@ -2256,9 +2255,9 @@ class SetsRepository(Repository):
         """
         where = ["v.set_id = :set_id"]
         params: dict[str, Any] = {"set_id": set_id, "limit": limit}
-        if version_no is not None:
-            where.append("v.version_no = :version_no")
-            params["version_no"] = version_no
+        if version_id is not None:
+            where.append("v.id = :version_id")
+            params["version_id"] = version_id
         if decision is not None:
             where.append("j.decision = :decision")
             params["decision"] = decision
@@ -2266,7 +2265,6 @@ class SetsRepository(Repository):
             f"""
             SELECT sh.id AS shot_id,
                    sh.set_version_id AS version_id,
-                   v.version_no,
                    {label_sql("v")} AS version_label,
                    sh.started_at,
                    sh.quarantined,
@@ -2306,7 +2304,7 @@ class SetsRepository(Repository):
         """
         rows = await self.db.fetch_all(
             f"""
-            SELECT sh.id AS shot_id, sh.device_id, sh.set_version_id, v.version_no,
+            SELECT sh.id AS shot_id, sh.device_id, sh.set_version_id,
                    {label_sql("v")} AS version_label,
                    sh.started_at, sh.execution_score, sh.duration_ms,
                    j.dose_in_g, j.dose_out_g, j.rating,
@@ -2315,7 +2313,7 @@ class SetsRepository(Repository):
             JOIN set_versions v ON v.id = sh.set_version_id
             LEFT JOIN shot_judgements j ON j.shot_id = sh.id
             WHERE v.set_id = ?
-            ORDER BY v.version_no, COALESCE(sh.started_at, ''), sh.id
+            ORDER BY COALESCE(sh.started_at, ''), sh.id
             """,  # noqa: S608 - the interpolation is the label expression, the id is bound
             (set_id,),
         )
@@ -2331,7 +2329,6 @@ class SetsRepository(Repository):
                     shot_id=int(row["shot_id"]),
                     device_id=str(row["device_id"]),
                     set_version_id=int(row["set_version_id"]),
-                    version_no=int(row["version_no"]),
                     version_label=str(row["version_label"]),
                     started_at=row["started_at"],
                     execution_score=row["execution_score"],
@@ -2351,7 +2348,6 @@ class SetsRepository(Repository):
         summaries = [
             SetTrendVersion(
                 set_version_id=version.id,
-                version_no=version.version_no,
                 version_label=version.version_label,
                 intent=version.intent,
                 origin=version.origin,
@@ -2363,7 +2359,7 @@ class SetsRepository(Repository):
                 avg_rating=_mean([p.rating for p in by_version[version.id]]),
             )
             # Oldest first: a trend reads left to right.
-            for version in sorted(versions, key=lambda v: v.version_no)
+            for version in sorted(versions, key=lambda v: (v.created_at, v.id))
         ]
         return SetTrends(set_id=set_id, versions=summaries, shots=points)
 

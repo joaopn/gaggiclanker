@@ -53,7 +53,7 @@ async def test_the_lookback_finds_the_file_when_older_data_never_carried_the_id(
     await grind_version(wired.sets, set_id)
     await wired.db.execute(
         "UPDATE set_versions SET pushed_device_profile_id = NULL "
-        "WHERE set_id = ? AND version_no = 2",
+        "WHERE set_id = ? AND version_major = 1 AND version_minor = 1",
         (set_id,),
     )
 

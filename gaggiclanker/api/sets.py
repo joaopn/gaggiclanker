@@ -273,7 +273,6 @@ class SetProposalDetail(BaseModel):
     #: The conversation it was argued in, if that conversation still exists.
     thread_id: int | None = None
     base_version_id: int
-    base_version_no: int | None = None
     base_version_label: str | None = None
     #: Whether the Set is still on the version this was proposed against.
     #: ``False`` means Accept will refuse: the change was argued against a
@@ -287,7 +286,6 @@ class SetProposalDetail(BaseModel):
     reason: str = ""
     prediction: str = ""
     compares_to_version_id: int | None = None
-    compares_to_version_no: int | None = None
     compares_to_version_label: str | None = None
     #: Why two things had to move together, when the agent said they did. Empty
     #: for the ordinary one-change proposal.
@@ -315,7 +313,6 @@ class SetProposalDetail(BaseModel):
     status: ProposalStatus = "proposed"
     decline_note: str = ""
     resulting_version_id: int | None = None
-    resulting_version_no: int | None = None
     resulting_version_label: str | None = None
     #: The agent's grade of the base version, waiting beside this change.
     #: Accepting the change records it first, in the same transaction, so the
@@ -629,7 +626,6 @@ async def _proposal_detail(
         draft_id=row.draft_id,
         thread_id=row.thread_id,
         base_version_id=row.base_version_id,
-        base_version_no=row.base_version_no,
         base_version_label=row.base_version_label,
         base_is_current=row.base_is_current,
         changes=changes,
@@ -638,7 +634,6 @@ async def _proposal_detail(
         reason=row.reason,
         prediction=row.prediction,
         compares_to_version_id=row.compares_to_version_id,
-        compares_to_version_no=row.compares_to_version_no,
         compares_to_version_label=row.compares_to_version_label,
         combined_reason=row.combined_reason,
         suggest_major=row.suggest_major,
@@ -649,7 +644,6 @@ async def _proposal_detail(
         status=row.status,
         decline_note=row.decline_note,
         resulting_version_id=row.resulting_version_id,
-        resulting_version_no=row.resulting_version_no,
         resulting_version_label=row.resulting_version_label,
         records_outcome=(
             await proposals.outcomes.waiting_for_version(row.base_version_id)
@@ -850,7 +844,7 @@ async def get_set(
         if shot.set_version_id in grouped:
             grouped[shot.set_version_id].append(shot)
 
-    dead_ends = dead_end_ids(versions)
+    dead_ends = dead_end_ids(versions, row.current_version_id)
     counts = await sets.label_counts(set_id)
     # One pass over the Set's counted shots feeds both the spread and every
     # version's evidence: the evidence is held against the spread, and two
@@ -877,10 +871,8 @@ async def get_set(
                     counted,
                     spreads,
                     version_id=version.id,
-                    version_no=version.version_no,
                     version_label=version.version_label,
                     compares_to_version_id=version.compares_to_version_id,
-                    compares_to_version_no=version.compares_to_version_no,
                     compares_to_version_label=version.compares_to_version_label,
                 )
                 if version.prediction
@@ -900,7 +892,7 @@ async def get_set(
             spread=spread_report(spreads),
             rollback_target_version_id=await sets.rollback_target(set_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
-            outcome_proposal=grades.get(versions[0].id) if versions else None,
+            outcome_proposal=grades.get(row.current_version_id or 0),
         ).model_dump(mode="json")
     )
 

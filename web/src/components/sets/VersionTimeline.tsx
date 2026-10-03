@@ -119,7 +119,7 @@ export function VersionTimeline({
   return (
     <ol className="space-y-3" data-testid="version-timeline">
       {versions.map((entry) =>
-        designing && entry.version.version_no === 1 && hasNoRecipe(entry.version) ? (
+        designing && entry.version.parent_version_id === null && hasNoRecipe(entry.version) ? (
           <BeingDesigned key={entry.version.id} setId={setId} entry={entry} />
         ) : (
           <li

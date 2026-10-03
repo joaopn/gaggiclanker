@@ -121,7 +121,7 @@ class TestSyncMatching:
                 assert version is not None
                 assert assigned.set_version_id == version.id
                 assert assigned.set_badge is not None
-                assert assigned.set_badge.version_no == 1
+                assert assigned.set_badge.version_label == "v1"
                 # The other profile is not this Set's, so the archive says so
                 # rather than guessing.
                 assert unassigned.set_version_id is None

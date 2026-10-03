@@ -107,12 +107,13 @@ export function VersionPredictionEditor({
               as "not sent": not sent falls back to the parent, which is the
               opposite of what this option says. */}
           <option value="">Nothing — grade it on its own numbers</option>
+          {/* Older only: the server refuses a comparison against a version made
+              after this one, and offering one would be a 422 waiting to happen.
+              The list is newest made first, so the older ones follow this one;
+              what a version is called says nothing about its age. */}
           {versions
+            .slice(versions.findIndex((entry) => entry.version.id === version.id) + 1)
             .map((entry) => entry.version)
-            // Older only: the server refuses a comparison against a version
-            // that did not exist yet, and offering one would be a 422 waiting
-            // to happen.
-            .filter((other) => other.version_no < version.version_no)
             .map((other) => (
               <option key={other.id} value={String(other.id)}>
                 {other.version_label}

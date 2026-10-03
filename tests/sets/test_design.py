@@ -55,7 +55,7 @@ async def test_a_designed_set_has_the_flag_the_brief_and_an_empty_version_1(
     versions = await wired.sets.versions(row.id)
     assert len(versions) == 1
     version = versions[0]
-    assert version.version_no == 1
+    assert version.version_label == "v1"
     assert (
         version.profile_version_id,
         version.grind_setting,
@@ -119,7 +119,7 @@ async def test_the_first_version_written_fills_version_1_in_place(wired: Fixture
     )
 
     assert filled is not None
-    assert (filled.id, filled.version_no) == (v1.id, 1)
+    assert (filled.id, filled.version_label) == (v1.id, "v1")
     assert (filled.profile_version_id, filled.grind_setting, filled.grind_value) == (
         profile,
         "20",
@@ -147,7 +147,7 @@ async def test_once_filled_the_set_appends_like_any_other(wired: Fixtures) -> No
     second = await wired.sets.add_version(row.id, SetVersionPatch(dose_g=19))
 
     assert second is not None
-    assert second.version_no == 2
+    assert second.version_label == "v1.1"
     # The recipe v1 was filled with is what v2 inherits.
     assert second.dose_g == 19
 
@@ -161,7 +161,7 @@ async def test_a_hand_made_set_that_names_no_profile_still_appends(wired: Fixtur
     second = await wired.sets.add_version(row.id, SetVersionPatch(dose_g=18))
 
     assert second is not None
-    assert second.version_no == 2
+    assert second.version_label == "v1.1"
 
 
 async def test_a_design_with_a_shot_filed_by_hand_refuses_to_be_filled(
@@ -273,13 +273,13 @@ async def test_the_add_a_version_form_fills_a_designed_set_s_version_1(
 
     assert response.status_code == 201, response.text
     version = response.json()["data"]
-    assert (version["id"], version["version_no"]) == (row.current_version_id, 1)
+    assert (version["id"], version["version_label"]) == (row.current_version_id, "v1")
     assert version["origin"] == "manual"
     detail = response.json()
     assert detail["ok"] is True
     listed = (await client.get(f"/api/sets/{row.id}")).json()["data"]
     assert listed["set"]["designing"] is False
-    assert [item["version"]["version_no"] for item in listed["versions"]] == [1]
+    assert [item["version"]["version_label"] for item in listed["versions"]] == ["v1"]
 
 
 async def test_the_add_a_version_form_is_refused_once_a_shot_is_filed_on_the_design(

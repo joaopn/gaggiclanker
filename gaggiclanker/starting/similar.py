@@ -102,7 +102,6 @@ class SimilarSet(BaseModel):
     set_id: int
     set_name: str
     set_version_id: int
-    version_no: int
     #: The version's name, "v1.1", which is what the card and the prompt show.
     version_label: str
     created_at: str
@@ -192,7 +191,6 @@ WITH outcomes AS (
 )
 SELECT v.id                                         AS set_version_id,
        v.set_id,
-       v.version_no,
        {label_sql("v")}                              AS version_label,
        v.created_at,
        v.grind_setting,
@@ -321,7 +319,6 @@ def _to_model(row: dict[str, Any]) -> SimilarSet:
         set_id=int(row["set_id"]),
         set_name=str(row["set_name"]),
         set_version_id=int(row["set_version_id"]),
-        version_no=int(row["version_no"]),
         version_label=str(row["version_label"]),
         created_at=str(row["created_at"]),
         score=round(attribute + outcome, 3),

@@ -44,7 +44,6 @@ def shot(shot_id: int, version_id: int, recipe: dict[str, object], **values: obj
         {
             "shot_id": shot_id,
             "version_id": version_id,
-            "version_no": version_id,
             "target_yield_g": 36.0,
             **recipe,
             **values,
@@ -273,10 +272,8 @@ def _evidence_for(shots: list[CountedShot], measure: str = "shot_time_s") -> Mea
         shots,
         pooled_spreads(shots),
         version_id=2,
-        version_no=2,
         version_label="v2",
         compares_to_version_id=1,
-        compares_to_version_no=1,
         compares_to_version_label="v1",
     )
     return next(row for row in evidence.measures if row.measure == measure)
@@ -345,13 +342,11 @@ def test_a_version_compared_against_nothing_gets_its_own_side_only() -> None:
         shots,
         pooled_spreads(shots),
         version_id=1,
-        version_no=1,
         version_label="v1",
         compares_to_version_id=None,
     )
 
     assert evidence.other is None
-    assert evidence.this.version_no == 1
     assert evidence.this.shots == 2
     assert [row.verdict for row in evidence.measures] == ["no_data"] * len(SPREAD_MEASURES)
     times = evidence.measures[0]
@@ -386,16 +381,13 @@ def test_the_counts_are_plain_facts_with_no_verdict_on_them() -> None:
         shots,
         pooled_spreads(shots),
         version_id=2,
-        version_no=2,
         version_label="v2",
         compares_to_version_id=1,
-        compares_to_version_no=1,
         compares_to_version_label="v1",
     )
 
     assert evidence.this.model_dump() == {
         "version_id": 2,
-        "version_no": 2,
         "version_label": "v2",
         "shots": 2,
         "sour": 0,
@@ -438,10 +430,8 @@ def test_the_other_side_is_the_compared_versions_own_shots_only() -> None:
         shots,
         spreads,
         version_id=2,
-        version_no=2,
         version_label="v2",
         compares_to_version_id=1,
-        compares_to_version_no=1,
         compares_to_version_label="v1",
     )
 
@@ -471,15 +461,12 @@ def test_a_compared_version_with_no_shots_is_a_side_with_no_values() -> None:
         shots,
         pooled_spreads(shots),
         version_id=2,
-        version_no=2,
         version_label="v2",
         compares_to_version_id=1,
-        compares_to_version_no=1,
         compares_to_version_label="v1",
     )
 
     assert evidence.other is not None
-    assert evidence.other.version_no == 1
     assert evidence.other.shots == 0
     row = evidence.measures[0]
     assert row.this.n == 2
@@ -593,10 +580,8 @@ def test_the_same_shots_in_any_order_give_the_same_numbers() -> None:
         shots,
         pooled_spreads(shots),
         version_id=2,
-        version_no=2,
         version_label="v2",
         compares_to_version_id=1,
-        compares_to_version_no=1,
         compares_to_version_label="v1",
     ).model_dump()
 
@@ -611,10 +596,8 @@ def test_the_same_shots_in_any_order_give_the_same_numbers() -> None:
                 shuffled,
                 spreads,
                 version_id=2,
-                version_no=2,
                 version_label="v2",
                 compares_to_version_id=1,
-                compares_to_version_no=1,
                 compares_to_version_label="v1",
             ).model_dump()
             == expected_evidence

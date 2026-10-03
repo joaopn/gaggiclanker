@@ -102,7 +102,7 @@ class TestSets:
         self, wired: Fixtures
     ) -> None:
         row = await _new_set(wired, dose_g=18.0, target_yield_g=36.0, grind_setting="22")
-        assert row.current_version_no == 1
+        assert row.current_version_label == "v1"
         assert row.automatch is True
         assert row.archived is False
         assert row.bean_name == "Ethiopia Guji"
@@ -123,7 +123,7 @@ class TestSets:
             row.id, SetVersionPatch(grind_setting="21", intent="chasing the sourness out")
         )
         assert second is not None
-        assert second.version_no == 2
+        assert second.version_label == "v1.1"
         assert second.parent_version_id == first.id
         assert second.grind_setting == "21"
         # Not sent, so inherited — the whole point of a patch rather than a PUT.
@@ -239,13 +239,13 @@ class TestSets:
             for change in version_changes(versions[0], by_id[versions[0].parent_version_id or 0])
         } == {"grind_setting"}
 
-    async def test_version_numbers_are_unique_per_set(self, wired: Fixtures) -> None:
+    async def test_version_names_are_unique_per_set(self, wired: Fixtures) -> None:
         first = await _new_set(wired, dose_g=18.0)
         second = await _new_set(wired, name="A different bag")
         await wired.sets.add_version(first.id, SetVersionPatch(dose_g=19.0))
         await wired.sets.add_version(second.id, SetVersionPatch(dose_g=20.0))
-        assert [v.version_no for v in await wired.sets.versions(first.id)] == [2, 1]
-        assert [v.version_no for v in await wired.sets.versions(second.id)] == [2, 1]
+        assert [v.version_label for v in await wired.sets.versions(first.id)] == ["v1.1", "v1"]
+        assert [v.version_label for v in await wired.sets.versions(second.id)] == ["v1.1", "v1"]
 
     async def test_any_number_of_sets_collect_shots(self, wired: Fixtures) -> None:
         """Several grinders, several bags loaded, and no flag to fight over."""
@@ -319,10 +319,10 @@ class TestConcurrency:
         gave the second "cannot start a transaction within a transaction",
         which surfaced as a 500 on a request that had done nothing wrong.
 
-        Both landing *with distinct numbers* is the other half: the parent is
+        Both landing *with distinct names* is the other half: the parent is
         read inside the transaction that writes the child, so serialising the
-        transactions is also what stops two versions claiming the same
-        `version_no` and colliding on its unique index.
+        transactions is also what stops two versions claiming the same name and
+        colliding on its unique index.
         """
         row = await _new_set(wired, dose_g=18.0)
 
@@ -332,8 +332,12 @@ class TestConcurrency:
         )
 
         assert all(version is not None for version in results)
-        assert sorted(version.version_no for version in results if version) == [2, 3]
-        assert [v.version_no for v in await wired.sets.versions(row.id)] == [3, 2, 1]
+        assert sorted(version.version_label for version in results if version) == ["v1.1", "v1.2"]
+        assert [v.version_label for v in await wired.sets.versions(row.id)] == [
+            "v1.2",
+            "v1.1",
+            "v1",
+        ]
 
     async def test_a_transaction_arriving_mid_flight_waits_instead_of_failing(
         self, wired: Fixtures
@@ -389,7 +393,7 @@ class TestConcurrency:
         # A lock left held by a failed write is a hang, not an error, and it
         # would only show up under the load that caused the failure.
         row = await _new_set(wired, name="After the failure")
-        assert row.current_version_no == 1
+        assert row.current_version_label == "v1"
 
 
 class TestAutomatchRefusals:

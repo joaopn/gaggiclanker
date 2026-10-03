@@ -318,9 +318,11 @@ class TestTheSetDetail:
         return body["data"]
 
     @staticmethod
-    def version(detail: dict[str, Any], version_no: int) -> dict[str, Any]:
+    def version(detail: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The Nth version made, oldest first (every seeded change is a minor one)."""
+        label = "v1" if nth == 1 else f"v1.{nth - 1}"
         return next(
-            entry for entry in detail["versions"] if entry["version"]["version_no"] == version_no
+            entry for entry in detail["versions"] if entry["version"]["version_label"] == label
         )
 
     @pytest.fixture
@@ -442,7 +444,7 @@ class TestTheSetDetail:
         # Plain facts, with nothing held against them.
         assert evidence["this"]["balanced"] == 2
         assert evidence["this"]["improve"] == 2
-        assert evidence["other"]["version_no"] == 1
+        assert evidence["other"]["version_label"] == "v1"
 
     async def test_a_version_with_no_prediction_has_no_evidence(
         self, client: httpx.AsyncClient, seeded: dict[str, Any]
@@ -502,7 +504,6 @@ class TestTheSetDetail:
         # The side exists and is empty, rather than being absent.
         assert evidence["other"] == {
             "version_id": seeded["v3"],
-            "version_no": 3,
             # Seeded as a grind change and a dose change after v1: both are
             # dial-in changes, so the third version is v1.2.
             "version_label": "v1.2",

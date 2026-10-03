@@ -61,13 +61,13 @@ class TestTrends:
         assert trends.set_id == set_id
         assert len(trends.shots) == 10
         # Oldest version first: a trend reads left to right.
-        assert [version.version_no for version in trends.versions] == [1, 2, 3]
+        assert [version.version_label for version in trends.versions] == ["v1", "v1.1", "v1.2"]
         assert [version.shots for version in trends.versions] == [4, 3, 3]
         assert [version.avg_execution_score for version in trends.versions] == [6.0, 7.5, 9.0]
         assert [version.intent for version in trends.versions] == ["", "finer", "finer still"]
 
         first = trends.shots[0]
-        assert first.version_no == 1
+        assert first.version_label == "v1"
         assert first.duration_s == 26.0
         assert first.ratio == 2.0
         assert first.rating == 3
@@ -113,7 +113,6 @@ class TestTrends:
             "shot_id",
             "device_id",
             "set_version_id",
-            "version_no",
             "version_label",
             "started_at",
             "execution_score",
@@ -121,3 +120,32 @@ class TestTrends:
             "ratio",
             "rating",
         }
+
+
+async def test_points_are_in_the_order_the_shots_were_pulled_not_the_versions_made(
+    wired: Fixtures,
+) -> None:
+    """After going back, new shots of an older version come after the newer version's."""
+    row = await wired.sets.create(
+        SetWrite(name="Order", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+    )
+    first = await wired.sets.current_version(row.id)
+    assert first is not None
+    minor = await wired.sets.add_version(row.id, SetVersionPatch(grind_setting="21"))
+    major = await wired.sets.add_version(row.id, SetVersionPatch(grind_setting="20"), major=True)
+    assert minor is not None and major is not None
+    plan = [
+        (minor.id, "2026-04-01T08:00:00.000Z"),
+        (major.id, "2026-04-02T08:00:00.000Z"),
+        (minor.id, "2026-04-03T08:00:00.000Z"),
+    ]
+    for index, (version_id, started) in enumerate(plan):
+        shot = await make_shot(wired.db, f"00000{index}", started_at=started)
+        assert await wired.sets.assign_shot(shot, version_id)
+
+    trends = await wired.sets.trends(row.id)
+
+    assert [point.version_label for point in trends.shots] == ["v1.1", "v2", "v1.1"]
+    assert [point.started_at for point in trends.shots] == [started for _, started in plan]
+    # The per-version bars stay in the order the versions were made.
+    assert [v.version_label for v in trends.versions] == ["v1", "v1.1", "v2"]

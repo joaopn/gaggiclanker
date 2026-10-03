@@ -390,7 +390,7 @@ async def test_0014_leaves_a_starting_point_version_readable_through_the_sql_too
     await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
     await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
     await db.execute(
-        "INSERT INTO set_versions (set_id, version_no, origin, intent, created_at) "
+        "INSERT INTO set_versions (set_id, version_major, origin, intent, created_at) "
         "VALUES (1, 1, 'starting_point', 'from the wizard', 'x')"
     )
 
@@ -740,7 +740,7 @@ async def test_0016_leaves_the_shot_views_readable_through_the_sql_tool(
     await db.execute("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
     await db.execute("INSERT INTO sets (name, bean_id, created_at) VALUES ('S', 1, 'x')")
     await db.execute(
-        "INSERT INTO set_versions (set_id, version_no, intent, created_at) "
+        "INSERT INTO set_versions (set_id, version_major, intent, created_at) "
         "VALUES (1, 1, 'baseline', 'x')"
     )
     await db.execute(
@@ -753,8 +753,8 @@ async def test_0016_leaves_the_shot_views_readable_through_the_sql_tool(
     assert shots.rows == [["000001", "S", 5]]
     sets = await run_query(db.path, "SELECT name, shot_count FROM v_sets")
     assert sets.rows == [["S", 1]]
-    versions = await run_query(db.path, "SELECT version_no, shot_count FROM v_set_versions")
-    assert versions.rows == [[1, 1]]
+    versions = await run_query(db.path, "SELECT version_label, shot_count FROM v_set_versions")
+    assert versions.rows == [["v1", 1]]
     judgements = await run_query(db.path, "SELECT shot_id, rating FROM v_judgements")
     assert judgements.rows == [[1, 5]]
 
@@ -1058,7 +1058,7 @@ async def test_0026_carries_finished_analyses_into_reviews_and_drops_the_rest(
 
         # The rows that pointed at the analysis still read correctly.
         version = await db.fetch_one(
-            "SELECT origin, origin_analysis_id FROM set_versions WHERE version_no = 2"
+            "SELECT origin, origin_analysis_id FROM set_versions WHERE version_major = 2"
         )
         assert (version["origin"], version["origin_analysis_id"]) == ("analysis", 7)
         insight = await db.fetch_one(
@@ -1125,24 +1125,23 @@ async def test_0027_names_every_existing_version_by_its_number(
     assert "0027" in await run_migrations(db)
 
     rows = await db.fetch_all(
-        "SELECT version_no, version_major, version_minor FROM set_versions ORDER BY version_no"
+        "SELECT version_major, version_minor FROM set_versions ORDER BY version_major"
     )
-    assert [tuple(r) for r in rows] == [(1, 1, 0), (2, 2, 0), (3, 3, 0)]
+    assert [tuple(r) for r in rows] == [(1, 0), (2, 0), (3, 0)]
     view = await db.fetch_all(
-        "SELECT version_no, version_major, version_minor, version_label, "
-        "compares_to_version_label FROM v_set_versions ORDER BY version_no"
+        "SELECT version_major, version_minor, version_label, "
+        "compares_to_version_label FROM v_set_versions ORDER BY version_major"
     )
     assert [tuple(r) for r in view] == [
-        (1, 1, 0, "v1", None),
-        (2, 2, 0, "v2", "v1"),
-        (3, 3, 0, "v3", "v2"),
+        (1, 0, "v1", None),
+        (2, 0, "v2", "v1"),
+        (3, 0, "v3", "v2"),
     ]
     shot = await db.fetch_one(
-        "SELECT set_version_no, set_version_major, set_version_minor, set_version_label "
-        "FROM v_shots"
+        "SELECT set_version_major, set_version_minor, set_version_label FROM v_shots"
     )
     assert shot is not None
-    assert tuple(shot) == (3, 3, 0, "v3")
+    assert tuple(shot) == (3, 0, "v3")
     # The suggestion columns arrive empty on existing rows.
     proposal_columns = {
         str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(set_version_proposals)")
@@ -1158,7 +1157,7 @@ async def test_0027_names_every_existing_version_by_its_number(
 
     added = await SetsRepository(db).add_version(1, SetVersionPatch(grind_setting="21"))
     assert added is not None
-    assert (added.version_no, added.version_label) == (4, "v3.1")
+    assert added.version_label == "v3.1"
 
 
 async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
@@ -1244,7 +1243,8 @@ async def test_0029_keeps_every_shot_and_everything_that_hangs_off_it(
             out[table] = [list(r) for r in rows]
         return out
 
-    views = "'v_shots', 'v_sets', 'v_set_versions', 'v_judgements', 'v_profiles'"
+    # 0042 later reshapes the three that read `set_versions`; the others are 0029's text.
+    views = "'v_judgements', 'v_profiles'"
     view_sql = (
         f"SELECT name, sql FROM sqlite_master WHERE type = 'view' AND name IN ({views}) "  # noqa: S608
         "ORDER BY name"
@@ -1449,3 +1449,268 @@ def test_the_marker_is_a_comment_and_changes_no_checksum() -> None:
 
     body = "CREATE TABLE a (id INTEGER);"
     assert statements("-- migration: foreign-keys-off\n" + body) == statements(body)
+
+
+# ── 0042: versions are named, not counted ─────────────────────────────────
+
+#: Every table that points at a Set version, and the order its rows are compared in.
+_VERSION_CHILDREN: dict[str, str] = {
+    "shots": "id",
+    "shot_judgements": "shot_id",
+    "chat_threads": "id",
+    "chat_messages": "id",
+    "set_version_proposals": "id",
+    "set_outcome_proposals": "id",
+    "knowledge_insights": "id",
+    "profile_drafts": "id",
+    "profile_board": "id",
+}
+
+
+async def _dump(
+    db: Database, table: str, order: str, *, skip: frozenset[str] = frozenset()
+) -> list[list[object]]:
+    columns = [
+        str(r["name"])
+        for r in await db.fetch_all(f"PRAGMA table_info({table})")
+        if r["name"] not in skip
+    ]
+    rows = await db.fetch_all(
+        f"SELECT {', '.join(columns)} FROM {table} ORDER BY {order}"  # noqa: S608
+    )
+    return [list(r) for r in rows]
+
+
+async def _seed_before_0042(db: Database) -> None:
+    """A populated archive in the shape 0041 left it: every child of `set_versions` has rows.
+
+    Set 1 has an old roll back in it (v3 restores v1.1) and is on the highest
+    ordinal; Set 2 is on its second version; Set 3 existed and was deleted, so
+    the version id counter is above every surviving id.
+    """
+    x = db.execute
+    await x("INSERT INTO beans (name, created_at) VALUES ('Guji', 'x')")
+    for n in (1, 2):
+        await x(
+            "INSERT INTO profile_versions (id, content_hash, label, type, json, created_at) "
+            "VALUES (?, ?, ?, 'standard', '{\"temperature\": 93}', 'x')",
+            (n, f"h{n}", f"Profile {n}"),
+        )
+    for n in (1, 2, 3):
+        await x(
+            "INSERT INTO sets (id, name, bean_id, created_at) VALUES (?, ?, 1, 'x')", (n, f"S{n}")
+        )
+    rows = [
+        # id, set, ordinal, major, minor, parent, restores, compares, created
+        (1, 1, 1, 1, 0, None, None, None, "2026-01-01T00:00:00.000Z"),
+        (2, 1, 2, 1, 1, 1, None, 1, "2026-01-02T00:00:00.000Z"),
+        (3, 1, 3, 2, 0, 2, None, 2, "2026-01-03T00:00:00.000Z"),
+        (4, 1, 4, 3, 0, 3, 2, 3, "2026-01-04T00:00:00.000Z"),
+        (5, 2, 1, 1, 0, None, None, None, "2026-01-05T00:00:00.000Z"),
+        (6, 2, 2, 1, 1, 5, None, 5, "2026-01-06T00:00:00.000Z"),
+        (7, 3, 1, 1, 0, None, None, None, "2026-01-07T00:00:00.000Z"),
+        (8, 3, 2, 1, 1, 7, None, None, "2026-01-08T00:00:00.000Z"),
+    ]
+    for vid, set_id, no, major, minor, parent, restores, compares, created in rows:
+        await x(
+            "INSERT INTO set_versions (id, set_id, version_no, version_major, version_minor, "
+            "parent_version_id, restores_version_id, compares_to_version_id, profile_version_id, "
+            "grind_setting, prediction, prediction_at, outcome, outcome_note, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                vid,
+                set_id,
+                no,
+                major,
+                minor,
+                parent,
+                restores,
+                compares,
+                1 + vid % 2,
+                str(20 + vid),
+                "longer" if compares else "",
+                "x" if compares else None,
+                "held" if vid == 2 else None,
+                "good" if vid == 2 else "",
+                created,
+            ),
+        )
+    for n, version in enumerate((2, 2, 4, 6), start=1):
+        await x(
+            "INSERT INTO shots (device_id, raw_slog, set_version_id, synced_at, updated_at) "
+            "VALUES (?, x'00', ?, 'x', 'x')",
+            (f"{n:06d}", version),
+        )
+    await x("INSERT INTO shot_judgements (shot_id, rating, decision) VALUES (1, 5, 'keep')")
+    await x("INSERT INTO chat_threads (id, title, set_id, set_version_id) VALUES (1, 'a', 1, 2)")
+    await x("INSERT INTO chat_threads (id, title, set_id, set_version_id) VALUES (2, 'b', 1, 4)")
+    await x("INSERT INTO chat_threads (id, title, set_id, set_version_id) VALUES (3, 'c', 3, 8)")
+    await x("INSERT INTO chat_messages (thread_id, role, content) VALUES (1, 'user', 'hello')")
+    await x("INSERT INTO chat_messages (thread_id, role, content) VALUES (1, 'assistant', 'hi')")
+    await x("INSERT INTO chat_messages (thread_id, role, content) VALUES (2, 'user', 'again')")
+    proposals = [
+        # id, set, base, status, compares, resulting
+        (1, 1, 3, "accepted", 3, 4),
+        (2, 1, 2, "declined", 2, None),
+        (3, 1, 1, "stale", None, None),
+        (4, 2, 6, "proposed", 5, None),
+        (5, 3, 8, "proposed", None, None),
+    ]
+    for pid, set_id, base, status, compares, resulting in proposals:
+        await x(
+            "INSERT INTO set_version_proposals (id, set_id, thread_id, base_version_id, "
+            "compares_to_version_id, status, resulting_version_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (pid, set_id, 1 if set_id == 1 else None, base, compares, status, resulting),
+        )
+    await x(
+        "INSERT INTO set_outcome_proposals (set_id, set_version_id, outcome, note, status) "
+        "VALUES (1, 2, 'held', 'a note long enough to count', 'proposed')"
+    )
+    await x(
+        "INSERT INTO set_outcome_proposals (set_id, set_version_id, outcome, note, status) "
+        "VALUES (1, 3, 'failed', 'another note long enough', 'dismissed')"
+    )
+    await x(
+        "INSERT INTO knowledge_insights (text, set_id, set_version_id, thread_id, rests_on_json) "
+        "VALUES ('learned', 1, 2, 1, '[{\"set_version_id\": 2}, {\"set_version_id\": 3}]')"
+    )
+    await x(
+        "INSERT INTO profile_drafts (id, base_version_id, draft_version_id, set_id, "
+        "compares_to_version_id, recorded_version_id) VALUES (1, 1, 2, 1, 3, 4)"
+    )
+    await x(
+        "INSERT INTO profile_board "
+        "(id, label, current_version_id, origin, back_from_set_version_id) "
+        "VALUES (1, 'P', 1, 'adopted', 4)"
+    )
+    # Set 3 goes: its versions, thread and proposal cascade, and the counter stays at 8.
+    await x("DELETE FROM sets WHERE id = 3")
+
+
+async def test_0042_upgrades_a_populated_database_and_every_link_survives(
+    db: Database, tmp_path: Path
+) -> None:
+    """The rebuild of `set_versions` with foreign keys off keeps every row and link.
+
+    The shape that makes this dangerous: five tables cascade off `set_versions`
+    and four more null the link, so a rebuild that fires the cascade empties
+    chats, proposals and graded outcomes. Stop condition: if this test ever
+    finds a changed child row or a dangling reference, the migration is wrong.
+    """
+    await _migrate_below(db, tmp_path, "0042")
+    await _seed_before_0042(db)
+    before_children = {
+        table: await _dump(db, table, order) for table, order in _VERSION_CHILDREN.items()
+    }
+    before_versions = await _dump(db, "set_versions", "id", skip=frozenset({"version_no"}))
+    before_sets = await _dump(db, "sets", "id")
+    highest = {
+        int(r["set_id"]): int(r["id"])
+        for r in await db.fetch_all(
+            "SELECT set_id, id FROM set_versions v WHERE version_no = "
+            "(SELECT MAX(version_no) FROM set_versions WHERE set_id = v.set_id)"
+        )
+    }
+    labels_before = {
+        int(r["set_id"]): str(r["label"])
+        for r in await db.fetch_all(
+            "SELECT set_id, version_label AS label FROM v_set_versions v WHERE version_no = "
+            "(SELECT MAX(version_no) FROM set_versions WHERE set_id = v.set_id)"
+        )
+    }
+    assert len(before_versions) == 6 and sorted(highest) == [1, 2]
+    assert all(len(rows) > 0 for rows in before_children.values()), before_children.keys()
+    sequence_before = await db.fetch_value(
+        "SELECT seq FROM sqlite_sequence WHERE name = 'set_versions'"
+    )
+    assert sequence_before == 8
+
+    assert await run_migrations(db) == ["0042"]
+
+    # Every child row, byte for byte, and the versions themselves less the ordinal.
+    for table, order in _VERSION_CHILDREN.items():
+        assert await _dump(db, table, order) == before_children[table], table
+    assert await _dump(db, "set_versions", "id", skip=frozenset({"version_no"})) == before_versions
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+    assert await db.fetch_value("PRAGMA integrity_check") == "ok"
+    assert await _foreign_keys(db) == 1
+    # The ordinal is gone from the table and the views; the pointer is the old highest.
+    columns = {str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(set_versions)")}
+    assert "version_no" not in columns
+    assert await _dump(db, "sets", "id", skip=frozenset({"current_version_id"})) == list(
+        before_sets
+    )
+    pointers = {
+        int(r["id"]): r["current_version_id"] for r in await db.fetch_all("SELECT * FROM sets")
+    }
+    assert pointers == {1: highest[1], 2: highest[2]}
+    # A version id given out once is not given out again.
+    assert await db.fetch_value("SELECT seq FROM sqlite_sequence WHERE name = 'set_versions'") == 8
+    # The log of reverts exists and is empty.
+    assert await db.fetch_value("SELECT COUNT(*) FROM set_version_reverts") == 0
+    # The curated views still answer, with the pointer's marks.
+    marked = await db.fetch_all(
+        "SELECT set_id, version_label FROM v_set_versions WHERE is_current ORDER BY set_id"
+    )
+    assert {int(r["set_id"]): str(r["version_label"]) for r in marked} == labels_before
+    # The cascades hang off the rebuilt table: deleting a Set empties what is its own.
+    await db.execute("PRAGMA foreign_keys = ON")
+    await db.execute("DELETE FROM sets WHERE id = 2")
+    assert await db.fetch_value("SELECT COUNT(*) FROM set_versions WHERE set_id = 2") == 0
+    assert await db.fetch_value("SELECT COUNT(*) FROM set_version_proposals WHERE set_id = 2") == 0
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+
+
+async def test_0042_leaves_the_app_serving_the_same_current_version_for_every_set(
+    db: Database, tmp_path: Path
+) -> None:
+    from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
+
+    await _migrate_below(db, tmp_path, "0042")
+    await _seed_before_0042(db)
+    expected = {
+        int(r["set_id"]): (int(r["id"]), str(r["label"]))
+        for r in await db.fetch_all(
+            "SELECT set_id, set_version_id AS id, version_label AS label "
+            "FROM v_set_versions v WHERE version_no = "
+            "(SELECT MAX(version_no) FROM set_versions WHERE set_id = v.set_id)"
+        )
+    }
+
+    await run_migrations(db)
+
+    sets = SetsRepository(db)
+    for set_id, (version_id, label) in expected.items():
+        row = await sets.get(set_id)
+        assert row is not None
+        assert (row.current_version_id, row.current_version_label) == (version_id, label)
+        current = await sets.current_version(set_id)
+        assert current is not None and current.id == version_id and current.is_current
+    # Set 1 is on v3, an old roll back of v1.1: its line still steps over what it stepped over.
+    assert await sets.dead_end_versions([1, 2]) == {3}
+    added = await sets.add_version(1, SetVersionPatch(grind_setting="19"))
+    assert added is not None and added.version_label == "v3.1" and added.parent_version_id == 4
+
+
+async def test_0042_boots_over_a_database_that_already_had_a_dangling_reference(
+    db: Database, tmp_path: Path
+) -> None:
+    """Adding `sets.current_version_id` renumbers the Set's foreign keys.
+
+    A break that was there before (a bean that is gone) is the same break after,
+    and must not make the upgrade refuse to boot for ever.
+    """
+    await _migrate_below(db, tmp_path, "0042")
+    await _seed_before_0042(db)
+    await db.execute("PRAGMA foreign_keys = OFF")
+    await db.execute("UPDATE sets SET bean_id = 99 WHERE id = 2")
+    await db.execute("PRAGMA foreign_keys = ON")
+    broken = {tuple(r) for r in await db.fetch_all("PRAGMA foreign_key_check")}
+    assert len(broken) == 1
+
+    assert await run_migrations(db) == ["0042"]
+
+    assert await db.fetch_value("SELECT bean_id FROM sets WHERE id = 2") == 99
+    assert await db.fetch_value("SELECT COUNT(*) FROM set_versions WHERE set_id = 2") == 2
+    assert [r["table"] for r in await db.fetch_all("PRAGMA foreign_key_check")] == ["sets"]
+    assert await _foreign_keys(db) == 1

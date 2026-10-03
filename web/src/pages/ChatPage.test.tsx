@@ -67,7 +67,6 @@ const THREAD = {
   set_id: 3,
   set_name: "Guji on the Niche",
   set_version_id: 30,
-  set_version_no: 4,
   set_version_label: "v4",
   dead_end: false,
   message_count: 2,
@@ -77,9 +76,7 @@ const THREAD = {
 
 /** Another conversation, with whatever the test needs changed. */
 function thread(over: Partial<typeof THREAD> & { id: number }) {
-  // A test that names only the ordinal gets the name a pre-minor version has.
-  const label = over.set_version_no ? `v${over.set_version_no}` : THREAD.set_version_label;
-  return { ...THREAD, title: `Conversation ${over.id}`, set_version_label: label, ...over };
+  return { ...THREAD, title: `Conversation ${over.id}`, ...over };
 }
 
 /**
@@ -94,7 +91,6 @@ const SETS = [
     id: 3,
     name: "Guji on the Niche",
     current_version_id: 30,
-    current_version_no: 4,
     current_version_label: "v4",
     created_at: "2026-02-01T09:00:00.000Z",
   },
@@ -102,7 +98,6 @@ const SETS = [
     id: 4,
     name: "Kenya AA on the Niche",
     current_version_id: 40,
-    current_version_no: 1,
     current_version_label: "v1",
     created_at: "2026-03-05T09:00:00.000Z",
   },
@@ -209,8 +204,8 @@ beforeEach(() => {
 describe("ChatPage folders", () => {
   it("labels a conversation with the version it is about, and mutes a dead end", async () => {
     getChatThreads.mockResolvedValue([
-      thread({ id: 1, title: "the live one", set_version_no: 4 }),
-      thread({ id: 2, title: "the abandoned one", set_version_no: 2, dead_end: true }),
+      thread({ id: 1, title: "the live one", set_version_label: "v4" }),
+      thread({ id: 2, title: "the abandoned one", set_version_label: "v2", dead_end: true }),
     ]);
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
@@ -229,14 +224,13 @@ describe("ChatPage folders", () => {
   it("names a minor version by its name, never by its ordinal", async () => {
     // The Set's third version is v1.2: two dial-in changes after v1.
     getChatThreads.mockResolvedValue([
-      thread({ id: 1, title: "the live one", set_version_no: 3, set_version_label: "v1.2" }),
+      thread({ id: 1, title: "the live one", set_version_label: "v1.2" }),
     ]);
     getChatThread.mockResolvedValue({
       ...DETAIL,
       thread: thread({
         id: 1,
         title: "the live one",
-        set_version_no: 3,
         set_version_label: "v1.2",
       }),
     });
@@ -432,8 +426,8 @@ describe("ChatPage folders", () => {
 
   it("lists the open badge's conversations one per line, with the version first", async () => {
     getChatThreads.mockResolvedValue([
-      thread({ id: 1, title: "the live one", set_version_no: 4, message_count: 6 }),
-      thread({ id: 2, title: "the one before", set_version_no: 3, message_count: 2 }),
+      thread({ id: 1, title: "the live one", set_version_label: "v4", message_count: 6 }),
+      thread({ id: 2, title: "the one before", set_version_label: "v3", message_count: 2 }),
       { ...thread({ id: 3, title: "a general one" }), set_id: null, set_name: null },
     ]);
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
@@ -764,7 +758,6 @@ describe("ChatPage, a Set being designed", () => {
       name: "Guji on the DF64",
       designing: true,
       current_version_id: 60,
-      current_version_no: 1,
       current_version_label: "v1",
     },
   ];
@@ -774,7 +767,7 @@ describe("ChatPage, a Set being designed", () => {
     set_id: 6,
     set_name: "Guji on the DF64",
     set_version_id: 60,
-    set_version_no: 1,
+    set_version_label: "v1",
   });
 
   it("marks the badge of a Set being designed, and no other", async () => {
@@ -932,7 +925,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
         resulting_version_no: 5,
         resulting_version_label: "v4.1",
       },
-      version: { version_no: 5, version_label: "v4.1" },
+      version: { version_label: "v4.1" },
     });
   });
 

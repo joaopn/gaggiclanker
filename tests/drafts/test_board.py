@@ -798,7 +798,7 @@ async def test_a_set_version_is_recorded_when_the_pull_puts_the_profile_on_the_m
     after = await set_device_ids(app, set_id)
     assert len(after) == len(before) + 1 and after[-1] == pushed["device_id"]
     majors = await app.state.db.fetch_all(
-        "SELECT version_major FROM set_versions WHERE set_id = ? ORDER BY version_no", (set_id,)
+        "SELECT version_major FROM set_versions WHERE set_id = ? ORDER BY created_at, id", (set_id,)
     )
     assert majors[-1]["version_major"] > majors[-2]["version_major"], "the 'major' answer was kept"
     again = (await get_board(client))["rows"]

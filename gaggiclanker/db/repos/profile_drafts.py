@@ -127,9 +127,7 @@ class ProfileDraftRow(BaseModel):
     set_name: str | None = None
     prediction: str = ""
     compares_to_version_id: int | None = None
-    #: The compared-to version's ordinal and name, joined in: a reader thinks
-    #: in "v1.1".
-    compares_to_version_no: int | None = None
+    #: The compared-to version's name, joined in: a reader thinks in "v1.1".
     compares_to_version_label: str | None = None
     #: The agent's suggestion that recording this on its Set is a major
     #: version, and its reason. The push card preselects "Major change" from
@@ -141,12 +139,6 @@ class ProfileDraftRow(BaseModel):
     #: so a new draft serves no base profile and no base label, and the card shows the profile
     #: instead of a diff. Landing it on the board never continues the base's row.
     is_new: bool = False
-    #: The ordinal the version a push for this draft's Set would record right
-    #: now: the Set's next one, or 1 while the Set is being designed (that
-    #: version is filled, not appended to; nothing drafts for a Set being
-    #: designed today, so that case only keeps the number true). NULL without a
-    #: Set. Computed, since the Set moves on whether or not the draft does.
-    set_next_version_no: int | None = None
     #: What that version would be called as a minor ("v1.3") and as a major
     #: ("v2"): the push button names one of them, whichever the person ticks.
     #: NULL without a Set. Filled by the repository from the same query the
@@ -158,8 +150,7 @@ class ProfileDraftRow(BaseModel):
     #: Set), or not pushed yet. Read through `recorded_version_id`, which the push
     #: stores: two drafts of one profile that share a device id (the second found
     #: the first on the machine) each find their own version. A rollback clears the
-    #: device id and the number goes with it.
-    recorded_version_no: int | None = None
+    #: device id and the name goes with it.
     #: That version's name, "v1.3".
     recorded_version_label: str | None = None
     #: Whether the machine still holds the profile this was drafted from.
@@ -226,18 +217,7 @@ _SELECT = f"""
            CASE WHEN d.is_new THEN NULL ELSE base.label END AS base_label,
            drafted.label AS draft_label,
            s.name AS set_name,
-           cmp.version_no AS compares_to_version_no,
            {label_sql("cmp")} AS compares_to_version_label,
-           CASE
-               WHEN s.id IS NULL THEN NULL
-               WHEN s.designing THEN 1
-               ELSE (SELECT COALESCE(MAX(nv.version_no), 0) + 1
-                       FROM set_versions nv WHERE nv.set_id = s.id)
-           END AS set_next_version_no,
-           (SELECT rv.version_no FROM set_versions rv
-             WHERE rv.id = d.recorded_version_id
-               AND rv.set_id = d.set_id
-               AND d.pushed_device_profile_id IS NOT NULL) AS recorded_version_no,
            (SELECT {label_sql("rv")} FROM set_versions rv
              WHERE rv.id = d.recorded_version_id
                AND rv.set_id = d.set_id

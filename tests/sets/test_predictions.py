@@ -50,7 +50,7 @@ async def _set_with_versions(wired: Fixtures, count: int = 2) -> tuple[int, list
         await wired.sets.add_version(
             row.id, SetVersionPatch(grind_setting=str(23 - step), intent=f"step {step}")
         )
-    versions = sorted(await wired.sets.versions(row.id), key=lambda v: v.version_no)
+    versions = sorted(await wired.sets.versions(row.id), key=lambda v: (v.created_at, v.id))
     return row.id, versions
 
 
@@ -81,7 +81,7 @@ class TestPrediction:
         stored = result.version
         assert stored is not None
         assert stored.compares_to_version_id == versions[0].id
-        assert stored.compares_to_version_no == 1
+        assert stored.compares_to_version_label == "v1"
         assert stored.prediction_at
         assert stored.outcome_state == "open"
 
@@ -111,7 +111,7 @@ class TestPrediction:
         )
 
         assert result.version is not None
-        assert result.version.compares_to_version_no == 1
+        assert result.version.compares_to_version_label == "v1"
 
     async def test_a_version_of_another_set_cannot_be_compared_against(
         self, wired: Fixtures
@@ -220,7 +220,7 @@ class TestPrediction:
 
         assert result.version is not None
         assert result.version.compares_to_version_id is None
-        assert result.version.compares_to_version_no is None
+        assert result.version.compares_to_version_label is None
 
     async def test_a_new_version_can_be_told_to_compare_against_nothing(
         self, wired: Fixtures
@@ -444,13 +444,13 @@ class TestRollback:
 
         rolled = result.version
         assert rolled is not None
-        assert rolled.version_no == 3
+        assert rolled.version_label == "v3"
         for field in INHERITED:
             assert getattr(rolled, field) == getattr(first, field), field
         # The parent is what was current, so the diff reads as the reversal.
         assert rolled.parent_version_id == current.id
         assert rolled.restores_version_id == first.id
-        assert rolled.restores_version_no == 1
+        assert rolled.restores_version_label == "v1"
         assert rolled.compares_to_version_id == current.id
         assert rolled.origin == "manual"
         # A device id names a file on the display; a new version never inherits one.
@@ -483,10 +483,12 @@ class TestDeadEnds:
 
     async def _numbers(self, wired: Fixtures, set_id: int) -> tuple[set[int], list[int]]:
         versions = await wired.sets.versions(set_id)
-        by_id = {version.id: version.version_no for version in versions}
+        current = (await wired.sets.get(set_id)).current_version_id  # type: ignore[union-attr]
+        oldest_first = sorted(versions, key=lambda v: (v.created_at, v.id))
+        by_id = {version.id: index + 1 for index, version in enumerate(oldest_first)}
         return (
-            {by_id[version_id] for version_id in dead_end_ids(versions)},
-            [by_id[version_id] for version_id in live_line(versions)],
+            {by_id[version_id] for version_id in dead_end_ids(versions, current)},
+            [by_id[version_id] for version_id in live_line(versions, current)],
         )
 
     async def test_one_roll_back_mutes_what_it_stepped_over(self, wired: Fixtures) -> None:
@@ -536,12 +538,13 @@ class TestDeadEnds:
     async def test_a_set_with_no_roll_back_has_none(self, wired: Fixtures) -> None:
         set_id, _ = await _set_with_versions(wired, count=3)
         versions = await wired.sets.versions(set_id)
-        assert dead_end_ids(versions) == set()
-        assert len(live_line(versions)) == 3
+        current = (await wired.sets.get(set_id)).current_version_id  # type: ignore[union-attr]
+        assert dead_end_ids(versions, current) == set()
+        assert len(live_line(versions, current)) == 3
 
     async def test_an_empty_set_is_not_a_crash(self, wired: Fixtures) -> None:
-        assert dead_end_ids([]) == set()
-        assert live_line([]) == []
+        assert dead_end_ids([], None) == set()
+        assert live_line([], None) == []
 
 
 class TestTheLineOnMalformedData:
@@ -554,13 +557,12 @@ class TestTheLineOnMalformedData:
     write that could produce them.
     """
 
-    def _row(self, version_no: int, **over: object) -> SetVersionRow:
+    def _row(self, number: int, **over: object) -> SetVersionRow:
         return SetVersionRow.model_validate(
             {
-                "id": version_no,
+                "id": number,
                 "set_id": 1,
-                "version_no": version_no,
-                "version_major": version_no,
+                "version_major": number,
                 "created_at": "2026-04-01T08:00:00.000Z",
                 **over,
             }
@@ -574,26 +576,26 @@ class TestTheLineOnMalformedData:
             self._row(3, parent_version_id=2),
         ]
 
-        assert live_line(rows) == [3, 2]
-        assert dead_end_ids(rows) == {1}
+        assert live_line(rows, 3) == [3, 2]
+        assert dead_end_ids(rows, 3) == {1}
 
     def test_a_version_that_restores_itself(self) -> None:
         rows = [self._row(1), self._row(2, parent_version_id=1, restores_version_id=2)]
 
-        assert live_line(rows) == [2]
-        assert dead_end_ids(rows) == {1}
+        assert live_line(rows, 2) == [2]
+        assert dead_end_ids(rows, 2) == {1}
 
     def test_a_reference_to_an_id_that_is_not_here(self) -> None:
         rows = [self._row(1), self._row(2, parent_version_id=1, restores_version_id=909)]
 
-        assert live_line(rows) == [2]
-        assert dead_end_ids(rows) == {1}
+        assert live_line(rows, 2) == [2]
+        assert dead_end_ids(rows, 2) == {1}
 
     def test_a_parent_cycle(self) -> None:
         rows = [self._row(1, parent_version_id=2), self._row(2, parent_version_id=1)]
 
-        assert live_line(rows) == [2, 1]
-        assert dead_end_ids(rows) == set()
+        assert live_line(rows, 2) == [2, 1]
+        assert dead_end_ids(rows, 2) == set()
 
 
 class TestTrackRecordAndTarget:

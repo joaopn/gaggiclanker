@@ -229,7 +229,6 @@ class SetProposalRow(BaseModel):
     draft_id: int | None = None
     thread_id: int | None = None
     base_version_id: int
-    base_version_no: int | None = None
     base_version_label: str | None = None
     #: Re-validated on the way out by the same model that validated it on the
     #: way in. ``None`` when the stored JSON cannot be read as a patch — which
@@ -242,7 +241,6 @@ class SetProposalRow(BaseModel):
     reason: str = ""
     prediction: str = ""
     compares_to_version_id: int | None = None
-    compares_to_version_no: int | None = None
     compares_to_version_label: str | None = None
     combined_reason: str = ""
     #: The agent's suggestion that this is a major version, and its reason.
@@ -251,7 +249,6 @@ class SetProposalRow(BaseModel):
     status: ProposalStatus = "proposed"
     decline_note: str = ""
     resulting_version_id: int | None = None
-    resulting_version_no: int | None = None
     resulting_version_label: str | None = None
     created_at: str
     decided_at: str | None = None
@@ -350,15 +347,11 @@ class ProposalWriteResult:
 
 _SELECT = f"""
     SELECT p.*,
-           base.version_no AS base_version_no,
            {label_sql("base")} AS base_version_label,
-           cmp.version_no AS compares_to_version_no,
            {label_sql("cmp")} AS compares_to_version_label,
-           res.version_no AS resulting_version_no,
            {label_sql("res")} AS resulting_version_label,
-           NOT EXISTS (SELECT 1 FROM set_versions later
-                        WHERE later.set_id = p.set_id
-                          AND later.version_no > base.version_no) AS base_is_current
+           (SELECT cs.current_version_id = p.base_version_id
+              FROM sets cs WHERE cs.id = p.set_id) AS base_is_current
     FROM set_version_proposals p
     LEFT JOIN set_versions base ON base.id = p.base_version_id
     LEFT JOIN set_versions cmp ON cmp.id = p.compares_to_version_id
@@ -460,10 +453,7 @@ class SetProposalsRepository(Repository):
              WHERE p.set_id = :set_id AND p.kind = 'design' AND d.draft_version_id IS NOT NULL
                AND NOT EXISTS (
                    SELECT 1 FROM sets other
-                     JOIN set_versions cur
-                       ON cur.set_id = other.id
-                      AND cur.version_no = (SELECT MAX(v.version_no) FROM set_versions v
-                                             WHERE v.set_id = other.id)
+                     JOIN set_versions cur ON cur.id = other.current_version_id
                     WHERE other.id != :set_id
                       AND other.archived = 0
                       AND cur.profile_version_id = d.draft_version_id

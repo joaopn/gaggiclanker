@@ -99,12 +99,12 @@ EXAMPLE_QUERIES: tuple[tuple[str, str], ...] = (
         "  FROM v_shots WHERE set_id = 3 ORDER BY started_at DESC LIMIT 10",
     ),
     (
-        "Average execution score and rating per version of a Set, oldest version first",
+        "Average score and rating per version of a Set, the version with the earliest shot first",
         "SELECT set_version_label, COUNT(*) AS shots,\n"
         "       ROUND(AVG(execution_score), 1) AS avg_score,\n"
         "       ROUND(AVG(rating), 2) AS avg_rating\n"
         "  FROM v_shots WHERE set_id = 3\n"
-        " GROUP BY set_version_no, set_version_label ORDER BY set_version_no",
+        " GROUP BY set_version_id, set_version_label ORDER BY MIN(started_at)",
     ),
     (
         "Shots where a review's blind taste prediction disagreed with the person",
@@ -148,9 +148,11 @@ SCHEMA_NOTES = (
     "temperature the profile states — a Set version records none of its own, so two "
     "versions differ in temperature only when they name different profiles. A Set version "
     "is named v<major>.<minor>: version_label (set_version_label in v_shots) is the name to "
-    "say, 'v1.1'; version_major and version_minor are its parts; version_no is only the "
-    "order the versions were recorded in (v1.2 may be the 3rd), so sort by it and never "
-    "call a version by it."
+    "say, 'v1.1'; version_major and version_minor are its parts. A name is an identifier, "
+    "not a position: v1.2 may have been made after v2, so sort versions by created_at and "
+    "never infer order from the name. is_current (v_set_versions) and current_version_label "
+    "(v_sets) say which version a Set is on, and parent_version_label which one a version "
+    "was made from."
 )
 
 

@@ -644,8 +644,12 @@ async def test_the_shots_are_this_version_s_newest_in_base_and_no_other_version_
     experiment: Experiment,
 ) -> None:
     sets = SetsRepository(experiment.db)
-    mine = [row.shot_id for row in await sets.set_shots(experiment.set_id, version_no=5)]
-    compared = {row.shot_id for row in await sets.set_shots(experiment.set_id, version_no=4)}
+    mine = [
+        row.shot_id for row in await sets.set_shots(experiment.set_id, version_id=experiment.v5)
+    ]
+    compared = {
+        row.shot_id for row in await sets.set_shots(experiment.set_id, version_id=experiment.v4)
+    }
 
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
@@ -663,7 +667,7 @@ async def test_the_number_of_shots_follows_what_the_caller_asks_for(
     experiment: Experiment,
 ) -> None:
     sets = SetsRepository(experiment.db)
-    newest = (await sets.set_shots(experiment.set_id, version_no=4))[0].shot_id
+    newest = (await sets.set_shots(experiment.set_id, version_id=experiment.v4))[0].shot_id
 
     rendered = await opening_context(
         experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4), recent_shots=1
@@ -700,7 +704,9 @@ async def test_a_keep_shot_on_a_dead_end_is_not_the_gold_standard(
     """Good on a branch nobody is brewing is not what an Improve shot is held to."""
     from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 
-    on_a_dead_end = await SetsRepository(experiment.db).set_shots(experiment.set_id, version_no=2)
+    on_a_dead_end = await SetsRepository(experiment.db).set_shots(
+        experiment.set_id, version_id=experiment.v2
+    )
     assert on_a_dead_end
     await JudgementsRepository(experiment.db).upsert(
         on_a_dead_end[0].shot_id, JudgementWrite(decision="keep")
@@ -811,10 +817,10 @@ async def test_the_budget_summarises_the_oldest_and_never_drops_the_two_that_mat
     assert "- v2.2 ← what v" in rendered
     # The summary names what it summarised and nothing else: v2.2 is written
     # out three lines below it, so a span that swallowed it would be a lie.
-    ordinals = {
-        version.version_label: version.version_no
-        for version in await sets.versions(experiment.set_id)
-    }
+    made_in_order = sorted(
+        await sets.versions(experiment.set_id), key=lambda version: (version.created_at, version.id)
+    )
+    ordinals = {version.version_label: index + 1 for index, version in enumerate(made_in_order)}
     ledger = [line for line in rendered.splitlines() if line.startswith("- v")]
     summary = next(line for line in rendered.splitlines() if "Not written out here:" in line)
     written = {ordinals[line[2:].split(" ")[0]] for line in ledger}

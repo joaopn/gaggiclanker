@@ -315,7 +315,7 @@ class TestMachine:
 class TestSets:
     async def test_create_get_and_version(self, client: httpx.AsyncClient, bean_id: int) -> None:
         created = await _make_set(client, bean_id)
-        assert created["current_version_no"] == 1
+        assert created["current_version_label"] == "v1"
         assert created["automatch"] is True
 
         added = data(
@@ -324,12 +324,15 @@ class TestSets:
                 json={"grind_setting": "21", "intent": "chasing the sourness out"},
             )
         )
-        assert added["version_no"] == 2
+        assert added["version_label"] == "v1.1"
         assert added["grind_setting"] == "21"
         assert added["dose_g"] == 18.0
 
         detail = data(await client.get(f"/api/sets/{created['id']}"))
-        assert [entry["version"]["version_no"] for entry in detail["versions"]] == [2, 1]
+        assert [entry["version"]["version_label"] for entry in detail["versions"]] == [
+            "v1.1",
+            "v1",
+        ]
         newest = detail["versions"][0]
         assert [change["field"] for change in newest["changes"]] == ["grind_setting"]
         assert newest["changes"][0]["before"] == "22"
@@ -419,7 +422,7 @@ class TestPredictionsAndOutcomes:
 
         assert body["prediction"] == "less bitter, a shorter shot"
         assert body["compares_to_version_id"] == first
-        assert body["compares_to_version_no"] == 1
+        assert body["compares_to_version_label"] == "v1"
         assert body["outcome_state"] == "open"
 
     async def test_a_prediction_after_the_first_shot_is_its_own_conflict(
@@ -651,11 +654,11 @@ class TestPredictionsAndOutcomes:
 
         assert response.status_code == 201
         body = data(response)
-        assert body["version_no"] == 3
+        assert body["version_label"] == "v1.2"
         assert body["grind_setting"] == "22"
         assert body["parent_version_id"] == second
         assert body["restores_version_id"] == first
-        assert body["restores_version_no"] == 1
+        assert body["restores_version_label"] == "v1"
 
         # Rolling back to where you already are is a 422 naming the field.
         refused = await client.post(
@@ -704,9 +707,9 @@ class TestPredictionsAndOutcomes:
         detail = data(await client.get(f"/api/sets/{created['id']}"))
 
         muted = {
-            entry["version"]["version_no"] for entry in detail["versions"] if entry["dead_end"]
+            entry["version"]["version_label"] for entry in detail["versions"] if entry["dead_end"]
         }
-        assert muted == {2, 3}
+        assert muted == {"v1.1", "v1.2"}
         assert second
 
     async def test_the_writes_on_a_version_that_is_not_there_are_404s(
@@ -839,7 +842,7 @@ class TestJudgementAndAssignment:
         )
         assert assigned["set_version_id"] == version_id
         assert assigned["set_badge"]["set_name"] == "Guji on the Niche"
-        assert assigned["set_badge"]["version_no"] == 1
+        assert assigned["set_badge"]["version_label"] == "v1"
 
         detached = data(
             await client.put(f"/api/shots/{shot_id}/set-version", json={"set_version_id": None})
@@ -1022,7 +1025,7 @@ class TestTrendsRoute:
         body = data(await client.get(f"/api/sets/{created['id']}/trends"))
 
         assert body["set_id"] == created["id"]
-        assert [version["version_no"] for version in body["versions"]] == [1]
+        assert [version["version_label"] for version in body["versions"]] == ["v1"]
         assert body["versions"][0]["shots"] == 1
         point = body["shots"][0]
         assert point["shot_id"] == shot_id
@@ -1063,7 +1066,7 @@ class TestProposals:
         assert proposal["status"] == "proposed"
         assert proposal["changed"] == ["the grind"]
         assert proposal["base_is_current"] is True
-        assert proposal["compares_to_version_no"] == 1
+        assert proposal["compares_to_version_label"] == "v1"
         # Rendered the way the log renders a version's own diff.
         assert proposal["changes"] == [
             {
@@ -1075,7 +1078,7 @@ class TestProposals:
             }
         ]
         # Nothing has changed yet: the Set is still on v1.
-        assert body["set"]["current_version_no"] == 1
+        assert body["set"]["current_version_label"] == "v1"
 
     async def test_a_set_with_nothing_waiting_says_so(
         self, client: httpx.AsyncClient, bean_id: int
@@ -1099,7 +1102,7 @@ class TestProposals:
             await client.post(f"/api/sets/{created['id']}/proposals/{proposal.id}/accept", json={})
         )
         assert body["proposal"]["status"] == "accepted"
-        assert body["version"]["version_no"] == 2
+        assert body["version"]["version_label"] == "v1.1"
         assert body["version"]["origin"] == "chat"
         assert body["version"]["grind_setting"] == "21"
         assert body["version"]["intent"] == "one click finer, chasing the sourness out"

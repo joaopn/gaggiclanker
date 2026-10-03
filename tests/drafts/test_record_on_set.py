@@ -142,7 +142,7 @@ async def test_a_sets_own_draft_records_its_prediction_on_the_version(
     version = (await versions_of(client, a_set))[0]
     assert version["prediction"].startswith("Compared to v1")
     assert version["compares_to_version_id"] == current_id
-    assert version["compares_to_version_no"] == 1
+    assert version["compares_to_version_label"] == "v1"
     assert version["profile_version_id"] == draft["draft_version_id"]
     assert version["pushed_device_profile_id"] == ended["pushed_device_profile_id"]
 
@@ -158,12 +158,12 @@ async def test_a_sets_draft_says_which_version_the_put_records_before_and_after(
     """
     app, client, _ = adopted
     draft = await drafted_for(app, a_set)
-    assert draft["set_next_version_no"] == 2 and draft["recorded_version_no"] is None
+    assert draft["set_next_minor_label"] == "v1.1" and draft["recorded_version_label"] is None
 
     ended = await put_and_sync(app, client, draft, set_id=a_set)
 
-    assert ended["recorded_version_no"] == 2
-    assert (await draft_row(client, draft["id"]))["set_next_version_no"] == 3
+    assert ended["recorded_version_label"] == "v1.1"
+    assert (await draft_row(client, draft["id"]))["set_next_minor_label"] == "v1.2"
 
 
 async def test_a_put_for_a_set_records_a_minor_version_unless_marked_major(
@@ -231,7 +231,7 @@ async def test_a_sets_draft_put_without_its_set_records_nothing_on_it(
 
     ended = await put_and_sync(app, client, draft)
 
-    assert ended["status"] == "pushed" and ended["recorded_version_no"] is None
+    assert ended["status"] == "pushed" and ended["recorded_version_label"] is None
     assert len(await versions_of(client, a_set)) == 1
 
 
@@ -246,9 +246,9 @@ async def test_a_sets_draft_put_for_another_set_records_no_prediction(
     ended = await put_and_sync(app, client, draft, set_id=other["id"])
 
     version = (await versions_of(client, other["id"]))[0]
-    assert version["set_id"] == other["id"] and version["version_no"] == 2
+    assert version["set_id"] == other["id"] and version["version_label"] == "v1.1"
     assert version["prediction"] == "" and version["compares_to_version_id"] is None
-    assert ended["recorded_version_no"] is None
+    assert ended["recorded_version_label"] is None
 
 
 async def test_a_draft_without_a_set_has_no_version_to_record(
@@ -256,7 +256,7 @@ async def test_a_draft_without_a_set_has_no_version_to_record(
 ) -> None:
     app, client, _ = adopted
     draft = await a_draft(app, client, provider)
-    assert draft["set_next_version_no"] is None and draft["recorded_version_no"] is None
+    assert draft["set_next_minor_label"] is None and draft["recorded_version_label"] is None
 
 
 async def test_a_prediction_against_a_version_of_another_set_falls_back_to_the_current_one(
@@ -321,7 +321,7 @@ async def test_a_draft_made_from_an_analysis_before_it_was_retired_stays_an_anal
 
     version = (await versions_of(client, a_set))[0]
     assert version["origin"] == "analysis" and version["prediction"].startswith("Compared to v1")
-    assert ended["recorded_version_no"] == version["version_no"]
+    assert ended["recorded_version_label"] == version["version_label"]
 
 
 async def test_recording_a_version_retires_the_change_waiting_on_the_set(
