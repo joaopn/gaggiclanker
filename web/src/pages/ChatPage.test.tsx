@@ -291,30 +291,75 @@ describe("ChatPage folders", () => {
     expect(titles[1]).toContain("the older one");
   });
 
-  it("puts a conversation whose Set is gone in Archived Sets, with no New", async () => {
+  it("keeps archived Sets behind a toggle, as a badge per Set and not one list", async () => {
     const user = setupUser();
     getChatThreads.mockResolvedValue([
       thread({ id: 7, title: "the finished bag", set_id: 99, set_name: "Finished Ethiopia" }),
+      thread({ id: 8, title: "last winter", set_id: 98, set_name: "Old decaf" }),
+      thread({ id: 9, title: "more about last winter", set_id: 98, set_name: "Old decaf" }),
     ]);
     renderWithQueryClient(<ChatPage />);
 
-    await screen.findByRole("button", { name: /^Archived Sets/ });
-    const inside = await opened(user, "Archived Sets");
+    const toggle = await screen.findByRole("button", { name: "Show archived Sets (2)" });
+    // Off by default: no archived Set's badge, and none of their conversations.
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: /^Finished Ethiopia/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Old decaf/ })).toBeNull();
+    expect(screen.queryByText("the finished bag")).toBeNull();
 
-    expect(inside).toHaveTextContent("the finished bag");
-    // The folder is named for the state, so the row carries the Set's name.
-    expect(inside).toHaveTextContent("Finished Ethiopia");
+    await user.click(toggle);
+
+    expect(screen.getByRole("button", { name: "Hide archived Sets" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // One badge per archived Set, each holding its own conversations only.
+    expect(folder("Old decaf")).toHaveTextContent("2");
+    const decaf = await opened(user, "Old decaf");
+    expect(decaf).toHaveTextContent("last winter");
+    expect(decaf).toHaveTextContent("more about last winter");
+    expect(decaf).not.toHaveTextContent("the finished bag");
     // The bag is finished; the questions about it are not wrong, but there is
-    // no starting a new one. Asserted with the folder open, so the absence is
+    // no starting a new one. Asserted with the list open, so the absence is
     // about the button and not about `hidden`.
-    expect(within(inside).queryByRole("button", { name: /^New/ })).not.toBeInTheDocument();
+    expect(within(decaf).queryByRole("button", { name: /^New/ })).not.toBeInTheDocument();
+    const finished = await opened(user, "Finished Ethiopia");
+    expect(finished).toHaveTextContent("the finished bag");
+    expect(finished).not.toHaveTextContent("last winter");
+
+    // Off again: the badges go, and the open list falls back to the newest Set.
+    await user.click(screen.getByRole("button", { name: "Hide archived Sets" }));
+    expect(screen.queryByRole("button", { name: /^Finished Ethiopia/ })).toBeNull();
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("shows no Archived Sets folder when nothing is in it", async () => {
+  it("shows an archived Set's badge when its conversation is the one opened", async () => {
+    getChatThreads.mockResolvedValue([
+      thread({ id: 7, title: "the finished bag", set_id: 99, set_name: "Finished Ethiopia" }),
+    ]);
+    getChatThread.mockResolvedValue({
+      ...DETAIL,
+      thread: thread({
+        id: 7,
+        title: "the finished bag",
+        set_id: 99,
+        set_name: "Finished Ethiopia",
+      }),
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=7"] });
+
+    expect(await screen.findByRole("button", { name: /^Finished Ethiopia/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Hide archived Sets" })).toBeInTheDocument();
+  });
+
+  it("shows no archived toggle when no archived Set has a conversation", async () => {
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
-    expect(screen.queryByRole("button", { name: /^Archived Sets/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /archived Sets/ })).not.toBeInTheDocument();
   });
 
   it("is just General when there are no Sets at all", async () => {

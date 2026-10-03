@@ -95,18 +95,34 @@ export function ChatPage() {
     () => buildFolders(threads.data ?? [], setRows ?? []),
     [threads.data, setRows],
   );
+  // Archived Sets' badges are behind a toggle, off by default. Opening a
+  // conversation about an archived Set (a link, a reload) turns it on once for
+  // that conversation, so its badge is on screen; turning it off again is the
+  // person's call. Reset during render, keyed by the conversation (see the web
+  // rules on state that follows a prop).
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedShownFor, setArchivedShownFor] = useState<number | null>(null);
+  const selectedFolder =
+    selected === null
+      ? null
+      : (folders.find((folder) => folder.threads.some((row) => row.id === selected)) ?? null);
+  if (selectedFolder?.archived && archivedShownFor !== selected) {
+    setArchivedShownFor(selected);
+    setShowArchived(true);
+  }
+  const shownFolders = showArchived ? folders : folders.filter((folder) => !folder.archived);
   const openFolderKey =
-    pickedFolder !== null && folders.some((folder) => folder.key === pickedFolder)
+    pickedFolder !== null && shownFolders.some((folder) => folder.key === pickedFolder)
       ? pickedFolder
       : defaultFolderKey({
-          folders,
+          folders: shownFolders,
           sets: setRows ?? [],
           selectedId: selected,
           linkedSetId: setParam ? Number(setParam) : null,
         });
-  // A first question lands in the open badge's Set. Archived has no New, so a
-  // first question there is a general one, and the card below says so.
-  const openFolder = folders.find((folder) => folder.key === openFolderKey) ?? null;
+  // A first question lands in the open badge's Set. An archived Set has no
+  // New, so a first question there is a general one, and the card below says so.
+  const openFolder = shownFolders.find((folder) => folder.key === openFolderKey) ?? null;
   const scope = openFolder?.canCreate ? openFolder.setId : null;
 
   const [downloading, setDownloading] = useState(false);
@@ -316,6 +332,8 @@ export function ChatPage() {
                 if (id === selected) setSelected(null);
               });
             }}
+            showArchived={showArchived}
+            onToggleArchived={() => setShowArchived((shown) => !shown)}
             busy={createThread.isPending}
           />
         )}

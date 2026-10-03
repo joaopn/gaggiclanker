@@ -1,4 +1,4 @@
-import { MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Archive, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useId } from "react";
 import type { ChatThread, SetRow } from "@/api/types";
 import { DesigningBadge } from "@/components/sets/Designing";
@@ -22,6 +22,12 @@ import { cn } from "@/lib/utils";
  * ever starts one on. They come in the order the Sets list serves them, so the
  * Set the machine is set up for is first.
  *
+ * An archived Set with conversations gets a badge of its own too, behind the
+ * Archived Sets toggle at the end of the row: off by default, because a
+ * finished bag is not what the page is for, and a badge per Set rather than one
+ * list of every archived conversation, because a question about last winter's
+ * decaf is still a question about that decaf.
+ *
  * Exactly one badge is open at a time, and the page decides which (see
  * `defaultFolderKey`). Each badge controls its own list, which is always
  * rendered and toggled with `hidden`, so `aria-controls` resolves to something
@@ -42,20 +48,19 @@ import { cn } from "@/lib/utils";
 /** Where a conversation with no Set lives, and where a first question goes. */
 export const GENERAL = "general";
 
-/** Conversations whose Set has been archived, or is no longer listed at all. */
-export const ARCHIVED = "archived";
-
 export type ThreadFolder = {
-  /** Stable across renders: `general`, `set-<id>`, or `archived`. */
+  /** Stable across renders: `general`, `set-<id>`, or `archived-<id>`. */
   key: string;
   label: string;
-  /** The Set's current version, shown on its badge; NULL for General, Archived and a Set being designed. */
+  /** The Set's current version, shown on its badge; NULL for General, an archived Set and a Set being designed. */
   versionLabel: string | null;
   /** What a new conversation is created with. NULL for General; folders with no New omit it. */
   setId: number | null;
   canCreate: boolean;
   /** The folder's Set is still being designed. */
   designing: boolean;
+  /** The folder's Set is archived: shown only behind the Archived Sets toggle. */
+  archived: boolean;
   threads: ChatThread[];
 };
 
@@ -71,10 +76,12 @@ function setOf(thread: ChatThread): number | null {
 /**
  * The folders, in the order their badges are drawn.
  *
- * General, then the Sets in the order they were served, then — only when it
- * holds something — the conversations whose Set is archived or gone. An
- * archived Set's conversations are still readable: the bag is finished, the
- * questions about it are not wrong.
+ * General, then the Sets in the order they were served, then one per archived
+ * Set that has conversations, newest conversation first. The Sets list the page
+ * reads leaves archived Sets out, and deleting a Set deletes its conversations,
+ * so a conversation whose Set is not listed is an archived Set's; its badge is
+ * named from the conversation. An archived Set's conversations are still
+ * readable: the bag is finished, the questions about it are not wrong.
  */
 export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolder[] {
   const newestFirst = [...threads].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -87,6 +94,7 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
       setId: null,
       canCreate: true,
       designing: false,
+      archived: false,
       threads: newestFirst.filter((thread) => setOf(thread) === null),
     },
     ...sets.map((row) => ({
@@ -98,26 +106,32 @@ export function buildFolders(threads: ChatThread[], sets: SetRow[]): ThreadFolde
       setId: row.id,
       canCreate: true,
       designing: row.designing ?? false,
+      archived: false,
       threads: newestFirst.filter((thread) => setOf(thread) === row.id),
     })),
   ];
-  const orphaned = newestFirst.filter((thread) => {
+  const archived = new Map<number, ThreadFolder>();
+  for (const thread of newestFirst) {
     const setId = setOf(thread);
-    return setId !== null && !live.has(setId);
-  });
-  if (orphaned.length > 0) {
-    folders.push({
-      key: ARCHIVED,
-      label: "Archived Sets",
-      versionLabel: null,
-      setId: null,
-      // No New: a Set you have finished with is not one to start asking about.
-      canCreate: false,
-      designing: false,
-      threads: orphaned,
-    });
+    if (setId === null || live.has(setId)) continue;
+    let folder = archived.get(setId);
+    if (folder === undefined) {
+      folder = {
+        key: `archived-${setId}`,
+        label: thread.set_name || `Set ${setId}`,
+        versionLabel: null,
+        setId,
+        // No New: a Set you have finished with is not one to start asking about.
+        canCreate: false,
+        designing: false,
+        archived: true,
+        threads: [],
+      };
+      archived.set(setId, folder);
+    }
+    folder.threads.push(thread);
   }
-  return folders;
+  return [...folders, ...archived.values()];
 }
 
 /**
@@ -148,7 +162,8 @@ export function latestSetId(sets: SetRow[]): number | null {
  * The conversation on screen wins — its list is where you came from. Then the
  * Set a `?set=` link named, then the newest Set, and General only when there
  * are no Sets at all. A key that names no folder (a `?set=` for an archived
- * Set) is passed over rather than leaving nothing open.
+ * Set) is passed over rather than leaving nothing open. `folders` is what is
+ * on screen: an archived Set's badge counts only while the toggle shows it.
  */
 export function defaultFolderKey({
   folders,
@@ -182,8 +197,11 @@ export function ConversationPicker({
   onSelect,
   onNew,
   onDelete,
+  showArchived,
+  onToggleArchived,
   busy = false,
 }: {
+  /** Every folder, archived ones included; the toggle decides which are drawn. */
   folders: ThreadFolder[];
   /** The one badge whose list is shown. */
   openKey: string;
@@ -192,9 +210,49 @@ export function ConversationPicker({
   onSelect: (id: number) => void;
   onNew: (setId: number | null) => void;
   onDelete: (id: number) => void;
+  showArchived: boolean;
+  onToggleArchived: () => void;
   busy?: boolean;
 }) {
   const baseId = useId();
+  const archivedCount = folders.filter((folder) => folder.archived).length;
+  const shown = folders.filter((folder) => !folder.archived || showArchived);
+  const badge = (folder: ThreadFolder) => {
+    const open = folder.key === openKey;
+    return (
+      <Button
+        key={folder.key}
+        type="button"
+        size="sm"
+        variant={open ? "default" : "outline"}
+        aria-pressed={open}
+        aria-controls={listId(folder.key)}
+        onClick={() => onOpen(folder.key)}
+        data-testid="chat-set-badge"
+        // The Button base is `shrink-0` and nowrap: a long Set name would
+        // push the page wider than a phone. It may shrink and truncate.
+        className={cn(
+          "h-auto min-h-8 min-w-0 max-w-full shrink py-1",
+          folder.archived && !open && "border-dashed text-muted-foreground",
+        )}
+        title={folder.label}
+      >
+        <span className="min-w-0 truncate">{folder.label}</span>
+        {folder.versionLabel ? (
+          <span className="shrink-0 tabular-nums opacity-80">· {folder.versionLabel}</span>
+        ) : null}
+        {folder.designing ? <DesigningBadge /> : null}
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-1.5 text-xs tabular-nums",
+            open ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground",
+          )}
+        >
+          {folder.threads.length}
+        </span>
+      </Button>
+    );
+  };
   const listId = (key: string) => `${baseId}-${key}`;
 
   return (
@@ -204,42 +262,27 @@ export function ConversationPicker({
         data-testid="chat-set-badges"
         className="flex min-w-0 flex-wrap items-center gap-2"
       >
-        {folders.map((folder) => {
-          const open = folder.key === openKey;
-          return (
-            <Button
-              key={folder.key}
-              type="button"
-              size="sm"
-              variant={open ? "default" : "outline"}
-              aria-pressed={open}
-              aria-controls={listId(folder.key)}
-              onClick={() => onOpen(folder.key)}
-              data-testid="chat-set-badge"
-              // The Button base is `shrink-0` and nowrap: a long Set name would
-              // push the page wider than a phone. It may shrink and truncate.
-              className="h-auto min-h-8 min-w-0 max-w-full shrink py-1"
-              title={folder.label}
-            >
-              <span className="min-w-0 truncate">{folder.label}</span>
-              {folder.versionLabel ? (
-                <span className="shrink-0 tabular-nums opacity-80">· {folder.versionLabel}</span>
-              ) : null}
-              {folder.designing ? <DesigningBadge /> : null}
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-1.5 text-xs tabular-nums",
-                  open ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground",
-                )}
-              >
-                {folder.threads.length}
-              </span>
-            </Button>
-          );
-        })}
+        {shown.filter((folder) => !folder.archived).map(badge)}
+        {/* A switch for the archived Sets' badges, not a list of their
+            conversations: it says how many Sets it would show. */}
+        {archivedCount > 0 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-pressed={showArchived}
+            onClick={onToggleArchived}
+            data-testid="chat-archived-toggle"
+            className="h-auto min-h-8 py-1 text-muted-foreground"
+          >
+            <Archive className="size-3.5" aria-hidden="true" />
+            {showArchived ? "Hide archived Sets" : `Show archived Sets (${archivedCount})`}
+          </Button>
+        ) : null}
+        {shown.filter((folder) => folder.archived).map(badge)}
       </nav>
 
-      {folders.map((folder) => (
+      {shown.map((folder) => (
         <FolderList
           key={folder.key}
           id={listId(folder.key)}
@@ -346,11 +389,6 @@ function FolderList({
                     {thread.title || "New conversation"}
                   </span>
                   <span className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
-                    {/* An archived Set's list is named for the state, not
-                        for the coffee, so its rows carry the Set's name. */}
-                    {folder.key === ARCHIVED && thread.set_name ? (
-                      <span className="max-w-32 truncate">{thread.set_name} · </span>
-                    ) : null}
                     {/* In words, not only in grey: a later roll back went back
                         past this version, so what was argued here is not the
                         line being brewed any more. */}

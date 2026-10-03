@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatThread, SetRow } from "@/api/types";
 import {
-  ARCHIVED,
   buildFolders,
   defaultFolderKey,
   GENERAL,
@@ -45,8 +44,8 @@ describe("defaultFolderKey", () => {
       defaultFolderKey({ folders, sets, selectedId, linkedSetId });
 
     expect(pick(10, 2)).toBe("set-1");
-    // A conversation whose Set is gone opens Archived, where it is listed.
-    expect(pick(11, null)).toBe(ARCHIVED);
+    // A conversation whose Set is archived opens that Set's own badge.
+    expect(pick(11, null)).toBe("archived-99");
     expect(pick(null, 1)).toBe("set-1");
     expect(pick(null, null)).toBe("set-2");
     // A link naming a Set with no badge falls through to the newest.
@@ -77,5 +76,26 @@ describe("buildFolders", () => {
       ],
     );
     expect(folders.map((folder) => folder.versionLabel)).toEqual([null, "v1.2", null]);
+  });
+});
+
+describe("buildFolders, archived Sets", () => {
+  it("gives each archived Set its own folder, named from its conversations, after the live ones", () => {
+    const threads = [
+      { ...thread(1, 98), set_name: "Old decaf" },
+      { ...thread(2, 99), set_name: "Finished Ethiopia" },
+      { ...thread(3, 98), set_name: "Old decaf" },
+      thread(4, 1),
+    ] as ChatThread[];
+    const folders = buildFolders(threads, [set(1, "2026-01-01T00:00:00Z")]);
+    expect(
+      folders.map((folder) => [folder.key, folder.label, folder.archived, folder.canCreate]),
+    ).toEqual([
+      ["general", "General", false, true],
+      ["set-1", "Set 1", false, true],
+      ["archived-98", "Old decaf", true, false],
+      ["archived-99", "Finished Ethiopia", true, false],
+    ]);
+    expect(folders[2].threads.map((row) => row.id)).toEqual([1, 3]);
   });
 });
