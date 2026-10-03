@@ -10,6 +10,10 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The image builds again
+
+- **Fixed: `docker compose build` failed in the front-end stage** with "Cannot find module '../../../tests/fixtures/profiles/…'". The profile summary tests read the same profile fixtures as the Python suite, and the image's type check covers the tests but did not have those files. The front-end stage now copies them; nothing extra reaches the runtime image.
+
 ### A new profile is shown as a new profile
 
 - **Fixed: a profile the agent designed from scratch no longer reads as a list of changes from "Empty baseline".** A draft always had a profile it was stored against, so a Set designed with no profile to fork (or a starting point that wrote a new profile) showed every field as a change from a profile you never had, under "from Empty baseline". Such a draft is now marked as a new profile: its card says "new profile" and shows the profile itself (type, temperature, how the shot ends, which is what the last phase stops on, and each phase with its length, pump, transition and what ends that phase) instead of a diff. It no longer warns that it "changes when the machine stops" or asks for the acknowledgement, since there is no earlier profile whose stops it could change, and it never lands on an existing board profile. Drafts you already have that were designed from scratch (those based on the empty baseline, and the starting point's own profiles) are marked on the next start, and their stop-condition warning is cleared with it. The empty baseline is no longer listed among the profile versions, and neither the agent nor the starting point is offered it as a profile. Edits of a real profile keep their diff.

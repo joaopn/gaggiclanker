@@ -182,6 +182,38 @@ def test_the_image_puts_the_default_providers_cli_on_path() -> None:
     assert re.search(r"ARG CLAUDE_CODE_VERSION=\d+\.\d+\.\d+\n", dockerfile)
 
 
+def test_the_web_stage_copies_every_file_the_web_imports_from_outside_web() -> None:
+    """`tsc` in the image checks the web tests, and they may import repo fixtures.
+
+    The stage builds in /build with `web/` copied in, so an import that climbs
+    out of `web/` resolves against the image's root and needs the same path
+    copied there. Missing one failed the image build while every local gate was
+    green; `scripts/repro_image_web_fixtures.py` builds the stage, this is the
+    cheap guard.
+    """
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    stage = dockerfile.split("AS web-build", 1)[1].split("\nFROM ", 1)[0]
+    # A source copied to the same path under / keeps imports' relative layout.
+    copies = re.findall(r"^COPY (\S+) (\S+)$", stage, re.MULTILINE)
+    copied = [src for src, dst in copies if dst == f"/{src}"]
+
+    web = REPO_ROOT / "web"
+    outside: dict[str, str] = {}
+    for source in (web / "src").rglob("*.ts*"):
+        text = source.read_text(encoding="utf-8")
+        for spec in re.findall(r"""from\s+["'](\.{1,2}/[^"']+)["']""", text):
+            target = (source.parent / spec).resolve()
+            if not target.is_relative_to(web):
+                path = target.relative_to(REPO_ROOT).as_posix()
+                outside[path] = source.relative_to(REPO_ROOT).as_posix()
+
+    assert outside, "no web import leaves web/ any more; this guard can go"
+    missing = {
+        path: by for path, by in outside.items() if not any(path.startswith(src) for src in copied)
+    }
+    assert not missing, f"the web-build stage does not copy: {missing}"
+
+
 def test_compose_configures_no_setting_anywhere_in_the_file() -> None:
     """A former setting variable assigned here would do nothing, which is worse than absent.
 

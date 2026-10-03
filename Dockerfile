@@ -24,6 +24,13 @@ RUN npm ci --no-audit --no-fund
 
 COPY web/ ./
 
+# Some web tests import the profile fixtures the Python suite reads, so both
+# check the same JSON. `tsc` below checks the tests too, and resolves those
+# imports from /build/src up to /tests: without this copy the image fails to
+# build while every gate outside it is green. Nothing from this stage but
+# dist/ reaches the runtime image.
+COPY tests/fixtures/profiles/ /tests/fixtures/profiles/
+
 # Type errors do not fail `vite build` (esbuild strips types without checking
 # them), so the check is explicit: an image that compiles but does not type-check
 # is a broken build that ships.
