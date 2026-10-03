@@ -153,7 +153,8 @@ async def list_shots(
     ``needs_set=1`` is the inbox — shots the archive could not attach to a Set
     on its own and is waiting for an answer on. Quarantined shots are excluded
     from it: their bytes never parsed, so there is nothing to judge and the
-    count would never reach zero.
+    count would never reach zero. So are shots labelled Discard: the person
+    already said the shot went wrong, and it counts towards no Set.
 
     ``sort`` takes one of a fixed set of names — a sort column pasted out of a
     query string is an injection — and only the default one supports ``cursor``,
@@ -394,8 +395,9 @@ async def put_set_version(
 class ProfileMatchRequest(BaseModel):
     """`POST /api/shots/profile-match`: which shots to offer the profile match.
 
-    No `shot_ids` means every shot that needs a Set (the Shots page's button);
-    a list is the one-shot button on a shot's own page.
+    No `shot_ids` means every shot that needs a Set (the Shots page's button),
+    which leaves out a shot labelled Discard; a list is the one-shot button on a
+    shot's own page, which files the shot it names whatever its label.
     """
 
     model_config = ConfigDict(extra="forbid")

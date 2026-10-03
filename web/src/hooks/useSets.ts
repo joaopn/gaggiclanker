@@ -501,6 +501,10 @@ export function useSaveJudgement(): UseMutationResult<
       void invalidateShots(queryClient, String(variables.shotId));
       void invalidateShots(queryClient);
       void invalidateSets(queryClient);
+      // A shot labelled Discard leaves the "needs a Set" inbox, and the shots
+      // page's count of it comes from the sync status (see useAssignShot),
+      // which no event refreshes after a judgement.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
     },
   });
 }
@@ -567,6 +571,8 @@ export function usePatchJudgement(
       void invalidateShots(queryClient, String(variables.shotId));
       void invalidateShots(queryClient);
       void invalidateSets(queryClient);
+      // The decision column is where Discard is most often set (useSaveJudgement).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
     },
   });
 }
@@ -581,6 +587,8 @@ export function useDeleteJudgement(): UseMutationResult<{ deleted: boolean }, Er
       void invalidateShots(queryClient, String(shotId));
       void invalidateShots(queryClient);
       void invalidateSets(queryClient);
+      // Withdrawing a Discard puts an unfiled shot back in the inbox (useSaveJudgement).
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sync.status() });
     },
   });
 }

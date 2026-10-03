@@ -876,6 +876,39 @@ class TestJudgementAndAssignment:
         assert data(await client.get(f"/api/shots?set_version_id={version_id}"))["total"] == 1
         assert data(await client.get("/api/sync/status"))["counts"]["needs_set"] == 0
 
+    async def test_a_discarded_shot_leaves_the_inbox(
+        self, client: httpx.AsyncClient, shot_id: int
+    ) -> None:
+        """Discard takes a shot off the "needs a Set" list and its count; nothing else does.
+
+        Keep and Improve are verdicts on a shot that still belongs somewhere, so
+        they leave it waiting. Changing the label back, or withdrawing the
+        judgement, puts it back on the list, since the shot still has no Set.
+        """
+
+        async def waiting() -> tuple[int, int]:
+            listed = data(await client.get("/api/shots?needs_set=true"))["total"]
+            counted = data(await client.get("/api/sync/status"))["counts"]["needs_set"]
+            return listed, counted
+
+        for decision, expected in (
+            ("keep", (1, 1)),
+            ("improve", (1, 1)),
+            ("discard", (0, 0)),
+            (None, (1, 1)),
+            ("discard", (0, 0)),
+        ):
+            await client.put(f"/api/shots/{shot_id}/judgement", json={"decision": decision})
+            assert await waiting() == expected, decision
+
+        # Still an unfiled shot: the list of every shot shows it, and the
+        # filter for filed shots does not.
+        assert data(await client.get("/api/shots"))["total"] == 1
+        assert data(await client.get("/api/shots?needs_set=false"))["total"] == 0
+
+        await client.delete(f"/api/shots/{shot_id}/judgement")
+        assert await waiting() == (1, 1)
+
 
 class TestSetReferencesAndRefusals:
     """A stale id in a dropdown is a 422 naming it, never a 500.

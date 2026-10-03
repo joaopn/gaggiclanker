@@ -10,6 +10,16 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### A discarded shot no longer needs a Set
+
+- **Labelling a shot Discard takes it off the "needs a Set" list.** The header's "N need a Set"
+  count, the Needs a Set filter and the button that files every waiting shot by its profile all
+  leave out a discarded shot, since it counts towards no Set. Keep and Improve leave the shot
+  waiting as before. Changing the label back or withdrawing the judgement returns an unfiled shot
+  to the list. The shot itself is unchanged: it still shows "needs a Set" in the full list and can
+  be filed from there or from its own page. The header count now updates as soon as a judgement
+  is saved.
+
 ### An insight says what it rests on, and old ones can be replaced or deleted
 
 - **Each Set insight shows the versions it rests on, with their outcome as it stands now.** The

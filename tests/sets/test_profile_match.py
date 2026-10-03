@@ -16,6 +16,7 @@ import httpx
 from fastapi import FastAPI
 
 from gaggiclanker.db.repos.beans import BeansRepository, BeanWrite
+from gaggiclanker.db.repos.judgements import JudgementWrite
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.sets import SetVersionPatch, SetVersionWrite, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
@@ -267,6 +268,30 @@ class TestMatchUnfiled:
         summary = await wired.sets.match_unfiled()
         assert summary.model_dump() == {"matched": 0, "ambiguous": 0, "unmatched": 0}
         assert await _filed(wired, shot_id) is None
+
+    async def test_a_discarded_shot_is_left_unless_named(self, wired: Fixtures) -> None:
+        """The button files the inbox, and a discarded shot is not on it.
+
+        Named by id (the shot page's own button) it is filed like any other:
+        the person asked about that shot.
+        """
+        profile = await make_profile_version(wired.db, "Adaptive v2")
+        guji = await _set_on(wired, "Guji", profile)
+        discarded = await make_shot(wired.db, "000750", profile_version_id=profile)
+        kept = await make_shot(wired.db, "000751", profile_version_id=profile)
+        await wired.judgements.upsert(discarded, JudgementWrite(decision="discard"))
+        await wired.judgements.upsert(kept, JudgementWrite(decision="keep"))
+
+        summary = await wired.sets.match_unfiled()
+
+        assert summary.model_dump() == {"matched": 1, "ambiguous": 0, "unmatched": 0}
+        assert await _filed(wired, kept) == await _current(wired, guji)
+        assert await _filed(wired, discarded) is None
+
+        named = await wired.sets.match_unfiled([discarded])
+
+        assert named.matched == 1
+        assert await _filed(wired, discarded) == await _current(wired, guji)
 
     async def test_a_list_narrows_it_to_those_shots(self, wired: Fixtures) -> None:
         profile = await make_profile_version(wired.db, "Adaptive v2")

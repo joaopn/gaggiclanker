@@ -66,6 +66,7 @@ from pydantic import (
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.shots import NEEDS_SET_SQL
 from gaggiclanker.db.repos.version_names import (
     label_sql,
     names_from_state,
@@ -2045,23 +2046,27 @@ class SetsRepository(Repository):
     async def match_unfiled(self, shot_ids: Sequence[int] | None = None) -> ProfileMatchSummary:
         """Run :meth:`profile_match` over every shot that needs a Set.
 
-        ``shot_ids`` narrows it to those shots (the one-shot button); a shot in
-        it that already has a Set, or is quarantined, is skipped rather than
-        counted, since nothing was asked of it. Quarantined shots are never
-        offered: they are not in the "need a Set" inbox either, and their header
-        is whatever the broken file happened to hold.
+        No ``shot_ids`` is the inbox exactly as the Shots page counts it
+        (`NEEDS_SET_SQL`), so a shot labelled Discard is not filed by the
+        page's button: it is not on the list the button stands beside.
+        ``shot_ids`` narrows it to those shots (the one-shot button on a shot's
+        own page), and there a discarded shot is filed like any other, since
+        the person asked about that shot by name; a shot in it that already has
+        a Set, or is quarantined, is skipped rather than counted, since nothing
+        was asked of it. Quarantined shots are never offered: their header is
+        whatever the broken file happened to hold.
         """
-        sql = """
-            SELECT id, profile_version_id, profile_id_on_device FROM shots
-            WHERE set_version_id IS NULL AND quarantined = 0
-        """
+        sql = "SELECT s.id, s.profile_version_id, s.profile_id_on_device FROM shots s WHERE "
         params: list[Any] = []
-        if shot_ids is not None:
+        if shot_ids is None:
+            sql += NEEDS_SET_SQL
+        else:
             if not shot_ids:
                 return ProfileMatchSummary()
-            sql += f" AND id IN ({', '.join('?' for _ in shot_ids)})"
+            sql += "s.set_version_id IS NULL AND s.quarantined = 0"
+            sql += f" AND s.id IN ({', '.join('?' for _ in shot_ids)})"
             params.extend(shot_ids)
-        rows = await self.db.fetch_all(sql + " ORDER BY id", params)
+        rows = await self.db.fetch_all(sql + " ORDER BY s.id", params)
         summary = ProfileMatchSummary()
         async with self.db.transaction():
             for row in rows:

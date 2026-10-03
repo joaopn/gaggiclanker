@@ -4,8 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useAnswerOutcomeProposal,
   useDecideProposal,
+  useDeleteJudgement,
   useDiscardDesign,
+  usePatchJudgement,
   useRollbackSet,
+  useSaveJudgement,
   useSetVersionOutcome,
   useSetVersionPrediction,
   useStartDesign,
@@ -31,6 +34,9 @@ const {
   acceptOutcomeProposal,
   changeOutcomeProposal,
   dismissOutcomeProposal,
+  putJudgement,
+  deleteJudgement,
+  getShot,
 } = vi.hoisted(() => ({
   setVersionPrediction: vi.fn(),
   setVersionOutcome: vi.fn(),
@@ -43,6 +49,9 @@ const {
   acceptOutcomeProposal: vi.fn(),
   changeOutcomeProposal: vi.fn(),
   dismissOutcomeProposal: vi.fn(),
+  putJudgement: vi.fn(),
+  deleteJudgement: vi.fn(),
+  getShot: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -57,6 +66,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   acceptOutcomeProposal,
   changeOutcomeProposal,
   dismissOutcomeProposal,
+  putJudgement,
+  deleteJudgement,
+  getShot,
 }));
 
 beforeEach(() => {
@@ -368,5 +380,45 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     // chart's version boundaries both moved. No shot did — the version a roll
     // back appends has none — so no shot query is touched at all.
     expect(keys).toEqual([queryKeys.sets.all]);
+  });
+});
+
+describe("a judgement reaches the shots page's count of shots that need a Set", () => {
+  // A shot labelled Discard leaves the inbox, and the header's count is read
+  // from the sync status, which no event refreshes after a judgement. Each of
+  // the three ways to write one must name it, or the count keeps a shot the
+  // filtered list no longer shows.
+  beforeEach(() => {
+    putJudgement.mockResolvedValue({ shot_id: 7, decision: "discard" });
+    deleteJudgement.mockResolvedValue({ deleted: true });
+    getShot.mockResolvedValue({ id: 7, judgement: null });
+  });
+
+  it("saving the form", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useSaveJudgement());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ shotId: 7, body: { decision: "discard", notes: "" } });
+
+    await waitFor(() => expect(keys).toContainEqual(queryKeys.sync.status()));
+  });
+
+  it("a decision set from the list", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => usePatchJudgement(7));
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ shotId: 7, patch: { decision: "discard" } });
+
+    await waitFor(() => expect(keys).toContainEqual(queryKeys.sync.status()));
+    expect(putJudgement).toHaveBeenCalledWith(7, expect.objectContaining({ decision: "discard" }));
+  });
+
+  it("withdrawing the judgement", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDeleteJudgement());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync(7);
+
+    await waitFor(() => expect(keys).toContainEqual(queryKeys.sync.status()));
   });
 });

@@ -147,7 +147,9 @@ matcher may file a shot under this Set. Any number of Sets carry it. A shot is
 filed when exactly one of them names the profile it was brewed with; none or
 several leaves it in the "needs a Set" inbox, because a mis-filed shot pollutes
 a trend chart nobody re-reads while an unfiled one is on a list with a button
-next to it.
+next to it. The inbox leaves out quarantined shots and shots labelled Discard
+(`NEEDS_SET_SQL` in `db/repos/shots.py`, read by the count, the filter and the
+button alike): neither is waiting for an answer.
 
 Both windows are enforced in `SetsRepository`, beside the other rules that
 depend on rows in another table. A trigger could raise on the first one, and

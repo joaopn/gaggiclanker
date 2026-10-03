@@ -387,6 +387,21 @@ _LIST_COLUMNS = f"""
     s.synced_at
 """
 
+#: The "needs a Set" inbox, over `shots s`: the shots the archive is still
+#: waiting for an answer on. A quarantined shot is not one: its bytes never
+#: parsed, so there is no profile to match and nothing to judge, and leaving it
+#: in would mean the count never reached zero. Nor is a shot labelled Discard:
+#: the person has already said it went wrong, it counts towards no Set's spread,
+#: and asking them where it belongs is asking about a shot they threw away. The
+#: header's count, the list's filter and the button that files the inbox all
+#: read this one condition, so the three can never disagree on what is waiting.
+NEEDS_SET_SQL = """(
+    s.set_version_id IS NULL AND s.quarantined = 0
+    AND NOT EXISTS (
+        SELECT 1 FROM shot_judgements dj WHERE dj.shot_id = s.id AND dj.decision = 'discard'
+    )
+)"""
+
 # The Set joins are LEFT for the obvious reason and one less obvious one:
 # `shots.set_version_id` carries no foreign key (migration 0005 explains why),
 # so a row pointing at a version that no longer exists must list as unassigned
@@ -912,14 +927,14 @@ class ShotsRepository(Repository):
 
     async def counts(self) -> ShotCounts:
         row = await self.db.fetch_one(
-            """
+            f"""
             SELECT COUNT(*) AS total,
-                   COALESCE(SUM(quarantined), 0) AS quarantined,
-                   COALESCE(SUM(deleted_on_device), 0) AS deleted_on_device,
-                   COALESCE(SUM(incomplete), 0) AS incomplete,
-                   COALESCE(SUM(set_version_id IS NULL AND quarantined = 0), 0) AS needs_set
-            FROM shots
-            """
+                   COALESCE(SUM(s.quarantined), 0) AS quarantined,
+                   COALESCE(SUM(s.deleted_on_device), 0) AS deleted_on_device,
+                   COALESCE(SUM(s.incomplete), 0) AS incomplete,
+                   COALESCE(SUM({NEEDS_SET_SQL}), 0) AS needs_set
+            FROM shots s
+            """  # noqa: S608 - module constant
         )
         samples = await self.db.fetch_value("SELECT COUNT(*) FROM shot_samples")
         counts = self.to_model(ShotCounts, row)
@@ -1022,15 +1037,10 @@ class ShotsRepository(Repository):
             where.append("s.set_version_id = ?")
             params.append(set_version_id)
         if needs_set is not None:
-            # "Which shots is the archive still waiting for an answer on?" A
-            # quarantined shot is excluded from the wanted set: its bytes never
-            # parsed, so there is no profile to match and nothing to judge, and
-            # leaving it in the queue would mean the count never reached zero.
-            where.append(
-                "(s.set_version_id IS NULL AND s.quarantined = 0)"
-                if needs_set
-                else "s.set_version_id IS NOT NULL"
-            )
+            # "Which shots is the archive still waiting for an answer on?" —
+            # `NEEDS_SET_SQL` says which, and why quarantined and discarded
+            # shots are not among them.
+            where.append(NEEDS_SET_SQL if needs_set else "s.set_version_id IS NOT NULL")
         if quarantined is not None:
             where.append("s.quarantined = ?")
             params.append(int(quarantined))
