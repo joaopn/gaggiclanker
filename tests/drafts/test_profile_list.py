@@ -645,3 +645,38 @@ async def test_an_upgrade_never_undoes_a_display_edit_made_after_the_old_delete(
         assert run.status == "ok", run.error
         assert summary_of(run)["writes"] == 0
     assert fake.profiles[index] == before
+
+
+async def test_an_upgrade_leaves_a_deleted_row_whose_file_another_profile_holds_off_and_quiet(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    """Case 8 end to end: three syncs after the fill write nothing."""
+    from gaggiclanker.db.repos.profile_board import BoardRowPatch, ProfileBoardRepository
+    from gaggiclanker.db.repos.profile_list import ProfileListBuilder
+
+    app, client, fake = adopted
+    rows = (await get_board(client))["rows"]
+    keep, dropped = rows[0]["row"], rows[1]["row"]
+    repo = ProfileBoardRepository(app.state.db)
+    own_file = dropped["device_profile_id"]
+    await tombstone(client, dropped["id"])
+    await repo.update(dropped["id"], BoardRowPatch(device_profile_id=keep["device_profile_id"]))
+    # Its original file is gone from the machine (so no live file holds its version).
+    await app.state.settings_service.apply({"deviceWritesEnabled": False})
+    fake.profiles[:] = [p for p in fake.profiles if str(p["id"]) != own_file]
+    await pull(app)
+    await app.state.db.execute("DELETE FROM profile_list_build")
+    await ProfileListBuilder(app.state.db).build()
+
+    board = await get_board(client)
+    revived = next(r for r in board["rows"] if r["row"]["id"] == dropped["id"])
+    assert revived["on_machine"] is False and revived["row"]["device_profile_id"] is None
+    labels = [r["row"]["label"] for r in board["rows"]]
+    assert len(labels) == len(set(labels))
+    await app.state.settings_service.apply({"deviceWritesEnabled": True})
+    before = copy.deepcopy(fake.profiles)
+    for _ in range(3):
+        run = await pull(app)
+        assert run.status == "ok", run.error
+        assert summary_of(run)["writes"] == 0
+    assert fake.profiles == before

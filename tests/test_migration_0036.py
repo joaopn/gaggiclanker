@@ -836,3 +836,28 @@ async def test_a_profile_made_for_a_file_stands_on_it_with_the_version_the_file_
     [row] = await db.fetch_all("SELECT * FROM profile_board")
     assert row["current_version_id"] == 1 and row["device_version_id"] == 1
     assert row["device_profile_id"] == "disp1" and row["on_home_screen"] == 0
+
+
+async def test_a_deleted_row_whose_file_a_live_row_stands_on_comes_back_off_without_a_file(
+    db: Database, tmp_path: Path
+) -> None:
+    """Case 8: the deleted row's own file now holds another profile's current version (a live
+    row stands on it). The row does not stand on that file or take its version: it comes back
+    off with no file, and no two live profiles share a name."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Dropped", source="device")
+    await _version(db, 5, "Other", source="device")
+    await _file(db, "d1", 5)
+    await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
+    await _row(db, 2, "Other", 5, device="d1", device_version=5, origin="adopted")
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    dropped = await db.fetch_one("SELECT * FROM profile_board WHERE id = 1")
+    other = await db.fetch_one("SELECT * FROM profile_board WHERE id = 2")
+    assert dropped is not None and other is not None
+    assert dropped["on_machine"] == 0 and dropped["device_profile_id"] is None
+    assert dropped["current_version_id"] == 1
+    assert other["device_profile_id"] == "d1" and other["on_machine"] == 1
+    await _assert_no_shared_labels(db)
