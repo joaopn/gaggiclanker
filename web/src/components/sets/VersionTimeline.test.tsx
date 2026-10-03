@@ -43,7 +43,7 @@ beforeEach(() => {
   setVersionPrediction.mockResolvedValue(version());
   setVersionOutcome.mockResolvedValue(version());
   clearVersionOutcome.mockResolvedValue(version());
-  rollbackSet.mockResolvedValue(version({ version_no: 3, restores_version_no: 1 }));
+  rollbackSet.mockResolvedValue(version({ version_major: 3, restores_version_label: "v1" }));
 });
 
 describe("VersionTimeline", () => {
@@ -298,14 +298,14 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       parent_version_id: 21,
       shot_count: 3,
       prediction: "less bitter, a shorter shot",
       compares_to_version_id: 21,
-      compares_to_version_no: 1,
+      compares_to_version_label: "v1",
       restores_version_id: 21,
-      restores_version_no: 1,
+      restores_version_label: "v1",
       outcome: "partly_held",
       outcome_note: "shorter, still sharp",
       outcome_state: "partly_held",
@@ -336,7 +336,7 @@ describe("VersionTimeline", () => {
       const detail = setDetail();
       detail.versions[0].version = version({
         id: 22,
-        version_no: 2,
+        version_major: 2,
         parent_version_id: 21,
         shot_count: 3,
         prediction: "less bitter, a shorter shot",
@@ -424,7 +424,7 @@ describe("VersionTimeline", () => {
 
   it("links a version's shot count at that version's shots", () => {
     const detail = setDetail();
-    detail.versions[0].version = version({ id: 22, version_no: 2, shot_count: 3 });
+    detail.versions[0].version = version({ id: 22, version_major: 2, shot_count: 3 });
     renderWithQueryClient(
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -438,7 +438,7 @@ describe("VersionTimeline", () => {
 
   it("links each version at the conversation where that change is argued", () => {
     const detail = setDetail();
-    detail.versions[0].version = version({ id: 22, version_no: 2 });
+    detail.versions[0].version = version({ id: 22, version_major: 2 });
     renderWithQueryClient(
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -471,7 +471,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       parent_version_id: 21,
       shot_count: 0,
     });
@@ -496,7 +496,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       prediction: "less bitter",
       outcome_state: "open",
     });
@@ -521,7 +521,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       prediction: "less bitter",
       outcome: "held",
       outcome_state: "held",
@@ -551,7 +551,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       prediction: "less bitter",
       outcome_state: "open",
     });
@@ -575,7 +575,7 @@ describe("VersionTimeline", () => {
     // nothing" without anybody choosing that.
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       parent_version_id: 21,
       shot_count: 0,
     });
@@ -599,7 +599,7 @@ describe("VersionTimeline", () => {
     const user = setupUser();
     const detail = setDetail();
     detail.versions = [detail.versions[1]];
-    detail.versions[0].version = version({ id: 21, version_no: 1, shot_count: 0 });
+    detail.versions[0].version = version({ id: 21, version_major: 1, shot_count: 0 });
     renderWithQueryClient(
       <VersionTimeline setId={3} versions={detail.versions} judgements={detail.judgements} />,
     );
@@ -621,7 +621,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       parent_version_id: 21,
       shot_count: 0,
       prediction: "a clean 1:2",
@@ -642,7 +642,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       shot_count: 0,
       prediction: "less bitter",
       outcome: "held",
@@ -665,7 +665,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       parent_version_id: 21,
       shot_count: 0,
     });
@@ -694,7 +694,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       prediction: "less bitter",
       outcome_state: "open",
     });
@@ -721,7 +721,7 @@ describe("VersionTimeline", () => {
     const detail = setDetail();
     detail.versions[0].version = version({
       id: 22,
-      version_no: 2,
+      version_major: 2,
       prediction: "less bitter",
       outcome: "held",
       outcome_state: "held",

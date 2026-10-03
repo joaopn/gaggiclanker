@@ -160,8 +160,8 @@ describe("SetDetailPage", () => {
     const user = setupUser();
     getSet.mockResolvedValue(setDetail({ proposal: proposal() }));
     acceptSetProposal.mockResolvedValue({
-      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
-      version: { version_no: 3 },
+      proposal: proposal({ status: "accepted", resulting_version_label: "v3" }),
+      version: { version_label: "v3" },
     });
     renderWithQueryClient(<SetDetailPage />);
 

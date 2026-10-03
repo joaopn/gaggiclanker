@@ -40,17 +40,7 @@ export function draftProfile(overrides: Record<string, unknown> = {}): Record<st
   return { ...baseProfile(), label: "9 Bar Espresso [AI]", phases, ...overrides };
 }
 
-export function draft(
-  input: Partial<ProfileDraft> & {
-    compares_to_version_no?: number | null;
-    recorded_version_no?: number | null;
-  } = {},
-): ProfileDraft {
-  // Fixture shorthand, never served: a test that states a version by its
-  // position gets the name a version made before minor versions existed has; a
-  // test about minor names states the label.
-  const { compares_to_version_no, recorded_version_no, ...overrides } = input;
-  const named = (no: number | null | undefined) => (no ? `v${no}` : null);
+export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
   return {
     id: 1,
     base_version_id: 7,
@@ -64,13 +54,13 @@ export function draft(
     set_name: null,
     prediction: "",
     compares_to_version_id: null,
-    compares_to_version_label: named(compares_to_version_no),
+    compares_to_version_label: null,
     suggest_major: false,
     major_reason: "",
     is_new: false,
     set_next_minor_label: null,
     set_next_major_label: null,
-    recorded_version_label: named(recorded_version_no),
+    recorded_version_label: null,
     change_summary: "Dropped the peak to 8 bar.",
     stop_condition_changes: [],
     clamp_changes: [],

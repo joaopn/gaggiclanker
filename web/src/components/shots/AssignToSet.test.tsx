@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getSets.mockResolvedValue({ items: [setRow()] });
   putShotSetVersion.mockResolvedValue({ set_badge: null });
-  addSetVersion.mockResolvedValue(version({ id: 23, version_no: 3, parent_version_id: 22 }));
+  addSetVersion.mockResolvedValue(version({ id: 23, version_major: 3, parent_version_id: 22 }));
 });
 
 describe("AssignToSet", () => {
@@ -42,7 +42,11 @@ describe("AssignToSet", () => {
   it("assigns only once the choice differs from what is already there", async () => {
     const user = setupUser();
     renderWithQueryClient(
-      <AssignToSet shotId={9} setVersion={version({ id: 22, version_no: 2 })} judgement={null} />,
+      <AssignToSet
+        shotId={9}
+        setVersion={version({ id: 22, version_major: 2 })}
+        judgement={null}
+      />,
     );
 
     await waitFor(() => expect(screen.getByLabelText("Assign to")).toHaveValue("22"));
@@ -60,7 +64,7 @@ describe("AssignToSet", () => {
     renderWithQueryClient(
       <AssignToSet
         shotId={9}
-        setVersion={version({ id: 22, version_no: 2 })}
+        setVersion={version({ id: 22, version_major: 2 })}
         judgement={judgement({ grind_setting: "20", dose_in_g: 18.5, dose_out_g: 37 })}
       />,
     );

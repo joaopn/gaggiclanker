@@ -76,7 +76,7 @@ beforeEach(() => {
   setVersionPrediction.mockResolvedValue(version());
   setVersionOutcome.mockResolvedValue(version());
   clearVersionOutcome.mockResolvedValue(version());
-  rollbackSet.mockResolvedValue(version({ version_no: 1 }));
+  rollbackSet.mockResolvedValue(version({ version_major: 1 }));
   acceptSetProposal.mockResolvedValue({ proposal: proposal(), version: version() });
   declineSetProposal.mockResolvedValue({
     proposal: proposal({ status: "declined" }),

@@ -69,9 +69,9 @@ beforeEach(() => {
 
 describe("ShotDetailPage version prediction", () => {
   const predicted = version({
-    version_no: 2,
+    version_major: 2,
     prediction: "less bitter, a shorter shot",
-    compares_to_version_no: 1,
+    compares_to_version_label: "v1",
   });
 
   it("keeps the prediction out of the page until the shot has been decided about", async () => {
@@ -104,9 +104,9 @@ describe("ShotDetailPage version prediction", () => {
       judgement: null,
       set_version: version({
         id: id * 10,
-        version_no: 2,
+        version_major: 2,
         prediction: `what ${id} was expected to do`,
-        compares_to_version_no: 1,
+        compares_to_version_label: "v1",
       }),
     }));
     renderWithQueryClient(

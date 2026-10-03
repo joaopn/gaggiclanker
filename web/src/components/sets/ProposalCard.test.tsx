@@ -74,7 +74,6 @@ describe("ProposalCard", () => {
           setId={3}
           proposal={proposal({
             status: "accepted",
-            resulting_version_no: 3,
             resulting_version_label: "v2.1",
             records_outcome: outcomeProposal(),
           })}
@@ -111,7 +110,6 @@ describe("ProposalCard", () => {
     acceptSetProposal.mockResolvedValue({
       proposal: proposal({
         status: "accepted",
-        resulting_version_no: 3,
         resulting_version_label: "v2.1",
       }),
       version: { version_label: "v2.1" },
@@ -132,7 +130,6 @@ describe("ProposalCard", () => {
     acceptSetProposal.mockResolvedValue({
       proposal: proposal({
         status: "accepted",
-        resulting_version_no: 3,
         resulting_version_label: "v2.1",
       }),
       version: { version_label: "v2.1" },
@@ -408,7 +405,7 @@ describe("ProposalCard", () => {
         setId={3}
         proposal={proposal({
           status: "accepted",
-          resulting_version_no: 3,
+          resulting_version_label: "v3",
           decided_at: "2026-03-02T09:00:00.000Z",
         })}
       />,
@@ -458,11 +455,8 @@ describe("ProposalCard, minor versions", () => {
         proposal={proposal({
           status: "accepted",
           prediction: "Compared to v1.1: a touch more body and no slower.",
-          base_version_no: 2,
           base_version_label: "v1.1",
-          compares_to_version_no: 2,
           compares_to_version_label: "v1.1",
-          resulting_version_no: 3,
           resulting_version_label: "v1.2",
           decided_at: "2026-03-01T10:00:00.000Z",
         })}
@@ -591,10 +585,10 @@ describe("ProposalCard, a first recipe", () => {
         status: "accepted",
         changes: [],
         resulting_version_id: 60,
-        resulting_version_no: 1,
+        resulting_version_label: "v1",
         decided_at: "2026-03-02T09:00:00.000Z",
       }),
-      version: { version_no: 1 },
+      version: { version_label: "v1" },
     });
     renderWithQueryClient(<ProposalCard setId={6} proposal={designProposal()} />);
 
@@ -687,7 +681,7 @@ describe("ProposalCard, a first recipe", () => {
     renderWithQueryClient(
       <ProposalCard
         setId={6}
-        proposal={designProposal({ status: "accepted", resulting_version_no: 1 })}
+        proposal={designProposal({ status: "accepted", resulting_version_label: "v1" })}
       />,
     );
 
@@ -739,8 +733,8 @@ describe("ProposalCard, a change, after this feature", () => {
   it("shows what the accept recorded without waiting for the lists to be read again", async () => {
     const user = setupUser();
     acceptSetProposal.mockResolvedValue({
-      proposal: proposal({ status: "accepted", resulting_version_no: 3 }),
-      version: { version_no: 3 },
+      proposal: proposal({ status: "accepted", resulting_version_label: "v3" }),
+      version: { version_label: "v3" },
     });
     renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
 
@@ -764,7 +758,7 @@ describe("the next step after an accept", () => {
   const accepted = (overrides: Partial<Parameters<typeof proposal>[0]> = {}) =>
     proposal({
       status: "accepted",
-      resulting_version_no: 2,
+      resulting_version_label: "v2",
       decided_at: "2026-03-02T09:00:00.000Z",
       changes: grind,
       changed: ["the grind"],

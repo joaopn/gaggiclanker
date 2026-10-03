@@ -1615,7 +1615,7 @@ describe("ShotsPage needs-a-Set menu", () => {
   /**
    * Five Sets in the order `GET /api/sets` returns them: the ones collecting
    * shots first, then newest first. Each at a different latest version, so a menu that
-   * showed a version number it did not get from `current_version_no` shows up.
+   * showed a version number it did not get from `current_version_label` shows up.
    */
   const fiveSets = [
     setRow({
@@ -1623,14 +1623,14 @@ describe("ShotsPage needs-a-Set menu", () => {
       name: "Guji on the Niche",
       automatch: true,
       current_version_id: 51,
-      current_version_no: 4,
+      current_version_label: "v4",
     }),
     setRow({
       id: 4,
       name: "Kenya AA",
       automatch: false,
       current_version_id: 41,
-      current_version_no: 2,
+      current_version_label: "v2",
       grinder_name: null,
     }),
     setRow({
@@ -1638,21 +1638,21 @@ describe("ShotsPage needs-a-Set menu", () => {
       name: "Colombia decaf",
       automatch: false,
       current_version_id: 31,
-      current_version_no: 7,
+      current_version_label: "v7",
     }),
     setRow({
       id: 2,
       name: "House blend",
       automatch: false,
       current_version_id: 21,
-      current_version_no: 1,
+      current_version_label: "v1",
     }),
     setRow({
       id: 1,
       name: "The first bag",
       automatch: false,
       current_version_id: 11,
-      current_version_no: 3,
+      current_version_label: "v3",
     }),
   ];
 
@@ -2841,7 +2841,12 @@ describe("ShotsPage bar of Set conversations", () => {
     getShots.mockResolvedValue(listData([shot()]));
     getSets.mockResolvedValue({
       items: [
-        setRow({ id: 5, name: "Guji on the Niche", current_version_id: 51, current_version_no: 4 }),
+        setRow({
+          id: 5,
+          name: "Guji on the Niche",
+          current_version_id: 51,
+          current_version_label: "v4",
+        }),
         setRow({ id: 4, name: "Kenya AA", archived: true }),
       ],
     });

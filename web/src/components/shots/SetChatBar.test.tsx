@@ -17,7 +17,7 @@ describe("activeSets", () => {
       setRow({ id: 5, name: "Guji" }),
       setRow({ id: 4, name: "Old bag", archived: true }),
       setRow({ id: 3, name: "Being designed", designing: true }),
-      setRow({ id: 2, name: "No version", current_version_id: null, current_version_no: 0 }),
+      setRow({ id: 2, name: "No version", current_version_id: null, current_version_label: "" }),
       setRow({ id: 1, name: "House blend" }),
     ];
 
@@ -42,10 +42,15 @@ describe("SetChatBar", () => {
             id: 5,
             name: "Guji on the Niche",
             current_version_id: 51,
-            current_version_no: 4,
+            current_version_label: "v4",
           }),
           setRow({ id: 4, name: "Kenya AA", archived: true }),
-          setRow({ id: 2, name: "House blend", current_version_id: 21, current_version_no: 1 }),
+          setRow({
+            id: 2,
+            name: "House blend",
+            current_version_id: 21,
+            current_version_label: "v1",
+          }),
         ]}
       />,
     );
@@ -70,7 +75,6 @@ describe("SetChatBar", () => {
             id: 5,
             name: "Guji on the Niche",
             current_version_id: 53,
-            current_version_no: 3,
             current_version_label: "v1.2",
           }),
         ]}

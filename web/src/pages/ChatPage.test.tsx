@@ -887,7 +887,6 @@ describe("ChatPage, accepting a card in the conversation", () => {
     kind: "change",
     thread_id: 1,
     base_version_id: 30,
-    base_version_no: 4,
     base_version_label: "v4",
     base_is_current: true,
     changes: [
@@ -898,7 +897,6 @@ describe("ChatPage, accepting a card in the conversation", () => {
     reason: "Half a gram more.",
     prediction: "Compared to v4, a touch more body.",
     compares_to_version_id: 30,
-    compares_to_version_no: 4,
     compares_to_version_label: "v4",
     suggest_major: false,
     major_reason: "",
@@ -910,7 +908,7 @@ describe("ChatPage, accepting a card in the conversation", () => {
     draft_id: null,
     decline_note: "",
     resulting_version_id: null,
-    resulting_version_no: null,
+    resulting_version_label: null,
     created_at: "2026-03-01T10:00:10.000Z",
     decided_at: null,
   };
@@ -922,7 +920,6 @@ describe("ChatPage, accepting a card in the conversation", () => {
       proposal: {
         ...WAITING,
         status: "accepted",
-        resulting_version_no: 5,
         resulting_version_label: "v4.1",
       },
       version: { version_label: "v4.1" },

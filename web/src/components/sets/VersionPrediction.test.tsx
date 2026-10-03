@@ -6,10 +6,10 @@ import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { version } from "@/test/setsFixtures";
 
 const predicted = version({
-  version_no: 2,
+  version_major: 2,
   prediction: "less bitter, a shorter shot",
   compares_to_version_id: 21,
-  compares_to_version_no: 1,
+  compares_to_version_label: "v1",
 });
 
 describe("VersionPrediction", () => {
@@ -75,9 +75,9 @@ describe("VersionPrediction", () => {
         shotId={2}
         version={version({
           id: 99,
-          version_no: 3,
+          version_major: 3,
           prediction: "sweeter, the same time",
-          compares_to_version_no: 2,
+          compares_to_version_label: "v2",
         })}
         decision={null}
       />,
@@ -98,7 +98,7 @@ describe("VersionPrediction", () => {
     rerender(
       <VersionPrediction
         shotId={1}
-        version={version({ id: 98, version_no: 4, prediction: "a different claim" })}
+        version={version({ id: 98, version_major: 4, prediction: "a different claim" })}
         decision={null}
       />,
     );
@@ -133,9 +133,9 @@ describe("VersionPrediction", () => {
             shotId={2}
             version={version({
               id: 99,
-              version_no: 3,
+              version_major: 3,
               prediction: "sweeter, the same time",
-              compares_to_version_no: 2,
+              compares_to_version_label: "v2",
             })}
             decision={null}
           />
@@ -159,7 +159,7 @@ describe("VersionPrediction", () => {
         <StrictMode>
           <VersionPrediction
             shotId={1}
-            version={version({ id: 98, version_no: 4, prediction: "a different claim" })}
+            version={version({ id: 98, version_major: 4, prediction: "a different claim" })}
             decision={null}
           />
         </StrictMode>,

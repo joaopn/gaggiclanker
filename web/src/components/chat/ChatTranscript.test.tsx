@@ -349,7 +349,7 @@ describe("ChatTranscript", () => {
 
   it("says how a first recipe was answered when the conversation is read again", async () => {
     getSetProposals.mockResolvedValue({
-      items: [designProposal({ status: "accepted", changes: [], resulting_version_no: 1 })],
+      items: [designProposal({ status: "accepted", changes: [], resulting_version_label: "v1" })],
     });
 
     renderWithQueryClient(

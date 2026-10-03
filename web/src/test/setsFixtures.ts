@@ -259,17 +259,7 @@ export function grinder(overrides: Partial<GrinderRow> = {}): GrinderRow {
   };
 }
 
-/**
- * Fixture shorthand, never served: the server has no ordinal, but a test that
- * says "the second version" (`version_no: 2`) gets the name a version made
- * before minor versions existed has ("v2"); a test about minor names states the
- * label. The shorthand keys are stripped before the fixture is returned.
- */
-type WithPositions<T, K extends string> = Partial<T> & { [P in K]?: number | null };
-
-export function setRow(input: WithPositions<SetRow, "current_version_no"> = {}): SetRow {
-  const { current_version_no, ...overrides } = input;
-  const current = current_version_no ?? 2;
+export function setRow(overrides: Partial<SetRow> = {}): SetRow {
   return {
     id: 3,
     name: "Guji on the Niche",
@@ -282,9 +272,9 @@ export function setRow(input: WithPositions<SetRow, "current_version_no"> = {}):
     designing: false,
     created_at: "2026-04-02T00:00:00.000Z",
     current_version_id: 22,
-    current_version_label: current > 0 ? labelOf(current, 0) : "",
-    next_minor_label: `${labelOf(current, 0)}.1`,
-    next_major_label: labelOf(current + 1, 0),
+    current_version_label: "v2",
+    next_minor_label: "v2.1",
+    next_major_label: "v3",
     version_count: 2,
     shot_count: 4,
     profile_version_id: 7,
@@ -301,20 +291,10 @@ function labelOf(major: number, minor: number): string {
   return minor === 0 ? `v${major}` : `v${major}.${minor}`;
 }
 
-export function version(
-  input: WithPositions<
-    SetVersionRow,
-    "version_no" | "compares_to_version_no" | "restores_version_no"
-  > = {},
-): SetVersionRow {
-  const { version_no, compares_to_version_no, restores_version_no, ...overrides } = input;
-  // Unless a test says otherwise, a fixture version is a major one named by its
-  // position, as every version made before minor versions existed is.
-  const major = overrides.version_major ?? version_no ?? 1;
+export function version(overrides: Partial<SetVersionRow> = {}): SetVersionRow {
+  // The label follows the major and minor a test states, as the server's does.
+  const major = overrides.version_major ?? 1;
   const minor = overrides.version_minor ?? 0;
-  // The same for the two versions a row names: a fixture that states only
-  // their ordinals gets the names a pre-minor version would have.
-  const named = (no: number | null | undefined) => (no ? labelOf(no, 0) : null);
   return {
     id: 21,
     set_id: 3,
@@ -336,9 +316,9 @@ export function version(
     origin_analysis_id: null,
     prediction: "",
     compares_to_version_id: null,
-    compares_to_version_label: named(compares_to_version_no),
+    compares_to_version_label: null,
     restores_version_id: null,
-    restores_version_label: named(restores_version_no),
+    restores_version_label: null,
     prediction_at: null,
     outcome: null,
     outcome_note: "",
@@ -377,7 +357,7 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
       {
         version: version({
           id: 22,
-          version_no: 2,
+          version_major: 2,
           parent_version_id: 21,
           grind_setting: "21",
           grind_value: 21,
@@ -417,23 +397,14 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
   };
 }
 
-export function proposal(
-  input: WithPositions<
-    SetProposal,
-    "base_version_no" | "compares_to_version_no" | "resulting_version_no"
-  > = {},
-): SetProposal {
-  const { base_version_no, compares_to_version_no, resulting_version_no, ...overrides } = input;
-  // Names for the ordinals a test states, as a version made before minor
-  // versions existed has them; a test about minor names states the labels.
-  const named = (no: number | null | undefined) => (no ? labelOf(no, 0) : null);
+export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
   return {
     id: 5,
     set_id: 3,
     kind: "change",
     thread_id: 9,
     base_version_id: 22,
-    base_version_label: named(base_version_no ?? 2),
+    base_version_label: "v2",
     base_is_current: true,
     changes: [
       { field: "dose_g", label: "Dose", before: "18 g", after: "18.5 g", from_profile: false },
@@ -443,9 +414,7 @@ export function proposal(
     reason: "Half a gram more, to carry the finish.",
     prediction: "Compared to v2: a touch more body and no slower.",
     compares_to_version_id: 22,
-    compares_to_version_label: named(
-      "compares_to_version_no" in input ? compares_to_version_no : 2,
-    ),
+    compares_to_version_label: "v2",
     combined_reason: "",
     suggest_major: false,
     major_reason: "",
@@ -455,7 +424,7 @@ export function proposal(
     status: "proposed",
     decline_note: "",
     resulting_version_id: null,
-    resulting_version_label: named(resulting_version_no),
+    resulting_version_label: null,
     records_outcome: null,
     created_at: "2026-03-01T09:00:00.000Z",
     decided_at: null,
@@ -487,14 +456,14 @@ export function outcomeProposal(overrides: Partial<OutcomeProposal> = {}): Outco
 }
 
 /** A Set still being designed: a bean and a grinder, and a version 1 with no recipe. */
-export function designingSet(overrides: WithPositions<SetRow, "current_version_no"> = {}): SetRow {
+export function designingSet(overrides: Partial<SetRow> = {}): SetRow {
   return setRow({
     id: 6,
     name: "Ethiopia Guji on the Niche Zero",
     designing: true,
     design_brief: { fork_profile_version_id: 7, usual_grind: "22", goal: "more body" },
     current_version_id: 60,
-    current_version_no: 1,
+    current_version_label: "v1",
     version_count: 1,
     shot_count: 0,
     profile_version_id: null,
@@ -536,12 +505,7 @@ export function designingDetail(overrides: Partial<SetDetailData> = {}): SetDeta
  * A Set's first recipe, waiting: drawn by the server as a diff against the
  * empty version 1, so every field's `after` side is the recipe itself.
  */
-export function designProposal(
-  overrides: WithPositions<
-    SetProposal,
-    "base_version_no" | "compares_to_version_no" | "resulting_version_no"
-  > = {},
-): SetProposal {
+export function designProposal(overrides: Partial<SetProposal> = {}): SetProposal {
   return proposal({
     id: 8,
     set_id: 6,
@@ -549,7 +513,7 @@ export function designProposal(
     draft_id: 14,
     thread_id: 12,
     base_version_id: 60,
-    base_version_no: 1,
+    base_version_label: "v1",
     changes: [
       {
         field: "profile_version_id",
@@ -586,7 +550,7 @@ export function designProposal(
     reason: "A bloom to open up a light natural, a longer ratio for sweetness.",
     prediction: "",
     compares_to_version_id: null,
-    compares_to_version_no: null,
+    compares_to_version_label: null,
     ...overrides,
   });
 }
@@ -914,10 +878,9 @@ export function startingPointRun(overrides: Partial<StartingPointRun> = {}): Sta
  * screen that still counted versions would say "v3" and fail.
  */
 export function minorDetail(): SetDetailData {
-  const one = version({ id: 21, version_no: 1 });
+  const one = version({ id: 21, version_major: 1 });
   const oneOne = version({
     id: 22,
-    version_no: 2,
     version_major: 1,
     version_minor: 1,
     parent_version_id: 21,
@@ -926,7 +889,6 @@ export function minorDetail(): SetDetailData {
   });
   const oneTwo = version({
     id: 23,
-    version_no: 3,
     version_major: 1,
     version_minor: 2,
     parent_version_id: 22,
