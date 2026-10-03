@@ -10,6 +10,28 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Version names are identifiers, and going back moves the Set instead of writing a version
+
+- **Versions are listed by when they were made.** A version's name (v1.2) is an identifier, like a
+  tag, not a position: v1.2 can have been made after v2. The log is ordered by when each version
+  was made, the version the Set is on is marked as current wherever it sits, and each entry says
+  which version it was made from. A prediction can only be compared to a version made before it.
+- **Roll back puts the Set back on that version.** Nothing new is recorded: the version's
+  prediction, shots and outcome are exactly as they were, new shots are filed under it, and a
+  recorded outcome is not reopened. The log gets one line ("Went back to v1.2 (from v2.1)") with the
+  date and an optional note. The next change continues that version's line: from v2.1 back to
+  v1.2, the next minor is v1.3 (or the next free minor), the next major is the highest major plus
+  one. A roll back takes no prediction any more. Versions an earlier roll back already wrote keep
+  their names and their place. The conversation about the version you went back to is the Set's
+  live one again, and tells the agent the Set came back to it, from which version and when.
+- **A major version means a different profile, not a newer version of the same one.** Adding a
+  version, or accepting a proposal, that moves a Set to another version of the same profile (the
+  same entry of the profile list) now starts as a minor change; another entry of the list, or a
+  profile no entry holds, starts as a major one. The box is still yours, in both directions.
+- **Under the hood:** the version ordinal is gone from the database, the API, the agent's tools and
+  its SQL views (which gain `is_current` and `parent_version_label`). Existing databases upgrade in
+  place with no data lost; the upgrade keeps every chat, proposal, grade and link.
+
 ### The chat is one column, with a badge per Set above it
 
 - **The folder sidebar is gone.** Every Set is a badge above the conversation, as on the Shots page's

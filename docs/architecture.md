@@ -131,14 +131,19 @@ only while the version has no shots and no grade, because one typed afterwards
 would grade itself. The outcome, somebody's grade of that prediction, needs a
 prediction and a shot labelled Keep or Improve before it can be recorded, and
 can be changed or cleared for ever after. `set_versions` carries all three and
-the comment on it in `0005_sets.sql` says which is which. **A version has an
-ordinal and a name**: `version_no` orders the versions and says which is
-current, and `version_major`.`version_minor` (migration 0027) is what every
-screen, prompt and tool shows ("v1.1"), numbered by `_insert_version` in the
-insert's own transaction from one rule, `domain/sets.py::change_is_major` — the
-person's answer if given, else a different profile is major, a pushed draft
-minor, a roll back by what it changes — with `db/repos/version_names.py` serving
-the next names a button promises from the same arithmetic.
+the comment on it in `0005_sets.sql` says which is which. **A version has a
+name and nothing else of the kind**: `version_major`.`version_minor` (migration
+0027) is what every screen, prompt and tool shows ("v1.1"), an identifier like a
+tag, numbered by `_insert_version` in the insert's own transaction from one rule,
+`domain/sets.py::change_is_major` — the person's answer if given, else a
+different profile (another entry of the profile list, `db/repos/profile_identity.py`;
+not a newer version of the same profile) is major and a pushed draft is minor —
+with `db/repos/version_names.py` serving the next names a button promises from
+the same arithmetic. There is no ordinal (migration 0042 dropped it): the order
+versions were made in is `created_at` (the row id only breaks a tie), and the
+version the Set is on is `sets.current_version_id`, written by every append and
+by a revert. A minor is numbered from the current version's major, so after going
+back to v1.2 it is v1.3 (or the next free minor).
 
 A Set itself carries two booleans, and `0022_set_automatch_and_archived.sql`
 says why they are two: `archived` is the lifecycle — the bag is finished with,
@@ -170,8 +175,9 @@ than the deviation of all the Set's shots, because a Set's shots are *meant* to
 differ — that figure would measure the dial-in and grow every time a change
 worked — and rather than the deviation of the one version with the most shots,
 because a Set is usually many versions of two or three shots each and the
-pooling is what turns those into one figure. A roll back needs no special case:
-it copies the recipe, so its shots land in the same group.
+pooling is what turns those into one figure. Going back needs no special case:
+the shots filed under a version after the Set returned to it land in the same
+group as its earlier ones.
 
 Three decisions sit on top of it. **Three degrees of freedom** before it counts
 as measured: below that a sample deviation is mostly noise about itself, and
@@ -207,13 +213,12 @@ figure that moved when a query's ORDER BY changed would be impossible to
 explain, so a test walks every permutation of such a Set.
 
 **A version is a dead end when it is not on the live line.** The live line is
-walked backwards from the Set's current version: from a version that restores an
-earlier one, the step goes to what it restored; from any other, to its parent.
-Everything the walk does not pass through is a dead end, and the log mutes it.
-Stated as a walk rather than as "the versions between a roll back and its
-target", because the two stop agreeing the moment roll backs overlap — with v5
-restoring v2, v6 restoring v4 and v7 restoring v3, the line is v7, v3, v2, v1
-and v6 is a dead end although nothing later spans it. `dead_end_ids` is a pure
+walked backwards from the Set's current version (its pointer, which a revert
+moves) through the fork history, `parent_version_id`, as in version control; a
+row an old roll back wrote (`restores_version_id`, never written now) steps to
+what it restored instead. Everything the walk does not pass through is a dead
+end, and the log mutes it. Stated as a walk rather than as a span between a
+revert and its target, because the two stop agreeing the moment reverts overlap. `dead_end_ids` is a pure
 function over the version list the page already holds, and it terminates on data
 no route can write (a forward or self reference, a parent cycle) because a
 `while` over a linked list is the shape that would otherwise hang the page.
@@ -398,12 +403,12 @@ timer, boot step or task reaches the service or the proposals' repository:
 module.
 
 **A proposal stops waiting when the Set moves on.** Every path that appends a
-version — the Add a version form, a roll back, a profile draft put on the machine for the Set, and
+version — the Add a version form, a profile draft put on the machine for the Set, and
 accepting a proposal itself — goes through
 `SetsRepository._insert_version` (or, on a Set being designed, the fill of its
 version 1), and that is where a waiting proposal of the same Set is marked
 `stale`, in the same transaction, with the proposal being accepted as the one
-exception. A retired initial recipe takes its unsent profile draft with it. The alternative was describing that state rather
+exception. A revert (`SetsRepository.rollback`, which writes no version) does the same. A retired initial recipe takes its unsent profile draft with it. The alternative was describing that state rather
 than removing it: a row still saying `proposed` tells the next conversation's
 opening context that the Set is somewhere it is not, and leaves the person an
 Accept button whose only possible answer is a 409. The staleness check inside

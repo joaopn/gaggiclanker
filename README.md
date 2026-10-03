@@ -156,9 +156,10 @@ version: the next whole number (v1.2 → v2). You decide which, with the **Major
 change** box on the Add a version form, on a change card before you accept it,
 and on a draft's put for its Set; each button names the version it will record
 ("Accept as v1.3", "Accept as v2"). The box starts where the rule puts it:
-switching to a different profile is major, everything else — a proposal made
-active for the Set included — is minor, and a roll back is major exactly when it goes back to
-another profile. The agent may suggest major on its card, with its reason
+switching to a different profile — another entry of the profile list, not a
+newer version of the same profile — is major, and everything else (a newer
+version of the same profile, a proposal made active for the Set) is minor. The
+agent may suggest major on its card, with its reason
 beside the box, but the box is yours. Versions recorded before this existed
 keep their numbers: v3 is still v3. Everywhere a version is named — the log,
 the chat, the agent's context and tools, the shots table — it is by this name.
@@ -207,9 +208,9 @@ model is involved.
 
 **What counts as a repeat.** Shots brewed with the same five recipe fields —
 profile version, grind text, grind number, dose, target yield — are repeats of
-each other, whichever version they were filed under. That means a roll back's
-shots count as repeats of the version whose recipe it copied, with no special
-case, and so do the shots of a version that only changed the words. Each group's
+each other, whichever version they were filed under. That means shots filed
+under a version after you went back to it count as repeats of its earlier shots,
+and so do the shots of a version that only changed the words. Each group's
 shots are measured against their own average and those distances are pooled
 across the whole Set, so many versions of two or three shots each still add up
 to one usable figure. A group of one contributes nothing: a single shot has no
@@ -258,13 +259,22 @@ None of this appears on the shot page: the prediction is hidden there until you
 have labelled the shot, and a table of what the version has been doing would
 give it away whole.
 
-**Roll back to this version** appends a new version whose recipe is the old
-one's, with the version that was current as its parent — so the log shows the
-reversal field by field rather than an empty entry. When the current version has
-shots you want to improve on and none you kept, the page offers the way back to
-the last version you did keep shots from. **A roll back writes nothing to the
-machine**, even when the restored version names a different profile: putting
-that profile back on the machine stays a separate, deliberate act.
+Versions are listed by when they were made, newest first, with the one the Set
+is on marked **current** and each naming the version it was made from. A name is
+an identifier, like a tag, not a position: v1.2 may have been made after v2.
+
+**Roll back to this version** puts the Set back on that version, as it was.
+Nothing new is recorded: its prediction, shots and outcome stay, new shots are
+filed under it, and a recorded outcome is not reopened. The log gets one line,
+"Went back to v1.2 (from v2.1)", with the date and an optional note. The next
+change continues that line: from v2.1 back to v1.2, the next minor is v1.3 (or
+the next free minor if that is taken), and the next major is the highest major
+plus one. When the current version has shots you want to improve on and none you
+kept, the page offers the way back to the nearest version behind it, on the line
+it was made from, that you did keep shots from.
+**Going back writes nothing to the machine**, even when that version names a
+different profile: putting that profile back on the machine stays a separate,
+deliberate act.
 
 Each version's shot count is a link into the shots list narrowed to **that
 version**, not to the whole Set: the Keep / Improve / Discard counts beside it
@@ -272,11 +282,11 @@ are that version's too.
 
 Versions off the line you are now brewing are marked **dead ends** and muted,
 still fully readable: they were real attempts. The line is read backwards from
-the current version — from a roll back to the version it restored, from anything
-else to its parent — and everything it does not pass through is a dead end. Roll
-back from v5 to v3 and v4 and v5 are dead ends; roll back again onto a version
-that was itself a roll back, or onto one that had been a dead end, and the muting
-follows: what is live is whatever the current recipe actually came from.
+the current version through the version each was made from, as in version
+control, and everything it does not pass through is a dead end. Go back from
+v2.1 to v1.1 and v2 and v2.1 are dead ends; go forward again onto one of them
+and the muting follows: what is live is whatever the current recipe actually came
+from.
 
 ### What gaggiclanker writes to the machine, and who starts it
 
@@ -864,8 +874,8 @@ model. It will tell you which Set's badge to open.
 **One conversation per change.** New in a Set's list starts a fresh one on the
 Set's current version and it stays on that version afterwards, so the list reads
 as a history of what was argued rather than a pile of rooms all claiming to be
-about today's recipe. Rows are labelled `v6`, and a version a later roll back
-stepped over is muted and says *dead end*. **Discuss in chat** on a Set, the
+about today's recipe. Rows are labelled `v6`, and a version the Set later went
+back past is muted and says *dead end*. **Discuss in chat** on a Set, the
 **Chat** link on every entry in the experiment log, and the Set's button in the
 **Chat about** bar above the shots table open or continue that version's
 conversation with the question already typed — press any of them twice and you
