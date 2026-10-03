@@ -4656,6 +4656,8 @@ export interface components {
             readonly general: boolean;
             /** Id */
             id: number;
+            /** Pattern Run Id */
+            pattern_run_id?: number | null;
             /** Replaced */
             replaced?: ("deleted" | "old_changed") | null;
             /** Replaces Id */

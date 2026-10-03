@@ -37,7 +37,7 @@ async def test_existing_insights_survive_with_nothing_resting_on_anything(
             "('{\"bean_id\": 1}', 'Waiting.', 'user', 0, NULL, '[]')"
         )
 
-        assert await run_migrations(database) == ["0040"]
+        assert "0040" in await run_migrations(database)
 
         rows = await database.fetch_all(
             "SELECT text, evidence_shot_ids_json, rests_on_json, replaces_id, replaces_text, "

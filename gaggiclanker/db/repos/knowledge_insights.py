@@ -248,6 +248,8 @@ class InsightWrite(BaseModel):
     #: text as it stands now (set by :meth:`InsightsRepository.propose`).
     replaces_id: int | None = None
     replaces_text: str = ""
+    #: The pattern run an approved general insight came from; ``None`` for every other one.
+    pattern_run_id: int | None = None
 
     @model_validator(mode="after")
     def _a_set_insight_has_no_scope(self) -> InsightWrite:
@@ -316,6 +318,9 @@ class InsightRow(BaseModel):
     #: deleted by it) or ``old_changed`` (the old one was already gone or no longer
     #: added). ``None`` for an insight that replaces nothing, or is still waiting.
     replaced: Literal["deleted", "old_changed"] | None = None
+    #: The run of Find patterns across Sets whose approved proposal wrote this general
+    #: insight; ``None`` for one written any other way.
+    pattern_run_id: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -523,10 +528,10 @@ class InsightsRepository(Repository):
             INSERT INTO knowledge_insights
                 (scope_json, text, evidence_shot_ids_json, source,
                  confirmed, created_at, updated_at, confirmed_at, set_id, set_version_id,
-                 thread_id, rests_on_json, replaces_id, replaces_text)
+                 thread_id, rests_on_json, replaces_id, replaces_text, pattern_run_id)
             VALUES (:scope, :text, :evidence, :source,
                     :confirmed, :now, :now, :confirmed_at, :set_id, :set_version_id,
-                    :thread_id, :rests_on, :replaces_id, :replaces_text)
+                    :thread_id, :rests_on, :replaces_id, :replaces_text, :pattern_run_id)
             """,
             {
                 "rests_on": dumps(
@@ -537,6 +542,7 @@ class InsightsRepository(Repository):
                 ),
                 "replaces_id": insight.replaces_id,
                 "replaces_text": insight.replaces_text,
+                "pattern_run_id": insight.pattern_run_id,
                 "set_id": insight.set_id,
                 "set_version_id": insight.set_version_id,
                 "thread_id": insight.thread_id,
