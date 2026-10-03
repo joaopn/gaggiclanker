@@ -43,6 +43,7 @@ from gaggiclanker.api.deps import (
     DatabaseDep,
     GrindersRepoDep,
     JudgementsRepoDep,
+    OutcomeProposalsRepoDep,
     ProfilesRepoDep,
     SetProposalsRepoDep,
     SetsRepoDep,
@@ -50,6 +51,11 @@ from gaggiclanker.api.deps import (
 )
 from gaggiclanker.db.repos.chat import ChatRepository
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
+from gaggiclanker.db.repos.outcome_proposals import (
+    OutcomeProposalRefusal,
+    OutcomeProposalRow,
+    OutcomeResult,
+)
 from gaggiclanker.db.repos.set_proposals import (
     ProposalKind,
     ProposalRefusal,
@@ -62,6 +68,7 @@ from gaggiclanker.db.repos.sets import (
     DesignBrief,
     DesignRefusal,
     FieldChange,
+    LongText,
     RollbackWrite,
     SetRow,
     SetTrackRecord,
@@ -90,6 +97,7 @@ from gaggiclanker.domain.spread import (
     spread_report,
     version_evidence,
 )
+from gaggiclanker.domain.vocab import VersionOutcome
 from gaggiclanker.infra.envelope import ApiResponse, envelope_response
 from gaggiclanker.infra.errors import AppError, Conflict, NotFound, Unprocessable
 
@@ -229,6 +237,10 @@ class SetVersionDetail(BaseModel):
     #: accepted proposal and that conversation still exists. The log offers a
     #: way back into the room where the reasoning is.
     chat_thread_id: int | None = None
+    #: The grade an agent proposed for this version that the person has not
+    #: answered. NULL once it is answered; never the recorded outcome, which is
+    #: `version.outcome` and is written only by a person.
+    outcome_proposal: OutcomeProposalRow | None = None
 
 
 class SetProposalDetail(BaseModel):
@@ -299,6 +311,11 @@ class SetProposalDetail(BaseModel):
     resulting_version_id: int | None = None
     resulting_version_no: int | None = None
     resulting_version_label: str | None = None
+    #: The agent's grade of the base version, waiting beside this change.
+    #: Accepting the change records it first, in the same transaction, so the
+    #: card says so. NULL when nothing is waiting, and on a change that has
+    #: already been answered.
+    records_outcome: OutcomeProposalRow | None = None
     created_at: str
     decided_at: str | None = None
 
@@ -361,6 +378,8 @@ class SetDetailData(BaseModel):
     #: per Set, and it has changed nothing: the next shot is still filed under
     #: the recipe in the hopper until somebody presses Accept.
     proposal: SetProposalDetail | None = None
+    #: The agent's grade of the **current** version, waiting for the person.
+    outcome_proposal: OutcomeProposalRow | None = None
 
 
 def _missing(field: str, value: int, noun: str) -> NoReturn:
@@ -626,6 +645,11 @@ async def _proposal_detail(
         resulting_version_id=row.resulting_version_id,
         resulting_version_no=row.resulting_version_no,
         resulting_version_label=row.resulting_version_label,
+        records_outcome=(
+            await proposals.outcomes.waiting_for_version(row.base_version_id)
+            if row.status == "proposed" and row.kind == "change"
+            else None
+        ),
         created_at=row.created_at,
         decided_at=row.decided_at,
     )
@@ -796,6 +820,7 @@ async def get_set(
     shots: ShotsRepoDep,
     judgements: JudgementsRepoDep,
     proposals: SetProposalsRepoDep,
+    outcomes: OutcomeProposalsRepoDep,
 ) -> JSONResponse:
     row = await sets.get(set_id)
     if row is None:
@@ -829,6 +854,7 @@ async def get_set(
     # log can offer a way back into the conversation the change was argued in
     # without a request per row.
     threads = await proposals.accepted_threads(set_id)
+    grades = await outcomes.waiting_by_version(set_id)
     details = [
         SetVersionDetail(
             version=version,
@@ -837,6 +863,7 @@ async def get_set(
             dead_end=version.id in dead_ends,
             labels=counts.get(version.id, VersionLabelCounts()),
             chat_thread_id=threads.get(version.id),
+            outcome_proposal=grades.get(version.id),
             evidence=(
                 version_evidence(
                     counted,
@@ -865,6 +892,7 @@ async def get_set(
             spread=spread_report(spreads),
             rollback_target_version_id=await sets.rollback_target(set_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
+            outcome_proposal=grades.get(versions[0].id) if versions else None,
         ).model_dump(mode="json")
     )
 
@@ -1021,6 +1049,131 @@ async def decline_proposal(
     """Nothing is created. The note is what the next conversation is told."""
     return await _decided(
         proposals, await proposals.decline(set_id, proposal_id, body.note), set_id, proposal_id
+    )
+
+
+class OutcomeProposalListData(BaseModel):
+    """`GET /api/sets/{id}/outcome-proposals`: every grade proposed on this Set, newest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[OutcomeProposalRow]
+
+
+class OutcomeProposalDecision(BaseModel):
+    """What answering a proposed grade produced: the proposal as it now stands, and the version."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal: OutcomeProposalRow
+    #: The version carrying the outcome that was recorded. NULL after a dismissal.
+    version: SetVersionRow | None = None
+
+
+class OutcomeChange(BaseModel):
+    """`POST .../change`: the outcome the person records instead, and optionally their own note."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: VersionOutcome
+    #: Left out, the agent's per-claim lines stay with the recorded outcome.
+    note: LongText | None = None
+
+
+class OutcomeDismiss(BaseModel):
+    """`POST .../dismiss`: the turn-down, and optionally why."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(default="", max_length=DECLINE_NOTE_MAX)
+
+
+def _outcome_error(refusal: OutcomeProposalRefusal, set_id: int, proposal_id: int) -> AppError:
+    """A refused answer to a proposed grade as the one error it means.
+
+    `details` names the field at fault and never repeats what was sent: the
+    note is the agent's reasoning and the person's own words.
+    """
+    if refusal == "not_waiting":
+        return Conflict(
+            f"Outcome proposal {proposal_id} has already been answered",
+            code="OUTCOME_PROPOSAL_DECIDED",
+            details={"field": "status", "message": "it is no longer waiting for an answer"},
+        )
+    if refusal == "nothing_to_grade":
+        return _refusal_nothing_to_grade(set_id, None)
+    if refusal == "no_prediction":
+        return _refusal_no_prediction(set_id, None)
+    return NotFound(f"No outcome proposal {proposal_id} in Set {set_id}")
+
+
+def _outcome_decided(result: OutcomeResult, set_id: int, proposal_id: int) -> JSONResponse:
+    if result.proposal is None or result.refused is not None:
+        raise _outcome_error(result.refused or "no_proposal", set_id, proposal_id)
+    return envelope_response(
+        OutcomeProposalDecision(proposal=result.proposal, version=result.version).model_dump(
+            mode="json"
+        )
+    )
+
+
+@router.get(
+    "/{set_id}/outcome-proposals",
+    response_model=ApiResponse[OutcomeProposalListData],
+    summary="Every grade an agent has proposed for this Set's versions",
+)
+async def list_outcome_proposals(
+    set_id: int, sets: SetsRepoDep, outcomes: OutcomeProposalsRepoDep
+) -> JSONResponse:
+    """Newest first, waiting and answered alike, so a card read days later tells the truth."""
+    if await sets.get(set_id) is None:
+        raise NotFound(f"No Set {set_id}")
+    return envelope_response(
+        OutcomeProposalListData(items=await outcomes.for_set(set_id)).model_dump(mode="json")
+    )
+
+
+@router.post(
+    "/{set_id}/outcome-proposals/{proposal_id}/accept",
+    response_model=ApiResponse[OutcomeProposalDecision],
+    summary="Accept a proposed grade: record it as the version's outcome",
+)
+async def accept_outcome_proposal(
+    set_id: int, proposal_id: int, outcomes: OutcomeProposalsRepoDep
+) -> JSONResponse:
+    """A person's press, and the only way an agent's grade becomes an outcome.
+
+    There is no tool for this, in the chat or over MCP: an agent that could
+    accept its own grade would be writing the track record every later
+    conversation reads.
+    """
+    return _outcome_decided(await outcomes.accept(set_id, proposal_id), set_id, proposal_id)
+
+
+@router.post(
+    "/{set_id}/outcome-proposals/{proposal_id}/change",
+    response_model=ApiResponse[OutcomeProposalDecision],
+    summary="Record another outcome than the one proposed",
+)
+async def change_outcome_proposal(
+    set_id: int, proposal_id: int, body: OutcomeChange, outcomes: OutcomeProposalsRepoDep
+) -> JSONResponse:
+    return _outcome_decided(
+        await outcomes.change(set_id, proposal_id, body.outcome, body.note), set_id, proposal_id
+    )
+
+
+@router.post(
+    "/{set_id}/outcome-proposals/{proposal_id}/dismiss",
+    response_model=ApiResponse[OutcomeProposalDecision],
+    summary="Turn a proposed grade down, optionally saying why",
+)
+async def dismiss_outcome_proposal(
+    set_id: int, proposal_id: int, body: OutcomeDismiss, outcomes: OutcomeProposalsRepoDep
+) -> JSONResponse:
+    """Nothing is recorded. The note is what that version's conversation is told."""
+    return _outcome_decided(
+        await outcomes.dismiss(set_id, proposal_id, body.note), set_id, proposal_id
     )
 
 

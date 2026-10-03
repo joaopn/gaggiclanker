@@ -1543,6 +1543,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/outcome-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every grade an agent has proposed for this Set's versions
+         * @description Newest first, waiting and answered alike, so a card read days later tells the truth.
+         */
+        get: operations["list_outcome_proposals_api_sets__set_id__outcome_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/outcome-proposals/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a proposed grade: record it as the version's outcome
+         * @description A person's press, and the only way an agent's grade becomes an outcome.
+         *
+         *     There is no tool for this, in the chat or over MCP: an agent that could
+         *     accept its own grade would be writing the track record every later
+         *     conversation reads.
+         */
+        post: operations["accept_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/outcome-proposals/{proposal_id}/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record another outcome than the one proposed */
+        post: operations["change_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__change_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/outcome-proposals/{proposal_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a proposed grade down, optionally saying why
+         * @description Nothing is recorded. The note is what that version's conversation is told.
+         */
+        post: operations["dismiss_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/proposals": {
         parameters: {
             query?: never;
@@ -2610,6 +2691,22 @@ export interface components {
         /** ApiResponse[ModelsData] */
         ApiResponse_ModelsData_: {
             data?: components["schemas"]["ModelsData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[OutcomeProposalDecision] */
+        ApiResponse_OutcomeProposalDecision_: {
+            data?: components["schemas"]["OutcomeProposalDecision"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[OutcomeProposalListData] */
+        ApiResponse_OutcomeProposalListData_: {
+            data?: components["schemas"]["OutcomeProposalListData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4760,6 +4857,91 @@ export interface components {
         };
         /** @enum {string} */
         OptionKey: "conservative" | "recommended" | "adventurous";
+        /**
+         * OutcomeChange
+         * @description `POST .../change`: the outcome the person records instead, and optionally their own note.
+         */
+        OutcomeChange: {
+            /** Note */
+            note?: string | null;
+            outcome: components["schemas"]["VersionOutcome"];
+        };
+        /**
+         * OutcomeDismiss
+         * @description `POST .../dismiss`: the turn-down, and optionally why.
+         */
+        OutcomeDismiss: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * OutcomeProposalDecision
+         * @description What answering a proposed grade produced: the proposal as it now stands, and the version.
+         */
+        OutcomeProposalDecision: {
+            proposal: components["schemas"]["OutcomeProposalRow"];
+            version?: components["schemas"]["SetVersionRow"] | null;
+        };
+        /**
+         * OutcomeProposalListData
+         * @description `GET /api/sets/{id}/outcome-proposals`: every grade proposed on this Set, newest first.
+         */
+        OutcomeProposalListData: {
+            /** Items */
+            items: components["schemas"]["OutcomeProposalRow"][];
+        };
+        /**
+         * OutcomeProposalRow
+         * @description One proposed grade, with what a card needs joined in.
+         */
+        OutcomeProposalRow: {
+            /**
+             * Counted Shots
+             * @default 0
+             */
+            counted_shots: number;
+            /**
+             * Counted Shots Now
+             * @default 0
+             */
+            counted_shots_now: number;
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Decision Note
+             * @default
+             */
+            decision_note: string;
+            /** Id */
+            id: number;
+            /** Note */
+            note: string;
+            outcome: components["schemas"]["VersionOutcome"];
+            recorded_outcome?: components["schemas"]["VersionOutcome"] | null;
+            /** Set Id */
+            set_id: number;
+            /** Set Version Id */
+            set_version_id: number;
+            /** @default proposed */
+            status: components["schemas"]["OutcomeProposalStatus"];
+            /** Thread Id */
+            thread_id?: number | null;
+            /** Version Label */
+            version_label?: string | null;
+            version_outcome?: components["schemas"]["VersionOutcome"] | null;
+            /**
+             * Version Outcome Note
+             * @default
+             */
+            version_outcome_note: string;
+        };
+        /** @enum {string} */
+        OutcomeProposalStatus: "proposed" | "accepted" | "changed" | "dismissed" | "superseded";
         /** @enum {string} */
         OutcomeState: "no_prediction" | "open" | "held" | "partly_held" | "failed" | "inconclusive";
         /**
@@ -5498,6 +5680,7 @@ export interface components {
             judgements: {
                 [key: string]: components["schemas"]["ShotJudgementRow"];
             };
+            outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
             proposal?: components["schemas"]["SetProposalDetail"] | null;
             /** Rollback Target Version Id */
             rollback_target_version_id?: number | null;
@@ -5629,6 +5812,7 @@ export interface components {
              * @default
              */
             reason: string;
+            records_outcome?: components["schemas"]["OutcomeProposalRow"] | null;
             /** Resulting Version Id */
             resulting_version_id?: number | null;
             /** Resulting Version Label */
@@ -5942,6 +6126,7 @@ export interface components {
              *     }
              */
             labels: components["schemas"]["VersionLabelCounts"];
+            outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
             /** Shots */
             shots: components["schemas"]["ShotListRow"][];
             version: components["schemas"]["SetVersionRow"];
@@ -10033,6 +10218,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetDesignDiscarded_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outcome_proposals_api_sets__set_id__outcome_proposals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__change_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_outcome_proposal_api_sets__set_id__outcome_proposals__proposal_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutcomeDismiss"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OutcomeProposalDecision_"];
                 };
             };
             /** @description Validation Error */

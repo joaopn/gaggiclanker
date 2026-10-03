@@ -201,6 +201,17 @@ class OutcomeProposalsRepository(Repository):
         )
         return self.to_model(OutcomeProposalRow, row)
 
+    async def waiting_by_version(self, set_id: int) -> dict[int, OutcomeProposalRow]:
+        """Every grade waiting on this Set, keyed by the version it grades.
+
+        One query for the Set page, which shows a version's waiting grade beside
+        its own outcome without a request per row.
+        """
+        rows = await self.db.fetch_all(
+            f"{_SELECT} WHERE p.set_id = ? AND p.status = 'proposed'", (set_id,)
+        )
+        return {row.set_version_id: row for row in self.to_models(OutcomeProposalRow, rows)}
+
     async def last_answered(self, version_id: int) -> OutcomeProposalRow | None:
         """What the person last did with a grade of this version.
 
