@@ -1307,3 +1307,145 @@ async def test_0029_lets_two_shots_share_a_number_and_nothing_else(
     with pytest.raises(Exception, match="UNIQUE"):
         await db.execute(insert, ("000001", 1_770_000_000))
     assert await db.fetch_value("SELECT COUNT(*) FROM shots WHERE device_id = '000001'") == 2
+
+
+# ── the foreign-keys-off opt-in ───────────────────────────────────────────
+
+_PARENT_AND_CHILD = """
+CREATE TABLE parent (id INTEGER PRIMARY KEY, label TEXT NOT NULL, extra TEXT);
+CREATE TABLE child (
+    id INTEGER PRIMARY KEY,
+    parent_id INTEGER NOT NULL REFERENCES parent(id) ON DELETE CASCADE
+);
+INSERT INTO parent (id, label) VALUES (1, 'a'), (2, 'b');
+INSERT INTO child (id, parent_id) VALUES (10, 1), (11, 2);
+"""
+
+_REBUILD_PARENT = """
+CREATE TABLE parent_new (id INTEGER PRIMARY KEY, label TEXT NOT NULL);
+INSERT INTO parent_new (id, label) SELECT id, label FROM parent;
+DROP TABLE parent;
+ALTER TABLE parent_new RENAME TO parent;
+"""
+
+
+async def _foreign_keys(db: Database) -> int:
+    return int(await db.fetch_value("PRAGMA foreign_keys"))
+
+
+async def _two_files(db: Database, tmp_path: Path, second: str) -> Path:
+    directory = tmp_path / "migrations"
+    directory.mkdir()
+    (directory / "0001_tables.sql").write_text(_PARENT_AND_CHILD, encoding="utf-8")
+    await run_migrations(db, directory)
+    (directory / "0002_rebuild.sql").write_text(second, encoding="utf-8")
+    return directory
+
+
+async def test_a_file_without_the_marker_still_cascades_on_a_rebuild(
+    db: Database, tmp_path: Path
+) -> None:
+    """The control: what the marker exists to avoid is the cascade of the drop."""
+    directory = await _two_files(db, tmp_path, _REBUILD_PARENT)
+    await run_migrations(db, directory)
+    assert await db.fetch_value("SELECT COUNT(*) FROM child") == 0
+    assert await _foreign_keys(db) == 1
+
+
+async def test_the_marker_lets_a_rebuild_keep_every_child_row(db: Database, tmp_path: Path) -> None:
+    directory = await _two_files(db, tmp_path, "-- migration: foreign-keys-off\n" + _REBUILD_PARENT)
+    assert await run_migrations(db, directory) == ["0002"]
+    rows = await db.fetch_all("SELECT id, parent_id FROM child ORDER BY id")
+    assert [(r["id"], r["parent_id"]) for r in rows] == [(10, 1), (11, 2)]
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []
+    assert await _foreign_keys(db) == 1
+    # The ledger row is the file's statement checksum, marker or not.
+    migration = next(m for m in load_migrations(directory) if m.version == "0002")
+    assert migration.foreign_keys_off
+    assert (
+        await db.fetch_value("SELECT checksum FROM schema_migrations WHERE version = '0002'")
+        == migration.checksum
+    )
+
+
+async def test_a_marked_file_that_leaves_a_dangling_reference_is_rolled_back(
+    db: Database, tmp_path: Path
+) -> None:
+    broken = "".join(
+        ["-- migration: foreign-keys-off\n", _REBUILD_PARENT, "DELETE FROM parent WHERE id = 2;"]
+    )
+    directory = await _two_files(db, tmp_path, broken)
+    with pytest.raises(MigrationError, match="child"):
+        await run_migrations(db, directory)
+    # Nothing of the file survives: the old parent table, both rows, no ledger row.
+    assert await db.fetch_value("SELECT COUNT(*) FROM parent") == 2
+    assert await db.fetch_value("SELECT COUNT(*) FROM child") == 2
+    assert await db.fetch_value("SELECT COUNT(*) FROM pragma_table_info('parent')") == 3
+    assert (
+        await db.fetch_value("SELECT COUNT(*) FROM schema_migrations WHERE version = '0002'") == 0
+    )
+    assert await _foreign_keys(db) == 1
+
+
+async def test_foreign_keys_come_back_on_when_a_marked_file_fails_for_any_reason(
+    db: Database, tmp_path: Path
+) -> None:
+    directory = await _two_files(
+        db, tmp_path, "-- migration: foreign-keys-off\nCREATE TABLE parent (id INTEGER);"
+    )
+    with pytest.raises(MigrationError):
+        await run_migrations(db, directory)
+    assert await _foreign_keys(db) == 1
+
+
+async def test_a_reference_that_was_already_dangling_is_not_the_files_fault(
+    db: Database, tmp_path: Path
+) -> None:
+    directory = await _two_files(db, tmp_path, "-- migration: foreign-keys-off\nSELECT 1;")
+    await db.execute("PRAGMA foreign_keys = OFF")
+    await db.execute("INSERT INTO child (id, parent_id) VALUES (12, 99)")
+    await db.execute("PRAGMA foreign_keys = ON")
+    assert await run_migrations(db, directory) == ["0002"]
+
+
+async def test_a_marked_file_that_adds_a_foreign_key_column_does_not_blame_an_old_broken_row(
+    db: Database, tmp_path: Path
+) -> None:
+    """Adding a reference renumbers the foreign key list; the old break is still the same break."""
+    directory = await _two_files(
+        db,
+        tmp_path,
+        "-- migration: foreign-keys-off\n"
+        "ALTER TABLE child ADD COLUMN other_id INTEGER REFERENCES parent(id);",
+    )
+    await db.execute("PRAGMA foreign_keys = OFF")
+    await db.execute("INSERT INTO child (id, parent_id) VALUES (12, 99)")
+    await db.execute("PRAGMA foreign_keys = ON")
+    assert await run_migrations(db, directory) == ["0002"]
+
+
+async def test_a_marked_file_that_adds_a_column_and_breaks_a_new_reference_is_refused(
+    db: Database, tmp_path: Path
+) -> None:
+    directory = await _two_files(
+        db,
+        tmp_path,
+        "-- migration: foreign-keys-off\n"
+        "ALTER TABLE child ADD COLUMN other_id INTEGER REFERENCES parent(id);\n"
+        "UPDATE child SET other_id = 98 WHERE id = 10;",
+    )
+    await db.execute("PRAGMA foreign_keys = OFF")
+    await db.execute("INSERT INTO child (id, parent_id) VALUES (12, 99)")
+    await db.execute("PRAGMA foreign_keys = ON")
+    with pytest.raises(MigrationError, match="child"):
+        await run_migrations(db, directory)
+    assert (
+        await db.fetch_value("SELECT COUNT(*) FROM schema_migrations WHERE version = '0002'") == 0
+    )
+
+
+def test_the_marker_is_a_comment_and_changes_no_checksum() -> None:
+    from gaggiclanker.db.migrations import statements
+
+    body = "CREATE TABLE a (id INTEGER);"
+    assert statements("-- migration: foreign-keys-off\n" + body) == statements(body)

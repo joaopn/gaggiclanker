@@ -11,6 +11,19 @@ A migration file must therefore contain no transaction control of its own
 transaction (``VACUUM``, most ``PRAGMA`` writes). SQLite's DDL is transactional,
 so everything a schema change actually needs is available.
 
+**Rebuilding a table other tables point at** is the one thing that is not:
+with ``foreign_keys = ON`` the ``DROP TABLE`` counts every surviving child row
+as a violation, and with ``ON DELETE CASCADE`` it deletes them. SQLite's own
+procedure for this (the 12 steps in its ALTER TABLE documentation) turns the
+pragma OFF first, and ``PRAGMA foreign_keys`` is a no-op inside a transaction.
+A file opts in with the marker comment ``-- migration: foreign-keys-off`` on
+its first line. The runner then sets the pragma OFF *before* opening the
+transaction, applies the file and its ledger row, runs ``PRAGMA
+foreign_key_check`` before the commit and rolls everything back, naming the
+table, when the file left a reference dangling that was not dangling before it
+ran. The pragma is turned ON again whatever happened. A comment is not part of
+the statement checksum, so the marker changes nothing for any other file.
+
 The checksum is the point of the ledger. cvclanker's migrate.ts relies on
 idempotent SQL (``CREATE TABLE IF NOT EXISTS``, "duplicate column name" treated
 as success) with no record of what ran, which works until the first migration
@@ -43,11 +56,21 @@ import structlog
 
 from gaggiclanker.db.connection import Database
 
-__all__ = ["Migration", "MigrationError", "load_migrations", "run_migrations", "statements"]
+__all__ = [
+    "FOREIGN_KEYS_OFF_MARKER",
+    "Migration",
+    "MigrationError",
+    "load_migrations",
+    "run_migrations",
+    "statements",
+]
 
 log = structlog.get_logger(__name__)
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+
+# The first line of a file that rebuilds a table other tables reference.
+FOREIGN_KEYS_OFF_MARKER = "-- migration: foreign-keys-off"
 
 # NNNN_some_name.sql — the numeric prefix is the version and orders the run.
 _FILENAME = re.compile(r"^(?P<version>\d{4})_(?P<name>[a-z0-9_]+)\.sql$")
@@ -74,6 +97,12 @@ class Migration:
     name: str
     sql: str
     path: Path
+
+    @property
+    def foreign_keys_off(self) -> bool:
+        """Whether the file's first line opts into the runner's foreign-keys-off procedure."""
+        first = self.sql.lstrip("\ufeff").split("\n", 1)[0]
+        return first.strip().lower() == FOREIGN_KEYS_OFF_MARKER
 
     @property
     def checksum(self) -> str:
@@ -282,6 +311,64 @@ def _legacy_bytes(migration: Migration) -> str | None:
     return frozen[0]
 
 
+async def _violations(db: Database) -> set[tuple[str, int | None, str, str]]:
+    """Every reference that points nowhere right now: (table, rowid, parent, column).
+
+    ``foreign_key_check`` names the broken reference by its index in the table's
+    foreign key list, and that index renumbers when a file adds or drops a
+    foreign key column, so a row that was broken before would look new after.
+    The referencing column(s) survive that, so the index is mapped to them.
+    """
+    rows = await db.fetch_all("PRAGMA foreign_key_check")
+    columns: dict[tuple[str, int], str] = {}
+    for table in {str(r["table"]) for r in rows}:
+        for fk in await db.fetch_all(
+            'SELECT id, "from" AS col FROM pragma_foreign_key_list(?) ORDER BY id, seq', (table,)
+        ):
+            key = (table, int(fk["id"]))
+            columns[key] = f"{columns[key]},{fk['col']}" if key in columns else str(fk["col"])
+    return {
+        (
+            str(r["table"]),
+            r["rowid"],
+            str(r["parent"]),
+            columns.get((str(r["table"]), int(r["fkid"])), str(r["fkid"])),
+        )
+        for r in rows
+    }
+
+
+async def _apply(db: Database, migration: Migration) -> None:
+    """Run one file and its ledger row in one transaction; roll back on any failure."""
+    # executescript() commits whatever is pending and then runs the text
+    # verbatim, so prefixing BEGIN opens a transaction the script does not
+    # close. The ledger insert then joins that transaction and one COMMIT
+    # makes schema and ledger move together.
+    try:
+        # What was already dangling before this file ran is not this file's to
+        # answer for (and refusing the boot over it would strand the database);
+        # what it leaves dangling is, and the whole file is undone.
+        before = await _violations(db) if migration.foreign_keys_off else set()
+        await db.execute_script(f"BEGIN;\n{migration.sql}")
+        if migration.foreign_keys_off:
+            created = sorted(await _violations(db) - before)
+            if created:
+                tables = sorted({table for table, _, _, _ in created})
+                raise MigrationError(
+                    f"{len(created)} foreign key violation(s) left in {', '.join(tables)}"
+                )
+        await db.execute(
+            "INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)",
+            (migration.version, migration.name, migration.checksum),
+        )
+        await db.execute("COMMIT")
+    except Exception as exc:
+        await _rollback(db)
+        raise MigrationError(
+            f"migration {migration.version}_{migration.name} failed: {exc}"
+        ) from exc
+
+
 async def _applied(db: Database) -> dict[str, str]:
     rows = await db.fetch_all("SELECT version, checksum FROM schema_migrations")
     return {str(row["version"]): str(row["checksum"]) for row in rows}
@@ -330,23 +417,22 @@ async def run_migrations(db: Database, directory: Path | None = None) -> list[st
 
     done: list[str] = []
     for migration in pending:
-        log.info("migration_applying", version=migration.version, name=migration.name)
-        # executescript() commits whatever is pending and then runs the text
-        # verbatim, so prefixing BEGIN opens a transaction the script does not
-        # close. The ledger insert then joins that transaction and one COMMIT
-        # makes schema and ledger move together.
+        log.info(
+            "migration_applying",
+            version=migration.version,
+            name=migration.name,
+            foreign_keys_off=migration.foreign_keys_off,
+        )
+        if migration.foreign_keys_off:
+            # `PRAGMA foreign_keys` does nothing inside a transaction, so it is
+            # switched here, before BEGIN, and back on in `finally`: a failed
+            # file must not leave the connection enforcing nothing.
+            await db.execute("PRAGMA foreign_keys = OFF")
         try:
-            await db.execute_script(f"BEGIN;\n{migration.sql}")
-            await db.execute(
-                "INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)",
-                (migration.version, migration.name, migration.checksum),
-            )
-            await db.execute("COMMIT")
-        except Exception as exc:
-            await _rollback(db)
-            raise MigrationError(
-                f"migration {migration.version}_{migration.name} failed: {exc}"
-            ) from exc
+            await _apply(db, migration)
+        finally:
+            if migration.foreign_keys_off:
+                await db.execute("PRAGMA foreign_keys = ON")
         done.append(migration.version)
 
     log.info("migrations_applied", versions=done)
