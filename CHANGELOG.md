@@ -10,6 +10,37 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Find patterns across Sets
+
+- **A button on the Knowledge page's Insights tab asks one model call to find the lessons several
+  Sets share.** It reads the confirmed insights of every Set (not those of a Set still being
+  designed) with the general insights that already exist and the proposals you declined, and
+  proposes general insights, each with the Set insights it was derived from. It is not a chat and
+  has no tools, runs only when you press it (never on a timer, after a sync, at boot or from a
+  chat or MCP tool), and the page says how many confirmed Set insights arrived since the last run
+  and keeps the button off until two Sets have one. Its model is the new `modelPatterns` setting
+  (Settings → LLM → Models), falling back to the default model.
+- **Approving a proposal deletes the Set insights it came from.** Approve writes the general insight
+  (confirmed, scoped so it reaches every one of those Sets) and deletes its sources in one step, so
+  each Set's conversations are told the lesson once, as a general one; a proposal can also replace
+  an existing general insight, which is deleted with it. A source deleted or taken back since the
+  run is left alone and named on the card, and approval is refused when fewer than two Sets'
+  insights remain. A proposal that rests on one Set, names an insight it was not given, or states a
+  scope that not every source Set matches (or one by profile style) is dropped before you see it and
+  counted on the run.
+- **Copies of insight text live one run.** A dismissed proposal is kept so the next run is told
+  you declined it; when a run finishes, every proposal of every earlier run is deleted (whatever
+  became of it) and every earlier run's stored input is blanked. After you delete an insight its
+  words can survive in the newest run's input and proposals until the next run finishes, never
+  longer; while fewer than two Sets have a confirmed insight no run can start, so they stay until
+  one can. Approve and Dismiss are disabled (and refused by the server) while a run is going,
+  because the run replaces the proposals when it finishes. Pressing the button again replaces the waiting proposals of the run before. A run
+  never stays "running" because of what the model said: an answer with an empty proposal text is
+  refused and recorded as a failed run, and anything that goes wrong after the call closes the
+  run as failed.
+- Migration 0041 adds two tables and one nullable column; no insight is lost and no database needs
+  wiping.
+
 ### A discarded shot no longer needs a Set
 
 - **Labelling a shot Discard takes it off the "needs a Set" list.** The header's "N need a Set"

@@ -367,6 +367,36 @@ an ordinary insight, so nothing waits on what is gone; a conversation's delete
 dismissed in the same transaction. No tool reaches any of these; the registry and
 bytecode walk in `tests/tools/test_no_proposal_is_accepted_by_a_tool.py` names them.
 
+**Find patterns across Sets** (`gaggiclanker/patterns/`, shaped like Review). One structured
+call, no tools, started only by `POST /api/knowledge/patterns/runs` (the Knowledge page's
+button; a registry task named `patterns`, a 202 with the `running` row, boot marks a left-over
+`running` row `interrupted`, a provider failure is a stored `failed` run). Its input
+(`build_patterns_input`) is the confirmed insights of every Set that is not being designed,
+ordered by Set then insight id, the confirmed general insights and the dismissed proposals, and is
+stored verbatim on the run (`pattern_runs`, migration 0041). `filter_proposals` drops, before
+storage and counting each reason on the run, a proposal that rests on fewer than two Sets, names
+an insight (or a replaced general insight) it was not given, uses `profile_style`, or has a
+scope that fails the live `scope_matches` over `set_attributes` for any source Set. A run writes
+only its own rows (`pattern_runs`, `pattern_proposals`), and when it finishes it deletes every
+proposal of every earlier run (in any state) and blanks every earlier run's `input_json`, in the
+same transaction: copies of insight text live one run, so after an insight is deleted its words
+can survive in the newest run's input and proposals until the next run finishes, never longer;
+while fewer than two Sets have confirmed insights no run can start, so they stay until one can.
+Approve and Dismiss answer 409 `PATTERNS_RUNNING` while any run is `running` (checked inside
+the answer's transaction), so no dismissal is deleted by a run that was not told it.
+The run rows stay, so the since-count and an approved insight's `pattern_run_id` still resolve.
+Anything raising after the model has answered closes the run as `failed`; a proposal whose text
+is empty after collapsing whitespace is refused by the output model itself.
+**Who may approve: a person.** `PatternProposalsRepository.approve` (`POST
+/api/knowledge/patterns/proposals/{id}/approve`) is one transaction: it checks each source is
+still a confirmed insight of its Set and its Set still matches the scope (else the source is
+skipped and named), refuses with 409 `PATTERN_TOO_FEW_SETS` below two Sets, writes the general
+insight confirmed with `knowledge_insights.pattern_run_id`, and deletes the sources and any
+replaced general insight through `delete_in_transaction`. Dismiss is the other route. No tool,
+timer, boot step or task reaches the service or the proposals' repository:
+`tests/patterns/test_only_a_person_decides.py` walks the registry and the bytecode of every
+module.
+
 **A proposal stops waiting when the Set moves on.** Every path that appends a
 version — the Add a version form, a roll back, a profile draft put on the machine for the Set, and
 accepting a proposal itself — goes through

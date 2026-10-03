@@ -110,7 +110,7 @@ pages, in the order the sidebar lists them:
 | **Sync** | `g y` | Sync with the machine, what the last sync did to its profiles, and the record of every write this box has made to it. Nothing but a profile is ever written to the machine. |
 | **Device** | | What the machine is: its versions and its connection. The status pill in the header leads here too. |
 | **Settings** | `g ,` | One page of collapsible cards per heading, the ones you must fill in first: Machine access and LLM, then Authentication, Prompts, Profile safety, System and Import. The LLM page also holds the knowledge and chat budgets. |
-| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and your **general** insights: the ones you write by hand and any agent-written one the app could not place on a single Set. Insights learned in a Set's conversation live on that Set's page instead. |
+| **Knowledge** | `g k` | Under Settings. The dial-in rules, the prose documents, and your **general** insights: the ones you write by hand, any agent-written one the app could not place on a single Set, and the ones you approve from **Find patterns across Sets**. Insights learned in a Set's conversation live on that Set's page instead. |
 
 The sidebar folds. The button at the foot of it, or the `[` chord, collapses it
 to an icon rail and back; the choice is remembered in the browser. Folded, every
@@ -806,6 +806,32 @@ history row or a restore; only the conversation that proposed the removal still 
 the text on its card and is told what you did. Deleting a conversation also deletes
 the insights it proposed that you dismissed (they existed only to stop it offering
 them again); waiting and added ones stay.
+
+**Find patterns across Sets.** A Set's insight reaches that Set alone, so a lesson that is
+true across coffees ("this grinder channels below 9 clicks with any light roast") is learned
+again, Set by Set. On the Knowledge page's Insights tab, **Find patterns** asks one model call to
+read the confirmed insights of every Set (the Set's name and attributes, the version each was
+learned at and what it rests on, the general insights that already exist, and the proposals you
+declined before) and to propose general insights that several Sets say in different words. It is
+not a conversation and has no tools. It runs **only when you press the button**: never on a
+timer, after a sync, at boot, or from a chat or MCP tool; the page says how many confirmed Set
+insights arrived since the last run and keeps the button off until two Sets have one. Each
+proposal is a card with its text, the Sets it applies to, and the Set insights it was derived
+from, grouped by Set and linked. A proposal that rests on one Set, names an insight it was not
+given, or states a scope that every source Set does not share (or one by profile style) is dropped
+before you see it and counted on the run. **Approve** writes the general insight (confirmed, scoped
+so that it reaches every one of those Sets) and **deletes the Set insights it came from** in the
+same step, so each of those Sets' conversations is told the lesson once, as a general one; when
+the proposal says it replaces an existing general insight, that one is deleted too. A source that
+was deleted or taken back since the run is left alone and named on the card, and the approval is
+refused when fewer than two Sets' insights remain. **Dismiss** keeps the proposal so that the next run is told you declined it. Copies of insight text
+live one run: when a run finishes, every proposal of every earlier run is deleted (whatever
+became of it) and every earlier run's stored input is blanked, so once you delete an insight
+its words can survive in the newest run's input and proposals until the next run finishes, never
+longer (and while fewer than two Sets have a confirmed insight no run can start, so they stay until
+one can). Approve and Dismiss wait while a run is going: it replaces the proposals when it
+finishes, so an answer given meanwhile would be lost. The model is `modelPatterns` under
+Settings → LLM → Models, falling back to the default model.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
 version on the form, roll back, make a profile proposal active for the Set — whichever it
