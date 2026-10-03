@@ -19,6 +19,7 @@ from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalsRepository,
     OutcomeProposalWrite,
 )
+from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetVersionPatch,
     SetVersionWrite,
@@ -370,3 +371,165 @@ class TestWhatReadsAGrade:
         await wired.db.execute("DELETE FROM chat_threads WHERE id = ?", (cursor.lastrowid,))
         read = await proposals.get(set_id, stored.id)
         assert read is not None and read.thread_id is None
+
+
+NEXT_PREDICTION = "Compared to v1: two to four seconds longer and less sour."
+
+
+async def _next_version(wired: Fixtures, set_id: int):  # type: ignore[no-untyped-def]
+    proposals = SetProposalsRepository(wired.db)
+    return proposals, await proposals.create(
+        set_id,
+        ProposalWrite(
+            patch=SetVersionPatch(grind_setting="21"),
+            reason="one click finer, chasing the sourness out",
+            prediction=NEXT_PREDICTION,
+        ),
+    )
+
+
+class TestTheNextVersionRecordsTheGrade:
+    """Rule 4: one click when the grade and the next version come together."""
+
+    async def test_an_open_outcome_with_nothing_proposed_still_refuses(
+        self, wired: Fixtures
+    ) -> None:
+        set_id, _ = await _graded_ready(wired)
+        _, result = await _next_version(wired, set_id)
+        assert result.refused == "outcome_open"
+
+    async def test_a_waiting_grade_lets_the_next_version_be_proposed(self, wired: Fixtures) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        await OutcomeProposalsRepository(wired.db).create(set_id, version_id, _write())
+        _, result = await _next_version(wired, set_id)
+        assert result.refused is None
+        assert result.proposal is not None
+        # Still words: proposing the version recorded nothing.
+        version = await wired.sets.get_version(version_id)
+        assert version is not None and version.outcome is None
+
+    async def test_accepting_the_version_records_the_grade_and_appends_in_one_transaction(
+        self, wired: Fixtures
+    ) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        grades = OutcomeProposalsRepository(wired.db)
+        grade = (await grades.create(set_id, version_id, _write("held"))).proposal
+        assert grade is not None
+        proposals, made = await _next_version(wired, set_id)
+        assert made.proposal is not None
+
+        result = await proposals.accept(set_id, made.proposal.id)
+
+        assert result.refused is None
+        assert result.version is not None and result.version.version_label == "v1.1"
+        assert result.graded is not None and result.graded.id == grade.id
+        recorded = await wired.sets.get_version(version_id)
+        assert recorded is not None
+        assert (recorded.outcome, recorded.outcome_note) == ("held", NOTE)
+        answered = await grades.get(set_id, grade.id)
+        assert answered is not None and answered.status == "accepted"
+
+    async def test_a_failure_after_the_grade_leaves_neither_written(
+        self, wired: Fixtures, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        grades = OutcomeProposalsRepository(wired.db)
+        grade = (await grades.create(set_id, version_id, _write("held"))).proposal
+        assert grade is not None
+        proposals, made = await _next_version(wired, set_id)
+        assert made.proposal is not None
+
+        async def boom(*args: object, **kwargs: object) -> int:
+            raise RuntimeError("append failed")
+
+        monkeypatch.setattr(proposals.sets, "append_version", boom)
+        with pytest.raises(RuntimeError):
+            await proposals.accept(set_id, made.proposal.id)
+
+        unchanged = await wired.sets.get_version(version_id)
+        assert unchanged is not None and unchanged.outcome is None
+        still = await grades.get(set_id, grade.id)
+        assert still is not None and still.status == "proposed"
+        assert len(await wired.sets.versions(set_id)) == 1
+
+    async def test_a_dismissed_grade_leaves_the_version_proposal_refused_as_open(
+        self, wired: Fixtures
+    ) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        grades = OutcomeProposalsRepository(wired.db)
+        grade = (await grades.create(set_id, version_id, _write())).proposal
+        assert grade is not None
+        proposals, made = await _next_version(wired, set_id)
+        assert made.proposal is not None
+        await grades.dismiss(set_id, grade.id)
+
+        result = await proposals.accept(set_id, made.proposal.id)
+
+        assert result.refused == "outcome_open"
+        assert len(await wired.sets.versions(set_id)) == 1
+        still = await proposals.get(set_id, made.proposal.id)
+        assert still is not None and still.status == "proposed"
+
+    async def test_a_dismissed_grade_does_not_unlock_a_new_proposal_either(
+        self, wired: Fixtures
+    ) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        grades = OutcomeProposalsRepository(wired.db)
+        grade = (await grades.create(set_id, version_id, _write())).proposal
+        assert grade is not None
+        await grades.dismiss(set_id, grade.id)
+        _, result = await _next_version(wired, set_id)
+        assert result.refused == "outcome_open"
+
+    async def test_a_grade_that_cannot_be_recorded_refuses_the_whole_accept(
+        self, wired: Fixtures
+    ) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        grades = OutcomeProposalsRepository(wired.db)
+        await grades.create(set_id, version_id, _write())
+        proposals, made = await _next_version(wired, set_id)
+        assert made.proposal is not None
+        await wired.db.execute("UPDATE shot_judgements SET decision = 'discard' WHERE 1 = 1")
+
+        result = await proposals.accept(set_id, made.proposal.id)
+
+        assert result.refused == "grade_unrecordable"
+        assert len(await wired.sets.versions(set_id)) == 1
+
+    async def test_with_the_outcome_already_recorded_the_waiting_grade_is_still_recorded(
+        self, wired: Fixtures
+    ) -> None:
+        """A newer grade replaces a recorded one only because the person accepted it."""
+        set_id, version_id = await _graded_ready(wired)
+        await wired.sets.set_outcome(
+            set_id, version_id, VersionOutcomeWrite(outcome="held", note="by hand")
+        )
+        grades = OutcomeProposalsRepository(wired.db)
+        await grades.create(set_id, version_id, _write("failed"))
+        proposals, made = await _next_version(wired, set_id)
+        assert made.proposal is not None
+
+        result = await proposals.accept(set_id, made.proposal.id)
+
+        assert result.refused is None
+        recorded = await wired.sets.get_version(version_id)
+        assert recorded is not None and recorded.outcome == "failed"
+
+    async def test_a_grade_of_an_older_version_does_not_unlock_the_current_one(
+        self, wired: Fixtures
+    ) -> None:
+        set_id, first = await _graded_ready(wired)
+        await wired.sets.set_outcome(set_id, first, VersionOutcomeWrite(outcome="held"))
+        second = await wired.sets.add_version(
+            set_id,
+            SetVersionPatch.model_validate(
+                {"grind_setting": "21", "prediction": "Expect about 32 s."}
+            ),
+        )
+        assert second is not None
+        await _keep_shot(wired, second.id, "000790")
+        grades = OutcomeProposalsRepository(wired.db)
+        await grades.create(set_id, first, _write("failed"))  # for v1, not v1.1
+
+        _, result = await _next_version(wired, set_id)
+        assert result.refused == "outcome_open"

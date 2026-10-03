@@ -29,7 +29,8 @@ properties true.
   press must never be the thing that discovers a dangling id.
 
   **Accept is one transaction.** The proposal is still waiting, the Set has not
-  moved on, the current version's prediction has been graded, the version is
+  moved on, the current version's prediction has been graded (or the agent's
+  proposed grade for it is waiting, and is recorded first), the version is
   appended and the proposal is marked accepted — all in the one transaction, or
   a second browser tab accepting the same proposal creates two versions from
   it. That is why the append is
@@ -61,6 +62,7 @@ from pydantic import (
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.sets import (
     RECIPE_FIELDS,
@@ -306,6 +308,7 @@ type ProposalRefusal = Literal[
     "not_waiting",
     "already_waiting",
     "outcome_open",
+    "grade_unrecordable",
     "bad_compare",
     "bad_profile",
     "bad_thread",
@@ -340,6 +343,9 @@ class ProposalWriteResult:
     #: ``already_waiting``. The refusal describes it, so the agent talks about
     #: the one on screen instead of stacking another beside it.
     waiting: SetProposalRow | None = None
+    #: The agent's grade this accept recorded on the base version, as it was
+    #: before it was marked: set only when the press carried one.
+    graded: OutcomeProposalRow | None = None
 
 
 _SELECT = f"""
@@ -368,6 +374,10 @@ class SetProposalsRepository(Repository):
         #: The versions half. Held rather than constructed per call so that
         #: :meth:`accept` can append a version inside its own transaction.
         self.sets = SetsRepository(db)
+        #: The grades the agent proposed. A waiting one for the current version
+        #: is what lets the next change be proposed, and accepting that change
+        #: records it.
+        self.outcomes = OutcomeProposalsRepository(db)
         #: The drafts an initial recipe carries, retired with it — a status
         #: write, in the caller's transaction, and never through the draft
         #: service that holds the machine.
@@ -573,6 +583,21 @@ class SetProposalsRepository(Repository):
         )
         return change_is_major("change", profile_changed=moves_profile, major=None)
 
+    async def outcome_blocks(self, current: SetVersionRow) -> bool:
+        """Whether the current version's open outcome stops a new change.
+
+        The one statement of the rule, read by this repository's create and by
+        the chat's profile drafts alike (a pushed draft that records a version
+        obeys it too, and its check lives in the tool, not under `drafts/`): the
+        version has a prediction nobody has graded **and** the agent has not
+        proposed how it went. A waiting proposed grade unlocks the next change,
+        because the person's Accept on that change records the grade first.
+        """
+        return (
+            current.outcome_state == "open"
+            and await self.outcomes.waiting_for_version(current.id) is None
+        )
+
     async def next_names(self, set_id: int) -> NextNames:
         """What accepting would name the version, as a minor and as a major."""
         return await next_names(self.db, set_id)
@@ -628,7 +653,10 @@ class SetProposalsRepository(Repository):
             replaced = existing if existing is not None and existing.kind == "design" else None
             if existing is not None and replaced is None:
                 return ProposalWriteResult(refused="already_waiting", waiting=existing)
-            if spec.kind == "change" and current.outcome_state == "open":
+            if spec.kind == "change" and await self.outcome_blocks(current):
+                # Open, and nobody has even proposed how it went. A grade the
+                # agent has proposed and the person has not answered unlocks
+                # the next change, because accepting that change records it.
                 return ProposalWriteResult(refused="outcome_open")
             compares_to = (
                 spec.compares_to_version_id
@@ -751,7 +779,12 @@ class SetProposalsRepository(Repository):
                     return ProposalWriteResult(
                         refused="stale", proposal=await self.get(set_id, proposal_id)
                     )
-                if proposal.kind == "change" and current.outcome_state == "open":
+                grade = (
+                    await self.outcomes.waiting_for_version(current.id)
+                    if proposal.kind == "change"
+                    else None
+                )
+                if proposal.kind == "change" and current.outcome_state == "open" and grade is None:
                     return ProposalWriteResult(refused="outcome_open", proposal=proposal)
                 if proposal.kind == "design" and not await self._draft_still_stands(proposal):
                     # The twin of `bad_draft` at create: the card's profile was
@@ -766,6 +799,14 @@ class SetProposalsRepository(Repository):
                     # and is not. Decline still works: getting rid of it needs no
                     # patch.
                     return ProposalWriteResult(refused="unreadable", proposal=proposal)
+                if grade is not None:
+                    # The one-click case: the grade the agent proposed for this
+                    # version is recorded first, in this same transaction, so a
+                    # second tab cannot find the version appended and the
+                    # outcome still open (or the other way round).
+                    recorded = await self.outcomes.record_in_transaction(grade, now)
+                    if recorded.refused is not None:
+                        return ProposalWriteResult(refused="grade_unrecordable", proposal=proposal)
                 version_id = await self.sets.append_version(
                     set_id,
                     _version_patch(proposal),
@@ -791,10 +832,12 @@ class SetProposalsRepository(Repository):
             set_id=set_id,
             kind=proposal.kind,
             set_version_id=version_id,
+            outcome_proposal_id=None if grade is None else grade.id,
         )
         return ProposalWriteResult(
             proposal=await self.get(set_id, proposal_id),
             version=await self.sets.get_version(version_id),
+            graded=None if grade is None else await self.outcomes.get(set_id, grade.id),
         )
 
     async def decline(self, set_id: int, proposal_id: int, note: str = "") -> ProposalWriteResult:

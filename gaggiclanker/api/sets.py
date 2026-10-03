@@ -497,6 +497,18 @@ def _proposal_error(refusal: ProposalRefusal, set_id: int, proposal_id: int) -> 
                 "message": "record how the current version's prediction turned out first",
             },
         )
+    if refusal == "grade_unrecordable":
+        return Conflict(
+            "The grade waiting for this version can no longer be recorded",
+            code="PROPOSAL_GRADE_UNRECORDABLE",
+            details={
+                "field": "outcome",
+                "message": (
+                    "no shot of the version is labelled Keep or Improve any more; label one, or "
+                    "dismiss the grade, and accept again"
+                ),
+            },
+        )
     if refusal == "unreadable":
         return Conflict(
             f"Proposal {proposal_id} cannot be read",
