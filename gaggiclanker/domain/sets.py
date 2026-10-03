@@ -87,15 +87,18 @@ def next_version_name(
 
     A **minor** keeps the current version's major and takes the highest minor
     within that major + 1 (v1.2 → v1.3). A **major** takes the Set's highest
-    major + 1 at minor 0 (v1.2 → v2). The first version of a Set is a major
-    from nothing (all zeros), which is v1.
+    major + 1 at minor 0 (v1.2 → v2). The first version of a Set is v1
+    whichever it is called: a minor from nothing would be v0.1, a name
+    :func:`parse_version_label` refuses.
     """
-    if major:
+    if major or current_major == 0:
         return highest_major + 1, 0
     return current_major, current_major_minor_max + 1
 
 
-_LABEL = re.compile(r"^\s*[vV]?\s*(\d{1,6})(?:\.(\d{1,6}))?\s*$")
+#: No leading zeros: "v1.01" is not v1.1 and "01" is not v1. A name is written
+#: the way :func:`version_label` writes it, and "1.10" is v1.10, never v1.1.
+_LABEL = re.compile(r"^\s*[vV]?\s*([1-9]\d{0,5})(?:\.(0|[1-9]\d{0,5}))?\s*$")
 
 
 def parse_version_label(text: str) -> tuple[int, int] | None:
@@ -103,16 +106,13 @@ def parse_version_label(text: str) -> tuple[int, int] | None:
 
     "v1.1", "1.1", "V2" and "2" are all accepted, and "2" is v2 (2.0), never
     the second version: the name is what a reader sees, and the ordinal is a
-    number nobody is shown. A major of 0 names nothing.
+    number nobody is shown. A major of 0 names nothing, and neither does a
+    part with a leading zero.
     """
     found = _LABEL.match(text)
     if found is None:
         return None
-    major = int(found.group(1))
-    minor = int(found.group(2) or 0)
-    if major < 1:
-        return None
-    return major, minor
+    return int(found.group(1)), int(found.group(2) or 0)
 
 
 #: The range `set_versions.grind_value` accepts. A number outside it is not a

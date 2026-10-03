@@ -482,8 +482,9 @@ class SearchShotsInput(_Model):
     version: str | int | float | None = Field(
         default=None,
         description=(
-            "Only the shots pulled under this version of the Set, by its name: 'v1.1', "
-            "'1.1' or '2' (which is v2, not the second version)."
+            "Only the shots pulled under this version of the Set, by its name as a string: "
+            "'v1.1', '1.1' or '2' (which is v2, not the second version). A number loses "
+            "trailing zeros, so 1.10 would arrive as v1.1."
         ),
     )
     label: Literal["keep", "improve", "discard"] | None = Field(

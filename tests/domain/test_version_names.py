@@ -68,6 +68,13 @@ def test_a_minor_stays_in_the_current_major_and_a_major_starts_the_next() -> Non
     ) == (1, 0)
 
 
+def test_an_empty_set_starts_at_v1_whatever_the_change_is_called() -> None:
+    """A minor from nothing would be v0.1, a name `parse_version_label` refuses."""
+    assert next_version_name(
+        current_major=0, current_major_minor_max=0, highest_major=0, major=False
+    ) == (1, 0)
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
@@ -84,6 +91,14 @@ def test_a_minor_stays_in_the_current_major_and_a_major_starts_the_next() -> Non
         ("v-1", None),
         ("two", None),
         ("1.", None),
+        # Leading zeros name nothing: "01" is not v1 and "v1.01" is not v1.1.
+        ("01", None),
+        ("v01", None),
+        ("v1.01", None),
+        ("1.00", None),
+        ("00", None),
+        ("1.10", (1, 10)),
+        ("v10.0", (10, 0)),
     ],
 )
 def test_a_typed_name_is_parsed_or_refused(text: str, expected: tuple[int, int] | None) -> None:
