@@ -1,12 +1,12 @@
 """The tools themselves. One module, because the set is small and domain-bound.
 
-Twenty-one tools in two permission classes, and the third is empty on purpose.
+Twenty-two tools in two permission classes, and the third is empty on purpose.
 The read tools answer questions about the archive; the propose tools turn a
 conclusion into a row somebody still has to confirm; there are no device-write
 tools here at all, and that is the feature —
 making a profile active (which the next sync puts on the machine) stays a button in the UI.
 
-Which of the twenty-one a conversation *has* is not decided here:
+Which of the twenty-two a conversation *has* is not decided here:
 :mod:`gaggiclanker.tools.scope` decides it from the conversation's kind. What
 is decided here is what a tool does when it is called inside a Set's
 conversation — the Set is the conversation's and another one is refused, and a
@@ -37,6 +37,10 @@ from gaggiclanker.db.repos.knowledge_insights import (
     InsightWrite,
     set_attributes,
 )
+from gaggiclanker.db.repos.outcome_proposals import (
+    OutcomeProposalsRepository,
+    OutcomeProposalWrite,
+)
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.set_proposals import (
@@ -50,7 +54,7 @@ from gaggiclanker.db.repos.version_names import named_dump, next_names
 from gaggiclanker.domain.models import Profile
 from gaggiclanker.domain.profile_recipe import profile_recipe
 from gaggiclanker.domain.sets import grind_value, parse_version_label
-from gaggiclanker.domain.vocab import Balance
+from gaggiclanker.domain.vocab import VERSION_OUTCOMES, Balance
 from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
@@ -1414,8 +1418,9 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
         number = current.version_label if current is not None else "this version"
         return (
             f"{number}'s prediction has not been graded yet, so there is nothing settled to "
-            "build the next change on. Grade it with the person on the Set page first, or "
-            "ask for another shot on the same recipe and say what you expect from it."
+            "build the next change on. Propose its outcome first (propose_outcome) and then "
+            "propose the change in the same answer, or ask for another shot on the same recipe "
+            "and say what you expect from it."
         )
     if result.refused == "bad_compare":
         return (
@@ -1451,6 +1456,137 @@ async def _proposal_refusal(sets: SetsRepository, set_id: int, result: ProposalW
             "conversation from its page."
         )
     return f"Set {set_id} has no current version to build a change on."
+
+
+class ProposeOutcomeInput(_Model):
+    outcome: str = Field(
+        description=(
+            "The whole prediction's outcome: held, partly_held, failed or inconclusive. "
+            "Say inconclusive rather than stretch one shot into a result."
+        )
+    )
+    note: str = Field(
+        default="",
+        max_length=1000,
+        description=(
+            "The per-claim lines the person reads before they accept: each claim of the "
+            "prediction, what the shots showed against it, and the evidence. At least "
+            f"{PREDICTION_MIN_CHARS} characters."
+        ),
+    )
+
+
+class ProposeOutcomeOutput(_Model):
+    """What is now waiting, and the plain statement that nothing is recorded."""
+
+    proposal_id: int
+    set_id: int
+    version: str
+    outcome: str
+    counted_shots: int
+    status: str = "proposed"
+    #: Whether this replaced a grade of the same version that was still waiting.
+    replaced_waiting_grade: bool = False
+    note: str = ""
+
+
+@tool(
+    "propose_outcome",
+    permission="propose",
+    description=(
+        "Propose how THIS conversation's version turned out — held, partly_held, failed or "
+        "inconclusive — graded against all of its counted shots (Keep or Improve), never one "
+        "shot. It records nothing: the person sees a card and accepts it, records another "
+        "outcome, or dismisses it, and until they accept it the version's outcome is what it "
+        "was. Refused when the version has no prediction (there is nothing to grade) or no "
+        "shot the person has judged Keep or Improve. Call it at the end of your grade, "
+        "once; a second call replaces the first while the person has not answered. Once it "
+        "is waiting you may propose the next version in the same answer, and accepting that "
+        "version records the grade."
+    ),
+)
+async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> ProposeOutcomeOutput:
+    """The agent's grade as a card. Never the grade itself.
+
+    Every refusal is an error value with a sentence of its own, for the reason
+    the other propose tools give. The version is the **conversation's own** and
+    no argument can name another: a Set conversation is about one version, and a
+    grade of some other version would be an argument made in the wrong room.
+    """
+    if ctx.scope.designing:
+        raise ValueError(DESIGN_RULE)
+    set_id = _resolve_set(ctx, None)
+    sets = SetsRepository(ctx.db)
+    version = (
+        await sets.version_of_set(set_id, ctx.scope.set_version_id)
+        if ctx.scope.set_version_id is not None
+        else await sets.current_version(set_id)
+    )
+    if version is None:
+        raise ValueError(
+            "This conversation's version no longer exists, so there is nothing to grade."
+        )
+    outcome = args.outcome.strip().lower()
+    if outcome not in VERSION_OUTCOMES:
+        raise ValueError(
+            f"outcome must be one of {', '.join(VERSION_OUTCOMES)}. It is the whole "
+            "prediction's outcome, one word, with the per-claim lines in the note."
+        )
+    note = args.note.strip()
+    if len(note) < PREDICTION_MIN_CHARS:
+        raise ValueError(
+            "A grade needs its reasons: the note is the per-claim lines the person reads "
+            f"before they accept, at least {PREDICTION_MIN_CHARS} characters. Say what each "
+            "claim of the prediction did against the shots, then call this again."
+        )
+    if not version.prediction:
+        raise ValueError(
+            f"{version.version_label} has no prediction, so there is nothing to grade. A "
+            "version made by hand, a first recipe or a roll back states none; say how its "
+            "shots look in words, and let the person decide what to try next."
+        )
+    result = await OutcomeProposalsRepository(ctx.db).create(
+        set_id,
+        version.id,
+        OutcomeProposalWrite.model_validate(
+            {"outcome": outcome, "note": note, "thread_id": ctx.thread_id}
+        ),
+    )
+    if result.refused == "nothing_to_grade":
+        raise ValueError(
+            f"{version.version_label} has no shot the person has judged Keep or Improve yet, so "
+            "there is nothing to grade it on. Ask them to label a shot, or say what you would "
+            "look for in the next one."
+        )
+    if result.refused == "bad_thread":
+        raise ValueError(
+            "This conversation is not one of this Set's, so a grade argued here cannot be "
+            "recorded against it. Nothing was written; tell the person, and open the Set's own "
+            "conversation from its page."
+        )
+    if result.refused is not None or result.proposal is None:
+        raise ValueError(f"{version.version_label} cannot be graded right now.")
+    stored = result.proposal
+    return ProposeOutcomeOutput(
+        proposal_id=stored.id,
+        set_id=set_id,
+        version=version.version_label,
+        outcome=stored.outcome,
+        counted_shots=stored.counted_shots,
+        status=stored.status,
+        replaced_waiting_grade=result.replaced is not None,
+        note=(
+            f"Nothing is recorded until the person accepts it: {version.version_label}'s outcome "
+            "is still "
+            + ("open" if version.outcome is None else f"{version.outcome} as they recorded it")
+            + f". They see a card with your grade ({stored.outcome.replace('_', ' ')}, on "
+            f"{stored.counted_shots} counted shot{'' if stored.counted_shots == 1 else 's'}) and "
+            "can accept it, record another outcome, or dismiss it. Say the grade in one "
+            "sentence with the per-claim lines above it. If you also propose the next version "
+            "now, accepting that version records this grade; do not name the next version "
+            "as decided."
+        ),
+    )
 
 
 class DraftProfileInput(_Model):
@@ -1642,11 +1778,12 @@ async def _draft_experiment(
         )
     sets = SetsRepository(ctx.db)
     current = await sets.current_version(set_id)
-    if current is not None and current.outcome_state == "open":
+    if current is not None and await SetProposalsRepository(ctx.db).outcome_blocks(current):
         raise ValueError(
             f"{current.version_label}'s prediction has not been graded yet, so there is nothing "
-            "settled to build the next change on. Grade it with the person on the Set page "
-            "first, or ask for another shot on the same recipe and say what you expect from it."
+            "settled to build the next change on. Propose its outcome first (propose_outcome) "
+            "and then draft the change in the same answer, or ask for another shot on the "
+            "same recipe and say what you expect from it."
         )
     waiting = await SetProposalsRepository(ctx.db).waiting(set_id)
     if waiting is not None:

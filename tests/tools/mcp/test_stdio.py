@@ -24,13 +24,16 @@ from mcp.shared.exceptions import MCPError
 
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
+from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
+from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.tools.mcp.server import SERVER_NAME
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.review.conftest import Fixture, build_fixture
+from tests.sets.conftest import make_shot
 
 #: The subprocess has to import gaggiclanker, and a test run is not necessarily
 #: cwd'd at the repository root.
@@ -503,6 +506,77 @@ async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
         waiting = await SetProposalsRepository(db).waiting(fixture.set_id)
         assert waiting is not None
         assert waiting.thread_id == thread_id
+    finally:
+        await db.close()
+
+
+async def _predicted_version_with_a_keep_shot(data_dir: Path, fixture: Fixture) -> int:
+    """A second version with a prediction and one Keep shot, in the archive the child opens."""
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        sets = SetsRepository(db)
+        version = await sets.add_version(
+            fixture.set_id,
+            SetVersionPatch.model_validate(
+                {
+                    "grind_setting": "21",
+                    "prediction": "Expect two seconds longer and less sour.",
+                    "compares_to_version_id": None,
+                }
+            ),
+        )
+        assert version is not None
+        shot_id = await make_shot(db, "000950")
+        assert await sets.assign_shot(shot_id, version.id)
+        await JudgementsRepository(db).upsert(
+            shot_id, JudgementWrite.model_validate({"decision": "keep"})
+        )
+        return version.id
+    finally:
+        await db.close()
+
+
+async def test_a_grade_proposed_over_stdio_waits_and_records_nothing(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The child is a second dispatcher: its refusals and its card are the same ones."""
+    data_dir, fixture = archive_dir
+    version_id = await _predicted_version_with_a_keep_shot(data_dir, fixture)
+    async with AsyncExitStack() as stack:
+        session = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_SET_ID=str(fixture.set_id),
+            GAGGICLANKER_MCP_SET_VERSION_ID=str(version_id),
+        )
+        short = await session.call_tool("propose_outcome", {"outcome": "held", "note": "held"})
+        bad = await session.call_tool(
+            "propose_outcome",
+            {"outcome": "great", "note": "Time held; the sourness did not move at all."},
+        )
+        result = await session.call_tool(
+            "propose_outcome",
+            {
+                "outcome": "partly_held",
+                "note": "Time held (31 s against 28 s); the sourness did not move.",
+            },
+        )
+
+    assert short.is_error is True and "A grade needs its reasons" in str(short.content)
+    assert bad.is_error is True and "outcome must be one of" in str(bad.content)
+    assert result.is_error is False, result.content
+    assert result.structured_content is not None
+    assert result.structured_content["status"] == "proposed"
+    assert "Nothing is recorded until the person accepts it" in result.structured_content["note"]
+
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        version = await SetsRepository(db).get_version(version_id)
+        assert version is not None and version.outcome is None
+        waiting = await OutcomeProposalsRepository(db).waiting_for_version(version_id)
+        assert waiting is not None and waiting.outcome == "partly_held"
     finally:
         await db.close()
 

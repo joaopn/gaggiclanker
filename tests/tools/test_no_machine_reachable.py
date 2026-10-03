@@ -534,6 +534,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert proposers == {
         "draft_profile",
         "propose_initial_recipe",
+        "propose_outcome",
         "propose_set_version",
         "record_insight",
     }

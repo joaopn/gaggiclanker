@@ -78,6 +78,7 @@ SET_TOOLS: frozenset[str] = frozenset(
         "get_shot_full",
         "list_profiles",
         "list_set_shots",
+        "propose_outcome",
         "propose_set_version",
         "record_insight",
         "search_knowledge",

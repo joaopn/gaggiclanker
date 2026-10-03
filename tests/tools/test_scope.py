@@ -35,6 +35,7 @@ def test_a_set_conversation_has_exactly_these_tools() -> None:
             "get_shot_full",
             "list_profiles",
             "list_set_shots",
+            "propose_outcome",
             "propose_set_version",
             "record_insight",
             "search_knowledge",

@@ -1,4 +1,4 @@
-"""Nothing a model drives can accept or decline a proposed change.
+"""Nothing a model drives can accept or decline a proposed change, or answer a proposed grade.
 
 A proposal exists so that a person decides. An agent that could accept its own
 proposal would have exactly the power the proposal was invented to take away —
@@ -31,12 +31,28 @@ from types import CodeType
 
 import gaggiclanker.tools
 from gaggiclanker.api.sets import accept_proposal, decline_proposal
+from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
+from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.tools.registry import registry
 
-#: The two decisions. Looked for as attribute names, which is how a call to
-#: either would appear in any code that made one.
-DECIDING = ("accept", "decline")
+#: The decisions, and the writes that make one count. Looked for as attribute
+#: names, which is how a call to any of them would appear in any code that made
+#: one. The first two answer a proposed change. `change` and `dismiss` answer a
+#: proposed grade with another outcome or none; `record_in_transaction` and
+#: `grade_in_transaction` are the writes that put a grade on a version, and
+#: `set_outcome` and `clear_outcome` are the Set page's own: a tool that
+#: reached any of them would be recording an outcome nobody agreed to.
+DECIDING = (
+    "accept",
+    "decline",
+    "change",
+    "dismiss",
+    "record_in_transaction",
+    "grade_in_transaction",
+    "set_outcome",
+    "clear_outcome",
+)
 
 
 def _code_objects(code: CodeType) -> list[CodeType]:
@@ -87,5 +103,12 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     """Otherwise the walk above is looking for words nothing uses any more."""
     assert callable(SetProposalsRepository.accept)
     assert callable(SetProposalsRepository.decline)
+    assert callable(OutcomeProposalsRepository.accept)
+    assert callable(OutcomeProposalsRepository.change)
+    assert callable(OutcomeProposalsRepository.dismiss)
+    assert callable(OutcomeProposalsRepository.record_in_transaction)
+    assert callable(SetsRepository.grade_in_transaction)
+    assert callable(SetsRepository.set_outcome)
+    assert callable(SetsRepository.clear_outcome)
     assert callable(accept_proposal)
     assert callable(decline_proposal)
