@@ -10,6 +10,13 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Version names are read the way they are written
+
+- **A version name with a leading zero is refused.** The chat's shot search read "01" as v1 and
+  "v1.01" as v1.1; it now takes a name only as the app writes it, and its `version` field asks for
+  the name as a string, since a number 1.10 arrives as 1.1.
+- **The chat heading of a conversation that names no version no longer ends in a space.**
+
 ### Find patterns across Sets
 
 - **A button on the Knowledge page's Insights tab asks one model call to find the lessons several
