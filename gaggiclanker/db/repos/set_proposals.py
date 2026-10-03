@@ -64,6 +64,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.profile_identity import same_profile
 from gaggiclanker.db.repos.sets import (
     RECIPE_FIELDS,
     TEXT_MAX,
@@ -558,7 +559,8 @@ class SetProposalsRepository(Repository):
 
         The shared rule (:func:`~gaggiclanker.domain.sets.change_is_major`) on
         what the change moves against the version it was made to: a different
-        profile is a major, grind, dose and yield are minor. The agent's
+        profile (another entry of the profile list, not another version of the
+        same profile) is a major, grind, dose and yield are minor. The agent's
         suggestion is not part of it — the card shows that separately and the
         person decides. A first recipe fills version 1 whichever way, so it is
         never a major of anything.
@@ -569,7 +571,9 @@ class SetProposalsRepository(Repository):
         moves_profile = (
             "profile_version_id" in proposal.patch.model_fields_set
             and base is not None
-            and proposal.patch.profile_version_id != base.profile_version_id
+            and not await same_profile(
+                self.db, proposal.patch.profile_version_id, base.profile_version_id
+            )
         )
         return change_is_major("change", profile_changed=moves_profile, major=None)
 

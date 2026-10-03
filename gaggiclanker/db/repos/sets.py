@@ -66,6 +66,7 @@ from pydantic import (
 
 from gaggiclanker.db.repos.base import utc_now
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
+from gaggiclanker.db.repos.profile_identity import profile_entry_sql, same_profile
 from gaggiclanker.db.repos.shots import NEEDS_SET_SQL
 from gaggiclanker.db.repos.version_names import (
     label_sql,
@@ -250,6 +251,12 @@ class SetVersionRow(BaseModel):
     #: not "the newest": it is read off the Set's pointer.
     is_current: bool = False
     profile_version_id: int | None = None
+    #: The profile list entry this version's profile belongs to, NULL when it is
+    #: in none (then it is a profile of its own). Two versions with the same
+    #: entry are the same profile. NULL on two different versions is NOT "the
+    #: same profile": a version in no entry is the same as itself and as nothing
+    #: else, so compare ids first and entries second.
+    profile_entry_id: int | None = None
     #: The profile's label, joined in. A version that names a profile the mirror
     #: has since dropped still has its id; the label is then NULL.
     profile_label: str | None = None
@@ -992,6 +999,7 @@ _VERSION_SELECT = f"""
            {label_sql("cmp")} AS compares_to_version_label,
            {label_sql("res")} AS restores_version_label,
            {label_sql("par")} AS parent_version_label,
+           {profile_entry_sql("v.profile_version_id")} AS profile_entry_id,
            (cs.current_version_id = v.id) AS is_current,
            (SELECT COUNT(*) FROM shots sh WHERE sh.set_version_id = v.id) AS shot_count
     FROM set_versions v
@@ -1301,7 +1309,9 @@ class SetsRepository(Repository):
             now,
             major=change_is_major(
                 path,
-                profile_changed=values["profile_version_id"] != parent.profile_version_id,
+                profile_changed=not await same_profile(
+                    self.db, values["profile_version_id"], parent.profile_version_id
+                ),
                 major=major,
             ),
             keep_proposal=keep_proposal,

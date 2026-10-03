@@ -1141,7 +1141,8 @@ MAJOR_MEANING = (
     "change to what the profile wants to do, and the person triggers it; dial-in technical "
     "changes stay minor (v1.2 → v1.3): grind, dose, yield, or a draft that only tunes a "
     "parameter such as a degree of temperature. By default a switch to a different profile "
-    "is major and everything else is minor. You may suggest major with suggest_major and "
+    "(another entry of the profile list, not a newer version of the same profile) is major "
+    "and everything else is minor. You may suggest major with suggest_major and "
     "major_reason; the card shows your reason and the person decides."
 )
 

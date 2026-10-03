@@ -1914,7 +1914,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Go back to an earlier version: the Set is on it again, and no version is written
+         * Go back to another version: the Set is on it again, and no version is written
          * @description Move the Set's current version to `to_version_id` and log that it went back.
          *
          *     Nothing is written to the machine and no version is created: the target is
@@ -5747,6 +5747,8 @@ export interface components {
              * @default false
              */
             mirrored: boolean;
+            /** Profile Entry Id */
+            profile_entry_id?: number | null;
             /**
              * Shot Count
              * @default 0
@@ -6363,7 +6365,7 @@ export interface components {
         };
         /**
          * SetRevertRow
-         * @description One time a Set went back to an earlier version: a line of the log, not a version.
+         * @description One time a Set went back to another version: a line of the log, not a version.
          */
         SetRevertRow: {
             /** Created At */
@@ -6591,8 +6593,9 @@ export interface components {
          *
          *     ``major`` is the person's answer to the form's "Major change" box: true
          *     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
-         *     Left out, the shared rule decides — a different profile is a major, grind,
-         *     dose and yield are minor. It is not part of the recipe, so it is split off
+         *     Left out, the shared rule decides — a different profile (another entry of the
+         *     profile list) is a major; a newer version of the same profile, grind, dose and
+         *     yield are minor. It is not part of the recipe, so it is split off
          *     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
          *     a request somebody should look at, not a guess this route makes.
          */
@@ -6733,6 +6736,8 @@ export interface components {
             prediction: string;
             /** Prediction At */
             prediction_at?: string | null;
+            /** Profile Entry Id */
+            profile_entry_id?: number | null;
             /** Profile Label */
             profile_label?: string | null;
             /** Profile Temperature C */

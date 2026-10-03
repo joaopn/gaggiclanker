@@ -145,8 +145,9 @@ class SetVersionAdd(SetVersionPatch):
 
     ``major`` is the person's answer to the form's "Major change" box: true
     starts the next major (v1.2 → v2), false takes the next minor (v1.2 → v1.3).
-    Left out, the shared rule decides — a different profile is a major, grind,
-    dose and yield are minor. It is not part of the recipe, so it is split off
+    Left out, the shared rule decides — a different profile (another entry of the
+    profile list) is a major; a newer version of the same profile, grind, dose and
+    yield are minor. It is not part of the recipe, so it is split off
     before the patch reaches the repository. Strictly a boolean: "yes" or 1 is
     a request somebody should look at, not a guess this route makes.
     """

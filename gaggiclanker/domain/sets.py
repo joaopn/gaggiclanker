@@ -52,7 +52,10 @@ def change_is_major(path: VersionPath, *, profile_changed: bool, major: bool | N
     ``None`` is "nobody said", and then the default for the path applies:
 
     * a **change** is major exactly when it switches the Set to a different
-      profile. Grind, dose and yield are dialling in.
+      profile: another entry of the profile list, not a newer version of the
+      same profile (:mod:`gaggiclanker.db.repos.profile_identity` says which is
+      which; ``profile_changed`` is its answer). Grind, dose and yield are
+      dialling in.
     * a pushed **draft** is minor. It is a tuned copy of a profile (a degree of
       temperature, a longer pre-infusion), which is dialling in too, unless the
       person marks it major.
