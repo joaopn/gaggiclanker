@@ -94,6 +94,6 @@ THE GOLD STANDARD
 That is what good has tasted like here. An Improve shot is compared with it.
 
 CONFIRMED INSIGHTS THAT APPLY HERE
-- [bean_id=1] This bag runs fast for the first week after roasting.
+- #1 [bean_id=1] This bag runs fast for the first week after roasting.
 
 Those facts are the record, not the whole archive: use the tools for anything else, and for anything you are about to quote a number from.

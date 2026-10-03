@@ -756,8 +756,9 @@ async def test_the_insights_block_is_bounded_and_says_how_many_more_there_are(
     assert len(listed) == INSIGHTS_SHOWN + 1
     assert listed[-1].startswith("- and ")
     assert "get_insights lists them" in listed[-1]
-    # Each one is cut, so one essay cannot take the context with it.
-    assert all(len(line) <= INSIGHT_CHARS + 4 for line in listed[:-1])
+    # Each one's text is cut (the id and facts in front of it are not), so one essay
+    # cannot take the context with it.
+    assert all(len(line) <= INSIGHT_CHARS + 30 and line.endswith("…") for line in listed[:-1])
     # Newest first: the ones that supersede the others.
     assert f"Insight {INSIGHTS_SHOWN + 4}." in listed[0]
 

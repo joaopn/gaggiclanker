@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
@@ -306,7 +307,22 @@ class ChatRepository(Repository):
         return cursor.rowcount > 0
 
     async def delete_thread(self, thread_id: int) -> bool:
-        cursor = await self.db.execute("DELETE FROM chat_threads WHERE id = ?", (thread_id,))
+        """Delete a conversation, and the insights it proposed that the person dismissed.
+
+        A dismissed insight exists only to tell the conversation that proposed it not
+        to offer it again, so it goes with that conversation, in the same transaction
+        (through the insight delete, so nothing keeps waiting on it). Waiting and added
+        insights outlive it: the person may still add the one, and the other is theirs.
+        """
+        insights = InsightsRepository(self.db)
+        async with self.db.transaction():
+            dismissed = await self.db.fetch_all(
+                "SELECT id FROM knowledge_insights WHERE thread_id = ? AND dismissed = 1",
+                (thread_id,),
+            )
+            for row in dismissed:
+                await insights.delete_in_transaction(row["id"])
+            cursor = await self.db.execute("DELETE FROM chat_threads WHERE id = ?", (thread_id,))
         return cursor.rowcount > 0
 
     async def touch_thread(self, thread_id: int) -> None:

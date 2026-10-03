@@ -42,6 +42,7 @@ from gaggiclanker.api.deps import (
     BeansRepoDep,
     DatabaseDep,
     GrindersRepoDep,
+    InsightDeletionsRepoDep,
     JudgementsRepoDep,
     OutcomeProposalsRepoDep,
     ProfilesRepoDep,
@@ -50,6 +51,11 @@ from gaggiclanker.api.deps import (
     ShotsRepoDep,
 )
 from gaggiclanker.db.repos.chat import ChatRepository
+from gaggiclanker.db.repos.insight_deletions import (
+    DeletionResult,
+    InsightDeletionRefusal,
+    InsightDeletionRow,
+)
 from gaggiclanker.db.repos.judgements import ShotJudgementRow
 from gaggiclanker.db.repos.outcome_proposals import (
     OutcomeProposalRefusal,
@@ -1277,3 +1283,113 @@ async def get_trends(set_id: int, sets: SetsRepoDep) -> JSONResponse:
     if row is None:
         raise NotFound(f"No Set {set_id}")
     return envelope_response((await sets.trends(set_id)).model_dump(mode="json"))
+
+
+# ── insights the agent proposed deleting ─────────────────────────────
+
+
+class InsightDeletionListData(BaseModel):
+    """`GET /api/sets/{id}/insight-deletions`: every deletion proposed on this Set, newest first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[InsightDeletionRow]
+
+
+class InsightDeletionDecision(BaseModel):
+    """What answering a proposed deletion produced: the proposal as it now stands."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal: InsightDeletionRow
+
+
+def _deletion_error(refusal: InsightDeletionRefusal, set_id: int, proposal_id: int) -> AppError:
+    """A refused answer to a proposed deletion as the one error it means.
+
+    `details` names the field at fault and never repeats the insight or the reason.
+    """
+    if refusal == "not_waiting":
+        return Conflict(
+            f"Insight deletion {proposal_id} has already been answered",
+            code="INSIGHT_DELETION_DECIDED",
+            details={"field": "status", "message": "it is no longer waiting for an answer"},
+        )
+    if refusal == "insight_changed":
+        return Conflict(
+            f"The insight behind deletion {proposal_id} is no longer added",
+            code="INSIGHT_NOT_ADDED",
+            details={
+                "field": "confirmed",
+                "message": "it was taken back since, so there is nothing left to delete",
+            },
+        )
+    return NotFound(f"No insight deletion {proposal_id} in Set {set_id}")
+
+
+def _deletion_decided(result: DeletionResult, set_id: int, proposal_id: int) -> JSONResponse:
+    if result.proposal is None or result.refused is not None:
+        raise _deletion_error(result.refused or "no_proposal", set_id, proposal_id)
+    return envelope_response(
+        InsightDeletionDecision(proposal=result.proposal).model_dump(mode="json")
+    )
+
+
+@router.get(
+    "/{set_id}/insight-deletions",
+    response_model=ApiResponse[InsightDeletionListData],
+    summary="Every deletion an agent has proposed for this Set's insights",
+)
+async def list_insight_deletions(
+    set_id: int,
+    sets: SetsRepoDep,
+    deletions: InsightDeletionsRepoDep,
+    thread_id: Annotated[
+        int | None,
+        Query(
+            description=(
+                "Only what this conversation proposed, with no cap: the chat's cards read "
+                "their proposal this way, so one is found however old it is."
+            )
+        ),
+    ] = None,
+) -> JSONResponse:
+    """Newest first, waiting and answered alike, so a card read days later tells the truth."""
+    if await sets.get(set_id) is None:
+        raise NotFound(f"No Set {set_id}")
+    items = (
+        await deletions.for_set(set_id)
+        if thread_id is None
+        else [row for row in await deletions.for_thread(thread_id) if row.set_id == set_id]
+    )
+    return envelope_response(InsightDeletionListData(items=items).model_dump(mode="json"))
+
+
+@router.post(
+    "/{set_id}/insight-deletions/{proposal_id}/accept",
+    response_model=ApiResponse[InsightDeletionDecision],
+    summary="Delete the insight an agent proposed deleting",
+)
+async def accept_insight_deletion(
+    set_id: int, proposal_id: int, deletions: InsightDeletionsRepoDep
+) -> JSONResponse:
+    """The card's Delete: a person's press, and the only way a proposal removes an insight.
+
+    There is no tool for this, in the chat or over MCP: an agent that could delete
+    its own predecessors' insights would be rewriting what every later conversation
+    is told. The insight is removed outright; nothing of it is kept but the text on
+    the card.
+    """
+    return _deletion_decided(await deletions.accept(set_id, proposal_id), set_id, proposal_id)
+
+
+@router.post(
+    "/{set_id}/insight-deletions/{proposal_id}/keep",
+    response_model=ApiResponse[InsightDeletionDecision],
+    summary="Keep the insight an agent proposed deleting",
+)
+async def keep_insight_deletion(
+    set_id: int, proposal_id: int, deletions: InsightDeletionsRepoDep
+) -> JSONResponse:
+    """The card's Keep: the insight stays exactly as it is, and the agent is told."""
+    return _deletion_decided(await deletions.keep(set_id, proposal_id), set_id, proposal_id)

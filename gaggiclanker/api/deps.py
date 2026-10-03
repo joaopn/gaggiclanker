@@ -20,6 +20,7 @@ from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.flavor_picks import FlavorPicksRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
+from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.judgements import JudgementsRepository
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.knowledge_docs import KnowledgeDocsRepository
@@ -63,6 +64,7 @@ __all__ = [
     "EventBusDep",
     "FlavorPicksRepoDep",
     "GrindersRepoDep",
+    "InsightDeletionsRepoDep",
     "InsightsRepoDep",
     "JudgementsRepoDep",
     "KnowledgeDocsRepoDep",
@@ -248,6 +250,10 @@ def get_knowledge_docs_repo(request: Request) -> KnowledgeDocsRepository:
     return KnowledgeDocsRepository(get_database(request))
 
 
+def get_insight_deletions_repo(request: Request) -> InsightDeletionsRepository:
+    return InsightDeletionsRepository(get_database(request))
+
+
 def get_insights_repo(request: Request) -> InsightsRepository:
     return InsightsRepository(get_database(request))
 
@@ -329,6 +335,7 @@ ShotInformationServiceDep = Annotated[ShotInformationService, Depends(get_shot_i
 RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
 KnowledgeDocsRepoDep = Annotated[KnowledgeDocsRepository, Depends(get_knowledge_docs_repo)]
 InsightsRepoDep = Annotated[InsightsRepository, Depends(get_insights_repo)]
+InsightDeletionsRepoDep = Annotated[InsightDeletionsRepository, Depends(get_insight_deletions_repo)]
 KnowledgeServiceDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
 ReviewsRepoDep = Annotated[ShotReviewsRepository, Depends(get_reviews_repo)]
 ReviewServiceDep = Annotated[ReviewService, Depends(get_review_service)]

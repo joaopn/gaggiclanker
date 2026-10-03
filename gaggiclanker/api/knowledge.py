@@ -31,11 +31,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from gaggiclanker.api.deps import (
+    InsightDeletionsRepoDep,
     InsightsRepoDep,
     KnowledgeDocsRepoDep,
     KnowledgeServiceDep,
     RulesRepoDep,
 )
+from gaggiclanker.db.repos.insight_deletions import InsightDeletionRow
 from gaggiclanker.db.repos.knowledge import RuleRow, RulesRepository
 from gaggiclanker.db.repos.knowledge_docs import ChunkHit, ChunkRow, DocRow
 from gaggiclanker.db.repos.knowledge_insights import (
@@ -321,6 +323,10 @@ class InsightListData(BaseModel):
     #: The dimensions a scope may name, so the form renders from data rather
     #: than from a list typed into a component.
     scope_keys: list[str]
+    #: With `?set_id=`: the deletions an agent proposed for this Set's insights that are
+    #: still waiting for a person, so the Set page can say which insight has one and link
+    #: into the chat. Empty otherwise.
+    waiting_deletions: list[InsightDeletionRow] = Field(default_factory=list)
 
 
 class InsightCreate(BaseModel):
@@ -366,6 +372,7 @@ class InsightPatch(BaseModel):
 )
 async def list_insights(
     insights: InsightsRepoDep,
+    deletions: InsightDeletionsRepoDep,
     confirmed: Annotated[bool | None, Query()] = None,
     set_id: Annotated[
         int | None,
@@ -399,10 +406,14 @@ async def list_insights(
             item for item in await insights.list_insights(confirmed=True) if item.id in applying
         ]
         items = sorted([*own, *general], key=lambda item: (item.created_at, item.id))
+        waiting = await deletions.waiting_for_set(set_id)
     else:
         items = await insights.list_insights(confirmed=confirmed)
+        waiting = []
     return envelope_response(
-        InsightListData(items=items, scope_keys=list(SCOPE_KEYS)).model_dump(mode="json")
+        InsightListData(
+            items=items, scope_keys=list(SCOPE_KEYS), waiting_deletions=waiting
+        ).model_dump(mode="json")
     )
 
 

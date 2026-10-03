@@ -18,6 +18,7 @@ import pytest
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.migrations import run_migrations
 from gaggiclanker.knowledge.service import KnowledgeService
+from tests.knowledge.insight_world import ProvenanceWorld, build_provenance_world
 
 #: Three documents whose every word is known to the tests here. The headings
 #: repeat on purpose (two "Fixes" sections) so the duplicate-slug rule is
@@ -120,3 +121,9 @@ async def seeded_docs(knowledge: KnowledgeService) -> KnowledgeService:
     """The service with the real shipped corpus seeded."""
     await knowledge.seed_docs()
     return knowledge
+
+
+@pytest.fixture
+async def provenance(db: Database) -> ProvenanceWorld:
+    """Two Sets with graded versions, shots and conversations: see :mod:`insight_world`."""
+    return await build_provenance_world(db)

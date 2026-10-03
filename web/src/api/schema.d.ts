@@ -1577,6 +1577,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/insight-deletions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every deletion an agent has proposed for this Set's insights
+         * @description Newest first, waiting and answered alike, so a card read days later tells the truth.
+         */
+        get: operations["list_insight_deletions_api_sets__set_id__insight_deletions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/insight-deletions/{proposal_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete the insight an agent proposed deleting
+         * @description The card's Delete: a person's press, and the only way a proposal removes an insight.
+         *
+         *     There is no tool for this, in the chat or over MCP: an agent that could delete
+         *     its own predecessors' insights would be rewriting what every later conversation
+         *     is told. The insight is removed outright; nothing of it is kept but the text on
+         *     the card.
+         */
+        post: operations["accept_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/insight-deletions/{proposal_id}/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep the insight an agent proposed deleting
+         * @description The card's Keep: the insight stays exactly as it is, and the agent is told.
+         */
+        post: operations["keep_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__keep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/outcome-proposals": {
         parameters: {
             query?: never;
@@ -2644,6 +2709,22 @@ export interface components {
         /** ApiResponse[ImportSummary] */
         ApiResponse_ImportSummary_: {
             data?: components["schemas"]["ImportSummary"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[InsightDeletionDecision] */
+        ApiResponse_InsightDeletionDecision_: {
+            data?: components["schemas"]["InsightDeletionDecision"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[InsightDeletionListData] */
+        ApiResponse_InsightDeletionListData_: {
+            data?: components["schemas"]["InsightDeletionListData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4473,6 +4554,47 @@ export interface components {
             text: string;
         };
         /**
+         * InsightDeletionDecision
+         * @description What answering a proposed deletion produced: the proposal as it now stands.
+         */
+        InsightDeletionDecision: {
+            proposal: components["schemas"]["InsightDeletionRow"];
+        };
+        /**
+         * InsightDeletionListData
+         * @description `GET /api/sets/{id}/insight-deletions`: every deletion proposed on this Set, newest first.
+         */
+        InsightDeletionListData: {
+            /** Items */
+            items: components["schemas"]["InsightDeletionRow"][];
+        };
+        /**
+         * InsightDeletionRow
+         * @description One proposed deletion, as a card reads it.
+         */
+        InsightDeletionRow: {
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Id */
+            id: number;
+            /** Insight Id */
+            insight_id?: number | null;
+            /** Insight Text */
+            insight_text: string;
+            /** Reason */
+            reason: string;
+            /** Set Id */
+            set_id: number;
+            /** @default proposed */
+            status: components["schemas"]["InsightDeletionStatus"];
+            /** Thread Id */
+            thread_id: number;
+        };
+        /** @enum {string} */
+        InsightDeletionStatus: "proposed" | "deleted" | "kept" | "stale" | "superseded";
+        /**
          * InsightListData
          * @description The insights that matched the filter, oldest first.
          */
@@ -4481,6 +4603,8 @@ export interface components {
             items: components["schemas"]["InsightRow"][];
             /** Scope Keys */
             scope_keys: string[];
+            /** Waiting Deletions */
+            waiting_deletions?: components["schemas"]["InsightDeletionRow"][];
         };
         /**
          * InsightPatch
@@ -4531,6 +4655,17 @@ export interface components {
             readonly general: boolean;
             /** Id */
             id: number;
+            /** Replaced */
+            replaced?: ("deleted" | "old_changed") | null;
+            /** Replaces Id */
+            replaces_id?: number | null;
+            /**
+             * Replaces Text
+             * @default
+             */
+            replaces_text: string;
+            /** Rests On */
+            rests_on?: components["schemas"]["RestsOnRow"][];
             scope?: components["schemas"]["InsightScope"];
             /** Set Id */
             set_id?: number | null;
@@ -5452,6 +5587,23 @@ export interface components {
         RenameBody: {
             /** Title */
             title: string;
+        };
+        /**
+         * RestsOnRow
+         * @description A version an insight rests on, as shown: its name, then and now.
+         */
+        RestsOnRow: {
+            /**
+             * Changed
+             * @description Whether the grade moved after the insight was written.
+             */
+            readonly changed: boolean;
+            /** Label */
+            label: string;
+            outcome_now?: components["schemas"]["VersionOutcome"] | null;
+            outcome_then?: components["schemas"]["VersionOutcome"] | null;
+            /** Set Version Id */
+            set_version_id: number;
         };
         /** ResumeData */
         ResumeData: {
@@ -10332,6 +10484,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_SetDesignDiscarded_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_insight_deletions_api_sets__set_id__insight_deletions_get: {
+        parameters: {
+            query?: {
+                /** @description Only what this conversation proposed, with no cap: the chat's cards read their proposal this way, so one is found however old it is. */
+                thread_id?: number | null;
+            };
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightDeletionListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightDeletionDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    keep_insight_deletion_api_sets__set_id__insight_deletions__proposal_id__keep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_InsightDeletionDecision_"];
                 };
             };
             /** @description Validation Error */

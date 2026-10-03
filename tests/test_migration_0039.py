@@ -254,7 +254,8 @@ class TestTheUpgrade:
                 "('{}', 'Waiting.', 'analysis', 0, NULL)"
             )
 
-            assert await run_migrations(database) == ["0039"]
+            # Later migrations run too; this file is about 0039 being the first of them.
+            assert (await run_migrations(database))[0] == "0039"
             rows = await _rows(database)
 
             assert [

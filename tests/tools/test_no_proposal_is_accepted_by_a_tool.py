@@ -30,14 +30,17 @@ from pathlib import Path
 from types import CodeType
 
 import gaggiclanker.tools
-from gaggiclanker.api.knowledge import dismiss_insight, patch_insight
+from gaggiclanker.api.knowledge import delete_insight, dismiss_insight, patch_insight
 from gaggiclanker.api.sets import (
+    accept_insight_deletion,
     accept_outcome_proposal,
     accept_proposal,
     change_outcome_proposal,
     decline_proposal,
     dismiss_outcome_proposal,
+    keep_insight_deletion,
 )
+from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -64,6 +67,13 @@ DECIDING = (
     # by a person: `set_confirmed` is the add and the take back, `dismiss` the
     # other card button.
     "set_confirmed",
+    # An added insight leaves only by a person's press: `delete` is the Delete on the
+    # Set page and the Knowledge page, `delete_in_transaction` the write every removal
+    # runs (a replacement's Add and an accepted deletion proposal included), and
+    # `keep` the other button on an agent's deletion proposal.
+    "delete",
+    "delete_in_transaction",
+    "keep",
 )
 
 
@@ -124,12 +134,19 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(SetsRepository.clear_outcome)
     assert callable(InsightsRepository.set_confirmed)
     assert callable(InsightsRepository.dismiss)
+    assert callable(InsightsRepository.delete)
+    assert callable(InsightsRepository.delete_in_transaction)
+    assert callable(InsightDeletionsRepository.accept)
+    assert callable(InsightDeletionsRepository.keep)
     for route in (
         accept_outcome_proposal,
         change_outcome_proposal,
         dismiss_outcome_proposal,
         patch_insight,
         dismiss_insight,
+        delete_insight,
+        accept_insight_deletion,
+        keep_insight_deletion,
     ):
         assert callable(route)
     assert callable(accept_proposal)

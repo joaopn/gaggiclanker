@@ -945,7 +945,7 @@ async def _insights_block(db: Database, row: SetRow) -> list[str]:
     newest = sorted(insights, key=lambda item: item.id, reverse=True)
     lines = [
         "CONFIRMED INSIGHTS THAT APPLY HERE",
-        *(f"- {_cut(item.render(), INSIGHT_CHARS)}" for item in newest[:INSIGHTS_SHOWN]),
+        *(f"- {item.render(text_chars=INSIGHT_CHARS)}" for item in newest[:INSIGHTS_SHOWN]),
     ]
     if len(newest) > INSIGHTS_SHOWN:
         lines.append(

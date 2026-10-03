@@ -99,8 +99,8 @@ THE GOLD STANDARD
 That is what good has tasted like here. An Improve shot is compared with it.
 
 CONFIRMED INSIGHTS THAT APPLY HERE
-- [this Set, learned at v2.2] The added lesson, which rests on the one Improve shot.
-- [bean_id=1] This bag runs fast for the first week after roasting.
+- #3 [this Set, learned at v2.2] The added lesson, which rests on the one Improve shot.
+- #1 [bean_id=1] This bag runs fast for the first week after roasting.
 
 INSIGHTS YOU PROPOSED IN THIS CONVERSATION
 - The waiting lesson, which rests on the one Improve shot. (waiting: the person has not answered, so it is not evidence yet)

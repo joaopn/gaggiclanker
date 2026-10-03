@@ -76,6 +76,10 @@ export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): Kno
     set_version_id: null,
     set_version_label: null,
     dismissed: false,
+    rests_on: [],
+    replaces_id: null,
+    replaces_text: "",
+    replaced: null,
     general: true,
     ...overrides,
   };
