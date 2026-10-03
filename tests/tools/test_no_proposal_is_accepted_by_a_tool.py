@@ -31,6 +31,7 @@ from types import CodeType
 
 import gaggiclanker.tools
 from gaggiclanker.api.knowledge import delete_insight, dismiss_insight, patch_insight
+from gaggiclanker.api.patterns import approve_proposal, dismiss_proposal
 from gaggiclanker.api.sets import (
     accept_insight_deletion,
     accept_outcome_proposal,
@@ -43,6 +44,7 @@ from gaggiclanker.api.sets import (
 from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
+from gaggiclanker.db.repos.patterns import PatternProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
 from gaggiclanker.tools.registry import registry
@@ -78,6 +80,9 @@ DECIDING = (
     # also stales waiting deletion proposals.
     "_add_in_transaction",
     "_take_back_in_transaction",
+    # A pattern proposal is approved (writes a general insight and deletes the Set insights
+    # it came from) by a person's press on the Knowledge page, and nothing else.
+    "approve",
 )
 
 
@@ -144,6 +149,10 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(InsightsRepository._take_back_in_transaction)
     assert callable(InsightDeletionsRepository.accept)
     assert callable(InsightDeletionsRepository.keep)
+    assert callable(PatternProposalsRepository.approve)
+    assert callable(PatternProposalsRepository.dismiss)
+    assert callable(approve_proposal)
+    assert callable(dismiss_proposal)
     for route in (
         accept_outcome_proposal,
         change_outcome_proposal,

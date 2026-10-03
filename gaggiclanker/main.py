@@ -33,6 +33,7 @@ from gaggiclanker.db.repos.device_writes import DeviceWritesRepository
 from gaggiclanker.db.repos.insight_placement import InsightPlacementBuilder
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.llm import LlmCallsRepository, PromptsRepository
+from gaggiclanker.db.repos.patterns import PatternRunsRepository
 from gaggiclanker.db.repos.profile_drafts import ProfileDraftRow
 from gaggiclanker.db.repos.profile_list import ProfileListBuilder
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
@@ -65,6 +66,7 @@ from gaggiclanker.llm.claude_cli import ClaudeCliManager
 from gaggiclanker.llm.observer import LlmCallObserver
 from gaggiclanker.llm.prompts import PromptService, seed_prompts
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.patterns.service import PatternsService
 from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import (
     IGNORED_ENV_FILE,
@@ -355,6 +357,7 @@ async def _start(app: FastAPI, db: Database) -> None:
     # last restart interrupt" is the first question after an unexpected one and
     # an absent log line does not answer it.
     interrupted_reviews = await ShotReviewsRepository(db).reconcile_running()
+    interrupted_patterns = await PatternRunsRepository(db).reconcile_running()
     interrupted_syncs = await SyncRepository(db).reconcile_running()
     # The chat's runs, for the reason a review's are: a `running` chat run
     # nobody owns is a spinner and a cancel button that cancels nothing.
@@ -373,6 +376,7 @@ async def _start(app: FastAPI, db: Database) -> None:
     log.info(
         "boot_reconciled",
         reviews_interrupted=interrupted_reviews,
+        pattern_runs_interrupted=interrupted_patterns,
         sync_runs_interrupted=interrupted_syncs,
         chat_runs_interrupted=interrupted_chats,
         starting_points_interrupted=interrupted_starts,
@@ -404,6 +408,15 @@ async def _start(app: FastAPI, db: Database) -> None:
     # requests. Only the review route reaches it: no tool, task or boot step is
     # handed it.
     app.state.reviews = ReviewService(
+        db,
+        app.state.llm,
+        PromptService(PromptsRepository(db)),
+        bus=app.state.events,
+    )
+
+    # App-scoped for the same reason, and handed to nothing but the Knowledge page's route:
+    # a run is a button a person presses, never a boot step, timer, tool or task.
+    app.state.patterns = PatternsService(
         db,
         app.state.llm,
         PromptService(PromptsRepository(db)),

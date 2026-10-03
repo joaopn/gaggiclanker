@@ -29,6 +29,7 @@ from gaggiclanker.db.repos.llm import PromptsRepository
 from gaggiclanker.db.repos.machines import MachineRepository
 from gaggiclanker.db.repos.notes import NotesRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
+from gaggiclanker.db.repos.patterns import PatternProposalsRepository, PatternRunsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.reviews import ShotReviewsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -43,6 +44,7 @@ from gaggiclanker.infra.sse import SseEventBus
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
+from gaggiclanker.patterns.service import PatternsService
 from gaggiclanker.review.service import ReviewService
 from gaggiclanker.settings import EnvSettings
 from gaggiclanker.settings_service import SettingsService
@@ -73,6 +75,9 @@ __all__ = [
     "MachineRepoDep",
     "NotesRepoDep",
     "OutcomeProposalsRepoDep",
+    "PatternProposalsRepoDep",
+    "PatternRunsRepoDep",
+    "PatternsServiceDep",
     "ProfilesRepoDep",
     "PromptServiceDep",
     "ReviewServiceDep",
@@ -254,6 +259,25 @@ def get_insight_deletions_repo(request: Request) -> InsightDeletionsRepository:
     return InsightDeletionsRepository(get_database(request))
 
 
+def get_pattern_runs_repo(request: Request) -> PatternRunsRepository:
+    return PatternRunsRepository(get_database(request))
+
+
+def get_pattern_proposals_repo(request: Request) -> PatternProposalsRepository:
+    return PatternProposalsRepository(get_database(request))
+
+
+def get_patterns_service(request: Request) -> PatternsService:
+    """The pattern-finding service. App-scoped, and it has to be.
+
+    It holds the future of the run whose row is being opened right now, which is half of
+    "one run at a time": the registry's name guard is the other half. A per-request copy would
+    make that empty for every caller.
+    """
+    service: PatternsService = request.app.state.patterns
+    return service
+
+
 def get_insights_repo(request: Request) -> InsightsRepository:
     return InsightsRepository(get_database(request))
 
@@ -336,6 +360,9 @@ RulesRepoDep = Annotated[RulesRepository, Depends(get_rules_repo)]
 KnowledgeDocsRepoDep = Annotated[KnowledgeDocsRepository, Depends(get_knowledge_docs_repo)]
 InsightsRepoDep = Annotated[InsightsRepository, Depends(get_insights_repo)]
 InsightDeletionsRepoDep = Annotated[InsightDeletionsRepository, Depends(get_insight_deletions_repo)]
+PatternRunsRepoDep = Annotated[PatternRunsRepository, Depends(get_pattern_runs_repo)]
+PatternProposalsRepoDep = Annotated[PatternProposalsRepository, Depends(get_pattern_proposals_repo)]
+PatternsServiceDep = Annotated[PatternsService, Depends(get_patterns_service)]
 KnowledgeServiceDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
 ReviewsRepoDep = Annotated[ShotReviewsRepository, Depends(get_reviews_repo)]
 ReviewServiceDep = Annotated[ReviewService, Depends(get_review_service)]

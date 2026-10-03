@@ -18,6 +18,7 @@ from gaggiclanker.api import (
     knowledge,
     llm,
     machine,
+    patterns,
     profile_board,
     profiles,
     prompts,
@@ -57,6 +58,7 @@ api_router.include_router(imports.router)
 api_router.include_router(llm.router)
 api_router.include_router(prompts.router)
 api_router.include_router(knowledge.router)
+api_router.include_router(patterns.router)
 api_router.include_router(reviews.router)
 api_router.include_router(starting.router)
 api_router.include_router(chat.router)

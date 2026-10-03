@@ -708,6 +708,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/knowledge/patterns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest pattern run, its proposals and how many insights are new */
+        get: operations["get_patterns_api_knowledge_patterns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/patterns/proposals/{proposal_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a proposed general insight
+         * @description A person's press: writes the general insight and deletes what it was derived from.
+         *
+         *     One transaction. A source that is gone or no longer confirmed is skipped and named in
+         *     `skipped`; the approval still succeeds when at least two Sets' sources remain, and is
+         *     refused (409 `PATTERN_TOO_FEW_SETS`, nothing written) otherwise. 409 `PATTERNS_RUNNING` while
+         *     a run is going. There is no tool for this.
+         */
+        post: operations["approve_proposal_api_knowledge_patterns_proposals__proposal_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/patterns/proposals/{proposal_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn a proposed general insight down
+         * @description A person's press. The proposal is kept until the next finished run, which is told it
+         *     was declined, and then deleted. There is no tool for this.
+         */
+        post: operations["dismiss_proposal_api_knowledge_patterns_proposals__proposal_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/patterns/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find patterns across Sets
+         * @description Queue the work and answer with the `running` row. 202, not 201.
+         *
+         *     This is the only way a run starts: a person pressing the button. 409
+         *     `PATTERNS_NOT_ENOUGH_SETS` when fewer than two Sets have a confirmed insight. A press
+         *     while one runs gets that running row back. ``?wait=1`` blocks until the run is finished
+         *     (tests and `curl`); a browser follows the stream.
+         */
+        post: operations["start_run_api_knowledge_patterns_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/knowledge/patterns/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One run, with what the model was told */
+        get: operations["get_run_api_knowledge_patterns_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/knowledge/rules": {
         parameters: {
             query?: never;
@@ -2831,6 +2936,38 @@ export interface components {
         /** ApiResponse[PasswordData] */
         ApiResponse_PasswordData_: {
             data?: components["schemas"]["PasswordData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PatternProposalDecision] */
+        ApiResponse_PatternProposalDecision_: {
+            data?: components["schemas"]["PatternProposalDecision"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PatternRunDetail] */
+        ApiResponse_PatternRunDetail_: {
+            data?: components["schemas"]["PatternRunDetail"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PatternRunRow] */
+        ApiResponse_PatternRunRow_: {
+            data?: components["schemas"]["PatternRunRow"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[PatternsData] */
+        ApiResponse_PatternsData_: {
+            data?: components["schemas"]["PatternsData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -5155,6 +5292,194 @@ export interface components {
             sessions_revoked: boolean;
         };
         /**
+         * PatternProposalDecision
+         * @description The answer to a press on a proposal.
+         */
+        PatternProposalDecision: {
+            /** Deleted Insight Ids */
+            deleted_insight_ids?: number[];
+            proposal: components["schemas"]["PatternProposalRow"];
+            /** Skipped */
+            skipped?: components["schemas"]["PatternSkipped"][];
+        };
+        /**
+         * PatternProposalRow
+         * @description One proposal, as a card reads it.
+         */
+        PatternProposalRow: {
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Id */
+            id: number;
+            /** Insight Id */
+            insight_id?: number | null;
+            /** Replaces Id */
+            replaces_id?: number | null;
+            /**
+             * Replaces Text
+             * @default
+             */
+            replaces_text: string;
+            /** Run Id */
+            run_id: number;
+            scope?: components["schemas"]["InsightScope"];
+            /** Skipped */
+            skipped?: components["schemas"]["PatternSkipped"][];
+            /** Sources */
+            sources?: components["schemas"]["PatternSource"][];
+            /** @default proposed */
+            status: components["schemas"]["PatternProposalStatus"];
+            /** Text */
+            text: string;
+        };
+        /** @enum {string} */
+        PatternProposalStatus: "proposed" | "approved" | "dismissed" | "superseded";
+        /**
+         * PatternRunDetail
+         * @description A run with what the model was told, so any proposal can be explained.
+         */
+        PatternRunDetail: {
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            };
+            run: components["schemas"]["PatternRunRow"];
+        };
+        /**
+         * PatternRunRequest
+         * @description `POST /api/knowledge/patterns/runs`: start one, optionally on a named model.
+         */
+        PatternRunRequest: {
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+        };
+        /**
+         * PatternRunRow
+         * @description One run, as a page reads it: everything but the input.
+         */
+        PatternRunRow: {
+            /** Created At */
+            created_at: string;
+            /** Dropped */
+            dropped?: {
+                [key: string]: number;
+            };
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Insights Read
+             * @default 0
+             */
+            insights_read: number;
+            /** Llm Call Id */
+            llm_call_id?: string | null;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Prompt Name
+             * @default
+             */
+            prompt_name: string;
+            /**
+             * Prompt Version
+             * @default
+             */
+            prompt_version: string;
+            /**
+             * Proposals Dropped
+             * @default 0
+             */
+            proposals_dropped: number;
+            /**
+             * Proposals Kept
+             * @default 0
+             */
+            proposals_kept: number;
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Sets Read
+             * @default 0
+             */
+            sets_read: number;
+            /** @default running */
+            status: components["schemas"]["PatternRunStatus"];
+            /** Usage */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** @enum {string} */
+        PatternRunStatus: "running" | "done" | "failed" | "interrupted";
+        /**
+         * PatternsData
+         * @description What the Knowledge page's section reads: the newest run, its proposals, two numbers.
+         */
+        PatternsData: {
+            /** Counted From */
+            counted_from?: string | null;
+            /**
+             * Min Sets
+             * @default 2
+             */
+            min_sets: number;
+            /**
+             * New Since Last Run
+             * @default 0
+             */
+            new_since_last_run: number;
+            /** Proposals */
+            proposals?: components["schemas"]["PatternProposalRow"][];
+            run?: components["schemas"]["PatternRunRow"] | null;
+            /**
+             * Sets With Insights
+             * @default 0
+             */
+            sets_with_insights: number;
+        };
+        /**
+         * PatternSkipped
+         * @description A source Approve did not delete, or the replaced general insight that was already gone.
+         */
+        PatternSkipped: {
+            /** Insight Id */
+            insight_id?: number | null;
+            reason: components["schemas"]["SkipReason"];
+            /** Set Id */
+            set_id?: number | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * PatternSource
+         * @description One insight a proposal was derived from, as the model was given it.
+         */
+        PatternSource: {
+            /** Insight Id */
+            insight_id: number;
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Text */
+            text: string;
+        };
+        /**
          * PolicyChange
          * @description One number the policy moved, and what it was before.
          *
@@ -7164,6 +7489,8 @@ export interface components {
             items: components["schemas"]["SimilarSet"][];
         };
         /** @enum {string} */
+        SkipReason: "gone" | "not_confirmed" | "scope_changed" | "replaced_gone";
+        /** @enum {string} */
         SortKey: "started_at" | "execution_score" | "duration" | "rating";
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
@@ -9075,6 +9402,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_InsightRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_patterns_api_knowledge_patterns_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PatternsData_"];
+                };
+            };
+        };
+    };
+    approve_proposal_api_knowledge_patterns_proposals__proposal_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PatternProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_proposal_api_knowledge_patterns_proposals__proposal_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PatternProposalDecision_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_knowledge_patterns_runs_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatternRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PatternRunRow_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_knowledge_patterns_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_PatternRunDetail_"];
                 };
             };
             /** @description Validation Error */
