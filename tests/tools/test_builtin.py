@@ -839,7 +839,9 @@ async def test_a_recorded_insight_records_the_conversation_that_wrote_it(
     )
     set_ctx.thread_id = int(cursor.lastrowid or 0)
 
-    data = await call(set_ctx, "record_insight", text="Finer helps.")
+    data = await call(
+        set_ctx, "record_insight", text="Finer helps.", evidence_shot_ids=archive.shots[:1]
+    )
 
     stored = await InsightsRepository(archive.db).get(data["insight_id"])
     assert stored is not None and stored.thread_id == set_ctx.thread_id
@@ -849,7 +851,9 @@ async def test_a_recorded_insight_does_not_reach_the_next_prompt(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:
     """The loop tier 3 exists to break: propose, then be believed next turn."""
-    await call(set_ctx, "record_insight", text="Always go finer.")
+    await call(
+        set_ctx, "record_insight", text="Always go finer.", evidence_shot_ids=archive.shots[:1]
+    )
 
     listed = await call(set_ctx, "get_insights")
 

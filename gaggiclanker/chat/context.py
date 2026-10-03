@@ -40,6 +40,7 @@ from typing import Any
 from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrindersRepository
+from gaggiclanker.db.repos.insight_deletions import InsightDeletionsRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
 from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
@@ -216,6 +217,9 @@ async def opening_context(
     proposed = await _proposed_insights_block(db, thread_id)
     if proposed:
         lines += ["", *proposed]
+    deletions = await _proposed_deletions_block(db, thread_id)
+    if deletions:
+        lines += ["", *deletions]
     lines += [
         "",
         "Those facts are the record, not the whole archive: use the tools for anything else, "
@@ -980,14 +984,54 @@ async def _proposed_insights_block(db: Database, thread_id: int | None) -> list[
         return []
     lines = ["INSIGHTS YOU PROPOSED IN THIS CONVERSATION"]
     for item in proposed:
-        state = (
-            "dismissed by the person — do not offer it again"
-            if item.dismissed
-            else "added by the person — it is in the confirmed list above"
-            if item.confirmed
-            else "waiting: the person has not answered, so it is not evidence yet"
-        )
+        if item.dismissed:
+            state = "dismissed by the person — do not offer it again"
+        elif item.confirmed:
+            state = (
+                "added by the person, and it replaced the old insight, which was deleted — it "
+                "is in the confirmed list above"
+                if item.replaced == "deleted"
+                else "added by the person; the insight it was meant to replace had already "
+                "changed, so nothing was deleted — it is in the confirmed list above"
+                if item.replaced == "old_changed"
+                else "added by the person — it is in the confirmed list above"
+            )
+        else:
+            state = "waiting: the person has not answered, so it is not evidence yet"
+            if item.replaces_id is not None:
+                state += f"; adding it would delete #{item.replaces_id}"
+            elif item.replaced == "old_changed":
+                state += "; the insight it was meant to replace is already gone"
         lines.append(f"- {_cut(item.text, INSIGHT_CHARS)} ({state})")
+    return lines
+
+
+async def _proposed_deletions_block(db: Database, thread_id: int | None) -> list[str]:
+    """What this conversation proposed deleting, and what the person did with each.
+
+    **This conversation's only.** A kept one says only that it was kept (the person's
+    answer, with nothing to argue with); one whose insight went another way first
+    says it is already gone. An answered one stays here so the conversation does not
+    propose it again, and the text is the one the card showed: nothing else of a
+    deleted insight is read anywhere.
+    """
+    if thread_id is None:
+        return []
+    proposed = await InsightDeletionsRepository(db).proposed_in(thread_id)
+    if not proposed:
+        return []
+    lines = ["INSIGHT DELETIONS YOU PROPOSED IN THIS CONVERSATION"]
+    for item in proposed:
+        state = {
+            "deleted": "deleted by the person",
+            "kept": "kept by the person",
+            "stale": "already gone, nothing to do",
+        }.get(item.status, "waiting: nothing is deleted until the person presses Delete")
+        # The number is there while the insight is: once it is gone, only the text is.
+        number = "" if item.insight_id is None else f"#{item.insight_id} "
+        # A proposal whose insight went another way has lost its copy of the text.
+        text = _cut(item.insight_text, INSIGHT_CHARS) or "an insight that has since been removed"
+        lines.append(f"- {number}{text} ({state})")
     return lines
 
 

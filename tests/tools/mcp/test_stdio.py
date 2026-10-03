@@ -32,6 +32,7 @@ from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTie
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.tools.mcp.server import SERVER_NAME
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
+from tests.knowledge.insight_world import ProvenanceWorld, build_provenance_world
 from tests.review.conftest import Fixture, build_fixture
 from tests.sets.conftest import make_shot
 
@@ -243,6 +244,160 @@ async def _seed_insights(data_dir: Path, fixture: Fixture) -> None:
                 confirmed=True,
             )
         )
+    finally:
+        await db.close()
+
+
+async def _provenance_world(data_dir: Path) -> tuple[ProvenanceWorld, dict[str, int]]:
+    """Graded versions, a conversation and a few insights in the child's archive."""
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        world = await build_provenance_world(db)
+        from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
+
+        ids = {
+            "added": await world.own("Added claim."),
+            "waiting": await world.own("Waiting claim.", confirmed=False),
+            "dismissed": await world.own("Dismissed claim.", confirmed=False),
+            "theirs": await world.own(
+                "Theirs.", set_id=world.stranger_set, version_id=world.stranger_version
+            ),
+            "general": await InsightsRepository(db).insert(
+                InsightWrite(text="General.", source="user", confirmed=True)
+            ),
+        }
+        await InsightsRepository(db).dismiss(ids["dismissed"])
+        return world, ids
+    finally:
+        await db.close()
+
+
+async def test_insight_provenance_and_deletion_proposals_over_stdio(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The child is a second dispatcher: the same refusals, the same cards, no removal."""
+    data_dir, _ = archive_dir
+    world, ids = await _provenance_world(data_dir)
+    reason = "The two newest shots contradict it on every measure."
+    async with AsyncExitStack() as stack:
+        session = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_SET_ID=str(world.set_id),
+            GAGGICLANKER_MCP_SET_VERSION_ID=str(world.v3),
+            GAGGICLANKER_MCP_THREAD_ID=str(world.thread),
+        )
+        bare = await session_for(
+            stack,
+            data_dir,
+            GAGGICLANKER_MCP_SET_ID=str(world.set_id),
+            GAGGICLANKER_MCP_SET_VERSION_ID=str(world.v3),
+        )
+        unknown = await session.call_tool(
+            "record_insight", {"text": "x", "rests_on_versions": ["v9"]}
+        )
+        no_outcome = await session.call_tool(
+            "record_insight", {"text": "x", "rests_on_versions": ["v1.2"]}
+        )
+        nothing = await session.call_tool("record_insight", {"text": "x"})
+        waiting = await session.call_tool(
+            "record_insight",
+            {
+                "text": "x",
+                "evidence_shot_ids": [world.shot1],
+                "replaces_insight_id": ids["waiting"],
+            },
+        )
+        general = await session.call_tool(
+            "record_insight",
+            {
+                "text": "x",
+                "evidence_shot_ids": [world.shot1],
+                "replaces_insight_id": ids["general"],
+            },
+        )
+        theirs = await session.call_tool(
+            "record_insight",
+            {"text": "x", "evidence_shot_ids": [world.shot1], "replaces_insight_id": ids["theirs"]},
+        )
+        replaced = await session.call_tool(
+            "record_insight",
+            {
+                "text": "New claim.",
+                "evidence_shot_ids": [world.shot1],
+                "rests_on_versions": ["v1.1"],
+                "replaces_insight_id": ids["added"],
+            },
+        )
+        dismissed_target = await session.call_tool(
+            "record_insight",
+            {
+                "text": "x",
+                "evidence_shot_ids": [world.shot1],
+                "replaces_insight_id": ids["dismissed"],
+            },
+        )
+        other_version = await session.call_tool(
+            "record_insight", {"text": "x", "rests_on_versions": ["v7"]}
+        )
+        general_deletion = await session.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["general"], "reason": reason}
+        )
+        dismissed_deletion = await session.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["dismissed"], "reason": reason}
+        )
+        short = await session.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["added"], "reason": "short"}
+        )
+        not_added = await session.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["waiting"], "reason": reason}
+        )
+        foreign = await session.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["theirs"], "reason": reason}
+        )
+        no_thread = await bare.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["added"], "reason": reason}
+        )
+        proposed = await session.call_tool(
+            "propose_insight_deletion", {"insight_id": ids["added"], "reason": reason}
+        )
+
+    for refused, words in (
+        (unknown, "no version called 'v9'"),
+        (no_outcome, "has no recorded outcome yet: name shots instead"),
+        (nothing, "has to rest on something"),
+        (waiting, "is not an added insight"),
+        (general, "is general knowledge"),
+        (theirs, "is not an insight of this Set"),
+        (dismissed_target, "is not an added insight"),
+        (other_version, "no version called 'v7'"),
+        (general_deletion, "is general knowledge"),
+        (dismissed_deletion, "is not an added insight"),
+        (short, "A deletion needs its reason"),
+        (not_added, "is not an added insight"),
+        (foreign, "is not an insight of this Set"),
+        (no_thread, "no conversation"),
+    ):
+        assert refused.is_error is True and words in str(refused.content), (words, refused)
+    assert replaced.is_error is False, replaced.content
+    assert replaced.structured_content is not None
+    assert replaced.structured_content["replaces_insight_id"] == ids["added"]
+    assert proposed.is_error is False, proposed.content
+    assert proposed.structured_content is not None
+    assert proposed.structured_content["status"] == "proposed"
+    assert "Nothing is deleted" in proposed.structured_content["note"]
+
+    db = Database(data_dir / "gaggiclanker.db")
+    await db.connect()
+    try:
+        from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+
+        repo = InsightsRepository(db)
+        # Nothing was removed: the old insight is still added, the new one is waiting.
+        assert (await repo.get(ids["added"])).confirmed  # type: ignore[union-attr]
+        new = await repo.get(replaced.structured_content["insight_id"])
+        assert new is not None and new.confirmed is False and new.replaces_id == ids["added"]
     finally:
         await db.close()
 

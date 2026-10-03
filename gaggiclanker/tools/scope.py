@@ -78,6 +78,7 @@ SET_TOOLS: frozenset[str] = frozenset(
         "get_shot_full",
         "list_profiles",
         "list_set_shots",
+        "propose_insight_deletion",
         "propose_outcome",
         "propose_set_version",
         "record_insight",
@@ -89,7 +90,8 @@ SET_TOOLS: frozenset[str] = frozenset(
 #: not exist yet, so every tool that reads shots or changes a recipe is absent:
 #: there are no shots, ``propose_set_version`` and ``draft_profile`` change a
 #: recipe that is not there (their refusal points at the tool that is), and
-#: ``record_insight`` would be a lesson drawn from nothing brewed. What is here
+#: ``record_insight`` would be a lesson drawn from nothing brewed (and a design has
+#: no added insights to propose deleting). What is here
 #: is what designing needs — the Set and its brief, the profile library and any
 #: one profile's whole document, the knowledge tiers — and
 #: ``propose_initial_recipe``, which proposes the whole first recipe as one card.
@@ -113,7 +115,8 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
 #: brewed yet, and a profile draft, which waits on the Profiles page for a
 #: person either way.
 #:
-#: Absent: ``propose_set_version`` and ``record_insight``, because a Set is
+#: Absent: ``propose_set_version``, ``record_insight`` and
+#: ``propose_insight_deletion``, because a Set is
 #: changed and learned about in its own folder, where the ledger and the
 #: evidence are in front of the model; and ``list_set_shots``, which has no
 #: Set to list.

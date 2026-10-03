@@ -534,6 +534,7 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     assert proposers == {
         "draft_profile",
         "propose_initial_recipe",
+        "propose_insight_deletion",
         "propose_outcome",
         "propose_set_version",
         "record_insight",
@@ -570,7 +571,10 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
     learned = await registry.dispatch(
         ctx,
         "record_insight",
-        {"text": "This grinder wants finer for naturals."},
+        {
+            "text": "This grinder wants finer for naturals.",
+            "evidence_shot_ids": fixture.shots[:1],
+        },
     )
     assert learned.ok, learned.data
     assert learned.data["confirmed"] is False
@@ -632,7 +636,11 @@ async def test_the_stdio_context_proposes_drafts(
                 },
             )
         ).ok
-        assert (await registry.dispatch(ctx, "record_insight", {"text": "Noted."})).ok
+        assert (
+            await registry.dispatch(
+                ctx, "record_insight", {"text": "Noted.", "evidence_shot_ids": fixture.shots[:1]}
+            )
+        ).ok
     finally:
         await db.close()
 

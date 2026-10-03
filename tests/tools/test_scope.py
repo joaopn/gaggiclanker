@@ -36,6 +36,7 @@ def test_a_set_conversation_has_exactly_these_tools() -> None:
             "get_shot_full",
             "list_profiles",
             "list_set_shots",
+            "propose_insight_deletion",
             "propose_outcome",
             "propose_set_version",
             "record_insight",
@@ -374,6 +375,8 @@ async def test_record_insight_names_no_scope_in_the_schema_the_model_is_shown() 
     assert set(spec.input_model.model_json_schema()["properties"]) == {
         "text",
         "evidence_shot_ids",
+        "rests_on_versions",
+        "replaces_insight_id",
     }
 
 

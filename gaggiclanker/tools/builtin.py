@@ -30,8 +30,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
+from gaggiclanker.db.repos.insight_deletions import (
+    REASON_MAX,
+    REASON_MIN,
+    InsightDeletionRefusal,
+    InsightDeletionsRepository,
+    InsightDeletionWrite,
+)
 from gaggiclanker.db.repos.knowledge import RulesRepository
 from gaggiclanker.db.repos.knowledge_insights import (
+    InsightProposeRefusal,
     InsightsRepository,
     InsightWrite,
 )
@@ -1029,6 +1037,10 @@ class InsightOut(_Model):
     id: int
     scope: str
     text: str
+    #: The line the opening context carries for this insight: its id, where it was
+    #: learned, the versions it rests on (their outcome as it stands now, marked when
+    #: it changed) and its shots. Built by ``InsightRow.render``, the one place.
+    line: str = ""
     evidence_shot_ids: list[int] = Field(default_factory=list)
     source: str = ""
     confirmed: bool = False
@@ -1099,6 +1111,7 @@ def _insight_out(insight: Any, only: set[int] | None = None) -> InsightOut:
         id=insight.id,
         scope=insight.scope_label,
         text=insight.text,
+        line=insight.render(),
         evidence_shot_ids=(
             evidence if only is None else [shot_id for shot_id in evidence if shot_id in only]
         ),
@@ -2044,20 +2057,60 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {"value": str(value)}
 
 
+async def _resting_version(ctx: ToolContext, set_id: int, name: str) -> int:
+    """The id of the version an insight is said to rest on, or a sentence naming this Set's own.
+
+    Not :func:`_named_version`: its refusal tells the model to "leave version out", an
+    argument this tool does not have.
+    """
+    parsed = parse_version_label(name)
+    sets = SetsRepository(ctx.db)
+    found = None if parsed is None else await sets.version_named(set_id, *parsed)
+    if found is not None:
+        return found.id
+    names = [version.version_label for version in reversed(await sets.versions(set_id))]
+    raise ValueError(
+        f"This Set has no version called {name!r}. Its versions are {', '.join(names)}; "
+        "name the ones the insight rests on as 'v1.2', or leave rests_on_versions out and "
+        "name shots instead."
+    )
+
+
 class RecordInsightInput(_Model):
     """What an insight says and what it rests on. Nothing scopes it: it is about this Set.
 
     Extras are allowed on this one model only so that an attribute scope (a bean,
     a grinder, a roast level) a model still reaches for gets a sentence saying
     why it is not accepted, instead of a validation error about an unknown
-    field. The schema the model is shown names ``text`` and ``evidence_shot_ids``
-    and nothing else.
+    field. The schema the model is shown names ``text``, what it rests on and the
+    insight it replaces, and nothing else.
     """
 
     model_config = ConfigDict(extra="allow")
 
     text: str = Field(min_length=1, max_length=2000)
-    evidence_shot_ids: list[int] = Field(default_factory=list, max_length=20)
+    evidence_shot_ids: list[int] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Shots of this Set the insight comes from.",
+    )
+    rests_on_versions: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description=(
+            "Versions of this Set whose recorded outcome the insight depends on, named "
+            "as the record names them (v1.2). Each must have an outcome the person has "
+            "recorded. At least one shot or one version is required."
+        ),
+    )
+    replaces_insight_id: int | None = Field(
+        default=None,
+        description=(
+            "The number of an ADDED insight of this Set that this one replaces. When the "
+            "person adds this one, that one is deleted, so this one must say everything "
+            "that is still true. Leave out to propose an insight on its own."
+        ),
+    )
 
 
 class RecordInsightOutput(_Model):
@@ -2065,6 +2118,8 @@ class RecordInsightOutput(_Model):
     scope: str
     text: str
     confirmed: bool = False
+    rests_on: list[str] = Field(default_factory=list)
+    replaces_insight_id: int | None = None
     #: What the model should tell the person.
     note: str = ""
 
@@ -2097,6 +2152,47 @@ async def _check_evidence(ctx: ToolContext, set_id: int, args: RecordInsightInpu
             )
 
 
+def _insight_refusal(refused: InsightProposeRefusal, subject: int | None, label: str) -> str:
+    """The sentence a refused insight comes back as, saying what to do instead.
+
+    ``label`` names the version a refusal is about. Nothing here says anything about
+    another Set: an id that is not this Set's is refused as exactly that.
+    """
+    if refused == "nothing_to_rest_on":
+        return (
+            "An insight has to rest on something: name the shots of this Set it comes "
+            "from (evidence_shot_ids), the versions whose recorded outcome it depends on "
+            "(rests_on_versions), or both."
+        )
+    if refused == "no_outcome":
+        return (
+            f"{label} has no recorded outcome yet: name shots instead, or wait until the "
+            "person records its grade."
+        )
+    if refused == "bad_version":
+        return (
+            f"{label} is not a version of this Set. Name this Set's own versions "
+            "as the record names them (v1.2)."
+        )
+    if refused == "replaces_general":
+        return (
+            f"Insight #{subject} is general knowledge, not this Set's, and only the person "
+            "edits or deletes those (on the Knowledge page). Leave replaces_insight_id out "
+            "to propose a new insight of this Set on its own."
+        )
+    if refused == "replaces_not_added":
+        return (
+            f"Insight #{subject} is not an added insight: only one the person has added "
+            "can be replaced (a waiting or dismissed one cannot). Leave "
+            "replaces_insight_id out to propose a new one."
+        )
+    return (
+        f"Insight #{subject} is not an insight of this Set. get_insights lists the added "
+        "insights of this Set with their numbers; leave replaces_insight_id out to "
+        "propose a new one on its own."
+    )
+
+
 @tool(
     "record_insight",
     permission="propose",
@@ -2105,8 +2201,11 @@ async def _check_evidence(ctx: ToolContext, set_id: int, args: RecordInsightInpu
         "about this Set only: it is stored with this Set and the version this conversation "
         "is about, shown to the person as a card, and — only if they add it — given to this "
         "Set's later conversations and to no other Set's. It reaches no future prompt until "
-        "they do. Propose one only when named shots of this Set actually support it, and "
-        "name them in evidence_shot_ids; offer few. There is no scope to set."
+        "they do. Propose one only when named shots of this Set or versions with a recorded "
+        "outcome actually support it, and name them (evidence_shot_ids, rests_on_versions); "
+        "offer few. To replace an added insight the shots now contradict, set "
+        "replaces_insight_id to its number: adding the new one deletes the old one. There "
+        "is no scope to set."
     ),
 )
 async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordInsightOutput:
@@ -2115,7 +2214,9 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
     Written with the conversation's Set and version and **no attribute scope**:
     what is true of this coffee on this grinder is a statement about this Set,
     and one scoped by bean would reach every other Set that shares it. Stored
-    unconfirmed; the person's Add is the only thing that makes it confirmed.
+    unconfirmed; the person's Add is the only thing that makes it confirmed. What
+    it rests on and what it replaces are read and written in one transaction by
+    the repository, so this function only turns a refusal into a sentence.
     """
     if ctx.scope.designing:
         raise ValueError(DESIGN_RULE)
@@ -2131,17 +2232,21 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
     if given:
         raise ValueError(
             f"Unknown argument{'s' if len(given) > 1 else ''}: {', '.join(sorted(given))}. "
-            "Only text and evidence_shot_ids."
+            "Only text, evidence_shot_ids, rests_on_versions and replaces_insight_id."
         )
     await _check_evidence(ctx, set_id, args)
     sets = SetsRepository(ctx.db)
+    # Named the way a version is named everywhere else ("v1.2"), through the helper
+    # that refuses with the Set's own list of versions.
+    version_ids = [await _resting_version(ctx, set_id, name) for name in args.rests_on_versions]
+    labels = dict(zip(version_ids, args.rests_on_versions, strict=True))
     version = (
         await sets.version_of_set(set_id, ctx.scope.set_version_id)
         if ctx.scope.set_version_id is not None
         else await sets.current_version(set_id)
     )
     repo = InsightsRepository(ctx.db)
-    insight_id = await repo.insert(
+    result = await repo.propose(
         InsightWrite(
             text=args.text,
             evidence_shot_ids=args.evidence_shot_ids,
@@ -2150,18 +2255,149 @@ async def record_insight(ctx: ToolContext, args: RecordInsightInput) -> RecordIn
             set_id=set_id,
             set_version_id=None if version is None else version.id,
             thread_id=ctx.thread_id,
-        )
+            replaces_id=args.replaces_insight_id,
+        ),
+        version_ids=version_ids,
     )
-    stored = await repo.get(insight_id)
+    if result.refused is not None:
+        raise ValueError(
+            _insight_refusal(
+                result.refused, result.subject, labels.get(result.subject or 0, "That version")
+            )
+        )
+    assert result.insight_id is not None  # not refused
+    stored = await repo.get(result.insight_id)
     assert stored is not None  # just inserted
+    replaces = (
+        f" Adding it deletes insight #{stored.replaces_id} ({stored.replaces_text!r}); "
+        "until the person adds it, that one stands."
+        if stored.replaces_id is not None
+        else ""
+    )
     return RecordInsightOutput(
         insight_id=stored.id,
         scope=stored.scope_label,
         text=stored.text,
         confirmed=stored.confirmed,
+        rests_on=[item.render() for item in stored.rests_on],
+        replaces_insight_id=stored.replaces_id,
         note=(
             "Nothing is recorded as known yet: the person sees a card and adds or dismisses "
             "it. It is about this Set only, and if they add it, only this Set's later "
-            "conversations are told it."
+            "conversations are told it." + replaces
+        ),
+    )
+
+
+class ProposeInsightDeletionInput(_Model):
+    insight_id: int = Field(
+        description=(
+            "The number of an ADDED insight of this Set (get_insights lists them, and the "
+            "opening context shows each with its number)."
+        )
+    )
+    reason: str = Field(
+        default="",
+        description=(
+            f"Why it no longer fits, in {REASON_MIN} to {REASON_MAX} characters: the person "
+            "reads it on the card before pressing Delete or Keep."
+        ),
+    )
+
+
+class ProposeInsightDeletionOutput(_Model):
+    proposal_id: int
+    set_id: int
+    insight_id: int
+    insight_text: str
+    status: str = "proposed"
+    #: Whether this replaced a deletion of the same insight that was still waiting.
+    replaced_waiting_proposal: bool = False
+    note: str = ""
+
+
+def _deletion_refusal(refused: InsightDeletionRefusal, insight_id: int) -> str:
+    if refused == "general":
+        return (
+            f"Insight #{insight_id} is general knowledge, not this Set's: only the person "
+            "deletes those, on the Knowledge page. If it misleads this Set, say so in words."
+        )
+    if refused == "not_added":
+        return (
+            f"Insight #{insight_id} is not an added insight: only one the person has added "
+            "can be proposed for deletion. A waiting one is theirs to add or dismiss, and a "
+            "dismissed one is already out of every prompt."
+        )
+    if refused == "bad_thread":
+        # Not something a model can cause by choosing arguments: the conversation is
+        # the runner's to supply. Said plainly anyway.
+        return (
+            "This conversation is not one of this Set's, so a deletion argued here cannot "
+            "be recorded against it. Nothing was written; tell the person."
+        )
+    return (
+        f"Insight #{insight_id} is not an insight of this Set. get_insights lists this "
+        "Set's added insights with their numbers."
+    )
+
+
+@tool(
+    "propose_insight_deletion",
+    permission="propose",
+    description=(
+        "Propose deleting one ADDED insight of THIS Set that the shots no longer support "
+        "and nothing replaces (when something replaces it, propose that with record_insight "
+        "and replaces_insight_id instead). It deletes nothing: the person sees a card with "
+        "your reason and presses Delete or Keep, and until they press Delete the insight "
+        "stays and is still told to every conversation of this Set. A second call for the "
+        "same insight replaces the first while the person has not answered."
+    ),
+)
+async def propose_insight_deletion(
+    ctx: ToolContext, args: ProposeInsightDeletionInput
+) -> ProposeInsightDeletionOutput:
+    """The agent's reason for removing an insight, as a card. Never the removal.
+
+    Every refusal is an error value with a sentence of its own. The conversation is
+    the runner's, so a call with no thread (a bare stdio session) is refused: the
+    card would have nowhere to be.
+    """
+    if ctx.scope.designing:
+        raise ValueError(DESIGN_RULE)
+    set_id = _resolve_set(ctx, None)
+    reason = args.reason.strip()
+    if len(reason) < REASON_MIN:
+        raise ValueError(
+            "A deletion needs its reason: the person reads it on the card before pressing "
+            f"Delete or Keep, at least {REASON_MIN} characters. Say which shots contradict "
+            "the insight or why it no longer applies, then call this again."
+        )
+    if len(reason) > REASON_MAX:
+        raise ValueError(
+            f"The reason is too long: at most {REASON_MAX} characters, so it fits on the card."
+        )
+    if ctx.thread_id is None:
+        raise ValueError(
+            "A deletion is proposed inside a conversation, where the person sees the card "
+            "and answers it. This session has no conversation, so nothing was written."
+        )
+    result = await InsightDeletionsRepository(ctx.db).propose(
+        set_id,
+        InsightDeletionWrite(thread_id=ctx.thread_id, insight_id=args.insight_id, reason=reason),
+    )
+    if result.refused is not None or result.proposal is None:
+        raise ValueError(_deletion_refusal(result.refused or "bad_insight", args.insight_id))
+    stored = result.proposal
+    return ProposeInsightDeletionOutput(
+        proposal_id=stored.id,
+        set_id=set_id,
+        insight_id=args.insight_id,
+        insight_text=stored.insight_text,
+        status=stored.status,
+        replaced_waiting_proposal=result.replaced is not None,
+        note=(
+            f"Nothing is deleted: insight #{args.insight_id} stays, and every conversation of "
+            "this Set is still told it, until the person presses Delete on the card. They can "
+            "also Keep it. Say in one sentence why you think it no longer fits."
         ),
     )

@@ -19,8 +19,8 @@ variables:
       The opening context: the Set and this version, the prediction ledger with
       its outcomes, the spread, the evidence table, this version's newest shots
       in their base information, the Keep shots and the confirmed insights that
-      apply, plus what this conversation proposed (a grade, insights) and what
-      the person did with each.
+      apply, plus what this conversation proposed (a grade, insights, insight
+      deletions) and what the person did with each.
   - name: shot_fields
     description: >
       What every shot field means and which tier it is in (base, shown with
@@ -149,10 +149,33 @@ system: |
   and this version, shows it to the person as a card they add or dismiss, and
   only if they add it is it given to this Set's later conversations — and to no
   other Set's. There is no scope to choose. Offer few, each resting on named
-  shots and outcomes of this Set, never on a hunch and never on one shot. The
-  record at the end says which of yours they added, which they dismissed and
-  which still wait: do not offer a dismissed one again, and do not reason from
-  a waiting one as if it were known.
+  shots (`evidence_shot_ids`) and on the versions whose recorded outcome it
+  depends on (`rests_on_versions`, named as v1.2), never on a hunch and never on
+  one shot. A version with no recorded outcome cannot be named: name shots, or
+  wait for the person to record the grade. The record at the end says which of
+  yours they added, which they dismissed and which still wait: do not offer a
+  dismissed one again, and do not reason from a waiting one as if it were
+  known.
+
+  Every added insight is listed with its number, the version it was learned at,
+  what it rests on and the shots it names. A version's outcome is shown as it
+  stands now, and when the person changed it after the insight was written the
+  line says so ("v1.1 held → now failed"). An insight learned many versions ago,
+  or resting on an outcome that has changed, weighs less than the current
+  shots: say so when it matters, and never settle a question from it alone.
+
+  When the shots contradict an added insight, propose its replacement instead of
+  a second insight beside it: `record_insight` with `replaces_insight_id` set to
+  its number. Adding the new one deletes the old one, so the new one must say
+  everything that is still true. When an added insight is no longer supported
+  and nothing replaces it, `propose_insight_deletion` with its number and your
+  reason (at least 20 characters, the person reads it). Early in the
+  conversation of a new version, look over the added insights and propose
+  replacing or deleting the few the shots no longer support; never sweep all of
+  them as a routine. You cannot remove anything yourself: the person presses
+  Delete or Keep, and until then the insight stays as it is and is still told to
+  every conversation. A deletion they kept is their answer: do not propose it
+  again without new shots.
 
   WHEN THEY ACCEPT, THIS CONVERSATION IS DONE
 

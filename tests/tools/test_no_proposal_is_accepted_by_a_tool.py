@@ -74,6 +74,10 @@ DECIDING = (
     "delete",
     "delete_in_transaction",
     "keep",
+    # The private methods behind them: the add of a replacement and the take back, which
+    # also stales waiting deletion proposals.
+    "_add_in_transaction",
+    "_take_back_in_transaction",
 )
 
 
@@ -136,6 +140,8 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(InsightsRepository.dismiss)
     assert callable(InsightsRepository.delete)
     assert callable(InsightsRepository.delete_in_transaction)
+    assert callable(InsightsRepository._add_in_transaction)
+    assert callable(InsightsRepository._take_back_in_transaction)
     assert callable(InsightDeletionsRepository.accept)
     assert callable(InsightDeletionsRepository.keep)
     for route in (
