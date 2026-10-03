@@ -16,7 +16,8 @@ from typing import Any
 import pytest
 
 from gaggiclanker.chat.runner import ChatRunner, _to_chat_message, run_task_name
-from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository
+from gaggiclanker.db.repos.chat import ChatEventsRepository, ChatRepository, ChatThreadWrite
+from gaggiclanker.db.repos.knowledge_insights import InsightsRepository, InsightWrite
 from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetWrite
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.db.repos.shots import ShotsRepository
@@ -814,3 +815,59 @@ async def test_an_unscoped_thread_sends_no_scope(
     await send(runner, tasks, plain.id, "what is a 1:2 ratio?")
 
     assert chat_provider.chat_calls[0].set_id is None
+
+
+async def test_a_run_tells_the_conversation_what_the_person_did_with_its_own_insights(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """The runner hands the opening context the thread, so "you proposed" is its own.
+
+    An insight this thread wrote and the person answered appears, with its state,
+    in the system prompt the provider receives; a second thread about the same
+    version, which wrote nothing, gets no such block.
+    """
+    insights = InsightsRepository(archive.db)
+    added = await insights.insert(
+        InsightWrite(
+            text="This bag is sweetest one number finer.",
+            source="chat",
+            set_id=archive.set_id,
+            set_version_id=archive.version_id,
+            thread_id=thread,
+        )
+    )
+    await insights.set_confirmed(added, True)
+    dismissed = await insights.insert(
+        InsightWrite(
+            text="Longer pre-infusion helps every bag.",
+            source="chat",
+            set_id=archive.set_id,
+            set_version_id=archive.version_id,
+            thread_id=thread,
+        )
+    )
+    await insights.dismiss(dismissed)
+    other = await ChatRepository(archive.db).create_thread(
+        ChatThreadWrite(title="", set_id=archive.set_id, set_version_id=archive.version_id)
+    )
+    assert other.thread is not None
+    chat_provider.chat_script = [ChatTurn(text="Noted.")]
+
+    await send(runner, tasks, thread)
+    await send(runner, tasks, other.thread.id)
+
+    own, elsewhere = (call.system for call in chat_provider.chat_calls)
+    assert "INSIGHTS YOU PROPOSED IN THIS CONVERSATION" in own
+    assert (
+        "- This bag is sweetest one number finer. "
+        "(added by the person — it is in the confirmed list above)"
+    ) in own
+    assert (
+        "- Longer pre-infusion helps every bag. (dismissed by the person — do not offer it again)"
+    ) in own
+    assert "INSIGHTS YOU PROPOSED IN THIS CONVERSATION" not in elsewhere
+    assert "Longer pre-infusion helps every bag." not in elsewhere
