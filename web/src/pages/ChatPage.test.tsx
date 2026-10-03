@@ -82,7 +82,13 @@ function thread(over: Partial<typeof THREAD> & { id: number }) {
   return { ...THREAD, title: `Conversation ${over.id}`, set_version_label: label, ...over };
 }
 
-/** The two Sets the Sets list serves, in the order the API sorts them. */
+/**
+ * The two Sets the Sets list serves, in the order the API sorts them.
+ *
+ * Kenya is the newer Set and is served second (Guji is matched automatically,
+ * which the API sorts first), so "the newest Set" and "the first badge" are
+ * two different answers and a test can tell which one the page used.
+ */
 const SETS = [
   {
     id: 3,
@@ -90,6 +96,7 @@ const SETS = [
     current_version_id: 30,
     current_version_no: 4,
     current_version_label: "v4",
+    created_at: "2026-02-01T09:00:00.000Z",
   },
   {
     id: 4,
@@ -97,14 +104,15 @@ const SETS = [
     current_version_id: 40,
     current_version_no: 1,
     current_version_label: "v1",
+    created_at: "2026-03-05T09:00:00.000Z",
   },
 ];
 
 /**
- * A folder's disclosure button, by the name it shows.
+ * A Set's badge above the chat, by the name it shows.
  *
- * Matched as a prefix: the button's accessible name carries the conversation
- * count after the label.
+ * Matched as a prefix: the badge's accessible name carries the current version
+ * and the conversation count after the label.
  */
 function folder(name: string) {
   return screen.getByRole("button", {
@@ -113,9 +121,9 @@ function folder(name: string) {
 }
 
 /**
- * The region a folder's button names, open or closed.
+ * The list a badge controls, shown or not.
  *
- * By id rather than by role: a closed folder's list is `hidden`, which is the
+ * By id rather than by role: a list that is not open is `hidden`, which is the
  * point — out of the accessibility tree and still in the document, so
  * `aria-controls` resolves to something a reader can reach.
  */
@@ -126,7 +134,7 @@ function region(name: string) {
   return element;
 }
 
-/** Open a folder and hand back its region. */
+/** Open a badge's list and hand back its region. */
 async function opened(user: ReturnType<typeof setupUser>, name: string) {
   await user.click(folder(name));
   return region(name);
@@ -242,19 +250,19 @@ describe("ChatPage folders", () => {
     expect(screen.queryByText(/Guji on the Niche v3/)).not.toBeInTheDocument();
   });
 
-  it("draws General and a folder per Set, including a Set nobody has asked about", async () => {
+  it("draws General and a badge per Set, including a Set nobody has asked about", async () => {
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
     // Every non-archived Set, in the order the Sets list served them, so the
-    // Set the machine is set up for comes first.
-    const names = screen
+    // Set the machine is set up for comes first; each with its current version
+    // and how many conversations it holds, as the Shots page's bar names them.
+    const badges = within(screen.getByRole("navigation", { name: "Conversations by Set" }))
       .getAllByRole("button")
-      .filter((button) => button.hasAttribute("aria-expanded"))
-      .map((button) => (button.textContent ?? "").replace(/\d+$/, ""));
-    expect(names).toEqual(["General", "Guji on the Niche", "Kenya AA on the Niche"]);
-    // Kenya has no conversation yet and is a folder all the same: an empty
-    // folder with a New button is how you start one.
+      .map((button) => button.textContent);
+    expect(badges).toEqual(["General0", "Guji on the Niche· v41", "Kenya AA on the Niche· v10"]);
+    // Kenya has no conversation yet and is a badge all the same: an empty
+    // list with a New button is how you start one.
     expect(region("Kenya AA on the Niche")).toHaveTextContent("New");
   });
 
@@ -337,49 +345,130 @@ describe("ChatPage folders", () => {
     const user = setupUser();
     renderWithQueryClient(<ChatPage />);
 
-    await user.click(await screen.findByRole("button", { name: "New conversation in General" }));
+    await screen.findByRole("button", { name: /^General/ });
+    const inside = await opened(user, "General");
+    await user.click(within(inside).getByRole("button", { name: "New conversation in General" }));
 
     await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: null }));
   });
 
-  it("is a disclosure: aria-expanded, a region that resolves, hidden when closed", async () => {
+  it("shows one badge's list at a time: aria-pressed, a region that resolves, the rest hidden", async () => {
     const user = setupUser();
-    renderWithQueryClient(<ChatPage />);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
-    const button = await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
-    const inside = region("Kenya AA on the Niche");
-    // Closed by default — nothing selected and no `?set=` — and still rendered,
-    // so `aria-controls` names something a reader can reach.
-    expect(button).toHaveAttribute("aria-expanded", "false");
-    expect(inside).toHaveAttribute("hidden");
+    const guji = await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    const kenya = folder("Kenya AA on the Niche");
+    // Not open, and still rendered, so `aria-controls` names something a
+    // reader can reach.
+    expect(kenya).toHaveAttribute("aria-pressed", "false");
+    expect(region("Kenya AA on the Niche")).toHaveAttribute("hidden");
+    expect(guji).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(button);
+    await user.click(kenya);
 
-    expect(button).toHaveAttribute("aria-expanded", "true");
-    expect(inside).not.toHaveAttribute("hidden");
+    expect(kenya).toHaveAttribute("aria-pressed", "true");
+    expect(region("Kenya AA on the Niche")).not.toHaveAttribute("hidden");
+    // Opening one closes the other: there is one list under the badges.
+    expect(guji).toHaveAttribute("aria-pressed", "false");
+    expect(region("Guji on the Niche")).toHaveAttribute("hidden");
+    // And pressing the open one again leaves it open: a badge picks, it does
+    // not fold the list away.
+    await user.click(kenya);
+    expect(kenya).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("opens General when nothing else says otherwise", async () => {
+  it("lists the open badge's conversations one per line, with the version first", async () => {
+    getChatThreads.mockResolvedValue([
+      thread({ id: 1, title: "the live one", set_version_no: 4, message_count: 6 }),
+      thread({ id: 2, title: "the one before", set_version_no: 3, message_count: 2 }),
+      { ...thread({ id: 3, title: "a general one" }), set_id: null, set_name: null },
+    ]);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    const rows = within(region("Guji on the Niche")).getAllByTestId("thread-row");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "v4the live one6 messages",
+      "v3the one before2 messages",
+    ]);
+    expect(region("Guji on the Niche")).not.toHaveTextContent("a general one");
+  });
+
+  it("opens the newest Set when nothing else says otherwise", async () => {
+    const user = setupUser();
+    getChatThreads.mockResolvedValue([]);
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
-    expect(folder("General")).toHaveAttribute("aria-expanded", "true");
-    expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "false");
+    // Kenya was made last; Guji is only first in the Sets list's order.
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "false");
+    expect(folder("General")).toHaveAttribute("aria-pressed", "false");
+    // A first question lands there too, and the composer's card says so.
+    expect(
+      screen.getByText("A new conversation about Kenya AA on the Niche v1"),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Message"), "how is it going?");
+    await user.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: 4 }));
   });
 
-  it("opens the folder holding the selected conversation", async () => {
+  it("opens General when there are no Sets", async () => {
+    getSets.mockResolvedValue({ items: [] });
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^General/ });
+    expect(folder("General")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("sends a first question to the badge the person opened", async () => {
+    const user = setupUser();
+    getChatThreads.mockResolvedValue([]);
+    renderWithQueryClient(<ChatPage />);
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    await opened(user, "Guji on the Niche");
+    expect(screen.getByText("A new conversation about Guji on the Niche v4")).toBeInTheDocument();
+    await opened(user, "General");
+    expect(screen.queryByText(/^A new conversation about/)).toBeNull();
+
+    await user.type(screen.getByLabelText("Message"), "what is a 1:2 ratio?");
+    await user.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(createChatThread).toHaveBeenCalledWith({ title: "", set_id: null }));
+  });
+
+  it("opens the badge holding the selected conversation, over the newest Set", async () => {
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
-    expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "true");
-    expect(folder("General")).toHaveAttribute("aria-expanded", "false");
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "false");
+    expect(folder("General")).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("opens the folder a ?set= link names", async () => {
-    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=4"] });
+  it("opens the badge a ?set= link names", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+
+    await screen.findByRole("button", { name: /^Guji on the Niche/ });
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("opens the newest Set when a ?set= link names a Set that is not listed", async () => {
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=99"] });
 
     await screen.findByRole("button", { name: /^Kenya AA on the Niche/ });
-    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-expanded", "true");
+    expect(folder("Kenya AA on the Niche")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("has no sidebar any more: the badges sit above the conversation", async () => {
+    renderWithQueryClient(<ChatPage />);
+
+    const badges = await screen.findByRole("navigation", { name: "Conversations by Set" });
+    const composer = screen.getByLabelText("Message");
+    expect(
+      badges.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(document.querySelector('[class*="grid-cols-[260px"]')).toBeNull();
   });
 
   it("has no scope select any more", async () => {
@@ -395,7 +484,7 @@ describe("ChatPage", () => {
   it("offers one download of the selected conversation, and nothing before one is open", async () => {
     const user = setupUser();
     downloadFile.mockResolvedValue("saved.json");
-    renderWithQueryClient(<ChatPage />);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
     await screen.findByText("Why is Guji sour?");
     expect(screen.queryByRole("button", { name: /Download log/ })).toBeNull();
@@ -414,7 +503,7 @@ describe("ChatPage", () => {
     const user = setupUser();
     let finish: (name: string) => void = () => {};
     downloadFile.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)));
-    renderWithQueryClient(<ChatPage />);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
     await user.click(await screen.findByRole("button", { name: /Download log/ }));
@@ -429,7 +518,7 @@ describe("ChatPage", () => {
   it("says so when the log cannot be downloaded", async () => {
     const user = setupUser();
     downloadFile.mockRejectedValue(new Error("No chat thread 1"));
-    renderWithQueryClient(<ChatPage />);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
     await user.click(await screen.findByRole("button", { name: /Download log/ }));
@@ -439,7 +528,7 @@ describe("ChatPage", () => {
 
   it("opens a thread and shows its transcript and usage", async () => {
     const user = setupUser();
-    renderWithQueryClient(<ChatPage />);
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
 
     await user.click(await screen.findByText("Why is Guji sour?"));
 
@@ -515,7 +604,7 @@ describe("ChatPage", () => {
     // The folder the question will land in is open, and the composer's card
     // says so — with the version it would land on, which is the Set's current.
     await screen.findByRole("button", { name: /^Guji on the Niche/ });
-    expect(folder("Guji on the Niche")).toHaveAttribute("aria-expanded", "true");
+    expect(folder("Guji on the Niche")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("A new conversation about Guji on the Niche v4")).toBeInTheDocument();
     // A Set link on its own creates nothing until something is sent.
     expect(openChatThread).not.toHaveBeenCalled();
@@ -528,6 +617,7 @@ describe("ChatPage", () => {
 
   it("says a first question with no scope is a general conversation", async () => {
     getChatThreads.mockResolvedValue([]);
+    getSets.mockResolvedValue({ items: [] });
     renderWithQueryClient(<ChatPage />);
 
     expect(await screen.findByText("General")).toBeInTheDocument();
@@ -594,15 +684,16 @@ describe("ChatPage", () => {
     expect(getChatTools).not.toHaveBeenCalled();
   });
 
-  it("asks for the general tool list when nothing is selected", async () => {
+  it("asks for the general tool list when nothing is selected and General is open", async () => {
     getChatThreads.mockResolvedValue([]);
+    getSets.mockResolvedValue({ items: [] });
     renderWithQueryClient(<ChatPage />);
 
     await screen.findByRole("button", { name: /^General/ });
     await waitFor(() => expect(getChatTools).toHaveBeenCalledWith("general"));
   });
 
-  it("deletes a conversation from inside its folder", async () => {
+  it("deletes a conversation from inside its list", async () => {
     const user = setupUser();
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
@@ -633,7 +724,7 @@ describe("ChatPage, a Set being designed", () => {
     set_version_no: 1,
   });
 
-  it("badges the folder of a Set being designed, and no other", async () => {
+  it("marks the badge of a Set being designed, and no other", async () => {
     getSets.mockResolvedValue({ items: DESIGNING });
     renderWithQueryClient(<ChatPage />);
 

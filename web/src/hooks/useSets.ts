@@ -320,7 +320,7 @@ export function useCreateSet(): UseMutationResult<SetRow, Error, SetCreate> {
  * Start a Set to be designed in its own conversation.
  *
  * A new Set and a new conversation, and nothing else: the Sets list gains a
- * card and the Chat page a folder with a thread in it, so those two lists are
+ * card and the Chat page a badge with a thread under it, so those two lists are
  * read again. No version with a recipe exists yet, so no chart and no shot is
  * touched.
  */

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
  * Such a Set has a bean, a grinder and a version 1 with no recipe; the recipe
  * is being worked out with the agent in version 1's conversation. The badge is
  * how an abandoned design stays visible — on the Sets list, the Set page and
- * the Chat page's folders — rather than looking like a Set that somehow has
+ * the Chat page's badges — rather than looking like a Set that somehow has
  * nothing in it.
  */
 export function DesigningBadge() {

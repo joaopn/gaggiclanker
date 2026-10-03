@@ -344,7 +344,7 @@ describe("the Set-side writes invalidate no more than they changed", () => {
     });
 
     await waitFor(() => expect(keys.length).toBe(2));
-    // A card on the Sets page and a folder with a thread on the Chat page. No
+    // A card on the Sets page and a badge with a thread on the Chat page. No
     // recipe exists yet, so no Set page, chart or shot has anything new.
     expect(keys).toContainEqual(["sets", "list"]);
     expect(keys).toContainEqual(queryKeys.chat.threads());

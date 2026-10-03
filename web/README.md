@@ -295,7 +295,7 @@ src/
   hooks/
     useChat.ts            threads, the turn, and `useChatRun` — the live stream
   components/chat/
-    ThreadFolders.tsx     the conversations, in a folder per Set, with New inside each
+    ConversationPicker.tsx  a badge per Set above the chat; the open one's conversations, one per line
     ChatTranscript.tsx    questions, answers, and the trace folded under each
     ToolTrace.tsx         one row per call, collapsed, expandable to input/output
     ProposeCard.tsx       what a propose_ tool created, as a link to it

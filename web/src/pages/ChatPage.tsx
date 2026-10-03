@@ -4,7 +4,12 @@ import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { chatTranscriptUrl, downloadFile } from "@/api/client";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
-import { ThreadFolders } from "@/components/chat/ThreadFolders";
+import {
+  buildFolders,
+  ConversationPicker,
+  defaultFolderKey,
+  folderKey,
+} from "@/components/chat/ConversationPicker";
 import { ChatThreadContext, TellAgentContext } from "@/components/chat/tellAgent";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
@@ -43,12 +48,14 @@ import { attempt } from "@/lib/mutations";
  * that room is a thing that exists, so it is opened through the server's own
  * open-or-continue route rather than made afresh.
  *
- * Which Set a conversation is about is the shape of the list rather than a
- * control beside it: a folder per Set, and New inside the folder. `scope` is
- * what a *first question* would be filed under when no conversation is
- * selected — set by the last New pressed or by a `?set=` link — and the
- * composer's card says so, because a question that quietly became a general
- * one is a question answered without the bag in front of it.
+ * Which Set a conversation is about is the first thing picked: a badge per Set
+ * above the chat, the open badge's conversations under it, one per line, and
+ * New at the top of that list. The page opens on the newest Set's badge unless
+ * a conversation or a `?set=` link says otherwise. `scope` is what a *first
+ * question* would be filed under when no conversation is selected — the open
+ * badge's Set — and the composer's card says so, because a question that
+ * quietly became a general one is a question answered without the bag in
+ * front of it.
  *
  * The live answer comes off the run's own SSE stream rather than from the
  * thread query: tokens arrive several a second, and writing each into the cache
@@ -69,7 +76,11 @@ export function ChatPage() {
   const [selected, setSelected] = useState<number | null>(threadParam ? Number(threadParam) : null);
   const [draft, setDraft] = useState(askParam ?? "");
   const [runId, setRunId] = useState<number | null>(null);
-  const [scope, setScope] = useState<number | null>(setParam ? Number(setParam) : null);
+  // The badge the person opened, over the page's own choice (`defaultFolderKey`).
+  // Seeded by a `?set=` link, which is somebody else's page picking for them.
+  const [pickedFolder, setPickedFolder] = useState<string | null>(
+    setParam ? folderKey(Number(setParam)) : null,
+  );
 
   const thread = useChatThread(selected);
   const createThread = useCreateChatThread();
@@ -78,6 +89,25 @@ export function ChatPage() {
   const send = useSendChatMessage();
   const cancel = useCancelChatRun();
   const live = useChatRun(runId, selected);
+
+  const setRows = sets.data?.items;
+  const folders = useMemo(
+    () => buildFolders(threads.data ?? [], setRows ?? []),
+    [threads.data, setRows],
+  );
+  const openFolderKey =
+    pickedFolder !== null && folders.some((folder) => folder.key === pickedFolder)
+      ? pickedFolder
+      : defaultFolderKey({
+          folders,
+          sets: setRows ?? [],
+          selectedId: selected,
+          linkedSetId: setParam ? Number(setParam) : null,
+        });
+  // A first question lands in the open badge's Set. Archived has no New, so a
+  // first question there is a general one, and the card below says so.
+  const openFolder = folders.find((folder) => folder.key === openFolderKey) ?? null;
+  const scope = openFolder?.canCreate ? openFolder.setId : null;
 
   const [downloading, setDownloading] = useState(false);
   async function saveTranscript(id: number) {
@@ -183,6 +213,10 @@ export function ChatPage() {
   }, [liveText, messageCount]);
 
   const select = (id: number) => {
+    // The badge follows the conversation: one picked from a list keeps it
+    // open, and one opened from elsewhere opens its own.
+    const holding = folders.find((folder) => folder.threads.some((row) => row.id === id));
+    if (holding) setPickedFolder(holding.key);
     setSelected(id);
     setRunId(null);
     const next = new URLSearchParams(params);
@@ -193,10 +227,10 @@ export function ChatPage() {
   };
 
   const startThread = async (setId: number | null) => {
-    // The folder decides the scope, and it decides it now rather than at the
+    // The badge decides the scope, and it decides it now rather than at the
     // first question: pressing New under a Set is somebody saying what they are
     // about to ask about.
-    setScope(setId);
+    setPickedFolder(folderKey(setId));
     const created = await createThread.mutateAsync({ setId });
     select(created.id);
   };
@@ -264,35 +298,27 @@ export function ChatPage() {
         subtitle="Ask about the archive. It reads shots, Sets and the knowledge base itself."
       />
 
-      {/* `min-w-0` on both tracks: the left one is a fixed 260px and the right
-          one is `1fr`, and without it a long Set name or conversation title
-          makes the grid item wider than its track instead of truncating. */}
-      <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-        <SectionCard
-          title="Conversations"
-          description="One folder per Set. New starts a conversation about that Set."
-          className="min-w-0"
-          contentClassName="min-w-0"
-        >
-          {threads.isLoading || sets.isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (
-            <ThreadFolders
-              threads={threads.data ?? []}
-              sets={sets.data?.items ?? []}
-              selectedId={selected}
-              scopedSetId={scope}
-              onSelect={select}
-              onNew={(setId) => void startThread(setId)}
-              onDelete={(id) => {
-                void deleteThread.mutateAsync(id).then(() => {
-                  if (id === selected) setSelected(null);
-                });
-              }}
-              busy={createThread.isPending}
-            />
-          )}
-        </SectionCard>
+      {/* One column: the Sets as badges, the open one's conversations under
+          them, then the conversation itself at the page's full width. */}
+      <div className="min-w-0 space-y-4">
+        {threads.isLoading || sets.isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (
+          <ConversationPicker
+            folders={folders}
+            openKey={openFolderKey}
+            selectedId={selected}
+            onOpen={setPickedFolder}
+            onSelect={select}
+            onNew={(setId) => void startThread(setId)}
+            onDelete={(id) => {
+              void deleteThread.mutateAsync(id).then(() => {
+                if (id === selected) setSelected(null);
+              });
+            }}
+            busy={createThread.isPending}
+          />
+        )}
 
         <SectionCard
           className="min-w-0"
