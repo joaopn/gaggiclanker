@@ -125,7 +125,7 @@ export function VersionTimeline({
           <li
             key={entry.version.id}
             data-testid="version-entry"
-            data-version={entry.version.version_no}
+            data-version={entry.version.version_label}
             data-dead-end={entry.dead_end ? "yes" : "no"}
             className={cn("rounded-lg border border-border", entry.dead_end && "opacity-60")}
           >
@@ -365,7 +365,7 @@ function BeingDesigned({ setId, entry }: { setId: number; entry: SetVersionDetai
   return (
     <li
       data-testid="version-entry"
-      data-version={entry.version.version_no}
+      data-version={entry.version.version_label}
       data-designing="yes"
       className="rounded-lg border border-border border-dashed"
     >

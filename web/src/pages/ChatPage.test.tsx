@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, getDefaultNormalizer, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "@/pages/ChatPage";
@@ -550,6 +550,20 @@ describe("ChatPage", () => {
     renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
 
     expect(await screen.findByText("About Guji on the Niche v4")).toBeInTheDocument();
+  });
+
+  it("leaves no trailing space when the conversation names no version", async () => {
+    getChatThread.mockResolvedValue({
+      ...DETAIL,
+      thread: { ...DETAIL.thread, set_version_label: null },
+    });
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?thread=1"] });
+
+    // The default normalizer trims, which would hide the very space this is about.
+    const exact = getDefaultNormalizer({ trim: false, collapseWhitespace: false });
+    expect(
+      await screen.findByText("About Guji on the Niche", { normalizer: exact }),
+    ).toBeInTheDocument();
   });
 
   it("asks for the tool list of the kind of conversation it is showing", async () => {

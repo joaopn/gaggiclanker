@@ -54,7 +54,7 @@ describe("VersionTimeline", () => {
     );
 
     const entries = screen.getAllByTestId("version-entry");
-    expect(entries.map((entry) => entry.dataset.version)).toEqual(["2", "1"]);
+    expect(entries.map((entry) => entry.dataset.version)).toEqual(["v2", "v1"]);
 
     // The diff is the point of the page: a version on its own is a list of
     // numbers.

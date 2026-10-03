@@ -318,7 +318,7 @@ export function ChatPage() {
           description={
             selected !== null
               ? thread.data?.thread.set_name
-                ? `About ${thread.data.thread.set_name} ${thread.data.thread.set_version_label ?? ""}` +
+                ? `About ${[thread.data.thread.set_name, thread.data.thread.set_version_label].filter(Boolean).join(" ")}` +
                   (thread.data.thread.dead_end ? " — a dead end a later roll back went past" : "")
                 : "General"
               : // Nothing selected: the first question creates the conversation,
