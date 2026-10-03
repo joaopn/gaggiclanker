@@ -82,6 +82,13 @@ export function invalidateSetProposals(queryClient: QueryClient, setId: string):
     .then(() => undefined);
 }
 
+/** Every grade an agent has proposed for one Set's versions, waiting and answered. */
+export function invalidateOutcomeProposals(queryClient: QueryClient, setId: string): Promise<void> {
+  return queryClient
+    .invalidateQueries({ queryKey: queryKeys.sets.outcomeProposals(setId) })
+    .then(() => undefined);
+}
+
 /** The conversation list: what the Chat page's folders are drawn from. */
 export function invalidateChatThreads(queryClient: QueryClient): Promise<void> {
   return queryClient

@@ -9,8 +9,10 @@ import { toast } from "sonner";
 import {
   createKnowledgeInsight,
   deleteKnowledgeInsight,
+  dismissKnowledgeInsight,
   getKnowledgeDoc,
   getKnowledgeDocs,
+  getKnowledgeInsight,
   getKnowledgeInsights,
   getKnowledgeRules,
   patchKnowledgeInsight,
@@ -32,7 +34,7 @@ import type {
   KnowledgeRulePatch,
   KnowledgeSearchData,
 } from "@/api/types";
-import { invalidateKnowledge } from "@/lib/invalidate";
+import { invalidateChatThread, invalidateKnowledge } from "@/lib/invalidate";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -164,6 +166,55 @@ export function useKnowledgeInsights(
   return useQuery({
     queryKey: queryKeys.knowledge.insights(filters),
     queryFn: () => getKnowledgeInsights(filters),
+  });
+}
+
+/** One insight in whatever state it is: what a card in the chat reads. */
+export function useKnowledgeInsight(
+  id: number | undefined,
+): UseQueryResult<KnowledgeInsight, Error> {
+  return useQuery({
+    queryKey: queryKeys.knowledge.insight(String(id)),
+    queryFn: () => getKnowledgeInsight(id as number),
+    enabled: id !== undefined && Number.isFinite(id),
+  });
+}
+
+/**
+ * Add, dismiss or take back a Set's insight: the card's buttons.
+ *
+ * One hook, one breadth, because the card, the Set page's list and the
+ * Knowledge page read the same rows: the whole `knowledge` prefix (the insight,
+ * the Set's list with its general companions, the Knowledge list), plus the
+ * conversation the insight was proposed in, whose card is drawn from the
+ * transcript. Nothing under `sets`: an insight is on no Set payload.
+ */
+export function useAnswerInsight(): UseMutationResult<
+  KnowledgeInsight,
+  Error,
+  { id: number; answer: "add" | "dismiss" | "take_back"; threadId?: number | null }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, answer }) =>
+      answer === "dismiss"
+        ? dismissKnowledgeInsight(id)
+        : patchKnowledgeInsight(id, { confirmed: answer === "add" }),
+    onSuccess: (_insight, variables) =>
+      toast.success(
+        variables.answer === "add"
+          ? "Added — this Set's later conversations will be told this"
+          : variables.answer === "dismiss"
+            ? "Dismissed — it will not be put in front of the model"
+            : "Taken back — it will not be put in front of the model",
+      ),
+    onError: (error) => toast.error(error.message),
+    onSettled: (_data, _error, variables) => {
+      void invalidateKnowledge(queryClient);
+      if (variables.threadId !== null && variables.threadId !== undefined) {
+        void invalidateChatThread(queryClient, String(variables.threadId));
+      }
+    },
   });
 }
 

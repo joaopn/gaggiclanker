@@ -3,6 +3,7 @@ import type {
   FlavorPicks,
   GrinderRow,
   MeasureSpread,
+  OutcomeProposal,
   SetDetailData,
   SetProposal,
   SetRow,
@@ -383,14 +384,23 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
         shots: [],
         dead_end: false,
         labels: labelCounts(),
+        outcome_proposal: null,
       },
-      { version: version(), changes: [], shots: [], dead_end: false, labels: labelCounts() },
+      {
+        version: version(),
+        changes: [],
+        shots: [],
+        dead_end: false,
+        labels: labelCounts(),
+        outcome_proposal: null,
+      },
     ],
     judgements: {},
     track_record: trackRecord(),
     spread: spreadReport(),
     rollback_target_version_id: null,
     proposal: null,
+    outcome_proposal: null,
     ...overrides,
   };
 }
@@ -431,6 +441,30 @@ export function proposal(overrides: Partial<SetProposal> = {}): SetProposal {
     resulting_version_id: null,
     resulting_version_no: null,
     resulting_version_label: named(overrides.resulting_version_no),
+    records_outcome: null,
+    created_at: "2026-03-01T09:00:00.000Z",
+    decided_at: null,
+    ...overrides,
+  };
+}
+
+/** A grade an agent proposed for v2 of Set 3 that nobody has answered. */
+export function outcomeProposal(overrides: Partial<OutcomeProposal> = {}): OutcomeProposal {
+  return {
+    id: 11,
+    set_id: 3,
+    set_version_id: 22,
+    version_label: "v2",
+    thread_id: 9,
+    outcome: "partly_held",
+    note: "Time held at 31 s against 28 s; the sourness did not move.",
+    counted_shots: 3,
+    counted_shots_now: 3,
+    status: "proposed",
+    recorded_outcome: null,
+    decision_note: "",
+    version_outcome: null,
+    version_outcome_note: "",
     created_at: "2026-03-01T09:00:00.000Z",
     decided_at: null,
     ...overrides,

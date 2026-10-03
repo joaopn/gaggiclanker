@@ -78,6 +78,13 @@ export const queryKeys = {
      * whole Set page's payload for that would fetch five hundred shots.
      */
     proposals: (id: string) => ["sets", "proposals", id] as const,
+    /**
+     * Every grade an agent has proposed for a Set's versions, waiting and
+     * answered. Its own key for the reason `proposals` is: the chat's outcome
+     * card reads it without the Set page being open. Under `sets`, so a
+     * version accept that records a grade reaches it with the rest.
+     */
+    outcomeProposals: (id: string) => ["sets", "outcome-proposals", id] as const,
   },
   beans: {
     all: ["beans"] as const,
@@ -141,6 +148,8 @@ export const queryKeys = {
     search: (q: string, k: number) => ["knowledge", "search", q, k] as const,
     insights: (filters?: Record<string, unknown>) =>
       ["knowledge", "insights", filters ?? {}] as const,
+    /** One insight in whatever state it is: what a card in the chat reads. */
+    insight: (id: string) => ["knowledge", "insight", id] as const,
   },
   /**
    * The chat. `tools` is outside `threads` because the tool list

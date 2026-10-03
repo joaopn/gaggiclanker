@@ -7,15 +7,19 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  acceptOutcomeProposal,
   acceptSetProposal,
   addSetVersion,
   archiveSet,
+  changeOutcomeProposal,
   clearVersionOutcome,
   createSet,
   declineSetProposal,
   deleteJudgement,
   designSet,
   discardDesign,
+  dismissOutcomeProposal,
+  getOutcomeProposals,
   getSet,
   getSetProposals,
   getSets,
@@ -31,6 +35,8 @@ import {
 } from "@/api/client";
 import type {
   JudgementWrite,
+  OutcomeProposalDecision,
+  OutcomeProposalListData,
   ProfileMatchSummary,
   RollbackWrite,
   SetCreate,
@@ -48,6 +54,7 @@ import type {
   SetVersionRow,
   ShotDetailRow,
   ShotJudgement,
+  VersionOutcome,
   VersionOutcomeWrite,
   VersionPredictionWrite,
 } from "@/api/types";
@@ -55,6 +62,7 @@ import {
   invalidateChatThread,
   invalidateChatThreads,
   invalidateDrafts,
+  invalidateOutcomeProposals,
   invalidateSetDetail,
   invalidateSetList,
   invalidateSetProposals,
@@ -118,6 +126,84 @@ export function useSetProposals(
 }
 
 /**
+ * The grades an agent has proposed for a Set's versions.
+ *
+ * Read by the chat's outcome card, which has to say whether the person has
+ * answered yet and is often open when the Set page is not; the Set page reads
+ * the waiting one of each version off its own detail.
+ */
+export function useOutcomeProposals(
+  id: number | undefined,
+): UseQueryResult<OutcomeProposalListData, Error> {
+  return useQuery({
+    queryKey: queryKeys.sets.outcomeProposals(String(id)),
+    queryFn: () => getOutcomeProposals(id as number),
+    enabled: id !== undefined && Number.isFinite(id),
+  });
+}
+
+/** How a person answers a proposed grade. */
+export type OutcomeAnswer =
+  | { kind: "accept" }
+  | { kind: "change"; outcome: VersionOutcome; note?: string }
+  | { kind: "dismiss"; note?: string };
+
+/**
+ * Accept a proposed grade, record another outcome, or dismiss it: the three
+ * buttons of one card, so one hook.
+ *
+ * They invalidate the same things, because the card and the page read the same
+ * rows. **Accepting or changing** writes the version's outcome, which the Set
+ * detail carries (the version, the track record and the ledger it feeds) and
+ * which a waiting version proposal's "also records" line reads; **dismissing**
+ * writes no outcome but ends the waiting grade the detail, that line and the
+ * card all show. So: the Set detail, the Set's proposals, its outcome
+ * proposals, and the conversation the grade was argued in (its card is drawn
+ * from the transcript). Not the Sets list, the trend chart or any shot: no
+ * outcome is shown there.
+ */
+export function useAnswerOutcomeProposal(): UseMutationResult<
+  OutcomeProposalDecision,
+  Error,
+  {
+    setId: number;
+    proposalId: number;
+    answer: OutcomeAnswer;
+    /** The conversation it was argued in, when there is one. */
+    threadId?: number | null;
+  }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, proposalId, answer }) =>
+      answer.kind === "accept"
+        ? acceptOutcomeProposal(setId, proposalId)
+        : answer.kind === "change"
+          ? changeOutcomeProposal(setId, proposalId, {
+              outcome: answer.outcome,
+              ...(answer.note ? { note: answer.note } : {}),
+            })
+          : dismissOutcomeProposal(setId, proposalId, { note: answer.note ?? "" }),
+    onSuccess: (result, variables) =>
+      toast.success(
+        variables.answer.kind === "dismiss"
+          ? "Grade dismissed. Nothing was recorded."
+          : `${result.proposal.version_label ?? "The version"}'s outcome recorded`,
+      ),
+    onError: (error) => toast.error(error.message),
+    onSettled: (_data, _error, variables) => {
+      const setId = String(variables.setId);
+      void invalidateSetDetail(queryClient, setId);
+      void invalidateSetProposals(queryClient, setId);
+      void invalidateOutcomeProposals(queryClient, setId);
+      if (variables.threadId !== null && variables.threadId !== undefined) {
+        void invalidateChatThread(queryClient, String(variables.threadId));
+      }
+    },
+  });
+}
+
+/**
  * Accept or decline one. The two answers to the same question, so one hook.
  *
  * They invalidate different things, because they change different things.
@@ -154,6 +240,11 @@ export function useDecideProposal(): UseMutationResult<
     threadId?: number | null;
     /** The card's "Major change" box, on an accept of a change. */
     major?: boolean;
+    /**
+     * The accept also records the agent's grade of the version it was made
+     * against, which the conversation's outcome card is drawn from.
+     */
+    recordsOutcome?: boolean;
   }
 > {
   const queryClient = useQueryClient();
@@ -188,7 +279,18 @@ export function useDecideProposal(): UseMutationResult<
         return;
       }
       if (variables.decision === "accept") {
+        // The `sets` prefix reaches the detail (the version, the track record,
+        // the ledger), the proposals and the outcome proposals, and the versions
+        // list the new version joins. An accept that also recorded a grade
+        // changes what that grade's card says in its own conversation.
         void invalidateSets(queryClient);
+        if (
+          variables.recordsOutcome &&
+          variables.threadId !== null &&
+          variables.threadId !== undefined
+        ) {
+          void invalidateChatThread(queryClient, String(variables.threadId));
+        }
         return;
       }
       void invalidateSetDetail(queryClient, String(variables.setId));
@@ -326,6 +428,9 @@ export function useSetVersionOutcome(): UseMutationResult<
     onError: (error) => toast.error(`Could not save the outcome: ${error.message}`),
     onSettled: (_data, _error, variables) => {
       void invalidateSetDetail(queryClient, String(variables.setId));
+      // A waiting grade is shown beside the outcome somebody just wrote here,
+      // by its card in the chat, which says both.
+      void invalidateOutcomeProposals(queryClient, String(variables.setId));
     },
   });
 }

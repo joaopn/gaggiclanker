@@ -58,6 +58,8 @@ import type {
   MachineData,
   MachinePatch,
   MachineRow,
+  OutcomeProposalDecision,
+  OutcomeProposalListData,
   PasswordData,
   ProfileDraft,
   ProfileDraftDetail,
@@ -100,6 +102,7 @@ import type {
   StartingPointRequest,
   StartingPointRun,
   SyncStatusData,
+  VersionOutcome,
   VersionOutcomeWrite,
   VersionPredictionWrite,
   Vocabulary,
@@ -1015,6 +1018,45 @@ export async function declineSetProposal(
   });
 }
 
+/** Every grade an agent has proposed for this Set's versions, newest first. */
+export async function getOutcomeProposals(id: number): Promise<OutcomeProposalListData> {
+  return fetchApi<OutcomeProposalListData>(`/sets/${id}/outcome-proposals`);
+}
+
+/** Record a proposed grade as the version's outcome. A person's press. */
+export async function acceptOutcomeProposal(
+  id: number,
+  proposalId: number,
+): Promise<OutcomeProposalDecision> {
+  return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/accept`, {
+    method: "POST",
+  });
+}
+
+/** Record another outcome than the one proposed. */
+export async function changeOutcomeProposal(
+  id: number,
+  proposalId: number,
+  body: { outcome: VersionOutcome; note?: string },
+): Promise<OutcomeProposalDecision> {
+  return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/change`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Turn a proposed grade down, optionally saying why. Records nothing. */
+export async function dismissOutcomeProposal(
+  id: number,
+  proposalId: number,
+  body: { note: string } = { note: "" },
+): Promise<OutcomeProposalDecision> {
+  return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/dismiss`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function setAutomatch(id: number, automatch: boolean): Promise<SetRow> {
   return fetchApi<SetRow>(`/sets/${id}/automatch`, {
     method: "PUT",
@@ -1143,6 +1185,16 @@ export async function getKnowledgeInsights(
   params: { confirmed?: boolean; set_id?: number } = {},
 ): Promise<KnowledgeInsightListData> {
   return fetchApi<KnowledgeInsightListData>(`/knowledge/insights${queryString(params)}`);
+}
+
+/** One insight in whatever state it is: what a card in the chat reads. */
+export async function getKnowledgeInsight(id: number): Promise<KnowledgeInsight> {
+  return fetchApi<KnowledgeInsight>(`/knowledge/insights/${id}`);
+}
+
+/** Turn a Set's insight down. Kept for the conversation that proposed it. */
+export async function dismissKnowledgeInsight(id: number): Promise<KnowledgeInsight> {
+  return fetchApi<KnowledgeInsight>(`/knowledge/insights/${id}/dismiss`, { method: "POST" });
 }
 
 export async function createKnowledgeInsight(

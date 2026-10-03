@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  useAnswerOutcomeProposal,
   useDecideProposal,
   useDiscardDesign,
   useRollbackSet,
@@ -11,7 +12,7 @@ import {
 } from "@/hooks/useSets";
 import { queryKeys } from "@/lib/queryKeys";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
-import { designProposal, proposal, setRow, version } from "@/test/setsFixtures";
+import { designProposal, outcomeProposal, proposal, setRow, version } from "@/test/setsFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -27,6 +28,9 @@ const {
   declineSetProposal,
   designSet,
   discardDesign,
+  acceptOutcomeProposal,
+  changeOutcomeProposal,
+  dismissOutcomeProposal,
 } = vi.hoisted(() => ({
   setVersionPrediction: vi.fn(),
   setVersionOutcome: vi.fn(),
@@ -36,6 +40,9 @@ const {
   declineSetProposal: vi.fn(),
   designSet: vi.fn(),
   discardDesign: vi.fn(),
+  acceptOutcomeProposal: vi.fn(),
+  changeOutcomeProposal: vi.fn(),
+  dismissOutcomeProposal: vi.fn(),
 }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
@@ -47,6 +54,9 @@ vi.mock("@/api/client", async (importOriginal) => ({
   declineSetProposal,
   designSet,
   discardDesign,
+  acceptOutcomeProposal,
+  changeOutcomeProposal,
+  dismissOutcomeProposal,
 }));
 
 beforeEach(() => {
@@ -66,6 +76,18 @@ beforeEach(() => {
     thread_id: 12,
   });
   discardDesign.mockResolvedValue({ set_id: 6, discarded: true });
+  acceptOutcomeProposal.mockResolvedValue({
+    proposal: outcomeProposal({ status: "accepted" }),
+    version: version({ id: 22, outcome: "partly_held" }),
+  });
+  changeOutcomeProposal.mockResolvedValue({
+    proposal: outcomeProposal({ status: "changed", recorded_outcome: "failed" }),
+    version: version({ id: 22, outcome: "failed" }),
+  });
+  dismissOutcomeProposal.mockResolvedValue({
+    proposal: outcomeProposal({ status: "dismissed" }),
+    version: null,
+  });
 });
 
 /**
@@ -87,7 +109,7 @@ function spyOn(queryClient: QueryClient): readonly unknown[][] {
 }
 
 describe("the Set-side writes invalidate no more than they changed", () => {
-  it("an outcome touches the Set detail alone", async () => {
+  it("an outcome touches the Set detail and the Set's proposed grades, and no shot", async () => {
     const { result, queryClient } = renderHookWithQueryClient(() => useSetVersionOutcome());
     const keys = spyOn(queryClient);
 
@@ -97,8 +119,11 @@ describe("the Set-side writes invalidate no more than they changed", () => {
       body: { outcome: "held", note: "" },
     });
 
-    await waitFor(() => expect(keys.length).toBeGreaterThan(0));
-    expect(keys).toEqual([queryKeys.sets.detail("3")]);
+    await waitFor(() => expect(keys.length).toBe(2));
+    // The proposed grades too: a waiting card says what the version's outcome
+    // is beside its own, and that moved.
+    expect(keys).toContainEqual(queryKeys.sets.detail("3"));
+    expect(keys).toContainEqual(queryKeys.sets.outcomeProposals("3"));
     // Nothing about a shot changes when a version is graded.
     expect(keys.flat()).not.toContain("shots");
   });
@@ -109,8 +134,93 @@ describe("the Set-side writes invalidate no more than they changed", () => {
 
     await result.current.mutateAsync({ setId: 3, versionId: 22, body: null });
 
-    await waitFor(() => expect(keys.length).toBeGreaterThan(0));
-    expect(keys).toEqual([queryKeys.sets.detail("3")]);
+    await waitFor(() => expect(keys.length).toBe(2));
+    expect(keys).toContainEqual(queryKeys.sets.detail("3"));
+    expect(keys).toContainEqual(queryKeys.sets.outcomeProposals("3"));
+  });
+
+  describe("answering a proposed grade", () => {
+    const answers = [
+      ["accepting", { kind: "accept" }],
+      ["recording another outcome", { kind: "change", outcome: "failed" }],
+      ["dismissing", { kind: "dismiss", note: "one shot" }],
+    ] as const;
+
+    it.each(answers)(
+      "%s touches the version, the Set, its proposals, its grades and the conversation",
+      async (_name, answer) => {
+        const { result, queryClient } = renderHookWithQueryClient(() => useAnswerOutcomeProposal());
+        const keys = spyOn(queryClient);
+
+        await result.current.mutateAsync({ setId: 3, proposalId: 11, answer, threadId: 9 });
+
+        await waitFor(() => expect(keys.length).toBe(4));
+        // The Set detail carries the version, the track record and the ledger,
+        // and the waiting version proposal; the proposals list carries its
+        // "also records" line; the grades list and the thread carry the card.
+        expect(keys).toContainEqual(queryKeys.sets.detail("3"));
+        expect(keys).toContainEqual(queryKeys.sets.proposals("3"));
+        expect(keys).toContainEqual(queryKeys.sets.outcomeProposals("3"));
+        expect(keys).toContainEqual(queryKeys.chat.thread("9"));
+        // Not the Sets list, the chart or any shot: no outcome is shown there.
+        expect(keys).not.toContainEqual(queryKeys.sets.all);
+        expect(keys.flat()).not.toContain("shots");
+      },
+    );
+
+    it("with no conversation named, it leaves the transcript alone", async () => {
+      const { result, queryClient } = renderHookWithQueryClient(() => useAnswerOutcomeProposal());
+      const keys = spyOn(queryClient);
+
+      await result.current.mutateAsync({
+        setId: 3,
+        proposalId: 11,
+        answer: { kind: "accept" },
+        threadId: null,
+      });
+
+      await waitFor(() => expect(keys.length).toBe(3));
+      expect(keys.flat()).not.toContain("chat");
+    });
+
+    it("sends each answer to its own route", async () => {
+      const { result } = renderHookWithQueryClient(() => useAnswerOutcomeProposal());
+
+      await result.current.mutateAsync({ setId: 3, proposalId: 11, answer: { kind: "accept" } });
+      await result.current.mutateAsync({
+        setId: 3,
+        proposalId: 11,
+        answer: { kind: "change", outcome: "failed" },
+      });
+      await result.current.mutateAsync({
+        setId: 3,
+        proposalId: 11,
+        answer: { kind: "dismiss", note: "one shot" },
+      });
+
+      expect(acceptOutcomeProposal).toHaveBeenCalledWith(3, 11);
+      expect(changeOutcomeProposal).toHaveBeenCalledWith(3, 11, { outcome: "failed" });
+      expect(dismissOutcomeProposal).toHaveBeenCalledWith(3, 11, { note: "one shot" });
+    });
+  });
+
+  it("accepting a version that records a grade also reaches the conversation the grade came from", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDecideProposal());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({
+      setId: 3,
+      proposalId: 5,
+      decision: "accept",
+      threadId: 9,
+      recordsOutcome: true,
+    });
+
+    await waitFor(() => expect(keys.length).toBe(2));
+    // `sets` already holds the detail, the proposals, the grades and the new
+    // version; the card in the chat is drawn from the transcript.
+    expect(keys).toContainEqual(queryKeys.sets.all);
+    expect(keys).toContainEqual(queryKeys.chat.thread("9"));
   });
 
   it("a prediction touches the Set detail and the shot details, not the lists", async () => {
