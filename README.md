@@ -714,8 +714,8 @@ badges: **General** first, then every Set you have not archived, with its curren
 version and how many conversations it holds — including the Sets nobody has asked
 about yet, because an empty list with a **New conversation** button in it is how
 you start. Click a badge and its conversations are listed under the row, one per
-line. Conversations about a Set you have since archived move to a last badge of
-their own and stay readable. The page opens on the newest Set (the one you made
+line. Conversations about a Set you have since archived stay readable behind
+**Show archived Sets** at the end of the row, which adds a badge per archived Set. The page opens on the newest Set (the one you made
 last) unless a link or an open conversation names another, and a question typed
 before you pick a conversation goes to the open badge's Set.
 

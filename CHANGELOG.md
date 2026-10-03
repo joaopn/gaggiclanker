@@ -14,9 +14,13 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **The folder sidebar is gone.** Every Set is a badge above the conversation, as on the Shots page's
   "Chat about" bar (General first, then the Sets with their current version and how many
-  conversations each holds, then Archived Sets when one has any). Clicking a badge shows that Set's
-  conversations under the badges, one per line (version, title, messages), with **New conversation**
-  at the top; the conversation itself now takes the page's full width.
+  conversations each holds). Clicking a badge shows that Set's conversations under the badges, one
+  per line (version, title, messages), with **New conversation** at the top; the conversation itself
+  now takes the page's full width, and the page's subtitle is gone.
+- **Archived Sets are a toggle, not a folder.** **Show archived Sets** at the end of the row (off by
+  default) adds one badge per archived Set that has conversations, each listing its own, instead of
+  one list of every finished bag's conversations. Opening an archived Set's conversation from a link
+  turns it on.
 - **The Chat page opens on the newest Set** (the one made last), unless a link or an open
   conversation names another. A first question typed without picking a conversation goes to the
   open badge's Set, and the line above the composer says which.
