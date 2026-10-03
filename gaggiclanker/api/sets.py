@@ -647,7 +647,9 @@ async def _proposal_detail(
         resulting_version_label=row.resulting_version_label,
         records_outcome=(
             await proposals.outcomes.waiting_for_version(row.base_version_id)
-            if row.status == "proposed" and row.kind == "change"
+            if row.status == "proposed"
+            and row.kind == "change"
+            and await proposals.records_a_grade(row)
             else None
         ),
         created_at=row.created_at,

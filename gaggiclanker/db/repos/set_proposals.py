@@ -583,6 +583,20 @@ class SetProposalsRepository(Repository):
         )
         return change_is_major("change", profile_changed=moves_profile, major=None)
 
+    async def records_a_grade(self, proposal: SetProposalRow) -> bool:
+        """Whether accepting this change would record the agent's waiting grade.
+
+        Only while the base version's outcome is still open: the card's line and
+        the accept itself both ask this, so the promise and the write agree.
+        """
+        base = await self.sets.get_version(proposal.base_version_id)
+        return (
+            proposal.kind == "change"
+            and base is not None
+            and base.outcome_state == "open"
+            and await self.outcomes.waiting_for_version(base.id) is not None
+        )
+
     async def outcome_blocks(self, current: SetVersionRow) -> bool:
         """Whether the current version's open outcome stops a new change.
 
@@ -779,9 +793,14 @@ class SetProposalsRepository(Repository):
                     return ProposalWriteResult(
                         refused="stale", proposal=await self.get(set_id, proposal_id)
                     )
+                # Recorded only while the outcome is open. A person who has already
+                # recorded one (on the Set page, or by answering the card) has
+                # decided; accepting the next version must not overwrite it with
+                # the agent's grade. That grade stays waiting, to be answered on
+                # its own card.
                 grade = (
                     await self.outcomes.waiting_for_version(current.id)
-                    if proposal.kind == "change"
+                    if proposal.kind == "change" and current.outcome_state == "open"
                     else None
                 )
                 if proposal.kind == "change" and current.outcome_state == "open" and grade is None:

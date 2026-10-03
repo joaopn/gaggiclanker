@@ -333,6 +333,28 @@ class TestTheNextVersionCardSaysItRecordsTheGrade:
         assert proposal["records_outcome"]["outcome"] == "partly_held"
         assert proposal["records_outcome"]["version_label"] == "v1"
 
+    async def test_a_recorded_outcome_means_no_line_and_the_grade_stays_waiting(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        set_id, version_id = await _graded_set(client, app, bean_id)
+        grade_id = await _propose(app, set_id, version_id, "partly_held")
+        proposal_id = await self._next_version(app, set_id)
+        await client.put(
+            f"/api/sets/{set_id}/versions/{version_id}/outcome",
+            json={"outcome": "failed", "note": "my own words"},
+        )
+
+        detail = data(await client.get(f"/api/sets/{set_id}"))
+        assert detail["proposal"]["records_outcome"] is None
+
+        await client.post(f"/api/sets/{set_id}/proposals/{proposal_id}/accept", json={})
+        after = data(await client.get(f"/api/sets/{set_id}"))
+        recorded = next(v for v in after["versions"] if v["version"]["id"] == version_id)
+        assert recorded["version"]["outcome"] == "failed"
+        assert recorded["version"]["outcome_note"] == "my own words"
+        assert after["outcome_proposal"] is None  # the card is for v1, no longer current
+        assert recorded["outcome_proposal"]["id"] == grade_id
+
     async def test_no_waiting_grade_means_no_line(
         self,
         client: httpx.AsyncClient,

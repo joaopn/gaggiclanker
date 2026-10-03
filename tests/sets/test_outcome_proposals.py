@@ -496,24 +496,37 @@ class TestTheNextVersionRecordsTheGrade:
         assert result.refused == "grade_unrecordable"
         assert len(await wired.sets.versions(set_id)) == 1
 
-    async def test_with_the_outcome_already_recorded_the_waiting_grade_is_still_recorded(
+    async def test_a_recorded_outcome_is_left_alone_and_the_grade_stays_waiting(
         self, wired: Fixtures
     ) -> None:
-        """A newer grade replaces a recorded one only because the person accepted it."""
+        """The person already decided: accepting the next version must not overwrite it."""
         set_id, version_id = await _graded_ready(wired)
         await wired.sets.set_outcome(
-            set_id, version_id, VersionOutcomeWrite(outcome="held", note="by hand")
+            set_id, version_id, VersionOutcomeWrite(outcome="failed", note="my own words")
         )
         grades = OutcomeProposalsRepository(wired.db)
-        await grades.create(set_id, version_id, _write("failed"))
+        grade = (await grades.create(set_id, version_id, _write("partly_held"))).proposal
+        assert grade is not None
         proposals, made = await _next_version(wired, set_id)
         assert made.proposal is not None
+        assert await proposals.records_a_grade(made.proposal) is False
 
         result = await proposals.accept(set_id, made.proposal.id)
 
-        assert result.refused is None
-        recorded = await wired.sets.get_version(version_id)
-        assert recorded is not None and recorded.outcome == "failed"
+        assert result.refused is None and result.graded is None
+        assert result.version is not None and result.version.version_label == "v1.1"
+        kept = await wired.sets.get_version(version_id)
+        assert kept is not None
+        assert (kept.outcome, kept.outcome_note) == ("failed", "my own words")
+        still = await grades.get(set_id, grade.id)
+        assert still is not None and still.status == "proposed"
+
+    async def test_an_open_outcome_is_the_case_that_records(self, wired: Fixtures) -> None:
+        set_id, version_id = await _graded_ready(wired)
+        await OutcomeProposalsRepository(wired.db).create(set_id, version_id, _write())
+        proposals, made = await _next_version(wired, set_id)
+        assert made.proposal is not None
+        assert await proposals.records_a_grade(made.proposal) is True
 
     async def test_a_grade_of_an_older_version_does_not_unlock_the_current_one(
         self, wired: Fixtures
