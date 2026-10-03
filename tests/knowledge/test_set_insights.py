@@ -268,8 +268,8 @@ class TestEveryReaderAgrees:
         a = await opening_context(world.db, ToolScope.for_thread(world.a, world.a_version))
         b = await opening_context(world.db, ToolScope.for_thread(world.b, world.b_version))
 
-        block_a = a.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1]
-        block_b = b.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1]
+        block_a = a.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0]
+        block_b = b.split("CONFIRMED INSIGHTS THAT APPLY HERE\n")[1].split("\n\n")[0]
         assert "A's confirmed lesson." in block_a
         assert "General, for naturals." in block_a
         assert "[this Set, learned at v1] A's confirmed lesson." in block_a

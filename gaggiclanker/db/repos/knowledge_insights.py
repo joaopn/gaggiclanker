@@ -298,6 +298,20 @@ class InsightsRepository(Repository):
         )
         return [self._decode(row) for row in rows]
 
+    async def proposed_at(self, version_id: int, *, limit: int = 10) -> list[InsightRow]:
+        """What the conversation about this version proposed, in every state, newest last.
+
+        The one reader of a dismissed insight: the conversation that proposed it
+        is told what the person did with it, so it does not offer it again. The
+        newest ``limit`` are returned, oldest first among them.
+        """
+        rows = await self.db.fetch_all(
+            f"{_SELECT} WHERE i.set_version_id = ? AND i.source = 'chat' "
+            "ORDER BY i.created_at DESC, i.id DESC LIMIT ?",
+            (version_id, limit),
+        )
+        return [self._decode(row) for row in reversed(rows)]
+
     async def select(self, attributes: dict[str, Any]) -> list[InsightRow]:
         """The confirmed **general** insights that apply to a Set's attributes.
 

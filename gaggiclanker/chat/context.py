@@ -41,6 +41,7 @@ from gaggiclanker.db.connection import Database
 from gaggiclanker.db.repos.beans import BeanRow, BeansRepository, taste_scales
 from gaggiclanker.db.repos.grinders import GrindersRepository
 from gaggiclanker.db.repos.knowledge_insights import InsightsRepository
+from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalRow, OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
@@ -191,6 +192,9 @@ async def opening_context(
     lines: list[str] = []
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, versions[0])]
+    grade = await _grade_block(db, scope.set_id, version)
+    if grade:
+        lines += ["", *grade]
     lines += ["", *_ledger(versions, dead_ends, labels, version, by_id, profile_labels)]
     lines += ["", *_spread_block(spreads)]
     if evidence is not None:
@@ -208,6 +212,9 @@ async def opening_context(
     ]
     lines += ["", *_gold_standard(counted, versions, dead_ends)]
     lines += ["", *await _insights_block(db, row)]
+    proposed = await _proposed_insights_block(db, version)
+    if proposed:
+        lines += ["", *proposed]
     lines += [
         "",
         "Those facts are the record, not the whole archive: use the tools for anything else, "
@@ -480,6 +487,81 @@ def _decided_line(row: Any, current: SetVersionRow) -> str:
         f"Nobody answered it: the Set moved on to {current.version_label} before they did, so it "
         "was never applied and it is not waiting for anything. Propose afresh if the change "
         "still makes sense against what is being brewed now."
+    )
+
+
+# ── the grade ────────────────────────────────────────────────────────
+
+
+async def _grade_block(db: Database, set_id: int, version: SetVersionRow) -> list[str]:
+    """What this conversation proposed as the version's outcome, and what the person did.
+
+    **This version's only.** A grade the agent proposed is words until the
+    person accepts it, and nothing an agent graded reaches a later conversation
+    unless they did: so a waiting or dismissed grade is rendered here, in the
+    conversation of the version it grades, so the agent does not repeat itself,
+    and appears nowhere else — not in the ledger, the track record, another
+    version's context or any tool's output, all of which read recorded outcomes
+    only. Nothing is rendered when this version has had no grade proposed, so an
+    experiment nobody has graded reads as it always did.
+    """
+    outcomes = OutcomeProposalsRepository(db)
+    waiting = await outcomes.waiting_for_version(version.id)
+    if waiting is not None:
+        lines = [
+            "A GRADE YOU PROPOSED IS WAITING FOR THE PERSON",
+            f"You proposed {_grade_words(waiting)}. They have not answered it yet. Nothing is "
+            f"recorded: {version.version_label}'s outcome is still {_recorded_words(version)}.",
+        ]
+        if waiting.counted_shots_now > waiting.counted_shots:
+            more = waiting.counted_shots_now - waiting.counted_shots
+            lines.append(
+                f"{_plural(more, 'shot')} counted since you wrote it; if they change the "
+                "picture, propose the grade again and it replaces this one."
+            )
+        lines.append(
+            "Talk about it — do not propose it again unless you have a reason. If you propose "
+            "the next version while it waits, accepting that version records this grade."
+        )
+        return lines
+    last = await outcomes.last_answered(version.id)
+    if last is None:
+        return []
+    return [
+        "THE LAST ANSWER TO YOUR GRADE",
+        f"You proposed {_grade_words(last)}. {_grade_answer(last)}",
+    ]
+
+
+def _grade_words(row: OutcomeProposalRow) -> str:
+    return (
+        f"{_OUTCOMES[row.outcome]}, on {_plural(row.counted_shots, 'counted shot')}"
+        f" ({_quote(_cut(row.note.strip(), NOTE_CHARS * 2))})"
+    )
+
+
+def _recorded_words(version: SetVersionRow) -> str:
+    if version.outcome is None:
+        return "open"
+    return f"{_OUTCOMES[version.outcome]}, as the person recorded it"
+
+
+def _grade_answer(row: OutcomeProposalRow) -> str:
+    if row.status == "accepted":
+        return f"They accepted it: the outcome is recorded as {_OUTCOMES[row.outcome]}."
+    if row.status == "changed":
+        instead = _OUTCOMES[row.recorded_outcome or row.outcome]
+        return (
+            f"They recorded {instead} instead: that is the outcome of this version, and where "
+            "it differs from yours they weighed something you could not see."
+        )
+    note = (
+        f' They said: "{_cut(row.decision_note.strip(), NOTE_CHARS)}"' if row.decision_note else ""
+    )
+    return (
+        f"They dismissed it.{note} Nothing is recorded, and the outcome is still open until "
+        "they grade it; a dismissed grade is information about what they want, not something "
+        "to send again."
     )
 
 
@@ -879,6 +961,30 @@ def _cut(text: str, limit: int) -> str:
 async def _insights(db: Database, row: SetRow) -> list[Any]:
     """Through the one selection, so the chat and the Set page cannot disagree."""
     return await InsightsRepository(db).for_set(row.id)
+
+
+async def _proposed_insights_block(db: Database, version: SetVersionRow) -> list[str]:
+    """What this conversation proposed as insights, and what the person did with each.
+
+    **This version's only**, like the grade: a waiting insight is not evidence,
+    and a dismissed one reaches no prompt except the conversation that proposed
+    it, which is told so that it does not offer it again. An added insight is
+    also in the confirmed list above; here it is said to have been added.
+    """
+    proposed = await InsightsRepository(db).proposed_at(version.id)
+    if not proposed:
+        return []
+    lines = ["INSIGHTS YOU PROPOSED IN THIS CONVERSATION"]
+    for item in proposed:
+        state = (
+            "dismissed by the person — do not offer it again"
+            if item.dismissed
+            else "added by the person — it is in the confirmed list above"
+            if item.confirmed
+            else "waiting: the person has not answered, so it is not evidence yet"
+        )
+        lines.append(f"- {_cut(item.text, INSIGHT_CHARS)} ({state})")
+    return lines
 
 
 # ── formatting ───────────────────────────────────────────────────────
