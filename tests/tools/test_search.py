@@ -241,6 +241,28 @@ async def test_a_version_filter_finds_the_shots_of_that_version(
     )
 
 
+async def test_a_version_name_is_only_ever_this_set_s(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    """Only another Set has a v2: a name is looked up within the Set in scope, never across."""
+    sets = SetsRepository(archive.db)
+    other = await sets.create(
+        SetWrite(name="Another bag", bean_id=archive.bean_id),
+        SetVersionWrite(grind_setting="20"),
+        automatch=False,
+    )
+    second = await sets.add_version(other.id, SetVersionPatch(grind_setting="19"), major=True)
+    assert second is not None
+    assert second.version_label == "v2"
+    assert other.id > archive.set_id
+
+    outcome = await dispatch_search(set_ctx, version="v2")
+
+    assert not outcome.ok
+    assert outcome.data["detail"].startswith("This Set has no version called 'v2'. ")
+    assert "Its versions are v1;" in outcome.data["detail"]
+
+
 @pytest.mark.parametrize("name", ["v7", "v1.9", "banana", "0", "v", ""])
 async def test_a_version_the_set_does_not_have_is_refused_in_words(
     set_ctx: ToolContext, archive: Fixture, name: str
