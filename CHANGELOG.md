@@ -10,6 +10,17 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### The chat is one column, with a badge per Set above it
+
+- **The folder sidebar is gone.** Every Set is a badge above the conversation, as on the Shots page's
+  "Chat about" bar (General first, then the Sets with their current version and how many
+  conversations each holds, then Archived Sets when one has any). Clicking a badge shows that Set's
+  conversations under the badges, one per line (version, title, messages), with **New conversation**
+  at the top; the conversation itself now takes the page's full width.
+- **The Chat page opens on the newest Set** (the one made last), unless a link or an open
+  conversation names another. A first question typed without picking a conversation goes to the
+  open badge's Set, and the line above the composer says which.
+
 ### Version names are read the way they are written
 
 - **A version name with a leading zero is refused.** The chat's shot search read "01" as v1 and

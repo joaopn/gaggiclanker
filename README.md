@@ -101,7 +101,7 @@ pages, in the order the sidebar lists them:
 | Page | `g` | What it is |
 | --- | --- | --- |
 | **Shots** | `g s` | The archive: the list, the filters, one shot with its curve and diagnostics. A row opens in place with the shot page's judgement and curves boxes, laid out as on the page: the full judgement across the top (saved with its button, the notes in its right-hand column) and the curves with their toggles and downloads on a row of their own below it. Each row's Decision column records Keep, Improve or Discard; the Set column can be dragged narrower. A shot is reviewed from its own page, and the review is shown only there. The filters narrow by date, profile, Set, score, rating, source and readability; a Set's experiment log links each version's shot count straight at *that version's* shots, and the filter says which version is on and removes it in one click. The sync button and the import drop zone are both here. A new shot is filed under the one Set that brews its profile: exactly one Set set to collect shots, whose current version names that profile (never when two do, never over a Set you picked). **Match by profile** runs the same rule over the shots already waiting; a shot's own page has the button too. Above the table, **Chat about** has one button per Set you are brewing (not archived, not being designed), labelled with its current version: it opens or continues that version's conversation with a question already typed, so after judging the shots in the table you only press Enter. |
-| **Chat** | `g c` | The tool-using conversation, in a folder per Set. New inside a folder starts one already pointed at that Set. |
+| **Chat** | `g c` | The tool-using conversation, with a badge per Set above it. A badge lists that Set's conversations; New there starts one already pointed at that Set. |
 | **Sets** | `g e` | Bean + hardware + profile + recipe, versioned, with the trend across versions and the experiment log: what each version changed, what you predicted it would do, how its shots were labelled, and whether the prediction held. One click rolls an old recipe back. Each Set says whether new shots on its profile are filed under it — any number of Sets can, which is how two bags on two grinders both collect — and a finished bag is archived. |
 | **Beans** | `g b` | The coffees: roaster, origin, process, roast level, decaf, acidity, intensity and sweetness (each a clickable 1-to-5 scale; click the chosen step again to clear it) and a free-form description. Roaster and origin suggest the values already recorded; a coffee is archived when you stop buying it, and one no Set uses can be deleted. |
 | **Hardware** | `g h` | The machine — what it says it is, and the name and notes you give it — and the grinders. |
@@ -709,11 +709,15 @@ The **Chat** page (`g c`) is the other half of the LLM layer, and it is the
 opposite shape from a review: instead of one call with everything in front
 of it, the model is given a set of tools and asks the archive its own questions.
 
-**A folder is a scope, not a filing cabinet.** The list is **General** first,
-then every Set you have not archived — including the ones nobody has asked about
-yet, because an empty folder with a **New** button in it is how you start.
-Conversations about a Set you have since archived move to a last folder of their
-own and stay readable.
+**A Set is a scope, not a filing cabinet.** Above the conversation is a row of
+badges: **General** first, then every Set you have not archived, with its current
+version and how many conversations it holds — including the Sets nobody has asked
+about yet, because an empty list with a **New conversation** button in it is how
+you start. Click a badge and its conversations are listed under the row, one per
+line. Conversations about a Set you have since archived move to a last badge of
+their own and stay readable. The page opens on the newest Set (the one you made
+last) unless a link or an open conversation names another, and a question typed
+before you pick a conversation goes to the open badge's Set.
 
 **Keep a conversation.** With a conversation open, **Download log** in its header
 saves it as one JSON file (`chat-<id>-<title>.json`,
@@ -731,7 +735,7 @@ answer, and every refused or failed one, is kept word for word. If the button
 says the download was blocked before it reached the app, a content-blocking
 extension dropped the request: allow this site in it.
 
-A conversation in a Set's folder is about **one version of that Set** — the
+A conversation in a Set's list is about **one version of that Set** — the
 change being argued — and it can see that Set and nothing else: its versions
 with their predictions and outcomes, its shots, its spread, the knowledge base
 and the confirmed insights that apply. It cannot run archive-wide SQL, list your
@@ -855,10 +859,10 @@ read-only. It runs SQL over the curated views, compares shots across Sets and
 drafts a profile, and sends a bag with no Set yet to New Set's design path — and it
 cannot change a Set, because a change to a Set is an argument that belongs in
 that Set's own room, where the ledger and the evidence are in front of the
-model. It will tell you which folder to open.
+model. It will tell you which Set's badge to open.
 
-**One conversation per change.** New inside a folder starts a fresh one on the
-Set's current version and it stays on that version afterwards, so a folder reads
+**One conversation per change.** New in a Set's list starts a fresh one on the
+Set's current version and it stays on that version afterwards, so the list reads
 as a history of what was argued rather than a pile of rooms all claiming to be
 about today's recipe. Rows are labelled `v6`, and a version a later roll back
 stepped over is muted and says *dead end*. **Discuss in chat** on a Set, the
@@ -1031,7 +1035,7 @@ version; the profile is then a proposal on the Profiles page for you to make act
 and once a sync has put it on the machine, shots brewed on it are filed under the new Set.
 
 Until then the Set carries a **Designing** badge on the Sets list, on its page
-and on its folder in the Chat page, with **Continue designing** back into the
+and on its badge on the Chat page, with **Continue designing** back into the
 conversation. Recording a version by hand on the Set page ends the design the
 same way. **Discard design** on the Set page deletes a design nobody brewed
 anything under, after asking; one with a shot filed on it is kept.
