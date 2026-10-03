@@ -192,7 +192,8 @@ nothing an agent graded reaches a later conversation, the experiment log or the
 track record unless you accepted it. You can also set or clear the outcome on the
 Set page as before; a waiting card then shows both. When the same answer also
 proposes the next version, accepting that version records the waiting grade
-first, in the same step: one press. If you dismissed the grade, the version
+first, in the same step: one press, as long as the outcome is still open; an
+outcome you recorded yourself is left alone and the grade stays waiting. If you dismissed the grade, the version
 cannot be accepted until the version is graded.
 
 ### The spread: how much your shots vary anyway
@@ -775,9 +776,10 @@ reaches a prompt. The Knowledge page holds general knowledge only: what you writ
 by hand there, and any agent-written one the app could not place on a single Set;
 those keep matching by bean, grinder, roast and process and still reach every
 conversation whose Set they match. The first start of this release placed the
-agent-written insights you already had on the one Set each fits (its stored scope
-matches that Set and, when it lists evidence shots, one of them is filed in that
-Set); one that fits none or several stayed general.
+agent-written insights you already had about one coffee on the one Set each fits
+(its scope names a bean, or is empty with evidence shots; it matches that Set and
+one of its evidence shots is filed there); anything scoped only by equipment, roast,
+process or origin, and anything that fits none or several Sets, stayed general.
 
 **A proposal stops waiting the moment you change the Set another way.** Record a
 version on the form, roll back, make a profile proposal active for the Set — whichever it
