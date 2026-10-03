@@ -227,4 +227,84 @@ describe("SetInsights", () => {
 
     expect(patchKnowledgeInsight).toHaveBeenCalledTimes(1);
   });
+
+  it("shows what an insight rests on, with a change visible without opening anything", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [
+        own(1, "v2", {
+          rests_on: [
+            {
+              set_version_id: 21,
+              label: "v1",
+              outcome_then: "held",
+              outcome_now: "failed",
+              changed: true,
+            },
+            {
+              set_version_id: 22,
+              label: "v2",
+              outcome_then: "held",
+              outcome_now: "held",
+              changed: false,
+            },
+          ],
+        }),
+      ],
+      scope_keys: [],
+    });
+    renderSection();
+
+    const rests = await screen.findByTestId("rests-on");
+    expect(within(rests).getAllByTestId("rests-on-version")).toHaveLength(2);
+    expect(within(rests).getAllByTestId("rests-on-changed")).toHaveLength(1);
+    expect(rests).toHaveTextContent("v1");
+    expect(rests).toHaveTextContent("Failed");
+  });
+
+  it("says a waiting replacement would delete the added insight it names", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [
+        own(2, "v2", {
+          confirmed: false,
+          replaces_id: 1,
+          replaces_text: "Old lesson.",
+        }),
+      ],
+      scope_keys: [],
+    });
+    renderSection();
+
+    expect(await screen.findByTestId("own-insight-replaces")).toHaveTextContent(
+      "Would replace an added insight: “Old lesson.”. Adding it deletes that one.",
+    );
+  });
+
+  it("says an insight has a waiting deletion proposal and links into its conversation", async () => {
+    getKnowledgeInsights.mockResolvedValue({
+      items: [own(1, "v2"), own(2, "v2")],
+      scope_keys: [],
+      waiting_deletions: [
+        {
+          id: 9,
+          set_id: 3,
+          thread_id: 14,
+          insight_id: 2,
+          insight_text: "Lesson 2.",
+          reason: "The last two shots contradict it on both measures.",
+          status: "proposed",
+          created_at: "2026-10-03T09:00:00.000Z",
+          decided_at: null,
+        },
+      ],
+    });
+    renderSection();
+
+    const rows = await screen.findAllByTestId("own-insight");
+    expect(within(rows[0]).queryByTestId("own-insight-deletion")).toBeNull();
+    const line = within(rows[1]).getByTestId("own-insight-deletion");
+    expect(line).toHaveTextContent("The agent proposes deleting this:");
+    expect(line).toHaveTextContent("The last two shots contradict it on both measures.");
+    expect(within(line).getByRole("link")).toHaveAttribute("href", "/chat?thread=14");
+    expect(line).toHaveTextContent("it stays");
+  });
 });

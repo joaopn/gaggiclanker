@@ -36,6 +36,8 @@ import type {
   HealthData,
   ImportOptions,
   ImportSummary,
+  InsightDeletionDecision,
+  InsightDeletionListData,
   JudgementWrite,
   KnowledgeDocDetail,
   KnowledgeDocListData,
@@ -1054,6 +1056,35 @@ export async function dismissOutcomeProposal(
   return fetchApi<OutcomeProposalDecision>(`/sets/${id}/outcome-proposals/${proposalId}/dismiss`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+/** Every deletion an agent has proposed for this Set's insights, newest first. */
+export async function getInsightDeletions(
+  id: number,
+  threadId?: number | null,
+): Promise<InsightDeletionListData> {
+  const query = threadId === null || threadId === undefined ? "" : `?thread_id=${threadId}`;
+  return fetchApi<InsightDeletionListData>(`/sets/${id}/insight-deletions${query}`);
+}
+
+/** Delete the insight an agent proposed deleting. A person's press. */
+export async function acceptInsightDeletion(
+  id: number,
+  proposalId: number,
+): Promise<InsightDeletionDecision> {
+  return fetchApi<InsightDeletionDecision>(`/sets/${id}/insight-deletions/${proposalId}/accept`, {
+    method: "POST",
+  });
+}
+
+/** Keep the insight an agent proposed deleting. A person's press. */
+export async function keepInsightDeletion(
+  id: number,
+  proposalId: number,
+): Promise<InsightDeletionDecision> {
+  return fetchApi<InsightDeletionDecision>(`/sets/${id}/insight-deletions/${proposalId}/keep`, {
+    method: "POST",
   });
 }
 

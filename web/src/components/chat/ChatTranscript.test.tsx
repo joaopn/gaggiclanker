@@ -2,26 +2,30 @@ import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
-import { knowledgeInsight } from "@/test/knowledgeFixtures";
+import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
-const { getSetProposals, getOutcomeProposals, getKnowledgeInsight } = vi.hoisted(() => ({
-  getSetProposals: vi.fn(),
-  getOutcomeProposals: vi.fn(),
-  getKnowledgeInsight: vi.fn(),
-}));
+const { getSetProposals, getOutcomeProposals, getKnowledgeInsight, getInsightDeletions } =
+  vi.hoisted(() => ({
+    getSetProposals: vi.fn(),
+    getOutcomeProposals: vi.fn(),
+    getKnowledgeInsight: vi.fn(),
+    getInsightDeletions: vi.fn(),
+  }));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSetProposals,
   getOutcomeProposals,
   getKnowledgeInsight,
+  getInsightDeletions,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   getSetProposals.mockResolvedValue({ items: [] });
   getOutcomeProposals.mockResolvedValue({ items: [] });
+  getInsightDeletions.mockResolvedValue({ items: [] });
   getKnowledgeInsight.mockResolvedValue(
     knowledgeInsight({
       id: 7,
@@ -49,6 +53,7 @@ const PERMISSIONS = {
   propose_initial_recipe: "propose",
   propose_outcome: "propose",
   record_insight: "propose",
+  propose_insight_deletion: "propose",
 };
 
 function message(overrides: Partial<ChatMessage> & { id: number }): ChatMessage {
@@ -420,6 +425,72 @@ describe("ChatTranscript", () => {
 
       expect(await screen.findByTestId("outcome-card-decided")).toHaveTextContent("Accepted");
       expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("a proposed insight deletion", () => {
+    function proposed(): ChatMessage[] {
+      return [
+        message({ id: 1, role: "user", content: "does the old one still hold?" }),
+        message({
+          id: 2,
+          role: "assistant",
+          tool_calls: [
+            {
+              id: "c1",
+              name: "propose_insight_deletion",
+              arguments: { insight_id: 7, reason: "The last two shots contradict it." },
+            },
+          ],
+        }),
+        message({
+          id: 3,
+          role: "tool",
+          tool_results: [
+            {
+              id: "c1",
+              name: "propose_insight_deletion",
+              ok: true,
+              content: JSON.stringify({
+                proposal_id: 9,
+                set_id: 3,
+                insight_id: 7,
+                insight_text: "Two clicks finer on the Niche.",
+                status: "proposed",
+              }),
+            },
+          ],
+        }),
+        message({ id: 4, role: "assistant", content: "I would drop it." }),
+      ];
+    }
+
+    it("marks the call as a proposal and draws the live card with Delete and Keep", async () => {
+      getInsightDeletions.mockResolvedValue({ items: [insightDeletion()] });
+
+      renderWithQueryClient(
+        <ChatTranscript messages={proposed()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      // Before the row is read back, the tool's own words stand in for it.
+      const holder = screen.getByTestId("propose-card-insight_deletion");
+      expect(holder).toHaveTextContent("Two clicks finer on the Niche.");
+      const card = await within(holder).findByTestId("insight-deletion-card");
+      expect(getInsightDeletions).toHaveBeenCalledWith(3, null);
+      expect(within(card).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+      expect(within(card).getByRole("button", { name: "Keep" })).toBeInTheDocument();
+      expect(screen.getByText("proposal")).toBeInTheDocument();
+    });
+
+    it("says how it ended when the conversation is read again", async () => {
+      getInsightDeletions.mockResolvedValue({ items: [insightDeletion({ status: "deleted" })] });
+
+      renderWithQueryClient(
+        <ChatTranscript messages={proposed()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      expect(await screen.findByTestId("insight-deletion-decided")).toHaveTextContent("Deleted");
+      expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     });
   });
 

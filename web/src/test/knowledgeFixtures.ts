@@ -1,4 +1,10 @@
-import type { KnowledgeChunk, KnowledgeDoc, KnowledgeInsight, KnowledgeRule } from "@/api/types";
+import type {
+  InsightDeletion,
+  KnowledgeChunk,
+  KnowledgeDoc,
+  KnowledgeInsight,
+  KnowledgeRule,
+} from "@/api/types";
 
 /**
  * What the knowledge components are handed.
@@ -81,6 +87,22 @@ export function knowledgeInsight(overrides: Partial<KnowledgeInsight> = {}): Kno
     replaces_text: "",
     replaced: null,
     general: true,
+    ...overrides,
+  };
+}
+
+/** An agent's proposal to delete an added insight of Set 3, waiting for the person. */
+export function insightDeletion(overrides: Partial<InsightDeletion> = {}): InsightDeletion {
+  return {
+    id: 9,
+    set_id: 3,
+    thread_id: 14,
+    insight_id: 7,
+    insight_text: "Two clicks finer on the Niche.",
+    reason: "The last two shots contradict it on both measures.",
+    status: "proposed",
+    created_at: "2026-10-03T09:00:00.000Z",
+    decided_at: null,
     ...overrides,
   };
 }

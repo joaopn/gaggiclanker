@@ -1,13 +1,14 @@
 import { Check, Undo2, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { KnowledgeInsight } from "@/api/types";
+import type { InsightDeletion, KnowledgeInsight } from "@/api/types";
 import {
   evidenceShots,
   InsightEditButtons,
   InsightEditForm,
   scopeLabel,
 } from "@/components/knowledge/InsightCard";
+import { RestsOn } from "@/components/knowledge/RestsOn";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,11 @@ export function SetInsights({
   const items = insights.data?.items ?? [];
   if (items.length === 0) return null;
 
+  const waitingDeletions = new Map<number, InsightDeletion>();
+  for (const proposal of insights.data?.waiting_deletions ?? []) {
+    if (typeof proposal.insight_id === "number")
+      waitingDeletions.set(proposal.insight_id, proposal);
+  }
   const own = items.filter((item) => !item.general);
   const general = items.filter((item) => item.general);
   const groups = new Map<string, KnowledgeInsight[]>();
@@ -73,7 +79,7 @@ export function SetInsights({
             </h3>
             <ul className="space-y-2">
               {(groups.get(label) ?? []).map((item) => (
-                <OwnInsight key={item.id} insight={item} />
+                <OwnInsight key={item.id} insight={item} deletion={waitingDeletions.get(item.id)} />
               ))}
             </ul>
           </section>
@@ -112,7 +118,14 @@ export function SetInsights({
   );
 }
 
-function OwnInsight({ insight }: { insight: KnowledgeInsight }) {
+function OwnInsight({
+  insight,
+  deletion,
+}: {
+  insight: KnowledgeInsight;
+  /** The agent's deletion proposal for this insight, while it waits for an answer. */
+  deletion?: InsightDeletion;
+}) {
   const answer = useAnswerInsight();
   const singleFlight = useSingleFlight();
   const [editing, setEditing] = useState(false);
@@ -178,6 +191,28 @@ function OwnInsight({ insight }: { insight: KnowledgeInsight }) {
       ) : (
         <p className="mt-1.5 text-sm">{insight.text}</p>
       )}
+      {(insight.rests_on ?? []).length > 0 ? (
+        <div className="mt-1.5">
+          <RestsOn rests={insight.rests_on ?? []} />
+        </div>
+      ) : null}
+      {typeof insight.replaces_id === "number" && insight.replaces_text && !insight.confirmed ? (
+        <p className="mt-1.5 text-muted-foreground text-xs" data-testid="own-insight-replaces">
+          Would replace an added insight: “{insight.replaces_text}”. Adding it deletes that one.
+        </p>
+      ) : null}
+      {deletion ? (
+        <p
+          className="mt-1.5 rounded-md border border-status-warn/40 bg-status-warn/10 p-2 text-sm"
+          data-testid="own-insight-deletion"
+        >
+          The agent proposes deleting this: {deletion.reason}{" "}
+          <Link to={`/chat?thread=${deletion.thread_id}`} className="underline underline-offset-2">
+            Answer it in the conversation
+          </Link>
+          . Until you do it stays, and is still told to this Set's conversations.
+        </p>
+      ) : null}
       {evidence.length > 0 ? (
         <p className="mt-1 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
           <span>from</span>

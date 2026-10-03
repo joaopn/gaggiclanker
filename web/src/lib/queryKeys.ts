@@ -150,6 +150,15 @@ export const queryKeys = {
       ["knowledge", "insights", filters ?? {}] as const,
     /** One insight in whatever state it is: what a card in the chat reads. */
     insight: (id: string) => ["knowledge", "insight", id] as const,
+    /**
+     * Every deletion an agent proposed for one Set's insights, waiting and
+     * answered. Under `knowledge`, though the route is the Set's: a deletion is
+     * answered by removing (or keeping) an insight, so everything that touches an
+     * insight (an Add that replaces one, the Set page's Delete) has to refresh
+     * these cards too, and the one prefix does that.
+     */
+    insightDeletions: (setId: string, threadId?: number | null) =>
+      ["knowledge", "insight-deletions", setId, threadId ?? "all"] as const,
   },
   /**
    * The chat. `tools` is outside `threads` because the tool list

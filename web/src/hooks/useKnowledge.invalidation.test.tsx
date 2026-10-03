@@ -3,11 +3,12 @@ import { waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useAnswerInsight,
+  useAnswerInsightDeletion,
   useDeleteKnowledgeInsight,
   usePatchKnowledgeInsight,
 } from "@/hooks/useKnowledge";
 import { queryKeys } from "@/lib/queryKeys";
-import { knowledgeInsight } from "@/test/knowledgeFixtures";
+import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderHookWithQueryClient } from "@/test/renderWithQueryClient";
 
 vi.mock("sonner", () => ({
@@ -15,23 +16,33 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { patchKnowledgeInsight, dismissKnowledgeInsight, deleteKnowledgeInsight } = vi.hoisted(
-  () => ({
-    deleteKnowledgeInsight: vi.fn(),
-    patchKnowledgeInsight: vi.fn(),
-    dismissKnowledgeInsight: vi.fn(),
-  }),
-);
+const {
+  patchKnowledgeInsight,
+  dismissKnowledgeInsight,
+  deleteKnowledgeInsight,
+  acceptInsightDeletion,
+  keepInsightDeletion,
+} = vi.hoisted(() => ({
+  deleteKnowledgeInsight: vi.fn(),
+  patchKnowledgeInsight: vi.fn(),
+  dismissKnowledgeInsight: vi.fn(),
+  acceptInsightDeletion: vi.fn(),
+  keepInsightDeletion: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   patchKnowledgeInsight,
   dismissKnowledgeInsight,
   deleteKnowledgeInsight,
+  acceptInsightDeletion,
+  keepInsightDeletion,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   deleteKnowledgeInsight.mockResolvedValue({ deleted: true });
+  acceptInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "deleted" }) });
+  keepInsightDeletion.mockResolvedValue({ proposal: insightDeletion({ status: "kept" }) });
   patchKnowledgeInsight.mockResolvedValue(knowledgeInsight({ set_id: 3, general: false }));
   dismissKnowledgeInsight.mockResolvedValue(
     knowledgeInsight({ set_id: 3, general: false, dismissed: true }),
@@ -111,5 +122,72 @@ describe("editing or deleting a Set's insight", () => {
     await waitFor(() => expect(keys.length).toBe(1));
     expect(keys).toEqual([queryKeys.knowledge.all]);
     expect(keys.flat()).not.toContain("sets");
+  });
+});
+
+describe("answering an agent's proposed deletion", () => {
+  it.each([
+    ["delete", acceptInsightDeletion],
+    ["keep", keepInsightDeletion],
+  ] as const)(
+    "%s touches the knowledge prefix and the conversation, and no Set or shot",
+    async (answer, call) => {
+      const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsightDeletion());
+      const keys = spyOn(queryClient);
+
+      await result.current.mutateAsync({ setId: 3, proposalId: 9, answer, threadId: 14 });
+
+      await waitFor(() => expect(keys.length).toBe(2));
+      // The insight, the Set's list (with its waiting deletions), the Knowledge list and
+      // the deletion cards are all under `knowledge`; the card is drawn from the
+      // transcript of the conversation that proposed it.
+      expect(keys).toContainEqual(queryKeys.knowledge.all);
+      expect(keys).toContainEqual(queryKeys.chat.thread("14"));
+      expect(keys.flat()).not.toContain("sets");
+      expect(keys.flat()).not.toContain("shots");
+      expect(call).toHaveBeenCalledWith(3, 9);
+    },
+  );
+
+  it("sends delete and keep to their own routes and never the other", async () => {
+    const { result } = renderHookWithQueryClient(() => useAnswerInsightDeletion());
+
+    await result.current.mutateAsync({ setId: 3, proposalId: 9, answer: "keep" });
+    expect(keepInsightDeletion).toHaveBeenCalledTimes(1);
+    expect(acceptInsightDeletion).not.toHaveBeenCalled();
+  });
+
+  it("keeps its cards under the knowledge prefix, so an Add that replaces one reaches them", () => {
+    expect(queryKeys.knowledge.insightDeletions("3", 14)).toEqual([
+      ...queryKeys.knowledge.all,
+      "insight-deletions",
+      "3",
+      14,
+    ]);
+  });
+});
+
+describe("a replacing Add and the Set page's Delete", () => {
+  it("an Add that deletes the old insight reaches the insight lists and the deletion cards by the one prefix", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useAnswerInsight());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync({ id: 4, answer: "add", threadId: 14 });
+
+    await waitFor(() => expect(keys.length).toBe(2));
+    expect(keys).toContainEqual(queryKeys.knowledge.all);
+    // The deletion cards sit under that prefix, so the Add that removed an insight
+    // (and made its waiting deletions stale) refreshes them too.
+    expect(queryKeys.knowledge.insightDeletions("3").slice(0, 1)).toEqual(queryKeys.knowledge.all);
+  });
+
+  it("the Set page's Delete touches the knowledge prefix", async () => {
+    const { result, queryClient } = renderHookWithQueryClient(() => useDeleteKnowledgeInsight());
+    const keys = spyOn(queryClient);
+
+    await result.current.mutateAsync(4);
+
+    await waitFor(() => expect(keys.length).toBe(1));
+    expect(keys).toEqual([queryKeys.knowledge.all]);
   });
 });

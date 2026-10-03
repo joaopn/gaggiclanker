@@ -2,6 +2,7 @@ import { Check, Lightbulb, Undo2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useChatThreadId } from "@/components/chat/tellAgent";
 import { evidenceShots } from "@/components/knowledge/InsightCard";
+import { RestsOn } from "@/components/knowledge/RestsOn";
 import { Button } from "@/components/ui/button";
 import { useAnswerInsight, useKnowledgeInsight } from "@/hooks/useKnowledge";
 import { useSingleFlight } from "@/hooks/useSingleFlight";
@@ -44,7 +45,12 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
 
   const row = insight.data;
   const evidence = evidenceShots(row);
+  const rests = row.rests_on ?? [];
   const state = row.dismissed ? "dismissed" : row.confirmed ? "added" : "waiting";
+  // The old insight is named only while it still stands: once it is gone (by this Add or
+  // another way) the row carries none of its text.
+  const replacing =
+    state !== "added" && typeof row.replaces_id === "number" && Boolean(row.replaces_text);
   const failure = answer.variables?.id === insightId && answer.error ? answer.error : null;
 
   function send(choice: "add" | "dismiss" | "take_back") {
@@ -69,6 +75,18 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
           </span>
         </div>
 
+        {replacing ? (
+          <div
+            className="mb-2 rounded-md border border-border border-dashed p-2"
+            data-testid="chat-insight-replaces"
+          >
+            <p className="text-muted-foreground text-xs">Replaces an insight you added:</p>
+            <p className="text-sm line-through decoration-muted-foreground/60">
+              {row.replaces_text}
+            </p>
+          </div>
+        ) : null}
+
         <p className="mb-2 text-sm" data-testid="chat-insight-text">
           {row.text}
         </p>
@@ -80,6 +98,12 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
             : ", version not recorded"}
           .
         </p>
+
+        {rests.length > 0 ? (
+          <div className="mb-2">
+            <RestsOn rests={rests} />
+          </div>
+        ) : null}
 
         {evidence.length > 0 ? (
           <p className="mb-2 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
@@ -113,15 +137,31 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
                 Dismiss
               </Button>
             </div>
-            <p className="mt-2 text-muted-foreground text-xs">
+            <p
+              className="mt-2 text-muted-foreground text-xs"
+              data-testid="chat-insight-waiting-note"
+            >
               Not evidence until you add it. Added, it is told to this Set's later conversations and
               no other Set's.
+              {replacing ? " Adding it deletes the old insight above." : ""}
+              {row.replaced === "old_changed"
+                ? " The insight it was meant to replace is already gone, so adding it deletes nothing."
+                : ""}
+              {row.replaced === "deleted"
+                ? " It replaced an insight that was deleted when it was first added."
+                : ""}
             </p>
           </>
         ) : state === "added" ? (
           <div className="flex flex-wrap items-center gap-2" data-testid="chat-insight-decided">
             <p className="text-sm">
-              Added: this Set's later conversations will be told it. It is on{" "}
+              Added: this Set's later conversations will be told it.{" "}
+              {row.replaced === "deleted"
+                ? "It replaced and deleted the old insight. "
+                : row.replaced === "old_changed"
+                  ? "The insight it was meant to replace had already changed, so nothing was deleted. "
+                  : ""}
+              It is on{" "}
               <Link to={`/sets/${row.set_id}`} className="underline underline-offset-2">
                 the Set's page
               </Link>

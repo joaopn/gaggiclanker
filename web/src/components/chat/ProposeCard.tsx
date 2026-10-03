@@ -1,7 +1,8 @@
 import type { LucideIcon } from "lucide-react";
-import { FilePen, Gauge, Layers, Lightbulb, Sparkles } from "lucide-react";
+import { FilePen, Gauge, Layers, Lightbulb, Sparkles, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ChatInsightCard } from "@/components/chat/ChatInsightCard";
+import { InsightDeletionCard } from "@/components/chat/InsightDeletionCard";
 import { OutcomeCard } from "@/components/chat/OutcomeCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
@@ -12,7 +13,7 @@ import { useSetProposals } from "@/hooks/useSets";
  *
  * The propose tools each write a row somebody still has to decide about — a Set
  * version, a Set's whole first recipe, a version's grade, a profile draft, an
- * insight waiting to be added — and the
+ * insight waiting to be added, an insight waiting to be deleted — and the
  * difference between "the chat suggested" and "the chat created" is exactly
  * what a reader has to be able to see. So the result is read out of the tool's
  * own output rather than parsed out of the prose, and it is rendered outside
@@ -20,7 +21,7 @@ import { useSetProposals } from "@/hooks/useSets";
  */
 
 export type Proposal = {
-  kind: "set_version" | "initial_recipe" | "draft" | "insight" | "outcome";
+  kind: "set_version" | "initial_recipe" | "draft" | "insight" | "insight_deletion" | "outcome";
   label: string;
   detail: string;
   href: string;
@@ -31,6 +32,8 @@ export type Proposal = {
   /** A proposed insight: which, and what it says until the live row is read. */
   insightId?: number;
   insightText?: string;
+  /** A proposed deletion: which Set and insight, and its text until the live row is read. */
+  deletion?: { insightId: number; text: string };
   /** A proposed grade: what the tool said, shown until the live row is read. */
   grade?: { version: string; outcome: string; countedShots: number };
 };
@@ -132,6 +135,25 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
     };
   }
 
+  if (entry.name === "propose_insight_deletion") {
+    const proposalId = output.proposal_id;
+    const setId = output.set_id;
+    if (proposalId === undefined || setId === undefined) return null;
+    const text = String(output.insight_text ?? "");
+    return {
+      kind: "insight_deletion",
+      // "Proposed", not "deleted": the insight stays until the person presses
+      // Delete, and this card is where they press it.
+      label: "Deleting an insight",
+      detail: `${text} — waiting for you to delete or keep it`,
+      href: `/sets/${String(setId)}`,
+      icon: Trash2,
+      setId: Number(setId),
+      proposalId: Number(proposalId),
+      deletion: { insightId: Number(output.insight_id ?? 0), text },
+    };
+  }
+
   if (entry.name === "record_insight") {
     const insightId = output.insight_id;
     if (insightId === undefined) return null;
@@ -192,6 +214,20 @@ export function ProposeCard({ proposal }: { proposal: Proposal }) {
   const Icon = proposal.icon;
   if (proposal.kind === "insight" && proposal.insightId !== undefined) {
     return <ChatInsightCard insightId={proposal.insightId} text={proposal.insightText ?? ""} />;
+  }
+  if (
+    proposal.kind === "insight_deletion" &&
+    proposal.setId &&
+    proposal.proposalId &&
+    proposal.deletion
+  ) {
+    return (
+      <InsightDeletionCard
+        setId={proposal.setId}
+        proposalId={proposal.proposalId}
+        fallback={proposal.deletion}
+      />
+    );
   }
   if (proposal.kind === "outcome" && proposal.setId && proposal.proposalId && proposal.grade) {
     return (

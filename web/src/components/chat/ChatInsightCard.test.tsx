@@ -178,4 +178,111 @@ describe("ChatInsightCard", () => {
     renderCard();
     expect(await screen.findByText("This insight no longer exists.")).toBeInTheDocument();
   });
+
+  describe("what it rests on and what it replaces", () => {
+    const REST_CHANGED = {
+      set_version_id: 21,
+      label: "v1",
+      outcome_then: "held",
+      outcome_now: "failed",
+      changed: true,
+    } as const;
+    const REST_SAME = {
+      set_version_id: 22,
+      label: "v2",
+      outcome_then: "held",
+      outcome_now: "held",
+      changed: false,
+    } as const;
+
+    it("shows each version with its outcome now, and the old one beside a change", async () => {
+      getKnowledgeInsight.mockResolvedValue(insight({ rests_on: [REST_SAME, REST_CHANGED] }));
+      renderCard();
+
+      const rests = await screen.findAllByTestId("rests-on-version");
+      expect(rests.map((item) => item.getAttribute("data-changed"))).toEqual(["false", "true"]);
+      expect(within(rests[0]).queryByTestId("rests-on-changed")).toBeNull();
+      expect(rests[1]).toHaveTextContent("v1");
+      expect(rests[1]).toHaveTextContent("Held");
+      expect(rests[1]).toHaveTextContent("Failed");
+      expect(within(rests[1]).getByTestId("rests-on-changed")).toHaveTextContent("changed since");
+    });
+
+    it("reads a cleared outcome as no outcome now", async () => {
+      getKnowledgeInsight.mockResolvedValue(
+        insight({ rests_on: [{ ...REST_CHANGED, outcome_now: null }] }),
+      );
+      renderCard();
+      expect(await screen.findByTestId("rests-on")).toHaveTextContent("no outcome now");
+    });
+
+    it("shows nothing about versions for an insight that rests on shots alone", async () => {
+      renderCard();
+      await screen.findByTestId("chat-insight");
+      expect(screen.queryByTestId("rests-on")).toBeNull();
+    });
+
+    it("shows the old insight above the new one and says adding deletes it", async () => {
+      getKnowledgeInsight.mockResolvedValue(
+        insight({ replaces_id: 5, replaces_text: "One click finer on the Niche." }),
+      );
+      renderCard();
+
+      const replaces = await screen.findByTestId("chat-insight-replaces");
+      expect(replaces).toHaveTextContent("Replaces an insight you added:");
+      expect(replaces).toHaveTextContent("One click finer on the Niche.");
+      const card = screen.getByTestId("chat-insight");
+      expect(card).toHaveTextContent("Adding it deletes the old insight above.");
+      // Above: the old text comes before the new text in the card.
+      expect(
+        replaces.compareDocumentPosition(screen.getByTestId("chat-insight-text")) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("says it replaced and deleted the old insight once added", async () => {
+      getKnowledgeInsight.mockResolvedValue(insight({ confirmed: true, replaced: "deleted" }));
+      renderCard();
+
+      const decided = await screen.findByTestId("chat-insight-decided");
+      expect(decided).toHaveTextContent("It replaced and deleted the old insight.");
+      expect(screen.queryByTestId("chat-insight-replaces")).toBeNull();
+    });
+
+    it("says the old one had already changed when adding deleted nothing", async () => {
+      getKnowledgeInsight.mockResolvedValue(insight({ confirmed: true, replaced: "old_changed" }));
+      renderCard();
+
+      expect(await screen.findByTestId("chat-insight-decided")).toHaveTextContent(
+        "had already changed, so nothing was deleted",
+      );
+    });
+
+    it("says the old one is already gone while the new one still waits", async () => {
+      getKnowledgeInsight.mockResolvedValue(insight({ replaced: "old_changed" }));
+      renderCard();
+
+      expect(await screen.findByTestId("chat-insight-waiting-note")).toHaveTextContent(
+        "already gone, so adding it deletes nothing",
+      );
+      expect(screen.queryByTestId("chat-insight-replaces")).toBeNull();
+    });
+
+    it("adds a replacement with one press and sends it the conversation to refresh", async () => {
+      const user = setupUser();
+      patchKnowledgeInsight.mockResolvedValue(insight({ confirmed: true, replaced: "deleted" }));
+      getKnowledgeInsight
+        .mockResolvedValueOnce(insight({ replaces_id: 5, replaces_text: "Old." }))
+        .mockResolvedValue(insight({ confirmed: true, replaced: "deleted" }));
+      renderCard();
+
+      await user.click(await screen.findByRole("button", { name: "Add" }));
+
+      expect(patchKnowledgeInsight).toHaveBeenCalledTimes(1);
+      expect(patchKnowledgeInsight).toHaveBeenCalledWith(7, { confirmed: true });
+      expect(await screen.findByTestId("chat-insight-decided")).toHaveTextContent(
+        "replaced and deleted the old insight",
+      );
+    });
+  });
 });

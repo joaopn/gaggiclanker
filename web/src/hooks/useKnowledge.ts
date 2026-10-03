@@ -7,14 +7,17 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  acceptInsightDeletion,
   createKnowledgeInsight,
   deleteKnowledgeInsight,
   dismissKnowledgeInsight,
+  getInsightDeletions,
   getKnowledgeDoc,
   getKnowledgeDocs,
   getKnowledgeInsight,
   getKnowledgeInsights,
   getKnowledgeRules,
+  keepInsightDeletion,
   patchKnowledgeInsight,
   patchKnowledgeRule,
   putKnowledgeDoc,
@@ -23,6 +26,8 @@ import {
   searchKnowledge,
 } from "@/api/client";
 import type {
+  InsightDeletionDecision,
+  InsightDeletionListData,
   KnowledgeDocDetail,
   KnowledgeDocListData,
   KnowledgeInsight,
@@ -207,6 +212,59 @@ export function useAnswerInsight(): UseMutationResult<
           : variables.answer === "dismiss"
             ? "Dismissed — it will not be put in front of the model"
             : "Taken back — it will not be put in front of the model",
+      ),
+    onError: (error) => toast.error(error.message),
+    onSettled: (_data, _error, variables) => {
+      void invalidateKnowledge(queryClient);
+      if (variables.threadId !== null && variables.threadId !== undefined) {
+        void invalidateChatThread(queryClient, String(variables.threadId));
+      }
+    },
+  });
+}
+
+/** Every deletion an agent proposed for a Set's insights: what the chat's deletion card reads. */
+export function useInsightDeletions(
+  setId: number | undefined,
+  threadId?: number | null,
+): UseQueryResult<InsightDeletionListData, Error> {
+  return useQuery({
+    queryKey: queryKeys.knowledge.insightDeletions(String(setId), threadId),
+    queryFn: () => getInsightDeletions(setId as number, threadId),
+    enabled: setId !== undefined && Number.isFinite(setId),
+  });
+}
+
+/**
+ * Delete or keep the insight an agent proposed deleting: the deletion card's buttons.
+ *
+ * The `knowledge` prefix covers the insight itself, the Set's list (which carries
+ * the waiting deletions), the Knowledge list and these cards; the conversation is
+ * invalidated too, because its card is drawn from the transcript. Nothing under
+ * `sets`: an insight is on no Set payload.
+ */
+export function useAnswerInsightDeletion(): UseMutationResult<
+  InsightDeletionDecision,
+  Error,
+  {
+    setId: number;
+    proposalId: number;
+    answer: "delete" | "keep";
+    /** The conversation it was argued in, when there is one. */
+    threadId?: number | null;
+  }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, proposalId, answer }) =>
+      answer === "delete"
+        ? acceptInsightDeletion(setId, proposalId)
+        : keepInsightDeletion(setId, proposalId),
+    onSuccess: (_result, variables) =>
+      toast.success(
+        variables.answer === "delete"
+          ? "Insight deleted"
+          : "Kept — the insight stays, and the agent is told",
       ),
     onError: (error) => toast.error(error.message),
     onSettled: (_data, _error, variables) => {

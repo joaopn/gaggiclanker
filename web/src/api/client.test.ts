@@ -9,6 +9,7 @@ import {
   getBoardConflict,
   getBoardVersions,
   getHealth,
+  getInsightDeletions,
   getProfileBoard,
   getSettings,
   hasAuthenticatedSession,
@@ -126,6 +127,26 @@ describe("the profile board's requests", () => {
     await getProfileBoard(true);
     expect(spy.mock.calls[0]?.[0]).toBe("/api/profile-board");
     expect(spy.mock.calls[1]?.[0]).toBe("/api/profile-board?live=true");
+  });
+});
+
+describe("the insight deletion requests", () => {
+  beforeEach(() => {
+    __resetApiClientAuthForTests(null);
+  });
+
+  it("reads a conversation's proposals by thread, and a Set's without one", async () => {
+    const spy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(200, success({ items: [] })));
+
+    await getInsightDeletions(3, 14);
+    await getInsightDeletions(3);
+    await getInsightDeletions(3, null);
+
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/sets/3/insight-deletions?thread_id=14");
+    expect(spy.mock.calls[1]?.[0]).toBe("/api/sets/3/insight-deletions");
+    expect(spy.mock.calls[2]?.[0]).toBe("/api/sets/3/insight-deletions");
   });
 });
 
