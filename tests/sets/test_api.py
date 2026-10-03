@@ -16,7 +16,7 @@ from fastapi import FastAPI
 
 from gaggiclanker.db.repos.machines import MachineRepository, MachineUpsert
 from gaggiclanker.db.repos.set_proposals import ProposalWrite, SetProposalsRepository
-from gaggiclanker.db.repos.sets import SetVersionPatch
+from gaggiclanker.db.repos.sets import DesignBrief, SetsRepository, SetVersionPatch, SetWrite
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
 from gaggiclanker.db.repos.starting import StartingPointRunsRepository, StartingPointStart
 
@@ -638,7 +638,7 @@ class TestPredictionsAndOutcomes:
         assert response.status_code == 400
         assert error(response)["code"] == "INVALID_REQUEST"
 
-    async def test_a_roll_back_appends_a_version_and_says_what_it_restored(
+    async def test_a_revert_writes_no_version_and_the_page_serves_it(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
     ) -> None:
         created = await _make_set(client, bean_id)
@@ -649,23 +649,53 @@ class TestPredictionsAndOutcomes:
 
         response = await client.post(
             f"/api/sets/{created['id']}/rollback",
-            json={"to_version_id": first, "intent": "that was worse"},
+            json={"to_version_id": first, "note": "that was worse"},
         )
 
-        assert response.status_code == 201
+        # The answer is the version the Set is on now: the target, unchanged.
+        assert response.status_code == 200
         body = data(response)
-        assert body["version_label"] == "v1.2"
+        assert (body["id"], body["version_label"], body["is_current"]) == (first, "v1", True)
         assert body["grind_setting"] == "22"
-        assert body["parent_version_id"] == second
-        assert body["restores_version_id"] == first
-        assert body["restores_version_label"] == "v1"
+        assert await self._version_ids(client, created["id"]) == [first, second]
+        detail = data(await client.get(f"/api/sets/{created['id']}"))
+        assert detail["set"]["current_version_id"] == first
+        assert detail["set"]["current_version_label"] == "v1"
+        assert (detail["set"]["next_minor_label"], detail["set"]["next_major_label"]) == (
+            "v1.2",
+            "v2",
+        )
+        [revert] = detail["reverts"]
+        assert (revert["from_version_label"], revert["to_version_label"]) == ("v1.1", "v1")
+        assert revert["note"] == "that was worse" and revert["created_at"]
+        assert [e["version"]["is_current"] for e in detail["versions"]] == [False, True]
 
-        # Rolling back to where you already are is a 422 naming the field.
+        # Going back to where you already are is a 422 naming the field.
         refused = await client.post(
-            f"/api/sets/{created['id']}/rollback", json={"to_version_id": body["id"]}
+            f"/api/sets/{created['id']}/rollback", json={"to_version_id": first}
         )
         assert refused.status_code == 422
         assert error(refused)["details"]["field"] == "to_version_id"
+        assert "earlier" not in error(refused)["details"]["message"]
+        # A prediction is not part of a revert.
+        extra = await client.post(
+            f"/api/sets/{created['id']}/rollback",
+            json={"to_version_id": second, "prediction": "better"},
+        )
+        assert extra.status_code == 400
+
+    async def test_a_set_being_designed_refuses_a_revert_with_a_409(
+        self, client: httpx.AsyncClient, app: FastAPI, bean_id: int
+    ) -> None:
+        designed = await SetsRepository(app.state.db).create_design(
+            SetWrite(name="Designing", bean_id=bean_id), DesignBrief()
+        )
+        response = await client.post(
+            f"/api/sets/{designed.id}/rollback",
+            json={"to_version_id": designed.current_version_id},
+        )
+        assert response.status_code == 409
+        assert error(response)["code"] == "DESIGNING"
 
     async def test_the_set_page_carries_the_track_record_and_the_roll_back_target(
         self, client: httpx.AsyncClient, app: FastAPI, bean_id: int

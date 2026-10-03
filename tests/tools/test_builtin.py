@@ -19,6 +19,7 @@ from gaggiclanker.db.repos.profile_drafts import ProfileDraftsRepository
 from gaggiclanker.db.repos.profiles import ProfilesRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
+    RollbackWrite,
     SetsRepository,
     SetVersionPatch,
     SetVersionWrite,
@@ -1005,6 +1006,26 @@ async def test_a_draft_outside_a_set_cannot_suggest_a_major_version(
     )
 
     assert "only means something in a conversation about one Set" in data["detail"]
+
+
+async def test_get_set_names_the_version_the_set_went_back_to_as_current(
+    set_ctx: ToolContext, archive: Fixture
+) -> None:
+    sets = SetsRepository(archive.db)
+    first = await sets.current_version(archive.set_id)
+    assert first is not None
+    await sets.add_version(archive.set_id, SetVersionPatch(grind_setting="21"))
+    assert (await call(set_ctx, "get_set"))["set"]["current_version_label"] == "v1.1"
+
+    await sets.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
+
+    got = await call(set_ctx, "get_set")
+    assert got["set"]["current_version_label"] == "v1"
+    assert {v["version_label"]: v["is_current"] for v in got["versions"]} == {
+        "v1": True,
+        "v1.1": False,
+    }
+    assert (got["set"]["next_minor_label"], got["set"]["next_major_label"]) == ("v1.2", "v2")
 
 
 async def test_the_set_tools_name_versions_and_never_count_them(

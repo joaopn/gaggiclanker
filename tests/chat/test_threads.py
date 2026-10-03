@@ -158,7 +158,7 @@ async def test_open_creates_one_when_the_version_has_none(archive: Fixture) -> N
 
 
 async def test_a_dead_end_version_says_so_on_the_thread(archive: Fixture) -> None:
-    """A roll back steps over a version, and the Set's list has to grey its rooms."""
+    """A revert goes back past a version, and the Set's list has to grey its rooms."""
     sets = SetsRepository(archive.db)
     first = await sets.current_version(archive.set_id)
     assert first is not None
@@ -174,6 +174,33 @@ async def test_a_dead_end_version_says_so_on_the_thread(archive: Fixture) -> Non
 
     listed = {row.id: row for row in await repo.list_threads()}
     assert listed[on_the_branch.thread.id].dead_end is True
+
+
+async def test_after_a_revert_the_targets_conversation_is_the_live_one(
+    archive: Fixture,
+) -> None:
+    """One conversation per version stays: going back reopens that version's room."""
+    sets = SetsRepository(archive.db)
+    first = await sets.current_version(archive.set_id)
+    assert first is not None
+    repo = ChatRepository(archive.db)
+    on_first = await repo.open_thread(archive.set_id)
+    assert on_first.thread is not None and on_first.thread.set_version_id == first.id
+    second = await sets.add_version(archive.set_id, SetVersionPatch(intent="finer"))
+    assert second is not None
+    on_second = await repo.open_thread(archive.set_id)
+    assert on_second.thread is not None and on_second.thread.set_version_id == second.id
+
+    await sets.rollback(archive.set_id, RollbackWrite(to_version_id=first.id))
+
+    live = await repo.open_thread(archive.set_id)
+    assert live.thread is not None and live.thread.id == on_first.thread.id
+    fresh = await repo.create_thread(ChatThreadWrite(set_id=archive.set_id))
+    assert fresh.thread is not None and fresh.thread.set_version_id == first.id
+    # The conversation left behind is on a dead end now.
+    listed = {row.id: row for row in await repo.list_threads()}
+    assert listed[on_second.thread.id].dead_end is True
+    assert listed[on_first.thread.id].dead_end is False
 
 
 async def test_deleting_a_set_takes_its_conversations_with_it(archive: Fixture) -> None:

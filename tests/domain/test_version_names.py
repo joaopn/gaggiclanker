@@ -27,16 +27,13 @@ from gaggiclanker.domain.sets import (
         # names.
         ("draft", True, False),
         ("draft", False, False),
-        # A roll back follows the change rule on what it changes.
-        ("rollback", True, True),
-        ("rollback", False, False),
     ],
 )
 def test_the_default_for_each_path(path: str, profile_changed: bool, expected: bool) -> None:
     assert change_is_major(path, profile_changed=profile_changed, major=None) is expected  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("path", ["change", "draft", "rollback"])
+@pytest.mark.parametrize("path", ["change", "draft"])
 @pytest.mark.parametrize("profile_changed", [True, False])
 @pytest.mark.parametrize("major", [True, False])
 def test_the_person_s_answer_wins_in_both_directions(

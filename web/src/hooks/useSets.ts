@@ -445,14 +445,13 @@ export function useRollbackSet(): UseMutationResult<
     mutationFn: ({ setId, body }) => rollbackSet(setId, body),
     onSuccess: (version) =>
       toast.success(
-        `${version.version_label} brings ${version.restores_version_label ?? "the earlier recipe"} back. Nothing was sent to the machine.`,
+        `The Set is back on ${version.version_label}. Nothing was sent to the machine.`,
       ),
     onError: (error) => toast.error(`Could not roll back: ${error.message}`),
     onSettled: () => {
-      // The whole prefix, and only it: a new version moves the Sets list's
-      // current-version row and adds a boundary to the trend chart, but it
-      // moves no shot — the version it appends has none — so nothing a shot
-      // detail renders has changed.
+      // The whole prefix, and only it: going back moves the Sets list's
+      // current-version row, but it moves no shot, so nothing a shot detail
+      // renders has changed.
       void invalidateSets(queryClient);
     },
   });

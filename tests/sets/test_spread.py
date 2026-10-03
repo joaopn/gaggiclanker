@@ -286,24 +286,25 @@ class TestWhereEachMeasureComesFrom:
         assert counted.yield_g == expected
 
     async def test_each_shot_carries_its_versions_recipe(self, wired: Fixtures) -> None:
-        """Which is what makes a roll back's shots repeats of what it copied."""
+        """Which is what makes a revert's shots repeats of what they were."""
         set_id, first = await a_set(wired)
         second = await wired.sets.add_version(
             set_id, SetVersionPatch(grind_setting="21", intent="one finer")
         )
         assert second is not None
-        rolled_back = await wired.sets.rollback(
-            set_id, RollbackWrite(to_version_id=first, intent="back to 22")
-        )
-        assert rolled_back.version is not None
-        for index, version_id in enumerate((first, second.id, rolled_back.version.id)):
+        # Going back writes no version: the shot below is on the first again.
+        reverted = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=first))
+        assert reverted.version is not None and reverted.version.id == first
+        for index, version_id in enumerate((first, second.id, first)):
             shot_id = await store_shot(wired.shots, f"00000{index + 1}")
             assert await wired.sets.assign_shot(shot_id, version_id)
 
         counted = await wired.sets.counted_shots(set_id)
 
         recipes = [shot.recipe for shot in counted]
-        assert recipes[0] == recipes[2], "a roll back copies the recipe, so its shots repeat it"
+        assert recipes[0] == recipes[2], (
+            "a revert files under the same version, so its shots repeat it"
+        )
         assert recipes[0] != recipes[1]
 
 

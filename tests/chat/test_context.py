@@ -256,17 +256,30 @@ async def experiment(tmp_path: Path) -> AsyncIterator[Experiment]:
         )
         assert graded.version is not None
 
-        # v4: go back to what worked. v2 and v3 are now dead ends.
-        rolled = await sets.rollback(
+        # v4: go back to what worked. v2 and v3 are now dead ends. This is a row
+        # as a roll back wrote it before going back became a move of the Set's
+        # pointer (a new version copying v1's recipe and naming it as what it
+        # restores): databases still hold such rows and the line walk must keep
+        # reading them. The revert itself is exercised below.
+        first = await sets.get_version(v1)
+        assert first is not None
+        rolled = await sets.add_version(
             set_id,
-            RollbackWrite(
-                to_version_id=v1,
+            SetVersionPatch(
+                profile_version_id=first.profile_version_id,
+                grind_setting=first.grind_setting,
+                grind_value=first.grind_value,
+                dose_g=first.dose_g,
+                target_yield_g=first.target_yield_g,
                 intent="Back to the recipe with the Keep shots.",
                 prediction="Back within the usual spread of v1.",
             ),
         )
-        assert rolled.version is not None
-        v4 = rolled.version.id
+        assert rolled is not None
+        await db.execute(
+            "UPDATE set_versions SET restores_version_id = ? WHERE id = ?", (v1, rolled.id)
+        )
+        v4 = rolled.id
         shot = await _shot(
             db,
             "000005",
@@ -447,6 +460,72 @@ async def test_it_is_about_the_thread_s_version_not_the_current_one(
     assert "THIS VERSION IS v1.1" in rendered
     assert "(a dead end" in rendered
     assert "THE EVIDENCE FOR v1.1 AGAINST v1" in rendered
+
+
+async def test_a_revert_is_told_to_the_conversation_it_reopens(experiment: Experiment) -> None:
+    """v2.2 back to v1.1: the agent must not carry on as if nothing happened in between."""
+    sets = SetsRepository(experiment.db)
+    quiet = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+    )
+    assert "The Set went back to" not in quiet
+
+    result = await sets.rollback(
+        experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="v2.2 was too slow")
+    )
+    assert result.version is not None
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+    )
+
+    line = next(line for line in rendered.splitlines() if line.startswith("The Set went back to"))
+    assert line.startswith("The Set went back to v1.1 from v2.2 on 20")
+    assert line.endswith("UTC. Why: v2.2 was too slow")
+    assert "THIS VERSION IS v1.1" in rendered and "the current version of this Set" in rendered
+    # Another version's conversation is not told about it.
+    other = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v4)
+    )
+    assert "The Set went back to" not in other
+    # And the same archive reads the same bytes.
+    assert rendered == await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+    )
+
+
+async def test_two_reverts_into_one_version_are_told_oldest_first(
+    experiment: Experiment,
+) -> None:
+    sets = SetsRepository(experiment.db)
+    await sets.rollback(
+        experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="first time")
+    )
+    await sets.rollback(experiment.set_id, RollbackWrite(to_version_id=experiment.v5))
+    await sets.rollback(
+        experiment.set_id, RollbackWrite(to_version_id=experiment.v2, note="second time")
+    )
+    # Forge the log's times: the second revert's row is the older one by id order only.
+    rows = await experiment.db.fetch_all(
+        "SELECT id FROM set_version_reverts WHERE to_version_id = ? ORDER BY id",
+        (experiment.v2,),
+    )
+    await experiment.db.execute(
+        "UPDATE set_version_reverts SET created_at = '2026-05-02T10:00:00.000Z' WHERE id = ?",
+        (rows[0]["id"],),
+    )
+    await experiment.db.execute(
+        "UPDATE set_version_reverts SET created_at = '2026-05-01T10:00:00.000Z' WHERE id = ?",
+        (rows[1]["id"],),
+    )
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+    )
+
+    lines = [line for line in rendered.splitlines() if line.startswith("The Set went back to")]
+    assert len(lines) == 2
+    assert "2026-05-01 10:00 UTC. Why: second time" in lines[0]
+    assert "2026-05-02 10:00 UTC. Why: first time" in lines[1]
 
 
 async def _graded(experiment: Experiment) -> SetProposalsRepository:

@@ -976,7 +976,10 @@ export async function clearVersionOutcome(id: number, versionId: number): Promis
   });
 }
 
-/** Go back to an earlier recipe. Appends a version; writes nothing to the machine. */
+/**
+ * Put the Set back on an earlier version. Writes no version and nothing to the
+ * machine; the answer is the version the Set is now on.
+ */
 export async function rollbackSet(id: number, body: RollbackWrite): Promise<SetVersionRow> {
   return fetchApi<SetVersionRow>(`/sets/${id}/rollback`, {
     method: "POST",

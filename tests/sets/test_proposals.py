@@ -487,12 +487,33 @@ class TestTheSetMovingOnRetiresWhatWasWaiting:
         proposals, _ = await _propose(wired, set_id)
 
         await wired.sets.rollback(
-            set_id, RollbackWrite(to_version_id=first.id, intent="back to the start")
+            set_id, RollbackWrite(to_version_id=first.id, note="back to the start")
         )
 
         assert await proposals.waiting(set_id) is None
         last = await proposals.last_decided(set_id)
         assert last is not None and last.status == "stale"
+
+    async def test_a_proposal_after_a_revert_is_built_on_the_version_the_set_is_on(
+        self, wired: Fixtures
+    ) -> None:
+        set_id = await _set(wired)
+        first = await wired.sets.current_version(set_id)
+        assert first is not None
+        await wired.sets.add_version(set_id, SetVersionPatch(dose_g=19, intent="by hand"))
+        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=first.id))
+
+        proposals, created = await _propose(wired, set_id)
+
+        waiting = await proposals.waiting(set_id)
+        assert waiting is not None and created is not None
+        assert (waiting.base_version_id, waiting.base_is_current) == (first.id, True)
+        assert waiting.compares_to_version_id == first.id
+        assert (await proposals.next_names(set_id)).minor == "v1.2"
+        accepted = await proposals.accept(set_id, waiting.id)
+        assert accepted.version is not None
+        assert accepted.version.parent_version_id == first.id
+        assert accepted.version.version_label == "v1.2"
 
     async def test_accepting_does_not_stale_the_proposal_it_accepts(self, wired: Fixtures) -> None:
         set_id = await _set(wired)

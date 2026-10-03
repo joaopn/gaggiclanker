@@ -114,7 +114,9 @@ export function VersionTimeline({
   const originLabel = (origin: string) =>
     vocab.data?.origins.find((term) => term.value === origin)?.label ?? origin;
   const [editing, setEditing] = useState<number | null>(null);
-  const current = versions[0]?.version.id;
+  // The version the Set is on, which a revert can make an older one; the newest
+  // made only when the page was served without the flag.
+  const current = (versions.find((entry) => entry.version.is_current) ?? versions[0])?.version.id;
 
   return (
     <ol className="space-y-3" data-testid="version-timeline">

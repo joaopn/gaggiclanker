@@ -192,6 +192,7 @@ async def opening_context(
     profile_labels = _profile_labels(versions)
     lines: list[str] = []
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
+    lines += await _reverts_block(sets, version)
     lines += ["", *await _proposal_block(db, scope.set_id, profile_labels, current)]
     grade = await _grade_block(db, scope.set_id, version)
     if grade:
@@ -276,7 +277,7 @@ async def _heading(
         + (" New shots on its profile are filed here." if row.automatch else ""),
         "",
         f"THIS VERSION IS {version.version_label}"
-        + (" (a dead end: a later roll back went back past it)" if version.id in dead_ends else "")
+        + (" (a dead end: the Set went back past it)" if version.id in dead_ends else "")
         + (" — the current version of this Set" if version.is_current else ""),
         f"Recipe: {_recipe(version)}.",
         f"Changed against {parent.version_label}: {_changes(changes)}."
@@ -286,6 +287,33 @@ async def _heading(
     if version.intent:
         lines.append(f"What you are trying: {version.intent}")
     lines.append(_prediction_line(version))
+    return lines
+
+
+async def _reverts_block(sets: SetsRepository, version: SetVersionRow) -> list[str]:
+    """Every time the Set went back to this version, oldest first, and when.
+
+    A revert reopens this version's conversation as the Set's live one, and the
+    agent must not carry on as if nothing had happened in between: the Set was on
+    other versions, and what was said above may predate them. Every revert into
+    this version is told, not only the latest or the ones since the last message,
+    so the lines depend on the archive alone and the context stays byte-stable.
+    """
+    reverts = await sets.reverts_into(version.id)
+    if not reverts:
+        return []
+    lines = [""]
+    for revert in reverts:
+        when = revert.created_at[:16].replace("T", " ") + " UTC"
+        note = f" Why: {revert.note}" if revert.note else ""
+        lines.append(
+            f"The Set went back to {revert.to_version_label} from "
+            f"{revert.from_version_label} on {when}.{note}"
+        )
+    lines.append(
+        "What was said in this conversation before then was said while the Set was on this "
+        "version; the versions it went back past are dead ends now."
+    )
     return lines
 
 

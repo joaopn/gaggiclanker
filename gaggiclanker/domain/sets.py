@@ -38,8 +38,9 @@ __all__ = [
 #:   version form, an accepted proposal, an accepted analysis suggestion.
 #: * ``draft`` — a profile draft put on the machine (by the board's sync) and recorded on the Set:
 #:   a tuned copy of a profile, which is dialling in.
-#: * ``rollback`` — going back to an earlier version's recipe.
-type VersionPath = Literal["change", "draft", "rollback"]
+#:
+#: Going back to an earlier version is not a path: a revert writes no version.
+type VersionPath = Literal["change", "draft"]
 
 
 def change_is_major(path: VersionPath, *, profile_changed: bool, major: bool | None) -> bool:
@@ -55,9 +56,6 @@ def change_is_major(path: VersionPath, *, profile_changed: bool, major: bool | N
     * a pushed **draft** is minor. It is a tuned copy of a profile (a degree of
       temperature, a longer pre-infusion), which is dialling in too, unless the
       person marks it major.
-    * a **roll back** follows the change rule on what it changes relative to
-      the current version: going back over a grind nudge is minor, going back
-      to another profile is major.
 
     The agent's suggestion is not an input here. It is shown on the card, which
     preselects the box, and what the person sends is ``major``.

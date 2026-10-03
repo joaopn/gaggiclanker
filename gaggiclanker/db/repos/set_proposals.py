@@ -17,8 +17,8 @@ properties true.
   agent talking past the person instead of to them.
 
 * **A proposal stops waiting when the Set moves on.** Any version appended to a
-  Set — by the form, a roll back, a pushed draft, an accepted suggestion —
-  retires whatever was waiting, in the same transaction
+  Set — by the form, a pushed draft, an accepted suggestion — or a revert
+  to another version retires whatever was waiting, in the same transaction
   (:meth:`~gaggiclanker.db.repos.sets.SetsRepository._insert_version`). A
   proposal argued against a recipe nobody is brewing any more is not a question
   the person can answer: Accept could only refuse it, and until somebody

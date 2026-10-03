@@ -499,8 +499,7 @@ describe("SetDetailPage", () => {
     await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
     expect(rollbackSet.mock.calls[0][1]).toEqual({
       to_version_id: 21,
-      intent: "",
-      prediction: "",
+      note: "",
     });
   });
 

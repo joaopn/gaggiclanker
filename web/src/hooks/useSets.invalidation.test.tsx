@@ -76,7 +76,7 @@ beforeEach(() => {
   setVersionPrediction.mockResolvedValue(version());
   setVersionOutcome.mockResolvedValue(version());
   clearVersionOutcome.mockResolvedValue(version());
-  rollbackSet.mockResolvedValue(version({ version_no: 3, restores_version_no: 1 }));
+  rollbackSet.mockResolvedValue(version({ version_no: 1 }));
   acceptSetProposal.mockResolvedValue({ proposal: proposal(), version: version() });
   declineSetProposal.mockResolvedValue({
     proposal: proposal({ status: "declined" }),
@@ -372,7 +372,7 @@ describe("the Set-side writes invalidate no more than they changed", () => {
 
     await result.current.mutateAsync({
       setId: 3,
-      body: { to_version_id: 21, intent: "", prediction: "" },
+      body: { to_version_id: 21, note: "" },
     });
 
     await waitFor(() => expect(keys.length).toBe(1));

@@ -410,6 +410,7 @@ export function setDetail(overrides: Partial<SetDetailData> = {}): SetDetailData
     track_record: trackRecord(),
     spread: spreadReport(),
     rollback_target_version_id: null,
+    reverts: [],
     proposal: null,
     outcome_proposal: null,
     ...overrides,

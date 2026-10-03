@@ -1,9 +1,9 @@
-"""Predictions, outcomes, dead ends and the roll back, at the repository level.
+"""Predictions, outcomes, dead ends and the revert, at the repository level.
 
 The properties here are the ones that make a track record mean anything: a
 prediction cannot be written after the shot it would grade itself against, an
-outcome cannot be recorded on a version there is nothing to grade, and a roll
-back is an ordinary version that happens to copy an old recipe. All of them are
+outcome cannot be recorded on a version there is nothing to grade, and going
+back to an earlier version writes no version at all. All of them are
 asserted against the real file, because half of them are enforced by reading
 another table inside the same transaction.
 """
@@ -12,8 +12,12 @@ from __future__ import annotations
 
 from typing import cast
 
+import pytest
+from pydantic import ValidationError
+
 from gaggiclanker.db.repos.judgements import JudgementsRepository, JudgementWrite
 from gaggiclanker.db.repos.sets import (
+    DesignBrief,
     RollbackWrite,
     SetVersionPatch,
     SetVersionRow,
@@ -391,77 +395,63 @@ class TestOutcome:
         assert cleared.version.outcome_state == "open"
 
 
-class TestRollback:
-    async def test_it_copies_every_inherited_field_and_sets_the_three_references(
+class TestRevert:
+    """Going back writes no version: the Set is on the target again, as it was."""
+
+    async def test_it_writes_no_version_and_leaves_the_target_untouched(
         self, wired: Fixtures
     ) -> None:
-        # Two profiles, because the profile is the one inherited field a roll
-        # back could plausibly be written to take from the *current* version
-        # rather than the restored one, and a test whose two versions share a
-        # profile would not notice.
-        profile = await make_profile_version(wired.db, "9 Bar Espresso")
-        other_profile = await make_profile_version(wired.db, "Turbo")
-        row = await wired.sets.create(
-            SetWrite(name="Guji on the Niche", bean_id=wired.bean_id),
-            SetVersionWrite(
-                profile_version_id=profile,
-                grind_setting="22",
-                grind_value=22,
-                dose_g=18,
-                target_yield_g=36,
-            ),
+        set_id, versions = await _set_with_versions(wired, count=3)
+        target = versions[1]
+        await wired.sets.set_prediction(
+            set_id, target.id, VersionPredictionWrite(prediction="less bitter, a bit shorter")
         )
-        first = await wired.sets.current_version(row.id)
-        assert first is not None
-        # A version that changed **every** inherited field, and was pushed to
-        # the machine: each one is then guarded by the loop below.
-        await wired.sets.add_version(
-            row.id,
-            SetVersionPatch(
-                profile_version_id=other_profile,
-                grind_setting="19",
-                grind_value=19,
-                dose_g=20,
-                target_yield_g=50,
-                intent="a turbo",
-                pushed_device_profile_id="7",
-            ),
+        shot_id = await _judged_shot(wired, target.id, "000001", "keep")
+        await wired.sets.set_outcome(
+            set_id, target.id, VersionOutcomeWrite(outcome="held", note="it did")
         )
-        current = await wired.sets.current_version(row.id)
-        assert current is not None
-        assert other_profile != profile
-        for field in INHERITED:
-            assert getattr(current, field) != getattr(first, field), field
+        before = await wired.sets.get_version(target.id)
+        assert before is not None
+        rows_before = await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions")
 
         result = await wired.sets.rollback(
-            row.id,
-            RollbackWrite(
-                to_version_id=first.id,
-                intent="that was worse",
-                prediction="back to the old balance",
-            ),
+            set_id, RollbackWrite(to_version_id=target.id, note="that was worse")
         )
 
-        rolled = result.version
-        assert rolled is not None
-        assert rolled.version_label == "v3"
-        for field in INHERITED:
-            assert getattr(rolled, field) == getattr(first, field), field
-        # The parent is what was current, so the diff reads as the reversal.
-        assert rolled.parent_version_id == current.id
-        assert rolled.restores_version_id == first.id
-        assert rolled.restores_version_label == "v1"
-        assert rolled.compares_to_version_id == current.id
-        assert rolled.origin == "manual"
-        # A device id names a file on the display; a new version never inherits one.
-        assert rolled.pushed_device_profile_id is None
+        assert result.refused is None and result.version is not None
+        assert await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions") == rows_before
+        row = await wired.sets.get(set_id)
+        assert row is not None and row.current_version_id == target.id
+        # What the version says is byte for byte what it said, apart from being current.
+        after = await wired.sets.get_version(target.id)
+        assert after is not None and after.is_current and not before.is_current
+        assert after.model_dump(exclude={"is_current"}) == before.model_dump(exclude={"is_current"})
+        assert (after.prediction, after.outcome, after.outcome_note) == (
+            "less bitter, a bit shorter",
+            "held",
+            "it did",
+        )
+        assert after.shot_count == 1
+        # Exactly one log row, naming both versions.
+        [revert] = await wired.sets.reverts(set_id)
+        assert (revert.from_version_id, revert.to_version_id) == (versions[2].id, target.id)
+        assert (revert.from_version_label, revert.to_version_label) == ("v1.2", "v1.1")
+        assert revert.note == "that was worse" and revert.created_at
+        assert shot_id
 
-    async def test_rolling_back_to_the_current_version_is_refused(self, wired: Fixtures) -> None:
+    async def test_a_prediction_is_not_part_of_a_revert(self, wired: Fixtures) -> None:
+        with pytest.raises(ValidationError):
+            RollbackWrite.model_validate({"to_version_id": 1, "prediction": "back"})
+        with pytest.raises(ValidationError):
+            RollbackWrite.model_validate({"to_version_id": 1, "intent": "back"})
+
+    async def test_reverting_to_the_current_version_is_refused(self, wired: Fixtures) -> None:
         set_id, versions = await _set_with_versions(wired)
 
         result = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=versions[-1].id))
 
         assert result.refused == "current_version"
+        assert await wired.sets.reverts(set_id) == []
 
     async def test_a_version_of_another_set_is_not_a_target(self, wired: Fixtures) -> None:
         set_id, _ = await _set_with_versions(wired)
@@ -471,71 +461,157 @@ class TestRollback:
 
         assert result.refused == "no_target"
 
+    async def test_a_set_being_designed_has_nothing_to_go_back_to(self, wired: Fixtures) -> None:
+        designed = await wired.sets.create_design(
+            SetWrite(name="Designing", bean_id=wired.bean_id), DesignBrief()
+        )
+        assert designed.current_version_id is not None
+
+        result = await wired.sets.rollback(
+            designed.id, RollbackWrite(to_version_id=designed.current_version_id)
+        )
+
+        assert result.refused == "designing"
+
+    async def test_new_shots_and_the_next_version_follow_the_target(self, wired: Fixtures) -> None:
+        profile = await make_profile_version(wired.db, "Older profile")
+        row = await wired.sets.create(
+            SetWrite(name="Guji", bean_id=wired.bean_id),
+            SetVersionWrite(profile_version_id=profile, dose_g=18),
+        )
+        first = await wired.sets.current_version(row.id)
+        assert first is not None
+        other = await make_profile_version(wired.db, "Newer profile")
+        second = await wired.sets.add_version(
+            row.id, SetVersionPatch(profile_version_id=other), major=True
+        )
+        assert second is not None
+
+        await wired.sets.rollback(row.id, RollbackWrite(to_version_id=first.id))
+
+        # automatch: the profile the Set is on again is the one that matches.
+        shot = await make_shot(wired.db, "000001", profile_version_id=profile)
+        match = await wired.sets.profile_match(
+            shot, profile_version_id=profile, device_profile_id=""
+        )
+        assert (match.outcome, match.set_version_id) == ("matched", first.id)
+        other_shot = await make_shot(wired.db, "000002", profile_version_id=other)
+        assert (
+            await wired.sets.profile_match(
+                other_shot, profile_version_id=other, device_profile_id=""
+            )
+        ).outcome == "unmatched"
+        # The next change is built on the target and is its child.
+        added = await wired.sets.add_version(row.id, SetVersionPatch(dose_g=19))
+        assert added is not None and added.parent_version_id == first.id
+        assert added.version_label == "v1.1"
+
+
+class TestTheWayBackOffer:
+    """`rollback_target`: the nearest ancestor with a Keep shot, never one that is ahead."""
+
+    async def test_after_going_back_the_offer_does_not_point_forward(self, wired: Fixtures) -> None:
+        row = await wired.sets.create(
+            SetWrite(name="Guji", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+        )
+        v1 = await wired.sets.current_version(row.id)
+        assert v1 is not None
+        v11 = await wired.sets.add_version(row.id, SetVersionPatch(grind_setting="21"))
+        v2 = await wired.sets.add_version(row.id, SetVersionPatch(grind_setting="20"), major=True)
+        v21 = await wired.sets.add_version(row.id, SetVersionPatch(grind_setting="19"))
+        assert v11 is not None and v2 is not None and v21 is not None
+        await _judged_shot(wired, v1.id, "000001", "keep")
+        await _judged_shot(wired, v2.id, "000002", "keep")
+        assert await wired.sets.rollback_target(row.id) == v2.id
+
+        await wired.sets.rollback(row.id, RollbackWrite(to_version_id=v11.id))
+
+        assert await wired.sets.rollback_target(row.id) == v1.id
+
+    async def test_an_old_roll_back_row_steps_to_what_it_restored(self, wired: Fixtures) -> None:
+        set_id, versions = await _set_with_versions(wired, count=3)
+        await _judged_shot(wired, versions[0].id, "000001", "keep")
+        await _judged_shot(wired, versions[1].id, "000002", "keep")
+        await wired.db.execute(
+            "UPDATE set_versions SET restores_version_id = ? WHERE id = ?",
+            (versions[0].id, versions[2].id),
+        )
+
+        assert await wired.sets.rollback_target(set_id) == versions[0].id
+
 
 class TestDeadEnds:
     """A version is a dead end when it is not on the line being brewed.
 
-    The line is walked back from the current version: from a roll back to what
-    it restored, from anything else to its parent. These tests are written in
-    version numbers rather than ids, through :func:`_numbers`, because that is
-    how the rule is stated and how anybody reading a failure will think.
+    The line is walked back from the current version through the fork history
+    (`parent_version_id`), as in version control; a row an old roll back wrote
+    (`restores_version_id`) steps to what it restored instead.
     """
 
-    async def _numbers(self, wired: Fixtures, set_id: int) -> tuple[set[int], list[int]]:
+    async def _labels(self, wired: Fixtures, set_id: int) -> tuple[set[str], list[str]]:
         versions = await wired.sets.versions(set_id)
         current = (await wired.sets.get(set_id)).current_version_id  # type: ignore[union-attr]
-        oldest_first = sorted(versions, key=lambda v: (v.created_at, v.id))
-        by_id = {version.id: index + 1 for index, version in enumerate(oldest_first)}
+        by_id = {version.id: version.version_label for version in versions}
         return (
             {by_id[version_id] for version_id in dead_end_ids(versions, current)},
             [by_id[version_id] for version_id in live_line(versions, current)],
         )
 
-    async def test_one_roll_back_mutes_what_it_stepped_over(self, wired: Fixtures) -> None:
-        set_id, versions = await _set_with_versions(wired, count=5)
-        rolled = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=versions[2].id))
-        assert rolled.version is not None
+    async def _fork(self, wired: Fixtures) -> tuple[int, dict[str, int]]:
+        """v1 -> v1.1 -> v2 -> v2.1, by name."""
+        row = await wired.sets.create(
+            SetWrite(name="Guji", bean_id=wired.bean_id), SetVersionWrite(dose_g=18)
+        )
+        ids = {"v1": (await wired.sets.current_version(row.id)).id}  # type: ignore[union-attr]
+        for label, patch, major in (
+            ("v1.1", SetVersionPatch(grind_setting="21"), False),
+            ("v2", SetVersionPatch(grind_setting="20"), True),
+            ("v2.1", SetVersionPatch(grind_setting="19"), False),
+        ):
+            version = await wired.sets.add_version(row.id, patch, major=major)
+            assert version is not None and version.version_label == label
+            ids[label] = version.id
+        return row.id, ids
 
-        muted, line = await self._numbers(wired, set_id)
+    async def test_a_revert_makes_what_it_went_back_past_a_dead_end(self, wired: Fixtures) -> None:
+        set_id, ids = await self._fork(wired)
+        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=ids["v1.1"]))
+        added = await wired.sets.add_version(set_id, SetVersionPatch(dose_g=19))
+        assert added is not None and added.version_label == "v1.2"
 
-        # v4 and v5 are the branch nobody is on; v3 came back and v6 is current.
-        assert muted == {4, 5}
-        assert line == [6, 3, 2, 1]
+        dead, line = await self._labels(wired, set_id)
 
-    async def test_two_successive_roll_backs(self, wired: Fixtures) -> None:
-        set_id, versions = await _set_with_versions(wired, count=5)
-        # v6 restores v3: v4 and v5 are off the line.
-        first = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=versions[2].id))
-        assert first.version is not None
-        await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="16", intent="again"))
-        # v8 restores v6 — a roll back onto a version that was itself one.
-        second = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=first.version.id))
-        assert second.version is not None
+        assert dead == {"v2", "v2.1"}
+        assert line == ["v1.2", "v1.1", "v1"]
 
-        muted, line = await self._numbers(wired, set_id)
+    async def test_going_back_again_to_a_dead_end_brings_it_back(self, wired: Fixtures) -> None:
+        set_id, ids = await self._fork(wired)
+        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=ids["v1.1"]))
+        await wired.sets.add_version(set_id, SetVersionPatch(dose_g=19))
+        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=ids["v2.1"]))
 
-        assert muted == {4, 5, 7}
-        assert line == [8, 6, 3, 2, 1]
+        dead, line = await self._labels(wired, set_id)
 
-    async def test_a_roll_back_onto_a_former_dead_end_brings_it_back(self, wired: Fixtures) -> None:
-        """v5 restores v2, v6 restores v4, v7 restores v3.
+        assert dead == {"v1.2"}
+        assert line == ["v2.1", "v2", "v1.1", "v1"]
 
-        Every one of v4, v5 and v6 is off the line, and v6 is off it although
-        nothing later spans it: the only thing that makes a version live is
-        being reachable by walking back from where the Set is now. This is the
-        case a "muted between the roll back and its target" rule gets wrong.
-        """
-        set_id, versions = await _set_with_versions(wired, count=4)
-        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=versions[1].id))  # v5 → v2
-        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=versions[3].id))  # v6 → v4
-        await wired.sets.rollback(set_id, RollbackWrite(to_version_id=versions[2].id))  # v7 → v3
+    async def test_an_old_roll_back_row_still_jumps_to_what_it_restored(
+        self, wired: Fixtures
+    ) -> None:
+        """Rows written before a revert became a move of the pointer keep their meaning."""
+        set_id, ids = await self._fork(wired)
+        # v2.1 stands for an old roll back of v1: parent v2, restores v1.
+        await wired.db.execute(
+            "UPDATE set_versions SET restores_version_id = ? WHERE id = ?",
+            (ids["v1"], ids["v2.1"]),
+        )
 
-        muted, line = await self._numbers(wired, set_id)
+        dead, line = await self._labels(wired, set_id)
 
-        assert muted == {4, 5, 6}
-        assert line == [7, 3, 2, 1]
+        assert line == ["v2.1", "v1"]
+        assert dead == {"v1.1", "v2"}
 
-    async def test_a_set_with_no_roll_back_has_none(self, wired: Fixtures) -> None:
+    async def test_a_set_with_no_revert_has_no_dead_end(self, wired: Fixtures) -> None:
         set_id, _ = await _set_with_versions(wired, count=3)
         versions = await wired.sets.versions(set_id)
         current = (await wired.sets.get(set_id)).current_version_id  # type: ignore[union-attr]

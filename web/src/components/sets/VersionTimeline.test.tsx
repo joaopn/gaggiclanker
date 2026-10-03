@@ -749,16 +749,14 @@ describe("VersionTimeline", () => {
     expect(triggers).toHaveLength(1);
 
     await user.click(triggers[0]);
+    expect(screen.getByTestId("rollback-confirm")).toHaveTextContent("No version is written");
     expect(screen.getByTestId("rollback-confirm")).toHaveTextContent(
       "Nothing is sent to the machine",
     );
     await user.click(screen.getByRole("button", { name: "Roll back to v1" }));
 
     await waitFor(() => expect(rollbackSet).toHaveBeenCalled());
-    expect(rollbackSet.mock.calls[0]).toEqual([
-      3,
-      { to_version_id: 21, intent: "", prediction: "" },
-    ]);
+    expect(rollbackSet.mock.calls[0]).toEqual([3, { to_version_id: 21, note: "" }]);
   });
 });
 

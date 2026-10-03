@@ -96,6 +96,7 @@ __all__ = [
     "ProfileMatch",
     "ProfileMatchSummary",
     "RollbackWrite",
+    "SetRevertRow",
     "SetRow",
     "SetShotRow",
     "SetTrackRecord",
@@ -343,19 +344,38 @@ class VersionOutcomeWrite(BaseModel):
 
 
 class RollbackWrite(BaseModel):
-    """`POST /api/sets/{id}/rollback`: go back to a recipe that worked.
+    """`POST /api/sets/{id}/rollback`: go back to a version that worked.
 
-    Nothing is written to the machine by this, ever. A roll back is a statement
-    about the archive — "this is what I am brewing again" — and if the restored
-    version names a different profile the log says so exactly as it does for any
-    other version that changes one.
+    A revert writes no version: the Set is on the target again, as it was, with
+    its prediction, shots and outcome untouched. So it takes no prediction (the
+    target already has one, or has shots), and ``extra="forbid"`` makes a body
+    that still carries one a 422 rather than a silently dropped field.
+
+    Nothing is written to the machine by this, ever. It is a statement about the
+    archive — "this is what I am brewing again" — and putting a different
+    profile on the machine stays a separate, deliberate act.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     to_version_id: int
-    intent: str = Field(default="", max_length=500)
-    prediction: LongText = ""
+    #: Why, for the log. Optional.
+    note: str = Field(default="", max_length=500)
+
+
+class SetRevertRow(BaseModel):
+    """One time a Set went back to another version: a line of the log, not a version."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    set_id: int
+    from_version_id: int
+    from_version_label: str
+    to_version_id: int
+    to_version_label: str
+    note: str = ""
+    created_at: str
 
 
 class VersionLabelCounts(BaseModel):
@@ -402,6 +422,7 @@ type VersionRefusal = Literal[
     "nothing_to_grade",
     "no_target",
     "current_version",
+    "designing",
     "design_has_versions",
     "design_has_shots",
 ]
@@ -428,6 +449,7 @@ _DESIGN_REFUSALS: dict[str, str] = {
         "This Set is being designed and a shot is already filed on it, so its version 1 is no "
         "longer an empty recipe; unfile the shot first"
     ),
+    "designing": "This Set is being designed: there is nothing to go back to yet",
     "not_designing": "This Set is not being designed",
     "no_set": "There is no such Set",
 }
@@ -456,7 +478,7 @@ class VersionRefused(Exception):
         return self.refused.upper()
 
 
-def design_refusal_message(refused: DesignRefusal) -> str:
+def design_refusal_message(refused: DesignRefusal | VersionRefusal) -> str:
     """The sentence a design refusal is said in, for callers answering with a value."""
     return _DESIGN_REFUSALS[refused]
 
@@ -1298,9 +1320,9 @@ class SetsRepository(Repository):
         """Write one version row, and retire whatever it has overtaken.
 
         Every path that appends a version to a Set comes through here — the Add
-        a version form, a roll back, a pushed profile draft and accepting a
-        proposal — which is why the
-        retirement lives here rather than in each of them. A change an agent
+        a version form, a pushed profile draft and accepting a proposal (a
+        revert writes no version and retires the waiting proposal itself) —
+        which is why the retirement lives here rather than in each of them. A change an agent
         proposed was argued against the version that was current when it was
         made; the moment the Set moves on, that argument is about a recipe
         nobody is brewing, and leaving the row saying "waiting" would tell the
@@ -1331,7 +1353,6 @@ class SetsRepository(Repository):
             "pushed_device_profile_id": values.get("pushed_device_profile_id"),
             "prediction": values.get("prediction", ""),
             "compares_to_version_id": values.get("compares_to_version_id"),
-            "restores_version_id": values.get("restores_version_id"),
             "prediction_at": values.get("prediction_at"),
             "created_at": now,
         }
@@ -1565,25 +1586,27 @@ class SetsRepository(Repository):
         return VersionWriteResult(version=await self.get_version(version_id))
 
     async def rollback(self, set_id: int, spec: RollbackWrite) -> VersionWriteResult:
-        """Append a version whose recipe is an earlier one's.
+        """Put the Set back on another version of it. Writes no version.
 
-        A roll back is an ordinary new version with two extra facts on it:
-        `restores_version_id` names the recipe it copied, and
-        `parent_version_id` is still whatever was current — so the diff the log
-        draws is the reversal, field by field, rather than an empty entry that
-        only says "went back".
+        The target becomes the Set's current version again, exactly as it was:
+        its prediction, shots and outcome stay, new shots file under it, and a
+        recorded outcome is not reopened. What is written is the Set's pointer
+        and one row in the revert log (from, to, the note, when), in one
+        transaction with the waiting proposal being made stale: a change was
+        argued against the version the Set was on, and the Set has moved.
 
-        `pushed_device_profile_id` is looked up rather than copied: the latest version of
-        this Set with the restored profile that still names a file on the display
-        (a replace clears the ids of the copies it removed), since nothing here writes
-        to the machine and the restored recipe brews whatever is there.
+        The next minor continues the target's major line (v2.1 → back to v1.2
+        → v1.3, or the next free minor of major 1), because a minor is named
+        from the current version; nothing here renames anything. Ancestry is
+        the fork history (`parent_version_id`) and a version made after a
+        revert has the target as its parent.
 
-        There is no major/minor choice here: a roll back is named by the rule
-        alone, on what it changes relative to the current version — back to
-        another profile is a major, back over a grind nudge a minor.
+        ``version`` in the result is the version the Set is now on.
         """
         now = utc_now()
         async with self.db.transaction():
+            if await self.db.fetch_value("SELECT designing FROM sets WHERE id = ?", (set_id,)):
+                return VersionWriteResult(refused="designing")
             current = await self._current_version_row(set_id)
             if current is None:
                 return VersionWriteResult(refused="no_version")
@@ -1592,27 +1615,58 @@ class SetsRepository(Repository):
                 return VersionWriteResult(refused="no_target")
             if target.id == current.id:
                 return VersionWriteResult(refused="current_version")
-            values: dict[str, Any] = {field: getattr(target, field) for field in RECIPE_FIELDS}
-            values["intent"] = spec.intent
-            values["origin"] = "manual"
-            values["restores_version_id"] = target.id
-            # What the recipe being restored has on the machine, if it still does.
-            values["pushed_device_profile_id"] = await self.device_profile_of(
-                set_id, target.profile_version_id
+            await self.db.execute(
+                "UPDATE sets SET current_version_id = ? WHERE id = ?", (target.id, set_id)
             )
-            values.update(_prediction_values(spec.prediction, current.id, now=now))
-            version_id = await self._insert_version(
-                set_id,
-                current.id,
-                values,
-                now,
-                major=change_is_major(
-                    "rollback",
-                    profile_changed=target.profile_version_id != current.profile_version_id,
-                    major=None,
-                ),
+            await self.db.execute(
+                "INSERT INTO set_version_reverts "
+                "(set_id, from_version_id, to_version_id, note, created_at) VALUES (?, ?, ?, ?, ?)",
+                (set_id, current.id, target.id, spec.note.strip(), now),
             )
-        return VersionWriteResult(version=await self.get_version(version_id))
+            await self._retire_waiting(set_id, now)
+        log.info(
+            "set_reverted",
+            set_id=set_id,
+            from_label=current.version_label,
+            to_label=target.version_label,
+        )
+        return VersionWriteResult(version=await self.get_version(target.id))
+
+    async def reverts(self, set_id: int) -> list[SetRevertRow]:
+        """Every time this Set went back, newest first, each version by its name."""
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT r.id, r.set_id, r.from_version_id,
+                   {label_sql("f")} AS from_version_label,
+                   r.to_version_id, {label_sql("t")} AS to_version_label,
+                   r.note, r.created_at
+              FROM set_version_reverts r
+              JOIN set_versions f ON f.id = r.from_version_id
+              JOIN set_versions t ON t.id = r.to_version_id
+             WHERE r.set_id = ?
+             ORDER BY r.created_at DESC, r.id DESC
+            """,  # noqa: S608 - the interpolation is the label expression, the id is bound
+            (set_id,),
+        )
+        return self.to_models(SetRevertRow, rows)
+
+    async def reverts_into(self, version_id: int) -> list[SetRevertRow]:
+        """Every revert that put the Set back on this version, oldest first."""
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT r.id, r.set_id, r.from_version_id,
+                   {label_sql("f")} AS from_version_label,
+                   r.to_version_id, {label_sql("t")} AS to_version_label,
+                   r.note, r.created_at
+              FROM set_version_reverts r
+              JOIN set_versions f ON f.id = r.from_version_id
+              JOIN set_versions t ON t.id = r.to_version_id
+             WHERE r.to_version_id = ?
+             ORDER BY r.created_at, r.id
+            """,  # noqa: S608 - the interpolation is the label expression, the id is bound
+            (version_id,),
+        )
+        return self.to_models(SetRevertRow, rows)
 
     async def comparison_target(
         self, set_id: int, version_id: int, compares_to: int
@@ -1716,26 +1770,38 @@ class SetsRepository(Repository):
         }
 
     async def rollback_target(self, set_id: int) -> int | None:
-        """The newest version worth going back to: the last one with a Keep.
+        """The nearest version behind the current one that is worth going back to.
 
-        Never the current version — going back to where you already are is not
-        a roll back — and never one whose only shots were discarded or never
-        labelled, because "it worked" is a thing somebody said, not a thing a
-        shot count implies.
+        The nearest **ancestor** of the current version on the fork history (the
+        line walked back as :func:`live_line` walks it, so an old roll back row
+        steps to what it restored) that has a Keep shot. Not the newest one made:
+        after going back, that can sit on a branch the Set left, and an offer to
+        "go back" must not point forward. Never the current version, and never one
+        whose only shots were discarded or never labelled, because "it worked" is
+        a thing somebody said, not a thing a shot count implies.
         """
-        value = await self.db.fetch_value(
-            """
-            SELECT v.id FROM set_versions v
-            WHERE v.set_id = :set_id
-              AND v.id != (SELECT current_version_id FROM sets WHERE id = :set_id)
-              AND EXISTS (SELECT 1 FROM shots sh
-                            JOIN shot_judgements j ON j.shot_id = sh.id
-                           WHERE sh.set_version_id = v.id AND j.decision = 'keep')
-            ORDER BY v.created_at DESC, v.id DESC LIMIT 1
-            """,
-            {"set_id": set_id},
+        current = await self.db.fetch_value(
+            "SELECT current_version_id FROM sets WHERE id = ?", (set_id,)
         )
-        return None if value is None else int(value)
+        rows = await self.db.fetch_all(
+            "SELECT id, set_id, parent_version_id, restores_version_id "
+            "FROM set_versions WHERE set_id = ?",
+            (set_id,),
+        )
+        kept = {
+            int(row["id"])
+            for row in await self.db.fetch_all(
+                """
+                SELECT DISTINCT sh.set_version_id AS id FROM shots sh
+                  JOIN shot_judgements j ON j.shot_id = sh.id
+                  JOIN set_versions v ON v.id = sh.set_version_id
+                 WHERE v.set_id = ? AND j.decision = 'keep'
+                """,
+                (set_id,),
+            )
+        }
+        line = live_line(self.to_models(VersionLink, rows), current)
+        return next((version_id for version_id in line[1:] if version_id in kept), None)
 
     async def clear_pushed_device_profile(self, device_id: str) -> list[int]:
         """Forget a device id in every Set version that names it. Returns their ids.
@@ -1787,7 +1853,7 @@ class SetsRepository(Repository):
         """Where a Set's profile is on the machine: the latest version naming it there.
 
         Looks back through the Set's versions, newest first, for one with this stored
-        profile and a device id, because a grind or yield change, a roll back or an
+        profile and a device id, because a grind or yield change or an
         accepted proposal appends a version with no device id of its own while the
         profile is still where the last push put it. ``same_as`` restricts the answer to
         a version that keeps that profile (``None`` there means no restriction).

@@ -13,8 +13,8 @@ version they were pulled with.
 Three routes do edit a version, and they are the exceptions that prove the
 rule: they write the **prediction** (only while the version has no shots) and
 the **outcome** (at any time, and clearable). Neither is part of the recipe. The
-fourth, `/rollback`, appends a version like everything else — it just copies its
-recipe from an earlier one instead of the current one.
+fourth, `/rollback`, writes no version at all: it puts the Set back on an
+another one (the Set's `current_version_id`) and logs that it did.
 
 `/proposals` is where a change an agent suggested waits for the person. A
 proposal has changed nothing; `/accept` is what turns one into a version and
@@ -76,6 +76,7 @@ from gaggiclanker.db.repos.sets import (
     FieldChange,
     LongText,
     RollbackWrite,
+    SetRevertRow,
     SetRow,
     SetTrackRecord,
     SetTrends,
@@ -228,8 +229,10 @@ class SetVersionDetail(BaseModel):
     #: for version 1, which is a baseline rather than a change to anything.
     changes: list[FieldChange]
     shots: list[ShotListRow]
-    #: A later roll back stepped over this version. Computed from the list, not
-    #: from the row: it is a fact about what came after, not about this version.
+    #: The Set went back past this version: it is not on the line the Set is on
+    #: now (walked back from the current version through the fork history).
+    #: Computed from the list, not from the row: it is a fact about what came
+    #: after, not about this version.
     dead_end: bool = False
     #: How this version's shots were labelled. Counted over the Set's shots
     #: rather than over `shots` above, which is capped at `SHOTS_PER_SET`.
@@ -374,9 +377,12 @@ class SetDetailData(BaseModel):
     #: measure, with the basis under each one. Worked out by the app and not by
     #: a model, so the same shots always give the same figure.
     spread: list[MeasureSpread] = []
-    #: The version the page offers to go back to: the newest one other than the
-    #: current that has a Keep shot. NULL when there is nowhere to go back to.
+    #: The version the page offers to go back to: the newest one made, other
+    #: than the current, that has a Keep shot. NULL when there is nowhere to go.
     rollback_target_version_id: int | None = None
+    #: Every time this Set went back to another version, newest first: the
+    #: log's "Went back to v1.2 (from v2.1)" lines. Not versions.
+    reverts: list[SetRevertRow] = []
     #: The change an agent has proposed and nobody has answered yet. At most one
     #: per Set, and it has changed nothing: the next shot is still filed under
     #: the recipe in the hopper until somebody presses Accept.
@@ -470,7 +476,18 @@ def _refusal_no_target(set_id: int, version_id: int | None) -> AppError:
 def _refusal_current_version(set_id: int, version_id: int | None) -> AppError:
     return Unprocessable(
         "That is already the current version",
-        details={"field": "to_version_id", "message": "pick an earlier version to go back to"},
+        details={
+            "field": "to_version_id",
+            "message": "pick another version of this Set to go back to",
+        },
+    )
+
+
+def _refusal_designing(set_id: int, version_id: int | None) -> AppError:
+    return Conflict(
+        design_refusal_message("designing"),
+        code="DESIGNING",
+        details={"field": "set_id", "message": "there is no other version to go back to yet"},
     )
 
 
@@ -591,6 +608,7 @@ _REFUSALS: dict[VersionRefusal, Callable[[int, int | None], AppError]] = {
     "nothing_to_grade": _refusal_nothing_to_grade,
     "no_target": _refusal_no_target,
     "current_version": _refusal_current_version,
+    "designing": _refusal_designing,
 }
 
 
@@ -891,6 +909,7 @@ async def get_set(
             track_record=track_record(versions),
             spread=spread_report(spreads),
             rollback_target_version_id=await sets.rollback_target(set_id),
+            reverts=await sets.reverts(set_id),
             proposal=(await _proposal_detail(proposals, waiting) if waiting is not None else None),
             outcome_proposal=grades.get(row.current_version_id or 0),
         ).model_dump(mode="json")
@@ -1199,23 +1218,20 @@ async def dismiss_outcome_proposal(
 @router.post(
     "/{set_id}/rollback",
     response_model=ApiResponse[SetVersionRow],
-    status_code=201,
-    summary="Go back to an earlier recipe, as a new version",
+    summary="Go back to another version: the Set is on it again, and no version is written",
 )
 async def rollback(set_id: int, body: RollbackWrite, sets: SetsRepoDep) -> JSONResponse:
-    """Append a version whose recipe is `to_version_id`'s.
+    """Move the Set's current version to `to_version_id` and log that it went back.
 
-    Nothing is written to the machine. If the restored version names a
-    different profile, the log says so exactly as it does for any other version
-    that changes one, and putting that profile on the machine stays a separate,
-    deliberate act.
+    Nothing is written to the machine and no version is created: the target is
+    the Set's current version again, with its prediction, shots and outcome as
+    they were, and the next change continues its line (v2.1 back to v1.2, then
+    v1.3). The answer is the version the Set is now on. A Set still being
+    designed has nothing to go back to: 409 `DESIGNING`.
     """
     if await sets.get(set_id) is None:
         raise NotFound(f"No Set {set_id}")
-    result = await sets.rollback(set_id, body)
-    if result.version is None:
-        return _unwrap(result, set_id, body.to_version_id)
-    return envelope_response(result.version.model_dump(mode="json"), status_code=201)
+    return _unwrap(await sets.rollback(set_id, body), set_id, body.to_version_id)
 
 
 @router.put(

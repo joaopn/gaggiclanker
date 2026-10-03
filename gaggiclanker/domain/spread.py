@@ -128,8 +128,8 @@ class CountedShot(BaseModel):
     version_label: str = ""
 
     #: The version's recipe, which is what makes two shots repeats of each
-    #: other. A roll back copies these five, so its shots join the group of the
-    #: version it restored with no special case anywhere.
+    #: other. Shots filed under a version after the Set went back to it join
+    #: the group of its earlier shots, with no special case anywhere.
     profile_version_id: int | None = None
     grind_setting: str | None = None
     grind_value: float | None = None

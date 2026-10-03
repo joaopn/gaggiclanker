@@ -7,9 +7,8 @@ import { attempt } from "@/lib/mutations";
 /**
  * "Go back to that recipe", with the sentence that says what it will do.
  *
- * The confirm step is not ceremony: a roll back appends a version, and somebody
- * who expected it to *edit* the Set back would be surprised by a v6 appearing.
- * It also says the thing nobody should have to guess — nothing is sent to the
+ * The confirm step is not ceremony: going back writes no version, it puts the
+ * Set on that one again, and the next change continues its line. It also says the thing nobody should have to guess — nothing is sent to the
  * machine — because the restored version may well name a different profile, and
  * the one rule this app never bends is that the only thing it writes to the
  * machine is a profile, pushed by a person, on purpose.
@@ -57,8 +56,9 @@ export function RollbackButton({
         {open ? (
           <>
             <p className="text-sm" data-testid="rollback-confirm">
-              This records a new version with {versionLabel}'s recipe — the grind, the dose, the
-              target and the profile it named. Nothing is sent to the machine.
+              This puts the Set back on {versionLabel}, as it was. No version is written, new shots
+              are filed under {versionLabel}, and the next change continues from it. Nothing is sent
+              to the machine.
             </p>
             <div className="flex gap-2">
               <Button
@@ -69,10 +69,8 @@ export function RollbackButton({
                   const done = await attempt(() =>
                     rollback.mutateAsync({
                       setId,
-                      // No intent and no prediction from here: the intent is
-                      // "go back", which the restored version already says, and
-                      // a prediction is added afterwards like any other.
-                      body: { to_version_id: versionId, intent: "", prediction: "" },
+                      // No note and no prediction from here: a revert takes none.
+                      body: { to_version_id: versionId, note: "" },
                     }),
                   );
                   if (done) setOpen(false);

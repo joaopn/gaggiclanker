@@ -251,36 +251,61 @@ async def test_the_agent_s_suggestion_is_not_the_default(wired: Fixtures) -> Non
     assert accepted.version.version_label == "v1.1"
 
 
-async def test_a_roll_back_to_another_profile_is_a_major(wired: Fixtures) -> None:
-    house = await make_profile_version(wired.db, "House")
-    other = await make_profile_version(wired.db, "Turbo")
-    set_id = await _set(wired, house)
-    await _add(wired.sets, set_id, grind_setting="21")
-    one_two = await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="20"))
-    assert one_two is not None and one_two.version_label == "v1.2"
-    assert await _add(wired.sets, set_id, profile_version_id=other) == "v2"
-    assert await _add(wired.sets, set_id, grind_setting="19") == "v2.1"
+async def test_a_revert_continues_the_line_it_went_back_to(wired: Fixtures) -> None:
+    """v2.1 back to v1.2 is v1.2 again, and the next minor is v1.3.
 
-    result = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=one_two.id))
+    The names are identifiers, not a sequence, so the whole walk is one test on a
+    real database: a revert writes no row, the next minor is the next free minor of the
+    major the Set is on, and the next major is the highest major + 1.
+    """
+    set_id = await _set(wired)
+    ids: dict[str, int] = {}
 
-    assert result.version is not None
-    assert result.version.version_label == "v3"
-    assert result.version.restores_version_label == "v1.2"
+    async def current_label() -> str:
+        row = await wired.sets.get(set_id)
+        assert row is not None
+        return row.current_version_label
 
+    async def add(expected: str, *, major: bool, **fields: object) -> None:
+        version = await wired.sets.add_version(
+            set_id, SetVersionPatch.model_validate(fields), major=major
+        )
+        assert version is not None and version.version_label == expected
+        ids[expected] = version.id
 
-async def test_a_roll_back_on_the_same_profile_is_a_minor(wired: Fixtures) -> None:
-    house = await make_profile_version(wired.db, "House")
-    set_id = await _set(wired, house)
-    await _add(wired.sets, set_id, grind_setting="21")
-    one_two = await wired.sets.add_version(set_id, SetVersionPatch(grind_setting="20"))
-    assert one_two is not None
-    assert await _add(wired.sets, set_id, major=True, dose_g=19) == "v2"
-    assert await _add(wired.sets, set_id, grind_setting="19") == "v2.1"
+    async def revert(label: str) -> None:
+        result = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=ids[label]))
+        assert result.refused is None
+        assert await current_label() == label
 
-    result = await wired.sets.rollback(set_id, RollbackWrite(to_version_id=one_two.id))
+    first = await wired.sets.current_version(set_id)
+    assert first is not None
+    ids["v1"] = first.id
+    await add("v1.1", major=False, grind_setting="21")
+    await add("v1.2", major=False, grind_setting="20")
+    await add("v2", major=True, dose_g=19)
+    await add("v2.1", major=False, grind_setting="19")
+    rows = await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions")
 
-    assert result.version is not None
-    assert result.version.version_label == "v2.2"
+    await revert("v1.2")
+    assert await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions") == rows
+    row = await wired.sets.get(set_id)
+    assert row is not None and (row.next_minor_label, row.next_major_label) == ("v1.3", "v3")
+    await add("v1.3", major=False, grind_setting="18")
+    await revert("v2.1")
+    await add("v2.2", major=False, grind_setting="17")
+    await revert("v1.2")
+    # v1.3 is taken, so the next free minor of major 1 is v1.4.
+    await add("v1.4", major=False, grind_setting="16")
+    await add("v3", major=True, dose_g=20)
+
+    # Row count: one per write that made a version, nothing for the three reverts.
+    assert await wired.db.fetch_value("SELECT COUNT(*) FROM set_versions") == 9
+    assert len(await wired.sets.reverts(set_id)) == 3
+    # Ancestry is the fork history: v1.3 and v1.4 both came off v1.2.
+    for label in ("v1.3", "v1.4"):
+        version = await wired.sets.get_version(ids[label])
+        assert version is not None and version.parent_version_id == ids["v1.2"]
 
 
 # -- the label in SQL is the label in Python -------------------------------------

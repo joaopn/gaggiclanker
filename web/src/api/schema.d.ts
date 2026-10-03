@@ -1914,13 +1914,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Go back to an earlier recipe, as a new version
-         * @description Append a version whose recipe is `to_version_id`'s.
+         * Go back to an earlier version: the Set is on it again, and no version is written
+         * @description Move the Set's current version to `to_version_id` and log that it went back.
          *
-         *     Nothing is written to the machine. If the restored version names a
-         *     different profile, the log says so exactly as it does for any other version
-         *     that changes one, and putting that profile on the machine stays a separate,
-         *     deliberate act.
+         *     Nothing is written to the machine and no version is created: the target is
+         *     the Set's current version again, with its prediction, shots and outcome as
+         *     they were, and the next change continues its line (v2.1 back to v1.2, then
+         *     v1.3). The answer is the version the Set is now on. A Set still being
+         *     designed has nothing to go back to: 409 `DESIGNING`.
          */
         post: operations["rollback_api_sets__set_id__rollback_post"];
         delete?: never;
@@ -5985,24 +5986,23 @@ export interface components {
         RoastLevel: "light" | "medium-light" | "medium" | "medium-dark" | "dark";
         /**
          * RollbackWrite
-         * @description `POST /api/sets/{id}/rollback`: go back to a recipe that worked.
+         * @description `POST /api/sets/{id}/rollback`: go back to a version that worked.
          *
-         *     Nothing is written to the machine by this, ever. A roll back is a statement
-         *     about the archive — "this is what I am brewing again" — and if the restored
-         *     version names a different profile the log says so exactly as it does for any
-         *     other version that changes one.
+         *     A revert writes no version: the Set is on the target again, as it was, with
+         *     its prediction, shots and outcome untouched. So it takes no prediction (the
+         *     target already has one, or has shots), and ``extra="forbid"`` makes a body
+         *     that still carries one a 422 rather than a silently dropped field.
+         *
+         *     Nothing is written to the machine by this, ever. It is a statement about the
+         *     archive — "this is what I am brewing again" — and putting a different
+         *     profile on the machine stays a separate, deliberate act.
          */
         RollbackWrite: {
             /**
-             * Intent
+             * Note
              * @default
              */
-            intent: string;
-            /**
-             * Prediction
-             * @default
-             */
-            prediction: string;
+            note: string;
             /** To Version Id */
             to_version_id: number;
         };
@@ -6205,6 +6205,11 @@ export interface components {
             };
             outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
             proposal?: components["schemas"]["SetProposalDetail"] | null;
+            /**
+             * Reverts
+             * @default []
+             */
+            reverts: components["schemas"]["SetRevertRow"][];
             /** Rollback Target Version Id */
             rollback_target_version_id?: number | null;
             set: components["schemas"]["SetRow"];
@@ -6355,6 +6360,31 @@ export interface components {
         SetProposalListData: {
             /** Items */
             items: components["schemas"]["SetProposalDetail"][];
+        };
+        /**
+         * SetRevertRow
+         * @description One time a Set went back to an earlier version: a line of the log, not a version.
+         */
+        SetRevertRow: {
+            /** Created At */
+            created_at: string;
+            /** From Version Id */
+            from_version_id: number;
+            /** From Version Label */
+            from_version_label: string;
+            /** Id */
+            id: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Set Id */
+            set_id: number;
+            /** To Version Id */
+            to_version_id: number;
+            /** To Version Label */
+            to_version_label: string;
         };
         /**
          * SetRow
@@ -11300,7 +11330,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

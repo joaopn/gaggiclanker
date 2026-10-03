@@ -1554,7 +1554,7 @@ async def propose_outcome(ctx: ToolContext, args: ProposeOutcomeInput) -> Propos
     if not version.prediction:
         raise ValueError(
             f"{version.version_label} has no prediction, so there is nothing to grade. A "
-            "version made by hand, a first recipe or a roll back states none; say how its "
+            "version made by hand or a first recipe states none; say how its "
             "shots look in words, and let the person decide what to try next."
         )
     result = await OutcomeProposalsRepository(ctx.db).create(
