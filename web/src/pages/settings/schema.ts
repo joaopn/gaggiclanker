@@ -250,7 +250,14 @@ export const SETTINGS_GROUPS: Record<RegistryPageId, readonly SettingsGroup[]> =
       title: "Models",
       description:
         "Each purpose falls back to the default, and the default falls back to whatever the provider picks.",
-      keys: ["modelDefault", "modelReview", "modelDraft", "modelChat", "modelStartingPoint"],
+      keys: [
+        "modelDefault",
+        "modelReview",
+        "modelDraft",
+        "modelChat",
+        "modelStartingPoint",
+        "modelPatterns",
+      ],
     },
     {
       id: "limits",

@@ -163,6 +163,7 @@ describe("labels and sections", () => {
   it("sorts a page's keys into its groups, in the groups' order, with the rest under Other", () => {
     expect(groupFor("gaggimateHost")).toBe("connection");
     expect(groupFor("modelStartingPoint")).toBe("models");
+    expect(groupFor("modelPatterns")).toBe("models");
     expect(groupFor("deviceSomethingNew")).toBe("other");
 
     const entries = ["deviceSomethingNew", "gaggimateHost", "deviceWritesEnabled"].map((key) =>

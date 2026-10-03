@@ -645,8 +645,8 @@ token can be checked before it is saved, and for `claude_code` it makes one
 one-word call to haiku: presence alone (`claude auth status`) cannot tell a
 working token from a revoked one.
 
-`modelDefault` is the default model; `modelReview`, `modelDraft`, `modelChat`
-and `modelStartingPoint` override it per kind of call, and an empty value lets the
+`modelDefault` is the default model; `modelReview`, `modelDraft`, `modelChat`,
+`modelStartingPoint` and `modelPatterns` override it per kind of call, and an empty value lets the
 provider choose. `GAGGICLANKER_LLM_TIMEOUT_S` bounds one attempt, and
 `GAGGICLANKER_LLM_RATE_LIMIT_RETRIES` is a process-wide budget: when the provider
 throttles the account the whole app stops rather than failing every queued shot

@@ -1003,6 +1003,15 @@ SETTINGS_REGISTRY: dict[str, SettingDefinition] = _registry(
         ),
     ),
     SettingDefinition(
+        key="modelPatterns",
+        type="string",
+        default="",
+        description=(
+            "Model for Find patterns across Sets, which reads every Set's confirmed insights "
+            "in one call and wants the careful one. Empty falls back to modelDefault."
+        ),
+    ),
+    SettingDefinition(
         key="chatMaxToolRounds",
         type="int",
         default=8,

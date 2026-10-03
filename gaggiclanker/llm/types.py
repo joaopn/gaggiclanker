@@ -60,7 +60,7 @@ type ResponseMode = Literal["json_schema", "json_object", "text"]
 
 #: What a call is *for*. Each purpose can name its own model, so the cheap
 #: chat turn and the careful shot review do not have to share one.
-type ModelPurpose = Literal["default", "review", "draft", "chat", "starting_point"]
+type ModelPurpose = Literal["default", "review", "draft", "chat", "starting_point", "patterns"]
 
 #: The five things that can go wrong, as far as a caller is concerned.
 #:

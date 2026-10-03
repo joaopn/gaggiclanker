@@ -67,6 +67,7 @@ _PURPOSE_KEYS: dict[ModelPurpose, str] = {
     "draft": "modelDraft",
     "chat": "modelChat",
     "starting_point": "modelStartingPoint",
+    "patterns": "modelPatterns",
 }
 
 

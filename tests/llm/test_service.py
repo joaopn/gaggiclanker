@@ -400,6 +400,17 @@ async def test_the_model_comes_from_the_purpose(
     assert provider.calls[1].model == "base-model"
 
 
+async def test_find_patterns_has_its_own_model_and_falls_back_to_the_default(
+    service: LlmService, provider: FakeProvider
+) -> None:
+    await service.settings.apply({"modelDefault": "base-model"})
+    await service.call_json(request(model="", purpose="patterns"))
+    await service.settings.apply({"modelPatterns": "patterns-model"})
+    await service.call_json(request(model="", purpose="patterns"))
+
+    assert [call.model for call in provider.calls] == ["base-model", "patterns-model"]
+
+
 async def test_an_sdk_parsed_reply_is_still_validated(
     service: LlmService, provider: FakeProvider
 ) -> None:
