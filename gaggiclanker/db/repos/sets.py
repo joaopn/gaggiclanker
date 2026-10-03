@@ -1525,23 +1525,37 @@ class SetsRepository(Repository):
         says the shot went wrong, not that the recipe did, and grading a
         prediction on one would be reading the wrong signal.
         """
-        now = utc_now()
         async with self.db.transaction():
-            version = await self.version_of_set(set_id, version_id)
-            if version is None:
-                return VersionWriteResult(refused="no_version")
-            if not version.prediction:
-                return VersionWriteResult(refused="no_prediction")
-            if not await self._has_gradable_shot(version_id):
-                return VersionWriteResult(refused="nothing_to_grade")
-            await self.db.execute(
-                """
-                UPDATE set_versions
-                   SET outcome = :outcome, outcome_note = :note, outcome_at = :now
-                 WHERE id = :id
-                """,
-                {"outcome": spec.outcome, "note": spec.note, "now": now, "id": version_id},
-            )
+            return await self.grade_in_transaction(set_id, version_id, spec)
+
+    async def grade_in_transaction(
+        self, set_id: int, version_id: int, spec: VersionOutcomeWrite
+    ) -> VersionWriteResult:
+        """The grade itself, inside a transaction the caller already holds.
+
+        Separate from :meth:`set_outcome` for the reason :meth:`append_version`
+        is separate from :meth:`add_version`: accepting an agent's proposed
+        grade marks the proposal and writes the grade in one transaction, and
+        this connection's ``transaction()`` refuses to nest. Both callers go
+        through the same guards, so a grade a person typed on the Set page and
+        one they accepted in the chat are held to one rule.
+        """
+        now = utc_now()
+        version = await self.version_of_set(set_id, version_id)
+        if version is None:
+            return VersionWriteResult(refused="no_version")
+        if not version.prediction:
+            return VersionWriteResult(refused="no_prediction")
+        if not await self._has_gradable_shot(version_id):
+            return VersionWriteResult(refused="nothing_to_grade")
+        await self.db.execute(
+            """
+            UPDATE set_versions
+               SET outcome = :outcome, outcome_note = :note, outcome_at = :now
+             WHERE id = :id
+            """,
+            {"outcome": spec.outcome, "note": spec.note, "now": now, "id": version_id},
+        )
         return VersionWriteResult(version=await self.get_version(version_id))
 
     async def clear_outcome(self, set_id: int, version_id: int) -> VersionWriteResult:
@@ -1656,16 +1670,26 @@ class SetsRepository(Repository):
         return self.to_model(SetVersionRow, row)
 
     async def _has_gradable_shot(self, version_id: int) -> bool:
-        found = await self.db.fetch_value(
-            """
-            SELECT 1 FROM shots s
-            JOIN shot_judgements j ON j.shot_id = s.id
-            WHERE s.set_version_id = ? AND j.decision IN ('keep', 'improve')
-            LIMIT 1
-            """,
-            (version_id,),
+        return await self.gradable_shot_count(version_id) > 0
+
+    async def gradable_shot_count(self, version_id: int) -> int:
+        """How many shots of this version a person judged Keep or Improve.
+
+        The shots a grade rests on: a discarded shot says the shot went wrong,
+        not that the recipe did. One definition, read by the outcome guard and by
+        the agent's proposed grade, which records how many it was written on.
+        """
+        return int(
+            await self.db.fetch_value(
+                """
+                SELECT COUNT(*) FROM shots s
+                JOIN shot_judgements j ON j.shot_id = s.id
+                WHERE s.set_version_id = ? AND j.decision IN ('keep', 'improve')
+                """,
+                (version_id,),
+            )
+            or 0
         )
-        return found is not None
 
     async def label_counts(self, set_id: int) -> dict[int, VersionLabelCounts]:
         """How every version's shots were labelled, in one grouped pass."""
