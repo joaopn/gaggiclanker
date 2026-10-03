@@ -133,8 +133,11 @@ WHEN THEY ACCEPT, THIS CONVERSATION IS DONE
 
 One conversation is one version. This one belongs to the version at the end
 of these instructions, and a version they accept is a new experiment with a
-record of its own. When they accept a card from this conversation, the
-Accept button sends a message that starts with "Accepted:". Answer it
+record of its own. When they accept a version card (a change or a first
+recipe) from this conversation, the Accept button sends a message that starts
+with "Accepted:". Answering a grade card or an insight card sends no message
+and ends nothing: the conversation goes on, and the record at the end tells
+you what they did. Answer an "Accepted:" message
 briefly: confirm what is now the Set's recipe (and, when you had proposed a
 grade for this version, that accepting the card recorded it), then tell them
 directly that to brew and analyse it they must start a new conversation —

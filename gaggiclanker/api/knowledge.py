@@ -485,7 +485,9 @@ async def patch_insight(
 async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONResponse:
     """A person's press: the card's Dismiss.
 
-    Only for an insight a Set conversation proposed. It is kept, so that
+    Only for an insight a Set conversation proposed that is still waiting (409
+    `INSIGHT_NOT_WAITING` on an added or already dismissed one: an added insight is
+    taken back instead). It is kept, so that
     conversation can be told what happened to it, and it reaches no prompt and
     is shown nowhere else; a general insight has the confirm switch and the
     delete, not this. Adding it afterwards (`PATCH` with `confirmed: true`)
@@ -501,6 +503,15 @@ async def dismiss_insight(insight_id: int, insights: InsightsRepoDep) -> JSONRes
             details={
                 "field": "set_id",
                 "message": "general insights are confirmed or deleted on the Knowledge page",
+            },
+        )
+    if existing.confirmed or existing.dismissed:
+        raise Conflict(
+            f"Insight {insight_id} is not waiting for an answer",
+            code="INSIGHT_NOT_WAITING",
+            details={
+                "field": "confirmed",
+                "message": "only a waiting insight is dismissed; an added one is taken back",
             },
         )
     await insights.dismiss(insight_id)

@@ -693,7 +693,9 @@ export interface paths {
          * Turn a Set's insight down
          * @description A person's press: the card's Dismiss.
          *
-         *     Only for an insight a Set conversation proposed. It is kept, so that
+         *     Only for an insight a Set conversation proposed that is still waiting (409
+         *     `INSIGHT_NOT_WAITING` on an added or already dismissed one: an added insight is
+         *     taken back instead). It is kept, so that
          *     conversation can be told what happened to it, and it reaches no prompt and
          *     is shown nowhere else; a general insight has the confirm switch and the
          *     delete, not this. Adding it afterwards (`PATCH` with `confirmed: true`)

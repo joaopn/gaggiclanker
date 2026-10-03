@@ -1090,12 +1090,16 @@ class OutcomeDismiss(BaseModel):
     note: str = Field(default="", max_length=DECLINE_NOTE_MAX)
 
 
-def _outcome_error(refusal: OutcomeProposalRefusal, set_id: int, proposal_id: int) -> AppError:
+def _outcome_error(
+    refusal: OutcomeProposalRefusal, set_id: int, proposal_id: int, version: str | None
+) -> AppError:
     """A refused answer to a proposed grade as the one error it means.
 
     `details` names the field at fault and never repeats what was sent: the
-    note is the agent's reasoning and the person's own words.
+    note is the agent's reasoning and the person's own words. ``version`` is the
+    graded version's name, so the sentence says which one.
     """
+    named = version or "The version"
     if refusal == "not_waiting":
         return Conflict(
             f"Outcome proposal {proposal_id} has already been answered",
@@ -1103,15 +1107,30 @@ def _outcome_error(refusal: OutcomeProposalRefusal, set_id: int, proposal_id: in
             details={"field": "status", "message": "it is no longer waiting for an answer"},
         )
     if refusal == "nothing_to_grade":
-        return _refusal_nothing_to_grade(set_id, None)
+        return Conflict(
+            f"{named} has no shot you have formed a view about",
+            code="NOTHING_TO_GRADE",
+            details={
+                "field": "outcome",
+                "message": "label a shot Keep or Improve before grading the prediction",
+            },
+        )
     if refusal == "no_prediction":
-        return _refusal_no_prediction(set_id, None)
+        return Unprocessable(
+            f"{named} states no prediction",
+            details={"field": "outcome", "message": "there is nothing to grade"},
+        )
     return NotFound(f"No outcome proposal {proposal_id} in Set {set_id}")
 
 
 def _outcome_decided(result: OutcomeResult, set_id: int, proposal_id: int) -> JSONResponse:
     if result.proposal is None or result.refused is not None:
-        raise _outcome_error(result.refused or "no_proposal", set_id, proposal_id)
+        raise _outcome_error(
+            result.refused or "no_proposal",
+            set_id,
+            proposal_id,
+            result.proposal.version_label if result.proposal else None,
+        )
     return envelope_response(
         OutcomeProposalDecision(proposal=result.proposal, version=result.version).model_dump(
             mode="json"

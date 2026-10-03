@@ -510,8 +510,10 @@ async def test_a_change_proposed_over_stdio_waits_and_creates_no_version(
         await db.close()
 
 
-async def _predicted_version_with_a_keep_shot(data_dir: Path, fixture: Fixture) -> int:
-    """A second version with a prediction and one Keep shot, in the archive the child opens."""
+async def _predicted_version_with_a_keep_shot(
+    data_dir: Path, fixture: Fixture, *, with_shot: bool = True
+) -> int:
+    """A new version with a prediction and, by default, one Keep shot, in the child's archive."""
     db = Database(data_dir / "gaggiclanker.db")
     await db.connect()
     try:
@@ -527,11 +529,12 @@ async def _predicted_version_with_a_keep_shot(data_dir: Path, fixture: Fixture) 
             ),
         )
         assert version is not None
-        shot_id = await make_shot(db, "000950")
-        assert await sets.assign_shot(shot_id, version.id)
-        await JudgementsRepository(db).upsert(
-            shot_id, JudgementWrite.model_validate({"decision": "keep"})
-        )
+        if with_shot:
+            shot_id = await make_shot(db, "000950")
+            assert await sets.assign_shot(shot_id, version.id)
+            await JudgementsRepository(db).upsert(
+                shot_id, JudgementWrite.model_validate({"decision": "keep"})
+            )
         return version.id
     finally:
         await db.close()
@@ -542,8 +545,29 @@ async def test_a_grade_proposed_over_stdio_waits_and_records_nothing(
 ) -> None:
     """The child is a second dispatcher: its refusals and its card are the same ones."""
     data_dir, fixture = archive_dir
+    # The first version states no prediction; a later one with a prediction but no
+    # shot is made after it, so the version under test is the current one last.
+    first_version = fixture.version_id
+    shotless = await _predicted_version_with_a_keep_shot(data_dir, fixture, with_shot=False)
     version_id = await _predicted_version_with_a_keep_shot(data_dir, fixture)
+    note = "Time held (31 s against 28 s); the sourness did not move."
     async with AsyncExitStack() as stack:
+        no_prediction = await (
+            await session_for(
+                stack,
+                data_dir,
+                GAGGICLANKER_MCP_SET_ID=str(fixture.set_id),
+                GAGGICLANKER_MCP_SET_VERSION_ID=str(first_version),
+            )
+        ).call_tool("propose_outcome", {"outcome": "held", "note": note})
+        no_shot = await (
+            await session_for(
+                stack,
+                data_dir,
+                GAGGICLANKER_MCP_SET_ID=str(fixture.set_id),
+                GAGGICLANKER_MCP_SET_VERSION_ID=str(shotless),
+            )
+        ).call_tool("propose_outcome", {"outcome": "held", "note": note})
         session = await session_for(
             stack,
             data_dir,
@@ -564,6 +588,10 @@ async def test_a_grade_proposed_over_stdio_waits_and_records_nothing(
         )
 
     assert short.is_error is True and "A grade needs its reasons" in str(short.content)
+    assert no_prediction.is_error is True
+    assert "has no prediction, so there is nothing to grade" in str(no_prediction.content)
+    assert no_shot.is_error is True
+    assert "no shot the person has judged Keep or Improve" in str(no_shot.content)
     assert bad.is_error is True and "outcome must be one of" in str(bad.content)
     assert result.is_error is False, result.content
     assert result.structured_content is not None

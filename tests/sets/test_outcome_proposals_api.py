@@ -262,6 +262,9 @@ class TestAnswering:
 
         assert response.status_code == 409
         assert error(response)["code"] == "NOTHING_TO_GRADE"
+        # Names the version it is about, never "Version None".
+        assert "v1 has no shot" in error(response)["message"]
+        assert "None" not in error(response)["message"]
         waiting = data(await client.get(f"/api/sets/{set_id}"))["outcome_proposal"]
         assert waiting is not None and waiting["id"] == proposal_id
 

@@ -477,6 +477,27 @@ class TestTheRoutes:
         taken_back = (await client.patch(url, json={"confirmed": False})).json()["data"]
         assert taken_back["confirmed"] is False and taken_back["dismissed"] is False
 
+    async def test_only_a_waiting_insight_is_dismissed(
+        self, client: httpx.AsyncClient, app: FastAPI
+    ) -> None:
+        ids = await _api_world(client, app)
+        repo = InsightsRepository(app.state.db)
+        added = await repo.insert(
+            InsightWrite(text="Added.", source="chat", confirmed=True, set_id=ids["A"])
+        )
+        waiting = await repo.insert(InsightWrite(text="Waiting.", source="chat", set_id=ids["A"]))
+
+        refused = await client.post(f"/api/knowledge/insights/{added}/dismiss")
+        assert refused.status_code == 409
+        assert refused.json()["error"]["code"] == "INSIGHT_NOT_WAITING"
+        assert "Added." not in refused.text
+        stored = await repo.get(added)
+        assert stored is not None and stored.confirmed and not stored.dismissed
+
+        assert (await client.post(f"/api/knowledge/insights/{waiting}/dismiss")).status_code == 200
+        again = await client.post(f"/api/knowledge/insights/{waiting}/dismiss")
+        assert again.status_code == 409
+
     async def test_dismissing_a_general_insight_is_409(
         self, client: httpx.AsyncClient, app: FastAPI
     ) -> None:
