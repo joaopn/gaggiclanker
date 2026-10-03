@@ -17,7 +17,7 @@ from gaggiclanker.domain.models import Profile
 from gaggiclanker.drafts.board import BoardService
 from gaggiclanker.drafts.machine import read_machine
 from tests.drafts.conftest import BASE_LABEL, data, error
-from tests.drafts.helpers import APP_LABEL, draft_of, ids_labelled, make_set_on
+from tests.drafts.helpers import APP_LABEL, draft_of, ids_labelled, make_set_on, tombstone
 from tests.drafts.test_board import (
     adopted,
     app_row,
@@ -532,3 +532,116 @@ async def test_a_profile_switched_off_keeps_its_star_and_nothing_is_sent_for_it(
     frames = write_frames(fake)
     assert "req:profiles:favorite" not in frames and "req:profiles:unfavorite" not in frames
     assert row_for(await get_board(client), BASE_LABEL)["starred"] is False
+
+
+async def test_an_upgrade_never_turns_a_profile_made_on_the_display_into_one_the_sync_removes(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    """The upgrade probe: a board-era archive whose mirror holds a profile made on the display
+    after adoption, with no board row. The fill makes it a profile that is on, the next syncs
+    attach it and remove nothing."""
+    from gaggiclanker.db.repos.profile_list import ProfileListBuilder
+
+    app, client, fake = adopted
+    made = copy.deepcopy(fake.profiles[0])
+    made.update(id="disp9", label="Made on the display", temperature=91.0)
+    fake.profiles.append(made)
+    fake.favorite_profile_ids.add("disp9")
+    await app.state.settings_service.apply({"deviceWritesEnabled": False})
+    await pull(app)  # mirrored, and with the switch off no row is made for it
+    assert all(
+        r["row"]["label"] != "Made on the display" for r in (await get_board(client))["rows"]
+    )
+    await app.state.db.execute("DELETE FROM profile_list_build")
+    await ProfileListBuilder(app.state.db).build()
+    await app.state.settings_service.apply({"deviceWritesEnabled": True})
+
+    row = row_for(await get_board(client), "Made on the display")
+    assert row["on_machine"] is True and row["starred"] is True
+    for _ in range(3):
+        run = await pull(app)
+        assert run.status == "ok", run.error
+        assert summary_of(run)["removed"] == []
+    assert "disp9" in [str(p["id"]) for p in fake.profiles]
+
+
+async def test_a_file_that_appears_later_for_a_profile_that_is_off_is_announced_as_removed(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    """The steady state: the exact-enabled-set rule. The page says "will be removed" on the row
+    once the file is matched, and the sync that matches it names the match in its summary."""
+    app, client, fake = adopted
+    row = row_for(await get_board(client), BASE_LABEL)["row"]
+    assert (await on_machine(client, row["id"], False)).status_code == 200
+    await pull(app)  # the file goes
+    assert BASE_LABEL not in [p["label"] for p in fake.profiles]
+    version = await ProfilesRepository(app.state.db).get_version(row["current_version_id"])
+    assert version is not None and version.profile is not None
+    again = copy.deepcopy(dict(version.profile))
+    again["id"] = "back1"
+    fake.profiles.append(again)
+
+    attach = await pull(app)  # matches the file to the off profile
+    [matched] = summary_of(attach)["adopted"]
+    assert matched["reason"] == "attached"
+    assert "switched off, so the next sync removes it" in matched["detail"]
+    shown = row_for(await get_board(client), BASE_LABEL)
+    assert [a["kind"] for a in shown["planned"]] == ["remove"]
+
+    removal = await pull(app)
+    assert [i["device_id"] for i in summary_of(removal)["removed"]] == ["back1"]
+
+
+async def test_an_upgrade_keeps_a_profile_the_person_deleted_from_the_old_board(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    """Case 4 of the upgrade: deleted on the old page, its file stayed on the machine. After the
+    fill it is on, and three syncs remove nothing."""
+    from gaggiclanker.db.repos.profile_list import ProfileListBuilder
+
+    app, client, fake = adopted
+    row = row_for(await get_board(client), BASE_LABEL)["row"]
+    await tombstone(client, row["id"])
+    await app.state.db.execute("DELETE FROM profile_list_build")
+    await ProfileListBuilder(app.state.db).build()
+
+    revived = row_for(await get_board(client), BASE_LABEL)
+    assert revived["on_machine"] is True
+    for _ in range(3):
+        run = await pull(app)
+        assert run.status == "ok", run.error
+        assert summary_of(run)["removed"] == []
+    assert BASE_LABEL in [p["label"] for p in fake.profiles]
+
+
+async def test_an_upgrade_never_undoes_a_display_edit_made_after_the_old_delete(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    """Case 7: the profile was deleted on the old page and then edited on the display. Three
+    syncs after the fill write nothing and the machine's file and content are unchanged."""
+    from gaggiclanker.db.repos.profile_list import ProfileListBuilder
+
+    app, client, fake = adopted
+    row = row_for(await get_board(client), BASE_LABEL)["row"]
+    await tombstone(client, row["id"])
+    await app.state.settings_service.apply({"deviceWritesEnabled": False})
+    index = next(i for i, p in enumerate(fake.profiles) if p["label"] == BASE_LABEL)
+    fake.profiles[index] = {**fake.profiles[index], "temperature": 77.0}
+    before = copy.deepcopy(fake.profiles[index])
+    await pull(app)  # the edit is mirrored
+    await app.state.db.execute("DELETE FROM profile_list_build")
+    await ProfileListBuilder(app.state.db).build()
+    await app.state.settings_service.apply({"deviceWritesEnabled": True})
+
+    revived = row_for(await get_board(client), BASE_LABEL)
+    assert revived["on_machine"] is True and revived["in_conflict"] is False
+    version = await ProfilesRepository(app.state.db).get_version(
+        revived["row"]["current_version_id"]
+    )
+    assert version is not None and version.profile is not None
+    assert version.profile["temperature"] == 77.0
+    for _ in range(3):
+        run = await pull(app)
+        assert run.status == "ok", run.error
+        assert summary_of(run)["writes"] == 0
+    assert fake.profiles[index] == before

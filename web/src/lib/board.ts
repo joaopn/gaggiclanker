@@ -49,6 +49,18 @@ const REPORT_WORDS: Record<string, string> = {
 };
 
 /**
+ * Whether a machine file is this profile's right now: the file it stands on, or one the sync is
+ * about to match to it (a file that appeared for a profile that is off is matched by one sync and
+ * removed by the next, so for the page in between it is on the machine already).
+ */
+export function holdsAFile(view: BoardView, entry: BoardRowView): boolean {
+  if (entry.machine.present) return true;
+  return (view.actions ?? []).some(
+    (a) => a.row_id === entry.row.id && a.kind === "adopt" && a.reason === "attached",
+  );
+}
+
+/**
  * Where one profile of the list stands on the machine, and what the next sync will do.
  *
  * The server plans (`planned`, `reports`); this only words it. The order says the most
@@ -79,8 +91,8 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
     state =
       present && remove
         ? { text: "Will be removed at the next sync", tone: "info", notes }
-        : present
-          ? { text: "On the machine, and switched off", tone: "warn", notes }
+        : holdsAFile(view, entry)
+          ? { text: "On the machine, switched off: the next sync removes it", tone: "warn", notes }
           : { text: "Not on the machine", tone: "ok", notes };
   } else if (push) {
     state = { text: "Will be put on the machine at the next sync", tone: "info", notes };
@@ -88,6 +100,9 @@ export function rowStateOf(view: BoardView, entry: BoardRowView): RowState {
     state = { text: "On the machine", tone: "ok", notes };
   } else if (present) {
     state = { text: "On the machine, but not this version", tone: "warn", notes };
+  } else if (holdsAFile(view, entry)) {
+    // The sync is matching a file to it: the machine has it already.
+    state = { text: "On the machine", tone: "ok", notes };
   } else {
     state = { text: "Not on the machine", tone: "warn", notes };
   }

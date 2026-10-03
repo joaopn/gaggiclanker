@@ -395,7 +395,14 @@ class PlanBuilder:
                             label=match.label,
                             device_id=device_id,
                             reason="attached",
-                            detail=f"{device_id} holds {profile.label!r}, which is this profile",
+                            detail=(
+                                f"{device_id} holds {profile.label!r}, which is this profile"
+                                + (
+                                    ""
+                                    if match.on_machine
+                                    else " and it is switched off, so the next sync removes it"
+                                )
+                            ),
                             on=profile.favorite,
                         )
                     )

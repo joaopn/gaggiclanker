@@ -3,7 +3,7 @@ import { AlertTriangle, SlidersHorizontal, Upload } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { getBoardVersions } from "@/api/client";
-import type { BoardProposal, BoardRowView } from "@/api/types";
+import type { BoardProposal, BoardRowView, BoardView } from "@/api/types";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { NewProfileRow } from "@/components/profiles/NewProfileRow";
@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProfileBoard } from "@/hooks/useBoard";
 import { useImportFiles } from "@/hooks/useImport";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
+import { holdsAFile } from "@/lib/board";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -64,8 +65,14 @@ function proposalsByRow(proposals: BoardProposal[]): Map<number, BoardProposal[]
   return byRow;
 }
 
-function needsAPerson(entry: BoardRowView): boolean {
-  return entry.in_conflict || (entry.proposed_versions ?? 0) > 0;
+function needsAPerson(view: BoardView, entry: BoardRowView): boolean {
+  // A profile that is off while a file of it is on the machine is about to be removed: shown, so
+  // that is never a surprise behind the filter.
+  return (
+    entry.in_conflict ||
+    (entry.proposed_versions ?? 0) > 0 ||
+    (!entry.on_machine && holdsAFile(view, entry))
+  );
 }
 
 export function ProfilesPage() {
@@ -87,7 +94,10 @@ export function ProfilesPage() {
   const newProposals = proposals.filter((p) => p.row_id == null);
 
   const visible = (entry: BoardRowView) =>
-    showOff || entry.on_machine || needsAPerson(entry) || seen.has(entry.row.id);
+    showOff ||
+    entry.on_machine ||
+    (view !== undefined && needsAPerson(view, entry)) ||
+    seen.has(entry.row.id);
   const shown = rows.filter(visible).sort(
     (a, b) =>
       Number(b.in_conflict) - Number(a.in_conflict) ||

@@ -39,6 +39,25 @@ describe("rowStateOf", () => {
     );
   });
 
+  it("never says 'Not on the machine' for a profile that is on while a file is being matched to it", () => {
+    const entry = boardRowView({
+      row: { id: 3 },
+      machine: { present: false, holds_current: false },
+    });
+    const view = boardView({
+      rows: [entry],
+      actions: [boardAction({ kind: "adopt", reason: "attached", row_id: 3, label: "X" })],
+    });
+    expect(rowStateOf(view, entry).text).toBe("On the machine");
+  });
+
+  it("says an off profile whose file is on the machine is on it, never 'Not on the machine'", () => {
+    const entry = boardRowView({ row: { on_machine: false } });
+    expect(rowStateOf(boardView({ rows: [entry] }), entry).text).toBe(
+      "On the machine, switched off: the next sync removes it",
+    );
+  });
+
   it("says a profile that is off and gone from the machine is not on it", () => {
     const entry = boardRowView({
       row: { on_machine: false },

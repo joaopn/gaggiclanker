@@ -631,3 +631,208 @@ async def test_a_version_a_pushed_file_placed_is_not_pulled_into_another_group_b
     assert [v for v, _ in row["versions"]] == [1, 3]  # type: ignore[attr-defined]
     other = next(p for k, p in got.items() if k != "1" and (4, "edit") in p["versions"])  # type: ignore[operator]
     assert [v for v, _ in other["versions"]] == [4]  # type: ignore[attr-defined]
+
+
+async def _file(
+    db: Database, device_id: str, version: int, *, favorite: int = 1, deleted: bool = False
+) -> None:
+    await db.execute(
+        "INSERT INTO device_profiles (device_id, current_version_id, favorite, selected, "
+        "position, deleted_at) VALUES (?, ?, ?, 0, 0, ?)",
+        (device_id, version, favorite, "2026-02-01T00:00:00Z" if deleted else None),
+    )
+
+
+async def test_a_file_the_machine_holds_with_no_row_becomes_a_profile_that_is_on(
+    db: Database, tmp_path: Path
+) -> None:
+    """Made on the display after the board (the old page's "on the machine, not on the board"):
+    the fill must not make it something the next sync removes. It is on, starred as the file is."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Made on the display", source="device")
+    await _file(db, "disp1", 1, favorite=0)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    [row] = (await _profiles(db)).values()
+    assert row["label"] == "Made on the display" and row["on"] == 1 and row["star"] == 0
+
+
+async def test_a_file_that_joins_an_existing_profile_by_name_switches_it_on(
+    db: Database, tmp_path: Path
+) -> None:
+    await _below(db, tmp_path)
+    await _version(db, 1, "Foo", source="import")
+    await _version(db, 2, "Foo", source="device")
+    await _file(db, "disp1", 2)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    [row] = (await _profiles(db)).values()
+    assert [v for v, _ in row["versions"]] == [1, 2] and row["on"] == 1  # type: ignore[attr-defined]
+
+
+async def test_a_file_a_live_row_stands_on_does_not_switch_a_made_profile_on(
+    db: Database, tmp_path: Path
+) -> None:
+    """Only what no row accounts for is turned on: here the file belongs to a row, so a profile
+    made from an unrelated stored version stays off."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Mine", source="device")
+    await _version(db, 2, "Old idea", source="import")
+    await _file(db, "d1", 1)
+    await _row(db, 1, "Mine", 1, device="d1", device_version=1, origin="adopted")
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    got = await _profiles(db)
+    assert got["1"]["on"] == 1
+    other = next(p for k, p in got.items() if k != "1")
+    assert other["label"] == "Old idea" and other["on"] == 0
+
+
+async def test_a_deleted_row_whose_file_is_still_on_the_machine_comes_back_on(
+    db: Database, tmp_path: Path
+) -> None:
+    """The old page said a deleted profile would stay on the machine: after the upgrade the
+    machine holds exactly what it held, and the person switches off what they want gone."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Dropped", source="device")
+    await _file(db, "d1", 1, favorite=0)
+    await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    [row] = (await _profiles(db)).values()
+    assert row["label"] == "Dropped" and row["on"] == 1 and row["star"] == 0
+
+
+async def test_a_deleted_row_comes_back_on_through_its_own_file_even_if_edited_since(
+    db: Database, tmp_path: Path
+) -> None:
+    """Its file is still there, holding another version now (edited on the display): the row
+    stands on that file, so it stays on the machine."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Dropped", source="device")
+    await _version(db, 2, "Edited elsewhere", source="device")
+    await _file(db, "d1", 2)
+    await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    kept = next(p for p in (await _profiles(db)).values() if p["label"] == "Dropped")
+    assert kept["on"] == 1
+
+
+async def test_a_deleted_row_comes_back_on_through_a_file_that_holds_its_version(
+    db: Database, tmp_path: Path
+) -> None:
+    await _below(db, tmp_path)
+    await _version(db, 1, "Dropped", source="device")
+    await _file(db, "other-id", 1)
+    await _row(db, 1, "Dropped", 1, device="gone", device_version=1, origin="adopted", deleted=True)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    [row] = (await _profiles(db)).values()
+    assert row["on"] == 1
+
+
+async def test_a_deleted_row_whose_file_is_gone_comes_back_off(
+    db: Database, tmp_path: Path
+) -> None:
+    """Gone from the machine (the mirror marks it deleted, as a wipe does): nothing to keep."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Dropped", source="device")
+    await _file(db, "d1", 1, deleted=True)
+    await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    [row] = (await _profiles(db)).values()
+    assert row["label"] == "Dropped" and row["on"] == 0
+
+
+async def test_files_a_wipe_took_do_not_switch_their_old_profiles_on(
+    db: Database, tmp_path: Path
+) -> None:
+    """Only files the mirror holds now count: the old agent copies a firmware update wiped are
+    in the mirror marked deleted, and their profiles stay off."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Wiped [AI]", source="draft")
+    await _version(db, 2, "Display made", source="device")
+    await _draft(db, 1, base=2, version=1, status="pushed", pushed="w1")
+    await _file(db, "w1", 1, deleted=True)
+    await _file(db, "gone2", 2, deleted=True)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    got = await _profiles(db)
+    assert {p["label"]: p["on"] for p in got.values()} == {"Wiped [AI]": 0, "Display made": 0}
+
+
+async def test_a_file_a_live_row_stands_on_is_not_turned_on_through_a_made_profile(
+    db: Database, tmp_path: Path
+) -> None:
+    """The file belongs to a row (edited on the display since, so the mirror holds another
+    version of it): the row's own handling decides what happens, not the fill's rule for files
+    nobody accounts for."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Mine", source="device")
+    await _version(db, 3, "Edited on display", source="device")
+    await _file(db, "d1", 3)
+    await _row(db, 1, "Mine", 1, device="d1", device_version=1, origin="adopted")
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    other = next(p for k, p in (await _profiles(db)).items() if k != "1")
+    assert other["label"] == "Edited on display" and other["on"] == 0
+
+
+async def test_a_deleted_row_edited_on_the_display_comes_back_on_its_edited_version(
+    db: Database, tmp_path: Path
+) -> None:
+    """Case 7 of the upgrade: deleted on the old page, then edited on the display. The row stands
+    on its file and its active version is what the file holds now, so the first sync has nothing
+    to push and nothing to remove: the person's edit is not undone."""
+    await _below(db, tmp_path)
+    await _version(db, 1, "Dropped", source="device")
+    await _version(db, 2, "Dropped", source="device")  # the edited content, same name
+    await _file(db, "d1", 2, favorite=0)
+    await _row(db, 1, "Dropped", 1, device="d1", device_version=1, origin="adopted", deleted=True)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    row = await db.fetch_one("SELECT * FROM profile_board WHERE id = 1")
+    assert row is not None
+    assert row["on_machine"] == 1 and row["on_home_screen"] == 0
+    assert row["current_version_id"] == 2 and row["device_version_id"] == 2
+    assert row["device_profile_id"] == "d1"
+    assert [v for v, _ in (await _profiles(db))["1"]["versions"]] == [1, 2]  # type: ignore[attr-defined]
+
+
+async def test_a_profile_made_for_a_file_stands_on_it_with_the_version_the_file_holds(
+    db: Database, tmp_path: Path
+) -> None:
+    await _below(db, tmp_path)
+    # The file holds the older version; a newer one exists in the archive (an import).
+    await _version(db, 1, "Foo", source="device")
+    await _version(db, 2, "Foo", source="import")
+    await _file(db, "disp1", 1, favorite=0)
+    await run_migrations(db)
+
+    await ProfileListBuilder(db).build()
+
+    [row] = await db.fetch_all("SELECT * FROM profile_board")
+    assert row["current_version_id"] == 1 and row["device_version_id"] == 1
+    assert row["device_profile_id"] == "disp1" and row["on_home_screen"] == 0

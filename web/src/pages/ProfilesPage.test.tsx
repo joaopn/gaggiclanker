@@ -178,7 +178,10 @@ describe("the list", () => {
       boardView({
         rows: [
           row(),
-          row({ row: { id: 2, label: "Old one", on_machine: false } }),
+          row({
+            row: { id: 2, label: "Old one", on_machine: false },
+            machine: { present: false, holds_current: false },
+          }),
           row({
             row: { id: 3, label: "Off but in conflict", on_machine: false },
             in_conflict: true,
@@ -222,6 +225,67 @@ describe("the list", () => {
 
     await waitFor(() => expect(screen.getByTestId("profile-row")).toHaveAttribute("data-on", "no"));
     expect(screen.getByText("9 Bar Espresso")).toBeInTheDocument();
+  });
+});
+
+describe("a profile that is off while its file is on the machine", () => {
+  it("is shown behind the filter and says the next sync removes it", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [row({ row: { id: 2, label: "Still there", on_machine: false } })],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    const profile = await screen.findByTestId("profile-row");
+    expect(profile).toHaveTextContent("Still there");
+    expect(within(profile).getByTestId("profile-state")).toHaveTextContent(
+      "On the machine, switched off: the next sync removes it",
+    );
+    expect(profile).not.toHaveTextContent("Not on the machine");
+  });
+
+  it("says so too in the sync that matches a new file to it, before the file is the row's", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          row({
+            row: { id: 2, label: "Matched", on_machine: false },
+            machine: { present: false, holds_current: false },
+          }),
+        ],
+        actions: [boardAction({ kind: "adopt", reason: "attached", row_id: 2, label: "Matched" })],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    const profile = await screen.findByTestId("profile-row");
+    expect(within(profile).getByTestId("profile-state")).toHaveTextContent(
+      "On the machine, switched off: the next sync removes it",
+    );
+  });
+});
+
+describe("a profile that is on while its file is being matched", () => {
+  it("reads On the machine, not 'Not on the machine'", async () => {
+    api.getProfileBoard.mockResolvedValue(
+      boardView({
+        rows: [
+          row({
+            row: { id: 4, label: "Matched on" },
+            machine: { present: false, holds_current: false },
+          }),
+        ],
+        actions: [
+          boardAction({ kind: "adopt", reason: "attached", row_id: 4, label: "Matched on" }),
+        ],
+      }),
+    );
+    renderWithQueryClient(<ProfilesPage />);
+
+    const profile = await screen.findByTestId("profile-row");
+    expect(within(profile).getByTestId("profile-state")).toHaveTextContent("On the machine");
+    expect(profile).not.toHaveTextContent("Not on the machine");
   });
 });
 
@@ -413,6 +477,18 @@ describe("the reset guard", () => {
     expect(screen.getByTestId("reset-lines")).toHaveTextContent(
       "matched to Display copy, which is off: the next sync removes it",
     );
+  });
+
+  it("names the star changes too when there are any", async () => {
+    live(async () => paused({ push: 1, remove: 0, star: 9 }));
+    renderWithQueryClient(<ProfilesPage />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("reset-question")).toHaveTextContent(
+        "put back 1 profile and change 9 stars?",
+      ),
+    );
+    expect(screen.getByTestId("reset-resume")).toHaveTextContent("and changes 9 stars");
   });
 
   it("leaves out 'remove 0'", async () => {

@@ -40,7 +40,8 @@ export function ResetBanner({ view }: { view: BoardView }) {
     (live.data?.rows ?? []).filter((r) => !r.on_machine).map((r) => r.row.id),
   );
   const putBack = preview ? plural(preview.push, "profile") : "";
-  const removal = preview && preview.remove > 0 ? ` and remove ${preview.remove}` : "";
+  const stars = preview && preview.star > 0 ? ` and change ${plural(preview.star, "star")}` : "";
+  const removal = (preview && preview.remove > 0 ? ` and remove ${preview.remove}` : "") + stars;
   const question = reading
     ? "The machine looks reset: reading what resuming would do…"
     : unread
@@ -50,8 +51,10 @@ export function ResetBanner({ view }: { view: BoardView }) {
         : "The machine looks reset: syncs write nothing until you say so.";
   const button = preview
     ? preview.push === 0 && preview.remove === 0
-      ? "Resume syncing: the next sync changes nothing"
-      : `Resume syncing: the next sync puts back ${putBack}${preview.remove > 0 ? ` and removes ${preview.remove}` : ""}`
+      ? preview.star > 0
+        ? `Resume syncing: the next sync changes ${plural(preview.star, "star")}`
+        : "Resume syncing: the next sync changes nothing"
+      : `Resume syncing: the next sync puts back ${putBack}${preview.remove > 0 ? ` and removes ${preview.remove}` : ""}${preview.star > 0 ? ` and changes ${plural(preview.star, "star")}` : ""}`
     : "Resume syncing";
 
   return (

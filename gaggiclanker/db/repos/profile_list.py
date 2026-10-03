@@ -36,7 +36,13 @@ The grouping, in order:
    profile with exactly that label, else becomes a profile of its own. The suffix is never
    stripped.
 
-A new profile is **off**, starred, with its newest version active. The synthetic base a
+A new profile is **off**, starred, with its newest version active, except one whose version a
+live file on the machine holds that no live row stands on (made on the display after the board):
+that one is **on**, starred as the file is, and so is a tombstoned (deleted) row whose file, or
+a file holding its version, is still live on the machine: the upgrade never turns what the
+machine has now into something the next sync removes. A tombstone whose file is gone comes back
+off, and so do profiles made only from stored history.
+The synthetic base a
 design is diffed against and utility profiles are never made into a profile or a version here
 (a utility profile that already has a board row keeps it). A version that exists only because
 an open proposal made it is not a version of anything yet: the proposal is shown as such.
@@ -195,17 +201,35 @@ class ProfileListBuilder(Repository):
             for row in group:
                 target[row.id] = keep.id
         claimed = {r.device_profile_id for r in live if r.device_profile_id}
+        # Only files the mirror holds now (``deleted_at IS NULL``) count as on the machine: a file
+        # a wipe took is gone, and its profile stays off.
+        live_files = {
+            str(r["device_id"]): bool(r["favorite"])
+            for r in await self.db.fetch_all(
+                "SELECT device_id, favorite FROM device_profiles WHERE deleted_at IS NULL"
+            )
+        }
         for row in revived:
             file = row.device_profile_id
             clear_file = file is not None and file in claimed
+            held_now = file is not None and not clear_file and file in live_files
             await self.db.execute(
-                "UPDATE profile_board SET deleted_at = NULL, on_machine = 0, "
+                "UPDATE profile_board SET deleted_at = NULL, on_machine = ?, "
+                "on_home_screen = CASE WHEN ? THEN ? ELSE on_home_screen END, "
                 "pending_draft_id = NULL, pending_set_id = NULL, pending_major = NULL, "
                 "failed_version_id = NULL, "
                 "device_profile_id = CASE WHEN ? THEN NULL ELSE device_profile_id END, "
                 "device_version_id = CASE WHEN ? THEN NULL ELSE device_version_id END, "
                 "updated_at = ? WHERE id = ?",
-                (int(clear_file), int(clear_file), utc_now(), row.id),
+                (
+                    int(held_now),
+                    int(held_now),
+                    int(live_files.get(file or "", True)),
+                    int(clear_file),
+                    int(clear_file),
+                    utc_now(),
+                    row.id,
+                ),
             )
             if file is not None and not clear_file:
                 claimed.add(file)
@@ -290,6 +314,61 @@ class ProfileListBuilder(Repository):
         # held by another joins that profile (an existing one first, else the older made group).
         groups.unify_names()
 
+        # What the machine holds now is never turned into something the next sync removes. A file
+        # a live row does not stand on (made on the display after the board, or kept from the
+        # old page's "on the machine, not on the board") whose version belongs to a profile the
+        # fill makes: that profile is **on**, starred as the file is. A profile that exists keeps
+        # its switch; a tombstone the person deleted comes back off, as before.
+        # Such a profile stands on that file and its active version is the one the file holds,
+        # so the first sync finds nothing to do (a display edit made before the upgrade is not
+        # undone). A live row's own file is not touched here: an edit there is the normal conflict.
+        stood = set(claimed)  # files some row, live or revived, stands on
+        held_by: dict[int, tuple[str, int, bool]] = {}
+        revived_ids = {r.id for r in revived}
+        for held in await self.db.fetch_all(
+            "SELECT device_id, current_version_id, favorite FROM device_profiles "
+            "WHERE deleted_at IS NULL ORDER BY position, device_id"
+        ):
+            home = groups.owner_of(int(held["current_version_id"]))
+            if home is None or held["device_id"] in stood:
+                continue
+            if home < 0 or home in revived_ids:
+                held_by.setdefault(
+                    home,
+                    (
+                        str(held["device_id"]),
+                        int(held["current_version_id"]),
+                        bool(held["favorite"]),
+                    ),
+                )
+        # A revived row's own file, when the file holds a version of that very profile (edited on
+        # the display before the upgrade): the row's active version is that one.
+        for row in revived:
+            file = row.device_profile_id
+            if file is None or file not in live_files or file not in claimed:
+                continue
+            held_version = next(
+                (
+                    int(v["current_version_id"])
+                    for v in await self.db.fetch_all(
+                        "SELECT current_version_id FROM device_profiles WHERE device_id = ? "
+                        "AND deleted_at IS NULL",
+                        (file,),
+                    )
+                ),
+                None,
+            )
+            if held_version is not None and groups.owner_of(held_version) == row.id:
+                held_by.setdefault(row.id, (file, held_version, live_files[file]))
+        for row_id in sorted(revived_ids & held_by.keys()):
+            file, version_id, favorite = held_by[row_id]
+            await self.db.execute(
+                "UPDATE profile_board SET on_machine = 1, on_home_screen = ?, "
+                "current_version_id = ?, device_profile_id = ?, device_version_id = ? "
+                "WHERE id = ?",
+                (int(favorite), version_id, file, version_id, row_id),
+            )
+
         for row_id in sorted(k for k in groups.members if k > 0):
             for version_id in sorted(groups.members[row_id]):
                 await self.board.add_version(
@@ -301,14 +380,20 @@ class ProfileListBuilder(Repository):
         made = 0
         for key in sorted(k for k in groups.members if k < 0 and groups.members[k]):
             members = groups.members[key]
-            newest = groups.active(key)
+            hold = held_by.get(key)
+            active = groups.active(key) if hold is None else hold[1]
             created = await self.db.execute(
-                "INSERT INTO profile_board (label, current_version_id, on_machine, "
-                "on_home_screen, origin, created_at, updated_at) VALUES (?, ?, 0, 1, ?, ?, ?)",
+                "INSERT INTO profile_board (label, current_version_id, device_profile_id, "
+                "device_version_id, on_machine, on_home_screen, origin, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    versions[newest]["label"],
-                    newest,
-                    "draft" if versions[newest]["source"] == "draft" else "adopted",
+                    versions[active]["label"],
+                    active,
+                    None if hold is None else hold[0],
+                    None if hold is None else hold[1],
+                    int(hold is not None),
+                    1 if hold is None else int(hold[2]),
+                    "draft" if versions[active]["source"] == "draft" else "adopted",
                     utc_now(),
                     utc_now(),
                 ),
