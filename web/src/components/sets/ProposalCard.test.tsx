@@ -4,7 +4,7 @@ import { ApiClientError } from "@/api/client";
 import { TellAgentContext } from "@/components/chat/tellAgent";
 import { acceptHint, designRecipe, handSteps, ProposalCard } from "@/components/sets/ProposalCard";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { designProposal, proposal } from "@/test/setsFixtures";
+import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
 const { acceptSetProposal, declineSetProposal, toastError, toastSuccess } = vi.hoisted(() => ({
   acceptSetProposal: vi.fn(),
@@ -46,6 +46,57 @@ describe("ProposalCard", () => {
     const prediction = screen.getByTestId("proposal-prediction");
     expect(prediction).toHaveTextContent("compared to v2");
     expect(prediction).toHaveTextContent("a touch more body");
+  });
+
+  describe("when the agent's grade of the version it was made against is waiting", () => {
+    it("says accepting also records that outcome, as the same badge the Set page uses", () => {
+      renderWithQueryClient(
+        <ProposalCard
+          setId={3}
+          proposal={proposal({ records_outcome: outcomeProposal({ outcome: "partly_held" }) })}
+        />,
+      );
+
+      const line = screen.getByTestId("proposal-records-outcome");
+      expect(line).toHaveTextContent("Accepting also records v2's outcome:");
+      expect(within(line).getByText("Partly held")).toHaveAttribute("data-state", "partly_held");
+      expect(line).toHaveTextContent("as the agent graded it on 3 counted shots");
+    });
+
+    it("says nothing when no grade is waiting", () => {
+      renderWithQueryClient(<ProposalCard setId={3} proposal={proposal()} />);
+      expect(screen.queryByTestId("proposal-records-outcome")).not.toBeInTheDocument();
+    });
+
+    it("says nothing once the change has been answered", () => {
+      renderWithQueryClient(
+        <ProposalCard
+          setId={3}
+          proposal={proposal({
+            status: "accepted",
+            resulting_version_no: 3,
+            resulting_version_label: "v2.1",
+            records_outcome: outcomeProposal(),
+          })}
+        />,
+      );
+      expect(screen.queryByTestId("proposal-records-outcome")).not.toBeInTheDocument();
+    });
+
+    it("still accepts with one press", async () => {
+      const user = setupUser();
+      acceptSetProposal.mockResolvedValue({
+        proposal: proposal({ status: "accepted", resulting_version_label: "v2.1" }),
+        version: { version_no: 3, version_label: "v2.1" },
+      });
+      renderWithQueryClient(
+        <ProposalCard setId={3} proposal={proposal({ records_outcome: outcomeProposal() })} />,
+      );
+
+      await user.click(screen.getByRole("button", { name: /Accept/ }));
+
+      expect(acceptSetProposal).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("says nothing is sent to the machine either way", () => {

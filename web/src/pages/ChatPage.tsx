@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { chatTranscriptUrl, downloadFile } from "@/api/client";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { ThreadFolders } from "@/components/chat/ThreadFolders";
-import { TellAgentContext } from "@/components/chat/tellAgent";
+import { ChatThreadContext, TellAgentContext } from "@/components/chat/tellAgent";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -337,14 +337,16 @@ export function ChatPage() {
             ) : thread.isLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : (
-              <TellAgentContext.Provider value={tellAgent}>
-                <ChatTranscript
-                  messages={thread.data?.messages ?? []}
-                  runs={thread.data?.runs ?? []}
-                  permissions={permissions}
-                  live={live}
-                />
-              </TellAgentContext.Provider>
+              <ChatThreadContext.Provider value={selected}>
+                <TellAgentContext.Provider value={tellAgent}>
+                  <ChatTranscript
+                    messages={thread.data?.messages ?? []}
+                    runs={thread.data?.runs ?? []}
+                    permissions={permissions}
+                    live={live}
+                  />
+                </TellAgentContext.Provider>
+              </ChatThreadContext.Provider>
             )}
             <div ref={scrollAnchor} />
           </div>

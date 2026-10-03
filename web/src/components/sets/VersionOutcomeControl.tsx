@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import type { SetVersionRow, VersionOutcome } from "@/api/types";
-import { Badge } from "@/components/ui/badge";
+import { OutcomeBadge } from "@/components/sets/OutcomeBadge";
 import { Button } from "@/components/ui/button";
 import { useVocabulary } from "@/hooks/useCatalog";
 import { useSetVersionOutcome } from "@/hooks/useSets";
@@ -26,16 +26,6 @@ import { cn } from "@/lib/utils";
  * No overlay: the panel is a strip under the badge, rendered always and toggled
  * with `hidden` so `aria-controls` resolves to something a reader can reach.
  */
-
-/** The badge's colour per state. Open is a question, not a warning. */
-const TONE: Record<string, string> = {
-  held: "border-status-good/40 bg-status-good/10 text-status-good-text",
-  partly_held: "border-status-warn/40 bg-status-warn/10 text-status-warn-text",
-  failed: "border-status-bad/40 bg-status-bad/10 text-status-bad-text",
-  inconclusive: "border-border bg-muted text-muted-foreground",
-  open: "border-border bg-background text-foreground",
-  no_prediction: "border-transparent bg-transparent text-muted-foreground",
-};
 
 export function VersionOutcomeControl({
   setId,
@@ -65,7 +55,6 @@ export function VersionOutcomeControl({
   }, [version.outcome, version.outcome_note]);
 
   const state = version.outcome_state;
-  const label = vocab.data?.outcome_states.find((term) => term.value === state)?.label ?? state;
   const recorded = version.outcome != null;
   // Exactly the server's rule for `PUT .../outcome`.
   const canRecord = Boolean(version.prediction) && gradable;
@@ -84,9 +73,7 @@ export function VersionOutcomeControl({
     <div className="space-y-1.5" data-testid="version-outcome" data-state={state}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-muted-foreground text-xs">Outcome</span>
-        <Badge variant="outline" className={cn("font-normal", TONE[state])}>
-          {label}
-        </Badge>
+        <OutcomeBadge state={state} />
         <Button
           type="button"
           size="sm"

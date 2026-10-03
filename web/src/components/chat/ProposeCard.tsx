@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
-import { FilePen, Layers, Lightbulb, Sparkles } from "lucide-react";
+import { FilePen, Gauge, Layers, Lightbulb, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import { OutcomeCard } from "@/components/chat/OutcomeCard";
 import { ProposalCard } from "@/components/sets/ProposalCard";
 import type { TraceEntry } from "@/hooks/useChat";
 import { useSetProposals } from "@/hooks/useSets";
@@ -9,8 +10,8 @@ import { useSetProposals } from "@/hooks/useSets";
  * What a `propose_` tool created, as a card that links to it.
  *
  * The propose tools each write a row somebody still has to decide about — a Set
- * version, a Set's whole first recipe, a profile draft, an insight waiting to be
- * confirmed — and the
+ * version, a Set's whole first recipe, a version's grade, a profile draft, an
+ * insight waiting to be added — and the
  * difference between "the chat suggested" and "the chat created" is exactly
  * what a reader has to be able to see. So the result is read out of the tool's
  * own output rather than parsed out of the prose, and it is rendered outside
@@ -18,7 +19,7 @@ import { useSetProposals } from "@/hooks/useSets";
  */
 
 export type Proposal = {
-  kind: "set_version" | "initial_recipe" | "draft" | "insight";
+  kind: "set_version" | "initial_recipe" | "draft" | "insight" | "outcome";
   label: string;
   detail: string;
   href: string;
@@ -26,6 +27,8 @@ export type Proposal = {
   /** A proposed Set change or first recipe: which Set, and which row on it. */
   setId?: number;
   proposalId?: number;
+  /** A proposed grade: what the tool said, shown until the live row is read. */
+  grade?: { version: string; outcome: string; countedShots: number };
 };
 
 function parse(content: string | undefined): Record<string, unknown> | null {
@@ -86,6 +89,27 @@ export function proposalFrom(entry: TraceEntry): Proposal | null {
       icon: Sparkles,
       setId: Number(setId),
       proposalId: Number(proposalId),
+    };
+  }
+
+  if (entry.name === "propose_outcome") {
+    const proposalId = output.proposal_id;
+    const setId = output.set_id;
+    if (proposalId === undefined || setId === undefined) return null;
+    const version = String(output.version ?? "this version");
+    const outcome = String(output.outcome ?? "");
+    const countedShots = Number(output.counted_shots ?? 0);
+    return {
+      kind: "outcome",
+      // "Proposed", not "recorded": the outcome is the person's until they
+      // press Accept, and this card is where they press it.
+      label: `A grade for ${version}`,
+      detail: `${outcome.replace("_", " ")} — waiting for you`,
+      href: `/sets/${String(setId)}`,
+      icon: Gauge,
+      setId: Number(setId),
+      proposalId: Number(proposalId),
+      grade: { version, outcome, countedShots },
     };
   }
 
@@ -157,6 +181,15 @@ function ProposedChange({ proposal }: { proposal: Proposal }) {
 
 export function ProposeCard({ proposal }: { proposal: Proposal }) {
   const Icon = proposal.icon;
+  if (proposal.kind === "outcome" && proposal.setId && proposal.proposalId && proposal.grade) {
+    return (
+      <OutcomeCard
+        setId={proposal.setId}
+        proposalId={proposal.proposalId}
+        fallback={proposal.grade}
+      />
+    );
+  }
   if (
     (proposal.kind === "set_version" || proposal.kind === "initial_recipe") &&
     proposal.setId &&

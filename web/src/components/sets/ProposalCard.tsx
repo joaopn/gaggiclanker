@@ -5,6 +5,7 @@ import { ApiClientError } from "@/api/client";
 import type { FieldChange, SetProposal } from "@/api/types";
 import { acceptedMessage, declinedMessage, useTellAgent } from "@/components/chat/tellAgent";
 import { MajorChoice } from "@/components/sets/MajorChoice";
+import { OutcomeBadge } from "@/components/sets/OutcomeBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDecideProposal } from "@/hooks/useSets";
@@ -414,6 +415,21 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
         </p>
       )}
 
+      {/* One click when the grade and the next version come together: the
+          agent's grade of the version this change was made to is waiting, and
+          accepting this records it first, in the same step. Said before the
+          buttons, because that is what the press does beyond the version. */}
+      {waiting && !design && shown.records_outcome ? (
+        <p className="mb-2 text-sm" data-testid="proposal-records-outcome">
+          Accepting also records {shown.records_outcome.version_label}'s outcome:{" "}
+          <OutcomeBadge state={shown.records_outcome.outcome} />
+          <span className="block text-muted-foreground text-xs">
+            as the agent graded it on {shown.records_outcome.counted_shots} counted{" "}
+            {shown.records_outcome.counted_shots === 1 ? "shot" : "shots"}.
+          </span>
+        </p>
+      ) : null}
+
       {proposal.combined_reason ? (
         <p className="mb-2 text-muted-foreground text-xs" data-testid="proposal-combined">
           Two things move together: {proposal.combined_reason} The prediction cannot say which of
@@ -452,7 +468,8 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
                       proposalId: proposal.id,
                       decision: "accept",
                       kind: proposal.kind,
-                      threadId: proposal.thread_id,
+                      threadId: proposal.records_outcome?.thread_id ?? proposal.thread_id,
+                      recordsOutcome: Boolean(proposal.records_outcome),
                       // Always said on a change: the box shows an answer, and
                       // what is sent is what it shows.
                       ...(design ? {} : { major }),

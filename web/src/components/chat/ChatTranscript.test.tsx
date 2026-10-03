@@ -3,17 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
-import { designProposal, proposal } from "@/test/setsFixtures";
+import { designProposal, outcomeProposal, proposal } from "@/test/setsFixtures";
 
-const { getSetProposals } = vi.hoisted(() => ({ getSetProposals: vi.fn() }));
+const { getSetProposals, getOutcomeProposals } = vi.hoisted(() => ({
+  getSetProposals: vi.fn(),
+  getOutcomeProposals: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getSetProposals,
+  getOutcomeProposals,
 }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   getSetProposals.mockResolvedValue({ items: [] });
+  getOutcomeProposals.mockResolvedValue({ items: [] });
 });
 
 /**
@@ -27,6 +32,7 @@ const PERMISSIONS = {
   query_shots: "read",
   propose_set_version: "propose",
   propose_initial_recipe: "propose",
+  propose_outcome: "propose",
   record_insight: "propose",
 };
 
@@ -262,6 +268,74 @@ describe("ChatTranscript", () => {
 
     expect(await screen.findByTestId("proposal-decided")).toHaveTextContent("version 1 is set");
     expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
+  });
+
+  describe("a proposed grade", () => {
+    function graded(): ChatMessage[] {
+      return [
+        message({ id: 1, role: "user", content: "how did v2 do?" }),
+        message({
+          id: 2,
+          role: "assistant",
+          tool_calls: [
+            {
+              id: "c1",
+              name: "propose_outcome",
+              arguments: { outcome: "partly_held", note: "time held; sourness did not move" },
+            },
+          ],
+        }),
+        message({
+          id: 3,
+          role: "tool",
+          tool_results: [
+            {
+              id: "c1",
+              name: "propose_outcome",
+              ok: true,
+              content: JSON.stringify({
+                proposal_id: 11,
+                set_id: 3,
+                version: "v2",
+                outcome: "partly_held",
+                counted_shots: 3,
+                status: "proposed",
+              }),
+            },
+          ],
+        }),
+        message({ id: 4, role: "assistant", content: "Partly held." }),
+      ];
+    }
+
+    it("marks the call as a proposal and draws the live card, read from the Set's grades", async () => {
+      getOutcomeProposals.mockResolvedValue({ items: [outcomeProposal()] });
+
+      renderWithQueryClient(
+        <ChatTranscript messages={graded()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      // Before the row is read back, the tool's own words stand in for it.
+      const holder = screen.getByTestId("propose-card-outcome");
+      expect(holder).toHaveTextContent("A grade for v2: partly held");
+      const card = await within(holder).findByTestId("outcome-card");
+      expect(getOutcomeProposals).toHaveBeenCalledWith(3);
+      expect(within(card).getByRole("button", { name: /Accept as/ })).toBeInTheDocument();
+      expect(screen.getByText("proposal")).toBeInTheDocument();
+    });
+
+    it("says how it was answered when the conversation is read again", async () => {
+      getOutcomeProposals.mockResolvedValue({
+        items: [outcomeProposal({ status: "accepted" })],
+      });
+
+      renderWithQueryClient(
+        <ChatTranscript messages={graded()} runs={[]} permissions={PERMISSIONS} />,
+      );
+
+      expect(await screen.findByTestId("outcome-card-decided")).toHaveTextContent("Accepted");
+      expect(screen.queryByRole("button", { name: /Accept/ })).not.toBeInTheDocument();
+    });
   });
 
   it("points a proposed profile change at the profiles page", () => {

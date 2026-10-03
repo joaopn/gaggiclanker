@@ -21,6 +21,20 @@ export function useTellAgent(): TellAgent | null {
 }
 
 /**
+ * Which conversation is on screen, for the cards in it.
+ *
+ * A card that answers something the agent proposed changes what that
+ * conversation's transcript shows, and the card itself is drawn from the
+ * transcript: so the answer has to invalidate that thread, and the card has to
+ * know which it is in. Provided by the Chat page; `null` outside it.
+ */
+export const ChatThreadContext = createContext<number | null>(null);
+
+export function useChatThreadId(): number | null {
+  return useContext(ChatThreadContext);
+}
+
+/**
  * The message an accept sends, or `null` when there is nothing to tell.
  *
  * It starts with "Accepted:" because that is what the Set prompt tells the
