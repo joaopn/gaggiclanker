@@ -344,5 +344,6 @@ async def test_the_set_prompt_sends_the_agent_to_the_extended_call_for_shots_it_
     ).system
     flat = " ".join(rendered.split())
     assert "each already in its base information" in flat
-    assert "`get_shot`, `get_shot_full` and `list_set_shots` only repeat" in flat
-    assert "`get_shot_extended` is the call that adds something" in flat
+    assert "`get_shot` and `list_set_shots` only repeat what is in front of you" in flat
+    assert "`get_shot_full` repeats it along with the extended lines" in flat
+    assert "so `get_shot_extended` is the call that adds something" in flat

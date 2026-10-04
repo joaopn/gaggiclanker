@@ -90,7 +90,7 @@ SET_INSTRUCTIONS = (
     "versions with their predictions and outcomes, its shots, and the knowledge base.\n\n"
     "The opening context already holds this version's newest shots in base information, so "
     "read one of those in more detail with get_shot_extended rather than fetching it again. "
-    "Start with get_set for the experiment so far, and use list_set_shots to search the shots "
+    "get_set gives the experiment so far, and list_set_shots searches the shots "
     "outside that context on their base information; get_shot_full reads one shot in full. "
     "Cite shots by id and knowledge passages by their heading_path. Tools whose names begin "
     "with propose_, draft_ or record_ create something the user must confirm; "

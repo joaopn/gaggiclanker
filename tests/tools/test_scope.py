@@ -591,7 +591,7 @@ def test_the_mcp_client_is_told_what_a_design_connection_has() -> None:
 
 
 def test_the_shot_reading_tools_say_the_opening_context_shots_are_already_there() -> None:
-    """The claude_code provider sees only these descriptions, so they carry the guidance."""
+    """The claude_code provider reads the tool list over MCP, so the descriptions carry it too."""
     from gaggiclanker.tools.mcp.server import SET_INSTRUCTIONS
 
     for name in ("get_shot", "get_shot_full", "list_set_shots"):
@@ -599,5 +599,11 @@ def test_the_shot_reading_tools_say_the_opening_context_shots_are_already_there(
         assert spec is not None
         assert "opening context" in spec.description, name
         assert "already there in base information" in spec.description, name
+    shot = registry.get("get_shot")
+    full = registry.get("get_shot_full")
+    assert shot is not None and full is not None
+    assert "ask for one of those with get_shot_extended" in shot.description
+    assert "get_shot_extended adds only what is missing" in full.description
+    assert "outside it" in registry.get("list_set_shots").description  # type: ignore[union-attr]
     assert "get_shot_extended" in SET_INSTRUCTIONS
     assert "already holds" in SET_INSTRUCTIONS
