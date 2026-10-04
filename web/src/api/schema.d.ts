@@ -7837,6 +7837,8 @@ export interface components {
             full_per_shot: number | null;
             /** Glossary */
             glossary: number;
+            /** Glossary Extended */
+            glossary_extended: number;
             /** Recent Shots */
             recent_shots: number;
         };

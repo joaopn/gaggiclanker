@@ -84,7 +84,8 @@ async def test_an_empty_archive_has_no_example_and_only_the_glossary_estimate(
         "base_per_shot": None,
         "extended_per_shot": None,
         "full_per_shot": None,
-        "glossary": tokens(render_glossary(default_tiers())),
+        "glossary": tokens(render_glossary(default_tiers(), "base")),
+        "glossary_extended": tokens(render_glossary(default_tiers(), "extended")),
         "autoload": None,
         "recent_shots": 20,
         "curve_points": 60,
@@ -183,7 +184,8 @@ async def test_the_estimates_are_the_example_s_renderings_at_the_current_tiers(
             render_shot(facts, "extended", tiers, curve_points=CURVE_POINTS)
         ),
         "full_per_shot": tokens(render_shot(facts, "full", tiers, curve_points=CURVE_POINTS)),
-        "glossary": tokens(render_glossary(tiers)),
+        "glossary": tokens(render_glossary(tiers, "base")),
+        "glossary_extended": tokens(render_glossary(tiers, "extended")),
         "autoload": tokens(render_shot(facts, "base", tiers, curve_points=CURVE_POINTS)) * 20,
         "recent_shots": 20,
         "curve_points": CURVE_POINTS,
@@ -196,7 +198,12 @@ async def test_the_estimates_are_the_example_s_renderings_at_the_current_tiers(
     assert moved["extended_per_shot"] == tokens(
         render_shot(facts, "extended", now, curve_points=CURVE_POINTS)
     )
-    assert moved["glossary"] == tokens(render_glossary(now))
+    assert moved["glossary"] == tokens(render_glossary(now, "base"))
+    # The curve column moved into base: the extended half lost it and the base half gained it,
+    # so each estimate follows its own half rather than the sum.
+    assert moved["glossary_extended"] == tokens(render_glossary(now, "extended"))
+    assert moved["glossary_extended"] < before["glossary_extended"]
+    assert moved["glossary"] > before["glossary"]
     assert moved["autoload"] == moved["base_per_shot"] * 20
 
 

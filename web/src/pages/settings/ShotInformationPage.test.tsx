@@ -74,6 +74,7 @@ function documentWith(
       extended_per_shot: 2900,
       full_per_shot: 3020,
       glossary: 3100,
+      glossary_extended: 5200,
       autoload: 2400,
       recent_shots: 20,
       curve_points: 60,
@@ -165,6 +166,7 @@ describe("ShotInformationPage", () => {
     expect(screen.getByTestId("estimate-base")).toHaveTextContent("≈ 120 tokens");
     expect(screen.getByTestId("estimate-extended")).toHaveTextContent("≈ 2,900 tokens");
     expect(screen.getByTestId("estimate-glossary")).toHaveTextContent("≈ 3,100 tokens");
+    expect(screen.getByTestId("estimate-glossary-extended")).toHaveTextContent("≈ 5,200 tokens");
     expect(screen.getByTestId("estimate-autoload")).toHaveTextContent("≈ 2,400 tokens");
     expect(screen.getByRole("link", { name: /^20 shots/ })).toHaveAttribute(
       "href",

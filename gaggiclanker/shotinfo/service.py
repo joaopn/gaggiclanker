@@ -104,7 +104,10 @@ class TokenEstimates(BaseModel):
     base_per_shot: int | None
     extended_per_shot: int | None
     full_per_shot: int | None
+    #: The base half of the glossary, which is in the system prompt of every turn.
     glossary: int
+    #: The extended half, added once to an answer, with its first extended read.
+    glossary_extended: int
     #: Base per shot times `recent_shots`: what a Set conversation's opening
     #: context spends on its shots, on every turn.
     autoload: int | None
@@ -205,13 +208,15 @@ def _groups(
 def _estimates(
     tiers: Mapping[str, Tier], facts: ShotFacts | None, recent_shots: int, curve_points: int
 ) -> TokenEstimates:
-    glossary = approximate_tokens(render_glossary(tiers))
+    glossary = approximate_tokens(render_glossary(tiers, "base"))
+    glossary_extended = approximate_tokens(render_glossary(tiers, "extended"))
     if facts is None:
         return TokenEstimates(
             base_per_shot=None,
             extended_per_shot=None,
             full_per_shot=None,
             glossary=glossary,
+            glossary_extended=glossary_extended,
             autoload=None,
             recent_shots=recent_shots,
             curve_points=curve_points,
@@ -226,6 +231,7 @@ def _estimates(
         extended_per_shot=cost("extended"),
         full_per_shot=cost("full"),
         glossary=glossary,
+        glossary_extended=glossary_extended,
         autoload=base * recent_shots,
         recent_shots=recent_shots,
         curve_points=curve_points,

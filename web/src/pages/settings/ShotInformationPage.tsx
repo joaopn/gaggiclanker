@@ -138,8 +138,14 @@ function Overview({ document }: { document: ShotInformation }) {
           <dd data-testid="estimate-extended">{tokens(estimates.extended_per_shot)}</dd>
         </div>
         <div>
-          <dt className="text-muted-foreground text-xs">Glossary, every turn</dt>
+          <dt className="text-muted-foreground text-xs">Glossary, base, every turn</dt>
           <dd data-testid="estimate-glossary">{tokens(estimates.glossary)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground text-xs">
+            Glossary, extended, added once with the first extended read
+          </dt>
+          <dd data-testid="estimate-glossary-extended">{tokens(estimates.glossary_extended)}</dd>
         </div>
         <div>
           <dt className="text-muted-foreground text-xs">

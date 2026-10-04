@@ -412,6 +412,7 @@ describe("SettingsPage", () => {
         extended_per_shot: null,
         full_per_shot: null,
         glossary: 1200,
+        glossary_extended: 3400,
         autoload: null,
         recent_shots: 20,
         curve_points: 60,
