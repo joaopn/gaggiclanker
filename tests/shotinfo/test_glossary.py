@@ -43,7 +43,7 @@ NOT_EMITTED = {"_PRESSURE_CV_BANDS", "_PRESSURE_VOLATILITY_BANDS"}
 
 
 def whole(tiers: Mapping[str, Tier]) -> str:
-    """Both halves, as a reader holding the prompt and the first extended read has them."""
+    """Both halves, as a reader holding the prompt and an extended read has them."""
     return render_glossary(tiers, "base") + "\n\n" + render_glossary(tiers, "extended")
 
 
@@ -299,7 +299,7 @@ def test_the_base_preamble_names_the_three_tools_that_bring_the_extended_half() 
 
     assert EXTENDED_TOOLS == ("get_shot_extended", "get_shot_full", "compare_shots")
     for name in EXTENDED_TOOLS:
-        assert name in preamble.split("they arrive")[1], name
+        assert name in preamble.split("they come once")[1], name
 
 
 def test_the_glossary_covers_what_can_be_shown_and_nothing_else() -> None:

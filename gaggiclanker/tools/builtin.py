@@ -250,9 +250,9 @@ class ShotIdInput(_Model):
 class _WithMeanings(_Model):
     """An output that may open with the extended fields' meanings.
 
-    On the first extended read of a run only. A field of the parent so it is
-    declared first and read before the lines it explains, and left out of the
-    output altogether when there is none.
+    On one extended read of the conversation only (see ``_extended_meanings``).
+    A field of the parent so it is declared first and read before the lines it
+    explains, and left out of the output altogether when there is none.
     """
 
     field_meanings: str | None = None
@@ -274,7 +274,7 @@ class ShotTextOutput(_WithMeanings):
 
 
 def _extended_meanings(ctx: ToolContext, tiers: Mapping[str, Tier]) -> str | None:
-    """The extended half of the glossary, once per run, for the first read that needs it.
+    """The extended half of the glossary, for this run's first read when the history has none.
 
     Called only after the shot has been rendered, so a read that failed (an
     unknown shot, one filed elsewhere) never reaches it and leaves the

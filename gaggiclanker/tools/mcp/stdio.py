@@ -154,7 +154,7 @@ def _identifier(given: int | None, variable: str) -> int | None:
 def meanings_in_context_from() -> bool:
     """Whether the run's history already holds the extended shot-field meanings.
 
-    Absent is the ordinary answer (the first extended read attaches them); `1`
+    Absent is the ordinary answer (this run's first extended read attaches them); `1`
     says they are in context and nothing here should send another copy. Anything
     else is a typo in a flag that decides whether the model is told what a line
     means, so it is a refusal to start rather than a guess.

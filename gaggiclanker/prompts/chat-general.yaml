@@ -9,13 +9,15 @@ description: |
   the history before it, and there is no one Set to put in front of the model —
   that is what the Set conversations are for. `shot_fields` is the base half of the
   glossary of shot fields, generated from the shot information catalogue; the
-  extended half is attached to the first extended read of each answer.
+  extended half comes once in what the model is sent, with the newest extended read
+  in the history or the answer's first one.
 variables:
   - name: shot_fields
     description: >
       What every base shot field means, for every item in the base tier. The
-      extended fields' meanings arrive with the first get_shot_extended,
-      get_shot_full or compare_shots result of an answer.
+      extended fields' meanings come once in the
+      conversation, with the newest get_shot_extended, get_shot_full or
+      compare_shots result in the history or the answer's first one.
 system: |
   You are an expert barista working alongside the person who owns this GaggiMate
   espresso machine. gaggiclanker is their archive: every shot the machine has

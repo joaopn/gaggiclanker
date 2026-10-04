@@ -77,7 +77,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
 | `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, the version's newest shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
-| `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary, generated from the catalogue in two halves: the base half in the chat prompts, the extended half attached to the first extended read of a run. |
+| `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary, generated from the catalogue in two halves: the base half in the chat prompts, the extended half in front of a shot read in detail, once in what the model is sent. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and five gated write methods, all of them profile operations — nothing else. Only profiles are ever written to the machine. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded profile or one that is switched off (guarded by a fresh load), the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
@@ -471,19 +471,19 @@ the stdio server alike, so a change applies from the next turn. The glossary
 is generated from the same entries — every item that is not excluded, with its tier
 and its meaning, the band thresholds read from the vendored tables — so an item and
 its explanation cannot drift apart. It is rendered in two halves: the base half is
-in the Set and General prompts, and the extended half rides on the first successful
-`get_shot_extended`, `get_shot_full` or `compare_shots` result of each run (a
-`field_meanings` field ahead of the shot text), so an answer that opens no shot in
-detail never carries it. "Once" is tracked per run in a `RunNotes` holder on the
-tool context: the runner's run state for the API providers, the stdio server's
-process (one per run) for `claude_code`. The runner's result cap counts the text
-of the tool, not the meanings. The rule is that the meanings are in the context exactly
-once whenever extended lines are: the replayed history strips every stored copy and places
-a freshly rendered one (the bytes a tool would attach) on the newest successful
+in the Set and General prompts, and the extended half is attached ahead of a shot
+read in detail (a `field_meanings` field before the shot text of a
+`get_shot_extended`, `get_shot_full` or `compare_shots` result). The rule: the extended meanings are in what the model is sent exactly once whenever an extended result is: on the newest one replayed in the history, or on this answer's first extended read when the history has none. On
+the first extended read of an answer whose history has none, the tool attaches it,
+and "once" is tracked per run in a `RunNotes` holder on the tool context (the
+runner's run state for the API providers, the stdio server's process, one per run,
+for `claude_code`). The runner's result cap counts the text of the tool, not the
+meanings. Otherwise the replayed history strips every stored copy and places a freshly
+rendered one (the bytes a tool would attach) on the newest successful
 `get_shot_extended`, `get_shot_full` or `compare_shots` result among the messages the
 budget keeps (recognised by the stored tool name, sized again with the copy in
-place), and when it places one the run attaches none — the
-runner marks the run's `RunNotes` as sent, and `claude_code` is told at spawn through
+place), and when it places one the run attaches none: the runner marks the run's
+`RunNotes` as sent, and `claude_code` is told at spawn through
 `GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT=1`. The stored rows keep what was sent at the time.
 A shot's review reads the same renderer with a fixed layout of its own: every
 item but the judgement, the machine's note, the version's recipe, the shot's

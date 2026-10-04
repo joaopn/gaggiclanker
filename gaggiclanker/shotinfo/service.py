@@ -106,7 +106,7 @@ class TokenEstimates(BaseModel):
     full_per_shot: int | None
     #: The base half of the glossary, which is in the system prompt of every turn.
     glossary: int
-    #: The extended half, added once to an answer, with its first extended read.
+    #: The extended half, in what the model is sent once, with a shot read in detail.
     glossary_extended: int
     #: Base per shot times `recent_shots`: what a Set conversation's opening
     #: context spends on its shots, on every turn.

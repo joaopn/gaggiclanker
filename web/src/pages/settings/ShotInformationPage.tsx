@@ -150,7 +150,7 @@ function Overview({ document }: { document: ShotInformation }) {
           <dd data-testid="estimate-glossary-extended" className="mt-1">
             <span className="whitespace-nowrap">{tokens(estimates.glossary_extended)}</span>
             <span className="text-muted-foreground block text-xs">
-              extended, added once per answer, when the agent first reads a shot in detail
+              extended, added once, with the shot the agent reads in detail
             </span>
           </dd>
         </div>

@@ -12,8 +12,9 @@ description: |
   assembled by `gaggiclanker/chat/context.py`; it is never empty here, because
   a conversation under a Set is always about one of its versions.
   `shot_fields` is the base half of the glossary of shot fields, generated from
-  the shot information catalogue; the extended half is attached to the first
-  extended read of each answer and is not in the prompt.
+  the shot information catalogue; the extended half comes once in what the model
+  is sent, with the newest extended read in the history or the answer's first one,
+  and is not in the prompt.
 variables:
   - name: scope
     description: >
@@ -25,8 +26,9 @@ variables:
   - name: shot_fields
     description: >
       What every base shot field means, for every item in the base tier. The
-      extended fields' meanings are not here: they arrive with the first
-      get_shot_extended, get_shot_full or compare_shots result of an answer.
+      extended fields' meanings are not here: they come once in the
+      conversation, with the newest get_shot_extended, get_shot_full or
+      compare_shots result in the history or the answer's first one.
 system: |
   You are working with the person who owns this GaggiMate espresso machine on
   one experiment: one version of one Set. gaggiclanker is their archive, and the

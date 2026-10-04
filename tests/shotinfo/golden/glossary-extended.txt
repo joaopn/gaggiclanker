@@ -1,5 +1,5 @@
 SHOT FIELDS, EXTENDED
-The meanings of the extended fields, sent once with the first extended read of this answer. The preamble, group notes and band tables of the SHOT FIELDS section of the system prompt apply to them too.
+The meanings of the extended fields, sent once in the conversation, with a shot read in detail. The preamble, group notes and band tables of the SHOT FIELDS section of the system prompt apply to them too.
 
 [Shared bands]
 The band tables several fields are read against, named in their entries; each entry gives the unit.

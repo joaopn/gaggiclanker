@@ -100,10 +100,11 @@ class RunNotes:
     runner makes a context per round, and the stdio MCP server one per call, so
     the state cannot live on the context itself. On the API providers the holder
     is on the runner's run state; on ``claude_code`` it is in the stdio server,
-    which the CLI spawns fresh for each run. Per run and not per conversation
-    because an older answer's tool results may have fallen out of the history
-    budget, and a flag that outlived them would leave extended lines with no
-    meanings.
+    which the CLI spawns fresh for each run. It only decides whether this
+    run's own first extended read attaches the meanings: the runner marks it as
+    sent when the history it replays already carries a copy (placed on its newest
+    extended read), so the meanings reach the model exactly once whenever an
+    extended result does.
     """
 
     #: The extended half of the shot-field glossary rode with an earlier result.

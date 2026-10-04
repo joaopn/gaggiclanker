@@ -1,7 +1,7 @@
 SHOT FIELDS
 Base is what get_shot returns and what a Set conversation's opening context and its shot search show; extended is what get_shot_extended adds; get_shot_full returns both. A shot is written as `shot <id>`, then `[Group]` headings with `label: value` lines; the brew phases are every phase but pre-infusion.
 A line that is missing means the machine did not record that value (no scale, no pressure sensor, too few samples to judge) — never that it was zero.
-Below are the base fields. The meanings of the extended fields are not in this prompt: they arrive at the head of the first result from get_shot_extended, get_shot_full or compare_shots, before the shot lines they explain, and stay in the conversation: if an earlier result in it already has them, they are not sent again.
+Below are the base fields. The meanings of the extended fields are not in this prompt: they come once in the conversation, at the head of the newest get_shot_extended, get_shot_full or compare_shots result, or at the head of this answer's first such read when the conversation has none yet, before the shot lines. They apply to every extended line in the conversation.
 
 [Shared bands]
 The band tables several fields are read against, named in their entries; each entry gives the unit.

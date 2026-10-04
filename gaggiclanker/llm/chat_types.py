@@ -88,7 +88,7 @@ class ChatToolResult:
     ok: bool = True
 
 
-#: The extended shot-field meanings that head the first extended read of a run
+#: The extended shot-field meanings that head an extended read
 #: (:mod:`gaggiclanker.tools.builtin`) are the first key of the result's JSON.
 #: Matched on the text, not parsed, because a result cut at the runner's cap is
 #: not valid JSON any more and must still lose them.

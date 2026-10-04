@@ -149,8 +149,8 @@ class _RunState:
     tool_rounds: int = 0
     tool_calls: int = 0
     usage: Usage = field(default_factory=Usage)
-    #: What this run's tools have already told the model (the extended glossary
-    #: rides with the first extended read). Per run, shared by every context
+    #: What this run's tools have already told the model (the extended glossary, when
+    #: the history placed none). Per run, shared by every context
     #: the run's rounds build.
     notes: RunNotes = field(default_factory=RunNotes)
 
@@ -350,7 +350,8 @@ class ChatRunner:
             state.thread_id, budget.history_tokens, tiers
         )
         # The extended meanings are in the context exactly once whenever extended
-        # lines are: the history keeps the newest copy, so this run attaches none.
+        # lines are: when the history placed a copy on its newest extended read, this run
+        # attaches none; when it has none, this run's first extended read does.
         # (claude_code is told through the request, at spawn.)
         state.notes.extended_meanings_sent = meanings_in_history
         provider = await self.llm.provider_for(await self.llm.config())
@@ -522,7 +523,7 @@ class ChatRunner:
             state.tool_calls += 1
             content = outcome.as_content()
             # The cap is for the tool's own text: the extended glossary that
-            # rides with a first extended read is counted outside it, or a
+            # rides with an extended read is counted outside it, or a
             # large shot would cut the very meanings it was sent with.
             allowance = TOOL_RESULT_CHARS + _meanings_chars(outcome.data)
             if len(content) > allowance:

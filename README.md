@@ -738,7 +738,7 @@ with the model, its tokens and any error. It leaves out what you never typed:
 the instructions and the context the app gives the agent each turn (the Set's
 ledger and its recent shots, the base shot glossary) are not stored with the
 conversation and so are not in the file. (The extended glossary is part of the
-stored answer to the first extended read of a run, so it is reduced along with
+stored answer to an extended read, so it is reduced along with
 that answer, as described next.) The answer of a tool that renders
 shots (`get_shot`, `get_shot_extended`, `get_shot_full`, `compare_shots`,
 `list_set_shots`), or one the provider could not pair with its call, is reduced
@@ -912,8 +912,10 @@ the diagnostics are about: each phase's start and end, peak pressure, first
 drip and the largest pressure drop. A value the machine did not
 record (no scale, no pressure sensor) is left out, never shown as zero. The
 agent's instructions carry a glossary of the base fields, and the meanings of the
-extended fields arrive once per answer, with the first extended read
-(`get_shot_extended`, `get_shot_full` or `compare_shots`): what each measures, its
+extended fields arrive with a shot read in detail (`get_shot_extended`,
+`get_shot_full` or `compare_shots`), once in what the model is sent: on the newest
+such result of the conversation, or on the answer's first when it has none yet. They
+say what each measures, its
 unit, which way is better, and every band label with the threshold behind it, read
 from the diagnostics engine itself.
 

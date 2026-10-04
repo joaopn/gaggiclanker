@@ -7,12 +7,11 @@ chat that reads shots is told this glossary: one entry per item that is **not
 excluded**, grouped as a rendering is, each marked with the tier it is in, so
 the model never meets a line it was not told about. It is rendered in two
 halves. The base half is in the system prompt; the extended half, about two
-thirds of the text, is attached to the first successful extended read of a
-run (see :func:`gaggiclanker.tools.builtin._extended_meanings`), unless the history
-the run starts from already has extended reads: the history places one copy, from
-:func:`extended_meanings`, on the newest of them. It is in the context exactly once
-whenever extended lines are, and an answer whose history has none and that opens no
-shot in detail carries none.
+thirds of the text, is in what the model is sent exactly once whenever an
+extended result is: on the newest one replayed in the history (placed from
+:func:`extended_meanings`), or on this answer's first extended read when the history
+has none (attached by :func:`gaggiclanker.tools.builtin._extended_meanings`). An
+answer with no extended result in view carries none.
 
 It is generated from the catalogue's own meanings, so an item and its
 explanation are one text with two readers (this prompt, and the settings page
@@ -46,7 +45,9 @@ from gaggiclanker.shotinfo.catalogue import (
 __all__ = ["EXTENDED_TOOLS", "Part", "extended_meanings", "render_glossary", "shared_bands_of"]
 
 #: The two halves of the glossary. Base rides in the system prompt of every
-#: request; extended is sent once per answer, with the first extended read.
+#: request; extended is in what the model is sent exactly once whenever an extended
+#: result is: on the newest one replayed in the history, or on this answer's first
+#: extended read when the history has none.
 type Part = Literal["base", "extended"]
 
 #: The tools whose results carry extended lines, so the ones that bring the
@@ -62,15 +63,16 @@ _PREAMBLE = (
     "A line that is missing means the machine did not record that value (no scale, no pressure "
     "sensor, too few samples to judge) — never that it was zero.",
     "Below are the base fields. The meanings of the extended fields are not in this prompt: "
-    "they arrive at the head of the first result from get_shot_extended, get_shot_full or "
-    "compare_shots, before the shot lines they explain, and stay in the conversation: if "
-    "an earlier result in it already has them, they are not sent again.",
+    "they come once in the conversation, at the head of the newest get_shot_extended, "
+    "get_shot_full or compare_shots result, or at the head of this answer's first such "
+    "read when the conversation has none yet, before the shot lines. They apply to every "
+    "extended line in the conversation.",
 )
 
 _EXTENDED_HEADING = (
     "SHOT FIELDS, EXTENDED",
-    "The meanings of the extended fields, sent once with the first extended read of this "
-    "answer. The preamble, group notes and band tables of the SHOT FIELDS section of the "
+    "The meanings of the extended fields, sent once in the conversation, with a shot read "
+    "in detail. The preamble, group notes and band tables of the SHOT FIELDS section of the "
     "system prompt apply to them too.",
 )
 

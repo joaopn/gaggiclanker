@@ -7,7 +7,7 @@ never stored, so it cannot be in the transcript; nothing here renders a prompt o
 ``opening_context``, and a test builds the real context and looks for it.
 
 Shots do reach the transcript when the agent asks for them, as tool results (the
-extended glossary that heads the first extended read of a run is inside such a
+extended glossary that heads an extended read is inside such a
 result and goes with it).
 The successful result of a tool that renders shots (``SHOT_RENDERING_TOOLS``),
 or of a name that is no registered tool (the ``claude_code`` provider stores an

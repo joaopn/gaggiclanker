@@ -153,7 +153,7 @@ async def test_a_failing_tool_is_shown_to_the_model_rather_than_ending_the_run(
     assert "not a shot of this Set" in result.content
 
 
-# -- the extended glossary rides with the first extended read of a run ------
+# -- the extended glossary rides with an extended read ----------------------
 
 
 def _extended_call(call_id: str, name: str, *shots: int) -> ChatToolCall:
@@ -513,6 +513,34 @@ async def test_a_budget_that_drops_the_copy_s_first_home_moves_it_to_the_run_tha
     assert not any(r.id == "a1" for m in follow_up.messages for r in m.tool_results)
     assert _copy_ids(follow_up.messages) == ["b1"]
     assert follow_up.meanings_in_context is True
+
+
+async def test_the_placed_copy_follows_the_tiers_as_they_are_now(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """The copy is rendered when the history is built, not copied from what was stored."""
+    from gaggiclanker.shotinfo.catalogue import effective_tiers
+    from gaggiclanker.shotinfo.glossary import extended_meanings
+
+    chat_provider.chat_script = [
+        _round(_extended_call("a1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="a"),
+        ChatTurn(text="b"),
+    ]
+    await send(runner, tasks, thread)
+    await ShotInfoTiersRepository(archive.db).set_tier(
+        ShotInfoTierWrite(item_key="score_confidence", tier="base")
+    )
+    await send(runner, tasks, thread, "and now?")
+
+    moved = await effective_tiers(archive.db)
+    assert extended_meanings(moved) != extended_meanings(default_tiers())
+    [copy] = _copies(chat_provider.chat_calls[2].messages)
+    assert json.loads(copy.content)["field_meanings"] == extended_meanings(moved)
 
 
 async def test_a_failed_read_does_not_count_as_extended_lines_to_explain(
@@ -989,7 +1017,7 @@ async def test_the_set_and_general_prompts_carry_the_shot_field_glossary(
     for request in chat_provider.chat_calls:
         assert base in request.system
         assert request.system.index("PROPOSE, NEVER ACT") < request.system.index("SHOT FIELDS")
-        # The extended half is not in the prompt: it rides with the first extended read.
+        # The extended half is not in the prompt: it rides with an extended read.
         assert "SHOT FIELDS, EXTENDED" not in request.system
         for item in extended_items:
             assert f"- {item.label} [" not in request.system, item.key
