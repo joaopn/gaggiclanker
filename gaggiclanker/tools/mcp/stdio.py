@@ -49,6 +49,7 @@ from gaggiclanker.tools.scope import ToolScope
 __all__ = [
     "add_mcp_parser",
     "mcp_command",
+    "meanings_in_context_from",
     "scope_from",
     "serve_stdio",
     "stdio_tool_context",
@@ -150,6 +151,22 @@ def _identifier(given: int | None, variable: str) -> int | None:
     return from_flag if from_flag is not None else from_env
 
 
+def meanings_in_context_from() -> bool:
+    """Whether the run's history already holds the extended shot-field meanings.
+
+    Absent is the ordinary answer (the first extended read attaches them); `1`
+    says they are in context and nothing here should send another copy. Anything
+    else is a typo in a flag that decides whether the model is told what a line
+    means, so it is a refusal to start rather than a guess.
+    """
+    raw = os.environ.get("GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT")
+    if raw is None:
+        return False
+    if raw != "1":
+        raise SystemExit(f"GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT must be 1 or unset, got {raw!r}.")
+    return True
+
+
 def scope_from(args: argparse.Namespace) -> ToolScope:
     """The conversation this server is serving, from the flags or the environment.
 
@@ -215,7 +232,11 @@ def stdio_tool_context(
 
 
 async def serve_stdio(
-    data_dir: Path, *, scope: ToolScope | None = None, thread_id: int | None = None
+    data_dir: Path,
+    *,
+    scope: ToolScope | None = None,
+    thread_id: int | None = None,
+    meanings_in_context: bool = False,
 ) -> int:
     """Open the archive and run the protocol on stdio until the client hangs up."""
     path = data_dir / "gaggiclanker.db"
@@ -248,7 +269,7 @@ async def serve_stdio(
         # One holder for the process: it lives for one run, so what it records
         # (the extended glossary having been sent) is per run, as the runner's
         # state is for the other providers.
-        notes = RunNotes()
+        notes = RunNotes(extended_meanings_sent=meanings_in_context)
 
         async def context() -> ToolContext:
             return stdio_tool_context(
@@ -314,5 +335,10 @@ def mcp_command(args: argparse.Namespace) -> int:
     import asyncio
 
     return asyncio.run(
-        serve_stdio(_data_dir(args.data_dir), scope=scope_from(args), thread_id=thread_from(args))
+        serve_stdio(
+            _data_dir(args.data_dir),
+            scope=scope_from(args),
+            thread_id=thread_from(args),
+            meanings_in_context=meanings_in_context_from(),
+        )
     )

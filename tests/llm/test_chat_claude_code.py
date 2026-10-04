@@ -289,6 +289,20 @@ async def test_the_live_preview_leaves_out_the_extended_glossary_but_the_result_
     assert turn.executed_tool_results[0].content == body
 
 
+async def test_the_request_s_meanings_flag_reaches_the_child_server_s_environment() -> None:
+    def child_env(stream: RecordedStream) -> dict[str, str]:
+        config = json.loads(stream.argv[stream.argv.index("--mcp-config") + 1])
+        env: dict[str, str] = config["mcpServers"][MCP_SERVER_NAME]["env"]
+        return env
+
+    told, plain = RecordedStream(TRANSCRIPT), RecordedStream(TRANSCRIPT)
+    await provider(told).chat(request(meanings_in_context=True), lambda _event: None)
+    await provider(plain).chat(request(), lambda _event: None)
+
+    assert child_env(told)["GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT"] == "1"
+    assert "GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT" not in child_env(plain)
+
+
 async def test_the_mcp_namespace_is_stripped_from_tool_names() -> None:
     """The transcript, the audit table and the UI all name tools as the registry does."""
     stream = RecordedStream(TRANSCRIPT)

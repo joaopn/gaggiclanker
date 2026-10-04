@@ -56,6 +56,7 @@ from gaggiclanker.llm.chat_types import (
     ChatToolResult,
     ChatTurn,
     event_preview,
+    has_field_meanings,
     without_field_meanings,
 )
 from gaggiclanker.llm.errors import LlmApiError, classify_llm_error
@@ -344,7 +345,13 @@ class ChatRunner:
         if prompt in (SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
             variables["shot_fields"] = render_glossary(tiers, "base")
         rendered = await self.prompts.load(prompt, variables)
-        history = await self._history(state.thread_id, budget.history_tokens, state.run_id)
+        history, meanings_in_history = await self._history(
+            state.thread_id, budget.history_tokens, state.run_id
+        )
+        # The extended meanings are in the context exactly once whenever extended
+        # lines are: the history keeps the newest copy, so this run attaches none.
+        # (claude_code is told through the request, at spawn.)
+        state.notes.extended_meanings_sent = meanings_in_history
         provider = await self.llm.provider_for(await self.llm.config())
         schemas = self._schemas(provider, scope)
 
@@ -361,6 +368,7 @@ class ChatRunner:
                     set_id=scope.set_id,
                     set_version_id=scope.set_version_id,
                     thread_id=state.thread_id,
+                    meanings_in_context=meanings_in_history,
                     cancel=state.cancel,
                 ),
             )
@@ -437,6 +445,7 @@ class ChatRunner:
                 set_id=scope.set_id,
                 set_version_id=scope.set_version_id,
                 thread_id=state.thread_id,
+                meanings_in_context=meanings_in_history,
                 cancel=state.cancel,
             ),
         )
@@ -640,41 +649,57 @@ class ChatRunner:
 
     async def _history(
         self, thread_id: int, token_budget: int, current_run: int | None = None
-    ) -> list[ChatMessage]:
+    ) -> tuple[list[ChatMessage], bool]:
         """The thread as provider messages, oldest dropped to fit the budget.
 
         Dropped from the front and in whole messages, and a ``tool`` message is
         never kept without the assistant turn that asked for it — an orphaned
         ``tool_result`` is a 400 on both APIs, not merely confusing.
 
-        The extended glossary an earlier run's first extended read carried is
-        taken out before anything is sized: each run attaches its own copy, so
-        an older one is about a third of the default budget spent on text the
-        model is sent again. The stored rows keep it (the transcript shows what
-        the model saw); only what is replayed is reduced.
+        **The extended shot-field meanings are in the context exactly once
+        whenever extended lines are.** Each run's first extended read carries a
+        copy (about a third of the default budget), so the replayed history keeps
+        the *newest* copy among the messages it keeps and strips every older one
+        — the lines of an earlier answer stay explained, and the older copies,
+        which say the same thing, are not paid for again. Chosen in order: size
+        with every earlier run's copy stripped, take the newest copy-bearing
+        message that survives, restore its copy and size again (the restored copy
+        can push older messages out; if it pushes that message itself out, no copy
+        is kept). The second value says whether the kept history holds a copy, in
+        which case this run attaches none. The stored rows keep every copy (the
+        transcript shows what the model saw); only what is replayed is reduced.
         """
         rows = await self.repo.messages(thread_id)
-        messages = [_to_chat_message(row) for row in rows]
-        for row, message in zip(rows, messages, strict=True):
-            if row.run_id != current_run:
-                message.tool_results = [
+        full = [_to_chat_message(row) for row in rows]
+        earlier = [row.run_id != current_run for row in rows]
+        stripped = [
+            replace(
+                message,
+                tool_results=[
                     replace(result, content=without_field_meanings(result.content))
                     for result in message.tool_results
-                ]
+                ],
+            )
+            if is_earlier
+            else message
+            for message, is_earlier in zip(full, earlier, strict=True)
+        ]
         budget_chars = max(1, token_budget) * CHARS_PER_TOKEN
 
-        kept: list[ChatMessage] = []
-        used = 0
-        for message in reversed(messages):
-            size = _size(message)
-            if kept and used + size > budget_chars:
-                break
-            kept.append(message)
-            used += size
-        kept.reverse()
-        while kept and kept[0].role == "tool":
-            kept.pop(0)
-        return kept
+        start = _first_kept(stripped, budget_chars)
+        carriers = [
+            index
+            for index in range(start, len(full))
+            if earlier[index]
+            and any(has_field_meanings(r.content) for r in full[index].tool_results)
+        ]
+        if carriers:
+            newest = carriers[-1]
+            trial = [*stripped[:newest], full[newest], *stripped[newest + 1 :]]
+            trial_start = _first_kept(trial, budget_chars)
+            stripped, start = trial, trial_start
+        kept = stripped[start:]
+        return kept, any(has_field_meanings(r.content) for m in kept for r in m.tool_results)
 
     async def _record_call(
         self,
@@ -747,6 +772,25 @@ def _arguments(raw: Any) -> dict[str, Any]:
     tolerating rather than crashing a whole transcript over.
     """
     return raw if isinstance(raw, dict) else {}
+
+
+def _first_kept(messages: list[ChatMessage], budget_chars: int) -> int:
+    """Where the kept suffix of ``messages`` starts, for a budget in characters.
+
+    The newest message is always kept; a leading ``tool`` message is skipped
+    because the assistant turn that asked for it did not fit.
+    """
+    used = 0
+    start = len(messages)
+    for index in range(len(messages) - 1, -1, -1):
+        size = _size(messages[index])
+        if start < len(messages) and used + size > budget_chars:
+            break
+        start = index
+        used += size
+    while start < len(messages) and messages[start].role == "tool":
+        start += 1
+    return start
 
 
 def _size(message: ChatMessage) -> int:

@@ -198,7 +198,9 @@ async def test_the_first_successful_extended_read_of_a_run_carries_the_extended_
     assert results[2].content.index("field_meanings") < results[2].content.index('"text"')
     assert [result.ok for result in results] == [True, False, True, True, True]
 
-    # A new run in the same conversation: the earlier copy may be gone from the history.
+    # A new run whose history no longer holds the earlier copy (the budget dropped it)
+    # attaches its own; with the copy in history it would attach none (tested below).
+    await runner.llm.settings.store("chatHistoryTokenBudget", 1000)
     # The fake indexes its script by the number of calls so far: pad past the first run's two.
     chat_provider.chat_script = [
         ChatTurn(text=""),
@@ -281,18 +283,22 @@ async def test_the_tool_result_event_previews_the_shot_not_the_meanings(
     assert "field_meanings" in chat_provider.chat_calls[1].messages[-1].tool_results[0].content
 
 
-async def test_an_earlier_answer_s_copy_of_the_meanings_is_not_sent_again(
+def _copies(messages: list[Any]) -> list[Any]:
+    return [r for m in messages for r in m.tool_results if "field_meanings" in r.content]
+
+
+def _without_key(stored: str) -> dict[str, Any]:
+    return {k: v for k, v in json.loads(stored).items() if k != "field_meanings"}
+
+
+async def test_a_follow_up_is_sent_exactly_one_copy_when_the_history_has_extended_results(
     runner: ChatRunner,
     tasks: TaskRegistry,
     thread: int,
     chat_provider: FakeProvider,
     archive: Fixture,
 ) -> None:
-    """Every run attaches its own copy, so a follow-up that reads nothing is sent none: the
-    stored row keeps what the model saw, the replayed history and its budget do not."""
-    from gaggiclanker.chat.runner import CHARS_PER_TOKEN, _size
-
-    meanings = render_glossary(default_tiers(), "extended")
+    """The meanings are in the context exactly once whenever extended lines are."""
     chat_provider.chat_script = [
         _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
         ChatTurn(text="first answer"),
@@ -301,22 +307,121 @@ async def test_an_earlier_answer_s_copy_of_the_meanings_is_not_sent_again(
     await send(runner, tasks, thread)
     await send(runner, tasks, thread, "and one more thing?")
 
-    # The run's own later round still has its copy.
-    assert "field_meanings" in chat_provider.chat_calls[1].messages[-1].tool_results[0].content
     follow_up = chat_provider.chat_calls[2]
-    assert not any(
-        "field_meanings" in r.content for m in follow_up.messages for r in m.tool_results
-    )
-    assert any(m.tool_results for m in follow_up.messages), "the shot itself is still there"
+    assert len(_copies(follow_up.messages)) == 1
+    assert follow_up.meanings_in_context is True
+    assert chat_provider.chat_calls[1].meanings_in_context is False
     # Stored whole, so the transcript shows what the model saw.
     stored = [r for m in await ChatRepository(runner.db).messages(thread) for r in m.tool_results]
     assert any("field_meanings" in str(r["content"]) for r in stored)
-    # The budget counts the stripped size: a budget just over it keeps every message.
-    everything = await runner._history(thread, 1_000_000)
-    stripped_chars = sum(_size(m) for m in everything)
-    assert stripped_chars < len(meanings) / 2
-    tight = stripped_chars // CHARS_PER_TOKEN + 50
-    assert len(await runner._history(thread, tight)) == len(everything)
+
+
+async def test_a_follow_up_is_sent_no_copy_when_the_history_has_no_extended_results(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot", archive.shots[0])),
+        ChatTurn(text="first answer"),
+        ChatTurn(text="second answer"),
+    ]
+    await send(runner, tasks, thread)
+    await send(runner, tasks, thread, "and one more thing?")
+
+    follow_up = chat_provider.chat_calls[2]
+    assert any(m.tool_results for m in follow_up.messages)
+    assert _copies(follow_up.messages) == [] and follow_up.meanings_in_context is False
+
+
+async def test_a_follow_up_that_reads_extended_with_a_copy_in_history_attaches_none(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="first answer"),
+        _round(_extended_call("d1", "get_shot_full", archive.shots[1])),
+        ChatTurn(text="second answer"),
+    ]
+    await send(runner, tasks, thread)
+    await send(runner, tasks, thread, "and the next one?")
+
+    last = chat_provider.chat_calls[3]
+    read = next(r for m in last.messages for r in m.tool_results if r.id == "d1")
+    assert read.ok and "field_meanings" not in read.content
+    assert len(_copies(last.messages)) == 1, "the history's copy, and only that"
+
+
+async def test_only_the_newest_of_two_earlier_copies_is_kept_and_the_older_is_exactly_stripped(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    first, second = archive.shots[0], archive.shots[1]
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_extended", first)),
+        ChatTurn(text="one"),
+        _round(_extended_call("c2", "get_shot_extended", second)),
+        ChatTurn(text="two"),
+        ChatTurn(text="three"),
+    ]
+    await send(runner, tasks, thread)
+    # A budget the first answer does not survive, so the second answer attaches its own copy.
+    await runner.llm.settings.store("chatHistoryTokenBudget", 1000)
+    await send(runner, tasks, thread, "next shot?")
+    await runner.llm.settings.store("chatHistoryTokenBudget", 100_000)
+    await send(runner, tasks, thread, "and a third question?")
+
+    kept = chat_provider.chat_calls[4].messages
+    [copy] = _copies(kept)
+    assert json.loads(copy.content)["shot_id"] == second
+    older = next(r for m in kept for r in m.tool_results if r.id == "c1")
+    stored = {
+        str(r["id"]): str(r["content"])
+        for m in await ChatRepository(runner.db).messages(thread)
+        for r in m.tool_results
+    }
+    assert "field_meanings" in stored["c1"] and "field_meanings" in stored["c2"]
+    # Exactly the one key goes: the rest of the result is as stored.
+    assert json.loads(older.content) == _without_key(stored["c1"])
+
+
+async def test_the_budget_counts_the_copy_that_is_kept_and_may_drop_its_message(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    from gaggiclanker.chat.runner import CHARS_PER_TOKEN, _size
+
+    meanings = render_glossary(default_tiers(), "extended")
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="first answer"),
+    ]
+    await send(runner, tasks, thread)
+
+    everything, carries = await runner._history(thread, 1_000_000)
+    with_copy = sum(_size(m) for m in everything)
+    assert carries and with_copy > len(meanings)
+    # Room for the copy and everything after it: kept whole.
+    roomy, carries = await runner._history(thread, with_copy // CHARS_PER_TOKEN + 10)
+    assert len(roomy) == len(everything) and carries
+    # Room for every message once stripped, but not for the copy: the message that
+    # would carry it goes, and with it the copy (the run attaches its own).
+    stripped_total = with_copy - len(meanings)
+    tight, carries = await runner._history(thread, stripped_total // CHARS_PER_TOKEN + 50)
+    assert len(tight) < len(everything)
+    assert not carries and _copies(tight) == []
 
 
 async def test_a_tool_result_cap_leaves_the_extended_glossary_whole(

@@ -25,6 +25,8 @@ def test_a_result_cut_at_the_cap_still_loses_it() -> None:
 
 def test_a_result_without_it_is_unchanged() -> None:
     plain = json.dumps({"shot_id": 7, "text": "field_meanings is a word here"})
+    nested = json.dumps({"rows": [{"field_meanings": "a", "b": 1}]})
+    assert without_field_meanings(nested) == nested
 
     assert without_field_meanings(plain) == plain
     assert without_field_meanings("not json") == "not json"

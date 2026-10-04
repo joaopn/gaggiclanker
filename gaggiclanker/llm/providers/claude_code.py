@@ -489,6 +489,7 @@ def build_mcp_config(
     set_id: int | None = None,
     set_version_id: int | None = None,
     thread_id: int | None = None,
+    meanings_in_context: bool = False,
 ) -> str:
     """The `--mcp-config` document: our stdio MCP server, and only it.
 
@@ -516,6 +517,11 @@ def build_mcp_config(
     # change was argued in; it narrows nothing, so it travels on its own.
     if thread_id is not None:
         env["GAGGICLANKER_MCP_THREAD_ID"] = str(thread_id)
+    # The history this run was sent already holds the extended shot-field
+    # meanings, so the child starts with them counted as sent: the CLI's loop
+    # is out of the runner's reach, and this is the only way to tell it.
+    if meanings_in_context:
+        env["GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT"] = "1"
     return json.dumps(
         {
             "mcpServers": {
@@ -768,6 +774,7 @@ class ClaudeCodeProvider:
                         set_id=request.set_id,
                         set_version_id=request.set_version_id,
                         thread_id=request.thread_id,
+                        meanings_in_context=request.meanings_in_context,
                     )
                     if self.data_dir
                     else ""

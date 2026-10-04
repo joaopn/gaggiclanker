@@ -94,6 +94,11 @@ class ChatToolResult:
 _MEANINGS = re.compile(r'\A\{\s*"field_meanings"\s*:\s*"(?:[^"\\]|\\.)*"\s*,\s*')
 
 
+def has_field_meanings(content: str) -> bool:
+    """Whether a tool result is headed by the extended glossary."""
+    return _MEANINGS.match(content) is not None
+
+
 def without_field_meanings(content: str) -> str:
     """A tool result without the extended glossary that may head it.
 
@@ -165,6 +170,10 @@ class ChatRequest:
     #: the room it was argued in, and the child can only know that if it is
     #: told. Read by ``claude_code`` for the same reason as the two above.
     thread_id: int | None = None
+    #: The history already carries the extended shot-field meanings, so this
+    #: run's tools must not attach another copy. Read by ``claude_code``, whose
+    #: tool loop runs in a child the runner cannot reach: it is told at spawn.
+    meanings_in_context: bool = False
     #: Set by the caller to stop the turn. Checked between streamed chunks and
     #: passed to the subprocess providers as the signal to kill the child; it is
     #: an ``Event`` rather than task cancellation so a cancelled run can still

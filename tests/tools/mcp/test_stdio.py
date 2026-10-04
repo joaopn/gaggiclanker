@@ -465,6 +465,38 @@ def run_server(data_dir: Path, **env: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+async def test_a_process_told_the_meanings_are_in_context_attaches_none(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The claude_code path: the run's history already holds a copy, and the runner says so
+    at spawn, so the CLI's first extended read carries none. Without the flag it does."""
+    data_dir, fixture = archive_dir
+    shot = fixture.shots[-1]
+    async with AsyncExitStack() as stack:
+        told = await session_for(stack, data_dir, GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT="1")
+        first = await told.call_tool("get_shot_extended", {"shot_id": shot})
+    async with AsyncExitStack() as stack:
+        plain = await session_for(stack, data_dir)
+        other = await plain.call_tool("get_shot_extended", {"shot_id": shot})
+
+    assert first.structured_content is not None and other.structured_content is not None
+    assert "field_meanings" not in first.structured_content
+    assert "field_meanings" not in str(first.content[0])
+    assert "field_meanings" in other.structured_content
+
+
+@pytest.mark.parametrize("value", ["0", "true", "", "yes"])
+def test_a_meanings_flag_that_is_not_one_refuses_to_start(
+    archive_dir: tuple[Path, Fixture], value: str
+) -> None:
+    data_dir, _ = archive_dir
+
+    result = run_server(data_dir, GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT=value)
+
+    assert result.returncode != 0 and "must be 1 or unset" in result.stderr
+    assert result.stdout == ""
+
+
 @pytest.mark.parametrize("value", ["abc", "-1", "1e0", "", "  ", "²", "0"])
 def test_a_scope_that_does_not_parse_refuses_to_start(
     archive_dir: tuple[Path, Fixture], value: str

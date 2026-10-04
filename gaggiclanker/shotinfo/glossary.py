@@ -7,9 +7,11 @@ chat that reads shots is told this glossary: one entry per item that is **not
 excluded**, grouped as a rendering is, each marked with the tier it is in, so
 the model never meets a line it was not told about. It is rendered in two
 halves. The base half is in the system prompt; the extended half, about two
-thirds of the text, is attached to the first successful extended read of each
-run (see :func:`gaggiclanker.tools.builtin._extended_meanings`), so an answer
-that opens no shot in detail does not carry it.
+thirds of the text, is attached to the first successful extended read of a
+run (see :func:`gaggiclanker.tools.builtin._extended_meanings`), unless the history
+the run starts from already holds a copy: it is in the context exactly once whenever
+extended lines are, and an answer whose history holds none and that opens no
+shot in detail carries none.
 
 It is generated from the catalogue's own meanings, so an item and its
 explanation are one text with two readers (this prompt, and the settings page
@@ -59,8 +61,9 @@ _PREAMBLE = (
     "A line that is missing means the machine did not record that value (no scale, no pressure "
     "sensor, too few samples to judge) — never that it was zero.",
     "Below are the base fields. The meanings of the extended fields are not in this prompt: "
-    "they arrive at the head of the first result in an answer from get_shot_extended, "
-    "get_shot_full or compare_shots, before the shot lines they explain.",
+    "they arrive at the head of the first result from get_shot_extended, get_shot_full or "
+    "compare_shots, before the shot lines they explain, and stay in the conversation: if "
+    "an earlier result in it already has them, they are not sent again.",
 )
 
 _EXTENDED_HEADING = (
