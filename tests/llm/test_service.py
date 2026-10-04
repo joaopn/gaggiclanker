@@ -14,7 +14,7 @@ from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.modes import ModeMemory
 from gaggiclanker.llm.providers.base import ProviderReply
 from gaggiclanker.llm.service import MAX_STORED_TEXT, LlmService
-from gaggiclanker.llm.types import Err, LlmMessage, LlmRequest, Ok, Usage
+from gaggiclanker.llm.types import Err, LlmMessage, LlmRequest, Ok, Usage, request_usage
 from gaggiclanker.settings_service import SettingsService
 from tests.llm.conftest import Answer, FakeProvider, api_error
 
@@ -374,6 +374,40 @@ async def test_the_observer_records_the_call(service: LlmService) -> None:
     assert record.subject == "#129"
     assert record.total_tokens == 18
     assert record.duration_ms is not None
+
+
+_CACHED = request_usage(fresh=10, cache_write=300, cache_read=5000, out=40)
+
+
+async def test_the_live_record_carries_the_cached_part(
+    service: LlmService, provider: FakeProvider
+) -> None:
+    """The activity panel's cached share reads this field."""
+    provider.script = [ProviderReply(text='{"verdict": "ok", "score": 1}', usage=_CACHED)]
+
+    await service.call_json(request())
+
+    assert service.observer.snapshot()[0].cache_read_tokens == 5000
+
+
+async def test_the_ledger_row_carries_the_cache_split_and_the_context(
+    settings: SettingsService, budget: RateLimitBudget, db: Database, provider: FakeProvider
+) -> None:
+    repo = LlmCallsRepository(db)
+    service = LlmService(
+        settings,
+        budget=budget,
+        mode_memory=ModeMemory(),
+        calls_repo=repo,
+        provider_factory=lambda *_: provider,
+    )
+    provider.script = [ProviderReply(text='{"verdict": "ok", "score": 1}', usage=_CACHED)]
+
+    await service.call_json(request())
+
+    row = (await repo.recent())[0]
+    assert (row.input_tokens, row.output_tokens) == (5310, 40)
+    assert (row.cache_read_tokens, row.cache_write_tokens, row.context_tokens) == (5000, 300, 5310)
 
 
 async def test_a_failed_call_is_recorded_with_its_message(

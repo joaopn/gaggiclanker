@@ -298,6 +298,23 @@ def test_cache_tokens_are_added_to_the_input_count() -> None:
     assert usage.completion_tokens == 44
 
 
+def test_the_ledger_context_is_the_last_request_not_the_run_sum() -> None:
+    """A real result line: four requests summed to 85950, the last one was 21741."""
+    fixture = Path(__file__).resolve().parent.parent / "fixtures" / "claude_stream"
+    result_line = (fixture / "run1_four_requests.jsonl").read_text().splitlines()[-1]
+
+    _, usage = parse_cli_json_output(result_line)
+
+    assert usage.prompt_tokens == 85950  # the billed sum is unchanged
+    assert usage.context_tokens == 21741
+
+
+def test_without_iterations_the_summed_input_is_the_context() -> None:
+    _, usage = parse_cli_json_output(envelope(usage={"input_tokens": 20, "output_tokens": 5}))
+
+    assert usage.context_tokens == 20
+
+
 def test_no_result_event_is_an_error() -> None:
     with pytest.raises(LlmApiError, match="result event"):
         parse_cli_json_output(json.dumps({"type": "system"}))

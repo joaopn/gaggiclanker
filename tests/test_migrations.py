@@ -1625,7 +1625,7 @@ async def test_0042_upgrades_a_populated_database_and_every_link_survives(
     )
     assert sequence_before == 8
 
-    assert "0042" in await run_migrations(db)
+    assert await run_migrations(db) == ["0042", "0043"]
 
     # Every child row, byte for byte, and the versions themselves less the ordinal.
     for table, order in _VERSION_CHILDREN.items():
@@ -1708,7 +1708,7 @@ async def test_0042_boots_over_a_database_that_already_had_a_dangling_reference(
     broken = {tuple(r) for r in await db.fetch_all("PRAGMA foreign_key_check")}
     assert len(broken) == 1
 
-    assert "0042" in await run_migrations(db)
+    assert await run_migrations(db) == ["0042", "0043"]
 
     assert await db.fetch_value("SELECT bean_id FROM sets WHERE id = 2") == 99
     assert await db.fetch_value("SELECT COUNT(*) FROM set_versions WHERE set_id = 2") == 2

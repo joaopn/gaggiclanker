@@ -302,7 +302,7 @@ def parse_cli_json_output(stdout: str) -> tuple[str, Usage]:
         message = _non_empty(parsed.get("result")) or "the Claude Code CLI reported an error"
         raise LlmApiError(message, status=status, body=json.dumps(parsed)[:600])
 
-    usage = _read_usage(parsed.get("usage"))
+    usage = _with_last_request(_read_usage(parsed.get("usage")), parsed.get("usage"))
 
     structured = parsed.get("structured_output")
     if isinstance(structured, dict | list):
@@ -345,7 +345,7 @@ def _read_usage(raw: Any) -> Usage:
     All three are billed; reporting only ``input_tokens`` on a cached call
     understates it by an order of magnitude (see :func:`request_usage`). The
     result envelope's figure is a run-wide sum, so for a chat run the reader
-    drops the single request this builds (``_envelope_totals``).
+    drops the single request this builds (``_StreamReader._result`` clears ``requests``).
     """
     if not isinstance(raw, dict):
         return Usage()
@@ -355,6 +355,22 @@ def _read_usage(raw: Any) -> Usage:
         cache_read=_as_int(raw.get("cache_read_input_tokens")),
         out=_as_int(raw.get("output_tokens")),
     )
+
+
+def _with_last_request(usage: Usage, raw: Any) -> Usage:
+    """Make the ledger's context the last request's input, not the run's sum.
+
+    A one-shot call can still make more than one request inside the CLI (a
+    retry, a corrective round); the envelope sums them, while ``iterations``
+    is only the last request's own breakdown (one entry for a four-request
+    chat run), its last entry final. Without ``iterations`` the summed
+    figure stands, which is exact for a single request.
+    """
+    iterations = raw.get("iterations") if isinstance(raw, dict) else None
+    if not isinstance(iterations, list) or not iterations:
+        return usage
+    last = _read_usage(iterations[-1]).requests
+    return replace(usage, requests=last) if last else usage
 
 
 def _as_int(value: Any) -> int | None:

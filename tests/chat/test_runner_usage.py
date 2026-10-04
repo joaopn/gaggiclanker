@@ -44,6 +44,21 @@ async def test_a_claude_code_run_stores_the_context_the_cache_split_and_the_wind
     assert len(usage["per_request"]) == 4
 
 
+async def test_parallel_tool_calls_store_two_requests_though_the_cli_counted_three_turns(
+    runner: ChatRunner, tasks: TaskRegistry, thread: int, chat_provider: FakeProvider
+) -> None:
+    turn = await replay("run2_parallel_tools")  # its result envelope says num_turns 3
+    turn.text = "Done."
+    chat_provider.chat_script = [turn]
+
+    run_id = await send(runner, tasks, thread)
+
+    run = await ChatRepository(runner.db).get_run(run_id)
+    assert run is not None and run.usage is not None
+    assert run.usage["requests"] == 2
+    assert [r["context"] for r in run.usage["per_request"]] == [1156, 1443]
+
+
 async def test_each_message_holds_only_the_requests_that_produced_it(
     runner: ChatRunner, tasks: TaskRegistry, thread: int, chat_provider: FakeProvider
 ) -> None:

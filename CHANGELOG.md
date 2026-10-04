@@ -37,7 +37,8 @@ first (`POST /api/backup`), because there is no down-migration.
   are API requests, not the CLI's turn count. Figures are tokens, shown as `842`, `9.6k`, `55k`.
 - **Claude Code runs are counted per request.** One request with thinking, text and a tool call used
   to be counted three times, and a run cancelled or killed before its result kept that inflated
-  figure. OpenAI-compatible cached tokens are now read.
+  figure. The Anthropic API provider no longer counts a turn's output twice (the stub in the opening
+  event plus the final count). OpenAI-compatible cached tokens are now read.
 - **The LLM activity panel shows the cached share** beside a call's tokens where known, the chat
   export carries `context_tokens`, `cache_read_tokens`, `cache_write_tokens` and `requests` per run,
   and a new migration adds the cache and context columns to the usage ledger (older rows stay empty).
