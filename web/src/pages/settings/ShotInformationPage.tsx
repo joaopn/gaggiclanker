@@ -125,7 +125,9 @@ function Overview({ document }: { document: ShotInformation }) {
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4" aria-label="Estimated cost">
         <div>
           <dt className="text-muted-foreground text-xs">Base, per shot</dt>
-          <dd data-testid="estimate-base">{tokens(estimates.base_per_shot)}</dd>
+          <dd data-testid="estimate-base" className="whitespace-nowrap">
+            {tokens(estimates.base_per_shot)}
+          </dd>
         </div>
         <div>
           <dt className="text-muted-foreground text-xs">
@@ -135,17 +137,22 @@ function Overview({ document }: { document: ShotInformation }) {
               <span className="sr-only"> (set under Settings → LLM, Chat)</span>
             </Link>
           </dt>
-          <dd data-testid="estimate-extended">{tokens(estimates.extended_per_shot)}</dd>
+          <dd data-testid="estimate-extended" className="whitespace-nowrap">
+            {tokens(estimates.extended_per_shot)}
+          </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground text-xs">Glossary, base, every turn</dt>
-          <dd data-testid="estimate-glossary">{tokens(estimates.glossary)}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground text-xs">
-            Glossary, extended, added once with the first extended read
-          </dt>
-          <dd data-testid="estimate-glossary-extended">{tokens(estimates.glossary_extended)}</dd>
+          <dt className="text-muted-foreground text-xs">Glossary</dt>
+          <dd data-testid="estimate-glossary">
+            <span className="whitespace-nowrap">{tokens(estimates.glossary)}</span>
+            <span className="text-muted-foreground block text-xs">base, on every turn</span>
+          </dd>
+          <dd data-testid="estimate-glossary-extended" className="mt-1">
+            <span className="whitespace-nowrap">{tokens(estimates.glossary_extended)}</span>
+            <span className="text-muted-foreground block text-xs">
+              extended, added once per answer, when the agent first reads a shot in detail
+            </span>
+          </dd>
         </div>
         <div>
           <dt className="text-muted-foreground text-xs">
@@ -155,7 +162,9 @@ function Overview({ document }: { document: ShotInformation }) {
               <span className="sr-only"> (set under Settings → LLM, Chat)</span>
             </Link>
           </dt>
-          <dd data-testid="estimate-autoload">{tokens(estimates.autoload)}</dd>
+          <dd data-testid="estimate-autoload" className="whitespace-nowrap">
+            {tokens(estimates.autoload)}
+          </dd>
         </div>
       </dl>
       <p className="text-muted-foreground text-xs">
