@@ -21,6 +21,10 @@ first (`POST /api/backup`), because there is no down-migration.
   fetch anything. The reason on a proposed change and the text of a proposed insight take bold,
   italics, code and links too.
 
+### A Set's chat uses the shots it was already given
+
+- **The Set chat no longer fetches shots it already has.** The newest shots of the version are in its opening context in their base information, and that context now names their ids; the prompt and the shot tools say that for those shots only `get_shot_extended` adds anything (the diagnostics, phases and curve), and `list_set_shots` is for shots outside the context. Fewer repeated tool results, and a shorter wait for the first answer.
+
 ### Version names are identifiers, and going back moves the Set instead of writing a version
 
 - **Versions are listed by when they were made.** A version's name (v1.2) is an identifier, like a

@@ -588,3 +588,16 @@ def test_the_mcp_client_is_told_what_a_design_connection_has() -> None:
     assert "propose_initial_recipe" in told
     assert "list_set_shots" not in told
     assert instructions_for(ToolScope.for_thread(3)) != told
+
+
+def test_the_shot_reading_tools_say_the_opening_context_shots_are_already_there() -> None:
+    """The claude_code provider sees only these descriptions, so they carry the guidance."""
+    from gaggiclanker.tools.mcp.server import SET_INSTRUCTIONS
+
+    for name in ("get_shot", "get_shot_full", "list_set_shots"):
+        spec = registry.get(name)
+        assert spec is not None
+        assert "opening context" in spec.description, name
+        assert "already there in base information" in spec.description, name
+    assert "get_shot_extended" in SET_INSTRUCTIONS
+    assert "already holds" in SET_INSTRUCTIONS

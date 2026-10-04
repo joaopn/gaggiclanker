@@ -288,7 +288,9 @@ async def _one_shot(ctx: ToolContext, shot_id: int, tier: ShotTier) -> ShotTextO
         "One shot's base information: what it is and where it is filed, its outcome, the "
         "headline diagnostics and the person's judgement — the lines a Set conversation's "
         "opening context shows for every shot. Cite a shot by its id. get_shot_extended adds "
-        "the rest; get_shot_full is both."
+        "the rest; get_shot_full is both. In a Set conversation the shots in the opening "
+        "context are already there in base information, so ask for one of those with "
+        "get_shot_extended, not this."
     ),
 )
 async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
@@ -315,7 +317,9 @@ async def get_shot_extended(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutp
     permission="read",
     description=(
         "One shot's base and extended information together. The largest answer a shot gives "
-        "(it carries the curve), so keep it for the shot a question turns on."
+        "(it carries the curve), so keep it for the shot a question turns on. In a Set "
+        "conversation the shots in the opening context are already there in base information; "
+        "for one of those, get_shot_extended adds only what is missing."
     ),
 )
 async def get_shot_full(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
@@ -608,7 +612,9 @@ def _refuse_excluded(args: SearchShotsInput, tiers: Mapping[str, Tier], order: s
         "dose out or ratio, or by the band of channeling risk, resistance level, pressure or "
         "flow adherence; sort by date or any of those numbers. At most 10 shots come back; "
         "truncated says more matched. A shot with no value for a filter never matches it. A "
-        "shot that is not counted is read, never averaged."
+        "shot that is not counted is read, never averaged. The shots in the opening context are "
+        "already there in base information: use this for shots outside it (other versions, "
+        "older shots, a band or range)."
     ),
 )
 async def list_set_shots(ctx: ToolContext, args: SearchShotsInput) -> SearchShotsOutput:

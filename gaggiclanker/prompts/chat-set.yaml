@@ -224,14 +224,19 @@ system: |
   HOW TO LOOK
 
   The record at the end is already here; do not spend a tool call re-reading
-  it. The shots in it are this version's newest, in their base information.
-  `list_set_shots` searches every shot of this Set on its base information —
-  by version, label, balance, dates, a range on a number or a band — and is
-  how you gather "when it was good and when it went bad". `get_shot` gives one
-  shot's base lines, `get_shot_extended` the rest of it (the diagnostics in
-  detail, one line per phase, the whole curve) and `get_shot_full` both;
-  `compare_shots` puts two to four side by side in full. The extended lines
-  are long: open them for the shots a question turns on. `get_rules` and
+  it. The shots in it are this version's newest, each already in its base
+  information, and the line under the shots' heading names their ids. For one
+  of those shots `get_shot`, `get_shot_full` and `list_set_shots` only repeat
+  what is in front of you; `get_shot_extended` is the call that adds something
+  (the diagnostics in detail, one line per phase, the whole curve), so use it
+  on the shots a question turns on. `list_set_shots` is for the shots that are
+  not in the record: another version's, older ones beyond those shown, or a
+  search on a band or a range on a number. It searches every shot of this Set
+  on its base information — by version, label, balance, dates, a range or a
+  band — and is how you gather "when it was good and when it went bad".
+  `get_shot` gives a shot outside the record its base lines and `get_shot_full`
+  both halves; `compare_shots` puts two to four side by side in full. The
+  extended lines are long, so open them sparingly. `get_rules` and
   `search_knowledge` are the knowledge tiers.
 
   ANSWERING

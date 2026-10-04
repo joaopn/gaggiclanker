@@ -88,10 +88,12 @@ SET_INSTRUCTIONS = (
     "gaggiclanker is an espresso shot archive for a GaggiMate machine. This connection is "
     "about one Set — one coffee being dialled in — and it can see that Set only: its "
     "versions with their predictions and outcomes, its shots, and the knowledge base.\n\n"
-    "Start with get_set for the experiment so far, then list_set_shots to search the shots "
-    "behind it on their base information; get_shot_extended and get_shot_full read one shot in "
-    "more detail. Cite shots by id and knowledge passages by their heading_path. Tools whose "
-    "names begin with propose_, draft_ or record_ create something the user must confirm; "
+    "The opening context already holds this version's newest shots in base information, so "
+    "read one of those in more detail with get_shot_extended rather than fetching it again. "
+    "Start with get_set for the experiment so far, and use list_set_shots to search the shots "
+    "outside that context on their base information; get_shot_full reads one shot in full. "
+    "Cite shots by id and knowledge passages by their heading_path. Tools whose names begin "
+    "with propose_, draft_ or record_ create something the user must confirm; "
     "nothing here writes to the espresso machine."
 )
 
