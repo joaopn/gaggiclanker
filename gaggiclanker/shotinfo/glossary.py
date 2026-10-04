@@ -9,8 +9,9 @@ the model never meets a line it was not told about. It is rendered in two
 halves. The base half is in the system prompt; the extended half, about two
 thirds of the text, is attached to the first successful extended read of a
 run (see :func:`gaggiclanker.tools.builtin._extended_meanings`), unless the history
-the run starts from already holds a copy: it is in the context exactly once whenever
-extended lines are, and an answer whose history holds none and that opens no
+the run starts from already has extended reads: the history places one copy, from
+:func:`extended_meanings`, on the newest of them. It is in the context exactly once
+whenever extended lines are, and an answer whose history has none and that opens no
 shot in detail carries none.
 
 It is generated from the catalogue's own meanings, so an item and its

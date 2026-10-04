@@ -37,7 +37,7 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ### The chat sends the extended field meanings only when it reads a shot in detail
 
-- **The shot-field glossary is split in two.** The base fields' meanings stay in the Set and General chat prompts; the extended fields' meanings (about two thirds of the glossary) are sent once per answer, with the first `get_shot_extended`, `get_shot_full` or `compare_shots` result, ahead of the shot. The meanings are in the conversation exactly once whenever extended lines are: an answer that opens no shot in detail does not pay for them, a follow-up is sent only the newest earlier copy (older ones are left out of what is replayed), and a follow-up that reads another shot in detail attaches none when the history already holds one. Settings → Shot information shows the two halves' sizes separately.
+- **The shot-field glossary is split in two.** The base fields' meanings stay in the Set and General chat prompts; the extended fields' meanings (about two thirds of the glossary) are sent once per answer, with the first `get_shot_extended`, `get_shot_full` or `compare_shots` result, ahead of the shot. The meanings are in the conversation exactly once whenever extended lines are: an answer that opens no shot in detail does not pay for them, a follow-up is sent one copy, on the newest extended read it replays (older copies are left out, and the copy moves forward if the budget drops the message that had it), and a follow-up that reads another shot in detail attaches none when the history already holds one. Settings → Shot information shows the two halves' sizes separately.
 
 ### A Set's chat uses the shots it was already given
 

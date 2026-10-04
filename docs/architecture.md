@@ -478,11 +478,13 @@ detail never carries it. "Once" is tracked per run in a `RunNotes` holder on the
 tool context: the runner's run state for the API providers, the stdio server's
 process (one per run) for `claude_code`. The runner's result cap counts the text
 of the tool, not the meanings. The rule is that the meanings are in the context exactly
-once whenever extended lines are: the replayed history keeps the newest copy among the
-messages the budget keeps and strips every older one (sized with them stripped, then
-again with the newest restored), and when it keeps one the run attaches none — the
+once whenever extended lines are: the replayed history strips every stored copy and places
+a freshly rendered one (the bytes a tool would attach) on the newest successful
+`get_shot_extended`, `get_shot_full` or `compare_shots` result among the messages the
+budget keeps (recognised by the stored tool name, sized again with the copy in
+place), and when it places one the run attaches none — the
 runner marks the run's `RunNotes` as sent, and `claude_code` is told at spawn through
-`GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT=1`. The stored rows keep every copy.
+`GAGGICLANKER_MCP_MEANINGS_IN_CONTEXT=1`. The stored rows keep what was sent at the time.
 A shot's review reads the same renderer with a fixed layout of its own: every
 item but the judgement, the machine's note, the version's recipe, the shot's
 Set, label and counted state, and earlier reviews, whatever the person's tiers
