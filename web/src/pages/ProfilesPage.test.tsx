@@ -811,21 +811,20 @@ describe("proposed versions", () => {
     await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
   });
 
-  it("will not make a proposal that moves a stop condition active until it is acknowledged, and then says so", async () => {
+  it("says a proposal moves a stop condition and makes it active in one click, asking for nothing", async () => {
     const user = setupUser();
     withProposal({ stop_condition_changes: [yieldChange()] });
     const panel = await open(user);
 
-    expect(within(panel).getByTestId("stop-condition-warning")).toBeInTheDocument();
+    const warning = within(panel).getByTestId("stop-condition-warning");
+    expect(warning).toHaveTextContent("phase 1 · Pump");
+    expect(warning).toHaveTextContent("changed volumetric gte 36 → gte 44");
+    expect(within(panel).queryByRole("checkbox")).not.toBeInTheDocument();
     const button = within(panel).getByTestId("make-proposal-active");
-    expect(button).toBeDisabled();
-    await user.click(within(panel).getByRole("checkbox"));
     expect(button).toBeEnabled();
     await user.click(button);
 
-    await waitFor(() =>
-      expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11, acknowledgeStopChanges: true }),
-    );
+    await waitFor(() => expect(api.putOnBoard).toHaveBeenCalledWith({ draftId: 11 }));
   });
 
   it("records the Set's next version only through the button that says so, with the major choice", async () => {
@@ -1040,10 +1039,10 @@ describe("proposed versions", () => {
 });
 
 describe("a profile designed from scratch", () => {
-  it("shows the profile, never a diff, and is added without a stop-condition acknowledgement", async () => {
+  it("shows the profile, never a diff, and is added in one click", async () => {
     const user = setupUser();
     const fresh = proposal({ id: 31, row_id: null, landing: landing({ draft_id: 31 }, null) });
-    // Even with stop changes recorded (an old draft), a new profile has no stops to acknowledge.
+    // Even with stop changes recorded (an old draft), a new profile has no stops it changes.
     fresh.draft = draft({
       id: 31,
       is_new: true,
@@ -1062,7 +1061,6 @@ describe("a profile designed from scratch", () => {
     await within(panel).findByTestId("profile-summary");
     expect(within(panel).queryByTestId("profile-diff")).not.toBeInTheDocument();
     expect(within(panel).queryByTestId("stop-condition-warning")).not.toBeInTheDocument();
-    expect(within(panel).queryByTestId("acknowledge-stop-changes")).not.toBeInTheDocument();
     expect(within(panel).queryByText("What changes")).not.toBeInTheDocument();
     const add = within(panel).getByTestId("make-proposal-active");
     expect(add).toBeEnabled();
@@ -1072,7 +1070,7 @@ describe("a profile designed from scratch", () => {
 });
 
 describe("an is_new draft shown inside a profile", () => {
-  it("is still a profile written from scratch: the summary, never a diff, nothing to acknowledge", async () => {
+  it("is still a profile written from scratch: the summary, never a diff", async () => {
     const user = setupUser();
     const p = proposal({ id: 41, row_id: 1 });
     p.draft = draft({

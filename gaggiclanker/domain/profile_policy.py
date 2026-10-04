@@ -648,7 +648,7 @@ def diff_stop_conditions(base: Profile, draft: Profile) -> list[StopConditionCha
 
     Numbers are normalised the way :func:`canonical_profile_json` normalises
     them, so ``9`` and ``9.0`` are the same stop condition and a draft that
-    merely round-tripped through JSON does not demand an acknowledgement.
+    merely round-tripped through JSON is not reported as a change.
 
     Targets are matched **by type within a phase**, because that is how a person
     reads them: "the volumetric target moved from 36 to 40", not "the target at

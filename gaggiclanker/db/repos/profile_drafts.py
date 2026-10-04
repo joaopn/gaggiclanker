@@ -166,8 +166,8 @@ class ProfileDraftRow(BaseModel):
     base_is_current: bool = True
     change_summary: str = ""
     #: The per-phase target changes computed at draft time. Stored rather than
-    #: recomputed, because the approval is *about this list* and the list that
-    #: was acknowledged has to be the list that was shown.
+    #: recomputed, because the card shows *this list* and a person reads the same
+    #: list later, however the base has moved.
     stop_condition_changes: JsonList = Field(
         default=None, validation_alias="stop_condition_changes_json"
     )
@@ -175,7 +175,6 @@ class ProfileDraftRow(BaseModel):
     clamp_changes: JsonList = Field(default=None, validation_alias="clamp_changes_json")
     notes: str = ""
     status: str = "draft"
-    acknowledged_stop_changes: bool = False
     pushed_device_profile_id: str | None = None
     #: Both documents when the round trip disagreed: what we sent and what the
     #: machine served back, plus their canonical forms.
@@ -339,7 +338,6 @@ class ProfileDraftsRepository(Repository):
         draft_id: int,
         status: DraftStatus,
         *,
-        acknowledged: bool | None = None,
         pushed_device_profile_id: str | None = None,
         verification: dict[str, Any] | None = None,
         error: str | None = None,
@@ -352,14 +350,11 @@ class ProfileDraftsRepository(Repository):
         """Move a draft along, setting only the fields this transition owns.
 
         Every argument but ``status`` defaults to "leave it alone", so a push
-        that fails does not blank the acknowledgement the approval recorded and
+        that fails does not blank what the approval recorded and
         a later rollback does not blank the verification evidence.
         """
         assignments = ["status = ?", "updated_at = ?"]
         params: list[object] = [status, utc_now()]
-        if acknowledged is not None:
-            assignments.append("acknowledged_stop_changes = ?")
-            params.append(int(acknowledged))
         if pushed_device_profile_id is not None:
             assignments.append("pushed_device_profile_id = ?")
             params.append(pushed_device_profile_id)

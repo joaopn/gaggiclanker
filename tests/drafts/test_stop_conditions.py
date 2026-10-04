@@ -1,4 +1,4 @@
-"""`diff_stop_conditions` — the comparison that decides whether a human has to tick a box.
+"""`diff_stop_conditions` — the comparison behind the stop-condition warning on a card.
 
 crema's rule, and the reason it has a test file of its own: a stop condition is
 what decides when the machine stops putting water through the puck, which decides
@@ -7,11 +7,11 @@ is pulled; this changes *how much*.
 
 The pair of properties that matter:
 
-* every added, removed and moved target is reported — a missed one is an
-  acknowledgement nobody was asked for;
+* every added, removed and moved target is reported — a missed one is a change
+  the card never mentions;
 * a target that merely round-tripped through JSON is **not** reported. `9` and
   `9.0` are the same stop condition, and a diff that flagged them would train
-  people to tick the box without reading it, which is worse than not asking.
+  people to ignore the warning, which is worse than not having one.
 """
 
 from __future__ import annotations
@@ -41,9 +41,8 @@ def test_nine_and_nine_point_zero_are_the_same_stop_condition() -> None:
     """The one that must not fire.
 
     A draft that came back from a model as `36.0` where the machine had `36` is
-    the same profile. Flagging it would put an acknowledgement checkbox in front
-    of somebody on every single draft, and a checkbox that is always there is a
-    checkbox nobody reads.
+    the same profile. Flagging it would put a stop-condition warning on every
+    single draft, and a warning that is always there is a warning nobody reads.
     """
     after = edited(targets=[{"type": "volumetric", "operator": "gte", "value": 36.0}])
     assert diff_stop_conditions(base(), after) == []

@@ -584,14 +584,12 @@ export async function getProfileBoard(live = false): Promise<BoardView> {
 
 /**
  * Put a draft on the board: one action that also approves it. Nothing is sent to the machine:
- * the next sync does. A draft that moves a stop condition is refused without the person's
- * acknowledgement.
+ * the next sync does.
  */
 export async function putOnBoard(body: {
   draftId: number;
   setId?: number;
   major?: boolean;
-  acknowledgeStopChanges?: boolean;
 }): Promise<BoardRow> {
   return fetchApi<BoardRow>("/profile-board", {
     method: "POST",
@@ -600,7 +598,6 @@ export async function putOnBoard(body: {
       set_id: body.setId ?? null,
       // Only with a Set: a profile that records nothing names no version.
       ...(body.setId !== undefined && body.major !== undefined ? { major: body.major } : {}),
-      ...(body.acknowledgeStopChanges ? { acknowledge_stop_changes: true } : {}),
     }),
   });
 }

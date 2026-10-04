@@ -3,7 +3,7 @@
 Read models only. A profile (a board row) has the versions it has been, newest first, each with
 where it came from and what it is used for, and **proposals**: open drafts that would land on it
 (or on no profile: a proposed new one). A proposal is a version waiting for a person; making it
-active is ``put_draft`` (with the stop-condition acknowledgement and the Set recording), and
+active is ``put_draft`` (with the Set recording), and
 declining it is the draft's own discard.
 """
 

@@ -61,7 +61,7 @@ export function useProfileBoard(
 export function usePutOnBoard(): UseMutationResult<
   BoardRow,
   Error,
-  { draftId: number; setId?: number; major?: boolean; acknowledgeStopChanges?: boolean }
+  { draftId: number; setId?: number; major?: boolean }
 > {
   const queryClient = useQueryClient();
   return useMutation({

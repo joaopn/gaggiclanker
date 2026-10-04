@@ -167,11 +167,7 @@ async def put_on_board(
             "/api/profile-drafts", json={"base_version_id": base_version_id, "notes": "edit"}
         )
     )
-    row = data(
-        await client.post(
-            "/api/profile-board", json={"draft_id": draft["id"], "acknowledge_stop_changes": True}
-        )
-    )
+    row = data(await client.post("/api/profile-board", json={"draft_id": draft["id"]}))
     return {"draft": draft, "row": row}
 
 
@@ -269,8 +265,8 @@ async def test_a_generated_draft_is_synced_verified_brewed_and_deleted(
     app, client = live
     device = app.state.connection.client
     await adopt(app)
-    # A real edit to a real profile, and not a stop condition: that path has its own test
-    # offline, and moving a target here would make this test require an acknowledgement.
+    # A real edit to a real profile, and not a stop condition: the stop-condition list has its
+    # own tests offline, and this one is about the pressure edit reaching the machine.
     placed = await put_on_board(app, client, provider, await usable_version(app), 8)
 
     summary = await sync(app)

@@ -66,7 +66,6 @@ export function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     clamp_changes: [],
     notes: "",
     status: "draft",
-    acknowledged_stop_changes: false,
     pushed_device_profile_id: null,
     pushed_saved: false,
     verification: null,
@@ -99,7 +98,7 @@ export function newDraftDetail(overrides: Partial<ProfileDraftDetail> = {}): Pro
   });
 }
 
-/** The stop-condition change that makes a draft require an acknowledgement. */
+/** The stop-condition change a draft carries when it moves a stop. */
 export function yieldChange() {
   return {
     phase_index: 0,

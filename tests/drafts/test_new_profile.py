@@ -350,7 +350,7 @@ async def test_a_new_draft_has_no_stop_condition_changes_and_an_edit_still_does(
     assert detail["draft"]["stop_condition_changes"] == []
 
 
-async def test_a_new_draft_is_put_without_an_acknowledgement_and_an_edit_needs_one(
+async def test_a_new_draft_and_an_edit_that_moves_a_stop_are_put_without_any_flag(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
 ) -> None:
     app, client, _ = adopted
@@ -363,11 +363,13 @@ async def test_a_new_draft_is_put_without_an_acknowledgement_and_an_edit_needs_o
     )
 
     row = await put(client, {"id": new.id})
-    refused = await client.post("/api/profile-board", json={"draft_id": edit.id})
+    # Renamed from a base whose stop it moves: it lands as a new profile, and the person has no
+    # checkbox for it, so nothing may be asked.
+    renamed = await client.post("/api/profile-board", json={"draft_id": edit.id})
 
     assert row["pending_draft_id"] == new.id
-    assert refused.status_code == 409
-    assert refused.json()["error"]["details"]["field"] == "acknowledge_stop_changes"
+    assert renamed.status_code == 201
+    assert renamed.json()["data"]["pending_draft_id"] == edit.id
 
 
 async def _apply_the_backfill(db: Database) -> None:

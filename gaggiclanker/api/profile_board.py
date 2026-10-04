@@ -56,10 +56,6 @@ class BoardPut(BaseModel):
     #: Whether that version is a major one; ``None`` leaves the default for a pushed draft.
     #: Strict: "yes" is not an answer to a question that decides a version's name.
     major: StrictBool | None = None
-    #: Required, and refused without, when the draft moves a stop condition: the person says
-    #: they know it changes how much coffee ends up in the cup. Named for what it acknowledges
-    #: so a client that sets every boolean to true has still said something specific.
-    acknowledge_stop_changes: bool = False
 
 
 class ResumeData(BaseModel):
@@ -152,10 +148,9 @@ async def get_board(
 async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep) -> JSONResponse:
     """The next sync puts it on the machine. Nothing is sent to the machine now.
 
-    One action for a proposal: a drafted draft is approved by it (with the stop-condition
-    acknowledgement when its stop conditions moved). Refused (409) for a draft that is already
-    on the machine, discarded or overtaken, one whose version is already in the list, a
-    stop-condition change nobody acknowledged, and for a Set that could no longer be given a
+    One action for a proposal: a drafted draft is approved by it. Refused (409) for a draft
+    that is already on the machine, discarded or overtaken, one whose version is already in the
+    list, and for a Set that could no longer be given a
     version. A proposal continues the live profile with exactly its name, or is a new profile.
     """
     if body.set_id is not None:
@@ -166,7 +161,6 @@ async def put_on_board(body: BoardPut, board: BoardServiceDep, sets: SetsRepoDep
         body.draft_id,
         set_id=body.set_id,
         major=body.major,
-        acknowledge_stop_changes=body.acknowledge_stop_changes,
     )
     return envelope_response(row.model_dump(mode="json"), status_code=201)
 

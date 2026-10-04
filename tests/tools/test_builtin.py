@@ -731,6 +731,27 @@ async def test_a_profile_draft_outside_a_set_needs_none(ctx: ToolContext, archiv
     assert stored.set_id is None
 
 
+async def test_a_profile_draft_reports_the_stop_condition_it_moves(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """Nothing refuses a stop-condition change any more; the agent is told, and so is the card."""
+    base = await ProfilesRepository(archive.db).get_version(archive.profile_version_id)
+    assert base is not None and base.profile is not None
+    phases = [dict(phase) for phase in base.profile["phases"]]
+    phases[-1]["targets"] = [{"type": "volumetric", "operator": "gte", "value": 61}]
+
+    data = await call(
+        _with_drafts(ctx),
+        "draft_profile",
+        base_version_id=archive.profile_version_id,
+        patch={"phases": phases},
+        reason="A longer shot.",
+    )
+
+    [change] = data["stop_condition_changes"]
+    assert change["target_type"] == "volumetric" and change["after"]["value"] == 61
+
+
 async def test_a_set_conversation_s_draft_carries_its_set_and_its_prediction(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:

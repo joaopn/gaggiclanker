@@ -290,6 +290,29 @@ async def test_a_forked_design_starts_from_the_fork_and_the_patch_only(archive: 
     assert document["temperature"] == 91
 
 
+async def test_a_forked_design_reports_the_stop_condition_it_moves(archive: Fixture) -> None:
+    profiles = ProfilesRepository(archive.db)
+    stored = await profiles.get_version(archive.profile_version_id)
+    assert stored is not None and stored.profile is not None
+    phases = [dict(phase) for phase in stored.profile["phases"]]
+    phases[-1]["targets"] = [{"type": "volumetric", "operator": "gte", "value": 61}]
+    fork, _ = await profiles.ensure_version(
+        Profile.model_validate({**stored.profile, "label": "Fork with a stop"})
+    )
+    row = await _designed(
+        archive.db, archive.bean_id, archive.grinder_id, fork_profile_version_id=fork.id
+    )
+
+    outcome = await _propose(
+        await _design_ctx(archive.db, row),
+        profile={"label": "From the fork", "patch": {"phases": phases}},
+    )
+
+    assert outcome.ok, outcome.data
+    [change] = outcome.data["stop_condition_changes"]
+    assert change["target_type"] == "volumetric" and change["after"]["value"] == 61
+
+
 async def test_with_no_fork_the_profile_is_written_from_zero(archive: Fixture) -> None:
     """Nothing of the library's most-used profile, or of the diff's baseline, comes along.
 

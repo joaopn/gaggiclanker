@@ -1142,10 +1142,9 @@ export interface paths {
          * Make a proposal active: a new version of a profile, or a new profile
          * @description The next sync puts it on the machine. Nothing is sent to the machine now.
          *
-         *     One action for a proposal: a drafted draft is approved by it (with the stop-condition
-         *     acknowledgement when its stop conditions moved). Refused (409) for a draft that is already
-         *     on the machine, discarded or overtaken, one whose version is already in the list, a
-         *     stop-condition change nobody acknowledged, and for a Set that could no longer be given a
+         *     One action for a proposal: a drafted draft is approved by it. Refused (409) for a draft
+         *     that is already on the machine, discarded or overtaken, one whose version is already in the
+         *     list, and for a Set that could no longer be given a
          *     version. A proposal continues the live profile with exactly its name, or is a new profile.
          */
         post: operations["put_on_board_api_profile_board_post"];
@@ -3544,11 +3543,6 @@ export interface components {
          * @description Make a proposal active.
          */
         BoardPut: {
-            /**
-             * Acknowledge Stop Changes
-             * @default false
-             */
-            acknowledge_stop_changes: boolean;
             /** Draft Id */
             draft_id: number;
             /** Major */
@@ -5535,11 +5529,6 @@ export interface components {
          * @description One draft, with the joined labels a reader needs beside it.
          */
         ProfileDraftRow: {
-            /**
-             * Acknowledged Stop Changes
-             * @default false
-             */
-            acknowledged_stop_changes: boolean;
             /** Base Device Profile Id */
             base_device_profile_id?: string | null;
             /**

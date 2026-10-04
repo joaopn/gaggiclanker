@@ -1,10 +1,9 @@
-"""Putting a draft on the board is one action: approval, acknowledgement and the put together.
+"""Putting a draft on the board is one action: the approval and the put together.
 
 The staged box had an Approve and then a Push; the board has a single "Put on the board",
-which carries what Approve carried (the stop-condition acknowledgement) and what the push
-carried (the Set, and whether it is a major version). Every refusal here must leave the draft
-as it was: a refused put that had half approved it would be a draft the card no longer
-offers a click for.
+which carries what the push carried (the Set, and whether it is a major version). Every
+refusal here must leave the draft as it was: a refused put that had half approved it would be
+a draft the card no longer offers a click for.
 """
 
 from __future__ import annotations
@@ -69,63 +68,27 @@ async def test_one_request_approves_a_drafted_draft_and_puts_it_on_the_board(
 
     assert row["pending_draft_id"] == draft["id"] and row["label"] == APP_LABEL
     stored = await draft_status(client, draft)
-    assert stored["status"] == "approved" and stored["acknowledged_stop_changes"] is False
+    assert stored["status"] == "approved"
     assert write_frames(fake) == [], "nothing is sent until the sync"
     run = await pull(app)
     assert run.status == "ok" and len(summary_of(run)["pushed"]) == 1
     assert (await draft_status(client, draft))["status"] == "pushed"
 
 
-async def test_a_stop_condition_change_is_refused_until_it_is_acknowledged_and_nothing_moves(
+async def test_a_draft_that_moves_a_stop_condition_is_put_like_any_other(
     adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
 ) -> None:
+    """The card says the stop moved; nothing asks for a confirmation or refuses."""
     app, client, _ = adopted
     draft = await stop_condition_draft(app, client, provider)
-    rows = len((await get_board(client))["rows"])
 
-    refused = await client.post("/api/profile-board", json={"draft_id": draft["id"]})
-
-    assert refused.status_code == 409
-    body = error(refused)
-    assert "how much coffee ends up in the cup" in body["message"]
-    assert body["details"]["field"] == "acknowledge_stop_changes"
-    assert body["details"]["stop_condition_changes"][0]["after"]["value"] == 44
-    assert (await draft_status(client, draft))["status"] == "draft", "not half approved"
-    assert len((await get_board(client))["rows"]) == rows
-    # A falsy acknowledgement is not one.
-    again = await client.post(
-        "/api/profile-board", json={"draft_id": draft["id"], "acknowledge_stop_changes": False}
-    )
-    assert again.status_code == 409
-
-    row = await put(client, draft, acknowledge_stop_changes=True)
+    row = await put(client, draft)
 
     assert row["pending_draft_id"] == draft["id"]
     stored = await draft_status(client, draft)
-    assert stored["status"] == "approved" and stored["acknowledged_stop_changes"] is True
-
-
-async def test_a_draft_that_moves_nothing_needs_no_acknowledgement(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-    assert draft["stop_condition_changes"] == []
-
-    await put(client, draft)
-
-    assert (await draft_status(client, draft))["acknowledged_stop_changes"] is False
-
-
-async def test_an_acknowledgement_on_a_draft_that_moves_nothing_is_not_recorded(
-    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
-) -> None:
-    app, client, _ = adopted
-    draft = await draft_of(app, client, provider, BASE_LABEL, 8)
-
-    await put(client, draft, acknowledge_stop_changes=True)
-
-    assert (await draft_status(client, draft))["acknowledged_stop_changes"] is False
+    assert stored["status"] == "approved"
+    assert stored["stop_condition_changes"][0]["after"]["value"] == 44, "still shown, not blocking"
+    assert "acknowledged_stop_changes" not in stored
 
 
 async def test_a_draft_approved_before_the_one_click_put_is_put_as_it_is(
@@ -133,9 +96,9 @@ async def test_a_draft_approved_before_the_one_click_put_is_put_as_it_is(
 ) -> None:
     app, client, _ = adopted
     draft = await stop_condition_draft(app, client, provider)
-    await app.state.drafts.drafts.set_status(draft["id"], "approved", acknowledged=True)
+    await app.state.drafts.drafts.set_status(draft["id"], "approved")
 
-    row = await put(client, draft)  # its acknowledgement is already on record
+    row = await put(client, draft)
 
     assert row["pending_draft_id"] == draft["id"]
 
@@ -153,6 +116,24 @@ async def test_only_a_drafted_or_approved_draft_can_be_put(
 
         assert refused.status_code == 409, status
         assert f"A {status} proposal cannot be made active" in error(refused)["message"]
+
+
+async def test_a_refused_put_leaves_the_draft_drafted_and_the_board_as_it_was(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, _ = adopted
+    first = await draft_of(app, client, provider, BASE_LABEL, 8)
+    await put(client, first)
+    twin = await draft_of(app, client, provider, BASE_LABEL, 8)  # the same document again
+    assert twin["status"] == "draft"
+    rows = len((await get_board(client))["rows"])
+
+    refused = await client.post("/api/profile-board", json={"draft_id": twin["id"]})
+
+    assert refused.status_code == 409
+    assert "already in the list" in error(refused)["message"]
+    assert (await draft_status(client, twin))["status"] == "draft", "not half approved"
+    assert len((await get_board(client))["rows"]) == rows
 
 
 async def test_the_sets_version_and_the_major_choice_ride_on_the_same_request(

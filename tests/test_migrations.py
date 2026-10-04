@@ -277,6 +277,20 @@ async def _migrate_below(db: Database, tmp_path: Path, version: str) -> list[str
     return await run_migrations(db, directory)
 
 
+async def _migrate_through(db: Database, tmp_path: Path, version: str) -> list[str]:
+    """Apply the shipped files up to and including `version`, and nothing after it.
+
+    For a test about one migration's effect on the rows it found: a later migration that
+    changes the same table would otherwise move the rows the test compares.
+    """
+    directory = tmp_path / f"through-{version}"
+    directory.mkdir()
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        if path.name[:4] <= version:
+            shutil.copy(path, directory / path.name)
+    return await run_migrations(db, directory)
+
+
 async def _migrate_to_0013(db: Database, tmp_path: Path) -> None:
     await _migrate_below(db, tmp_path, "0014")
 
@@ -1625,7 +1639,7 @@ async def test_0042_upgrades_a_populated_database_and_every_link_survives(
     )
     assert sequence_before == 8
 
-    assert await run_migrations(db) == ["0042", "0043"]
+    assert await _migrate_through(db, tmp_path, "0042") == ["0042"]
 
     # Every child row, byte for byte, and the versions themselves less the ordinal.
     for table, order in _VERSION_CHILDREN.items():
@@ -1708,9 +1722,30 @@ async def test_0042_boots_over_a_database_that_already_had_a_dangling_reference(
     broken = {tuple(r) for r in await db.fetch_all("PRAGMA foreign_key_check")}
     assert len(broken) == 1
 
-    assert await run_migrations(db) == ["0042", "0043"]
+    assert await _migrate_through(db, tmp_path, "0042") == ["0042"]
 
     assert await db.fetch_value("SELECT bean_id FROM sets WHERE id = 2") == 99
     assert await db.fetch_value("SELECT COUNT(*) FROM set_versions WHERE set_id = 2") == 2
     assert [r["table"] for r in await db.fetch_all("PRAGMA foreign_key_check")] == ["sets"]
     assert await _foreign_keys(db) == 1
+
+
+async def test_0044_drops_the_stop_acknowledgement_and_keeps_every_draft(
+    db: Database, tmp_path: Path
+) -> None:
+    await _migrate_below(db, tmp_path, "0044")
+    await db.execute(
+        "INSERT INTO profile_versions (content_hash, label, type, json, source)"
+        " VALUES ('h', 'Old', 'pro', '{}', 'draft')"
+    )
+    await db.execute(
+        "INSERT INTO profile_drafts (base_version_id, draft_version_id, status, created_at,"
+        " updated_at, acknowledged_stop_changes) VALUES (1, 1, 'approved', 'x', 'x', 1)"
+    )
+
+    assert await _migrate_through(db, tmp_path, "0044") == ["0044"]
+
+    columns = {str(r["name"]) for r in await db.fetch_all("PRAGMA table_info(profile_drafts)")}
+    assert "acknowledged_stop_changes" not in columns
+    assert await db.fetch_value("SELECT status FROM profile_drafts") == "approved"
+    assert await db.fetch_all("PRAGMA foreign_key_check") == []

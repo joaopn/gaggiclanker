@@ -1,5 +1,5 @@
 import { AlertTriangle, ListPlus, Trash2 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { DraftLanding, ProfileDraft, StopConditionChange } from "@/api/types";
 import { clampChangesOf, stopConditionChangesOf } from "@/api/types";
 import { ProfileDiff } from "@/components/drafts/ProfileDiff";
@@ -25,15 +25,12 @@ export const WRAP_BUTTON = "h-auto min-h-8 min-w-0 max-w-full shrink whitespace-
 /**
  * A version somebody proposed (the agent, a Set's conversation, the JSON editor) that waits
  * for a person: what it changes against the profile's active version, what the safety policy
- * moved, the stop-condition acknowledgement, the Set it would be recorded on, and the two
+ * moved, the stop-condition change when there is one, the Set it would be recorded on, and the two
  * answers, **Make active** and **Decline**.
  *
  * Making it active is the one click that approves it: it is `POST /api/profile-board` with the
- * acknowledgement and the Set recording a push carried. Nothing is sent to the machine; the
+ * Set recording a push carried. Nothing is sent to the machine; the
  * next sync does, and a Set's version is recorded when that sync has put it there.
- *
- * The acknowledgement is local state and never remembered: it is a statement about this
- * proposal's stop-condition change.
  */
 export function ProposalPanel({
   draft,
@@ -60,17 +57,14 @@ export function ProposalPanel({
   const onceDecline = useSingleFlight();
   // One request per click: a second click before the first has re-rendered would send a second.
   const putting = useRef(false);
-  const [acknowledged, setAcknowledged] = useState(false);
   const [majorChoice, setMajorChoice] = useState<boolean | null>(null);
-  const acknowledgeId = useId();
   const major = majorChoice ?? draft.suggest_major;
 
   const stopChanges = stopConditionChangesOf(draft);
   const clamps = clampChangesOf(draft);
-  // A profile designed from scratch has no stops it changes: nothing to acknowledge, and nothing
+  // A profile designed from scratch has no stops it changes: nothing to warn about, and nothing
   // to diff it against (the base it is stored with is only an anchor).
   const fresh = isNew || draft.is_new === true;
-  const needsAcknowledgement = !fresh && stopChanges.length > 0 && !draft.acknowledged_stop_changes;
   const busy = put.isPending || discard.isPending;
   const alreadyThere = landing?.already_on_board_label ?? null;
   // Every proposal is an independent candidate: another one being made active never blocks this
@@ -93,7 +87,7 @@ export function ProposalPanel({
     if (putting.current) return;
     putting.current = true;
     put.mutate(
-      { draftId: draft.id, ...body, ...(acknowledged ? { acknowledgeStopChanges: true } : {}) },
+      { draftId: draft.id, ...body },
       {
         onSettled: () => {
           putting.current = false;
@@ -101,7 +95,6 @@ export function ProposalPanel({
       },
     );
   };
-  const blockedByAcknowledgement = needsAcknowledgement && !acknowledged;
 
   return (
     <div
@@ -167,25 +160,6 @@ export function ProposalPanel({
 
       {!fresh && stopChanges.length > 0 ? <StopConditionWarning changes={stopChanges} /> : null}
 
-      {needsAcknowledgement ? (
-        <label
-          className="flex items-start gap-2 text-sm"
-          htmlFor={acknowledgeId}
-          data-testid="acknowledge-stop-changes"
-        >
-          <input
-            id={acknowledgeId}
-            type="checkbox"
-            className="mt-1 size-4"
-            checked={acknowledged}
-            onChange={(event) => setAcknowledged(event.target.checked)}
-          />
-          <span>
-            I understand this changes how much coffee ends up in the cup, not just how it is pulled.
-          </span>
-        </label>
-      ) : null}
-
       {landing === undefined ? (
         <p className="text-muted-foreground text-sm" data-testid="proposal-landing-pending">
           Checking where it would land…
@@ -224,7 +198,7 @@ export function ProposalPanel({
         {landing !== undefined && forSet !== null && !setBlocked ? (
           <Button
             size="sm"
-            disabled={busy || blockedByAcknowledgement}
+            disabled={busy}
             data-testid="make-proposal-active-for-set"
             className={WRAP_BUTTON}
             onClick={() => act({ setId: forSet.id, major })}
@@ -239,7 +213,7 @@ export function ProposalPanel({
           <Button
             size="sm"
             variant={forSet !== null && !setBlocked ? "outline" : "default"}
-            disabled={busy || blockedByAcknowledgement}
+            disabled={busy}
             data-testid="make-proposal-active"
             className={WRAP_BUTTON}
             onClick={() => act({})}

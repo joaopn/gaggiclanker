@@ -778,17 +778,13 @@ class BoardService:
         *,
         set_id: int | None = None,
         major: bool | None = None,
-        acknowledge_stop_changes: bool = False,
     ) -> BoardRow:
         """Make a draft the profile's next current version, or a new profile. One action.
 
         Approving a proposal and putting it on the board are the same click: a drafted draft
-        is approved here, in the same transaction as the row it makes, and a draft that moves
-        a stop condition (the pump stops at another volume or weight, which changes how much
-        coffee ends up in the cup) is refused until the person says they know
-        (``acknowledge_stop_changes``). The list acknowledged is the one stored on the draft,
-        which is the list the card rendered. A draft approved before this existed is put as it
-        is, its acknowledgement already on record.
+        is approved here, in the same transaction as the row it makes. A draft that moves a
+        stop condition is put like any other: the card shows the change, and the agent is
+        told never to make one unprompted, but nothing here refuses it.
 
         The profile it is a new version of is found by lineage: for a draft recorded on a Set,
         the board profile standing for the Set's current version; otherwise the profile the
@@ -805,17 +801,6 @@ class BoardService:
                 raise NotFound(f"No profile draft {draft_id}")
             if draft.status not in ("draft", "approved"):
                 raise Conflict(f"A {draft.status} proposal cannot be made active.")
-            changes = draft.stop_condition_changes or []
-            if changes and not (draft.acknowledged_stop_changes or acknowledge_stop_changes):
-                raise Conflict(
-                    "This draft changes when the machine stops pumping, which changes how much "
-                    "coffee ends up in the cup. Make it active again with "
-                    "acknowledge_stop_changes to confirm you meant that.",
-                    details={
-                        "field": "acknowledge_stop_changes",
-                        "stop_condition_changes": changes,
-                    },
-                )
             if draft.draft_version_id is None:
                 raise Conflict("That proposal has no document to make active")
             version = await self.profiles.get_version(draft.draft_version_id)
@@ -827,9 +812,7 @@ class BoardService:
             dest = await self._destination(draft, version, set_id)
             row = dest.row
             if draft.status == "draft":
-                await self.drafts.set_status(
-                    draft.id, "approved", acknowledged=bool(changes and acknowledge_stop_changes)
-                )
+                await self.drafts.set_status(draft.id, "approved")
             pending = BoardRowPatch(
                 pending_draft_id=draft.id, pending_set_id=set_id, pending_major=major
             )

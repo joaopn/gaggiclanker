@@ -3,9 +3,9 @@
 Everything here is a thin wrapper over
 :class:`~gaggiclanker.drafts.service.ProfileDraftService`, which is where the rules live.
 **Nothing here reaches the machine, and nothing here approves a draft**: a draft becomes
-approved, and goes onto the profile board, in one action on ``/api/profile-board`` (which
-carries the stop-condition acknowledgement), and the board's write phase puts it on the
-machine at the next sync. This router drafts, refines, validates, reads and discards.
+approved, and goes onto the profile board, in one action on
+``/api/profile-board``, and the board's write phase puts it on the machine at the next
+sync. This router drafts, refines, validates, reads and discards.
 
 Every route runs its work inside the request. A draft call is one LLM turn — ten seconds, not
 a review's minute or two — so there is nothing here worth a second place an outcome could get
