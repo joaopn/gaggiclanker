@@ -24,7 +24,12 @@ from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTie
 from gaggiclanker.db.repos.shots import ShotsRepository
 from gaggiclanker.infra.sse import EventBus, SseEvent
 from gaggiclanker.infra.tasks import TaskRegistry
-from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
+from gaggiclanker.llm.chat_types import (
+    ChatToolCall,
+    ChatTurn,
+    with_field_meanings,
+    without_field_meanings,
+)
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.types import Usage
 from gaggiclanker.shotinfo.catalogue import CATALOGUE, default_tiers
@@ -422,6 +427,126 @@ async def test_the_budget_counts_the_copy_that_is_kept_and_may_drop_its_message(
     tight, carries = await runner._history(thread, stripped_total // CHARS_PER_TOKEN + 50)
     assert len(tight) < len(everything)
     assert not carries and _copies(tight) == []
+
+
+def _copy_ids(messages: list[Any]) -> list[str]:
+    return [r.id for r in _copies(messages)]
+
+
+async def test_the_copy_lands_on_the_newest_extended_read_even_when_an_older_one_stored_it(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """Run A attached the copy; run B read in detail with none attached (A's was in its
+    history). The follow-up is sent one copy, on B's result, rendered like a tool's."""
+    chat_provider.chat_script = [
+        _round(_extended_call("a1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="a"),
+        _round(_extended_call("b1", "get_shot_full", archive.shots[1])),
+        ChatTurn(text="b"),
+        ChatTurn(text="c"),
+    ]
+    await send(runner, tasks, thread)
+    await send(runner, tasks, thread, "now the next shot?")
+    await send(runner, tasks, thread, "so what do you think?")
+
+    follow_up = chat_provider.chat_calls[4]
+    assert _copy_ids(follow_up.messages) == ["b1"]
+    assert follow_up.meanings_in_context is True
+    # The bytes are a tool's: the stored first read, with the copy a tool attached, is what
+    # the same text without the key becomes when the history places the copy.
+    stored = {
+        str(r["id"]): str(r["content"])
+        for m in await ChatRepository(runner.db).messages(thread)
+        for r in m.tool_results
+    }
+    placed = next(r for m in follow_up.messages for r in m.tool_results if r.id == "b1")
+    assert json.loads(placed.content)["field_meanings"] == render_glossary(
+        default_tiers(), "extended"
+    )
+    assert "field_meanings" not in stored["b1"], "B attached none: A's copy was in its history"
+    assert placed.content == with_field_meanings(
+        stored["b1"], render_glossary(default_tiers(), "extended")
+    )
+    attached = next(c for c in stored.values() if "field_meanings" in c)
+    assert (
+        with_field_meanings(
+            without_field_meanings(attached), render_glossary(default_tiers(), "extended")
+        )
+        == attached
+    ), "same bytes as a tool's own attachment"
+
+
+async def test_a_budget_that_drops_the_copy_s_first_home_moves_it_to_the_run_that_read_after(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """The gap: A carried the copy, B read with none attached, and the budget drops A."""
+    from gaggiclanker.chat.runner import CHARS_PER_TOKEN, _size
+
+    chat_provider.chat_script = [
+        _round(_extended_call("a1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="a"),
+        _round(_extended_call("b1", "get_shot_extended", archive.shots[1])),
+        ChatTurn(text="b"),
+        ChatTurn(text="c"),
+    ]
+    run_a = await send(runner, tasks, thread)
+    await send(runner, tasks, thread, "now the next shot?")
+    rows = await ChatRepository(runner.db).messages(thread)
+    a_rows = sum(row.run_id == run_a for row in rows)
+    everything, _ = await runner._history(thread, 1_000_000)
+    total = sum(_size(m) for m in everything)
+    # Room for everything but run A's messages, with the copy on B's result.
+    budget = (total - sum(_size(m) for m in everything[:a_rows]) + 200) // CHARS_PER_TOKEN
+    await runner.llm.settings.store("chatHistoryTokenBudget", budget)
+
+    await send(runner, tasks, thread, "so what do you think?")
+
+    follow_up = chat_provider.chat_calls[4]
+    assert not any(r.id == "a1" for m in follow_up.messages for r in m.tool_results)
+    assert _copy_ids(follow_up.messages) == ["b1"]
+    assert follow_up.meanings_in_context is True
+
+
+async def test_a_failed_read_does_not_count_as_extended_lines_to_explain(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """History of a base read and a refused extended read: no copy is placed, and when a
+    refused read is the newest, the copy goes on the older successful one."""
+    chat_provider.chat_script = [
+        _round(
+            _extended_call("a1", "get_shot", archive.shots[0]),
+            _extended_call("a2", "get_shot_extended", 999_999),
+        ),
+        ChatTurn(text="a"),
+        ChatTurn(text="b"),
+        _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="c"),
+        _round(_extended_call("d1", "get_shot_extended", 999_999)),
+        ChatTurn(text="d"),
+        ChatTurn(text="e"),
+    ]
+    await send(runner, tasks, thread)
+    await send(runner, tasks, thread, "again?")
+    base_only = chat_provider.chat_calls[2]
+    assert _copies(base_only.messages) == [] and base_only.meanings_in_context is False
+
+    await send(runner, tasks, thread, "in detail?")
+    await send(runner, tasks, thread, "that other one?")
+    await send(runner, tasks, thread, "so?")
+    last = chat_provider.chat_calls[7]
+    assert _copy_ids(last.messages) == ["c1"], "the refused newest read is not explained"
 
 
 async def test_a_tool_result_cap_leaves_the_extended_glossary_whole(

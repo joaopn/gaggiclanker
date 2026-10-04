@@ -66,7 +66,7 @@ from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
 from gaggiclanker.shotinfo.facts import ShotFacts
-from gaggiclanker.shotinfo.glossary import render_glossary
+from gaggiclanker.shotinfo.glossary import extended_meanings
 from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot, with_samples
 from gaggiclanker.shotinfo.search import SEARCH_LIMIT, ShotQuery, search_shots
 from gaggiclanker.tools.registry import ToolContext, tool
@@ -283,11 +283,14 @@ def _extended_meanings(ctx: ToolContext, tiers: Mapping[str, Tier]) -> str | Non
     (:class:`~gaggiclanker.tools.registry.RunNotes`), the same on the chat's
     dispatcher and on the stdio MCP server.
     """
-    if ctx.notes.extended_meanings_sent or not any(t == "extended" for t in tiers.values()):
+    if ctx.notes.extended_meanings_sent:
+        return None
+    meanings = extended_meanings(tiers)
+    if meanings is None:
         return None
     ctx.notes.extended_meanings_sent = True
     log.info("extended_meanings_attached", run_id=ctx.run_id, caller=ctx.caller)
-    return render_glossary(tiers, "extended")
+    return meanings
 
 
 async def _shots_in_scope(

@@ -42,7 +42,7 @@ from gaggiclanker.shotinfo.catalogue import (
     band_text,
 )
 
-__all__ = ["EXTENDED_TOOLS", "Part", "render_glossary", "shared_bands_of"]
+__all__ = ["EXTENDED_TOOLS", "Part", "extended_meanings", "render_glossary", "shared_bands_of"]
 
 #: The two halves of the glossary. Base rides in the system prompt of every
 #: request; extended is sent once per answer, with the first extended read.
@@ -72,6 +72,18 @@ _EXTENDED_HEADING = (
     "answer. The preamble, group notes and band tables of the SHOT FIELDS section of the "
     "system prompt apply to them too.",
 )
+
+
+def extended_meanings(tiers: Mapping[str, Tier]) -> str | None:
+    """The extended half as it is attached to a result, or None with nothing extended to explain.
+
+    The one rendering both attachments use: a tool attaching it to the first
+    extended read of a run, and the history placing it on the newest extended
+    result it replays. So the bytes are the same wherever it lands.
+    """
+    if not any(tier == "extended" for tier in tiers.values()):
+        return None
+    return render_glossary(tiers, "extended")
 
 
 def shared_bands_of(item: Item) -> list[str]:

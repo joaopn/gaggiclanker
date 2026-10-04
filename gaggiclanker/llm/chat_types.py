@@ -25,6 +25,7 @@ what the browser sees within a frame, the turn is what the loop branches on.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -94,9 +95,13 @@ class ChatToolResult:
 _MEANINGS = re.compile(r'\A\{\s*"field_meanings"\s*:\s*"(?:[^"\\]|\\.)*"\s*,\s*')
 
 
-def has_field_meanings(content: str) -> bool:
-    """Whether a tool result is headed by the extended glossary."""
-    return _MEANINGS.match(content) is not None
+def with_field_meanings(content: str, meanings: str) -> str:
+    """A tool result with the extended glossary placed first, as a tool attaches it.
+
+    Byte for byte what the result would read had the tool attached ``meanings``
+    itself (its JSON, the key first), for a result that is a JSON object.
+    """
+    return '{"field_meanings": ' + json.dumps(meanings) + ", " + content[1:]
 
 
 def without_field_meanings(content: str) -> str:

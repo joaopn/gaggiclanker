@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
@@ -56,15 +57,15 @@ from gaggiclanker.llm.chat_types import (
     ChatToolResult,
     ChatTurn,
     event_preview,
-    has_field_meanings,
+    with_field_meanings,
     without_field_meanings,
 )
 from gaggiclanker.llm.errors import LlmApiError, classify_llm_error
 from gaggiclanker.llm.prompts import PromptService
 from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import Usage
-from gaggiclanker.shotinfo.catalogue import effective_tiers
-from gaggiclanker.shotinfo.glossary import render_glossary
+from gaggiclanker.shotinfo.catalogue import Tier, effective_tiers
+from gaggiclanker.shotinfo.glossary import EXTENDED_TOOLS, extended_meanings, render_glossary
 from gaggiclanker.tools.registry import CHAT_PERMISSIONS, RunNotes, ToolContext, ToolRegistry
 from gaggiclanker.tools.scope import ToolScope
 
@@ -346,7 +347,7 @@ class ChatRunner:
             variables["shot_fields"] = render_glossary(tiers, "base")
         rendered = await self.prompts.load(prompt, variables)
         history, meanings_in_history = await self._history(
-            state.thread_id, budget.history_tokens, state.run_id
+            state.thread_id, budget.history_tokens, tiers
         )
         # The extended meanings are in the context exactly once whenever extended
         # lines are: the history keeps the newest copy, so this run attaches none.
@@ -648,7 +649,7 @@ class ChatRunner:
         )
 
     async def _history(
-        self, thread_id: int, token_budget: int, current_run: int | None = None
+        self, thread_id: int, token_budget: int, tiers: Mapping[str, Tier] | None = None
     ) -> tuple[list[ChatMessage], bool]:
         """The thread as provider messages, oldest dropped to fit the budget.
 
@@ -657,49 +658,45 @@ class ChatRunner:
         ``tool_result`` is a 400 on both APIs, not merely confusing.
 
         **The extended shot-field meanings are in the context exactly once
-        whenever extended lines are.** Each run's first extended read carries a
-        copy (about a third of the default budget), so the replayed history keeps
-        the *newest* copy among the messages it keeps and strips every older one
-        — the lines of an earlier answer stay explained, and the older copies,
-        which say the same thing, are not paid for again. Chosen in order: size
-        with every earlier run's copy stripped, take the newest copy-bearing
-        message that survives, restore its copy and size again (the restored copy
-        can push older messages out; if it pushes that message itself out, no copy
-        is kept). The second value says whether the kept history holds a copy, in
-        which case this run attaches none. The stored rows keep every copy (the
-        transcript shows what the model saw); only what is replayed is reduced.
+        whenever extended lines are.** A copy is about a third of the default
+        budget, so the stored copies are never replayed as they are: each earlier
+        result loses its own, and the copy is placed afresh (rendered from the
+        current tiers, the bytes a tool would attach) on the *newest* successful
+        extended read among the messages that are kept. Sized in two steps: fit
+        the budget with every copy stripped, place the copy on the newest extended
+        result that fits, fit again (the copy can push older messages out, and if
+        it pushes that result itself out, no extended lines are left and none is
+        placed). Whatever run first attached a copy, and whether or not the run
+        that read after it attached none, the lines that are replayed are explained
+        once. The second value says a copy was placed, in which case this run
+        attaches none. The stored rows are untouched (the transcript shows what
+        the model saw at the time).
         """
         rows = await self.repo.messages(thread_id)
-        full = [_to_chat_message(row) for row in rows]
-        earlier = [row.run_id != current_run for row in rows]
-        stripped = [
-            replace(
-                message,
-                tool_results=[
-                    replace(result, content=without_field_meanings(result.content))
-                    for result in message.tool_results
-                ],
-            )
-            if is_earlier
-            else message
-            for message, is_earlier in zip(full, earlier, strict=True)
-        ]
+        stripped = [_to_chat_message(row) for row in rows]
+        for message in stripped:
+            message.tool_results = [
+                replace(result, content=without_field_meanings(result.content))
+                for result in message.tool_results
+            ]
         budget_chars = max(1, token_budget) * CHARS_PER_TOKEN
-
         start = _first_kept(stripped, budget_chars)
-        carriers = [
-            index
-            for index in range(start, len(full))
-            if earlier[index]
-            and any(has_field_meanings(r.content) for r in full[index].tool_results)
-        ]
-        if carriers:
-            newest = carriers[-1]
-            trial = [*stripped[:newest], full[newest], *stripped[newest + 1 :]]
-            trial_start = _first_kept(trial, budget_chars)
-            stripped, start = trial, trial_start
-        kept = stripped[start:]
-        return kept, any(has_field_meanings(r.content) for m in kept for r in m.tool_results)
+
+        meanings = extended_meanings(tiers if tiers is not None else await effective_tiers(self.db))
+        target = _newest_extended_read(stripped, start) if meanings is not None else None
+        if target is None or meanings is None:
+            return stripped[start:], False
+        message_index, result_index = target
+        placed = list(stripped)
+        results = list(placed[message_index].tool_results)
+        results[result_index] = replace(
+            results[result_index],
+            content=with_field_meanings(results[result_index].content, meanings),
+        )
+        placed[message_index] = replace(placed[message_index], tool_results=results)
+        start = _first_kept(placed, budget_chars)
+        # Pushed out by its own copy: everything older went with it, so none is left to explain.
+        return placed[start:], message_index >= start
 
     async def _record_call(
         self,
@@ -772,6 +769,21 @@ def _arguments(raw: Any) -> dict[str, Any]:
     tolerating rather than crashing a whole transcript over.
     """
     return raw if isinstance(raw, dict) else {}
+
+
+def _newest_extended_read(messages: list[ChatMessage], start: int) -> tuple[int, int] | None:
+    """Where the newest successful extended read is among ``messages[start:]``.
+
+    Recognised by the tool's name on the stored result, never by its text, and
+    only a read that succeeded: a refusal carries no shot lines to explain.
+    """
+    for index in range(len(messages) - 1, start - 1, -1):
+        results = messages[index].tool_results
+        for position in range(len(results) - 1, -1, -1):
+            result = results[position]
+            if result.ok and result.name in EXTENDED_TOOLS and result.content.startswith("{"):
+                return index, position
+    return None
 
 
 def _first_kept(messages: list[ChatMessage], budget_chars: int) -> int:
