@@ -58,6 +58,7 @@ from gaggiclanker.llm.chat_types import (
     ChatToolResult,
     ChatTurn,
     OnChatEvent,
+    event_preview,
 )
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
@@ -1087,7 +1088,7 @@ class _StreamReader:
                         "id": result.id,
                         "name": result.name,
                         "ok": result.ok,
-                        "content": result.content[:4000],
+                        "content": event_preview(result.content),
                     },
                 )
             )

@@ -29,6 +29,7 @@ from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
+from gaggiclanker.llm.chat_types import without_field_meanings
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
 from gaggiclanker.shotinfo.catalogue import default_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
@@ -191,6 +192,8 @@ async def test_the_extended_glossary_rides_with_the_first_extended_read_of_each_
             # The model reads the text content: the meanings come before the shot there too.
             text = result.content[0].text
             assert text.index("field_meanings") < text.index('"text"')
+            # And the runner's preview and history reduction find it in that very text.
+            assert "field_meanings" not in without_field_meanings(text)
         return found is not None
 
     async with AsyncExitStack() as stack:

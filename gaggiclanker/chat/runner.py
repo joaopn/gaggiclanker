@@ -30,7 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -55,6 +55,8 @@ from gaggiclanker.llm.chat_types import (
     ChatToolCall,
     ChatToolResult,
     ChatTurn,
+    event_preview,
+    without_field_meanings,
 )
 from gaggiclanker.llm.errors import LlmApiError, classify_llm_error
 from gaggiclanker.llm.prompts import PromptService
@@ -342,7 +344,7 @@ class ChatRunner:
         if prompt in (SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
             variables["shot_fields"] = render_glossary(tiers, "base")
         rendered = await self.prompts.load(prompt, variables)
-        history = await self._history(state.thread_id, budget.history_tokens)
+        history = await self._history(state.thread_id, budget.history_tokens, state.run_id)
         provider = await self.llm.provider_for(await self.llm.config())
         schemas = self._schemas(provider, scope)
 
@@ -530,7 +532,7 @@ class ChatRunner:
                     "ok": outcome.ok,
                     "status": outcome.status,
                     "duration_ms": outcome.duration_ms,
-                    "content": _event_preview(content, outcome.data),
+                    "content": event_preview(content),
                 },
             )
         return results
@@ -636,15 +638,29 @@ class ChatRunner:
             history_tokens=int(await settings.get("chatHistoryTokenBudget")),
         )
 
-    async def _history(self, thread_id: int, token_budget: int) -> list[ChatMessage]:
+    async def _history(
+        self, thread_id: int, token_budget: int, current_run: int | None = None
+    ) -> list[ChatMessage]:
         """The thread as provider messages, oldest dropped to fit the budget.
 
         Dropped from the front and in whole messages, and a ``tool`` message is
         never kept without the assistant turn that asked for it — an orphaned
         ``tool_result`` is a 400 on both APIs, not merely confusing.
+
+        The extended glossary an earlier run's first extended read carried is
+        taken out before anything is sized: each run attaches its own copy, so
+        an older one is about a third of the default budget spent on text the
+        model is sent again. The stored rows keep it (the transcript shows what
+        the model saw); only what is replayed is reduced.
         """
         rows = await self.repo.messages(thread_id)
         messages = [_to_chat_message(row) for row in rows]
+        for row, message in zip(rows, messages, strict=True):
+            if row.run_id != current_run:
+                message.tool_results = [
+                    replace(result, content=without_field_meanings(result.content))
+                    for result in message.tool_results
+                ]
         budget_chars = max(1, token_budget) * CHARS_PER_TOKEN
 
         kept: list[ChatMessage] = []
@@ -753,18 +769,6 @@ def _meanings_chars(data: dict[str, Any]) -> int:
     """How long the extended glossary in a tool result is, as it sits in its JSON."""
     meanings = data.get("field_meanings")
     return len(json.dumps(meanings)) if isinstance(meanings, str) else 0
-
-
-def _event_preview(content: str, data: dict[str, Any]) -> str:
-    """The first 4000 characters of a result, as the stream shows them.
-
-    Without the glossary that may head it: the same text rides with every
-    first extended read, and a preview made of it would show the person none
-    of the shot.
-    """
-    if _meanings_chars(data):
-        content = json.dumps({k: v for k, v in data.items() if k != "field_meanings"}, default=str)
-    return content[:4000]
 
 
 def _usage_json(usage: Usage | None) -> dict[str, Any] | None:

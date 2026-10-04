@@ -275,6 +275,20 @@ async def test_the_transcript_becomes_deltas_calls_results_and_a_turn() -> None:
     assert turn.usage.completion_tokens == 80
 
 
+async def test_the_live_preview_leaves_out_the_extended_glossary_but_the_result_keeps_it() -> None:
+    meanings = "M" * 9000
+    body = json.dumps({"field_meanings": meanings, "shot_id": 129, "text": "the shot"})
+    transcript = [*TRANSCRIPT[:5], tool_result("toolu_1", body), *TRANSCRIPT[6:]]
+    events: list[ChatEvent] = []
+
+    turn = await provider(RecordedStream(transcript)).chat(request(), events.append)
+
+    [event] = [e for e in events if e.kind == "tool_result"]
+    assert event.data["content"].startswith('{"shot_id": 129')
+    assert "field_meanings" not in event.data["content"]
+    assert turn.executed_tool_results[0].content == body
+
+
 async def test_the_mcp_namespace_is_stripped_from_tool_names() -> None:
     """The transcript, the audit table and the UI all name tools as the registry does."""
     stream = RecordedStream(TRANSCRIPT)

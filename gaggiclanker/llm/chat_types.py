@@ -25,6 +25,7 @@ what the browser sees within a frame, the turn is what the loop branches on.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -84,6 +85,28 @@ class ChatToolResult:
     name: str
     content: str
     ok: bool = True
+
+
+#: The extended shot-field meanings that head the first extended read of a run
+#: (:mod:`gaggiclanker.tools.builtin`) are the first key of the result's JSON.
+#: Matched on the text, not parsed, because a result cut at the runner's cap is
+#: not valid JSON any more and must still lose them.
+_MEANINGS = re.compile(r'\A\{\s*"field_meanings"\s*:\s*"(?:[^"\\]|\\.)*"\s*,\s*')
+
+
+def without_field_meanings(content: str) -> str:
+    """A tool result without the extended glossary that may head it.
+
+    Deterministic, and the same for the live preview, the history replayed to a
+    later answer and the claude_code prompt: every run attaches its own copy, so
+    an older one is only size.
+    """
+    return _MEANINGS.sub("{", content, count=1)
+
+
+def event_preview(content: str, limit: int = 4000) -> str:
+    """The first ``limit`` characters of a result as the stream shows them, glossary left out."""
+    return without_field_meanings(content)[:limit]
 
 
 @dataclass(slots=True)

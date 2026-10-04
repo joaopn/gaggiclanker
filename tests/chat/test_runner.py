@@ -212,6 +212,113 @@ async def test_the_first_successful_extended_read_of_a_run_carries_the_extended_
     assert again.content.startswith('{"field_meanings": ')
 
 
+async def test_the_meanings_come_once_per_run_across_rounds(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """The holder belongs to the run, not to a round: a second round's extended read has none."""
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
+        _round(_extended_call("c2", "get_shot_extended", archive.shots[1])),
+        ChatTurn(text="done"),
+    ]
+
+    await send(runner, tasks, thread)
+
+    # The fake keeps the request's history list, which grows: read both from the last request.
+    by_id = {r.id: r for m in chat_provider.chat_calls[2].messages for r in m.tool_results}
+    first, second = by_id["c1"], by_id["c2"]
+    assert "field_meanings" in first.content
+    assert "field_meanings" not in second.content
+    assert second.ok
+
+
+async def test_a_failed_compare_does_not_use_up_the_meanings(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    chat_provider.chat_script = [
+        _round(
+            _extended_call("c1", "compare_shots", archive.shots[0], 999_999),
+            _extended_call("c2", "compare_shots", archive.shots[0], archive.shots[1]),
+        ),
+        ChatTurn(text="done"),
+    ]
+
+    await send(runner, tasks, thread)
+
+    failed, ok = chat_provider.chat_calls[1].messages[-1].tool_results
+    assert (failed.ok, ok.ok) == (False, True)
+    assert "field_meanings" not in failed.content
+    assert "field_meanings" in ok.content
+
+
+async def test_the_tool_result_event_previews_the_shot_not_the_meanings(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="done"),
+    ]
+
+    run_id = await send(runner, tasks, thread)
+
+    events = await ChatEventsRepository(runner.db).since(run_id)
+    [event] = [e for e in events if e.kind == "tool_result"]
+    preview = event.data["content"]
+    assert "field_meanings" not in preview and '"text"' in preview
+    # The model still got them: only the preview is reduced.
+    assert "field_meanings" in chat_provider.chat_calls[1].messages[-1].tool_results[0].content
+
+
+async def test_an_earlier_answer_s_copy_of_the_meanings_is_not_sent_again(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """Every run attaches its own copy, so a follow-up that reads nothing is sent none: the
+    stored row keeps what the model saw, the replayed history and its budget do not."""
+    from gaggiclanker.chat.runner import CHARS_PER_TOKEN, _size
+
+    meanings = render_glossary(default_tiers(), "extended")
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_extended", archive.shots[0])),
+        ChatTurn(text="first answer"),
+        ChatTurn(text="second answer"),
+    ]
+    await send(runner, tasks, thread)
+    await send(runner, tasks, thread, "and one more thing?")
+
+    # The run's own later round still has its copy.
+    assert "field_meanings" in chat_provider.chat_calls[1].messages[-1].tool_results[0].content
+    follow_up = chat_provider.chat_calls[2]
+    assert not any(
+        "field_meanings" in r.content for m in follow_up.messages for r in m.tool_results
+    )
+    assert any(m.tool_results for m in follow_up.messages), "the shot itself is still there"
+    # Stored whole, so the transcript shows what the model saw.
+    stored = [r for m in await ChatRepository(runner.db).messages(thread) for r in m.tool_results]
+    assert any("field_meanings" in str(r["content"]) for r in stored)
+    # The budget counts the stripped size: a budget just over it keeps every message.
+    everything = await runner._history(thread, 1_000_000)
+    stripped_chars = sum(_size(m) for m in everything)
+    assert stripped_chars < len(meanings) / 2
+    tight = stripped_chars // CHARS_PER_TOKEN + 50
+    assert len(await runner._history(thread, tight)) == len(everything)
+
+
 async def test_a_tool_result_cap_leaves_the_extended_glossary_whole(
     runner: ChatRunner,
     tasks: TaskRegistry,
