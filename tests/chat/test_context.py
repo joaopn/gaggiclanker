@@ -757,6 +757,22 @@ async def test_the_number_of_shots_follows_what_the_caller_asks_for(
         rendered
     )
     assert _shot_headers(rendered) == [newest]
+    assert f"Shots written out below: {newest}." in rendered
+
+
+async def test_the_shots_block_names_the_ids_of_the_shots_it_contains(
+    experiment: Experiment,
+) -> None:
+    """So the agent can tell "is this shot already here?" from one line."""
+    scope = ToolScope.for_thread(experiment.set_id, experiment.v5)
+    every = await opening_context(experiment.db, scope)
+    ids = _shot_headers(every)
+    assert f"Shots written out below: {', '.join(map(str, ids))}." in every
+
+    newest = await opening_context(experiment.db, scope, recent_shots=1)
+    assert f"Shots written out below: {ids[0]}." in newest
+    line = newest.split("Shots written out below:", 1)[1].split("\n", 1)[0]
+    assert str(ids[1]) not in line
 
 
 async def test_a_version_with_no_shots_says_so(experiment: Experiment) -> None:

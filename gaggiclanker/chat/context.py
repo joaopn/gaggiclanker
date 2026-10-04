@@ -908,6 +908,10 @@ async def _shots_block(
         heading,
         f"Each in its base information. {rest}; get_shot_extended adds any one shot's "
         "diagnostics, phases and curve.",
+        # The ids, so "is this shot already here?" is a look at one line and not a scan of
+        # the shots below: an agent that re-read shots it had been handed spent its tool
+        # calls (and, through a CLI, every later request) on the same text twice.
+        "Shots written out below: " + ", ".join(str(facts.shot_id) for facts in shots) + ".",
     ]
     for facts in shots:
         lines += ["", render_shot(facts, "base", tiers, curve_points=curve_points)]
