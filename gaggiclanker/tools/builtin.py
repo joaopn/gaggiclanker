@@ -26,7 +26,8 @@ from collections.abc import Mapping
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+import structlog
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from gaggiclanker.db.repos.beans import BeansRepository
 from gaggiclanker.db.repos.grinders import GrindersRepository
@@ -65,6 +66,7 @@ from gaggiclanker.infra.errors import Unprocessable
 from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.shotinfo.catalogue import ITEMS, ShotTier, Tier, effective_tiers
 from gaggiclanker.shotinfo.facts import ShotFacts
+from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.shotinfo.render import load_shots, needs_samples, render_shot, with_samples
 from gaggiclanker.shotinfo.search import SEARCH_LIMIT, ShotQuery, search_shots
 from gaggiclanker.tools.registry import ToolContext, tool
@@ -76,6 +78,8 @@ from gaggiclanker.tools.sql import (
     SqlRefused,
     run_query,
 )
+
+log = structlog.get_logger(__name__)
 
 __all__ = ["EXAMPLE_QUERIES"]
 
@@ -243,12 +247,47 @@ class ShotIdInput(_Model):
     shot_id: int = Field(gt=0, description="The shot's id, as `shot <id>` heads its rendering.")
 
 
-class ShotTextOutput(_Model):
+class _WithMeanings(_Model):
+    """An output that may open with the extended fields' meanings.
+
+    On the first extended read of a run only. A field of the parent so it is
+    declared first and read before the lines it explains, and left out of the
+    output altogether when there is none.
+    """
+
+    field_meanings: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _without_empty_meanings(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if data.get("field_meanings") is None:
+            data.pop("field_meanings", None)
+        return data
+
+
+class ShotTextOutput(_WithMeanings):
     """One shot, rendered at one tier, as plain text."""
 
     shot_id: int
     tier: ShotTier
     text: str
+
+
+def _extended_meanings(ctx: ToolContext, tiers: Mapping[str, Tier]) -> str | None:
+    """The extended half of the glossary, once per run, for the first read that needs it.
+
+    Called only after the shot has been rendered, so a read that failed (an
+    unknown shot, one filed elsewhere) never reaches it and leaves the
+    attachment for the next. There is no await between the check and the claim,
+    so two reads of one round cannot both carry it. The state is the run's
+    (:class:`~gaggiclanker.tools.registry.RunNotes`), the same on the chat's
+    dispatcher and on the stdio MCP server.
+    """
+    if ctx.notes.extended_meanings_sent or not any(t == "extended" for t in tiers.values()):
+        return None
+    ctx.notes.extended_meanings_sent = True
+    log.info("extended_meanings_attached", run_id=ctx.run_id, caller=ctx.caller)
+    return render_glossary(tiers, "extended")
 
 
 async def _shots_in_scope(
@@ -278,7 +317,8 @@ async def _curve_points(ctx: ToolContext) -> int:
 async def _one_shot(ctx: ToolContext, shot_id: int, tier: ShotTier) -> ShotTextOutput:
     [facts], tiers = await _shots_in_scope(ctx, [shot_id], tier)
     text = render_shot(facts, tier, tiers, curve_points=await _curve_points(ctx))
-    return ShotTextOutput(shot_id=shot_id, tier=tier, text=text)
+    meanings = _extended_meanings(ctx, tiers) if tier != "base" else None
+    return ShotTextOutput(field_meanings=meanings, shot_id=shot_id, tier=tier, text=text)
 
 
 @tool(
@@ -330,7 +370,7 @@ class CompareInput(_Model):
     shot_ids: list[int] = Field(min_length=2, max_length=4)
 
 
-class CompareOutput(_Model):
+class CompareOutput(_WithMeanings):
     shots: list[ShotTextOutput]
 
 
@@ -347,6 +387,7 @@ async def compare_shots(ctx: ToolContext, args: CompareInput) -> CompareOutput:
     shots, tiers = await _shots_in_scope(ctx, args.shot_ids, "full")
     points = await _curve_points(ctx)
     return CompareOutput(
+        field_meanings=_extended_meanings(ctx, tiers),
         shots=[
             ShotTextOutput(
                 shot_id=facts.shot_id,
@@ -354,7 +395,7 @@ async def compare_shots(ctx: ToolContext, args: CompareInput) -> CompareOutput:
                 text=render_shot(facts, "full", tiers, curve_points=points),
             )
             for facts in shots
-        ]
+        ],
     )
 
 

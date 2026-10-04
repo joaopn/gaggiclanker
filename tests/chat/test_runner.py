@@ -10,6 +10,7 @@ middle of an answer.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from typing import Any
 
@@ -26,7 +27,7 @@ from gaggiclanker.infra.tasks import TaskRegistry
 from gaggiclanker.llm.chat_types import ChatToolCall, ChatTurn
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.types import Usage
-from gaggiclanker.shotinfo.catalogue import default_tiers
+from gaggiclanker.shotinfo.catalogue import CATALOGUE, default_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.llm.conftest import FakeProvider
@@ -145,6 +146,95 @@ async def test_a_failing_tool_is_shown_to_the_model_rather_than_ending_the_run(
     # A Set conversation refuses a shot that is not its own in the same words
     # whether or not it exists, which is what the model is shown here.
     assert "not a shot of this Set" in result.content
+
+
+# -- the extended glossary rides with the first extended read of a run ------
+
+
+def _extended_call(call_id: str, name: str, *shots: int) -> ChatToolCall:
+    arguments: dict[str, Any] = (
+        {"shot_ids": list(shots)} if name == "compare_shots" else {"shot_id": shots[0]}
+    )
+    return ChatToolCall(id=call_id, name=name, arguments=arguments)
+
+
+def _round(*calls: ChatToolCall) -> ChatTurn:
+    return ChatTurn(text="", tool_calls=list(calls), stop_reason="tool_use")
+
+
+def _escaped(text: str) -> str:
+    """The text as it sits inside a tool result's JSON."""
+    return json.dumps(text)[1:-1]
+
+
+async def test_the_first_successful_extended_read_of_a_run_carries_the_extended_glossary(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+) -> None:
+    """One run: a base read and a failed read carry none and do not use it up; the
+    first successful extended, full or compare read carries it, in front of the
+    shot's own text; the later ones do not; a new run carries it again."""
+    shot = archive.shots[0]
+    meanings = render_glossary(default_tiers(), "extended")
+    chat_provider.chat_script = [
+        _round(
+            _extended_call("c1", "get_shot", shot),
+            _extended_call("c2", "get_shot_extended", 999_999),
+            _extended_call("c3", "get_shot_extended", shot),
+            _extended_call("c4", "get_shot_full", shot),
+            _extended_call("c5", "compare_shots", shot, archive.shots[1]),
+        ),
+        ChatTurn(text="done"),
+    ]
+
+    await send(runner, tasks, thread)
+
+    results = chat_provider.chat_calls[1].messages[-1].tool_results
+    carries = [meanings and _escaped(meanings) in result.content for result in results]
+    assert carries == [False, False, True, False, False]
+    assert results[2].content.index("field_meanings") < results[2].content.index('"text"')
+    assert [result.ok for result in results] == [True, False, True, True, True]
+
+    # A new run in the same conversation: the earlier copy may be gone from the history.
+    # The fake indexes its script by the number of calls so far: pad past the first run's two.
+    chat_provider.chat_script = [
+        ChatTurn(text=""),
+        ChatTurn(text=""),
+        _round(_extended_call("d1", "compare_shots", shot, archive.shots[1])),
+        ChatTurn(text="again"),
+    ]
+    await send(runner, tasks, thread, "and again?")
+    again = chat_provider.chat_calls[3].messages[-1].tool_results[0]
+    assert _escaped(meanings) in again.content
+    assert again.content.startswith('{"field_meanings": ')
+
+
+async def test_a_tool_result_cap_leaves_the_extended_glossary_whole(
+    runner: ChatRunner,
+    tasks: TaskRegistry,
+    thread: int,
+    chat_provider: FakeProvider,
+    archive: Fixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gaggiclanker.chat import runner as runner_module
+
+    monkeypatch.setattr(runner_module, "TOOL_RESULT_CHARS", 300)
+    meanings = render_glossary(default_tiers(), "extended")
+    chat_provider.chat_script = [
+        _round(_extended_call("c1", "get_shot_full", archive.shots[0])),
+        ChatTurn(text="done"),
+    ]
+
+    await send(runner, tasks, thread)
+
+    content = chat_provider.chat_calls[1].messages[-1].tool_results[0].content
+    assert len(_escaped(meanings)) > 300, "the glossary alone is over the cap"
+    assert _escaped(meanings) in content
+    assert "truncated at 300 characters" in content
 
 
 # -- the bounds ------------------------------------------------------------
@@ -534,7 +624,7 @@ async def test_a_tier_moved_between_turns_reaches_the_next_turn_s_context_and_gl
     assert not re.search(r"\nRating: \d/5", second)
     # And the glossary follows: the moved item under its new tier, the
     # excluded one no longer explained.
-    assert "- Score confidence [extended]: " in first
+    assert "- Score confidence [" not in first, "extended entries are not in the prompt"
     assert "- Score confidence [base]: " in second
     assert "- Rating [base]: " in first
     assert "- Rating [" not in second
@@ -556,10 +646,21 @@ async def test_the_set_and_general_prompts_carry_the_shot_field_glossary(
     await send(runner, tasks, thread)
     await send(runner, tasks, created.thread.id, "which beans did I like?")
 
-    glossary = render_glossary(default_tiers())
+    base = render_glossary(default_tiers(), "base")
+    extended_items = [i for i in CATALOGUE if default_tiers()[i.key] == "extended"]
+    assert extended_items
     for request in chat_provider.chat_calls:
-        assert glossary in request.system
+        assert base in request.system
         assert request.system.index("PROPOSE, NEVER ACT") < request.system.index("SHOT FIELDS")
+        # The extended half is not in the prompt: it rides with the first extended read.
+        assert "SHOT FIELDS, EXTENDED" not in request.system
+        for item in extended_items:
+            assert f"- {item.label} [" not in request.system, item.key
+            assert item.meaning not in request.system, item.key
+        for name in ("get_shot_extended", "get_shot_full", "compare_shots"):
+            assert (
+                name in request.system.split("SHOT FIELDS")[1].split("extended fields are not")[1]
+            )
 
 
 async def test_an_unscoped_thread_gets_no_scope_block(

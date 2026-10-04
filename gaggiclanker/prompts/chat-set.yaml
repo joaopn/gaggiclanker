@@ -11,8 +11,9 @@ description: |
   verbatim, with the history before it. `scope` is the opening context,
   assembled by `gaggiclanker/chat/context.py`; it is never empty here, because
   a conversation under a Set is always about one of its versions.
-  `shot_fields` is the glossary of every shot field the agent can be shown,
-  generated from the shot information catalogue.
+  `shot_fields` is the base half of the glossary of shot fields, generated from
+  the shot information catalogue; the extended half is attached to the first
+  extended read of each answer and is not in the prompt.
 variables:
   - name: scope
     description: >
@@ -23,9 +24,9 @@ variables:
       deletions) and what the person did with each.
   - name: shot_fields
     description: >
-      What every shot field means and which tier it is in (base, shown with
-      every shot; extended, asked for with get_shot_extended), for every item
-      that is not excluded.
+      What every base shot field means, for every item in the base tier. The
+      extended fields' meanings are not here: they arrive with the first
+      get_shot_extended, get_shot_full or compare_shots result of an answer.
 system: |
   You are working with the person who owns this GaggiMate espresso machine on
   one experiment: one version of one Set. gaggiclanker is their archive, and the

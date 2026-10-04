@@ -25,6 +25,7 @@ render the same bytes.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 
 from gaggiclanker.shotinfo.catalogue import (
     CATALOGUE,
@@ -36,7 +37,15 @@ from gaggiclanker.shotinfo.catalogue import (
     band_text,
 )
 
-__all__ = ["render_glossary", "shared_bands_of"]
+__all__ = ["EXTENDED_TOOLS", "Part", "render_glossary", "shared_bands_of"]
+
+#: The two halves of the glossary. Base rides in the system prompt of every
+#: request; extended is sent once per answer, with the first extended read.
+type Part = Literal["base", "extended"]
+
+#: The tools whose results carry extended lines, so the ones that bring the
+#: extended meanings with them.
+EXTENDED_TOOLS = ("get_shot_extended", "get_shot_full", "compare_shots")
 
 _PREAMBLE = (
     "SHOT FIELDS",
@@ -46,6 +55,16 @@ _PREAMBLE = (
     "phases are every phase but pre-infusion.",
     "A line that is missing means the machine did not record that value (no scale, no pressure "
     "sensor, too few samples to judge) — never that it was zero.",
+    "Below are the base fields. The meanings of the extended fields are not in this prompt: "
+    "they arrive at the head of the first result in an answer from get_shot_extended, "
+    "get_shot_full or compare_shots, before the shot lines they explain.",
+)
+
+_EXTENDED_HEADING = (
+    "SHOT FIELDS, EXTENDED",
+    "The meanings of the extended fields, sent once with the first extended read of this "
+    "answer. The preamble, group notes and band tables of the SHOT FIELDS section of the "
+    "system prompt apply to them too.",
 )
 
 
@@ -59,16 +78,22 @@ def shared_bands_of(item: Item) -> list[str]:
     ]
 
 
-def render_glossary(tiers: Mapping[str, Tier]) -> str:
-    """Every item a chat can be shown, with its tier and what it means.
+def render_glossary(tiers: Mapping[str, Tier], part: Part = "base") -> str:
+    """One half of the glossary: every item a chat can be shown in that tier.
 
-    A band table more than one item reads is written once, under
-    ``[Shared bands]``, and only when an item that is shown names it; each of
-    those items gives the unit its value is in.
+    The halves are disjoint and together cover every shown item once. So are
+    the things shared between items: a band table more than one item reads is
+    written once, under ``[Shared bands]``, in the first half that needs it, and
+    a group's note under its heading in the first half that has the group (base
+    comes first, and it is always in the prompt). Each item gives the unit its
+    value is in. Deterministic: the same tiers give the same bytes.
     """
     shown = [item for item in CATALOGUE if tiers.get(item.key, "excluded") != "excluded"]
-    named = {name for item in shown for name in shared_bands_of(item)}
-    lines = list(_PREAMBLE)
+    mine = [item for item in shown if tiers[item.key] == part]
+    earlier = [item for item in shown if part == "extended" and tiers[item.key] == "base"]
+    named = {name for item in mine for name in shared_bands_of(item)}
+    named -= {name for item in earlier for name in shared_bands_of(item)}
+    lines = list(_PREAMBLE if part == "base" else _EXTENDED_HEADING)
     if named:
         lines += [
             "",
@@ -84,13 +109,13 @@ def render_glossary(tiers: Mapping[str, Tier]) -> str:
     for group in GROUPS:
         entries = [
             f"- {item.label} [{tiers[item.key]}]: {item.meaning}"
-            for item in shown
+            for item in mine
             if item.group == group
         ]
         if not entries:
             continue
         lines += ["", f"[{group}]"]
-        if group in GROUP_NOTES:
+        if group in GROUP_NOTES and not any(item.group == group for item in earlier):
             lines.append(GROUP_NOTES[group])
         lines += entries
     return "\n".join(lines)

@@ -64,6 +64,7 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_TOOL_TIMEOUT_S",
     "Permission",
+    "RunNotes",
     "ToolContext",
     "ToolOutcome",
     "ToolRegistry",
@@ -89,6 +90,24 @@ READ_ONLY: frozenset[str] = frozenset({"read"})
 #: One constant for both callers rather than a function of the settings: there
 #: is no switch that widens it, so there is nothing to resolve.
 CHAT_PERMISSIONS: frozenset[str] = frozenset({"read", "propose"})
+
+
+@dataclass(slots=True)
+class RunNotes:
+    """What the tools of one answer have already told the model.
+
+    One per run, shared by every :class:`ToolContext` the run builds: the
+    runner makes a context per round, and the stdio MCP server one per call, so
+    the state cannot live on the context itself. On the API providers the holder
+    is on the runner's run state; on ``claude_code`` it is in the stdio server,
+    which the CLI spawns fresh for each run. Per run and not per conversation
+    because an older answer's tool results may have fallen out of the history
+    budget, and a flag that outlived them would leave extended lines with no
+    meanings.
+    """
+
+    #: The extended half of the shot-field glossary rode with an earlier result.
+    extended_meanings_sent: bool = False
 
 
 @dataclass(slots=True)
@@ -151,6 +170,9 @@ class ToolContext:
     caller: str = "chat"
     #: What this caller may invoke. Narrowed by the dispatcher, never widened.
     permissions: frozenset[str] = field(default_factory=lambda: CHAT_PERMISSIONS)
+    #: What this run's earlier tool calls already said. A context built without
+    #: one gets a fresh holder, so a bare test context behaves as a first call.
+    notes: RunNotes = field(default_factory=RunNotes)
 
     @property
     def set_id(self) -> int | None:

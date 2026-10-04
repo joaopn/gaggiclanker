@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import itertools
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -24,11 +25,12 @@ from gaggiclanker.shotinfo.catalogue import (
     ITEMS,
     SHARED_BANDS,
     BandTable,
+    Tier,
     band_text,
     default_tiers,
     keys_in,
 )
-from gaggiclanker.shotinfo.glossary import render_glossary, shared_bands_of
+from gaggiclanker.shotinfo.glossary import EXTENDED_TOOLS, Part, render_glossary, shared_bands_of
 from gaggiclanker.shotinfo.render import load_shots, shot_lines
 from tests.shotinfo.conftest import Archive
 
@@ -38,6 +40,11 @@ GOLDEN = Path(__file__).resolve().parent / "golden" / "glossary.txt"
 #: `_pressure_volatility_label`, which nothing in the engine calls. Listed so a
 #: table that *is* applied cannot slip out of the glossary unnoticed.
 NOT_EMITTED = {"_PRESSURE_CV_BANDS", "_PRESSURE_VOLATILITY_BANDS"}
+
+
+def whole(tiers: Mapping[str, Tier]) -> str:
+    """Both halves, as a reader holding the prompt and the first extended read has them."""
+    return render_glossary(tiers, "base") + "\n\n" + render_glossary(tiers, "extended")
 
 
 def _tables() -> dict[str, BandTable]:
@@ -81,7 +88,7 @@ def _shared_lines(glossary: str) -> dict[str, str]:
 def test_every_label_of_every_table_is_in_the_entry_or_the_table_it_names() -> None:
     """Each table an item is banded by is spelled out in its entry, or named there
     and listed once under [Shared bands] — never anywhere else."""
-    glossary = render_glossary(default_tiers())
+    glossary = whole(default_tiers())
     listed = _shared_lines(glossary)
     for item in CATALOGUE:
         if default_tiers()[item.key] == "excluded":
@@ -102,7 +109,7 @@ def test_every_label_of_every_table_is_in_the_entry_or_the_table_it_names() -> N
 
 
 def test_a_shared_table_is_listed_once_and_only_when_an_item_shown_names_it() -> None:
-    glossary = render_glossary(default_tiers())
+    glossary = whole(default_tiers())
 
     for name in SHARED_BANDS:
         assert glossary.count(f"- {name} bands: ") == 1, name
@@ -112,12 +119,12 @@ def test_a_shared_table_is_listed_once_and_only_when_an_item_shown_names_it() ->
         "flow_adherence": "excluded",
         "phase_pressure_adherence": "excluded",
     }
-    assert "- adherence bands: " not in render_glossary(hidden)
-    assert "- slope bands: " in render_glossary(hidden)
+    assert "- adherence bands: " not in whole(hidden)
+    assert "- slope bands: " in whole(hidden)
 
 
 def test_each_group_note_is_written_under_its_heading() -> None:
-    glossary = render_glossary(default_tiers())
+    glossary = whole(default_tiers())
 
     for group, note in GROUP_NOTES.items():
         assert f"[{group}]\n{note}\n" in glossary, group
@@ -209,20 +216,95 @@ def test_the_labels_assigned_without_a_table_are_explained() -> None:
         assert re.search(rf"\b{phase_type}\b", ITEMS["phase_type"].meaning), phase_type
 
 
-def test_the_glossary_matches_the_golden_file(update_golden: bool) -> None:
-    rendered = render_glossary(default_tiers())
+@pytest.mark.parametrize("part", ["base", "extended"])
+def test_each_half_matches_its_golden_file(update_golden: bool, part: Part) -> None:
+    rendered = render_glossary(default_tiers(), part)
+    golden = GOLDEN if part == "base" else GOLDEN.with_name("glossary-extended.txt")
 
     if update_golden:
-        GOLDEN.parent.mkdir(parents=True, exist_ok=True)
-        GOLDEN.write_text(rendered, encoding="utf-8")
+        golden.parent.mkdir(parents=True, exist_ok=True)
+        golden.write_text(rendered, encoding="utf-8")
         pytest.skip("golden file rewritten")
-    assert GOLDEN.exists(), "run with --update-golden to create it"
-    assert rendered == GOLDEN.read_text(encoding="utf-8")
+    assert golden.exists(), "run with --update-golden to create it"
+    assert rendered == golden.read_text(encoding="utf-8")
+
+
+def _entries(rendered: str) -> list[str]:
+    return re.findall(r"^- (.+? \[(?:base|extended)\]): ", rendered, flags=re.MULTILINE)
+
+
+def test_the_halves_are_disjoint_and_together_are_every_shown_item_once() -> None:
+    """The definition of the split: base holds the base items, extended the extended
+    ones, and the union is the set of items not excluded, none twice."""
+    tiers = default_tiers()
+    base = render_glossary(tiers, "base")
+    extended = render_glossary(tiers, "extended")
+
+    assert set(tiers.values()) == {"base", "extended", "excluded"}, (
+        "the default tiers use all three"
+    )
+    expect = {part: [i for i in CATALOGUE if tiers[i.key] == part] for part in ("base", "extended")}
+    for part, rendered in (("base", base), ("extended", extended)):
+        assert _entries(rendered) == [f"{i.label} [{part}]" for i in expect[part]], part
+        other = "extended" if part == "base" else "base"
+        assert f"[{other}]: " not in rendered, part
+    names = _entries(base) + _entries(extended)
+    assert len(names) == len(set(names))
+    assert len(names) == sum(t != "excluded" for t in tiers.values())
+    for item in CATALOGUE:
+        if tiers[item.key] == "excluded":
+            assert item.meaning not in base + extended, item.key
+
+
+def test_every_shared_band_is_written_in_exactly_one_half_the_first_that_needs_it() -> None:
+    tiers = default_tiers()
+    base = render_glossary(tiers, "base")
+    extended = render_glossary(tiers, "extended")
+
+    for name in SHARED_BANDS:
+        in_base = base.count(f"- {name} bands: ")
+        in_extended = extended.count(f"- {name} bands: ")
+        base_names = any(name in shared_bands_of(i) for i in CATALOGUE if tiers[i.key] == "base")
+        extended_names = any(
+            name in shared_bands_of(i) for i in CATALOGUE if tiers[i.key] == "extended"
+        )
+        assert (in_base, in_extended) == (
+            (1, 0) if base_names else (0, 1 if extended_names else 0)
+        ), name
+    # And the case that separates the two rules: with every item naming `adherence` moved to
+    # extended, the table moves with them instead of being lost.
+    moved: dict[str, Tier] = {
+        **tiers,
+        **{i.key: "extended" for i in CATALOGUE if "adherence" in shared_bands_of(i)},
+    }
+    assert "- adherence bands: " not in render_glossary(moved, "base")
+    assert render_glossary(moved, "extended").count("- adherence bands: ") == 1
+
+
+def test_a_group_note_is_written_once_under_its_first_heading() -> None:
+    tiers = default_tiers()
+    both = render_glossary(tiers, "base") + "\n" + render_glossary(tiers, "extended")
+
+    for group, note in GROUP_NOTES.items():
+        assert both.count(note) <= 1, group
+
+
+def test_each_half_is_deterministic() -> None:
+    for part in ("base", "extended"):
+        assert render_glossary(default_tiers(), part) == render_glossary(default_tiers(), part)
+
+
+def test_the_base_preamble_names_the_three_tools_that_bring_the_extended_half() -> None:
+    preamble = "\n".join(render_glossary(default_tiers(), "base").splitlines()[:5])
+
+    assert EXTENDED_TOOLS == ("get_shot_extended", "get_shot_full", "compare_shots")
+    for name in EXTENDED_TOOLS:
+        assert name in preamble.split("they arrive")[1], name
 
 
 def test_the_glossary_covers_what_can_be_shown_and_nothing_else() -> None:
     tiers = default_tiers()
-    rendered = render_glossary(tiers)
+    rendered = whole(tiers)
 
     for item in CATALOGUE:
         entry = f"- {item.label} [{tiers[item.key]}]: {item.meaning}"
@@ -235,16 +317,27 @@ def test_the_glossary_covers_what_can_be_shown_and_nothing_else() -> None:
 def test_the_glossary_follows_the_tiers() -> None:
     moved = {**default_tiers(), "processing_note": "extended", "rating": "excluded"}
 
-    rendered = render_glossary(moved)
+    rendered = whole(moved)
 
     assert f"- Processing note [extended]: {ITEMS['processing_note'].meaning}" in rendered
+    assert f"- Processing note [extended]: {ITEMS['processing_note'].meaning}" in render_glossary(
+        moved, "extended"
+    )
     assert "- Rating [" not in rendered
 
 
-def test_the_glossary_starts_with_its_two_line_preamble() -> None:
-    lines = render_glossary(default_tiers()).splitlines()
+def test_the_base_glossary_starts_with_its_preamble() -> None:
+    lines = render_glossary(default_tiers(), "base").splitlines()
 
     assert lines[0] == "SHOT FIELDS"
     assert "get_shot_extended adds" in lines[1]
     assert "never that it was zero" in lines[2]
-    assert lines[3] == ""
+    assert "extended fields are not in this prompt" in lines[3]
+    assert lines[4] == ""
+
+
+def test_the_extended_glossary_starts_with_its_own_heading() -> None:
+    lines = render_glossary(default_tiers(), "extended").splitlines()
+
+    assert lines[0] == "SHOT FIELDS, EXTENDED"
+    assert lines[2] == ""

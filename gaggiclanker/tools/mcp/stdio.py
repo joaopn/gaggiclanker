@@ -43,7 +43,7 @@ from gaggiclanker.knowledge.service import KnowledgeService
 from gaggiclanker.settings_service import SettingsService
 from gaggiclanker.tools import registry as tool_registry
 from gaggiclanker.tools.mcp.server import build_mcp_server
-from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext
+from gaggiclanker.tools.registry import CHAT_PERMISSIONS, RunNotes, ToolContext
 from gaggiclanker.tools.scope import ToolScope
 
 __all__ = [
@@ -194,6 +194,7 @@ def stdio_tool_context(
     *,
     scope: ToolScope | None = None,
     thread_id: int | None = None,
+    notes: RunNotes | None = None,
 ) -> ToolContext:
     """What one tool call over stdio is handed: the archive, and no machine.
 
@@ -208,6 +209,7 @@ def stdio_tool_context(
         scope=scope or ToolScope(),
         thread_id=thread_id,
         caller="mcp-stdio",
+        notes=notes or RunNotes(),
         permissions=CHAT_PERMISSIONS,
     )
 
@@ -243,8 +245,15 @@ async def serve_stdio(
         # every turn.
         conversation = await ToolScope.resolve(db, requested.set_id, requested.set_version_id)
 
+        # One holder for the process: it lives for one run, so what it records
+        # (the extended glossary having been sent) is per run, as the runner's
+        # state is for the other providers.
+        notes = RunNotes()
+
         async def context() -> ToolContext:
-            return stdio_tool_context(db, settings, scope=conversation, thread_id=thread_id)
+            return stdio_tool_context(
+                db, settings, scope=conversation, thread_id=thread_id, notes=notes
+            )
 
         server = build_mcp_server(
             context,

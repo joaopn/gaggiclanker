@@ -138,7 +138,7 @@ async def test_the_person_s_tiers_move_review_items_like_any_other(
 
 
 def test_the_glossary_says_each_review_line_was_written_by_a_model() -> None:
-    glossary = render_glossary(default_tiers())
+    glossary = render_glossary(default_tiers(), "extended")
     section = glossary.split(f"[{REVIEW_GROUP}]\n", 1)[1]
     labels = [item.label for item in CATALOGUE if item.group == REVIEW_GROUP]
     for label in labels:

@@ -62,7 +62,7 @@ from gaggiclanker.llm.service import LlmService
 from gaggiclanker.llm.types import Usage
 from gaggiclanker.shotinfo.catalogue import effective_tiers
 from gaggiclanker.shotinfo.glossary import render_glossary
-from gaggiclanker.tools.registry import CHAT_PERMISSIONS, ToolContext, ToolRegistry
+from gaggiclanker.tools.registry import CHAT_PERMISSIONS, RunNotes, ToolContext, ToolRegistry
 from gaggiclanker.tools.scope import ToolScope
 
 if TYPE_CHECKING:
@@ -145,6 +145,10 @@ class _RunState:
     tool_rounds: int = 0
     tool_calls: int = 0
     usage: Usage = field(default_factory=Usage)
+    #: What this run's tools have already told the model (the extended glossary
+    #: rides with the first extended read). Per run, shared by every context
+    #: the run's rounds build.
+    notes: RunNotes = field(default_factory=RunNotes)
 
 
 class ChatRunner:
@@ -336,7 +340,7 @@ class ChatRunner:
             else {}
         )
         if prompt in (SET_CHAT_PROMPT, GENERAL_CHAT_PROMPT):
-            variables["shot_fields"] = render_glossary(tiers)
+            variables["shot_fields"] = render_glossary(tiers, "base")
         rendered = await self.prompts.load(prompt, variables)
         history = await self._history(state.thread_id, budget.history_tokens)
         provider = await self.llm.provider_for(await self.llm.config())
@@ -459,7 +463,12 @@ class ChatRunner:
                 await asyncio.gather(*pending, return_exceptions=True)
 
     def tool_context(
-        self, *, scope: ToolScope, run_id: int | None, thread_id: int | None = None
+        self,
+        *,
+        scope: ToolScope,
+        run_id: int | None,
+        thread_id: int | None = None,
+        notes: RunNotes | None = None,
     ) -> ToolContext:
         """What one run's tools are handed. Nothing in it reaches the machine."""
         return ToolContext(
@@ -472,6 +481,7 @@ class ChatRunner:
             run_id=run_id,
             thread_id=thread_id,
             caller="chat",
+            notes=notes or RunNotes(),
             # The one permission set every model-driven caller gets; MCP is handed
             # the same one. No tool can write to the machine.
             permissions=CHAT_PERMISSIONS,
@@ -480,7 +490,9 @@ class ChatRunner:
     async def _dispatch(
         self, state: _RunState, calls: list[ChatToolCall], scope: ToolScope
     ) -> list[ChatToolResult]:
-        ctx = self.tool_context(scope=scope, run_id=state.run_id, thread_id=state.thread_id)
+        ctx = self.tool_context(
+            scope=scope, run_id=state.run_id, thread_id=state.thread_id, notes=state.notes
+        )
         results: list[ChatToolResult] = []
         for call in calls:
             if state.cancel.is_set():
@@ -497,9 +509,13 @@ class ChatRunner:
             outcome = await self.tools.dispatch(ctx, call.name, call.arguments)
             state.tool_calls += 1
             content = outcome.as_content()
-            if len(content) > TOOL_RESULT_CHARS:
+            # The cap is for the tool's own text: the extended glossary that
+            # rides with a first extended read is counted outside it, or a
+            # large shot would cut the very meanings it was sent with.
+            allowance = TOOL_RESULT_CHARS + _meanings_chars(outcome.data)
+            if len(content) > allowance:
                 content = (
-                    content[:TOOL_RESULT_CHARS]
+                    content[:allowance]
                     + f"\n… truncated at {TOOL_RESULT_CHARS} characters. Ask for an aggregate "
                     "or a smaller limit."
                 )
@@ -514,7 +530,7 @@ class ChatRunner:
                     "ok": outcome.ok,
                     "status": outcome.status,
                     "duration_ms": outcome.duration_ms,
-                    "content": content[:4000],
+                    "content": _event_preview(content, outcome.data),
                 },
             )
         return results
@@ -731,6 +747,24 @@ def _call_json(call: ChatToolCall) -> dict[str, Any]:
 
 def _result_json(result: ChatToolResult) -> dict[str, Any]:
     return {"id": result.id, "name": result.name, "content": result.content, "ok": result.ok}
+
+
+def _meanings_chars(data: dict[str, Any]) -> int:
+    """How long the extended glossary in a tool result is, as it sits in its JSON."""
+    meanings = data.get("field_meanings")
+    return len(json.dumps(meanings)) if isinstance(meanings, str) else 0
+
+
+def _event_preview(content: str, data: dict[str, Any]) -> str:
+    """The first 4000 characters of a result, as the stream shows them.
+
+    Without the glossary that may head it: the same text rides with every
+    first extended read, and a preview made of it would show the person none
+    of the shot.
+    """
+    if _meanings_chars(data):
+        content = json.dumps({k: v for k, v in data.items() if k != "field_meanings"}, default=str)
+    return content[:4000]
 
 
 def _usage_json(usage: Usage | None) -> dict[str, Any] | None:

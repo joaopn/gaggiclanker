@@ -30,6 +30,8 @@ from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository, SetVersionPatch
 from gaggiclanker.db.repos.shot_info import ShotInfoTiersRepository, ShotInfoTierWrite
 from gaggiclanker.llm.providers.claude_code import MCP_SERVER_NAME, build_mcp_config
+from gaggiclanker.shotinfo.catalogue import default_tiers
+from gaggiclanker.shotinfo.glossary import render_glossary
 from gaggiclanker.tools.mcp.server import SERVER_NAME
 from gaggiclanker.tools.scope import DESIGN_TOOLS, GENERAL_TOOLS, SET_TOOLS
 from tests.knowledge.insight_world import ProvenanceWorld, build_provenance_world
@@ -169,6 +171,42 @@ async def test_the_child_reads_the_tiers_per_call_so_a_change_needs_no_restart(
     assert after.structured_content is not None
     assert "Score confidence: high" not in before.structured_content["text"]
     assert "Score confidence: high" in after.structured_content["text"]
+
+
+async def test_the_extended_glossary_rides_with_the_first_extended_read_of_each_process(
+    archive_dir: tuple[Path, Fixture],
+) -> None:
+    """The server lives for one run, so its state is the run's: the first successful extended,
+    full or compare read carries the meanings ahead of the shot, a failed read does not use
+    them up, later reads carry none, and a new process (a new run) carries them again."""
+    data_dir, fixture = archive_dir
+    shot, other = fixture.shots[-1], fixture.shots[-2]
+    meanings = render_glossary(default_tiers(), "extended")
+
+    def carried(result: Any) -> bool:
+        assert result.structured_content is not None
+        found = result.structured_content.get("field_meanings")
+        if found is not None:
+            assert found == meanings
+            # The model reads the text content: the meanings come before the shot there too.
+            text = result.content[0].text
+            assert text.index("field_meanings") < text.index('"text"')
+        return found is not None
+
+    async with AsyncExitStack() as stack:
+        session = await session_for(stack, data_dir)
+        base = await session.call_tool("get_shot", {"shot_id": shot})
+        failed = await session.call_tool("get_shot_extended", {"shot_id": 999_999})
+        first = await session.call_tool("get_shot_extended", {"shot_id": shot})
+        full = await session.call_tool("get_shot_full", {"shot_id": shot})
+        compared = await session.call_tool("compare_shots", {"shot_ids": [shot, other]})
+    async with AsyncExitStack() as stack:
+        session = await session_for(stack, data_dir)
+        new_run = await session.call_tool("compare_shots", {"shot_ids": [shot, other]})
+
+    assert failed.is_error is True
+    assert [carried(r) for r in (base, first, full, compared)] == [False, True, False, False]
+    assert carried(new_run) is True
 
 
 async def test_the_scope_env_var_makes_an_unqualified_question_answerable(

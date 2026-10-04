@@ -35,6 +35,10 @@ first (`POST /api/backup`), because there is no down-migration.
   fetch anything. The reason on a proposed change and the text of a proposed insight take bold,
   italics, code and links too.
 
+### The chat sends the extended field meanings only when it reads a shot in detail
+
+- **The shot-field glossary is split in two.** The base fields' meanings stay in the Set and General chat prompts; the extended fields' meanings (about three quarters of the glossary) are sent once per answer, with the first `get_shot_extended`, `get_shot_full` or `compare_shots` result, ahead of the shot. An answer that opens no shot in detail no longer pays for them.
+
 ### A Set's chat uses the shots it was already given
 
 - **The Set chat is told to use the shots it already has.** The newest shots of the version are in its opening context in their base information, and that context now names their ids; the prompt and the shot tools say that for those shots only `get_shot_extended` adds anything (the diagnostics, phases and curve), and `list_set_shots` is for shots outside the context.

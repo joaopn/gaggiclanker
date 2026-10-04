@@ -1,14 +1,12 @@
 SHOT FIELDS
 Base is what get_shot returns and what a Set conversation's opening context and its shot search show; extended is what get_shot_extended adds; get_shot_full returns both. A shot is written as `shot <id>`, then `[Group]` headings with `label: value` lines; the brew phases are every phase but pre-infusion.
 A line that is missing means the machine did not record that value (no scale, no pressure sensor, too few samples to judge) — never that it was zero.
+Below are the base fields. The meanings of the extended fields are not in this prompt: they arrive at the head of the first result in an answer from get_shot_extended, get_shot_full or compare_shots, before the shot lines they explain.
 
 [Shared bands]
 The band tables several fields are read against, named in their entries; each entry gives the unit.
-- temperature deviation bands: MINIMAL under 0.5; SLIGHT 0.5 to 1; MODERATE 1 to 2; SIGNIFICANT from 2 up
-- slope bands: INCREASING from 0.05 up; FLAT -0.02 to 0.05; GRADUAL_DECLINE -0.08 to -0.02; MODERATE_DECLINE -0.15 to -0.08; STEEP_DECLINE under -0.15
 - resistance level bands: VERY_LOW under 0.5; LOW 0.5 to 1.5; MODERATE 1.5 to 3; HIGH 3 to 5; VERY_HIGH from 5 up
 - adherence bands: EXCELLENT under 0.3; GOOD 0.3 to 0.8; FAIR 0.8 to 1.5; POOR from 1.5 up
-- flow deviation bands: WITHIN_TOLERANCE under 0.3; MINOR_DEVIATION 0.3 to 0.7; NOTABLE_DEVIATION 0.7 to 1.5; SEVERE_DEVIATION from 1.5 up
 
 [Identity and status]
 - Shot id [base]: This archive's id for the shot, written as the heading of every rendered shot (`shot 129`). Cite a shot by it and pass it to the shot tools.
@@ -25,110 +23,28 @@ The band tables several fields are read against, named in their entries; each en
 - Exit reason [base]: Why the machine ended the shot's last phase: a volumetric (weight) target, a pressure, flow or pumped-water target, the phase's duration, a safety timeout, the person stopping it (Aborted), or a released hold.
 - Execution score [base]: How cleanly the machine executed the shot, out of 10: 10 less a capped penalty for each fault the telemetry shows (channeling, temperature instability, pressure and flow adherence, puck erosion), never below 1. Higher is cleaner. It says nothing about taste, and it is computed, not judged: explain it, never restate or contradict it.
 
-[Execution score detail]
-- Score confidence [extended]: How much of the telemetry the execution score could use. high: full diagnostics and every adherence the profile calls for graded. medium: no profile to grade against, an adherence that could not be worked out, or only the summary diagnostics. low: no pressure sensor, a channeling window too short to assess, or too little telemetry to score at all.
-- Score reason [extended]: The execution score's own sentence: which penalty cost the most, or that no material fault was found.
-- Penalty components [extended]: Each penalty the execution score subtracted, in points, largest first: channeling, temperature stability, pressure adherence, flow adherence, resistance erosion, and data quality when the telemetry was too sparse to score. none means a clean 10.
-
 [Timing]
 - First drip [base]: Seconds from the start of the shot to the first sample with any puck flow: when coffee started to reach the cup. Later usually means a finer grind or a longer pre-infusion. The Set page's time to first drip.
-- Pre-infusion time [extended]: Seconds until pressure first reached half its peak, read off the pressure trace rather than the phase names: when wetting ended and extraction began. Needs a pressure sensor.
-- Main extraction time [extended]: Seconds from the end of pre-infusion (as above) to the end of the shot. Needs a pressure sensor.
-
-[Temperature]
-- Average temperature [extended]: The mean measured brew water temperature over the whole shot, in °C.
-- Target temperature [extended]: The mean temperature the profile asked for over the shot, in °C. The machine heats to the profile's temperature; the Set records none of its own.
-- Minimum temperature [extended]: The lowest measured temperature during the shot, in °C.
-- Maximum temperature [extended]: The highest measured temperature during the shot, in °C.
-- Temperature overshoot [extended]: The most the brew temperature rose above its target over the brew phases, in °C; lower is better, and over 2 °C points at the boiler's control. Bands: the temperature deviation bands, in °C.
-- Temperature undershoot [extended]: The most the brew temperature fell below its target over the brew phases, in °C; lower is better, and over 2 °C suggests the machine was not fully heated. Bands: the temperature deviation bands, in °C.
-- Temperature stability [extended]: The standard deviation of the brew temperature over the brew phases, in °C; lower is steadier. Bands: VERY_STABLE under 0.3 °C; STABLE 0.3 to 0.8 °C; MODERATE 0.8 to 1.5 °C; UNSTABLE from 1.5 °C up.
 
 [Pressure]
 Measured by the pressure sensor: none of these exists on a machine without one.
 - Peak pressure [base]: The highest pressure measured at the puck during the shot, in bar. The Set page's peak pressure.
-- Average pressure [extended]: The mean pressure over the whole shot, in bar.
-- Minimum pressure [extended]: The lowest pressure over the whole shot, in bar.
-- Time of peak pressure [extended]: Seconds into the shot when the peak pressure was reached.
-- Pressure under the curve [extended]: Pressure summed over time for the whole shot, in bar·s: how much pressure the puck was under in total.
-- Pressure slope during brew [extended]: The least-squares slope of pressure over the brew phases, in bar per second; negative is a declining pressure. Bands: the slope bands, in bar/s.
 
 [Flow and volume]
 - Average brew flow [base]: The mean puck flow over the brew phases, in ml/s. Faster usually means a coarser grind or a lighter puck. The Set page's average brew flow.
-- Average flow [extended]: The mean puck flow over the whole shot, pre-infusion included, in ml/s. Puck flow is the machine's estimate of the water passing through the coffee.
-- Peak flow [extended]: The highest puck flow during the shot, in ml/s.
-- Total volume [extended]: Puck flow integrated over the shot, in ml: the water that passed through the puck. More than the yield, because the puck keeps some.
-- Water pumped [extended]: The water the pump moved, in ml, from the machine's own count; only for machines whose pump counts it.
-- Flow slope during brew [extended]: The least-squares slope of puck flow over the brew phases, in ml/s². Bands: DECLINING under -0.02; STABLE -0.02 to 0.02; INCREASING from 0.02 up.
-
-[Weight]
-From the scale's readings: none of these exists without a scale.
-- Water pumped minus beverage weight [extended]: Water pumped less the beverage weight, in g; needs both.
-- Average weight rate [extended]: How fast weight arrived in the cup over the brew phases, in g/s, from the scale's readings (steps where the weight fell are left out).
-- Weight rate variability [extended]: The standard deviation of that weight rate, in g/s; lower is a steadier stream. Bands: VERY_STABLE under 0.1 g/s; STABLE 0.1 to 0.25 g/s; MODERATE_JITTER 0.25 to 0.5 g/s; JITTERY 0.5 to 0.8 g/s; VOLATILE from 0.8 g/s up.
 
 [Puck resistance]
 Resistance R is the machine's own puck resistance squared (the firmware's pr² = pressure / puck flow², on the scale of the bands) when the shot recorded it, and pressure / flow² from the logged pressure and flow otherwise; the level says which. Both are taken over the brew phases' samples with flow over 0.1 ml/s, a unitless number. When the source is the machine, peak and its timing follow its estimate, ramp spikes included. None of it exists without a pressure sensor. The machine puck resistance and liquid resistance are the firmware analyzer's, in its units and unbanded: not comparable with R.
 - Resistance level [base]: The puck's average resistance, with where it came from: the machine's own measurement, or computed from pressure and flow when the shot has none. It folds grind, dose and puck prep into one reading: higher is a finer grind or a tighter puck. Bands: the resistance level bands.
-- Resistance stability [extended]: The standard deviation of that resistance; lower is a more consistent puck, and VOLATILE points at uneven prep or channeling. Bands: VERY_STABLE under 0.2; STABLE 0.2 to 0.5; MODERATE 0.5 to 1; VOLATILE from 1 up.
-- Resistance erosion [extended]: The slope of the resistance over the brew phases, per second. A gentle decline is the puck eroding normally; a steep one is the bed giving way (channeling), and a rising one often a coarse grind. Bands: the slope bands, in /s.
-- Peak resistance [extended]: The highest resistance reached during the brew phases.
-- Saturation [extended]: How far into the brew phases the resistance peaked, as a percentage (0 % is the start of the brew, 100 % the end). An early peak is a puck saturated before the brew got going. Bands: EARLY under 15 %; GOOD_TIMING 15 to 35 %; MID_SHOT 35 to 60 %; LATE from 60 % up.
-- Machine puck resistance (s·√bar/mL) [extended]: The firmware analyzer's machine puck resistance pr (s·√bar/mL): average, then first, last, lowest, highest. Unbanded, and the square root of the level's quantity, so not comparable with it.
-- Liquid resistance (bar·s/mL) [extended]: The firmware analyzer's liquid resistance, pr · √pressure (bar·s/mL): average, then first, last, lowest, highest. Unbanded.
 
 [Channeling]
 The indicators are measured over the steady-state window: the brew phases from where pressure first reaches 90% of its peak, less leading and trailing samples under 0.1 ml/s of flow. None of it exists without a pressure sensor.
 - Channeling risk [base]: The risk that water found a channel through the puck, scored 0 to 8 from four indicators (flow jitter; flow against target, or pressure jitter when no flow-steered sample is left; the largest pressure drop; late flow acceleration), each adding 1 at its lower threshold and 2 at its upper: LOW 0-1, MODERATE 2-3, HIGH 4-5, VERY_HIGH 6-8. INSUFFICIENT_DATA: fewer than 5 samples in the window, too short to judge, which is not a fault.
-- Primary signal [extended]: Which channeling indicators reached their lower threshold, comma-separated: flow_jitter, flow_vs_target, pressure_jitter_fallback (pressure jitter standing in when no flow-steered sample is left), pressure_cliff, late_flow_runaway; or none. One signal alone is usually noise; two or more aligned is a channel.
-- Flow jitter [extended]: Sample-to-sample instability of puck flow over the window: the standard deviation of its successive differences, in ml/s, so a designed ramp scores nothing. Lower is better; it adds to the channeling score from 0.05. Bands: VERY_STABLE under 0.025 ml/s; STABLE 0.025 to 0.05 ml/s; MODERATE_JITTER 0.05 to 0.1 ml/s; JITTERY 0.1 to 0.2 ml/s; VOLATILE from 0.2 ml/s up.
-- Flow against target [extended]: The standard deviation of puck flow minus the commanded flow over the window, in ml/s: a puck that cannot hold the flow curve. Lower is better; it adds to the channeling score from 0.35. Read only over the samples of phases that steer by flow (not those a pressure limit held); absent when there are none or the profile is not known. Bands: WITHIN_TOLERANCE under 0.15 ml/s; MINOR_DEVIATION 0.15 to 0.35 ml/s; NOTABLE_DEVIATION 0.35 to 0.7 ml/s; SEVERE_DEVIATION from 0.7 ml/s up.
-- Largest pressure drop rate [extended]: The steepest single-sample fall in pressure over the window, in bar/s (negative): a channel opening abruptly. Closer to zero is better; it adds to the channeling score from -1.5. Bands: NORMAL from -1 bar/s up; MODERATE_DROP -2.5 to -1 bar/s; STEEP_DROP -5 to -2.5 bar/s; CLIFF under -5 bar/s.
-- Late flow acceleration [extended]: How much faster flow was rising in the last 40 % of the window than over the whole of it, in ml/s², so a designed ramp scores zero: a channel running away late. Lower is better; it adds to the channeling score from 0.05. Bands: STABLE under 0.02 ml/s²; SLIGHT_ACCELERATION 0.02 to 0.05 ml/s²; MODERATE_ACCELERATION 0.05 to 0.1 ml/s²; RAPID_ACCELERATION from 0.1 ml/s² up.
-- Pressure jitter [extended]: Sample-to-sample instability of pressure over the window, in bar, measured like flow jitter. It stands in for flow against target in the channeling score when no flow-steered sample is left: a pressure profile, an unknown profile, or the limit held (from 0.10). Bands: VERY_STABLE under 0.05 bar; STABLE 0.05 to 0.1 bar; MODERATE_JITTER 0.1 to 0.2 bar; JITTERY 0.2 to 0.4 bar; VOLATILE from 0.4 bar up.
-- Flow spread [extended]: The plain standard deviation of puck flow over the channeling window, in ml/s. A descriptor, not scored: it includes any ramp the profile intended, so read it with the flow shape.
-- Flow shape [extended]: The overall trend of flow over the channeling window: RAMPING_UP when its slope is over 0.03 ml/s², RAMPING_DOWN when under -0.03, otherwise FLAT. A high flow spread on a ramping shape is the profile working, not the puck failing.
-- Window confidence [extended]: How many samples the channeling assessment rests on: HIGH 15 or more, MEDIUM 8-14, LOW 5-7, INSUFFICIENT fewer than 5. Discount a HIGH or VERY_HIGH risk read from a LOW window.
-- Guidance [extended]: The diagnostics engine's one-sentence reading of the channeling indicators together; a cross-check for your own reading, not a verdict.
 
 [Profile compliance]
 How closely the machine followed the target each phase steered by, read from the shot's profile. The pressure lines need a pressure sensor and cover the pressure-steered phases; the flow lines (pump flow against the flow target) exist only where the profile has a flow-steered phase. All are absent when the shot has no known profile.
 - Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller drives the pump to hold pressure, so this says how well it did, not what the puck did. Bands: the adherence bands, in bar.
 - Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the machine's own estimate, not a measurement: it leaves the target only when the pump runs out of power or a pressure limit takes over, so it is not a grind signal. Bands: the adherence bands, in ml/s.
-- Largest pressure overshoot [extended]: The most measured pressure rose above the target pressure, in bar. Over 0.5 is unusual and over 1 almost always a grind too fine, a dose too big or a prep problem. Bands: WITHIN_TOLERANCE under 0.25 bar; MINOR_OVERSHOOT 0.25 to 0.5 bar; NOTABLE_OVERSHOOT 0.5 to 1 bar; SEVERE_OVERSHOOT from 1 bar up.
-- Largest pressure undershoot [extended]: The most measured pressure fell below the target pressure, in bar. A large one throughout is a puck too loose to build pressure.
-- Largest flow overshoot [extended]: The most the pump flow rose above the target flow, in ml/s, over the flow-steered phases. Bands: the flow deviation bands, in ml/s.
-- Largest flow undershoot [extended]: The most the pump flow fell below the target flow, in ml/s, over the flow-steered phases: the pump could not deliver what was asked (out of power, or a pressure limit took over). Bands: the flow deviation bands, in ml/s.
-
-[Phases]
-One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start 20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence need a pressure sensor.
-- phase [extended]: The phase's number in the profile (from 0) and its name, heading the phase's line (`phase 3 · decline 9-4`).
-- type [extended]: What the engine took the phase to be. preinfusion when its name contains preinfusion, pre-infusion, pi, soak, bloom, fill, preinfuse; decline when it contains decline, taper, ramp-down, ramp down, cool down, cooldown; otherwise read from the pressure trace (a first phase under 5 bar and rising is preinfusion, a last phase falling faster than 0.3 bar per sample is decline), else brew. It decides which of the per-phase metrics below the phase gets. Every phase but a preinfusion one is one of the shot's brew phases.
-- start [extended]: Seconds into the shot when the phase began.
-- duration [extended]: How long the phase ran, in seconds.
-- pressure [extended]: The mean pressure during the phase, in bar.
-- temperature [extended]: The mean measured temperature during the phase, in °C.
-- volume [extended]: Puck flow integrated over the phase, in ml.
-- flow [extended]: The mean puck flow during the phase, in ml/s.
-- pressure adherence [extended]: Pressure adherence (as above) within a pressure-steered phase, in bar. Bands: the adherence bands, in bar.
-- flow error [extended]: Flow-steered phases only: the root-mean-square difference between pump flow and the flow target within the phase, in ml/s.
-- ramp [extended]: Pre-infusion phases only: how fast pressure rose over the phase (its least-squares slope), in bar/s. Banded on its size: GENTLE under 0.5 bar/s; MODERATE 0.5 to 1.5 bar/s; BRISK 1.5 to 3 bar/s; AGGRESSIVE 3 to 5 bar/s; VERY_AGGRESSIVE from 5 bar/s up.
-- saturation [extended]: Pre-infusion phases only: seconds into the phase until flow settled (three samples flowing over 0.1 ml/s and varying by under 0.15): when the puck was wet through. The whole phase when it never settled.
-- taper [extended]: Decline phases only: how fast pressure fell (its slope, bar/s), then how evenly (the standard deviation of its sample-to-sample rate, bar/s; lower is smoother). Smoothness bands: VERY_SMOOTH under 0.2 bar/s; SMOOTH 0.2 to 0.5 bar/s; MODERATE 0.5 to 1 bar/s; ROUGH from 1 bar/s up.
-- resistance [extended]: Brew phases only: the puck resistance level and its slope within the phase, banded as the shot's resistance level and erosion are: the resistance level bands, then the slope bands, in /s. Ends with where the phase's resistance came from, as the shot's level does.
-- machine puck resistance (s·√bar/mL) [extended]: The machine puck resistance over this phase, as the shot's: average, then first, last, lowest, highest. Every phase; unbanded.
-- liquid resistance (bar·s/mL) [extended]: The liquid resistance over this phase, as the shot's. Unbanded.
-- channeling [extended]: Brew phases only: the channeling risk assessed on this phase alone (the same labels as the shot's, INSUFFICIENT_DATA included), the indicators that fired and the flow shape. A short phase is often INSUFFICIENT_DATA, which is not a fault.
-
-[Curve]
-One table: a line saying how many of the shot's samples it holds, a header naming each column and its unit, then one comma-separated row per sample in time order. A long shot is cut to a few dozen rows chosen to keep the curve's shape (peaks, dips and turns of pressure and puck flow), and the line says which moments are always kept: the first and last sample, each phase's first and last, peak pressure, first drip and both ends of the largest pressure drop. A short shot is whole. Every column is cut at the same rows. An empty cell was not recorded; a channel the machine did not record is left out.
-- pressure (bar) [extended]: Measured pressure at the puck, in bar. Absent without a pressure sensor.
-- target pressure (bar) [extended]: The pressure the profile commanded (or its limit, on a flow-led phase), in bar.
-- puck flow (ml/s) [extended]: The machine's estimate of water flowing through the puck, in ml/s.
-- target flow (ml/s) [extended]: The flow the profile commanded (or its limit, on a pressure-led phase), in ml/s.
-- weight (g) [extended]: The weight in the cup as the scale read it, in grams. Absent without a scale.
-- temperature (°C) [extended]: The measured brew water temperature, in °C.
-- phase marker [extended]: The number of the profile phase running at that sample, as in the phase lines.
 
 [Your judgement]
 - Rating [base]: The person's rating of the cup, 1 to 5 stars. Higher is better.
@@ -140,13 +56,3 @@ One table: a line saying how many of the shot's samples it holds, a header namin
 - Dose out [base]: The beverage weight the person recorded, in grams. Where it differs from the scale's yield, it is the person correcting the scale.
 - Ratio [base]: Dose out divided by dose in, written 1:2.00. Longer ratios extract more.
 - Grind as brewed [base]: The grind setting the person says this shot was actually ground at, in the grinder's own units. It can differ from the recipe's.
-
-[Review]
-The newest finished review of the shot, or nothing when it was never reviewed. A review is a model's reading of this one shot's data, made without the person's judgement, the Set or any other shot: weigh it below the measured numbers and below the person's judgement.
-- Predicted balance [extended]: What a review expects the cup's balance to be: Sour, Balanced or Bitter. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
-- Predicted body [extended]: What a review expects the cup's body to be: thin, medium or heavy. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
-- Prediction confidence [extended]: How sure the review said it was of its taste prediction: low, medium or high. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
-- Review description [extended]: A paragraph on what the shot's telemetry shows and why, with its figures. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
-- Review summary [extended]: The review in one sentence. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
-- Review written [extended]: When the review finished, in UTC, to the minute. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.
-- Review model [extended]: The model that wrote the review, as the provider named it. Written by a model from this shot's data, without the person's judgement: a reading, not a measurement.

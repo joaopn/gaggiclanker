@@ -468,9 +468,16 @@ zero. The tiers are the catalogue's defaults with the person's choices laid
 over them (`shot_info_tiers` holds only the items moved, from Settings → Shot
 information), read once per turn through `effective_tiers`, by the runner and
 the stdio server alike, so a change applies from the next turn. The glossary
-in the Set and General prompts is generated from the same entries — every item
-that is not excluded, with its tier and its meaning, the band thresholds read
-from the vendored tables — so an item and its explanation cannot drift apart.
+is generated from the same entries — every item that is not excluded, with its tier
+and its meaning, the band thresholds read from the vendored tables — so an item and
+its explanation cannot drift apart. It is rendered in two halves: the base half is
+in the Set and General prompts, and the extended half rides on the first successful
+`get_shot_extended`, `get_shot_full` or `compare_shots` result of each run (a
+`field_meanings` field ahead of the shot text), so an answer that opens no shot in
+detail never carries it. "Once" is tracked per run in a `RunNotes` holder on the
+tool context: the runner's run state for the API providers, the stdio server's
+process (one per run) for `claude_code`. The runner's result cap counts the text
+of the tool, not the meanings.
 A shot's review reads the same renderer with a fixed layout of its own: every
 item but the judgement, the machine's note, the version's recipe, the shot's
 Set, label and counted state, and earlier reviews, whatever the person's tiers
