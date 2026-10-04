@@ -77,7 +77,7 @@ the archive tells them apart by the profile a shot was brewed with.
 | `starting/` | The starting-point wizard: the similar-Set query, the context it assembles, the three-option output contract, and the accept that turns one into a Set and a draft. |
 | `tools/` | The tool registry — one definition per tool, three consumers — `tools/scope.py`, which decides which of them a conversation has, and the SQL sandbox behind `query_shots`. `tools/mcp/` is the chat's database tool: the registry as an MCP server over stdio (`gaggiclanker mcp`), which the `claude_code` provider spawns for its tool loop, told the conversation's scope in its environment. It opens the archive and nothing else — no network endpoint, no machine connection, no setting. Read and propose only; never a write to the machine. |
 | `chat/` | The tool loop, the opening context a Set conversation starts from — the experiment: ledger, spread, evidence, the version's newest shots — or, while the Set is being designed, the design brief and its evidence (`design_context.py`), and the streamed, resumable run. |
-| `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary the chat prompts carry, generated from the catalogue. |
+| `shotinfo/` | What a chat is told about a shot: the catalogue of every item a shot carries, each with its meaning and its tier (base, extended, excluded); the one loader and renderer every shot a model reads goes through; the shot search; and the field glossary, generated from the catalogue in two halves: the base half in the chat prompts, the extended half attached to the first extended read of a run. |
 | `sync/` | The index diff, the shot download, the profile and notes mirrors. |
 | `domain/` | The `.slog` and index parsers, diagnostics, scoring. Pure functions over bytes and numbers. |
 | `device/` | `DeviceConnection`: the one owner of the client and the sync engine, rebuilt live when the machine settings change. `GaggimateClient`: one WebSocket, bounded HTTP, ten read methods and five gated write methods, all of them profile operations — nothing else. Only profiles are ever written to the machine. `save_profile`, `delete_profile`, `select_profile`, `favorite_profile` and `unfavorite_profile` are reached only by the board's write phase, inside a sync (switch on): the save of a profile version the machine does not hold, the removal of a superseded profile or one that is switched off (guarded by a fresh load), the select and favourite that move the star and the selection to the profile that replaces another, and the favourite flag that matches a profile's home-screen setting; a standalone select has no route (only `scripts/profile_gate.py` selects). `drafts/machine.py` holds the re-read, the no-duplicate save and the guarded removal. Every write passes the gate behind `deviceWritesEnabled` and leaves a `device_writes` row. |
@@ -477,7 +477,9 @@ in the Set and General prompts, and the extended half rides on the first success
 detail never carries it. "Once" is tracked per run in a `RunNotes` holder on the
 tool context: the runner's run state for the API providers, the stdio server's
 process (one per run) for `claude_code`. The runner's result cap counts the text
-of the tool, not the meanings.
+of the tool, not the meanings. A later answer is not sent an earlier run's copy: the
+history is built with it removed before it is sized against the budget (the stored
+rows keep it).
 A shot's review reads the same renderer with a fixed layout of its own: every
 item but the judgement, the machine's note, the version's recipe, the shot's
 Set, label and counted state, and earlier reviews, whatever the person's tiers

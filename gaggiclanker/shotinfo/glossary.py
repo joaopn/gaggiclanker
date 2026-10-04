@@ -3,10 +3,13 @@
 Most of a shot's lines are not self-explanatory — "Saturation: 0 % EARLY",
 "Flow jitter: 0.02 ml/s VERY_STABLE" — and a model left to guess reads them
 from its training, which knows nothing of this engine's thresholds. So every
-chat that reads shots carries this glossary in its system prompt: one entry per
-item that is **not excluded**, grouped as a rendering is, each marked with the
-tier it is in, so the model knows what `get_shot_extended` would add and never
-meets a line it was not told about.
+chat that reads shots is told this glossary: one entry per item that is **not
+excluded**, grouped as a rendering is, each marked with the tier it is in, so
+the model never meets a line it was not told about. It is rendered in two
+halves. The base half is in the system prompt; the extended half, about two
+thirds of the text, is attached to the first successful extended read of each
+run (see :func:`gaggiclanker.tools.builtin._extended_meanings`), so an answer
+that opens no shot in detail does not carry it.
 
 It is generated from the catalogue's own meanings, so an item and its
 explanation are one text with two readers (this prompt, and the settings page

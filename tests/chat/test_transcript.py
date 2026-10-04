@@ -297,6 +297,17 @@ def test_a_failed_result_is_kept_in_full() -> None:
     assert refused["ok"] is False
 
 
+def test_the_extended_glossary_inside_a_shot_result_does_not_reach_the_download() -> None:
+    content = '{"field_meanings": "Score confidence: how sure", "shot_id": 1, "text": "x"}'
+    messages = _messages_with_results(
+        [{"id": "c", "name": "get_shot_extended", "content": content, "ok": True}]
+    )
+
+    result = _results(messages)[0]
+    assert result["content"] is None
+    assert "Score confidence" not in json.dumps(_built(messages))
+
+
 def test_a_failed_shot_tool_result_is_kept_even_though_its_success_is_not() -> None:
     messages = _messages_with_results(
         [{"id": "c", "name": "compare_shots", "content": "Two to four shots.", "ok": False}]

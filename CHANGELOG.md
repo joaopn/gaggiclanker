@@ -37,7 +37,7 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ### The chat sends the extended field meanings only when it reads a shot in detail
 
-- **The shot-field glossary is split in two.** The base fields' meanings stay in the Set and General chat prompts; the extended fields' meanings (about three quarters of the glossary) are sent once per answer, with the first `get_shot_extended`, `get_shot_full` or `compare_shots` result, ahead of the shot. An answer that opens no shot in detail no longer pays for them. Settings → Shot information shows the two halves' sizes separately.
+- **The shot-field glossary is split in two.** The base fields' meanings stay in the Set and General chat prompts; the extended fields' meanings (about two thirds of the glossary) are sent once per answer, with the first `get_shot_extended`, `get_shot_full` or `compare_shots` result, ahead of the shot. An answer that opens no shot in detail no longer pays for them, and a later answer is not sent an earlier answer's copy again. Settings → Shot information shows the two halves' sizes separately.
 
 ### A Set's chat uses the shots it was already given
 

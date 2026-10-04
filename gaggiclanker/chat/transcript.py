@@ -2,11 +2,13 @@
 
 Built **only** from what is stored (``chat_messages`` and ``chat_runs``). The
 system prompt and everything rendered into it each turn (the Set chat's opening
-context with its shot lines, the design context, the shot-field glossary) is
+context with its shot lines, the design context, the base shot-field glossary) is
 never stored, so it cannot be in the transcript; nothing here renders a prompt or calls
 ``opening_context``, and a test builds the real context and looks for it.
 
-Shots do reach the transcript when the agent asks for them, as tool results.
+Shots do reach the transcript when the agent asks for them, as tool results (the
+extended glossary that heads the first extended read of a run is inside such a
+result and goes with it).
 The successful result of a tool that renders shots (``SHOT_RENDERING_TOOLS``),
 or of a name that is no registered tool (the ``claude_code`` provider stores an
 empty one when it cannot pair a result with its call, so it may be anything), is
