@@ -103,6 +103,10 @@
       "model": "claude-x",
       "tokens_in": 1200,
       "tokens_out": 85,
+      "context_tokens": 700,
+      "cache_read_tokens": 900,
+      "cache_write_tokens": 100,
+      "requests": 2,
       "error": null,
       "started_at": "2026-09-29T02:31:36.658Z",
       "finished_at": null
@@ -114,6 +118,10 @@
       "model": "claude-x",
       "tokens_in": null,
       "tokens_out": null,
+      "context_tokens": null,
+      "cache_read_tokens": null,
+      "cache_write_tokens": null,
+      "requests": null,
       "error": "provider said 529 overloaded",
       "started_at": "2026-09-29T02:40:36.658Z",
       "finished_at": null

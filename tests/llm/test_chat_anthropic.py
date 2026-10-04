@@ -237,3 +237,32 @@ async def test_a_refusal_carries_its_status() -> None:
         await service.chat(request(), lambda _event: None)
 
     assert caught.value.status == 401
+
+
+async def test_the_cache_split_is_kept_and_the_output_stub_is_replaced_not_added() -> None:
+    start = message_start(10)
+    start[1]["message"]["usage"].update(
+        {"cache_creation_input_tokens": 300, "cache_read_input_tokens": 5000, "output_tokens": 3}
+    )
+    recorder = Recorder(
+        sse(
+            start,
+            block_start({"type": "text", "text": ""}),
+            text_delta("ok"),
+            block_stop(),
+            message_delta("end_turn", 40),
+        )
+    )
+
+    turn = await provider(recorder).chat(request(), lambda _event: None)
+
+    usage = turn.usage
+    assert (usage.prompt_tokens, usage.completion_tokens) == (5310, 40)  # not 43
+    assert (usage.fresh_tokens, usage.cache_write_tokens, usage.cache_read_tokens) == (
+        10,
+        300,
+        5000,
+    )
+    assert usage.context_tokens == 5310
+    assert usage.requests[0].out == 40
+    assert usage.context_window is None  # the API reports no window

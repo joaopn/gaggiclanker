@@ -125,7 +125,18 @@ def _runs() -> list[ChatRunRow]:
             status="ok",
             provider="anthropic",
             model="claude-x",
-            usage={"prompt_tokens": 1200, "completion_tokens": 85, "total_tokens": 1285},
+            usage={
+                "prompt_tokens": 1200,
+                "completion_tokens": 85,
+                "total_tokens": 1285,
+                "context_tokens": 700,
+                "cache_read": 900,
+                "cache_write": 100,
+                "fresh": 200,
+                "requests": 2,
+                "per_request": [{"context": 500}, {"context": 700}],
+                "cost_usd": 0.01,
+            },
             started_at=at(31),
         ),
         ChatRunRow(
@@ -405,6 +416,16 @@ def test_runs_carry_provider_model_tokens_and_the_whole_error() -> None:
     assert runs[0]["provider"] == "anthropic"
     assert runs[0]["model"] == "claude-x"
     assert (runs[0]["tokens_in"], runs[0]["tokens_out"]) == (1200, 85)
+    # The conversation's size and the cache split ride along, named in tokens;
+    # a run that stored none exports them as null, not zero.
+    assert (
+        runs[0]["context_tokens"],
+        runs[0]["cache_read_tokens"],
+        runs[0]["cache_write_tokens"],
+        runs[0]["requests"],
+    ) == (700, 900, 100, 2)
+    assert runs[1]["context_tokens"] is None
+    assert runs[1]["cache_read_tokens"] is None
     assert runs[1]["error"] == "provider said 529 overloaded"
     assert runs[2]["error"] == error  # a run that stored no message still appears
 

@@ -35,8 +35,10 @@ __all__ = [
     "ModelPurpose",
     "Ok",
     "ProviderId",
+    "RequestUsage",
     "ResponseMode",
     "Usage",
+    "request_usage",
 ]
 
 #: Which provider handles a call. ``openai_compatible`` is the family — the
@@ -79,6 +81,29 @@ class LlmMessage(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
+class RequestUsage:
+    """One API request, as the provider reported it.
+
+    A chat answer is many requests (each tool round re-sends the whole
+    conversation), and the size of the conversation is the *last* request's
+    input, not the sum. So the per-request figures are kept, not folded into a
+    total nobody can read back into a size. ``None`` is "not reported", as on
+    :class:`Usage`.
+
+    ``context`` is everything the request carried in: fresh input plus cache
+    write plus cache read (Anthropic, Claude Code), or ``prompt_tokens``
+    (OpenAI-compatible, whose figure already includes cached tokens).
+    ``fresh`` is the part that was neither read from nor written to the cache.
+    """
+
+    context: int | None = None
+    cache_read: int | None = None
+    cache_write: int | None = None
+    fresh: int | None = None
+    out: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Usage:
     """Token counts, as far as the provider disclosed them.
 
@@ -86,16 +111,34 @@ class Usage:
     Codex-style CLIs report nothing, and an observer that rendered that as 0
     would make a local model look free *and* make a broken usage parser look
     like a local model.
+
+    ``prompt_tokens`` is the input summed over every request, cache traffic
+    included; the cache split is summed the same way. ``requests`` keeps each
+    request apart (see :class:`RequestUsage`), which is what makes "how big is
+    the conversation now" answerable.
     """
 
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    fresh_tokens: int | None = None
+    requests: tuple[RequestUsage, ...] = ()
+    #: Claude Code only: the CLI's own cost figure (notional on a subscription)
+    #: and the model's window, both from the run's result envelope.
+    cost_usd: float | None = None
+    context_window: int | None = None
 
     @property
     def total_tokens(self) -> int | None:
         if self.prompt_tokens is None and self.completion_tokens is None:
             return None
         return (self.prompt_tokens or 0) + (self.completion_tokens or 0)
+
+    @property
+    def context_tokens(self) -> int | None:
+        """The last request's size: how big the conversation was when it answered."""
+        return self.requests[-1].context if self.requests else None
 
     def __add__(self, other: Usage) -> Usage:
         """Two turns of one call, summed.
@@ -106,7 +149,7 @@ class Usage:
         told us nothing" never collapses into a zero somebody would add up.
         """
 
-        def combine(left: int | None, right: int | None) -> int | None:
+        def combine[N: (int, float)](left: N | None, right: N | None) -> N | None:
             if left is None and right is None:
                 return None
             return (left or 0) + (right or 0)
@@ -114,7 +157,46 @@ class Usage:
         return Usage(
             prompt_tokens=combine(self.prompt_tokens, other.prompt_tokens),
             completion_tokens=combine(self.completion_tokens, other.completion_tokens),
+            cache_read_tokens=combine(self.cache_read_tokens, other.cache_read_tokens),
+            cache_write_tokens=combine(self.cache_write_tokens, other.cache_write_tokens),
+            fresh_tokens=combine(self.fresh_tokens, other.fresh_tokens),
+            requests=self.requests + other.requests,
+            cost_usd=combine(self.cost_usd, other.cost_usd),
+            # The later turn's window: it is the model that answered last.
+            context_window=(
+                other.context_window if other.context_window is not None else self.context_window
+            ),
         )
+
+
+def request_usage(
+    *,
+    fresh: int | None,
+    cache_write: int | None,
+    cache_read: int | None,
+    out: int | None,
+) -> Usage:
+    """One Anthropic-shaped request: context is fresh + cache write + cache read.
+
+    All three input parts are billed and all three are real work; reporting only
+    the fresh part on a cached call understates it by an order of magnitude (a
+    measured call was twenty uncached tokens against fifty thousand of cache
+    traffic). Shared by the Anthropic provider and Claude Code, which speak the
+    same usage object.
+    """
+    parts = [value for value in (fresh, cache_write, cache_read) if value is not None]
+    context = sum(parts) if parts else None
+    one = RequestUsage(
+        context=context, cache_read=cache_read, cache_write=cache_write, fresh=fresh, out=out
+    )
+    return Usage(
+        prompt_tokens=context,
+        completion_tokens=out,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+        fresh_tokens=fresh,
+        requests=(one,) if context is not None or out is not None else (),
+    )
 
 
 @dataclass(slots=True)

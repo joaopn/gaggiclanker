@@ -91,6 +91,14 @@ class TranscriptMessage(BaseModel):
 
 
 class TranscriptRun(BaseModel):
+    """One press of Send. Every ``*_tokens`` field is a count of tokens, never characters.
+
+    ``tokens_in`` is the input billed over all the run's requests (each tool
+    round re-sends the conversation, so it is not the conversation's size);
+    ``context_tokens`` is the last request's input, which is. The cache figures
+    are the cached parts of ``tokens_in``. Null means the provider did not say.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     id: int
@@ -99,6 +107,10 @@ class TranscriptRun(BaseModel):
     model: str = ""
     tokens_in: int | None = None
     tokens_out: int | None = None
+    context_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    requests: int | None = None
     error: str | None = None
     started_at: str = ""
     finished_at: str | None = None
@@ -187,6 +199,10 @@ def _run(row: ChatRunRow) -> TranscriptRun:
         model=row.model,
         tokens_in=_int(usage.get("input_tokens", usage.get("prompt_tokens"))),
         tokens_out=_int(usage.get("output_tokens", usage.get("completion_tokens"))),
+        context_tokens=_int(usage.get("context_tokens")),
+        cache_read_tokens=_int(usage.get("cache_read")),
+        cache_write_tokens=_int(usage.get("cache_write")),
+        requests=_int(usage.get("requests")),
         error=row.error,
         started_at=row.started_at,
         finished_at=row.finished_at,

@@ -43,7 +43,7 @@ from gaggiclanker.llm.chat_types import (
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import schema_name, strict_json_schema
-from gaggiclanker.llm.types import CredentialCheck, ProviderId, ResponseMode, Usage
+from gaggiclanker.llm.types import CredentialCheck, ProviderId, RequestUsage, ResponseMode, Usage
 
 __all__ = [
     "PRESETS",
@@ -455,7 +455,27 @@ def _extract_usage(completion: Any) -> Usage:
         return Usage()
     prompt = _first_int(usage, "prompt_tokens", "input_tokens")
     completion_tokens = _first_int(usage, "completion_tokens", "output_tokens")
-    return Usage(prompt_tokens=prompt, completion_tokens=completion_tokens)
+    # `prompt_tokens` already counts the cached part, so the context is the
+    # prompt itself and the fresh part is what is left after the cached one. A
+    # gateway that does not report `cached_tokens` leaves both unknown rather
+    # than guessing zero. There is no cache-write figure on this API.
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None and isinstance(usage, dict):
+        details = usage.get("prompt_tokens_details")
+    if details is None:
+        details = getattr(usage, "input_tokens_details", None)
+    cached = _first_int(details, "cached_tokens") if details is not None else None
+    fresh = prompt - cached if prompt is not None and cached is not None else None
+    one = RequestUsage(
+        context=prompt, cache_read=cached, cache_write=None, fresh=fresh, out=completion_tokens
+    )
+    return Usage(
+        prompt_tokens=prompt,
+        completion_tokens=completion_tokens,
+        cache_read_tokens=cached,
+        fresh_tokens=fresh,
+        requests=(one,) if prompt is not None or completion_tokens is not None else (),
+    )
 
 
 def _first_int(source: Any, *names: str) -> int | None:

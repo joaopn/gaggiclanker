@@ -36,7 +36,7 @@ def chunk(**delta: Any) -> dict[str, Any]:
     }
 
 
-def final(reason: str = "stop", usage: dict[str, int] | None = None) -> dict[str, Any]:
+def final(reason: str = "stop", usage: dict[str, Any] | None = None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": "chatcmpl-1",
         "object": "chat.completion.chunk",
@@ -238,3 +238,38 @@ async def test_a_provider_refusal_becomes_an_LlmApiError_with_its_status() -> No
 
     assert caught.value.status == 429
     assert "slow down" in str(caught.value)
+
+
+async def test_cached_tokens_are_a_read_and_the_prompt_already_includes_them() -> None:
+    recorder = Recorder(
+        sse(
+            chunk(content="ok"),
+            final(
+                usage={
+                    "prompt_tokens": 1000,
+                    "completion_tokens": 5,
+                    "prompt_tokens_details": {"cached_tokens": 800},
+                }
+            ),
+        )
+    )
+
+    turn = await provider(recorder).chat(request(), lambda _event: None)
+
+    usage = turn.usage
+    assert (usage.prompt_tokens, usage.context_tokens) == (1000, 1000)
+    assert (usage.cache_read_tokens, usage.fresh_tokens) == (800, 200)
+    assert usage.cache_write_tokens is None  # this API has no write figure
+    assert usage.context_window is None
+
+
+async def test_without_cached_tokens_nothing_about_the_cache_is_claimed() -> None:
+    recorder = Recorder(
+        sse(chunk(content="ok"), final(usage={"prompt_tokens": 30, "completion_tokens": 6}))
+    )
+
+    turn = await provider(recorder).chat(request(), lambda _event: None)
+
+    assert turn.usage.cache_read_tokens is None
+    assert turn.usage.fresh_tokens is None
+    assert turn.usage.context_tokens == 30

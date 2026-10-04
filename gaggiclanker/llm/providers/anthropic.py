@@ -24,7 +24,7 @@ below the cache minimum, because the API just ignores it.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx2
@@ -49,7 +49,13 @@ from gaggiclanker.llm.chat_types import (
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import strict_json_schema
-from gaggiclanker.llm.types import CredentialCheck, ProviderId, ResponseMode, Usage
+from gaggiclanker.llm.types import (
+    CredentialCheck,
+    ProviderId,
+    ResponseMode,
+    Usage,
+    request_usage,
+)
 
 __all__ = ["ANTHROPIC_API_BASE_URL", "AnthropicProvider", "StoredCredentialsAnthropic"]
 
@@ -266,7 +272,10 @@ class AnthropicProvider:
                     stop_reason = getattr(delta, "stop_reason", None) or stop_reason
                     extra = _extract_usage(event)
                     if extra.completion_tokens is not None:
-                        usage = usage + Usage(completion_tokens=extra.completion_tokens)
+                        # `message_start` carries a stub for the output and
+                        # `message_delta` the cumulative final figure, so the
+                        # delta replaces the stub; adding would count it twice.
+                        usage = _with_output(usage, extra.completion_tokens)
         except APIStatusError as exc:
             raise LlmApiError(
                 _status_message(exc), status=exc.status_code, body=_error_body(exc)
@@ -363,25 +372,32 @@ def _first_parsed(message: Any) -> Any:
 
 
 def _extract_usage(message: Any) -> Usage:
-    """Input tokens are the sum of fresh, cache-write and cache-read.
+    """One request's usage: fresh, cache-write and cache-read, kept apart.
 
-    All three are billed as input and all three are real work; reporting only
-    ``input_tokens`` on a cached call makes a 30k-token prompt look like 20
-    tokens, which is exactly the number someone would use to conclude the
-    review is free.
+    Input is the sum of the three (see :func:`request_usage`); the split is what
+    lets the footer say how much of the conversation the cache served.
     """
     usage = getattr(message, "usage", None)
     if usage is None:
         return Usage()
-    parts = [
-        getattr(usage, name, None)
-        for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-    ]
-    numbers = [value for value in parts if isinstance(value, int) and not isinstance(value, bool)]
-    prompt = sum(numbers) if numbers else None
-    output = getattr(usage, "output_tokens", None)
-    completion = output if isinstance(output, int) and not isinstance(output, bool) else None
-    return Usage(prompt_tokens=prompt, completion_tokens=completion)
+    return request_usage(
+        fresh=_int(getattr(usage, "input_tokens", None)),
+        cache_write=_int(getattr(usage, "cache_creation_input_tokens", None)),
+        cache_read=_int(getattr(usage, "cache_read_input_tokens", None)),
+        out=_int(getattr(usage, "output_tokens", None)),
+    )
+
+
+def _int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _with_output(usage: Usage, out: int) -> Usage:
+    """The same request with its final output count."""
+    requests = usage.requests
+    if requests:
+        requests = (*requests[:-1], replace(requests[-1], out=out))
+    return replace(usage, completion_tokens=out, requests=requests)
 
 
 def _status_message(exc: APIStatusError) -> str:

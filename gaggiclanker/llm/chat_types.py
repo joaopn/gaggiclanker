@@ -166,4 +166,12 @@ class ChatTurn:
     #: calls and results already happened, and the runner records them for the
     #: transcript rather than executing them.
     executed_tool_calls: list[ChatToolCall] = field(default_factory=list)
+    #: ``claude_code`` only, where one turn is a whole run of several requests:
+    #: the requests that issued the tool calls and the ones that wrote the
+    #: answer. The runner stores each on the message it produced, so a message
+    #: holds the requests that produced it on every provider (the others have
+    #: one request per message and need neither). ``None`` means "the whole
+    #: ``usage`` belongs to the one message".
+    tool_usage: Usage | None = None
+    answer_usage: Usage | None = None
     executed_tool_results: list[ChatToolResult] = field(default_factory=list)

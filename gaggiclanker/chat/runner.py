@@ -30,7 +30,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -528,6 +528,11 @@ class ChatRunner:
                     role="assistant",
                     run_id=state.run_id,
                     tool_calls=[_call_json(call) for call in turn.executed_tool_calls],
+                    # The requests that issued these calls, and only those: the
+                    # run's figures are split across the two assistant messages
+                    # so that a message holds the requests that produced it, as
+                    # it does on the providers that run one request per message.
+                    usage=_usage_json(turn.tool_usage),
                 )
             )
             state.tool_calls += len(turn.executed_tool_calls)
@@ -552,7 +557,7 @@ class ChatRunner:
                 role="assistant",
                 content=turn.text,
                 run_id=state.run_id,
-                usage=_usage_json(turn.usage),
+                usage=_usage_json(turn.usage if turn.answer_usage is None else turn.answer_usage),
             )
         )
         await self._emit(
@@ -725,11 +730,41 @@ def _result_json(result: ChatToolResult) -> dict[str, Any]:
     return {"id": result.id, "name": result.name, "content": result.content, "ok": result.ok}
 
 
-def _usage_json(usage: Usage) -> dict[str, Any] | None:
-    if usage.total_tokens is None:
+def _usage_json(usage: Usage | None) -> dict[str, Any] | None:
+    """What a run or a message stores. Every figure is tokens.
+
+    The first three keys are the billed totals, summed over the requests. The
+    rest say how big the conversation was and what the cache did, and each is
+    present only when the provider reported it, so the screen can leave a part
+    out instead of showing a zero somebody would believe.
+
+    * ``context_tokens``: the last request's whole input (fresh + cache write +
+      cache read; ``prompt_tokens`` on an OpenAI-compatible server).
+    * ``cache_read`` / ``cache_write`` / ``fresh``: summed over the requests.
+    * ``requests`` and ``per_request``: how many API requests, and each one's
+      ``context``, ``cache_read``, ``cache_write``, ``fresh`` and ``out``.
+    * ``cost_usd`` and ``context_window``: Claude Code's own figures only.
+    """
+    if usage is None or usage.total_tokens is None:
         return None
-    return {
+    data: dict[str, Any] = {
         "prompt_tokens": usage.prompt_tokens,
         "completion_tokens": usage.completion_tokens,
         "total_tokens": usage.total_tokens,
     }
+    extras = {
+        "context_tokens": usage.context_tokens,
+        "context_window": usage.context_window,
+        "cache_read": usage.cache_read_tokens,
+        "cache_write": usage.cache_write_tokens,
+        "fresh": usage.fresh_tokens,
+        "cost_usd": usage.cost_usd,
+    }
+    data.update({key: value for key, value in extras.items() if value is not None})
+    if usage.requests:
+        data["requests"] = len(usage.requests)
+        data["per_request"] = [
+            {key: value for key, value in asdict(one).items() if value is not None}
+            for one in usage.requests
+        ]
+    return data

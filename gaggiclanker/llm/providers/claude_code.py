@@ -44,7 +44,7 @@ import signal
 import sys
 import tempfile
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import structlog
@@ -62,7 +62,14 @@ from gaggiclanker.llm.chat_types import (
 from gaggiclanker.llm.errors import LlmApiError
 from gaggiclanker.llm.providers.base import ProviderCall, ProviderReply
 from gaggiclanker.llm.schema import strict_json_schema
-from gaggiclanker.llm.types import CredentialCheck, ProviderId, ResponseMode, Usage
+from gaggiclanker.llm.types import (
+    CredentialCheck,
+    ProviderId,
+    RequestUsage,
+    ResponseMode,
+    Usage,
+    request_usage,
+)
 
 __all__ = [
     "CLAUDE_CODE_EFFORT_LEVELS",
@@ -333,22 +340,20 @@ def _load_envelope(trimmed: str) -> dict[str, Any] | None:
 
 
 def _read_usage(raw: Any) -> Usage:
-    """Input is fresh plus cache-write plus cache-read; all three are billed.
+    """One request's usage: input is fresh plus cache-write plus cache-read.
 
-    Reporting only ``input_tokens`` on a cached call understates it by an order
-    of magnitude — a measured call was twenty uncached input tokens against
-    fifty thousand of cache traffic.
+    All three are billed; reporting only ``input_tokens`` on a cached call
+    understates it by an order of magnitude (see :func:`request_usage`). The
+    result envelope's figure is a run-wide sum, so for a chat run the reader
+    drops the single request this builds (``_envelope_totals``).
     """
     if not isinstance(raw, dict):
         return Usage()
-    parts = [
-        raw.get(name)
-        for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-    ]
-    numbers = [value for value in parts if isinstance(value, int) and not isinstance(value, bool)]
-    return Usage(
-        prompt_tokens=sum(numbers) if numbers else None,
-        completion_tokens=_as_int(raw.get("output_tokens")),
+    return request_usage(
+        fresh=_as_int(raw.get("input_tokens")),
+        cache_write=_as_int(raw.get("cache_creation_input_tokens")),
+        cache_read=_as_int(raw.get("cache_read_input_tokens")),
+        out=_as_int(raw.get("output_tokens")),
     )
 
 
@@ -943,7 +948,14 @@ class _StreamReader:
         self._streamed = False
         self.calls: list[ChatToolCall] = []
         self.results: list[ChatToolResult] = []
-        self.usage = Usage()
+        # One entry per API request, keyed by `message.id` and in arrival order.
+        # The CLI emits an `assistant` event per content block, and a request
+        # with thinking, text and a tool call is three of them sharing one id
+        # and one copy of the usage; counting per event tripled the input.
+        self._requests: dict[str, _Request] = {}
+        self._order: list[str] = []
+        self._current = ""
+        self._envelope: Usage | None = None
         self.final = ""
         self.error = ""
         self.status: int | None = None
@@ -972,7 +984,21 @@ class _StreamReader:
     def _stream_event(self, event: Any) -> None:
         if not isinstance(event, dict):
             return
-        if event.get("type") != "content_block_delta":
+        kind = event.get("type")
+        if kind == "message_start":
+            # The input side is final here; the output is a stub.
+            message = event.get("message")
+            if isinstance(message, dict):
+                request = self._request(str(message.get("id") or ""))
+                request.start = message.get("usage")
+            return
+        if kind == "message_delta":
+            # No id on this one: it closes the request that started last. It
+            # repeats the input side and carries the final output count.
+            if self._current:
+                self._requests[self._current].delta = event.get("usage")
+            return
+        if kind != "content_block_delta":
             return
         delta = event.get("delta")
         if not isinstance(delta, dict):
@@ -983,12 +1009,22 @@ class _StreamReader:
             self._text.append(piece)
             self._on_event(ChatEvent(kind="delta", data={"text": piece}))
 
+    def _request(self, message_id: str) -> _Request:
+        if message_id not in self._requests:
+            self._requests[message_id] = _Request()
+            self._order.append(message_id)
+        self._current = message_id
+        return self._requests[message_id]
+
     def _assistant(self, message: Any) -> None:
         if not isinstance(message, dict):
             return
-        usage = _read_usage(message.get("usage"))
-        if usage.total_tokens is not None:
-            self.usage = self.usage + usage
+        # Only a record of which request this block belongs to, and a fallback
+        # for a CLI that streams no `message_start`. Its usage is a copy of the
+        # request's, repeated per block, so it is never summed.
+        request = self._request(str(message.get("id") or f"anon-{len(self._order)}"))
+        if isinstance(message.get("usage"), dict):
+            request.copy = message["usage"]
         for block in message.get("content") or []:
             if not isinstance(block, dict):
                 continue
@@ -998,6 +1034,7 @@ class _StreamReader:
                     self._text.append(text)
                     self._on_event(ChatEvent(kind="delta", data={"text": text}))
             elif block.get("type") == "tool_use":
+                request.tool_use = True
                 raw_input = block.get("input")
                 call = ChatToolCall(
                     id=str(block.get("id") or ""),
@@ -1040,16 +1077,69 @@ class _StreamReader:
             )
 
     def _result(self, event: dict[str, Any]) -> None:
-        usage = _read_usage(event.get("usage"))
-        if usage.total_tokens is not None:
-            # The envelope's totals supersede the per-message sums rather than
-            # adding to them: it reports the whole run, cache traffic included.
-            self.usage = usage
+        # The envelope's totals are the CLI's own sum over the run. They agree
+        # with the per-request sum on every captured stream; they win when both
+        # exist because they also cover a request the stream did not show.
+        totals = _read_usage(event.get("usage"))
+        cost = event.get("total_cost_usd")
+        window = _model_window(event.get("modelUsage"))
+        if totals.total_tokens is not None or cost is not None:
+            self._envelope = replace(
+                totals,
+                requests=(),
+                cost_usd=float(cost) if isinstance(cost, int | float) else None,
+                context_window=window,
+            )
         if event.get("is_error"):
             self.status = _as_int(event.get("api_error_status"))
             self.error = _non_empty(event.get("result")) or "the Claude Code CLI reported an error"
             return
         self.final = _non_empty(event.get("result"))
+
+    def per_request(self) -> tuple[RequestUsage, ...]:
+        return tuple(self._usage_of(self._requests[key]) for key in self._order)
+
+    @staticmethod
+    def _usage_of(request: _Request) -> RequestUsage:
+        """Input from `message_start` (or its copy), output from `message_delta`.
+
+        A request cut before its `message_delta` reports the stub output, which
+        is a lower bound and the best figure there is.
+        """
+        base = _read_usage(request.start or request.copy).requests
+        final = _read_usage(request.delta).requests
+        one = base[0] if base else RequestUsage()
+        out = final[0].out if final and final[0].out is not None else one.out
+        return replace(one, out=out)
+
+    @property
+    def usage(self) -> Usage:
+        """The run so far: the envelope if it arrived, else the per-request sum."""
+        requests = self.per_request()
+        summed = _sum_requests(requests)
+        if self._envelope is None:
+            return summed
+        return replace(self._envelope, requests=requests)
+
+    def tool_usage(self) -> Usage:
+        """The requests that issued tool calls, for the assistant message that holds them."""
+        return _sum_requests(
+            tuple(
+                self._usage_of(self._requests[key])
+                for key in self._order
+                if self._requests[key].tool_use
+            )
+        )
+
+    def answer_usage(self) -> Usage:
+        """The requests that did not, which is what wrote the final answer."""
+        return _sum_requests(
+            tuple(
+                self._usage_of(self._requests[key])
+                for key in self._order
+                if not self._requests[key].tool_use
+            )
+        )
 
     def finish(self, *, model: str) -> ChatTurn:
         if self.error:
@@ -1067,11 +1157,50 @@ class _StreamReader:
             text=text,
             tool_calls=[],
             usage=self.usage,
+            tool_usage=self.tool_usage() if self.calls else None,
+            answer_usage=self.answer_usage() if self.calls else None,
             stop_reason="cancelled" if self.cancelled else "end_turn",
             model=model,
             executed_tool_calls=self.calls,
             executed_tool_results=self.results,
         )
+
+
+@dataclass(slots=True)
+class _Request:
+    """What the stream said about one API request, before it is read as numbers."""
+
+    start: Any = None
+    delta: Any = None
+    copy: Any = None
+    tool_use: bool = False
+
+
+def _sum_requests(requests: tuple[RequestUsage, ...]) -> Usage:
+    """Add per-request figures up; a field no request reported stays unknown."""
+    total = Usage()
+    for one in requests:
+        total = total + Usage(
+            prompt_tokens=one.context,
+            completion_tokens=one.out,
+            cache_read_tokens=one.cache_read,
+            cache_write_tokens=one.cache_write,
+            fresh_tokens=one.fresh,
+            requests=(one,),
+        )
+    return total
+
+
+def _model_window(model_usage: Any) -> int | None:
+    """``contextWindow`` of the model that answered (the first entry, normally the only one)."""
+    if not isinstance(model_usage, dict):
+        return None
+    for entry in model_usage.values():
+        if isinstance(entry, dict):
+            window = _as_int(entry.get("contextWindow"))
+            if window is not None:
+                return window
+    return None
 
 
 def _short_name(name: str) -> str:
