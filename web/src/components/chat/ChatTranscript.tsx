@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import type { ChatMessage, ChatRun } from "@/api/types";
-import { AnswerText } from "@/components/chat/citations";
+import { AnswerText } from "@/components/chat/markdown";
 import { ToolTrace } from "@/components/chat/ToolTrace";
 import type { TraceEntry } from "@/hooks/useChat";
 import { cn } from "@/lib/utils";

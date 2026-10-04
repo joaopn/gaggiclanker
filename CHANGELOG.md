@@ -10,6 +10,16 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Chat answers are rendered as markdown
+
+- **Bold, code, headings, lists, quotes, links and tables show as such** in the agent's answers,
+  where `**text**` and `` `text` `` used to appear as typed. Citations (`shot 129`,
+  `SLUG#heading`) are still links, including inside bold, lists and table cells. A wide table
+  scrolls inside the answer, and a long link or code span wraps instead of scrolling the
+  conversation sideways. Raw HTML is never
+  shown as elements and images are shown as links, so nothing the model writes makes the browser
+  fetch anything.
+
 ### Version names are identifiers, and going back moves the Set instead of writing a version
 
 - **Versions are listed by when they were made.** A version's name (v1.2) is an identifier, like a
