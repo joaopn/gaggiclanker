@@ -25,13 +25,17 @@ function perRequest(usage: RunUsage): PerRequest[] {
 }
 
 /**
- * Tokens, short: under 1000 as is, then one decimal below 10k ("9.6k"), then
- * whole thousands ("55k"). A trailing ".0" is dropped ("1k", not "1.0k").
+ * Tokens, short: under 1000 as is ("842"), then thousands ("9.6k" below 10k
+ * with one decimal, "55k" above with none), then millions by the same rule
+ * ("1.5M", "12M"). A trailing ".0" is dropped ("1k", not "1.0k").
  */
 export function formatTokens(count: number): string {
   if (count < 1000) return String(Math.round(count));
-  if (count < 10_000) return `${(Math.round(count / 100) / 10).toString()}k`;
-  return `${Math.round(count / 1000)}k`;
+  const round = (value: number) => (value < 10 ? Math.round(value * 10) / 10 : Math.round(value));
+  const thousands = round(count / 1000);
+  // 999_500 rounds to "1000k"; that is a million.
+  if (thousands < 1000) return `${thousands}k`;
+  return `${round(count / 1_000_000)}M`;
 }
 
 /** The size of the conversation at the run's last request, or null if unreported. */
@@ -74,7 +78,7 @@ export function latestUsage(runs: Array<{ usage?: RunUsage }>): RunUsage {
 }
 
 /**
- * `10 requests · context 28k → 55k · 9.6k out`, or `1 request · context 28k · 0.4k out`.
+ * `10 requests · context 28k → 55k · 9.6k out`, or `1 request · context 28k · 400 out` (under 1000 is shown as is).
  *
  * Requests are API requests (not the CLI's turn count); "context a → b" is the
  * first and last request's size. Each part is dropped when unreported.
@@ -87,11 +91,11 @@ export function answerLine(usage: RunUsage): string | null {
   const first = num(requests[0]?.context);
   const last = contextOf(usage);
   if (last !== null) {
-    parts.push(
-      first !== null && first !== last
-        ? `context ${formatTokens(first)} → ${formatTokens(last)}`
-        : `context ${formatTokens(last)}`,
-    );
+    // Compared as shown: 21,146 → 21,741 is "21k → 22k", but 21,146 → 21,300
+    // would be "21k → 21k", which says nothing.
+    const from = first !== null ? formatTokens(first) : null;
+    const to = formatTokens(last);
+    parts.push(from !== null && from !== to ? `context ${from} → ${to}` : `context ${to}`);
   }
   const out = num(usage?.completion_tokens);
   if (out !== null) parts.push(`${formatTokens(out)} out`);

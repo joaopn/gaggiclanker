@@ -695,4 +695,107 @@ describe("the line under an answer", () => {
 
     expect(screen.queryByTestId("answer-usage")).not.toBeInTheDocument();
   });
+
+  const bare = (o: Partial<ChatMessage>) =>
+    ({
+      thread_id: 1,
+      tool_calls: [],
+      tool_results: [],
+      usage: null,
+      created_at: "",
+      content: "",
+      ...o,
+    }) as ChatMessage;
+  const usageRun = (id: number, provider: string, usage: Record<string, unknown>) =>
+    run({ id, provider, usage });
+
+  it("sits under the answer after the tool round, not under the text written beside the call", () => {
+    const stored = [
+      bare({ id: 1, role: "user", content: "Q1" }),
+      bare({
+        id: 2,
+        role: "assistant",
+        run_id: 5,
+        content: "Let me look.",
+        tool_calls: [{ id: "c1", name: "get_shot", arguments: {} }],
+      }),
+      bare({
+        id: 3,
+        role: "tool",
+        run_id: 5,
+        tool_results: [{ id: "c1", name: "get_shot", content: "x", ok: true }],
+      }),
+      bare({ id: 4, role: "assistant", run_id: 5, content: "Answer one." }),
+      bare({ id: 5, role: "user", content: "Q2" }),
+      bare({ id: 6, role: "assistant", run_id: 6, content: "Answer two." }),
+    ];
+    renderWithQueryClient(
+      <ChatTranscript
+        messages={stored}
+        runs={[
+          usageRun(5, "anthropic", {
+            completion_tokens: 60,
+            requests: 2,
+            context_tokens: 1210,
+            per_request: [{ context: 1150 }, { context: 1210 }],
+          }),
+          usageRun(6, "anthropic", {
+            completion_tokens: 7,
+            requests: 1,
+            context_tokens: 1300,
+            per_request: [{ context: 1300 }],
+          }),
+        ]}
+        permissions={{}}
+      />,
+    );
+
+    const lines = screen.getAllByTestId("answer-usage");
+    expect(lines.map((line) => line.textContent)).toEqual([
+      "2 requests · context 1.2k · 60 out",
+      "1 request · context 1.3k · 7 out",
+    ]);
+    expect(lines[0].parentElement).toHaveTextContent("Answer one.");
+    expect(lines[0].parentElement).not.toHaveTextContent("Let me look.");
+    expect(lines[1].parentElement).toHaveTextContent("Answer two.");
+  });
+
+  it("sits under the answer when a Claude Code tool-call message with no text is folded away", () => {
+    const stored = [
+      bare({ id: 1, role: "user", content: "Q1" }),
+      bare({
+        id: 2,
+        role: "assistant",
+        run_id: 5,
+        tool_calls: [{ id: "c1", name: "get_shot", arguments: {} }],
+      }),
+      bare({
+        id: 3,
+        role: "tool",
+        run_id: 5,
+        tool_results: [{ id: "c1", name: "get_shot", content: "x", ok: true }],
+      }),
+      bare({ id: 4, role: "assistant", run_id: 5, content: "Done." }),
+    ];
+    renderWithQueryClient(
+      <ChatTranscript
+        messages={stored}
+        runs={[
+          usageRun(5, "claude_code", {
+            completion_tokens: 431,
+            requests: 4,
+            context_tokens: 21_741,
+            context_window: 200_000,
+            per_request: [{ context: 21_146 }, { context: 21_741 }],
+          }),
+        ]}
+        permissions={{}}
+      />,
+    );
+
+    const lines = screen.getAllByTestId("answer-usage");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent).toBe("4 requests · context 21k → 22k · 431 out");
+    expect(lines[0].parentElement).toHaveTextContent("Done.");
+  });
 });

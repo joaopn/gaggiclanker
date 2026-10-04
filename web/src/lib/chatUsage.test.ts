@@ -14,6 +14,12 @@ describe("formatTokens", () => {
     [10_000, "10k"],
     [55_432, "55k"],
     [200_000, "200k"],
+    [999_499, "999k"],
+    [999_500, "1M"],
+    [1_000_000, "1M"],
+    [1_500_000, "1.5M"],
+    [1_549_999, "1.5M"],
+    [12_400_000, "12M"],
   ])("%i is %s", (count, text) => {
     expect(formatTokens(count)).toBe(text);
   });
@@ -95,6 +101,15 @@ describe("answerLine", () => {
     expect(answerLine({ completion_tokens: 80 })).toBe("80 out");
     expect(answerLine(null)).toBeNull();
     expect(answerLine({})).toBeNull();
+  });
+
+  it("collapses a range whose ends read the same once shown", () => {
+    const usage = {
+      requests: 2,
+      context_tokens: 21_400,
+      per_request: [{ context: 21_146 }, { context: 21_400 }],
+    };
+    expect(answerLine(usage)).toBe("2 requests · context 21k");
   });
 
   it("shows one context when the first and last requests were the same size", () => {
