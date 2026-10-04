@@ -1,5 +1,6 @@
 import { Check, Lightbulb, Undo2, X } from "lucide-react";
 import { Link } from "react-router-dom";
+import { InlineMarkdown } from "@/components/chat/markdown";
 import { useChatThreadId } from "@/components/chat/tellAgent";
 import { evidenceShots } from "@/components/knowledge/InsightCard";
 import { RestsOn } from "@/components/knowledge/RestsOn";
@@ -88,7 +89,7 @@ export function ChatInsightCard({ insightId, text }: { insightId: number; text: 
         ) : null}
 
         <p className="mb-2 text-sm" data-testid="chat-insight-text">
-          {row.text}
+          <InlineMarkdown text={row.text} />
         </p>
 
         <p className="mb-2 text-muted-foreground text-xs" data-testid="chat-insight-about">

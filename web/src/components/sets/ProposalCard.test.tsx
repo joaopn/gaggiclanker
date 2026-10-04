@@ -48,6 +48,25 @@ describe("ProposalCard", () => {
     expect(prediction).toHaveTextContent("a touch more body");
   });
 
+  it("renders the agent's reason as inline markdown, with citations linked", () => {
+    renderWithQueryClient(
+      <ProposalCard
+        setId={3}
+        proposal={proposal({
+          reason: "**Finer** by one, as in `shot 4`. See shot 6.\n\n# Big\n- one",
+        })}
+      />,
+    );
+
+    const card = screen.getByTestId("proposal-card");
+    expect(within(card).getByText("Finer").tagName).toBe("STRONG");
+    expect(within(card).getByRole("link", { name: "shot 4" })).toHaveAttribute("href", "/shots/4");
+    expect(within(card).getByRole("link", { name: "shot 6" })).toHaveAttribute("href", "/shots/6");
+    const reason = within(card).getByText("Finer").closest("p") as HTMLElement;
+    expect(within(reason).queryByRole("heading")).not.toBeInTheDocument();
+    expect(within(reason).queryByRole("list")).not.toBeInTheDocument();
+  });
+
   describe("when the agent's grade of the version it was made against is waiting", () => {
     it("says accepting also records that outcome, as the same badge the Set page uses", () => {
       renderWithQueryClient(

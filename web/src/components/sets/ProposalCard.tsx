@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiClientError } from "@/api/client";
 import type { FieldChange, SetProposal } from "@/api/types";
+import { InlineMarkdown } from "@/components/chat/markdown";
 import { acceptedMessage, declinedMessage, useTellAgent } from "@/components/chat/tellAgent";
 import { MajorChoice } from "@/components/sets/MajorChoice";
 import { OutcomeBadge } from "@/components/sets/OutcomeBadge";
@@ -397,7 +398,11 @@ export function ProposalCard({ setId, proposal, showThreadLink = false }: Propos
         </ul>
       ) : null}
 
-      {proposal.reason ? <p className="mb-2 text-sm">{proposal.reason}</p> : null}
+      {proposal.reason ? (
+        <p className="mb-2 text-sm">
+          <InlineMarkdown text={proposal.reason} />
+        </p>
+      ) : null}
 
       {/* No prediction on a first recipe: a version 1 is the baseline later
           versions are predicted against, and "compared to nothing" would be

@@ -45,6 +45,20 @@ function renderCard() {
 }
 
 describe("ChatInsightCard", () => {
+  it("renders the insight text as inline markdown, with citations linked", async () => {
+    getKnowledgeInsight.mockResolvedValue(
+      insight({ text: "**Finer** helps, see shot 4 and `x`.\n\n# Big\n- one" }),
+    );
+    renderCard();
+
+    const text = await screen.findByTestId("chat-insight-text");
+    expect(within(text).getByText("Finer").tagName).toBe("STRONG");
+    expect(within(text).getByText("x").tagName).toBe("CODE");
+    expect(within(text).getByRole("link", { name: "shot 4" })).toHaveAttribute("href", "/shots/4");
+    expect(within(text).queryByRole("heading")).not.toBeInTheDocument();
+    expect(within(text).queryByRole("list")).not.toBeInTheDocument();
+  });
+
   it("shows the text, the version it was learned at and the evidence as links", async () => {
     renderCard();
 

@@ -18,7 +18,8 @@ first (`POST /api/backup`), because there is no down-migration.
   scrolls inside the answer, and a long link or code span wraps instead of scrolling the
   conversation sideways. Raw HTML is never
   shown as elements and images are shown as links, so nothing the model writes makes the browser
-  fetch anything.
+  fetch anything. The reason on a proposed change and the text of a proposed insight take bold,
+  italics, code and links too.
 
 ### Version names are identifiers, and going back moves the Set instead of writing a version
 
