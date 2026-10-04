@@ -125,3 +125,24 @@ async def test_a_provider_that_reports_nothing_stores_no_usage(
 
     run = await ChatRepository(runner.db).get_run(run_id)
     assert run is not None and run.usage is None
+
+
+async def test_the_ledger_row_carries_the_cache_split_and_the_context(
+    runner: ChatRunner, tasks: TaskRegistry, thread: int, chat_provider: FakeProvider
+) -> None:
+    from gaggiclanker.db.repos.llm import LlmCallsRepository
+
+    runner.llm.calls_repo = LlmCallsRepository(runner.db)
+    turn = await replay("run1_four_requests")
+    turn.text = "Done."
+    chat_provider.chat_script = [turn]
+
+    run_id = await send(runner, tasks, thread)
+
+    row = await runner.db.fetch_one(
+        "SELECT input_tokens, cache_read_tokens, cache_write_tokens, context_tokens "
+        "FROM llm_calls WHERE call_id = ?",
+        (f"chat-{run_id}",),
+    )
+    assert row is not None
+    assert tuple(row) == (85950, 77985, 7930, 21741)

@@ -670,6 +670,9 @@ class ChatRunner:
                     prompt_name=prompt,
                     input_tokens=state.usage.prompt_tokens,
                     output_tokens=state.usage.completion_tokens,
+                    cache_read_tokens=state.usage.cache_read_tokens,
+                    cache_write_tokens=state.usage.cache_write_tokens,
+                    context_tokens=state.usage.context_tokens,
                     duration_ms=duration_ms,
                     # The ledger's CHECK allows two values; a cancelled run is a
                     # failed one as far as "did this produce an answer" goes.

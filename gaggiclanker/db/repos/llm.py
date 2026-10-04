@@ -43,6 +43,11 @@ class LlmCallRow(BaseModel):
     prompt_version: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    #: The cached part of `input_tokens`, and the last request's whole input.
+    #: NULL is "the provider did not say" (and every row before migration 0043).
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    context_tokens: int | None = None
     duration_ms: int | None = None
     status: str
     error: str | None = None
@@ -147,13 +152,17 @@ class LlmCallsRepository(Repository):
             INSERT INTO llm_calls (
                 call_id, purpose, label, subject, provider, model, mode,
                 prompt_name, prompt_version, input_tokens, output_tokens,
+                cache_read_tokens, cache_write_tokens, context_tokens,
                 duration_ms, status, error, input_text, output_text
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(call_id) DO UPDATE SET
                 status = excluded.status,
                 mode = excluded.mode,
                 input_tokens = excluded.input_tokens,
                 output_tokens = excluded.output_tokens,
+                cache_read_tokens = excluded.cache_read_tokens,
+                cache_write_tokens = excluded.cache_write_tokens,
+                context_tokens = excluded.context_tokens,
                 duration_ms = excluded.duration_ms,
                 error = excluded.error,
                 input_text = excluded.input_text,
@@ -171,6 +180,9 @@ class LlmCallsRepository(Repository):
                 row.prompt_version,
                 row.input_tokens,
                 row.output_tokens,
+                row.cache_read_tokens,
+                row.cache_write_tokens,
+                row.context_tokens,
                 row.duration_ms,
                 row.status,
                 row.error,
@@ -184,6 +196,7 @@ class LlmCallsRepository(Repository):
             """
             SELECT call_id, purpose, label, subject, provider, model, mode,
                    prompt_name, prompt_version, input_tokens, output_tokens,
+                   cache_read_tokens, cache_write_tokens, context_tokens,
                    duration_ms, status, error, input_text, output_text, created_at
               FROM llm_calls
              ORDER BY created_at DESC, id DESC

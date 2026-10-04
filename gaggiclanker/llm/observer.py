@@ -57,6 +57,9 @@ class LlmCallRecord:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    #: The cached part of ``prompt_tokens`` where the provider says so (null is
+    #: "not reported", not zero), for the panel's cached share.
+    cache_read_tokens: int | None = None
     mode: str | None = None
     error: str | None = None
 
@@ -104,6 +107,7 @@ class CallHandle:
         self.record.prompt_tokens = usage.prompt_tokens
         self.record.completion_tokens = usage.completion_tokens
         self.record.total_tokens = usage.total_tokens
+        self.record.cache_read_tokens = usage.cache_read_tokens
 
     @property
     def duration_ms(self) -> int:
