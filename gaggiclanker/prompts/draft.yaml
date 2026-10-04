@@ -11,8 +11,7 @@ description: |
   changed" silently deletes the rest), change **only** what the suggestions
   justify (a free hand rewrites a profile somebody spent a month dialling in),
   and **never touch a stop condition** unless asked (a stop condition decides
-  how much coffee ends up in the cup, and moving one is the change that needs an
-  explicit acknowledgement in the UI).
+  how much coffee ends up in the cup, and moving one unasked changes the drink).
 
   The output contract is `gaggiclanker/drafts/models.py::DraftedProfile`, whose
   JSON schema is sent with the call — so this prompt explains what the fields

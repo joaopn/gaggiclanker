@@ -349,8 +349,8 @@ machine's own profiles and ones made on its display included, under their exact 
 changed name, or a profile written from scratch, is a profile of its own named with the `[AI]`
 suffix. It waits inside its profile's dropdown, marked **Proposed**, or as a row marked **New**
 when it is a new profile. **Make
-active** is one click: it approves the proposal (asking you to tick that you understand when it
-changes when the machine stops pumping), and for a proposal made for a Set it records the Set's
+active** is one click: it approves the proposal (the card of an edit says so when it changes when
+the machine stops pumping, and asks for nothing; a new profile is shown whole), and for a proposal made for a Set it records the Set's
 next version, with the **Major change** box, once the sync has put the profile on the machine.
 Any older version can be made active the same way, from the dropdown; there is no separate
 going back, and no Delete: switching a profile off removes it from the machine at the next sync,

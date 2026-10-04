@@ -10,6 +10,20 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Making a draft active no longer asks for a stop-condition confirmation
+
+- **Make active is one click for every proposal.** A proposal that moves a stop condition used to
+  be refused until you ticked a box, and a proposal that landed as a new profile (a chat proposal
+  under a new label, a Set's first recipe forked from a profile) had no box to tick, so it could
+  not be made active at all. The check is gone. An edit of an existing profile still lists the
+  stop-condition change on its card (a proposed new profile is shown whole, without a
+  comparison), and the agent is still told never to change a stop condition unless asked.
+- **Breaking, API:** `POST /api/profile-board` no longer takes `acknowledge_stop_changes` (a
+  request that sends it is rejected as an unknown field), and a draft no longer has an
+  `acknowledged_stop_changes` field.
+- **Breaking, database:** a new migration drops the `acknowledged_stop_changes` column from
+  `profile_drafts`. It held a yes/no that nothing reads any more; no other data changes.
+
 ### Chat answers are rendered as markdown
 
 - **Bold, code, headings, lists, quotes, links and tables show as such** in the agent's answers,
@@ -242,8 +256,8 @@ first (`POST /api/backup`), because there is no down-migration.
   no longer active, or was never pushed, still lands on its profile, found through the
   profile's version list instead of the version it is on now.
 - **Proposals live inside the profile**: a version the agent (or the JSON editor) proposed is
-  marked **Proposed** above the versions, with **Make active** (the stop-condition acknowledgement
-  and the Set recording work as the old Put on the board did) and **Decline**. A proposed new
+  marked **Proposed** above the versions, with **Make active** (which records the Set's version as
+  the old Put on the board did) and **Decline**. A proposed new
   profile is a row marked **New**. Links that used to land on `#staged` open the newest
   proposal's row.
 - **Conflicts**: a profile whose file was edited on the machine shows a **Conflict** badge and
@@ -311,8 +325,7 @@ first (`POST /api/backup`), because there is no down-migration.
   the next sync (with the Writes switch on) puts it on the machine. No database change needs
   undoing, and no data is lost: drafts, Set versions and the write audit keep what they held.
 - **One click makes a proposal active.** **Make active** approves the proposal in the same
-  action (`POST /api/profile-board` takes `acknowledge_stop_changes` for one that moves when
-  the machine stops pumping, and the checkbox sits under that warning), carries the Set and the
+  action (`POST /api/profile-board`), carries the Set and the
   **Major change** choice, and a refused request leaves the proposal as it was.
 - **No two profiles in the list share a name.** Making active a proposal that would add a
   second profile beside one with its name (or rename one onto a name another holds) is refused,

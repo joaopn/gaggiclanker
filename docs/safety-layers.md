@@ -74,8 +74,8 @@ all; no path from the context leads to the device client, the connection that ow
 or the board that writes through them (a test walks the graph). The connection to
 the machine is this application's own HTTP API and nothing more. Making a proposal active
 is one button a person presses, on a page showing the diff they are putting
-there (it approves the draft, and asks for the stop-condition acknowledgement when a stop
-condition moved); the next sync with the switch on does the writing.
+there (it approves the draft, and the card of an edit says when a stop condition moved); the
+next sync with the switch on does the writing.
 
 This page describes the four layers between a profile and the machine, and why
 the bar is where it is.
@@ -234,12 +234,15 @@ fix, and that list is a refusal: eleven phases is *rejected*, never trimmed to
 ten, because truncating a profile would change what it brews while claiming to
 have made it safe.
 
-On top of the bounds, crema's rule: a draft that adds, removes or moves a
-`targets` entry needs an explicit acknowledgement before it can be made active (making it active is the
-approval, so the checkbox is on that click).
-Everything else in a profile changes how a shot is pulled; a stop condition
-changes how much coffee ends up in the cup. The diff normalises numbers, so `9`
-and `9.0` are not a change anybody is asked to tick a box for.
+On top of the bounds, crema's rule, kept as an instruction and a visible diff rather than a
+gate: the drafting prompt tells the model never to add, remove or move a `targets` entry unless
+asked, and an edit of an existing profile that does has the change listed on its card (a proposed
+new profile is shown whole, without a comparison; the computed list is also what the agent's
+tools report). Nothing refuses it or asks for a confirmation: a gate
+there was a dead end for a proposal that lands as a new profile, and an agent that moves a stop
+unprompted is a problem for the prompt, not for a checkbox. Everything else in a profile changes
+how a shot is pulled; a stop condition changes how much coffee ends up in the cup. The diff
+normalises numbers, so `9` and `9.0` are not reported as a change.
 
 **3. Round-trip verification.**
 After `req:profiles:save`, load the returned id back and compare canonical JSON
