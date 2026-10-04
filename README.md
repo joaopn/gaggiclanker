@@ -737,8 +737,9 @@ agent called with their arguments, what they answered, and a record per run
 with the model, its tokens and any error. It leaves out what you never typed:
 the instructions and the context the app gives the agent each turn (the Set's
 ledger and its recent shots, the base shot glossary) are not stored with the
-conversation and so are not in the file. The extended glossary rides inside the
-stored answer of the first extended read of a run, and is reduced with it, below. The answer of a tool that renders
+conversation and so are not in the file. (The extended glossary is part of the
+stored answer to the first extended read of a run, so it is reduced along with
+that answer, as described next.) The answer of a tool that renders
 shots (`get_shot`, `get_shot_extended`, `get_shot_full`, `compare_shots`,
 `list_set_shots`), or one the provider could not pair with its call, is reduced
 to its size, since that is where whole shot renderings arrive; every other
