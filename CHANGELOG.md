@@ -25,6 +25,23 @@ first (`POST /api/backup`), because there is no down-migration.
 
 - **The Set chat is told to use the shots it already has.** The newest shots of the version are in its opening context in their base information, and that context now names their ids; the prompt and the shot tools say that for those shots only `get_shot_extended` adds anything (the diagnostics, phases and curve), and `list_set_shots` is for shots outside the context.
 
+### The chat shows how big the conversation is, and what the cache did
+
+- **The footer says the size, not the bill.** It used to add up the input of every request of every
+  answer ("442,137 in"), which counts the whole conversation again for each tool round. It now reads
+  `Context 55k of 200k tokens (92% cached)`: the size of the last request, the model's window where
+  the provider reports one (Claude Code), and the share of that request the cache served where the
+  provider reports a cache. A part the provider does not report is left out, and with no usage there
+  is no footer. The running total across the thread is gone.
+- **Each answer has a small line of its own**: `10 requests · context 28k → 55k · 9.6k out`. Requests
+  are API requests, not the CLI's turn count. Figures are tokens, shown as `842`, `9.6k`, `55k`.
+- **Claude Code runs are counted per request.** One request with thinking, text and a tool call used
+  to be counted three times, and a run cancelled or killed before its result kept that inflated
+  figure. OpenAI-compatible cached tokens are now read.
+- **The LLM activity panel shows the cached share** beside a call's tokens where known, the chat
+  export carries `context_tokens`, `cache_read_tokens`, `cache_write_tokens` and `requests` per run,
+  and a new migration adds the cache and context columns to the usage ledger (older rows stay empty).
+
 ### Version names are identifiers, and going back moves the Set instead of writing a version
 
 - **Versions are listed by when they were made.** A version's name (v1.2) is an identifier, like a

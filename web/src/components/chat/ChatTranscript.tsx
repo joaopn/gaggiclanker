@@ -3,6 +3,7 @@ import type { ChatMessage, ChatRun } from "@/api/types";
 import { AnswerText } from "@/components/chat/markdown";
 import { ToolTrace } from "@/components/chat/ToolTrace";
 import type { TraceEntry } from "@/hooks/useChat";
+import { answerLine } from "@/lib/chatUsage";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,6 +33,7 @@ type Turn = {
   content: string;
   trace: TraceEntry[];
   usage?: Record<string, unknown> | null;
+  runId?: number | null;
 };
 
 /** Fold the stored rows into the turns a reader sees. */
@@ -72,6 +74,7 @@ export function toTurns(messages: ChatMessage[]): Turn[] {
         content: message.content,
         trace: pending,
         usage: message.usage ?? null,
+        runId: message.run_id ?? null,
       };
       turns.push(turn);
       // Calls that came with this text are answered by the next tool message;
@@ -113,6 +116,18 @@ export function toTurns(messages: ChatMessage[]): Turn[] {
 export function ChatTranscript({ messages, runs, permissions, live }: ChatTranscriptProps) {
   const turns = toTurns(messages);
   const lastRun = runs.length > 0 ? runs[runs.length - 1] : null;
+  // One line per answer, from its run: a run is the unit that made the answer,
+  // and its figures cover every request behind it, tool rounds included. It
+  // sits under the run's last answer bubble.
+  const lastBubbleOfRun = new Map<number, string>();
+  for (const turn of turns) {
+    if (turn.role === "assistant" && turn.content && turn.runId != null) {
+      lastBubbleOfRun.set(turn.runId, turn.key);
+    }
+  }
+  const usageOfRun = new Map(
+    runs.map((run) => [run.id, run.usage as Record<string, unknown> | null]),
+  );
 
   return (
     <div className="space-y-4" data-testid="chat-transcript">
@@ -135,6 +150,9 @@ export function ChatTranscript({ messages, runs, permissions, live }: ChatTransc
               ) : (
                 <p className="whitespace-pre-wrap">{turn.content}</p>
               )
+            ) : null}
+            {turn.runId != null && lastBubbleOfRun.get(turn.runId) === turn.key ? (
+              <AnswerUsage usage={usageOfRun.get(turn.runId)} />
             ) : null}
           </div>
         </div>
@@ -165,5 +183,16 @@ export function ChatTranscript({ messages, runs, permissions, live }: ChatTransc
         <p className="text-muted-foreground text-sm">Cancelled.</p>
       ) : null}
     </div>
+  );
+}
+
+/** This answer's own figures, small and muted; nothing when the run reported none. */
+function AnswerUsage({ usage }: { usage: Record<string, unknown> | null | undefined }) {
+  const line = answerLine(usage);
+  if (!line) return null;
+  return (
+    <p className="text-muted-foreground text-xs" data-testid="answer-usage">
+      {line}
+    </p>
   );
 }

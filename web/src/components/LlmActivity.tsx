@@ -65,6 +65,12 @@ const STATUS_VARIANT = {
   failed: "destructive",
 } as const;
 
+/** " (92% cached)" where the provider reported cache reads, else nothing. */
+function cachedShare(call: LlmCall): string {
+  if (call.cache_read_tokens == null || !call.prompt_tokens) return "";
+  return ` (${Math.round((call.cache_read_tokens / call.prompt_tokens) * 100)}% cached)`;
+}
+
 function CallRow({ call }: { call: LlmCall }) {
   return (
     <li className="rounded-md border border-border p-2 text-sm">
@@ -85,6 +91,7 @@ function CallRow({ call }: { call: LlmCall }) {
         {call.model ? ` - ${call.model}` : ""}
         {/* Null is not zero: a provider that reported nothing must not look free. */}
         {call.total_tokens !== null ? ` - ${call.total_tokens} tokens` : ""}
+        {cachedShare(call)}
       </p>
       {call.error ? <p className="text-destructive text-xs">{call.error}</p> : null}
     </li>

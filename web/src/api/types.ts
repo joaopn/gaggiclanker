@@ -214,6 +214,8 @@ export type LlmCall = {
   prompt_tokens: number | null;
   completion_tokens: number | null;
   total_tokens: number | null;
+  /** The cached part of `prompt_tokens`; null when the provider did not say. */
+  cache_read_tokens: number | null;
   mode: string | null;
   error: string | null;
 };

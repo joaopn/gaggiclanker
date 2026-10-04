@@ -582,7 +582,42 @@ describe("ChatPage", () => {
     expect(await screen.findByTestId("chat-transcript")).toHaveTextContent(
       "Grind two clicks finer.",
     );
-    expect(screen.getByTestId("chat-usage")).toHaveTextContent("1,200 in");
+    // Old-shaped usage (billed totals only) has no size: no footer, no invented one.
+    expect(screen.queryByTestId("chat-usage")).not.toBeInTheDocument();
+  });
+
+  it("footers the latest run's context with its window and cached share", async () => {
+    const withUsage = {
+      ...DETAIL,
+      runs: [
+        {
+          ...DETAIL.runs[0],
+          usage: {
+            prompt_tokens: 382_000,
+            completion_tokens: 9600,
+            context_tokens: 55_000,
+            context_window: 200_000,
+            requests: 10,
+            per_request: [
+              { context: 28_000, cache_read: 20_000, out: 100 },
+              { context: 55_000, cache_read: 50_600, out: 90 },
+            ],
+          },
+        },
+      ],
+    };
+    getChatThread.mockResolvedValue(withUsage);
+    const user = setupUser();
+    renderWithQueryClient(<ChatPage />, { initialEntries: ["/chat?set=3"] });
+
+    await user.click(await screen.findByText("Why is Guji sour?"));
+
+    expect(await screen.findByTestId("chat-usage")).toHaveTextContent(
+      /^Context 55k of 200k tokens \(92% cached\)$/,
+    );
+    expect(screen.getByTestId("answer-usage")).toHaveTextContent(
+      "10 requests · context 28k → 55k · 9.6k out",
+    );
   });
 
   it("sends a question and follows the run it was given", async () => {

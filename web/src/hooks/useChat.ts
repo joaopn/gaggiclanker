@@ -76,7 +76,7 @@ export type ChatStreamEvent = {
   message_id?: number;
   code?: string;
   message?: string;
-  usage?: { prompt_tokens?: number | null; completion_tokens?: number | null } | null;
+  usage?: Record<string, unknown> | null;
 };
 
 /** One tool call and whatever came back, paired for the trace. */

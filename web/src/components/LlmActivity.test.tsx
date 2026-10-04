@@ -35,6 +35,7 @@ function call(overrides: Partial<LlmCall> = {}): LlmCall {
     prompt_tokens: 1200,
     completion_tokens: 300,
     total_tokens: 1500,
+    cache_read_tokens: null,
     mode: "json_schema",
     error: null,
     ...overrides,
@@ -79,6 +80,24 @@ describe("LlmActivity", () => {
     expect(screen.getByText("#129")).toBeInTheDocument();
     expect(screen.getByText(/claude_code - sonnet - 1500 tokens/)).toBeInTheDocument();
     expect(screen.getByText("42.0s")).toBeInTheDocument();
+  });
+
+  it("shows the cached share beside the total only where the provider reported it", async () => {
+    getLlmCalls.mockResolvedValue({
+      calls: [
+        call({ id: "a", cache_read_tokens: 900 }),
+        call({ id: "b", label: "other", cache_read_tokens: null }),
+      ],
+      running: 0,
+    });
+    const user = setupUser();
+    renderWithQueryClient(<LlmActivity />);
+
+    await waitFor(() => expect(getLlmCalls).toHaveBeenCalled());
+    await user.click(screen.getByTestId("llm-activity"));
+
+    expect(await screen.findByText(/1500 tokens \(75% cached\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/cached/)).toHaveLength(1);
   });
 
   it("does not render an unreported token count as zero", async () => {

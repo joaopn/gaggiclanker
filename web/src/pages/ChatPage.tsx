@@ -29,6 +29,7 @@ import {
 } from "@/hooks/useChat";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
 import { useSets } from "@/hooks/useSets";
+import { contextFooter, latestUsage } from "@/lib/chatUsage";
 import { attempt } from "@/lib/mutations";
 
 /**
@@ -476,23 +477,19 @@ function ToolsHere({
   );
 }
 
-/** What this conversation has cost, as far as the providers disclosed it. */
+/**
+ * How big the conversation is now, and how much of it the cache served.
+ *
+ * Read from the newest run that reported a size, not summed over the thread:
+ * a sum of billed input counts every re-sent copy of the conversation and says
+ * nothing about its size. The wording is in `lib/chatUsage`.
+ */
 function UsageFooter({ runs }: { runs: Array<{ usage?: Record<string, unknown> | null }> }) {
-  const totals = runs.reduce(
-    (accumulator, run) => {
-      const usage = run.usage ?? {};
-      return {
-        input: accumulator.input + Number(usage.prompt_tokens ?? 0),
-        output: accumulator.output + Number(usage.completion_tokens ?? 0),
-      };
-    },
-    { input: 0, output: 0 },
-  );
-  if (totals.input === 0 && totals.output === 0) return null;
+  const text = contextFooter(latestUsage(runs));
+  if (text === null) return null;
   return (
     <p className="mt-2 text-muted-foreground text-xs" data-testid="chat-usage">
-      {totals.input.toLocaleString()} in · {totals.output.toLocaleString()} out across {runs.length}{" "}
-      turn{runs.length === 1 ? "" : "s"}
+      {text}
     </p>
   );
 }

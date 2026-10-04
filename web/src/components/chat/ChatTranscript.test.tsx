@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatMessage } from "@/api/types";
+import type { ChatMessage, ChatRun } from "@/api/types";
 import { ChatTranscript, toTurns } from "@/components/chat/ChatTranscript";
 import { insightDeletion, knowledgeInsight } from "@/test/knowledgeFixtures";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
@@ -629,5 +629,70 @@ describe("ChatTranscript", () => {
     );
 
     expect(screen.getByText(/rate_limited: slow down/)).toBeInTheDocument();
+  });
+});
+
+describe("the line under an answer", () => {
+  const usage = {
+    prompt_tokens: 85_950,
+    completion_tokens: 9600,
+    context_tokens: 55_000,
+    requests: 10,
+    per_request: [{ context: 28_000 }, { context: 55_000 }],
+  };
+  const messages = [
+    {
+      id: 1,
+      thread_id: 1,
+      run_id: 5,
+      role: "assistant",
+      content: "First.",
+      tool_calls: [],
+      tool_results: [],
+      usage: null,
+      created_at: "",
+    },
+    {
+      id: 2,
+      thread_id: 1,
+      run_id: 5,
+      role: "assistant",
+      content: "Last of the run.",
+      tool_calls: [],
+      tool_results: [],
+      usage: null,
+      created_at: "",
+    },
+  ] as ChatMessage[];
+  const run = (overrides: Record<string, unknown>) =>
+    ({
+      id: 5,
+      thread_id: 1,
+      status: "ok",
+      provider: "claude_code",
+      model: "m",
+      error: null,
+      tool_rounds: 0,
+      tool_calls: 0,
+      started_at: "",
+      finished_at: null,
+      usage,
+      ...overrides,
+    }) as ChatRun;
+
+  it("words the run's figures once, under its last answer", () => {
+    renderWithQueryClient(<ChatTranscript messages={messages} runs={[run({})]} permissions={{}} />);
+
+    const lines = screen.getAllByTestId("answer-usage");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveTextContent("10 requests · context 28k → 55k · 9.6k out");
+  });
+
+  it("is absent when the run reported no usage", () => {
+    renderWithQueryClient(
+      <ChatTranscript messages={messages} runs={[run({ usage: null })]} permissions={{}} />,
+    );
+
+    expect(screen.queryByTestId("answer-usage")).not.toBeInTheDocument();
   });
 });
