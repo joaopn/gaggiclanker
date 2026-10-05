@@ -2201,6 +2201,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shots/{shot_id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate metric-language expressions on one shot (read-only)
+         * @description A number about the shot, written down once and computed the same way every time.
+         *
+         *     Answers one result per expression, in order: a value with its unit, its kind
+         *     (measured, estimated or commanded) and its one-line sentence, or an absence
+         *     with its reason. Never a zero for a sensor the shot lacks. ``relative_to``
+         *     and the filing are read at the moment of the request; nothing is stored.
+         */
+        post: operations["evaluate_expressions_api_shots__shot_id__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shots/{shot_id}/fields": {
         parameters: {
             query?: never;
@@ -2597,6 +2622,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
+        AbsentReason: "not_recorded" | "phase_not_reached" | "no_such_phase" | "no_target" | "empty_window" | "never_reached" | "no_phase_table";
+        /** @enum {string} */
         ActionKind: "adopt" | "push" | "remove" | "leave" | "home_screen" | "report";
         /**
          * ActiveVersion
@@ -2801,6 +2828,14 @@ export interface components {
         /** ApiResponse[DraftPreview] */
         ApiResponse_DraftPreview_: {
             data?: components["schemas"]["DraftPreview"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[EvaluateData] */
+        ApiResponse_EvaluateData_: {
+            data?: components["schemas"]["EvaluateData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4426,6 +4461,31 @@ export interface components {
             notes: string;
         };
         /**
+         * EvaluateBody
+         * @description `POST /api/shots/{id}/evaluate`: up to 50 expressions of the metric language.
+         *
+         *     Each item is one expression object (``channel``, ``op``, optional ``window``,
+         *     ``relative_to``, ``compare``, ``threshold``, ``direction``); they are
+         *     checked one by one so a malformed one is answered with the field it is wrong
+         *     in, never with the value that was sent.
+         */
+        EvaluateBody: {
+            /** Expressions */
+            expressions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * EvaluateData
+         * @description One result per expression, in the order they were sent.
+         */
+        EvaluateData: {
+            /** Results */
+            results: components["schemas"]["Result"][];
+            /** Shot Id */
+            shot_id: number;
+        };
+        /**
          * EvidenceCounts
          * @description One side's plain facts: how the cup went, and how it was labelled.
          *
@@ -4936,6 +4996,8 @@ export interface components {
             /** Taste Notes */
             taste_notes?: string[];
         };
+        /** @enum {string} */
+        Kind: "measured" | "estimated" | "commanded";
         /**
          * ListedVersion
          * @description One version a profile has been.
@@ -5995,6 +6057,26 @@ export interface components {
             outcome_then?: components["schemas"]["VersionOutcome"] | null;
             /** Set Version Id */
             set_version_id: number;
+        };
+        /**
+         * Result
+         * @description What an expression came to on one shot: a value, or an absence with its reason.
+         */
+        Result: {
+            absent?: components["schemas"]["AbsentReason"] | null;
+            /** Held */
+            held?: boolean | null;
+            kind: components["schemas"]["Kind"];
+            /** Method */
+            method: string;
+            /** Sentence */
+            sentence: string;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: number | null;
+            /** Why */
+            why?: string | null;
         };
         /** ResumeData */
         ResumeData: {
@@ -11873,6 +11955,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ShotDetailData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_expressions_api_shots__shot_id__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_EvaluateData_"];
                 };
             };
             /** @description Validation Error */

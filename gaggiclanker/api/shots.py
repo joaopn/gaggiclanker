@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from gaggiclanker.api.deps import (
     DatabaseDep,
@@ -37,11 +37,13 @@ from gaggiclanker.db.repos.notes import DeviceShotNotesRow
 from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.sets import ProfileMatchSummary, SetVersionRow
 from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListItem, ShotSampleRow
+from gaggiclanker.domain.metric_language import Expression, Result
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
 from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
 from gaggiclanker.infra.request_context import get_request_id
 from gaggiclanker.review.service import review_task_name
+from gaggiclanker.shotinfo.evaluation import UnreadableShot, evaluate_for_shot
 from gaggiclanker.shotinfo.fields import ShotFields, shot_fields
 from gaggiclanker.sync.engine import downsample
 
@@ -245,6 +247,92 @@ async def get_shot_fields(shot_id: int, db: DatabaseDep) -> JSONResponse:
     if found is None:
         raise NotFound(f"No shot {shot_id}")
     return envelope_response(found.model_dump(mode="json"))
+
+
+#: The most expressions one request may carry.
+MAX_EXPRESSIONS = 50
+
+
+class EvaluateBody(BaseModel):
+    """`POST /api/shots/{id}/evaluate`: up to 50 expressions of the metric language.
+
+    Each item is one expression object (``channel``, ``op``, optional ``window``,
+    ``relative_to``, ``compare``, ``threshold``, ``direction``); they are
+    checked one by one so a malformed one is answered with the field it is wrong
+    in, never with the value that was sent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    expressions: list[dict[str, Any]]
+
+
+class EvaluateData(BaseModel):
+    """One result per expression, in the order they were sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    shot_id: int
+    results: list[Result]
+
+
+def _expression_errors(index: int, exc: ValidationError) -> list[dict[str, str]]:
+    # Never the input: the pydantic error carries it, the answer does not. An unknown key is
+    # input too (its name is whatever the caller typed), so it is reported on the object that
+    # holds it.
+    found: list[dict[str, str]] = []
+    for err in exc.errors():
+        loc = [str(part) for part in err["loc"]]
+        message = err["msg"]
+        if err["type"] == "extra_forbidden":
+            loc, message = loc[:-1], "an unknown key is not allowed here"
+        found.append(
+            {
+                "field": ".".join(["expressions", str(index), *loc]),
+                "message": message,
+                "type": err["type"],
+            }
+        )
+    return found
+
+
+@router.post(
+    "/{shot_id}/evaluate",
+    response_model=ApiResponse[EvaluateData],
+    summary="Evaluate metric-language expressions on one shot (read-only)",
+)
+async def evaluate_expressions(shot_id: int, body: EvaluateBody, db: DatabaseDep) -> JSONResponse:
+    """A number about the shot, written down once and computed the same way every time.
+
+    Answers one result per expression, in order: a value with its unit, its kind
+    (measured, estimated or commanded) and its one-line sentence, or an absence
+    with its reason. Never a zero for a sensor the shot lacks. ``relative_to``
+    and the filing are read at the moment of the request; nothing is stored.
+    """
+    if len(body.expressions) > MAX_EXPRESSIONS:
+        raise Unprocessable(
+            f"At most {MAX_EXPRESSIONS} expressions",
+            details=[{"field": "expressions", "message": f"at most {MAX_EXPRESSIONS} per request"}],
+        )
+    expressions: list[Expression] = []
+    problems: list[dict[str, str]] = []
+    for index, raw in enumerate(body.expressions):
+        try:
+            expressions.append(Expression.model_validate(raw))
+        except ValidationError as exc:
+            problems.extend(_expression_errors(index, exc))
+    if problems:
+        raise Unprocessable("Some expressions are not valid", details=problems)
+    try:
+        results = await evaluate_for_shot(db, shot_id, expressions)
+    except UnreadableShot:
+        raise Unprocessable(
+            f"Shot {shot_id} cannot be read",
+            details=[{"field": "shot_id", "message": "its bytes never parsed"}],
+        ) from None
+    if results is None:
+        raise NotFound(f"No shot {shot_id}")
+    return envelope_response(EvaluateData(shot_id=shot_id, results=results).model_dump(mode="json"))
 
 
 @router.get(
