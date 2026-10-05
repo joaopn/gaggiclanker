@@ -84,7 +84,7 @@ first (`POST /api/backup`), because there is no down-migration.
   shot-wide one, then earlier in the shot, shots with none last), and the server does the sorting.
   A column layout or width you saved for Score carries over to Review. The score filter is gone: a
   saved `?score=` link is ignored. The same badge is on each shot of a version in a Set's history
-  and in the compare tray.
+  and in the compare tray, and an open row leads with the shot's warnings.
 - **The starting point ranks on your rating alone.** The outcome term lost its execution score
   half, so past outcomes weigh only by rating and rankings can change, not only ties (a Set rated
   4 that scored 5 used to rank below one rated 3.5 that scored 10, and now ranks above it). The

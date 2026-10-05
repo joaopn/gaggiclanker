@@ -1249,6 +1249,37 @@ describe("ShotsPage open rows", () => {
     expect(within(panel).queryByRole("button", { name: /review/i })).toBeNull();
   });
 
+  it("leads the open row with the shot's warnings, and has no card for a shot with none", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({ id: 1, device_id: "000101", badge: LEVER_BADGE, warnings: LEVER_WARNINGS }),
+        shot({ id: 2, device_id: "000102" }),
+      ]),
+    );
+    renderList();
+    await listed();
+
+    await user.click(screen.getByRole("button", { name: "Shot 000101" }));
+    const panel = await screen.findByTestId("shot-panel");
+    const lines = within(panel).getAllByTestId("warning-line");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toHaveTextContent("decline: skipped");
+    // Above the judgement, as on the page.
+    expect(
+      within(panel)
+        .getByTestId("shot-warnings")
+        .compareDocumentPosition(await within(panel).findByTestId("judgement-form")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Shot 000101" }));
+    await user.click(screen.getByRole("button", { name: "Shot 000102" }));
+    const second = await screen.findByTestId("shot-panel");
+    await within(second).findByTestId("judgement-form");
+    expect(within(second).queryByTestId("shot-warnings")).not.toBeInTheDocument();
+  });
+
   it("opens the shot page's judgement, and the curves on their own row below it", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(listData([shot()]));
