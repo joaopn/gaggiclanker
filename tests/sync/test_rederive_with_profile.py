@@ -7,6 +7,7 @@ brings every stored shot along, joining the profile the shot is linked to now.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -39,10 +40,29 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
         await database.close()
 
 
-def test_the_derivation_version_moved_with_the_undershoot_and_channeling_fixes() -> None:
+def test_the_derivation_version_moved_with_the_per_phase_metrics() -> None:
     # Stored verdicts change (undershoot at 5, the channeling flow residual at
-    # 6): every shot derived at 5 or earlier is derived again on the next boot.
-    assert DERIVATION_VERSION == 6
+    # 6, the per-phase metrics at 7): every shot derived at 6 or earlier is
+    # derived again on the next boot.
+    assert DERIVATION_VERSION == 7
+
+
+async def test_a_shot_derived_at_version_six_gains_its_phase_metrics(db: Database) -> None:
+    shot_id = await unlinked_shot(db)
+    await db.execute(
+        "UPDATE shots SET derivation_version = 6, phases_json = '[]', diagnostics_json = '{}' "
+        "WHERE id = ?",
+        (shot_id,),
+    )
+
+    assert await rederive_shots(ShotsRepository(db)) == (1, 0)
+
+    row = await db.fetch_one(
+        "SELECT phases_json, diagnostics_json FROM shots WHERE id = ?", (shot_id,)
+    )
+    assert row is not None
+    assert json.loads(row["diagnostics_json"])["metrics"]["per_phase"] is True
+    assert all("metrics" in phase for phase in json.loads(row["phases_json"]))
 
 
 async def test_a_shot_stored_at_the_previous_version_is_derived_again_with_its_profile(

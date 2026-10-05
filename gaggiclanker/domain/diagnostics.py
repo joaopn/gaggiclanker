@@ -38,6 +38,7 @@ from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from gaggiclanker.domain.models import PhaseTransition
 from gaggiclanker.domain.phase_control import PhaseControl
+from gaggiclanker.domain.phase_metrics import PhaseMetrics
 from gaggiclanker.domain.slog import Slog
 
 #: A sample flattened to plain numbers. Keys are the `.slog` field names; a key
@@ -133,6 +134,10 @@ class PhaseData(TypedDict):
     total_flow_ml: float
     samples: NotRequired[list[TransformedSample]]
     diagnostics: NotRequired[PhaseDiagnostics]
+    #: What the phase did, in plain numbers; added where the shot is derived
+    #: (``sync/derive.py``), since it needs what only that step knows (the
+    #: scale flag, the profile).
+    metrics: NotRequired[PhaseMetrics]
 
 
 #: Where a shot's resistance samples came from: the machine's own per-sample

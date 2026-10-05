@@ -34,6 +34,7 @@ from gaggiclanker.domain.diagnostics import as_sample_dicts, transform_shot
 from gaggiclanker.domain.firmware_values import compute_firmware_values
 from gaggiclanker.domain.models import IndexEntry
 from gaggiclanker.domain.phase_control import PhaseControl, phase_controls
+from gaggiclanker.domain.phase_metrics import compute_phase_metrics
 from gaggiclanker.domain.scoring import execution_score
 from gaggiclanker.domain.slog import Slog, SlogError, parse_slog
 
@@ -72,7 +73,12 @@ log = structlog.get_logger(__name__)
 #: 6: the channeling block's flow-versus-target residual is read only over
 #: flow-steered samples, absent otherwise. A version of its own, so a database
 #: that booted at 5 is derived again for this change too.
-DERIVATION_VERSION = 6
+#: 7: every phase of the transition table has its own numbers (what ended it, the
+#: cup at its end, scale and puck flow, water, pressure, temperature), and the
+#: shot carries the facts about itself (the profile's phases it never began, the
+#: first window of fast scale flow at high pressure): ``phases_json[i]["metrics"]``
+#: and ``diagnostics_json["metrics"]``.
+DERIVATION_VERSION = 7
 
 #: `startEpoch` below this is the firmware saying "NTP never synced", not a shot
 #: pulled in January 1970. The machine's own UI draws no timestamp for these
@@ -170,7 +176,11 @@ def derive_shot(
             setattr(shot, key, from_index[key])
 
     error = _attach_diagnostics(
-        shot, slog, has_pressure=has_pressure, controls=phase_controls(profile)
+        shot,
+        slog,
+        has_pressure=has_pressure,
+        controls=phase_controls(profile),
+        profile=profile,
     )
     return DerivedShot(shot=shot, samples=samples, diagnostics_error=error)
 
@@ -181,6 +191,7 @@ def _attach_diagnostics(
     *,
     has_pressure: bool | None,
     controls: tuple[PhaseControl, ...] | None,
+    profile: Mapping[str, Any] | None = None,
 ) -> str | None:
     """Phases, diagnostics and the execution score — best effort, and on purpose.
 
@@ -195,10 +206,24 @@ def _attach_diagnostics(
             slog, "per_phase", has_pressure=has_pressure, phase_controls=controls
         )
         score = execution_score(transformed)
+        shot_metrics, phase_metrics = compute_phase_metrics(
+            as_sample_dicts(slog),
+            slog.transitions,
+            version=slog.version,
+            final_exit_reason=slog.header.final_exit_reason,
+            has_pressure=transformed["has_pressure"],
+            scale_connected=shot.scale_connected,
+            profile=profile,
+            final_weight_g=slog.volume_g,
+        )
     except Exception as exc:  # pragma: no cover - a diagnostics bug, not a data shape
         log.warning("shot_diagnostics_failed", device_id=shot.device_id, exc_info=True)
         return f"{type(exc).__name__}: {exc}"
 
+    for phase in transformed["phases"]:
+        numbers = phase_metrics.get(phase["phase_number"])
+        if numbers is not None:
+            phase["metrics"] = numbers
     shot.phases_json = dumps(transformed["phases"])
     shot.diagnostics_json = dumps(
         {
@@ -211,6 +236,9 @@ def _attach_diagnostics(
             "firmware": compute_firmware_values(
                 as_sample_dicts(slog), slog.volume_g, has_pressure=transformed["has_pressure"]
             ),
+            # What each phase did, as plain numbers, and the facts about the
+            # shot as a whole. The per-phase half is on the phases themselves.
+            "metrics": shot_metrics,
             # The score's own working, not just its result. `shots.execution_score`
             # and `execution_reason` are columns because the list sorts and filters
             # on them; the per-component penalties belong with the diagnostics they
