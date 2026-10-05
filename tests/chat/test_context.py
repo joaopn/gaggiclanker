@@ -52,6 +52,7 @@ from gaggiclanker.db.repos.sets import (
     VersionOutcomeWrite,
 )
 from gaggiclanker.db.repos.shots import ShotInsert, ShotsRepository
+from gaggiclanker.domain.spread import CountedShot
 from gaggiclanker.settings import SETTINGS_REGISTRY
 from gaggiclanker.tools.scope import ToolScope
 from tests.sets.conftest import make_profile_version
@@ -942,3 +943,219 @@ async def test_the_version_being_argued_survives_the_budget_however_old_it_is(
     assert "- v1.1 (dead end) ← this version ·" in rendered
     # And the version it is compared against comes with it.
     assert "- v1 ← what v1.1 is compared against ·" in rendered
+
+
+# ── the ledger's averages ────────────────────────────────────────────
+
+
+def _ledger_line_of(rendered: str, label: str) -> str:
+    """The ledger line that starts with this version's name, whatever its marks."""
+    return next(
+        line
+        for line in rendered.splitlines()
+        if line.startswith(f"- {label} ") or line.startswith(f"- {label}\u00a0")
+    )
+
+
+def _averages_of(line: str) -> dict[str, float]:
+    """The numbers in a line's "averages over …" part, by label."""
+    part = line.split("averages over ", 1)[1].split(" · ")[0].split(": ", 1)[1]
+    found: dict[str, float] = {}
+    for label in ("shot time", "yield", "rating", "first drip"):
+        match = re.search(rf"{label} (-?\d+\.\d)", part)
+        if match is not None:
+            found[label] = float(match.group(1))
+    ratio = re.search(r"ratio 1:(\d+\.\d\d)", part)
+    if ratio is not None:
+        found["ratio"] = float(ratio.group(1))
+    return found
+
+
+async def test_each_ledger_line_carries_the_means_get_set_serves(experiment: Experiment) -> None:
+    """The ledger and the trajectory are one function's two readers: no number differs."""
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    trends = await SetsRepository(experiment.db).trends(experiment.set_id)
+
+    assert len(trends.versions) == 5
+    for version in trends.versions:
+        line = _ledger_line_of(rendered, version.version_label)
+        served = _averages_of(line)
+        assert served == {
+            "shot time": round(version.avg_duration_s or 0, 1),
+            "yield": round(version.avg_yield_g or 0, 1),
+            "ratio": round(version.avg_ratio or 0, 2),
+            "rating": round(version.avg_rating or 0, 1),
+            "first drip": round(version.avg_first_drip_s or 0, 1),
+        }, line
+
+
+async def test_the_ledger_averages_count_only_the_shots_that_count(experiment: Experiment) -> None:
+    """v2.2 has a 36.0 s shot and a discarded 12.0 s one: its mean is the first alone."""
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    line = _ledger_line_of(rendered, "v2.2")
+
+    assert "2 shots (0 Keep, 1 Improve, 1 Discard)" in line
+    assert _averages_of(line)["shot time"] == 36.0
+    assert _averages_of(line)["first drip"] == 8.0
+    assert "averages over 1 counted shot:" in line
+
+
+async def test_a_version_with_shots_but_none_that_count_says_so(experiment: Experiment) -> None:
+    sets = SetsRepository(experiment.db)
+    await JudgementsRepository(experiment.db).upsert(
+        (await sets.set_shots(experiment.set_id, version_id=experiment.v2, limit=1))[0].shot_id,
+        JudgementWrite(decision="discard"),
+    )
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    line = _ledger_line_of(rendered, "v1.1")
+
+    assert "1 shot (0 Keep, 0 Improve, 1 Discard) · no counted shots ·" in line
+    assert "averages over" not in line
+
+
+async def test_a_version_with_no_shots_has_no_averages_part(experiment: Experiment) -> None:
+    sets = SetsRepository(experiment.db)
+    empty = await sets.add_version(experiment.set_id, SetVersionPatch(intent="Not brewed yet."))
+    assert empty is not None
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, empty.id)
+    )
+    line = _ledger_line_of(rendered, empty.version_label)
+
+    assert " · no shots · " in line
+    assert "averages" not in line
+    assert "no counted shots" not in line
+
+
+async def test_a_mean_over_fewer_shots_than_the_version_has_says_how_many(
+    experiment: Experiment,
+) -> None:
+    """Both rows: every mean on the same shots says so once; mixed counts say it per mean."""
+    sets = SetsRepository(experiment.db)
+    shots = await sets.set_shots(experiment.set_id, version_id=experiment.v4, limit=10)
+    assert len(shots) == 3
+    # One of v2.1's three shots had no rating; the rest of its numbers stay on all three.
+    await experiment.db.execute(
+        "UPDATE shot_judgements SET rating = NULL WHERE shot_id = ?", (shots[0].shot_id,)
+    )
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5)
+    )
+    line = _ledger_line_of(rendered, "v2.1")
+
+    assert "rating 4.0 (over 2)" in line
+    assert "shot time 33.5 s," in line and "shot time 33.5 s (over" not in line
+    assert "averages over counted shots:" in line
+
+
+async def test_the_budget_still_trims_with_the_averages_in_the_lines(
+    experiment: Experiment,
+) -> None:
+    """The old end is summarised as before; what is written out keeps its means."""
+    sets = SetsRepository(experiment.db)
+    for number in range(LEDGER_VERSIONS + 2):
+        assert await sets.add_version(
+            experiment.set_id, SetVersionPatch(intent=f"Filler {number}.")
+        )
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v2)
+    )
+
+    ledger = [line for line in rendered.splitlines() if line.startswith("- v")]
+    assert "Not written out here:" in rendered
+    # The version being argued and its comparison survive whatever their age, with means...
+    assert "averages over counted shots:" in _ledger_line_of(rendered, "v1.1")
+    assert "averages over counted shots:" in _ledger_line_of(rendered, "v1")
+    # ...and the budget still bounds the lines: the newest few plus the two kept ones.
+    assert len(ledger) == LEDGER_VERSIONS + 2
+    assert "- v2.1 " not in rendered
+    assert "- v2.2 " not in rendered
+
+
+async def test_a_mean_over_fewer_shots_than_the_version_has_but_not_all_alike_says_each_count(
+    experiment: Experiment,
+) -> None:
+    """Ten shots, seven counted, five of those rated: "(over 7)" and "(over 5)" side by side.
+
+    The threshold is the version's shot count: a mean over the seven counted ones is still
+    a mean over fewer than the ten it has.
+    """
+    sets = SetsRepository(experiment.db)
+    judgements = JudgementsRepository(experiment.db)
+    version = await sets.add_version(experiment.set_id, SetVersionPatch(intent="Ten pulls."))
+    assert version is not None
+    for index in range(10):
+        shot = await _shot(
+            experiment.db,
+            f"0001{index:02d}",
+            started_at=f"2026-04-06T08:{index:02d}:00.000Z",
+            duration_ms=30_000 + index * 500,
+            weight_g=36.0,
+            first_drip_s=7.0,
+            max_bar=9.0,
+            brew_flow=1.9,
+        )
+        assert await sets.assign_shot(shot, version.id)
+        if index >= 7:
+            await judgements.upsert(shot, JudgementWrite(decision="discard"))
+        elif index < 5:
+            await judgements.upsert(shot, JudgementWrite(rating=4))
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+    )
+    line = _ledger_line_of(rendered, version.version_label)
+
+    assert "10 shots" in line
+    assert "shot time 31.5 s (over 7)" in line
+    assert "rating 4.0 (over 5)" in line
+    assert "first drip 7.0 s (over 7)" in line
+    assert "averages over counted shots:" in line
+
+
+async def test_counted_shots_that_recorded_nothing_say_so(experiment: Experiment) -> None:
+    sets = SetsRepository(experiment.db)
+    version = await sets.add_version(experiment.set_id, SetVersionPatch(intent="Blank logs."))
+    assert version is not None
+    shot = await ShotsRepository(experiment.db).insert(
+        ShotInsert(
+            device_id="000990",
+            raw_slog=b"not-a-slog",
+            started_at="2026-04-07T08:00:00.000Z",
+            duration_ms=0,
+        )
+    )
+    assert await sets.assign_shot(shot, version.id)
+
+    rendered = await opening_context(
+        experiment.db, ToolScope.for_thread(experiment.set_id, version.id)
+    )
+    line = _ledger_line_of(rendered, version.version_label)
+
+    assert "1 shot (0 Keep, 0 Improve, 0 Discard) · counted shots recorded no values ·" in line
+
+
+async def test_the_context_reads_the_counted_shots_once(
+    experiment: Experiment, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+    original = SetsRepository.counted_shots
+
+    async def counting(self: SetsRepository, set_id: int) -> list[CountedShot]:
+        nonlocal calls
+        calls += 1
+        return await original(self, set_id)
+
+    monkeypatch.setattr(SetsRepository, "counted_shots", counting)
+    await opening_context(experiment.db, ToolScope.for_thread(experiment.set_id, experiment.v5))
+
+    assert calls == 1

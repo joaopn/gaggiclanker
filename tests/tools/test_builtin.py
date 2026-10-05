@@ -190,6 +190,29 @@ async def test_get_set_returns_the_versions_and_the_trajectory(
     assert isinstance(data["trajectory"], list)
 
 
+async def test_the_trajectory_serves_the_averages_the_chat_ledger_is_written_from(
+    ctx: ToolContext, archive: Fixture
+) -> None:
+    """One function: `get_set`'s trajectory is the trends' versions, yield and first drip too."""
+    data = await call(ctx, "get_set", set_id=archive.set_id)
+    trends = await SetsRepository(archive.db).trends(archive.set_id)
+
+    assert [item["version_label"] for item in data["trajectory"]] == [
+        version.version_label for version in trends.versions
+    ]
+    for served, version in zip(data["trajectory"], trends.versions, strict=True):
+        for key in (
+            "counted_shots",
+            "avg_duration_s",
+            "avg_yield_g",
+            "avg_ratio",
+            "avg_rating",
+            "avg_first_drip_s",
+            "averaged_over",
+        ):
+            assert served[key] == version.model_dump(mode="json")[key], key
+
+
 async def test_get_set_falls_back_to_the_conversation_scope(
     set_ctx: ToolContext, archive: Fixture
 ) -> None:

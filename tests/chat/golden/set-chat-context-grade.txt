@@ -19,11 +19,11 @@ You proposed partly held, on 1 counted shot ("Time went up by 2.5 s against v2.1
 Talk about it — do not propose it again unless you have a reason. If you propose the next version while it waits, accepting that version records this grade.
 
 THE EXPERIMENT SO FAR (oldest first)
-- v1 · grind 22, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar · 2 shots (2 Keep, 0 Improve, 0 Discard) · no prediction
-- v1.1 (dead end) · Grind 22 → 20 · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1: Shot time up by about 4 s and less sour. → failed — "It went slower and turned bitter rather than sweeter."
-- v2 (dead end) · Dose 18 g → 18.5 g · 1 shot (0 Keep, 1 Improve, 0 Discard) · predicted against v1.1: Shot time up by 2 s against v1.1. → inconclusive — "One shot, and the difference is inside the spread."
-- v2.1 ← what v2.2 is compared against · Grind 20 → 22; Dose 18.5 g → 18 g · restores v1 · 3 shots (3 Keep, 0 Improve, 0 Discard) · predicted against v2: Back within the usual spread of v1. → held — "Straight back where it was."
-- v2.2 ← this version · Grind 22 → 21 · 2 shots (0 Keep, 1 Improve, 1 Discard) · predicted against v2.1: Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness. → open — nobody has graded it yet
+- v1 · grind 22, 18 g in, 36 g out, 93 °C from its profile, profile Classic 9 bar · 2 shots (2 Keep, 0 Improve, 0 Discard) · averages over counted shots: shot time 33.5 s, yield 36.1 g, ratio 1:2.00, rating 4.0, first drip 7.2 s · no prediction
+- v1.1 (dead end) · Grind 22 → 20 · 1 shot (0 Keep, 1 Improve, 0 Discard) · averages over counted shots: shot time 45.0 s, yield 35.1 g, ratio 1:1.95, rating 2.0, first drip 11.0 s · predicted against v1: Shot time up by about 4 s and less sour. → failed — "It went slower and turned bitter rather than sweeter."
+- v2 (dead end) · Dose 18 g → 18.5 g · 1 shot (0 Keep, 1 Improve, 0 Discard) · averages over counted shots: shot time 44.0 s, yield 35.6 g, ratio 1:1.92, rating 2.0, first drip 10.4 s · predicted against v1.1: Shot time up by 2 s against v1.1. → inconclusive — "One shot, and the difference is inside the spread."
+- v2.1 ← what v2.2 is compared against · Grind 20 → 22; Dose 18.5 g → 18 g · restores v1 · 3 shots (3 Keep, 0 Improve, 0 Discard) · averages over counted shots: shot time 33.5 s, yield 36.1 g, ratio 1:2.01, rating 4.3, first drip 7.2 s · predicted against v2: Back within the usual spread of v1. → held — "Straight back where it was."
+- v2.2 ← this version · Grind 22 → 21 · 2 shots (0 Keep, 1 Improve, 1 Discard) · averages over 1 counted shot: shot time 36.0 s, yield 36.3 g, ratio 1:2.02, rating 3.0, first drip 8.0 s · predicted against v2.1: Shot time up by 2 to 3 s against v2.1, yield the same, and no more bitterness. → open — nobody has graded it yet
 Track record: 1 of 3 graded predictions held (0 partly, 1 failed, 1 inconclusive); 1 open, 1 with no prediction.
 
 HOW MUCH THIS SET VARIES WHEN NOTHING CHANGED

@@ -47,6 +47,7 @@ from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import (
     SetRow,
     SetsRepository,
+    SetTrendVersion,
     SetVersionRow,
     dead_end_ids,
     track_record,
@@ -190,6 +191,13 @@ async def opening_context(
     )
 
     profile_labels = _profile_labels(versions)
+    # The page's own bars, from the one function `get_set`'s trajectory is served by.
+    # Handed the counted shots read above, so the spread, the evidence and the means are
+    # one pass over one list.
+    averages = {
+        item.set_version_id: item
+        for item in (await sets.trends(scope.set_id, counted=counted)).versions
+    }
     lines: list[str] = []
     lines += await _heading(db, row, version, versions, by_id, dead_ends)
     lines += await _reverts_block(sets, version)
@@ -197,7 +205,7 @@ async def opening_context(
     grade = await _grade_block(db, scope.set_id, version)
     if grade:
         lines += ["", *grade]
-    lines += ["", *_ledger(versions, dead_ends, labels, version, by_id, profile_labels)]
+    lines += ["", *_ledger(versions, dead_ends, labels, version, by_id, profile_labels, averages)]
     lines += ["", *_spread_block(spreads)]
     if evidence is not None:
         lines += ["", *_evidence_block(evidence, version, compared)]
@@ -603,6 +611,7 @@ def _ledger(
     this: SetVersionRow,
     by_id: dict[int, SetVersionRow],
     profile_labels: dict[int, str],
+    averages: Mapping[int, SetTrendVersion],
 ) -> list[str]:
     """Every version, oldest first, one line each — budgeted from the old end.
 
@@ -625,7 +634,7 @@ def _ledger(
     if dropped:
         lines.append(_dropped_line(dropped, oldest_first))
     lines += [
-        _ledger_line(version, dead_ends, labels, this, by_id, profile_labels)
+        _ledger_line(version, dead_ends, labels, this, by_id, profile_labels, averages)
         for version in oldest_first
         if version.id in kept
     ]
@@ -688,6 +697,7 @@ def _ledger_line(
     this: SetVersionRow,
     by_id: dict[int, SetVersionRow],
     profile_labels: dict[int, str],
+    averages: Mapping[int, SetTrendVersion],
 ) -> str:
     """One version: what it changed, what it produced, and how it was graded.
 
@@ -696,6 +706,10 @@ def _ledger_line(
     what has already been tried — is after is the difference. The first version
     has no parent to differ from, so it carries its recipe; this version's and
     the compared version's own recipes are written out in full above.
+
+    What it **produced** is the version's means over its counted shots, the same
+    numbers `get_set`'s trajectory serves (:func:`_averages`), so the first
+    question about a change ("did it move anything?") needs no tool call.
 
     The outcome carries **its note**. The note is the only place the reason a
     past experiment failed is written down, and it is the thing that stops the
@@ -739,12 +753,68 @@ def _ledger_line(
         changed,
         *([f"restores {version.restores_version_label}"] if version.restores_version_label else []),
         shots,
+        *_averages(version, averages.get(version.id)),
         prediction,
     ]
     # Separated by a middle dot rather than by full stops: an intent is the
     # person's own sentence and usually ends in one already, and "Filler 3.."
     # is the kind of detail a reader stops on.
     return f"- {' · '.join(parts)}"
+
+
+def _averages(version: SetVersionRow, trend: SetTrendVersion | None) -> list[str]:
+    """The ledger's "what did it do" part: means over counted shots, or why there are none.
+
+    Means only, no spread per version (the spread block is the yardstick). A
+    mean over fewer shots than the version has says how many it is over, so a
+    rating from one shot of five is not read as five. A mean nothing recorded
+    (no scale, nobody rated, no pressure sensor) is left out, not written as a zero.
+    """
+    if trend is None or not version.shot_count:
+        return []
+    if not trend.counted_shots:
+        return ["no counted shots"]
+    over = trend.averaged_over
+    ratio = f"1:{trend.avg_ratio:.2f}" if trend.avg_ratio is not None else None
+    # (value, how many shots it is over, written form), in the order the vocabulary lists them.
+    means: list[tuple[str, int, str | None]] = [
+        (
+            "shot time",
+            over.duration_s,
+            None if trend.avg_duration_s is None else f"{trend.avg_duration_s:.1f} s",
+        ),
+        (
+            "yield",
+            over.yield_g,
+            None if trend.avg_yield_g is None else f"{trend.avg_yield_g:.1f} g",
+        ),
+        ("ratio", over.ratio, ratio),
+        (
+            "rating",
+            over.rating,
+            None if trend.avg_rating is None else f"{trend.avg_rating:.1f}",
+        ),
+        (
+            "first drip",
+            over.first_drip_s,
+            None if trend.avg_first_drip_s is None else f"{trend.avg_first_drip_s:.1f} s",
+        ),
+    ]
+    shown = [(label, n, text) for label, n, text in means if text is not None]
+    if not shown:
+        return ["counted shots recorded no values"]
+    counts = {n for _, n, _ in shown}
+    if len(counts) == 1 and (only := counts.pop()) < version.shot_count:
+        # Every mean rests on the same few shots: say so once, not five times.
+        return [
+            f"averages over {only} counted {'shot' if only == 1 else 'shots'}: "
+            + ", ".join(f"{label} {text}" for label, _, text in shown)
+        ]
+    parts = [
+        f"{label} {text}" + (f" (over {n})" if n < version.shot_count else "")
+        for label, n, text in shown
+    ]
+    return ["averages over counted shots: " + ", ".join(parts)]
 
 
 def _against(version: SetVersionRow) -> str:
