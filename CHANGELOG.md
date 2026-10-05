@@ -10,6 +10,33 @@ first (`POST /api/backup`), because there is no down-migration.
 
 ## [Unreleased]
 
+### Any number about a shot can be asked for in one fixed language, and the chat opens with a line per phase
+
+- **A metric language.** A number about a shot (the cup at the end of the ramp as a share of the
+  target yield, the jitter of the scale flow after the first drip, the seconds the pressure spent
+  above 6 bar) is written once as a small JSON expression: a channel, a window of the shot (the
+  whole shot, a phase by name or number, or a span between anchors such as the first drip or the
+  peak pressure), an operation, and optionally what to divide by and what to compare with.
+  `POST /api/shots/{id}/evaluate` answers up to 50 expressions with one result each, in order: a
+  value, its unit, whether it is measured, estimated or commanded, and a one-line sentence, or an
+  absence with its reason (not recorded, phase not reached, no target, never reached, ...), never
+  a zero for a sensor the shot lacks. The weight comes from the scale alone: without one it is
+  not recorded, never filled from the machine's estimate. A malformed expression is a 422 that
+  names the field. Nothing is stored and nothing is judged; it is read-only.
+- **The per-phase numbers are computed by it.** Every stored per-phase number that is a window
+  statistic is the value of one expression, and its shot-information id is that expression's
+  canonical form. No stored number moved on any shot with a pressure sensor.
+- **The chat's opening context gains one line per phase.** Every shot in a Set conversation now
+  carries, under its warnings, `phase 2 · ramp: duration 16.2 s; ended by Volumetric target; cup
+  at end 42.2 g, 117.2 % of target`, so the agent need not ask for the cup at the end of a phase.
+  The share is there only when the shot is filed in a version with a target, the cup needs a
+  scale, and a log with no phase table has no lines. This moves four items (the phase's name, its
+  duration, how it ended, and the cup at its end with its share, which is one item for the chat)
+  from extended to base on Settings → Shot information; move them back there if the context is
+  too big. The share is no longer an item of its own in any chat tier (the shot page still has
+  it). It costs about 30 tokens per phase per shot, and the base meanings about 250 tokens once
+  per request.
+
 ### Each phase is measured, the few plain faults are warned about, and the execution score is gone
 
 - **The score and every band label are retired.** A shot that overshot its target before
