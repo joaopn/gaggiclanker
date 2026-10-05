@@ -6,6 +6,7 @@ import {
   DEFAULT_SERIES,
   phaseBands,
   SHOT_SERIES,
+  sparklineCurves,
   sparklinePath,
 } from "@/lib/shotChart";
 import {
@@ -113,5 +114,82 @@ describe("sparklinePath", () => {
   it("draws nothing rather than a flat line when the signal is absent", () => {
     expect(sparklinePath(syntheticSamples(10, { hasPressure: false }), "cp", 96, 20)).toBe("");
     expect(sparklinePath(samples.slice(0, 1), "cp", 96, 20)).toBe("");
+  });
+});
+
+describe("sparklineCurves", () => {
+  const ys = (d: string) =>
+    d
+      .slice(1)
+      .split(/[ML]/)
+      .filter(Boolean)
+      .map((pair) => Number(pair.split(",")[1]));
+
+  it("draws a series on the same scale as its target when their values are equal", () => {
+    const rows = syntheticSamples(10).map((row) => ({ ...row, tp: row.cp }));
+    const curves = sparklineCurves(rows, ["pressure", "targetPressure"], 96, 20);
+
+    expect(curves.map((curve) => curve.spec.key)).toEqual(["pressure", "targetPressure"]);
+    expect(ys(curves[0].d)).toEqual(ys(curves[1].d));
+  });
+
+  it("scales a unit group together, so an actual below its target stays below it", () => {
+    const rows = syntheticSamples(10).map((row) => ({ ...row, tp: 9, cp: 4.5 }));
+    const [actual, target] = sparklineCurves(rows, ["pressure", "targetPressure"], 96, 20);
+
+    // Higher on the screen is a smaller y: half the target's value sits lower.
+    expect(Math.min(...ys(actual.d))).toBeGreaterThan(Math.min(...ys(target.d)));
+  });
+
+  it("keeps different units on scales of their own", () => {
+    const rows = syntheticSamples(10).map((row) => ({ ...row, cp: 1, tf: 100 }));
+    const [pressure, flow] = sparklineCurves(rows, ["pressure", "targetFlow"], 96, 20);
+
+    expect(Math.min(...ys(pressure.d))).toBeCloseTo(Math.min(...ys(flow.d)), 5);
+  });
+
+  it("scales temperature from its group minimum to its maximum, not from zero", () => {
+    const rows = syntheticSamples(10).map((row, index) => ({
+      ...row,
+      ct: 92 + (index % 2),
+      tt: 93,
+    }));
+    const [actual] = sparklineCurves(rows, ["temperature", "targetTemperature"], 96, 20);
+
+    // From zero, 92 and 93 would be within a pixel of each other.
+    expect(Math.max(...ys(actual.d)) - Math.min(...ys(actual.d))).toBeGreaterThan(10);
+  });
+
+  it("gives the same shape as the single-field path for one series", () => {
+    expect(sparklineCurves(samples, ["pressure"], 96, 20)[0].d).toBe(
+      sparklinePath(samples, "cp", 96, 20),
+    );
+  });
+
+  it("leaves out a scale that recorded zeros, though its target has data", () => {
+    // The firmware logs every field on every board: no scale attached is a
+    // column of zeros, not of nulls.
+    const noScale = samples.map((row) => ({ ...row, v: 0 }));
+    expect(Math.max(...samples.map((row) => row.v ?? 0))).toBeGreaterThan(0);
+    expect(Math.max(...samples.map((row) => row.ev ?? 0))).toBeGreaterThan(0);
+
+    const curves = sparklineCurves(noScale, ["weight", "estimatedWeight"], 96, 20);
+    expect(curves.map((curve) => curve.spec.key)).toEqual(["estimatedWeight"]);
+  });
+
+  it("leaves out a pressure that recorded zeros, though its target has data", () => {
+    const noSensor = samples.map((row) => ({ ...row, cp: 0 }));
+    expect(Math.max(...samples.map((row) => row.cp ?? 0))).toBeGreaterThan(0);
+    expect(Math.max(...samples.map((row) => row.tp ?? 0))).toBeGreaterThan(0);
+
+    const curves = sparklineCurves(noSensor, ["pressure", "targetPressure"], 96, 20);
+    expect(curves.map((curve) => curve.spec.key)).toEqual(["targetPressure"]);
+  });
+
+  it("leaves out a series the shot has no data for, in the series' own order", () => {
+    const standard = syntheticSamples(10, { hasPressure: false, hasScale: false });
+    const curves = sparklineCurves(standard, ["weight", "temperature", "pressure"], 96, 20);
+
+    expect(curves.map((curve) => curve.spec.key)).toEqual(["temperature"]);
   });
 });
