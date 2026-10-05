@@ -50,8 +50,10 @@ __all__ = [
     "badge_text",
     "fault_token",
     "percent_of_target",
+    "review_order",
     "shot_warnings",
     "sort_warnings",
+    "warning_order",
 ]
 
 #: Every fault word, in the order the shot review lists them.
@@ -286,17 +288,32 @@ def shot_warnings(
     return sort_warnings(found)
 
 
+def warning_order(warning: ShotWarning) -> tuple[int, bool, float, int]:
+    """Where one warning stands: severity, then a phase's before a shot-wide one, then time."""
+    return (
+        _SEVERITY_ORDER[warning.severity],
+        warning.phase_number is None,
+        warning.at_s,
+        FAULTS.index(warning.fault),
+    )
+
+
 def sort_warnings(warnings: Sequence[ShotWarning]) -> list[ShotWarning]:
     """Most severe first, then in the order of the shot, the shot-wide ones last."""
-    return sorted(
-        warnings,
-        key=lambda w: (
-            _SEVERITY_ORDER[w.severity],
-            w.phase_number is None,
-            w.at_s,
-            FAULTS.index(w.fault),
-        ),
-    )
+    return sorted(warnings, key=warning_order)
+
+
+def review_order(warnings: Sequence[ShotWarning]) -> tuple[int, tuple[int, bool, float, int]]:
+    """What the shots table's Review column sorts by: the order of the badge's own warning.
+
+    A shot with warnings sorts by its first one, the one its badge names: severity,
+    then a phase's warning before a shot-wide one, then the time in the shot. A shot
+    with none sorts after every shot that has one. Smaller is worse. Shots with an
+    equal key are put newest first by the caller (`ShotsRepository`).
+    """
+    if not warnings:
+        return (1, (0, False, 0.0, 0))
+    return (0, warning_order(sort_warnings(warnings)[0]))
 
 
 def badge_text(warnings: Sequence[ShotWarning]) -> str | None:

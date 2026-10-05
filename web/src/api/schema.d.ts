@@ -6734,7 +6734,7 @@ export interface components {
             labels: components["schemas"]["VersionLabelCounts"];
             outcome_proposal?: components["schemas"]["OutcomeProposalRow"] | null;
             /** Shots */
-            shots: components["schemas"]["ShotListRow"][];
+            shots: components["schemas"]["ShotListItem"][];
             version: components["schemas"]["SetVersionRow"];
         };
         /** @enum {string} */
@@ -7162,7 +7162,7 @@ export interface components {
          */
         ShotListData: {
             /** Items */
-            items: components["schemas"]["ShotListRow"][];
+            items: components["schemas"]["ShotListItem"][];
             /** Limit */
             limit: number;
             /** Next Cursor */
@@ -7173,10 +7173,16 @@ export interface components {
             total: number;
         };
         /**
-         * ShotListRow
-         * @description A row of `GET /api/shots`: enough to draw a line in a table, no curve.
+         * ShotListItem
+         * @description A row of the shots list: the line, and what is plainly wrong with the shot.
+         *
+         *     The warnings depend on the version the shot is filed under (its target
+         *     yield), so they are worked out when the row is read and never stored: a shot
+         *     refiled or discarded needs no re-derivation. The most severe comes first.
          */
-        ShotListRow: {
+        ShotListItem: {
+            /** Badge */
+            badge?: string | null;
             /**
              * Deleted On Device
              * @default false
@@ -7273,6 +7279,8 @@ export interface components {
             synced_at: string;
             /** Volume G */
             volume_g?: number | null;
+            /** Warnings */
+            warnings?: components["schemas"]["ShotWarningRow"][];
         };
         /**
          * ShotReviewDetail
@@ -7453,6 +7461,24 @@ export interface components {
             version_label: string;
         };
         /**
+         * ShotWarningRow
+         * @description One warning on a listed shot, as `domain/warnings.py` words it.
+         */
+        ShotWarningRow: {
+            /** At S */
+            at_s: number;
+            /** Detail */
+            detail: string;
+            /** Fault */
+            fault: string;
+            /** Phase */
+            phase: string;
+            /** Phase Number */
+            phase_number: number | null;
+            /** Severity */
+            severity: string;
+        };
+        /**
          * SimilarOutcome
          * @description How a candidate version actually turned out, over its own shots.
          *
@@ -7573,7 +7599,7 @@ export interface components {
         /** @enum {string} */
         SkipReason: "gone" | "not_confirmed" | "scope_changed" | "replaced_gone";
         /** @enum {string} */
-        SortKey: "started_at" | "duration" | "rating";
+        SortKey: "started_at" | "duration" | "rating" | "review";
         /** @enum {string} */
         SpreadMeasure: "shot_time_s" | "first_drip_s" | "yield_g" | "peak_pressure_bar" | "brew_flow_ml_s" | "rating";
         /** StarredBody */

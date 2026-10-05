@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -23,8 +24,15 @@ from gaggiclanker.db.repos.base import JsonList, JsonObject, JsonText, utc_now
 from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository
 from gaggiclanker.domain.vocab import Decision
+from gaggiclanker.domain.warnings import (
+    ShotWarning,
+    badge_text,
+    review_order,
+    shot_warnings,
+)
 
 __all__ = [
+    "REVIEW_SORT",
     "SAMPLE_FIELDS",
     "ExampleShotRow",
     "ShotCounts",
@@ -32,11 +40,13 @@ __all__ = [
     "ShotDerivationUpdate",
     "ShotDetailRow",
     "ShotInsert",
+    "ShotListItem",
     "ShotListRow",
     "ShotPage",
     "ShotSampleRow",
     "ShotSetBadge",
     "ShotState",
+    "ShotWarningRow",
     "ShotsRepository",
 ]
 
@@ -266,6 +276,37 @@ class ShotListRow(BaseModel):
         return payload
 
 
+class ShotWarningRow(BaseModel):
+    """One warning on a listed shot, as `domain/warnings.py` words it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The shot's own phase name, or ``Shot`` for a fault of the whole shot.
+    phase: str
+    fault: str
+    #: ``red`` or ``amber``.
+    severity: str
+    detail: str
+    phase_number: int | None
+    at_s: float
+
+
+class ShotListItem(ShotListRow):
+    """A row of the shots list: the line, and what is plainly wrong with the shot.
+
+    The warnings depend on the version the shot is filed under (its target
+    yield), so they are worked out when the row is read and never stored: a shot
+    refiled or discarded needs no re-derivation. The most severe comes first.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    warnings: list[ShotWarningRow] = Field(default_factory=list)
+    #: The Review column's text, built by code from the warnings (``ramp: fast flow +1``);
+    #: ``None`` for a shot with none.
+    badge: str | None = None
+
+
 class ShotDetailRow(ShotListRow):
     """`GET /api/shots/{id}`: the list row plus the derived blobs.
 
@@ -346,7 +387,7 @@ class ShotPage(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    items: list[ShotListRow]
+    items: list[ShotListItem]
     total: int
     next_cursor: str | None = None
 
@@ -420,7 +461,24 @@ _ORDER_KEY = "COALESCE(s.started_at, '')"
 #: What "the rating" means when something has to pick one number.
 _RATING_KEY = "COALESCE(j.rating, n.rating, s.index_rating)"
 
+#: The Review column's sort. Not a column: the order is the badge's, which is
+#: worked out from the stored derivation and the filed version's target when the
+#: list is read (`_review_sorted_ids`), so its entry below names no SQL.
+REVIEW_SORT = "review"
+
+#: What the warnings are worked out from, per shot: the numbers `shot_warnings`
+#: reads, and the target yield of the version the shot is filed under. The
+#: diagnostics blob is large, so only its `metrics` block is pulled out of it.
+_REVIEW_COLUMNS = """
+    s.id, s.final_weight_g, s.scale_connected, s.final_exit_reason, s.duration_ms,
+    s.phases_json,
+    CASE WHEN s.diagnostics_json IS NOT NULL AND json_valid(s.diagnostics_json)
+         THEN json_extract(s.diagnostics_json, '$.metrics') END AS metrics_json,
+    sv.target_yield_g AS target_yield_g
+"""
+
 SORT_KEYS: dict[str, str] = {
+    REVIEW_SORT: "",
     "started_at": _ORDER_KEY,
     "duration": "s.duration_ms",
     # The same expression the list's Rating column renders and the `min_rating`
@@ -1029,6 +1087,14 @@ class ShotsRepository(Repository):
             params,
         )
 
+        if sort == REVIEW_SORT:
+            ordered = await self._review_sorted_ids(filters, params, descending)
+            wanted = ordered[offset or 0 :][:limit]
+            page_rows = await self._list_rows_by_id(wanted)
+            return ShotPage(
+                items=await self._with_warnings(page_rows), total=int(total or 0), next_cursor=None
+            )
+
         page_params = list(params)
         pagination = ""
         if cursor is not None:
@@ -1046,7 +1112,7 @@ class ShotsRepository(Repository):
             """,
             [*page_params, limit, offset or 0],
         )
-        items = self.to_models(ShotListRow, rows)
+        items = await self._with_warnings(self.to_models(ShotListRow, rows))
         # A cursor is only meaningful for the default sort walked forwards:
         # handing one back to a caller paging by `offset`, or sorting by another key,
         # would let it mix two orderings and skip rows.
@@ -1056,6 +1122,92 @@ class ShotsRepository(Repository):
             else None
         )
         return ShotPage(items=items, total=int(total or 0), next_cursor=next_cursor)
+
+    async def _list_rows_by_id(self, shot_ids: Sequence[int]) -> list[ShotListRow]:
+        """List rows for these ids, in the order given."""
+        if not shot_ids:
+            return []
+        placeholders = ", ".join("?" * len(shot_ids))
+        rows = await self.db.fetch_all(
+            f"SELECT {_LIST_COLUMNS} {_LIST_FROM} WHERE s.id IN ({placeholders})",
+            list(shot_ids),
+        )
+        found = {row.id: row for row in self.to_models(ShotListRow, rows)}
+        return [found[shot_id] for shot_id in shot_ids if shot_id in found]
+
+    async def _warnings_for(
+        self, where_sql: str, params: Sequence[Any]
+    ) -> dict[int, list[ShotWarning]]:
+        """The warnings of every shot the condition selects, worked out as of now."""
+        rows = await self.db.fetch_all(
+            f"SELECT {_REVIEW_COLUMNS} {_LIST_FROM} WHERE {where_sql}", list(params)
+        )
+        found: dict[int, list[ShotWarning]] = {}
+        for row in rows:
+            target = row["target_yield_g"]
+            found[int(row["id"])] = shot_warnings(
+                final_weight_g=row["final_weight_g"],
+                scale_connected=bool(row["scale_connected"]),
+                final_exit_reason=row["final_exit_reason"] or 0,
+                duration_s=(row["duration_ms"] or 0) / 1000,
+                target_yield_g=target if target is not None and target > 0 else None,
+                phases=_decoded(row["phases_json"], list),
+                metrics=_decoded(row["metrics_json"], dict),
+            )
+        return found
+
+    async def _with_warnings(self, rows: Sequence[ShotListRow]) -> list[ShotListItem]:
+        """The page's rows with their warnings and badge, which are read, not stored."""
+        if not rows:
+            return []
+        placeholders = ", ".join("?" * len(rows))
+        warnings = await self._warnings_for(f"s.id IN ({placeholders})", [row.id for row in rows])
+        return [
+            ShotListItem.model_validate(
+                {
+                    **row.model_dump(),
+                    "warnings": [w.as_dict() for w in warnings.get(row.id, [])],
+                    "badge": badge_text(warnings.get(row.id, [])),
+                }
+            )
+            for row in rows
+        ]
+
+    async def _review_sorted_ids(
+        self, filters: str, params: Sequence[Any], descending: bool
+    ) -> list[int]:
+        """Every matching shot's id in the Review column's order.
+
+        Descending is the interesting end, as for every other column. The key is
+        the shot's own first warning, the one its badge names, so what the column
+        shows and how it sorts cannot disagree: the most severe first, then a
+        phase's warning before a shot-wide one, then the earlier in the shot, and
+        shots with no warning last. Shots with the same key come newest first (by
+        start time, then id). Ascending is the exact reverse of all of it.
+        """
+        warnings = await self._warnings_for(filters, params)
+        started = {
+            int(row["id"]): str(row["started"])
+            for row in await self.db.fetch_all(
+                f"SELECT s.id, COALESCE(s.started_at, '') AS started {_LIST_FROM} WHERE {filters}",
+                list(params),
+            )
+        }
+        # Two stable passes: newest first, then by the warning's key.
+        newest_first = sorted(warnings, key=lambda sid: (started.get(sid, ""), sid), reverse=True)
+        ordered = sorted(newest_first, key=lambda sid: review_order(warnings[sid]))
+        return ordered if descending else ordered[::-1]
+
+
+def _decoded(raw: Any, kind: type[list[Any]] | type[dict[str, Any]]) -> Any:
+    """A stored JSON column as the list or object it should be, or an empty one."""
+    if not isinstance(raw, str):
+        return kind()
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return kind()
+    return value if isinstance(value, kind) else kind()
 
 
 def _encode_cursor(row: ShotListRow) -> str:

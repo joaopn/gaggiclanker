@@ -35,6 +35,7 @@ from gaggiclanker.db.repos.sets import (
 from gaggiclanker.db.repos.shots import (
     ShotDetailRow,
     ShotInsert,
+    ShotListItem,
     ShotListRow,
     ShotSampleRow,
     ShotSetBadge,
@@ -78,6 +79,7 @@ __all__ = [
     "ShotDetailRow",
     "ShotInsert",
     "ShotJudgementRow",
+    "ShotListItem",
     "ShotListRow",
     "ShotSampleRow",
     "ShotSetBadge",

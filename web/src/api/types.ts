@@ -17,7 +17,8 @@ export type PasswordData = components["schemas"]["PasswordData"];
 export type BackupData = components["schemas"]["BackupData"];
 export type DeviceStatusData = components["schemas"]["DeviceStatusData"];
 export type ShotListData = components["schemas"]["ShotListData"];
-export type ShotListRow = components["schemas"]["ShotListRow"];
+export type ShotListRow = components["schemas"]["ShotListItem"];
+export type ShotWarning = components["schemas"]["ShotWarningRow"];
 export type ShotDetailData = components["schemas"]["ShotDetailData"];
 export type DeviceShotNotes = components["schemas"]["DeviceShotNotesRow"];
 export type ShotSamplesData = components["schemas"]["ShotSamplesData"];
@@ -268,7 +269,7 @@ export function isSecretSetting(setting: ResolvedSetting): setting is SecretSett
  * The filters `GET /api/shots` accepts. `cursor` and `offset` are alternatives
  * and the server answers 400 if both are sent, so a caller picks one.
  */
-export type ShotSort = "started_at" | "duration" | "rating";
+export type ShotSort = "started_at" | "duration" | "rating" | "review";
 
 export type ShotListParams = {
   limit?: number;

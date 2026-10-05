@@ -36,7 +36,7 @@ from gaggiclanker.db.repos.judgements import JudgementWrite, ShotJudgementRow
 from gaggiclanker.db.repos.notes import DeviceShotNotesRow
 from gaggiclanker.db.repos.reviews import ShotReviewRow
 from gaggiclanker.db.repos.sets import ProfileMatchSummary, SetVersionRow
-from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListRow, ShotSampleRow
+from gaggiclanker.db.repos.shots import ShotDetailRow, ShotListItem, ShotSampleRow
 from gaggiclanker.infra.envelope import ApiResponse, binary_response, envelope_response
 from gaggiclanker.infra.errors import BadRequest, NotFound, Unprocessable
 from gaggiclanker.infra.ratelimit import REVIEW_RATE_LIMIT, rate_limit
@@ -55,7 +55,7 @@ MAX_LIMIT = 500
 
 #: The sorts the list accepts, spelled once and shared with the repository so
 #: the OpenAPI enum and the SQL cannot drift apart.
-type SortKey = Literal["started_at", "duration", "rating"]
+type SortKey = Literal["started_at", "duration", "rating", "review"]
 
 
 class ShotListData(BaseModel):
@@ -67,7 +67,7 @@ class ShotListData(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    items: list[ShotListRow]
+    items: list[ShotListItem]
     total: int
     limit: int
     offset: int | None = None

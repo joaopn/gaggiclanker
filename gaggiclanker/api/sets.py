@@ -95,7 +95,7 @@ from gaggiclanker.db.repos.sets import (
     track_record,
     version_changes,
 )
-from gaggiclanker.db.repos.shots import ShotListRow
+from gaggiclanker.db.repos.shots import ShotListItem
 from gaggiclanker.domain.sets import set_name
 from gaggiclanker.domain.spread import (
     MeasureSpread,
@@ -229,7 +229,7 @@ class SetVersionDetail(BaseModel):
     #: What this version changed, computed against `parent_version_id`. Empty
     #: for version 1, which is a baseline rather than a change to anything.
     changes: list[FieldChange]
-    shots: list[ShotListRow]
+    shots: list[ShotListItem]
     #: The Set went back past this version: it is not on the line the Set is on
     #: now (walked back from the current version through the fork history).
     #: Computed from the list, not from the row: it is a fact about what came
@@ -858,7 +858,7 @@ async def get_set(
     # five versions is five round trips otherwise, and the rows are grouped in
     # memory from a column that is already in the projection.
     page = await shots.list_shots(set_id=set_id, limit=SHOTS_PER_SET)
-    grouped: dict[int, list[ShotListRow]] = {version.id: [] for version in versions}
+    grouped: dict[int, list[ShotListItem]] = {version.id: [] for version in versions}
     for shot in page.items:
         if shot.set_version_id in grouped:
             grouped[shot.set_version_id].append(shot)
