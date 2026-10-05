@@ -52,6 +52,7 @@ __all__ = [
     "ShotData",
     "Window",
     "canonical_form",
+    "compare_words",
     "evaluate",
     "evaluate_in_phase",
     "method_id",
@@ -1085,10 +1086,13 @@ def render(expr: Expression, data: ShotData | None = None) -> str:
     }[op]
     if expr.relative_to is not None:
         text += f", as a share of {_RELATIVE_WORDS[expr.relative_to]}"
-    compare = expr.compare
-    if compare is not None:
-        if compare.op == "between":
-            text += f", between {_g(compare.low or 0.0)} and {_g(compare.high or 0.0)}"
-        else:
-            text += f", {_COMPARE_WORDS[compare.op]} {_g(compare.value or 0.0)}"
+    if expr.compare is not None:
+        text += f", {compare_words(expr.compare)}"
     return text
+
+
+def compare_words(compare: Compare) -> str:
+    """A comparison as words: "at most 0.15", "between 4 and 6"."""
+    if compare.op == "between":
+        return f"between {_g(compare.low or 0.0)} and {_g(compare.high or 0.0)}"
+    return f"{_COMPARE_WORDS[compare.op]} {_g(compare.value or 0.0)}"

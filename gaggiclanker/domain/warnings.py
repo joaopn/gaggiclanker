@@ -119,6 +119,10 @@ class ShotWarning:
     #: Where in the shot the warning counts, in seconds; a skipped phase counts
     #: at the moment the shot stopped.
     at_s: float
+    #: Every phase the warning is about, by the profile's name: a ``skipped`` warning names the
+    #: first skipped phase in ``phase`` and all of them here. Empty for the other warnings,
+    #: which are about their one ``phase``.
+    phases: tuple[str, ...] = ()
 
     @property
     def badge(self) -> str:
@@ -248,6 +252,7 @@ def shot_warnings(
                     ),
                     phase_number=first_number,
                     at_s=duration_s,
+                    phases=tuple(name or f"phase {number}" for number, name in left),
                 )
             )
 

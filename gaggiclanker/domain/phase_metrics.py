@@ -149,22 +149,39 @@ def profile_phase_names(profile: Mapping[str, Any] | None) -> list[str] | None:
     ]
 
 
+def last_phase_reached(samples: Sequence[Mapping[str, float]]) -> int | None:
+    """The highest phase number any sample was recorded in, or ``None`` with none recorded.
+
+    The one definition of "a phase began": the machine entered it when a sample carries its
+    number or a later one. The universal ``skipped`` warning and a signature's ``reached``
+    check both read it, so a transition logged with no sample after it is not held on one
+    and skipped on the other.
+    """
+    reached = [int(s["phase"]) for s in samples if "phase" in s]
+    return max(reached) if reached else None
+
+
+def phase_began(number: int, samples: Sequence[Mapping[str, float]]) -> bool:
+    """Whether the phase with this number (its index in the profile) began on this shot."""
+    last = last_phase_reached(samples)
+    return last is not None and number <= last
+
+
 def phases_not_reached(
     names: Sequence[str] | None, samples: Sequence[Mapping[str, float]]
 ) -> list[NotReached]:
     """The profile's phases after the last one any sample was recorded in.
 
-    "Reached" is read from the samples' own phase numbers: the highest one is the
-    last phase the machine entered, and every profile phase after it never began.
+    "Reached" is :func:`phase_began`: read from the samples' own phase numbers, the highest
+    one being the last phase the machine entered, and every profile phase after it never began.
     Nothing is said without a profile, or about a profile with fewer phases than
     the shot ran (that profile is not the one the shot ran).
     """
     if not names:
         return []
-    reached = [int(s["phase"]) for s in samples if "phase" in s]
-    if not reached:
+    last = last_phase_reached(samples)
+    if last is None:
         return []
-    last = max(reached)
     return [
         NotReached(phase_number=number, name=names[number])
         for number in range(last + 1, len(names))
