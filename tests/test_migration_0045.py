@@ -31,7 +31,7 @@ from gaggiclanker.sync.derive import DERIVATION_VERSION, derive_shot
 from tests.conftest import running_app
 from tests.domain.helpers import SLOG_FIXTURES
 from tests.lever_shot import LEVER_PROFILE, TARGET_YIELD_G, lever_shot
-from tests.test_migrations import _migrate_below
+from tests.test_migrations import _migrate_below, _migrate_through
 
 #: What a diagnostics blob looked like before: the score block, the bands, the channeling block.
 OLD_BLOB = json.dumps(
@@ -147,7 +147,7 @@ async def test_the_migration_keeps_every_row_and_drops_only_what_it_retires(
         ]
         samples_before = await db.fetch_value("SELECT COUNT(*) FROM shot_samples")
 
-        assert await run_migrations(db) == ["0045"]
+        assert await _migrate_through(db, tmp_path, "0045") == ["0045"]
 
         columns = {r["name"] for r in await db.fetch_all("PRAGMA table_info(shots)")}
         assert not columns & {"execution_score", "execution_reason"}
@@ -182,7 +182,7 @@ async def test_the_choices_and_the_rules_follow_or_go(data_dir: Path, tmp_path: 
     await db.connect()
     try:
         await _old_archive(db, tmp_path)
-        await run_migrations(db)
+        await _migrate_through(db, tmp_path, "0045")
 
         tiers = {
             r["item_key"]: r["tier"] for r in await db.fetch_all("SELECT * FROM shot_info_tiers")

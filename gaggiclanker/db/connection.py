@@ -73,6 +73,12 @@ class Database:
     def is_connected(self) -> bool:
         return self._conn is not None
 
+    @property
+    def in_transaction(self) -> bool:
+        """Whether this task is inside :meth:`transaction`: a write that may be reached from
+        both a transaction and a bare call opens its own only when this is false."""
+        return _IN_TRANSACTION.get()
+
     async def connect(self) -> aiosqlite.Connection:
         """Open the file, create its directory, apply the pragmas."""
         if self._conn is not None:
