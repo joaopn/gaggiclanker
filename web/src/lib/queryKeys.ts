@@ -32,6 +32,12 @@ export const queryKeys = {
     all: ["shots"] as const,
     list: (filters?: Record<string, unknown>) => ["shots", "list", filters ?? {}] as const,
     detail: (id: string) => ["shots", "detail", id] as const,
+    /**
+     * Under the shot's detail on purpose: the warnings and the share of the
+     * target depend on the version the shot is filed under, so whatever
+     * invalidates the shot (filing it, moving it, a verdict) invalidates this too.
+     */
+    fields: (id: string) => ["shots", "detail", id, "fields"] as const,
   },
   /**
    * Curves live *outside* the `shots` prefix, and that placement is the point.

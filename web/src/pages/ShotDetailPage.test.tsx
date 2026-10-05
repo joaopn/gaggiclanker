@@ -7,6 +7,7 @@ import { ShotDetailPage } from "@/pages/ShotDetailPage";
 import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { judgement, version, vocabulary } from "@/test/setsFixtures";
+import { leverFields, realFields } from "@/test/shotFieldsFixture";
 import {
   SHOT_129_SAMPLE_COUNT,
   shot129,
@@ -19,18 +20,27 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-const { getShot, getShotSamples, getLlmCalls, getVocabulary, getKnowledgeInsights, runReview } =
-  vi.hoisted(() => ({
-    getShot: vi.fn(),
-    getShotSamples: vi.fn(),
-    getLlmCalls: vi.fn(),
-    getVocabulary: vi.fn(),
-    getKnowledgeInsights: vi.fn(),
-    runReview: vi.fn(),
-  }));
+const {
+  getShot,
+  getShotFields,
+  getShotSamples,
+  getLlmCalls,
+  getVocabulary,
+  getKnowledgeInsights,
+  runReview,
+} = vi.hoisted(() => ({
+  getShot: vi.fn(),
+  getShotFields: vi.fn(),
+  getShotSamples: vi.fn(),
+  getLlmCalls: vi.fn(),
+  getVocabulary: vi.fn(),
+  getKnowledgeInsights: vi.fn(),
+  runReview: vi.fn(),
+}));
 vi.mock("@/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/client")>()),
   getShot,
+  getShotFields,
   getShotSamples,
   getLlmCalls,
   getVocabulary,
@@ -60,6 +70,7 @@ function samples(rows = shot129Samples.samples): ShotSamplesData {
 beforeEach(() => {
   vi.clearAllMocks();
   getShot.mockResolvedValue(shot129);
+  getShotFields.mockResolvedValue(realFields);
   getShotSamples.mockResolvedValue(samples());
   getLlmCalls.mockResolvedValue({ calls: [], running: 0 });
   getVocabulary.mockResolvedValue(vocabulary);
@@ -164,8 +175,8 @@ describe("ShotDetailPage header", () => {
     expect(facts).toHaveTextContent("54.6 s");
     expect(facts).toHaveTextContent("32.1 g");
     // The header's `finalExitReason` is 0 on this v5 file — the field arrived
-    // in v7 — and "Unknown" is the honest rendering of that.
-    expect(facts).toHaveTextContent("Unknown");
+    // in v7 — so the server serves none, and the facts row says nothing for it.
+    expect(within(facts).getByText("Exit reason").nextElementSibling).toHaveTextContent("—");
     expect(facts).toHaveTextContent("connected");
     expect(facts).toHaveTextContent("imported file");
   });
@@ -283,52 +294,103 @@ describe("ShotDetailPage chart", () => {
   });
 });
 
-describe("ShotDetailPage diagnostics", () => {
-  it("shows the resistance as numbers, with no label beside them", async () => {
+describe("ShotDetailPage by phase", () => {
+  it("reads in the decided order: facts, warnings, judgement, curves, phases, the shot, Set, review, context", async () => {
+    getShotFields.mockResolvedValue(leverFields);
     renderShot();
 
-    const resistance = await screen.findByTestId("metric-level");
-    expect(resistance).toHaveTextContent("3.89");
-    expect(screen.getByTestId("metric-slope")).toHaveTextContent("-0.14");
-    // A number is a number: the bands and their one-line meanings are gone.
-    expect(resistance).not.toHaveTextContent(/high|low|moderate/i);
-    expect(screen.queryByTestId("channeling-risk")).not.toBeInTheDocument();
+    await screen.findByTestId("shot-warnings");
+    // The page's own landmarks, top to bottom, as the DOM has them.
+    const landmarks: Array<[string, HTMLElement]> = [
+      ["facts", screen.getByTestId("shot-facts")],
+      ["warnings", screen.getByTestId("shot-warnings")],
+      ["judgement", screen.getByTestId("judgement-form")],
+      ["curves", screen.getByText("Curves")],
+      ["phases", screen.getAllByTestId("phase-row")[0]],
+      ["shot", screen.getByTestId("shot-field-yield")],
+      ["set", document.getElementById("set") as HTMLElement],
+      ["review", document.getElementById("review") as HTMLElement],
+      ["context", screen.getByTestId("shot-context")],
+    ];
+    const order = [...landmarks]
+      .sort((a, b) =>
+        a[1].compareDocumentPosition(b[1]) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+      )
+      .map(([name]) => name);
+    expect(order).toEqual([
+      "facts",
+      "warnings",
+      "judgement",
+      "curves",
+      "phases",
+      "shot",
+      "set",
+      "review",
+      "context",
+    ]);
   });
 
-  it("shows the profile compliance as numbers when the shot has a profile to grade against", async () => {
-    const diagnostics = shot129.shot.diagnostics as { diagnostics: Record<string, unknown> };
-    getShot.mockResolvedValue(
-      detail({
-        diagnostics: {
-          ...diagnostics,
-          diagnostics: {
-            ...diagnostics.diagnostics,
-            profile_compliance: {
-              pressure_rmse_bar: 2.04,
-              flow_rmse_ml_s: null,
-              max_pressure_overshoot_bar: 0.2,
-              max_pressure_undershoot_bar: 6.3,
-              max_flow_overshoot_ml_s: null,
-              max_flow_undershoot_ml_s: null,
-              pressure_grading: "graded",
-              flow_grading: "not_applicable",
-            },
-          },
-        },
-      }),
-    );
+  it("says in the facts row what the shot-wide numbers say, not what the browser works out", async () => {
+    // Filed under a version with an 18 g dose, no dose typed: the chat is told
+    // 1:2.34, and 33.25 s is 33.2 s to the server's rounding (half to even).
+    getShotFields.mockResolvedValue(leverFields);
+    getShot.mockResolvedValue({
+      ...shot129,
+      shot: { ...shot129.shot, duration_ms: 33_250, volume_g: 42.2, final_exit_reason: 1 },
+      judgement: null,
+      notes: null,
+    });
     renderShot();
 
-    expect(await screen.findByTestId("metric-pressure_adherence")).toHaveTextContent("2.04 bar");
-    expect(screen.getByTestId("metric-flow_adherence")).toHaveTextContent("not applicable");
+    await screen.findByTestId("shot-warnings");
+    const facts = screen.getByTestId("shot-facts");
+    expect(facts).toHaveTextContent("33.2 s");
+    expect(facts).not.toHaveTextContent("33.3 s");
+    expect(facts).toHaveTextContent("1:2.34");
+    expect(facts).not.toHaveTextContent("dose unknown");
+    expect(facts).toHaveTextContent("Volumetric target");
+    // The same text as the shot-wide card repeats.
+    expect(screen.getByTestId("shot-field-ratio")).toHaveTextContent("1:2.34");
+    expect(screen.getByTestId("shot-field-shot_time")).toHaveTextContent("33.2 s");
   });
 
-  it("has no execution score card, and no score anywhere", async () => {
+  it("waits for the numbers with the shot, so the warnings card cannot arrive late and shift the judgement", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    getShotFields.mockReturnValue(new Promise((resolve) => (release = resolve)));
     renderShot();
 
-    await screen.findByTestId("metric-level");
+    await waitFor(() => expect(getShotFields).toHaveBeenCalled());
+    expect(screen.queryByTestId("judgement-form")).not.toBeInTheDocument();
+    release(leverFields);
+    expect(await screen.findByTestId("shot-warnings")).toBeInTheDocument();
+    expect(screen.getByTestId("judgement-form")).toBeInTheDocument();
+  });
+
+  it("builds the page from the fields route, for this shot", async () => {
+    renderShot();
+
+    await screen.findAllByTestId("phase-row");
+    expect(getShotFields).toHaveBeenCalledWith(shot129.shot.id);
+  });
+
+  it("has no warnings card when there is no warning, and no all-clear", async () => {
+    renderShot();
+
+    await screen.findAllByTestId("phase-row");
+    expect(screen.queryByTestId("shot-warnings")).not.toBeInTheDocument();
+    expect(screen.queryByText("Warnings")).not.toBeInTheDocument();
+    expect(screen.queryByText(/all clear|no problems/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the numbers as numbers: no band word, no score, no channeling", async () => {
+    renderShot();
+
+    const resistance = await screen.findByTestId("shot-field-resistance_level");
+    expect(resistance).toHaveTextContent("3.89, from the machine");
+    expect(
+      screen.queryByText(/excellent|very low|moderate|channeling|execution score/i),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId("score-components")).not.toBeInTheDocument();
-    expect(screen.queryByText(/execution score/i)).not.toBeInTheDocument();
   });
 
   it("lists every phase with its name and kind", async () => {
@@ -338,7 +400,23 @@ describe("ShotDetailPage diagnostics", () => {
     expect(rows).toHaveLength(4);
     expect(rows[0]).toHaveTextContent("fill");
     expect(rows[0]).toHaveTextContent("preinfusion");
-    expect(rows[0]).not.toHaveTextContent("ramp rate");
+  });
+
+  it("says so, and keeps the page, when the numbers cannot be loaded", async () => {
+    getShotFields.mockRejectedValue(new Error("boom"));
+    renderShot();
+
+    expect(await screen.findByTestId("fields-error")).toHaveTextContent("boom");
+    expect(screen.getByTestId("shot-facts")).toBeInTheDocument();
+  });
+
+  it("draws no numbers for a quarantined shot, which has none", async () => {
+    getShot.mockResolvedValue(detail({ quarantined: true, quarantine_reason: "bad header" }));
+    renderShot();
+
+    await screen.findByTestId("quarantine-reason");
+    expect(screen.queryByTestId("phase-row")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shot-context")).not.toBeInTheDocument();
   });
 });
 

@@ -10,31 +10,19 @@ import { SectionCard } from "@/components/layout/SectionCard";
 import { VersionPrediction } from "@/components/sets/VersionPrediction";
 import { AssignToSet } from "@/components/shots/AssignToSet";
 import { DeviceNotesCard } from "@/components/shots/DeviceNotesCard";
-import {
-  ComplianceCard,
-  PhaseTable,
-  ResistanceCard,
-  WeightCard,
-} from "@/components/shots/DiagnosticsCards";
 import { JudgementForm } from "@/components/shots/JudgementForm";
 import { ProfileAutomatch } from "@/components/shots/ProfileAutomatch";
 import { RatingStars } from "@/components/shots/RatingStars";
 import { ReviewCard } from "@/components/shots/ReviewCard";
 import { ShotCurvesCard } from "@/components/shots/ShotCurvesCard";
+import { ShotPhasesCard } from "@/components/shots/ShotPhasesCard";
+import { ShotWarningsCard } from "@/components/shots/ShotWarningsCard";
+import { ShotContextCard, ShotWideCard } from "@/components/shots/ShotWideCards";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useShot, useShotSamples } from "@/hooks/useArchive";
+import { useShot, useShotFields, useShotSamples } from "@/hooks/useArchive";
 import { useQueryErrorToast } from "@/hooks/useQueryErrorToast";
-import {
-  ASSIGN_ANCHOR,
-  exitReasonLabel,
-  formatGrams,
-  formatRatio,
-  formatSeconds,
-  formatTime,
-  profileName,
-  REVIEW_ANCHOR,
-} from "@/lib/shots";
+import { ASSIGN_ANCHOR, formatTime, profileName, REVIEW_ANCHOR } from "@/lib/shots";
 
 /**
  * One shot, in full.
@@ -59,6 +47,10 @@ export function ShotDetailPage() {
   const samples = useShotSamples(Number.isFinite(shotId) ? shotId : undefined, {
     enabled: shot.isSuccess && !shot.data.shot.quarantined,
   });
+  // What the page's cards, and its facts row, are built from: asked for with the
+  // shot, not after it, and waited for with it. The warnings card leads the page
+  // and a card that arrives late shifts the judgement under it by its own height.
+  const fields = useShotFields(Number.isFinite(shotId) ? shotId : undefined);
   const { hash } = useLocation();
 
   // The shots list's "needs a Set" menu offers only a few Sets and sends the
@@ -75,7 +67,7 @@ export function ShotDetailPage() {
 
   useQueryErrorToast(shot.error, "Could not load this shot");
 
-  if (shot.isPending) {
+  if (shot.isPending || (fields.isPending && !shot.isError)) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-64" />
@@ -102,13 +94,13 @@ export function ShotDetailPage() {
   const diagnostics = (row.diagnostics ?? {}) as ShotDiagnosticsBlob;
   const phases = (row.phases ?? []) as ShotPhase[];
   const hasPressure = diagnostics.has_pressure !== false;
-  // The judgement's dose first: the machine's notes card is a mirror of what
-  // was typed on the machine, and the archive's own copy is the one the user
-  // edits here.
-  const ratio = formatRatio(
-    shot.data.judgement?.dose_in_g ?? notes?.dose_in_g,
-    shot.data.judgement?.dose_out_g ?? row.volume_g ?? null,
-  );
+  // The facts that the shot-wide numbers repeat are those numbers: the server's
+  // own rounding and its own ratio (the judgement's dose, else the version's),
+  // never worked out again here.
+  const served = (key: string): string => {
+    const field = fields.data?.shot.find((item) => item.key === key);
+    return field ? field.text : "—";
+  };
 
   return (
     <div className="space-y-4">
@@ -136,10 +128,10 @@ export function ShotDetailPage() {
 
       <ShotFacts
         facts={[
-          ["Duration", formatSeconds(row.duration_ms)],
-          ["Yield", formatGrams(row.volume_g)],
-          ["Ratio", ratio ?? "dose unknown"],
-          ["Exit reason", exitReasonLabel(row.final_exit_reason)],
+          ["Duration", served("shot_time")],
+          ["Yield", served("yield")],
+          ["Ratio", served("ratio")],
+          ["Exit reason", served("exit_reason")],
           ["Scale", row.scale_connected ? "connected" : "not connected"],
           [
             "Brew delay",
@@ -150,6 +142,10 @@ export function ShotDetailPage() {
       />
 
       {row.quarantined ? <QuarantineNotice reason={row.quarantine_reason} id={row.id} /> : null}
+
+      {/* What is plainly wrong comes first, above everything that asks for a
+          verdict: no card at all when there is nothing to say. */}
+      <ShotWarningsCard warnings={fields.data?.warnings} />
 
       {/* What you thought comes first, straight under the facts: recording it
           is what a shot page is opened for, and it should not wait below a
@@ -180,6 +176,21 @@ export function ShotDetailPage() {
         />
       ) : null}
 
+      {/* The numbers, straight under the curve they are read against: each
+          phase, then the shot as a whole. Every word is the server's. */}
+      {!row.quarantined ? (
+        fields.isError ? (
+          <p className="text-muted-foreground text-sm" data-testid="fields-error">
+            Could not load this shot's numbers: {fields.error.message}
+          </p>
+        ) : fields.data ? (
+          <>
+            <ShotPhasesCard fields={fields.data} />
+            <ShotWideCard fields={fields.data} />
+          </>
+        ) : null
+      ) : null}
+
       <section id={ASSIGN_ANCHOR} className="scroll-mt-20">
         <AssignToSet
           shotId={row.id}
@@ -197,17 +208,10 @@ export function ShotDetailPage() {
         </section>
       ) : null}
 
-      {!row.quarantined ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <ResistanceCard diagnostics={diagnostics} />
-          <ComplianceCard diagnostics={diagnostics} />
-          <WeightCard diagnostics={diagnostics} />
-        </div>
-      ) : null}
-
-      {!row.quarantined ? <PhaseTable phases={phases} firmware={diagnostics.firmware} /> : null}
-
       {notes ? <DeviceNotesCard notes={notes} /> : null}
+
+      {/* The rest of the shot-wide numbers: context, collapsed, last. */}
+      {!row.quarantined && fields.data ? <ShotContextCard fields={fields.data} /> : null}
 
       <RawHeaderDetails row={row} />
     </div>

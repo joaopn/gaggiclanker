@@ -63,6 +63,20 @@ first (`POST /api/backup`), because there is no down-migration.
 - **A field contract.** Each item of shot information answers value, unit, phase, window,
   method and source beside its sentence, and `GET /api/shots/{id}/fields` serves them in order,
   grouped by phase, with the warnings.
+- **The shot page is built by phase.** From the fields route, in this order: the facts row, the
+  warnings (one amber "phase: fault" line each with its sentence; no card when there are none,
+  and never an "all clear"), your judgement, the curves, then a table with a row per phase,
+  then the shot as a whole, then the Set and the review as before, and last the context, collapsed.
+  The phase table puts what matters first after the phase's name (how it ended, then the cup at its
+  end with its share of the version's target when the shot is filed under one, and what it gained),
+  so a phone shows it without a sideways scroll; scale and puck flow, pressure, temperature,
+  resistance and the firmware analyzer's values follow, and a profile phase the shot never reached
+  gets a row of its own, marked "not reached". The banded cards (resistance, profile compliance,
+  extraction and weight) are replaced by it: the numbers are the same numbers, and every word on
+  the page, the facts row included, is the one the chat reads (the shot time is the server's
+  rounding and the ratio uses the version's dose when you typed none). The fields route now serves
+  the ratio too. Settings, Shot information lists the new items under the warnings, which lead it
+  as they lead every rendering.
 - **The shots table's Score column is now Review**, in the same place and on by default. Its badge
   says the shot's first warning as "phase: fault" ("decline: skipped") and "+N" when there are more,
   amber, with every warning and its sentence on hover; a shot with no warning has an empty cell,

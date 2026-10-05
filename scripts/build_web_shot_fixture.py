@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -86,7 +87,28 @@ async def build() -> None:
 
     TARGET.parent.mkdir(parents=True, exist_ok=True)
     TARGET.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+    format_like_biome(TARGET)
     print(f"wrote {TARGET.relative_to(REPO)} ({len(samples)} samples)")
+
+
+def format_like_biome(path: Path) -> None:
+    """Run the project's formatter over the file, so `npm run check` accepts it as written.
+
+    The front end's checks include its fixtures, and Biome lays JSON out its own way
+    (short arrays on a line); a plain `json.dumps` differs from it on every regeneration.
+    """
+    web = REPO / "web"
+    try:
+        subprocess.run(
+            ["npx", "--no-install", "biome", "format", "--write", str(path)],
+            cwd=web,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:  # pragma: no cover - dev tooling
+        raise SystemExit(
+            f"could not format {path.name} with Biome (npm ci in web/?): {exc}"
+        ) from exc
 
 
 async def notes_for(db: Database, shot_id: int) -> dict[str, object] | None:

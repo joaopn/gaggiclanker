@@ -9,6 +9,7 @@ import {
   getProfileVersion,
   getProfileVersions,
   getShot,
+  getShotFields,
   getShotSamples,
   getShots,
   getSyncStatus,
@@ -19,6 +20,7 @@ import type {
   ProfileVersionParams,
   ProfileVersionRow,
   ShotDetailData,
+  ShotFieldsData,
   ShotListData,
   ShotListParams,
   ShotSamplesData,
@@ -88,6 +90,19 @@ export function useShot(id: number | undefined): UseQueryResult<ShotDetailData, 
     queryKey: queryKeys.shots.detail(String(id)),
     queryFn: () => getShot(id as number),
     enabled: id !== undefined && Number.isFinite(id),
+  });
+}
+
+/** A shot's fields: the warnings, the phase table and the shot-wide numbers the page is built from. */
+export function useShotFields(
+  id: number | undefined,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<ShotFieldsData, Error> {
+  const { enabled = true } = options;
+  return useQuery({
+    queryKey: queryKeys.shots.fields(String(id)),
+    queryFn: () => getShotFields(id as number),
+    enabled: enabled && id !== undefined && Number.isFinite(id),
   });
 }
 

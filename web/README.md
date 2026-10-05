@@ -98,13 +98,15 @@ src/
     shotColumns.ts    the columns, their tracks and widths, the stored choice and widths
     sync.ts           reading the sync ledger: last sync, and what it archived
   hooks/
-    useArchive.ts     shots (paged and infinite), one shot, samples, versions
+    useArchive.ts     shots (paged and infinite), one shot, its fields, samples, versions
     useVirtualRows.ts the list window with one open row, and "has this row been on screen yet"
   components/
     charts/           chartSetup (registration + palette), Shot/Compare/SetTrend
     shots/            table, filters, columns, sync button, drop zone, import results, row editor,
                       ShotRowPanel (an open row), ShotCurvesCard (the Curves box, shared with
-                      the shot page), DecisionCell, DeviceNotesCard
+                      the shot page), DecisionCell, DeviceNotesCard, ReviewBadge (the Review
+                      column's badge), ShotWarningsCard / ShotPhasesCard / ShotWideCards (the
+                      shot page's cards, built from the fields route)
 ```
 
 Four things about the shots table are worth knowing before editing it.
@@ -473,6 +475,19 @@ hand. Regenerate it after a diagnostics change:
 
 ```bash
 uv run python scripts/build_web_shot_fixture.py
+```
+
+## The shot-fields fixture
+
+`src/test/fixtures/shot-fields.json` holds `GET /api/shots/{id}/fields` documents
+the shot page's tests render: the constructed lever shot filed under a version
+with a target, the same shot as a machine with no scale and with no pressure sensor
+records it (channels zeroed and the flag cleared, so those fields are absent),
+and the exported shot in no Set. Real shots through the real pipeline, regenerated
+after a change to the catalogue, the phase metrics or the route:
+
+```bash
+uv run python scripts/build_web_shot_fields_fixture.py
 ```
 
 ## How to add a page

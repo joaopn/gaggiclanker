@@ -95,6 +95,7 @@ import type {
   SetVersionRow,
   ShotDetailData,
   ShotDetailRow,
+  ShotFieldsData,
   ShotInformation,
   ShotInfoTier,
   ShotJudgement,
@@ -480,6 +481,11 @@ export async function getShots(params: ShotListParams = {}): Promise<ShotListDat
 
 export async function getShot(id: number): Promise<ShotDetailData> {
   return fetchApi<ShotDetailData>(`/shots/${id}`);
+}
+
+/** What is known about a shot, in catalogue order: its warnings, its phases, its shot-wide numbers. */
+export async function getShotFields(id: number): Promise<ShotFieldsData> {
+  return fetchApi<ShotFieldsData>(`/shots/${id}/fields`);
 }
 
 export async function getShotSamples(id: number, downsample?: number): Promise<ShotSamplesData> {

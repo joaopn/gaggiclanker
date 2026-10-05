@@ -64,23 +64,33 @@ export function formatDate(value: string | null | undefined): string {
   return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
+/**
+ * One decimal, rounding an exact tie to the even digit as the server does
+ * (Python's `format`): 33.25 is 33.2, where `toFixed` says 33.3. The page says the
+ * shot's time from the served field and the list says it from the row's
+ * milliseconds, and the two must not disagree about the same shot.
+ *
+ * `toFixed` rounds the number's real binary value, as Python does, so it differs
+ * only on an exact tie, and the only one-decimal ties a double can hold exactly
+ * end in .25 or .75 (0.35 is not a tie: it is a hair above). Those are found with
+ * exact arithmetic (a multiple of 4 is exact) and rounded to even by hand. `Intl`'s
+ * `halfEven` is not the same thing: it rounds the shortest decimal text, so it
+ * calls 36.45 a tie where Python, and this, round it up.
+ */
+function oneDecimal(value: number): string {
+  if (Number.isInteger(value * 4) && !Number.isInteger(value * 2)) {
+    const down = Math.floor(value * 10);
+    return ((down % 2 === 0 ? down : down + 1) / 10).toFixed(1);
+  }
+  return value.toFixed(1);
+}
+
 export function formatSeconds(ms: number | null | undefined): string {
-  return ms == null ? "—" : `${(ms / 1000).toFixed(1)} s`;
+  return ms == null ? "—" : `${oneDecimal(ms / 1000)} s`;
 }
 
 export function formatGrams(value: number | null | undefined): string {
-  return value == null ? "—" : `${value.toFixed(1)} g`;
-}
-
-export function formatNumber(value: number | null | undefined, digits = 2, unit = ""): string {
-  return value == null ? "—" : `${value.toFixed(digits)}${unit ? ` ${unit}` : ""}`;
-}
-
-/** The dose is not recorded anywhere yet (beans land in a later chunk), so a
-    ratio can only be shown when somebody's device notes carry a `doseIn`. */
-export function formatRatio(doseIn: number | null | undefined, out: number | null): string | null {
-  if (doseIn == null || doseIn <= 0 || out == null) return null;
-  return `1:${(out / doseIn).toFixed(1)}`;
+  return value == null ? "—" : `${oneDecimal(value)} g`;
 }
 
 export function profileName(shot: Pick<ShotListRow, "profile_label" | "profile_name_on_device">) {

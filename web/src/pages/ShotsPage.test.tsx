@@ -2004,6 +2004,25 @@ describe("ShotsPage compare drawer", () => {
     expect(within(series).getAllByRole("listitem")).toHaveLength(4);
   });
 
+  it("says each ticked shot's warning beside it, so what differs is not only the curve", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([
+        shot({ id: 1, badge: LEVER_BADGE, warnings: LEVER_WARNINGS }),
+        shot({ id: 2, device_id: "000102" }),
+      ]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByRole("checkbox", { name: "Compare shot 000101" }));
+    await user.click(screen.getByRole("checkbox", { name: "Compare shot 000102" }));
+
+    const drawer = await screen.findByTestId("compare-drawer");
+    expect(within(drawer).getAllByTestId("review-badge")).toHaveLength(1);
+    expect(within(drawer).getByTestId("review-badge")).toHaveTextContent("ramp: fast flow +2");
+  });
+
   it("stops at three, because a fourth line makes the overlay unreadable", async () => {
     const user = setupUser();
     getShots.mockResolvedValue(

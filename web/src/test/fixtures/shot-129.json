@@ -52,7 +52,9 @@
           "diagnostics": {
             "phase_type": "preinfusion",
             "avg_flow_ml_s": 0.0,
-            "avg_pressure_bar": 0.24
+            "avg_pressure_bar": 0.24,
+            "ramp_rate_bar_s": 0.01,
+            "saturation_time_s": 4.25
           },
           "metrics": {
             "ended_by": 0,
@@ -81,9 +83,8 @@
             "phase_type": "preinfusion",
             "avg_flow_ml_s": 0.7,
             "avg_pressure_bar": 0.94,
-            "resistance_avg": 47.85,
-            "resistance_slope": 21.62,
-            "resistance_source": "machine"
+            "ramp_rate_bar_s": 0.06,
+            "saturation_time_s": 3.75
           },
           "metrics": {
             "ended_by": 0,
@@ -144,9 +145,8 @@
             "phase_type": "decline",
             "avg_flow_ml_s": 1.22,
             "avg_pressure_bar": 5.42,
-            "resistance_avg": 3.36,
-            "resistance_slope": -0.11,
-            "resistance_source": "machine"
+            "taper_rate_bar_s": -0.14,
+            "taper_smoothness": 0.24
           },
           "metrics": {
             "ended_by": 0,

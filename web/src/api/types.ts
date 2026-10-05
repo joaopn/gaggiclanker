@@ -20,6 +20,9 @@ export type ShotListData = components["schemas"]["ShotListData"];
 export type ShotListRow = components["schemas"]["ShotListItem"];
 export type ShotWarning = components["schemas"]["ShotWarningRow"];
 export type ShotDetailData = components["schemas"]["ShotDetailData"];
+export type ShotFieldsData = components["schemas"]["ShotFields"];
+export type ShotField = components["schemas"]["FieldOut"];
+export type ShotPhaseFields = components["schemas"]["PhaseFields"];
 export type DeviceShotNotes = components["schemas"]["DeviceShotNotesRow"];
 export type ShotSamplesData = components["schemas"]["ShotSamplesData"];
 export type ShotSampleRow = components["schemas"]["ShotSampleRow"];
@@ -297,149 +300,25 @@ export type ProfileVersionParams = {
   source?: "device" | "import";
 };
 
-/** The machine's own puck resistance (squared), or ours computed as pressure / flow². */
-export type ResistanceSource = "machine" | "computed";
-
 /**
  * The derived blobs on a shot detail row.
  *
- * `phases` and `diagnostics` are declared server-side as decoded JSON of
- * whatever `gaggiclanker/domain/diagnostics.py` produced, so OpenAPI can only
- * say "anything". These mirror the TypedDicts in that module at
- * `detail_level: "per_phase"`; when those change, change these. Everything is
- * optional because a shot stored before a diagnostics fix — or one whose
- * diagnostics pass failed, which does not quarantine it — has none of it.
+ * `phases` and `diagnostics` are declared server-side as decoded JSON, so
+ * OpenAPI can only say "anything"; these name the little of them the front end
+ * still reads itself, for the curve chart: the phase bands behind it and whether
+ * the machine had a pressure sensor. Every number and word the page shows about a
+ * shot comes from `GET /api/shots/{id}/fields` instead, so nothing is computed or
+ * graded here.
  */
 export type ShotPhase = {
   name: string;
   phase_number: number;
   start_time_seconds: number;
   duration_seconds: number;
-  sample_count: number;
-  avg_temperature_c: number;
-  avg_pressure_bar: number;
-  total_flow_ml: number;
-  diagnostics?: {
-    phase_type?: string;
-    avg_pressure_bar?: number;
-    avg_flow_ml_s?: number;
-    /** Only in a phase that steers by pressure (or flow) and has samples to grade. */
-    pressure_rmse_bar?: number;
-    flow_rmse_ml_s?: number;
-    resistance_avg?: number;
-    resistance_slope?: number;
-    resistance_source?: ResistanceSource;
-  };
-  /** What the phase did, in plain numbers (`domain/phase_metrics.py`); absent on a shot derived
-      before they existed, and on a log with no phase table. A key is absent when the shot
-      cannot have the value (no scale, no pressure sensor). */
-  metrics?: {
-    /** The firmware's exit-reason code; 0 is "Unknown". */
-    ended_by?: number;
-    cup_weight_end_g?: number;
-    cup_weight_gained_g?: number;
-    scale_flow_mean_g_s?: number;
-    scale_flow_peak_g_s?: number;
-    puck_flow_mean_ml_s?: number;
-    puck_flow_peak_ml_s?: number;
-    water_pumped_ml?: number;
-    pressure_peak_bar?: number;
-    pressure_end_bar?: number;
-    temperature_min_c?: number;
-    temperature_target_c?: number;
-    first_drip_s?: number;
-  };
-};
-
-/** Start, end, min, max and the time-weighted average of one firmware-analyzer stream. */
-export type FirmwareStats = { start: number; end: number; min: number; max: number; avg: number };
-
-/**
- * What the firmware's own shot analyzer shows (`domain/firmware_values.py`): the machine's
- * puck resistance `pr` (s·√bar/mL), liquid resistance `lr` (bar·s/mL), and water pumped.
- * No grade on any of it. The whole block is absent on a shot derived before it existed; each
- * stream is null when the shot has no valid reading, and the water fields unless it
- * recorded the pump's count (format v7).
- */
-export type FirmwareValues = {
-  pr: FirmwareStats | null;
-  lr: FirmwareStats | null;
-  phases: Array<{ phase_number: number; pr: FirmwareStats | null; lr: FirmwareStats | null }>;
-  water_pumped_ml: number | null;
-  water_minus_weight_g: number | null;
 };
 
 export type ShotDiagnosticsBlob = {
-  /** The firmware analyzer's values; absent on a shot derived before they were kept. */
-  firmware?: FirmwareValues;
-  summary?: {
-    temperature?: { min_c: number; max_c: number; avg_c: number; target_avg_c: number };
-    pressure?: {
-      min_bar: number;
-      max_bar: number;
-      avg_bar: number;
-      peak_time_s: number;
-    } | null;
-    flow?: {
-      total_volume_ml: number;
-      avg_flow_ml_s: number;
-      peak_flow_ml_s: number;
-      time_to_first_drip_s: number | null;
-    };
-    extraction?: {
-      preinfusion_time_s: number;
-      main_extraction_time_s: number;
-      total_time_s: number;
-    };
-  };
-  diagnostics?: {
-    has_pressure?: boolean;
-    resistance?: {
-      /** Where R came from; absent on a shot stored before the source was recorded. */
-      source?: ResistanceSource;
-      avg: number;
-      slope: number;
-    } | null;
-    extraction?: {
-      flow_avg_brew_ml_s: number;
-    };
-    weight?: {
-      rate_avg_g_s: number | null;
-      scale_connected: boolean;
-    };
-    /** Absent when the shot has no known profile to grade against. Each adherence is graded
-        only over the phases that steer by it: "not_applicable" when the profile has none,
-        "not_graded" when it has and the number could not be worked out. */
-    profile_compliance?: {
-      pressure_rmse_bar: number | null;
-      flow_rmse_ml_s: number | null;
-      max_pressure_overshoot_bar: number | null;
-      max_pressure_undershoot_bar: number | null;
-      max_flow_overshoot_ml_s: number | null;
-      max_flow_undershoot_ml_s: number | null;
-      /** Absent on a block stored before the grading was recorded. */
-      pressure_grading?: "graded" | "not_applicable" | "not_graded";
-      flow_grading?: "graded" | "not_applicable" | "not_graded";
-    } | null;
-  } | null;
-  detail_level?: string;
   has_pressure?: boolean;
-  /** The shot's own facts (`domain/phase_metrics.py`): whether the log has a phase table and
-      why each phase ended, the profile's phases it never began, the first fast-flow window. */
-  metrics?: {
-    per_phase: boolean;
-    exit_reasons: boolean;
-    profile_phases: string[] | null;
-    phases_not_reached: Array<{ phase_number: number; name: string }>;
-    fast_flow: {
-      phase_number: number | null;
-      start_s: number;
-      end_s: number;
-      mean_g_s: number;
-      pressure_min_bar: number;
-      peak_pressure_bar: number;
-    } | null;
-  };
 };
 
 /** The form fields `POST /api/import` accepts beside the files themselves. */

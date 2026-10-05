@@ -51,11 +51,20 @@ function documentWith(
       default_tier: "extended",
       example: "phase 1 · fill: ramp 0.01 bar/s\nphase 2 · soak: ramp 0.00 bar/s",
     }),
-    item({ key: "processing_note", name: "Processing note", default_tier: "excluded" }),
+    item({ key: "recipe_grind", name: "Recipe grind", default_tier: "excluded" }),
+    // First in the document and in every rendering that has any: the shot's
+    // warnings, with their sentences as lines.
+    item({
+      key: "warnings",
+      name: "Warnings",
+      example:
+        "ramp: fast flow (amber): The scale flow averaged 4.00 g/s.\ndecline: skipped (amber): The shot stopped on its volumetric target.",
+    }),
   ].map((entry) => ({ ...entry, tier: tiers[entry.key] ?? entry.default_tier }));
   const byKey = Object.fromEntries(items.map((entry) => [entry.key, entry]));
   return {
     groups: [
+      { name: "Warnings", note: null, items: [byKey.warnings] as ShotInfoItem[] },
       {
         name: "Identity and status",
         note: null,
@@ -66,7 +75,11 @@ function documentWith(
         note: "One line per phase, headed by the phase.",
         items: [byKey.phase_ramp] as ShotInfoItem[],
       },
-      { name: "Channeling", note: null, items: [byKey.processing_note] as ShotInfoItem[] },
+      {
+        name: "The version's recipe",
+        note: null,
+        items: [byKey.recipe_grind] as ShotInfoItem[],
+      },
     ],
     example_shot: { shot_id: 204, started_at: "2026-09-10T18:11:00.000Z", judged: true },
     estimates: {
@@ -109,11 +122,11 @@ describe("ShotInformationPage", () => {
   it("renders every group and item, with its meaning, tier and example", async () => {
     await renderPage();
 
-    for (const name of ["Identity and status", "Phases", "Channeling"]) {
+    for (const name of ["Warnings", "Identity and status", "Phases", "The version's recipe"]) {
       expect(screen.getByRole("heading", { name })).toBeInTheDocument();
     }
     expect(screen.getByText("One line per phase, headed by the phase.")).toBeInTheDocument();
-    for (const name of ["Shot id", "Shot time", "Rating", "Phase ramp rate", "Processing note"]) {
+    for (const name of ["Shot id", "Shot time", "Rating", "Phase ramp rate", "Recipe grind"]) {
       expect(screen.getByText(name)).toBeInTheDocument();
       expect(screen.getByText(`What ${name.toLowerCase()} means.`)).toBeInTheDocument();
     }
@@ -121,12 +134,20 @@ describe("ShotInformationPage", () => {
     // A phase item is a line per phase, kept as lines.
     expect(screen.getByText(/phase 1 · fill: ramp 0.01 bar\/s/)).toHaveClass("whitespace-pre-line");
     expect(
-      within(screen.getByTestId("item-processing_note")).getByText("not on this shot"),
+      within(screen.getByTestId("item-recipe_grind")).getByText("not on this shot"),
     ).toBeInTheDocument();
 
+    // The warnings lead the page, as they lead every rendering, one per line.
+    expect(
+      screen
+        .getByRole("list", { name: "Warnings" })
+        .compareDocumentPosition(screen.getByRole("list", { name: "Identity and status" })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.getByText(/ramp: fast flow \(amber\)/)).toHaveClass("whitespace-pre-line");
+    expect(pressed("Warnings")).toEqual(["base (default)"]);
     expect(pressed("Shot time")).toEqual(["base (default)"]);
     expect(pressed("Phase ramp rate")).toEqual(["extended (default)"]);
-    expect(pressed("Processing note")).toEqual(["excluded (default)"]);
+    expect(pressed("Recipe grind")).toEqual(["excluded (default)"]);
   });
 
   it("keeps each group a list of its items at every width, named by the group", async () => {
