@@ -39,6 +39,8 @@ def test_a_set_conversation_has_exactly_these_tools() -> None:
             "propose_insight_deletion",
             "propose_outcome",
             "propose_set_version",
+            "propose_signature",
+            "propose_signature_override",
             "record_insight",
             "search_knowledge",
         }
@@ -79,6 +81,7 @@ def test_a_conversation_designing_a_set_has_exactly_these_tools() -> None:
             "get_set",
             "list_profiles",
             "propose_initial_recipe",
+            "propose_signature",
             "search_knowledge",
         }
     )

@@ -19,6 +19,7 @@ point or drafted from notes all go through the same offline layers.
 from __future__ import annotations
 
 from collections.abc import Collection
+from contextlib import AbstractAsyncContextManager, nullcontext
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -45,10 +46,9 @@ from gaggiclanker.domain.profile_policy import (
     clamp,
     diff_stop_conditions,
 )
-from gaggiclanker.domain.signature import ValidExpectation
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
-from gaggiclanker.signatures.service import SignatureService
+from gaggiclanker.signatures.service import DraftSignature, SignatureService, split_duplicates
 
 __all__ = [
     "DraftProposals",
@@ -57,16 +57,6 @@ __all__ = [
     "profile_from_version",
     "schema_errors",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class DraftSignature:
-    """Expectations an agent proposes with a draft, already validated against the draft's own
-    phases: they are stored as **proposed** on the draft's profile version, never confirmed."""
-
-    expectations: tuple[ValidExpectation, ...]
-    reason: str
-    thread_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +207,10 @@ class DraftProposals:
             signature=signature,
         )
 
+    def _atomic(self) -> AbstractAsyncContextManager[Any]:
+        """One transaction for the writes that follow, or none when the caller holds one."""
+        return nullcontext() if self.db.in_transaction else self.db.transaction()
+
     async def store(
         self,
         *,
@@ -243,41 +237,54 @@ class DraftProposals:
         version, created = await self.profiles.ensure_version(prepared.profile, source="draft")
         if created:
             await self.signatures.carry_quietly(base_version_id, version.id)
-        row = await self.drafts.create(
-            ProfileDraftWrite(
-                base_version_id=base_version_id,
-                draft_version_id=version.id,
-                # Resolved now rather than at push time: what this draft was
-                # derived from is a fact about this moment, and by the time
-                # somebody pushes it the mirror may point somewhere else — which
-                # is precisely the staleness the push then refuses.
-                base_device_profile_id=await self.profiles.find_device_id_for_version(
-                    base_version_id
-                ),
-                parent_draft_id=parent_draft_id,
-                set_id=set_id,
-                prediction=prediction,
-                compares_to_version_id=compares_to_version_id,
-                suggest_major=suggest_major,
-                major_reason=major_reason,
-                is_new=is_new,
-                change_summary=change_summary,
-                made_by=made_by,
-                stop_condition_changes=[
-                    change.model_dump(mode="json") for change in prepared.stop_condition_changes
-                ],
-                clamp_changes=[change.model_dump(mode="json") for change in prepared.clamp_changes],
-                notes=notes,
+        # The draft and the expectations it carries are one write: a refusal or a crash between
+        # them must not leave a draft whose signature is half there.
+        async with self._atomic():
+            row = await self.drafts.create(
+                ProfileDraftWrite(
+                    base_version_id=base_version_id,
+                    draft_version_id=version.id,
+                    # Resolved now rather than at push time: what this draft was
+                    # derived from is a fact about this moment, and by the time
+                    # somebody pushes it the mirror may point somewhere else — which
+                    # is precisely the staleness the push then refuses.
+                    base_device_profile_id=await self.profiles.find_device_id_for_version(
+                        base_version_id
+                    ),
+                    parent_draft_id=parent_draft_id,
+                    set_id=set_id,
+                    prediction=prediction,
+                    compares_to_version_id=compares_to_version_id,
+                    suggest_major=suggest_major,
+                    major_reason=major_reason,
+                    is_new=is_new,
+                    change_summary=change_summary,
+                    made_by=made_by,
+                    stop_condition_changes=[
+                        change.model_dump(mode="json") for change in prepared.stop_condition_changes
+                    ],
+                    clamp_changes=[
+                        change.model_dump(mode="json") for change in prepared.clamp_changes
+                    ],
+                    notes=notes,
+                )
             )
-        )
-        if signature is not None and signature.expectations:
-            await self.signatures.add_valid(
-                version.id,
-                signature.expectations,
-                reason=signature.reason,
-                thread_id=signature.thread_id,
-                draft_id=row.id,
-            )
+            if signature is not None and signature.expectations:
+                # What the draft's version already holds (carried from its base, or sent twice)
+                # is not stored a second: "Confirm all" would otherwise check it twice.
+                fresh, duplicates = split_duplicates(
+                    signature.expectations, await self.signatures.repo.for_version(version.id)
+                )
+                signature.skipped.extend(v.sentence for _, v, _ in duplicates)
+                if fresh:
+                    await self.signatures.add_valid(
+                        version.id,
+                        fresh,
+                        reason=signature.reason,
+                        thread_id=signature.thread_id,
+                        draft_id=row.id,
+                    )
+
         return row
 
     async def base_profile(self, version_id: int) -> Profile:

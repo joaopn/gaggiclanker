@@ -8,6 +8,7 @@ answers on the Profiles and Set pages.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
@@ -39,7 +40,20 @@ from gaggiclanker.domain.signature import (
 
 log = structlog.get_logger(__name__)
 
-__all__ = ["SignatureService", "validate_all"]
+__all__ = ["DraftSignature", "SignatureService", "split_duplicates", "validate_all"]
+
+
+@dataclass(frozen=True, slots=True)
+class DraftSignature:
+    """Expectations an agent proposes with a draft, already validated against the draft's own
+    phases: they are stored as **proposed** on the draft's profile version, never confirmed."""
+
+    expectations: tuple[ValidExpectation, ...]
+    reason: str
+    thread_id: int | None = None
+    #: Filled by the draft's store: the sentences of expectations left out because the draft's
+    #: version already had them (carried from its base, or repeated), so the tool can say so.
+    skipped: list[str] = field(default_factory=list)
 
 
 def validate_all(
@@ -78,13 +92,13 @@ def _identity(
     return kind, phase_key(phase or ""), what
 
 
-def refuse_duplicates(
+def split_duplicates(
     valid: Sequence[ValidExpectation], existing: Sequence[ExpectationRow]
-) -> None:
-    """Refuse an expectation already there (waiting or confirmed) or repeated in the batch.
+) -> tuple[list[ValidExpectation], list[tuple[int, ValidExpectation, str]]]:
+    """Split an expectation list into what is new and what is already there.
 
-    Saying "it is already there" is not teaching: the proposer learns that the person has it or
-    will see it, never what a person did not confirm.
+    "There" is proposed and waiting or confirmed on the profile version, or repeated earlier in
+    the same list. Each duplicate comes back as (its 1-based number, it, why).
     """
     seen: dict[tuple[str, str, str], str] = {
         _identity(r.kind, r.phase, r.expression, r.text, r.warning_fault): (
@@ -95,17 +109,34 @@ def refuse_duplicates(
         for r in existing
         if r.status in ("proposed", "confirmed")
     }
-    problems: list[str] = []
+    fresh: list[ValidExpectation] = []
+    duplicates: list[tuple[int, ValidExpectation, str]] = []
     for number, v in enumerate(valid, start=1):
         key = _identity(v.kind, v.phase, v.expression, v.text, v.warning_fault)
         if key in seen:
-            problems.append(
-                f"expectation {number} is {seen[key]}: leave it out and propose only what is new."
-            )
+            duplicates.append((number, v, seen[key]))
         else:
             seen[key] = "repeated in this proposal"
-    if problems:
-        raise SignatureRefused(" ".join(problems))
+            fresh.append(v)
+    return fresh, duplicates
+
+
+def refuse_duplicates(
+    valid: Sequence[ValidExpectation], existing: Sequence[ExpectationRow]
+) -> None:
+    """Refuse an expectation already there (waiting or confirmed) or repeated in the batch.
+
+    Saying "it is already there" is not teaching: the proposer learns that the person has it or
+    will see it, never what a person did not confirm.
+    """
+    _, duplicates = split_duplicates(valid, existing)
+    if duplicates:
+        raise SignatureRefused(
+            " ".join(
+                f"expectation {number} is {why}: leave it out and propose only what is new."
+                for number, _, why in duplicates
+            )
+        )
 
 
 def _writes(

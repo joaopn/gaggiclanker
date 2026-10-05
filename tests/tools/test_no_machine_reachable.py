@@ -537,6 +537,8 @@ async def test_every_propose_tool_still_works_from_the_chat_context(
         "propose_insight_deletion",
         "propose_outcome",
         "propose_set_version",
+        "propose_signature",
+        "propose_signature_override",
         "record_insight",
     }
 

@@ -81,6 +81,8 @@ SET_TOOLS: frozenset[str] = frozenset(
         "propose_insight_deletion",
         "propose_outcome",
         "propose_set_version",
+        "propose_signature",
+        "propose_signature_override",
         "record_insight",
         "search_knowledge",
     }
@@ -106,6 +108,7 @@ DESIGN_TOOLS: frozenset[str] = frozenset(
         "get_set",
         "list_profiles",
         "propose_initial_recipe",
+        "propose_signature",
         "search_knowledge",
     }
 )

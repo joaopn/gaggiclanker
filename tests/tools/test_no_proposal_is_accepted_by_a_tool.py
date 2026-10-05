@@ -47,6 +47,7 @@ from gaggiclanker.db.repos.outcome_proposals import OutcomeProposalsRepository
 from gaggiclanker.db.repos.patterns import PatternProposalsRepository
 from gaggiclanker.db.repos.set_proposals import SetProposalsRepository
 from gaggiclanker.db.repos.sets import SetsRepository
+from gaggiclanker.db.repos.signatures import SignatureRepository
 from gaggiclanker.tools.registry import registry
 
 #: The decisions, and the writes that make one count. Looked for as attribute
@@ -83,6 +84,13 @@ DECIDING = (
     # A pattern proposal is approved (writes a general insight and deletes the Set insights
     # it came from) by a person's press on the Knowledge page, and nothing else.
     "approve",
+    # A signature's expectations and a Set version's override are confirmed or rejected by a
+    # person's press on the Profiles and Set pages: `answer` and `answer_override` are those
+    # buttons, `confirm_all` the one for every proposed expectation, `set_tier` the move.
+    "answer",
+    "answer_override",
+    "confirm_all",
+    "set_tier",
 )
 
 
@@ -149,6 +157,10 @@ def test_the_two_decisions_are_where_this_file_thinks_they_are() -> None:
     assert callable(InsightsRepository._take_back_in_transaction)
     assert callable(InsightDeletionsRepository.accept)
     assert callable(InsightDeletionsRepository.keep)
+    assert callable(SignatureRepository.answer)
+    assert callable(SignatureRepository.answer_override)
+    assert callable(SignatureRepository.confirm_all)
+    assert callable(SignatureRepository.set_tier)
     assert callable(PatternProposalsRepository.approve)
     assert callable(PatternProposalsRepository.dismiss)
     assert callable(approve_proposal)
