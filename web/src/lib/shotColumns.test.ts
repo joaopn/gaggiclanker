@@ -77,6 +77,41 @@ describe("loadShotColumns", () => {
     expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
   });
 
+  it("puts Review where Score was: after Yield and before Rating, on by default", () => {
+    const ids = SHOT_COLUMNS.map((column) => column.id);
+    expect(ids).not.toContain("score");
+    expect(ids.indexOf("review")).toBe(ids.indexOf("yield") + 1);
+    expect(ids.indexOf("rating")).toBe(ids.indexOf("review") + 1);
+    expect(DEFAULT_SHOT_COLUMNS).toContain("review");
+  });
+
+  it("reads a layout stored before the change, naming score, as review in the same place", () => {
+    // The default as it was, with the Score column on.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify([
+        "set",
+        "time",
+        "profile",
+        "duration",
+        "yield",
+        "score",
+        "rating",
+        "decision",
+      ]),
+    );
+    expect(loadShotColumns()).toEqual(DEFAULT_SHOT_COLUMNS);
+    // A chosen layout keeps its position and its other columns, and a layout
+    // that had Score off still has it off.
+    window.localStorage.setItem(
+      SHOT_COLUMNS_KEY,
+      JSON.stringify(["time", "score", "rating", "flags"]),
+    );
+    expect(loadShotColumns()).toEqual(["time", "review", "rating", "flags"]);
+    window.localStorage.setItem(SHOT_COLUMNS_KEY, JSON.stringify(["time", "rating", "flags"]));
+    expect(loadShotColumns()).toEqual(["time", "rating", "flags"]);
+  });
+
   it.each(PREVIOUS_DEFAULT_SHOT_COLUMNS.map((generation, index) => [index, generation]))(
     "reads a stored copy of default generation %i as the current default",
     (_index, generation) => {
@@ -233,6 +268,7 @@ describe("column sizes", () => {
       curve: 6,
       duration: 5.25,
       yield: 3,
+      review: 9,
       rating: 5.5,
       notes: 14,
       decision: 9.75,
@@ -248,6 +284,14 @@ describe("column widths", () => {
     saveShotWidths({});
     expect(window.localStorage.getItem(SHOT_WIDTHS_KEY)).toBeNull();
     expect(loadShotWidths()).toEqual({});
+  });
+
+  it("keeps the width dragged on the old Score column for Review", () => {
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5, time: 8 }));
+    expect(loadShotWidths()).toEqual({ review: 5.5, time: 8 });
+    // Review's own width wins once it has been dragged.
+    window.localStorage.setItem(SHOT_WIDTHS_KEY, JSON.stringify({ score: 5.5, review: 12 }));
+    expect(loadShotWidths()).toEqual({ review: 12 });
   });
 
   it("keeps each good width and drops each bad one on its own", () => {

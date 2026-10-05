@@ -51,8 +51,8 @@ export function invalidateSets(queryClient: QueryClient): Promise<void> {
  *
  * For the writes that change what one Set page renders and nothing a list or a
  * chart shows — recording a prediction, grading one. The Sets list carries a
- * name, a recipe and a version count; the trend chart carries scores and
- * ratings. Neither shows a prediction or an outcome, so sweeping the whole
+ * name, a recipe and a version count; the trend chart carries ratings,
+ * ratio and duration. Neither shows a prediction or an outcome, so sweeping the whole
  * prefix would refetch two queries to redraw a badge.
  */
 export function invalidateSetDetail(queryClient: QueryClient, setId: string): Promise<void> {

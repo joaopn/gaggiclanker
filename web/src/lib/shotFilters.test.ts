@@ -43,6 +43,13 @@ describe("toParams", () => {
     });
   });
 
+  it("ignores a saved ?score= and sorts by Review when asked", () => {
+    const state = fromSearchParams(new URLSearchParams("score=clean&sort=review&order=asc"));
+    expect(state).toEqual({ ...DEFAULT_FILTERS, sort: "review", order: "asc" });
+    expect(toSearchParams(state).has("score")).toBe(false);
+    expect(toParams(state, 50)).toMatchObject({ sort: "review", order: "asc" });
+  });
+
   it("sends no score bound, which the API no longer has", () => {
     expect(Object.keys(toParams(DEFAULT_FILTERS, 50))).not.toContain("min_score");
     expect(Object.keys(toParams(DEFAULT_FILTERS, 50))).not.toContain("max_score");

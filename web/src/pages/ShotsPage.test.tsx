@@ -20,6 +20,7 @@ import { renderWithQueryClient, setupUser } from "@/test/renderWithQueryClient";
 import { review } from "@/test/reviewFixtures";
 import { flavorPicks, judgement, setDetail, setRow, vocabulary } from "@/test/setsFixtures";
 import { shot129, shot129Samples, syntheticSamples } from "@/test/shotFixture";
+import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -1004,6 +1005,7 @@ describe("ShotsPage column widths", () => {
       "9rem",
       "5.25rem",
       "3rem",
+      "9rem",
       "5.5rem",
       "9.75rem",
     ]);
@@ -1627,6 +1629,98 @@ describe("ShotsPage open rows", () => {
 
     expect(await screen.findByTestId("panel-error")).toHaveTextContent("gone");
     expect(screen.getByRole("link", { name: /Open shot page/ })).toBeInTheDocument();
+  });
+});
+
+describe("ShotsPage Review column", () => {
+  it("shows the first warning and how many more, with the whole list on hover", async () => {
+    getShots.mockResolvedValue(
+      listData([shot({ id: 1, badge: LEVER_BADGE, warnings: LEVER_WARNINGS })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    const badge = screen.getByTestId("review-badge");
+    expect(badge).toHaveTextContent("ramp: fast flow +2");
+    expect(screen.getByTestId("review-badge-wrap").getAttribute("title")?.split("\n")).toHaveLength(
+      3,
+    );
+    expect(screen.getByTestId("header-review")).toHaveTextContent("Review");
+    expect(screen.queryByTestId("header-score")).not.toBeInTheDocument();
+  });
+
+  it("leaves the cell empty for a shot with no warnings", async () => {
+    getShots.mockResolvedValue(
+      listData([shot({ id: 1, badge: null, warnings: [] }), shot({ id: 2 })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+
+    expect(screen.queryByTestId("review-badge")).not.toBeInTheDocument();
+  });
+
+  it("sorts by the server's order, most severe first, and reverses on a second click", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()]));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("sort-review"));
+
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "review", order: "desc" }),
+      ),
+    );
+    expect(screen.getByTestId("header-review")).toHaveAttribute("aria-sort", "descending");
+    await user.click(screen.getByTestId("sort-review"));
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "review", order: "asc" }),
+      ),
+    );
+  });
+
+  it("pages by offset, never by cursor: the order is the server's, not the cursor's key", async () => {
+    // A cursor is only issued for started_at descending; Review's first click is
+    // descending too, so the sort alone must not choose keyset.
+    const user = setupUser();
+    getShots.mockResolvedValue(listData([shot()], { total: 200, next_cursor: "abc" }));
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("sort-review"));
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "review", order: "desc" }),
+      ),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Load more" }));
+    await waitFor(() =>
+      expect(getShots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "review", offset: 1 }),
+      ),
+    );
+    expect(getShots).not.toHaveBeenCalledWith(expect.objectContaining({ cursor: "abc" }));
+  });
+
+  it("does not open the row when the badge is clicked", async () => {
+    const user = setupUser();
+    getShots.mockResolvedValue(
+      listData([shot({ id: 1, badge: LEVER_BADGE, warnings: LEVER_WARNINGS })]),
+    );
+
+    renderWithQueryClient(<ShotsPage />);
+    await listed();
+    await user.click(screen.getByTestId("review-badge"));
+
+    expect(screen.getByRole("button", { name: "Shot 000101" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });
 

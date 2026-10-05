@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SetVersionDetail } from "@/api/types";
 import { VersionTimeline } from "@/components/sets/VersionTimeline";
@@ -15,6 +15,7 @@ import {
   version,
   vocabulary,
 } from "@/test/setsFixtures";
+import { LEVER_BADGE, LEVER_WARNINGS } from "@/test/warningFixtures";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -278,6 +279,8 @@ describe("VersionTimeline", () => {
         set_version_id: 22,
         set_badge: { set_id: 3, set_name: "Guji on the Niche", version_label: "v2" },
         synced_at: "2026-04-03T08:16:00.000Z",
+        badge: LEVER_BADGE,
+        warnings: LEVER_WARNINGS,
       },
     ];
     // The judgement's rating wins over the device's: the archive's copy is the
@@ -291,6 +294,8 @@ describe("VersionTimeline", () => {
     const shots = screen.getByTestId("version-shots");
     expect(shots).toHaveTextContent("9 Bar Espresso");
     expect(screen.getByTestId("rating-stars")).toHaveAttribute("data-rating", "5");
+    // The same badge as the shots table's Review column.
+    expect(within(shots).getByTestId("review-badge")).toHaveTextContent("ramp: fast flow +2");
   });
 
   it("reads as an experiment: prediction, labels, outcome, restores", async () => {

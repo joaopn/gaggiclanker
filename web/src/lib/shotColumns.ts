@@ -19,6 +19,7 @@ export type ShotColumnId =
   | "curve"
   | "duration"
   | "yield"
+  | "review"
   | "rating"
   | "set"
   | "notes"
@@ -96,6 +97,12 @@ export const SHOT_COLUMNS: ShotColumn[] = [
   // "36.0 g" is 2.5rem, the heading 2.3rem — and Yield does not sort, so no
   // arrow ever appears beside it.
   { id: "yield", label: "Yield", size: { rem: 3, min: 2.75, max: 8 }, narrowHidden: true },
+  // The badge says "phase: fault" and "+N" for the rest: "decline: skipped +2"
+  // is 8.6rem as measured in headless Chromium (badge padding and border
+  // included), so 9rem holds it; the sorted heading is 3.1rem. A longer phase
+  // name, or a "+12", truncates inside the column and the whole list is on
+  // hover. The minimum lets a width dragged on the old Score column stand.
+  { id: "review", label: "Review", size: { rem: 9, min: 4, max: 24 } },
   // Five 16 px star buttons and their gaps: 5.5rem is the narrowest they fit,
   // and wider than the sorted heading.
   { id: "rating", label: "Rating", size: { rem: 5.5, min: 5.5, max: 9 } },
@@ -139,6 +146,7 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
   "profile",
   "duration",
   "yield",
+  "review",
   "rating",
   "decision",
 ];
@@ -161,9 +169,9 @@ export const DEFAULT_SHOT_COLUMNS: ShotColumnId[] = [
  */
 export const PREVIOUS_DEFAULT_SHOT_COLUMNS: readonly (readonly ShotColumnId[])[] = [
   // Before Profile joined the default row.
-  ["set", "time", "duration", "yield", "rating", "decision"],
+  ["set", "time", "duration", "yield", "review", "rating", "decision"],
   // Before the column after Rating (Decision) replaced Flags.
-  ["time", "duration", "yield", "rating", "set", "flags"],
+  ["time", "duration", "yield", "review", "rating", "set", "flags"],
 ];
 
 /**
@@ -186,9 +194,11 @@ export const SHOT_COLUMNS_KEY = "shots.columns.v1";
  * Columns that were replaced, and what took their place. The Analyse button
  * gave way to Decision: somebody who chose the button gets its replacement in
  * the same place rather than losing a column without a word. Any other stored
- * choice is kept as made.
+ * choice is kept as made. The Score column gave way to Review, in the same
+ * place, so a layout that names `score` shows `review` at the same position,
+ * on or off as it was.
  */
-const REPLACED: Record<string, ShotColumnId> = { analyze: "decision" };
+const REPLACED: Record<string, ShotColumnId> = { analyze: "decision", score: "review" };
 
 const ALL_IDS = new Set<string>(SHOT_COLUMNS.map((column) => column.id));
 
@@ -288,8 +298,12 @@ export function loadShotWidths(storage: Storage | undefined = safeStorage()): Sh
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const widths: ShotWidths = {};
+    const stored = parsed as Record<string, unknown>;
     for (const column of SHOT_COLUMNS) {
-      const value = (parsed as Record<string, unknown>)[column.id];
+      // A width dragged on the old Score column is the Review column's now,
+      // unless Review has been dragged itself.
+      const own = stored[column.id];
+      const value = own === undefined && column.id === "review" ? stored.score : own;
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       widths[column.id] = clampWidth(column.size, value);
     }

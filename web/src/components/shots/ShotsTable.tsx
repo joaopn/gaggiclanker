@@ -14,6 +14,7 @@ import { CurveChooser } from "@/components/shots/CurveChooser";
 import { DecisionCell } from "@/components/shots/DecisionCell";
 import { NeedsSetMenu } from "@/components/shots/NeedsSetMenu";
 import { RatingStars } from "@/components/shots/RatingStars";
+import { ReviewBadge } from "@/components/shots/ReviewBadge";
 import { ShotRowEditor } from "@/components/shots/ShotRowEditor";
 import { ShotRowPanel } from "@/components/shots/ShotRowPanel";
 import { ShotSparkline } from "@/components/shots/ShotSparkline";
@@ -57,12 +58,13 @@ import { cn } from "@/lib/utils";
 export const ROW_HEIGHT = 52;
 
 /**
- * The four keys the server can sort on. Everything else is a plain heading:
+ * The keys the server can sort on. Everything else is a plain heading:
  * offering a header that quietly does nothing is worse than not offering it.
  */
 const SORTABLE: Partial<Record<ShotColumnId, ShotSort>> = {
   time: "started_at",
   duration: "duration",
+  review: "review",
   rating: "rating",
 };
 
@@ -667,6 +669,10 @@ function Cell({ shot, id, curves }: { shot: ShotListRow; id: ShotColumnId; curve
       return <span className="text-sm tabular-nums">{formatSeconds(shot.duration_ms)}</span>;
     case "yield":
       return <span className="text-sm tabular-nums">{formatGrams(shot.volume_g)}</span>;
+    case "review":
+      // Empty with no warnings. Lifted above the row's stretched toggle like the
+      // stars, so the hover list is reachable and a click is not the row's.
+      return <ReviewBadge badge={shot.badge} warnings={shot.warnings} className={INTERACTIVE} />;
     case "rating":
       return <RatingCell shot={shot} />;
     case "set":

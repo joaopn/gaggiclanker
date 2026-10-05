@@ -63,6 +63,14 @@ first (`POST /api/backup`), because there is no down-migration.
 - **A field contract.** Each item of shot information answers value, unit, phase, window,
   method and source beside its sentence, and `GET /api/shots/{id}/fields` serves them in order,
   grouped by phase, with the warnings.
+- **The shots table's Score column is now Review**, in the same place and on by default. Its badge
+  says the shot's first warning as "phase: fault" ("decline: skipped") and "+N" when there are more,
+  amber, with every warning and its sentence on hover; a shot with no warning has an empty cell,
+  since a missing warning is not a verdict. It sorts most severe first (then a phase's before a
+  shot-wide one, then earlier in the shot, shots with none last), and the server does the sorting.
+  A column layout or width you saved for Score carries over to Review. The score filter is gone: a
+  saved `?score=` link is ignored. The same badge is on each shot of a version in a Set's history
+  and in the compare tray.
 - **The starting point ranks on your rating alone.** The outcome term lost its execution score
   half, so past outcomes weigh only by rating and rankings can change, not only ties (a Set rated
   4 that scored 5 used to rank below one rated 3.5 that scored 10, and now ranks above it). The
