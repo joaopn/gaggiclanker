@@ -139,7 +139,7 @@ def shot_lines(facts: ShotFacts, keys: frozenset[str]) -> list[Line]:
         for item in CATALOGUE:
             if item.key not in keys or item.phase is None:
                 continue
-            value = item.phase(facts, phase)
+            value = (item.chat_phase or item.phase)(facts, phase)
             if value:
                 lines.append(Line(item.key, value, index))
     return lines
@@ -237,9 +237,10 @@ def _group_body(
 def _phase_lines(facts: ShotFacts, lines: list[Line]) -> list[str]:
     """One line per phase that has anything to say, headed by the phase.
 
-    The head is the phase-name item's value when it is in the tier
-    (``phase 3 · decline 9-4``) and the bare number otherwise, since a line of
-    per-phase numbers with no phase to hang them on is unreadable.
+    The head is always the phase's number and name (``phase 3 · decline 9-4``), whether or
+    not the phase-name item is in the tier: a line of per-phase numbers with no phase to
+    hang them on is unreadable, and an extended read alone must say which phase is which.
+    A log with no phase table has no named phase, and its line is headed by the number.
     """
     out: list[str] = []
     for index, phase in enumerate(facts.phases):
@@ -248,6 +249,11 @@ def _phase_lines(facts: ShotFacts, lines: list[Line]) -> list[str]:
         values = [_phase_value(line) for line in mine if line.key != "phase_name"]
         if not values and named is None:
             continue
+        if named is None:
+            # A rendering without the phase name item still names the phases its lines are
+            # about: an extended read alone must say which phase each line is.
+            phase_name = ITEMS["phase_name"].phase
+            named = phase_name(facts, phase) if phase_name is not None else None
         head = _phase_head(phase, named)
         out.append(f"{head}: {'; '.join(values)}" if values else head)
     return out

@@ -347,8 +347,9 @@ async def get_shot(ctx: ToolContext, args: ShotIdInput) -> ShotTextOutput:
     permission="read",
     description=(
         "One shot's extended information, without its base lines: temperature, pressure and "
-        "flow statistics, profile compliance, one line per phase (how it ended, the cup at "
-        "its end and its share of the target, the flows, the water, the pressure) and the "
+        "flow statistics, profile compliance, one line per phase (the pressure, the flows, "
+        "the water, the temperature, the adherence and the resistance; each phase's name, "
+        "duration, how it ended and its cup at the end are in base) and the "
         "curve as one table (its shape and every moment the diagnostics are about, not every "
         "sample). Ask for it when the base lines raise a question the shape of the shot "
         "would answer."

@@ -41,12 +41,8 @@ From the scale's readings: none of these exists without a scale.
 - Largest pressure undershoot [extended]: The most measured pressure fell below the target pressure, in bar. A large one throughout is a puck too loose to build pressure.
 
 [Phases]
-One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start 20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence need a pressure sensor; the scale lines (cup, scale flow) need a scale.
-- phase [extended]: The phase's number in the profile (from 0) and its name, heading the phase's line (`phase 3 · decline 9-4`).
 - type [extended]: What the engine took the phase to be. preinfusion when its name contains preinfusion, pre-infusion, pi, soak, bloom, fill, preinfuse; decline when it contains decline, taper, ramp-down, ramp down, cool down, cooldown; otherwise read from the pressure trace (a first phase under 5 bar and rising is preinfusion, a last phase falling faster than 0.3 bar per sample is decline), else brew. A description only: every phase gets the same metrics. Every phase but a preinfusion one is one of the shot's brew phases.
 - start [extended]: Seconds into the shot when the phase began.
-- duration [extended]: How long the phase ran, in seconds.
-- ended by [extended]: Why the phase ended: its duration, a pressure, flow, volumetric (weight) or pumped-water target, a safety timeout, or the person stopping the shot (Aborted). The next phase's transition reason, or the shot's final exit reason for the last phase. Unknown on a log that records none (firmware log version 5).
 - pressure [extended]: The mean pressure during the phase, in bar.
 - peak pressure [extended]: The highest pressure during the phase, in bar.
 - pressure at end [extended]: The pressure at the phase's last sample, in bar.
@@ -58,9 +54,7 @@ One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; 
 - peak flow [extended]: The highest puck flow during the phase, in ml/s.
 - scale flow [extended]: The mean of the scale's flow readings during the phase, in g/s: how fast the cup filled. Needs a scale.
 - peak scale flow [extended]: The highest scale flow reading during the phase, in g/s. Needs a scale.
-- cup at end [extended]: The weight in the cup at the phase's last sample, in g. Needs a scale.
 - cup gained [extended]: How much the cup gained during the phase, in g: its weight at the phase's end less its weight at the previous phase's end (0 g before the first). Needs a scale.
-- cup share of target [extended]: The cup's weight at the phase's end as a share of the target yield of the version the shot is filed under, in %. Worked out when the shot is read. Over 100 % before the last phase means the cup was full before the profile was done. Needs a scale and a version with a target.
 - water pumped [extended]: How much the pump's own water counter rose during the phase, in ml. Samples after the counter is reset (it is zeroed when a weight stop ends the shot) are not read. Absent where the counter was not recorded.
 - first drip [extended]: Seconds into the shot of the first sample with any puck flow, on the phase it fell in.
 - pressure adherence [extended]: Pressure adherence (as above) within a pressure-steered phase, in bar. Needs a pressure sensor and the shot's profile.

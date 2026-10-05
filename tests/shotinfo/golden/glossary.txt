@@ -40,6 +40,13 @@ How closely the machine followed the target each phase steered by, read from the
 - Pressure adherence [base]: The root-mean-square difference between measured and target pressure over the samples of pressure-steered phases, in bar; lower is closer to the profile. The machine's controller drives the pump to hold pressure, so this says how well it did, not what the puck did.
 - Flow adherence [base]: The root-mean-square difference between pump flow and target flow over the samples of flow-steered phases, in ml/s; lower is closer. The pump flow is the machine's own estimate, not a measurement: it leaves the target only when the pump runs out of power or a pressure limit takes over, so it is not a grind signal.
 
+[Phases]
+One line per phase, headed by the phase: `phase 2 · ramp: duration 5.0 s; ended by Duration; …`, with only the values that phase has. The pressure lines need a pressure sensor; the scale lines (cup, scale flow) need a scale.
+- phase [base]: The phase's number in the profile (from 0) and its name, heading the phase's line (`phase 3 · decline 9-4`).
+- duration [base]: How long the phase ran, in seconds.
+- ended by [base]: Why the phase ended: its duration, a target, a safety timeout or the person stopping the shot (Aborted). Unknown on a log that records none (firmware log version 5).
+- cup at end [base]: The weight in the cup at the phase's last sample, in g, with its share of the filed version's target yield in % when there is one (over 100 % before the last phase means the cup was full before the profile was done). Needs a scale.
+
 [Your judgement]
 - Rating [base]: The person's rating of the cup, 1 to 5 stars. Higher is better.
 - Balance [base]: The person's extraction verdict: Sour (under-extracted), Balanced or Bitter (over-extracted). It is ground truth for taste and outranks every number here.

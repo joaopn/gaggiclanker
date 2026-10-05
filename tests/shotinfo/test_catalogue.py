@@ -165,10 +165,15 @@ EXPECTED_KEYS: tuple[str, ...] = (
     "review_model",
 )
 
+#: The per-phase items a chat sees without asking: each phase's name, duration, how it
+#: ended, and the cup at its end (with its share of the target, in one item).
+PHASE_LINE_ITEMS = frozenset({"phase_name", "phase_duration", "phase_ended_by", "phase_cup_end"})
+
 #: The items a chat sees without asking.
 EXPECTED_BASE: frozenset[str] = frozenset(
     {
         "warnings",
+        *PHASE_LINE_ITEMS,
         "shot_id",
         "started_at",
         "set_version",
@@ -201,6 +206,8 @@ EXPECTED_BASE: frozenset[str] = frozenset(
 EXPECTED_EXCLUDED: frozenset[str] = frozenset(
     {
         "phase_samples",
+        # Read in the chat as part of the cup at the phase's end; served to the page apart.
+        "phase_cup_share",
         "curve_pump_flow",
         "curve_scale_flow",
         "curve_estimated_weight",
@@ -419,5 +426,5 @@ def test_nothing_a_chat_saw_without_asking_is_gone_but_the_score_and_the_channel
 
     assert ORIGIN_DEV_BASE - RETIRED_FROM_BASE <= now
     assert (ORIGIN_DEV_BASE - now) == RETIRED_FROM_BASE
-    # What base gained is the warnings, and nothing else.
-    assert now - ORIGIN_DEV_BASE == {"warnings"}
+    # What base gained is the warnings and one line per phase, and nothing else.
+    assert now - ORIGIN_DEV_BASE == {"warnings"} | PHASE_LINE_ITEMS

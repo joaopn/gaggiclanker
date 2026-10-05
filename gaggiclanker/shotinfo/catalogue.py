@@ -166,6 +166,9 @@ class Item:
     #: its sentence. Left out where the value is the sentence (a word, a date).
     shot_value: ShotValue | None = None
     phase_value: PhaseValue | None = None
+    #: What a chat reads for a phase item where it is not the sentence the fields route serves
+    #: beside the value (the cup at a phase's end, with its share of the target).
+    chat_phase: PhaseRender | None = None
 
     @property
     def kind(self) -> Literal["shot", "phase", "curve"]:
@@ -483,12 +486,23 @@ def _phase_diag_number(phase: Mapping[str, Any], key: str) -> float | None:
     return number(_phase_diag(phase).get(key))
 
 
-def _phase_name(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+def _phase_name(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+    # A log with no phase table has no phases of its own: the single one the diagnostics
+    # engine makes of it is not a phase of the shot, and must not read as one.
+    if f.metrics.get("per_phase") is False:
+        return None
     index = phase.get("phase_number")
     name = str(phase.get("name") or "").strip()
     if isinstance(index, bool) or not isinstance(index, int):
         return name or None
     return f"{index} · {name}" if name else str(index)
+
+
+def _phase_duration(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+    # As the name: with no phase table the one phase is the engine's, not the shot's.
+    if f.metrics.get("per_phase") is False:
+        return None
+    return _qty(_phase_number(phase, "duration_seconds"), 1, "s")
 
 
 def _phase_type(_: ShotFacts, phase: Mapping[str, Any]) -> str | None:
@@ -693,6 +707,19 @@ def _phase_cup_share(f: ShotFacts, phase: Mapping[str, Any]) -> float | None:
     return f.share_of_target(_phase_metric(phase, "cup_weight_end_g"))
 
 
+def _phase_cup_with_share(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
+    """The cup at a phase's end, with its share of the target yield when the shot has one.
+
+    One item for the chat (``42.2 g, 117.2 % of target``); the fields route serves the cup
+    and its share apart, since a page lays them out as two numbers.
+    """
+    text = (
+        _qty(_phase_metric(phase, "cup_weight_end_g"), 1, "g") if f.shot.scale_connected else None
+    )
+    share = _phase_cup_share(f, phase)
+    return text if text is None or share is None else f"{text}, {_fixed(share, 1)} % of target"
+
+
 def _phase_cup_share_text(f: ShotFacts, phase: Mapping[str, Any]) -> str | None:
     share = _phase_cup_share(f, phase)
     return None if share is None else f"{_fixed(share, 1)} %"
@@ -776,9 +803,9 @@ GROUP_NOTES: Mapping[str, str] = MappingProxyType(
             "no known profile."
         ),
         "Phases": (
-            "One line per phase, headed by the phase: `phase 3 · decline 9-4: type decline; start "
-            "20.0 s; …`, with only the metrics that phase has. Pressure and pressure adherence "
-            "need a pressure sensor; the scale lines (cup, scale flow) need a scale."
+            "One line per phase, headed by the phase: `phase 2 · ramp: duration 5.0 s; ended by "
+            "Duration; …`, with only the values that phase has. The pressure lines need a "
+            "pressure sensor; the scale lines (cup, scale flow) need a scale."
         ),
         REVIEW_GROUP: (
             "The newest finished review of the shot, or nothing when it was never reviewed. A "
@@ -1339,7 +1366,7 @@ def _items() -> tuple[Item, ...]:
                 "The phase's number in the profile (from 0) and its name, heading the phase's "
                 "line (`phase 3 · decline 9-4`)."
             ),
-            default_tier="extended",
+            default_tier="base",
             phase=_phase_name,
         ),
         Item(
@@ -1374,8 +1401,8 @@ def _items() -> tuple[Item, ...]:
             name="Phase duration",
             label="duration",
             meaning="How long the phase ran, in seconds.",
-            default_tier="extended",
-            phase=lambda _, p: _qty(_phase_number(p, "duration_seconds"), 1, "s"),
+            default_tier="base",
+            phase=_phase_duration,
         ),
         Item(
             key="phase_ended_by",
@@ -1383,12 +1410,11 @@ def _items() -> tuple[Item, ...]:
             name="How the phase ended",
             label="ended by",
             meaning=(
-                "Why the phase ended: its duration, a pressure, flow, volumetric (weight) or "
-                "pumped-water target, a safety timeout, or the person stopping the shot (Aborted). "
-                "The next phase's transition reason, or the shot's final exit reason for the last "
-                "phase. Unknown on a log that records none (firmware log version 5)."
+                "Why the phase ended: its duration, a target, a safety timeout or the person "
+                "stopping the shot (Aborted). Unknown on a log that records none (firmware log "
+                "version 5)."
             ),
-            default_tier="extended",
+            default_tier="base",
             phase=_phase_ended_by,
             phase_value=_phase_ended_by_value,
         ),
@@ -1505,9 +1531,14 @@ def _items() -> tuple[Item, ...]:
             group=phases,
             name="Cup weight at the phase's end",
             label="cup at end",
-            meaning=("The weight in the cup at the phase's last sample, in g. Needs a scale."),
-            default_tier="extended",
+            meaning=(
+                "The weight in the cup at the phase's last sample, in g, with its share of the "
+                "filed version's target yield in % when there is one (over 100 % before the "
+                "last phase means the cup was full before the profile was done). Needs a scale."
+            ),
+            default_tier="base",
             phase=_phase_qty("cup_weight_end_g", 1, "g", needs="scale"),
+            chat_phase=_phase_cup_with_share,
         ),
         Item(
             key="phase_cup_gained",
@@ -1528,12 +1559,11 @@ def _items() -> tuple[Item, ...]:
             name="Cup weight at the phase's end, as a share of the target yield",
             label="cup share of target",
             meaning=(
-                "The cup's weight at the phase's end as a share of the target yield of the "
-                "version the shot is filed under, in %. Worked out when the shot is read. Over "
-                "100 % before the last phase means the cup was full before the profile was done. "
+                "The cup's weight at the phase's end as a share of the filed version's target "
+                "yield, in %. A chat reads it with the cup at the phase's end, as one item. "
                 "Needs a scale and a version with a target."
             ),
-            default_tier="extended",
+            default_tier="excluded",
             phase=_phase_cup_share_text,
             phase_value=_phase_cup_share,
         ),

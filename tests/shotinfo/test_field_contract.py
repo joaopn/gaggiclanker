@@ -223,7 +223,15 @@ async def test_the_base_rendering_leads_with_the_warnings_in_order(
         "decline: skipped",
         "Shot: over target",
     ]
-    assert lines[5] == "[Identity and status]"
+    assert lines[5] == "[Phases]"
+    assert lines[6:9] == [
+        "phase 0 · preinfusion: duration 7.2 s; ended by Duration; "
+        "cup at end 0.0 g, 0.0 % of target",
+        "phase 1 · soak: duration 10.0 s; ended by Duration; cup at end 4.0 g, 11.1 % of target",
+        "phase 2 · ramp: duration 16.2 s; ended by Volumetric target; "
+        "cup at end 42.2 g, 117.2 % of target",
+    ]
+    assert lines[9] == "[Identity and status]"
 
 
 async def test_every_base_item_origin_dev_showed_is_still_rendered(

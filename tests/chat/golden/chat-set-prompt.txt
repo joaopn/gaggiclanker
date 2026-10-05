@@ -250,7 +250,8 @@ information, and the "Shots written out below:" line names their ids. For one
 of those shots `get_shot` and `list_set_shots` only repeat what is in front
 of you, and `get_shot_full` repeats it along with the extended lines, so
 `get_shot_extended` is the call that adds something (the diagnostics in
-detail, one line per phase, the whole curve), so use it on the shots a question turns on. `list_set_shots` is for the shots that are
+detail, each phase's pressure, flows, water and resistance, the whole curve), so use it
+on the shots a question turns on. `list_set_shots` is for the shots that are
 not in the record: another version's, older ones beyond those shown, or a
 search on a number. It searches every shot of this Set
 on its base information — by version, label, balance, dates or a range on a
