@@ -53,6 +53,13 @@ first (`POST /api/backup`), because there is no down-migration.
   are graded on the numbers they name. `list_set_shots` filters on resistance level and the two
   adherences as ranges where it took bands, and no longer on the score. The ratio takes the
   version's dose when you typed none.
+- **The shipped reference documents no longer describe the retired labels.** The band tables,
+  the channeling block and the band calibration notes are cut from the diagnostics reference and the
+  threshold-calibration notes (nothing else in them is reworded). An installation picks this up at
+  the next boot unless you edited those two documents (`SHOT_DIAGNOSTICS_REFERENCE` and
+  `ESPRESSO_PHYSICS_AND_THRESHOLD_CALIBRATION`); an edited copy keeps your text, so cut the same
+  passages by hand or reset it with `POST /api/knowledge/docs/{slug}/reset`, which replaces your
+  edits with the trimmed text.
 - **A field contract.** Each item of shot information answers value, unit, phase, window,
   method and source beside its sentence, and `GET /api/shots/{id}/fields` serves them in order,
   grouped by phase, with the warnings.

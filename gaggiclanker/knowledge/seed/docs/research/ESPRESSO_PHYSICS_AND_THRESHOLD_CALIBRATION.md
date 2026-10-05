@@ -1,7 +1,7 @@
 # Espresso Physics & Diagnostic Threshold Calibration
 
 Technical reference documenting the physics behind espresso diagnostic metrics and the
-evidence used to calibrate band thresholds in `analyze_shot`. This document is intended
+evidence used to calibrate thresholds in `analyze_shot`. This document is intended
 for developers maintaining or extending the diagnostic system — it is **not** general
 brewing advice for end users.
 
@@ -19,7 +19,6 @@ brewing advice for end users.
 6. [Pressure Ramp Rate](#6-pressure-ramp-rate)
 7. [Puck Resistance](#7-puck-resistance)
 8. [Sensor Resolution & Noise](#8-sensor-resolution--noise)
-9. [Threshold Calibration Decisions](#9-threshold-calibration-decisions)
 10. [Sources](#10-sources)
 
 ---
@@ -79,7 +78,7 @@ particular Gaggia model.
 ### Anomaly Thresholds
 
 Our TELEMETRY_PATTERNS.md (adapted from Charlie Hall's gaggimate-barista project)
-uses these thresholds, which informed our diagnostic bands:
+uses these thresholds:
 
 | Condition | Threshold | Classification |
 |-----------|-----------|----------------|
@@ -154,8 +153,7 @@ dp/dt = 0.05 / 0.1 = 0.5 bar/s
 ```
 
 For negative direction (pressure dip), this means −0.5 bar/s can appear from noise
-alone. This is why the NORMAL threshold must be wider than −0.5 bar/s — otherwise
-routine pump pulsation triggers false MODERATE_DROP classifications.
+alone.
 
 ### Physical Interpretation
 
@@ -165,16 +163,6 @@ routine pump pulsation triggers false MODERATE_DROP classifications.
 | −1.0 to −2.5 bar/s | Moderate pressure loss — could indicate puck erosion, valve change, or profile transition |
 | −2.5 to −5.0 bar/s | Steep drop — likely channeling event or rapid puck failure |
 | < −5.0 bar/s | Cliff — catastrophic event (channel blowout, pump shutoff, or end of phase) |
-
-### Calibration Decision
-
-Original thresholds were (−0.5 / −1.5 / −3.0), calibrated to **(−1.0 / −2.5 / −5.0)**.
-
-**Rationale:** The 100 ms unsmoothed derivatives amplify transient noise by roughly 2×
-compared to what a 200 ms or smoothed window would produce. Widening by 2× compensates
-for this without adding computational complexity. If smoothing is later added (e.g.,
-3-sample moving average), thresholds should be tightened back to approximately
-(−0.6 / −1.5 / −3.0).
 
 ---
 
@@ -203,23 +191,6 @@ aluminum boiler is particularly prone to overshoot after flushing.
 | INEI standard [1] | ± 2 °C from 88 °C | Acceptable range for certification |
 | Decent DE1 [4] | ± 1 °C | Advertised accuracy |
 
-### Calibration Decision
-
-Original thresholds: MINIMAL (<0.5) · SLIGHT (<1.5) · MODERATE (<3.0) · SIGNIFICANT.
-
-Calibrated to: **MINIMAL (<0.5) · SLIGHT (<1.0) · MODERATE (<2.0) · SIGNIFICANT**.
-
-**Rationale:** The old MODERATE boundary at 3.0 °C was above the TELEMETRY_PATTERNS.md
-anomaly threshold of > 2 °C. This meant an overshoot of 2.5 °C — which should be flagged
-as concerning — was classified as merely SLIGHT. The tightened bands align with:
-
-- The INEI ± 2 °C tolerance (anything beyond 2 °C is outside specification)
-- The TELEMETRY_PATTERNS.md > 2 °C anomaly threshold
-- Practical taste impact: 1–2 °C overshoot produces barely perceptible bitterness; > 2 °C
-  is reliably detectable by trained tasters
-
-The MINIMAL band stays at 0.5 °C (within instrument noise / PID dead-band).
-
 ---
 
 ## 6. Pressure Ramp Rate
@@ -241,24 +212,6 @@ It indicates how quickly the machine builds pressure before the main extraction 
 | 3.0–5.0 bar/s | Aggressive | Turbo-style, minimal preinfusion |
 | > 5.0 bar/s | Very aggressive | Near-instant pressurization |
 
-### Label Naming Decision
-
-Original labels: VERY_SLOW / SLOW / NORMAL / FAST / VERY_FAST.
-
-Renamed to: **GENTLE / MODERATE / BRISK / AGGRESSIVE / VERY_AGGRESSIVE**.
-
-**Rationale:** The slow/fast framing implies a quality judgment — "SLOW" sounds bad, but
-a slow preinfusion ramp is actually optimal for many styles (bloom, lever, gentle
-preinfusion). This creates confusion for an LLM interpreting the annotations:
-
-- A 0.3 bar/s ramp in a bloom preinfusion labeled "VERY_SLOW" could be misinterpreted
-  as a problem, when it's actually the intended behavior
-- "GENTLE" correctly conveys that the ramp is intentionally soft without implying a defect
-- The GENTLE → AGGRESSIVE scale describes the character of the ramp without value judgment
-
-The numeric thresholds (0.5 / 1.5 / 3.0 / 5.0) were validated against TELEMETRY_PATTERNS.md
-style-specific pressure curves and were confirmed appropriate — only the labels changed.
-
 ---
 
 ## 7. Puck Resistance
@@ -279,8 +232,7 @@ channeling.
 per sample) as
 `pr = sqrt(P) / Q_puck`, from a compensated estimate of the flow through the
 puck, so `pr²` equals `P / Q_puck²`. gaggiclanker uses `pr²` as R whenever a shot
-carries it and P / F² from the logged flow otherwise; the thresholds below apply
-to both, since they are on the same scale.
+carries it and P / F² from the logged flow otherwise.
 
 ### Noise Amplification
 
@@ -295,12 +247,6 @@ R_high = 9 / 0.4² = 56.3
 
 This 2× range from a ±0.1 mL/s flow error explains why resistance stability
 (std dev of resistance over time) can appear volatile even in well-prepared shots.
-
-### Resistance Bands
-
-The resistance bands (VERY_LOW < 0.5 · LOW < 1.5 · MODERATE < 3.0 · HIGH < 5.0 · VERY_HIGH)
-and erosion bands (INCREASING / FLAT / GRADUAL_DECLINE / MODERATE_DECLINE / STEEP_DECLINE)
-were validated against the research and found appropriate. No changes were needed.
 
 ---
 
@@ -334,78 +280,6 @@ At 10 Hz with no smoothing:
 | Temperature | ± 0.3 °C | ± 3.0 °C/s |
 | Flow | ± 0.1 mL/s | ± 1.0 mL/s² |
 
-This derivative noise floor directly informed the pressure drop rate threshold
-widening (see [Section 4](#4-pressure-drop-rate)).
-
----
-
-## 9. Threshold Calibration Decisions
-
-Summary of all threshold changes made based on this research:
-
-### Changes Applied
-
-| Metric | Band | Old Value | New Value | Reason |
-|--------|------|-----------|-----------|--------|
-| Pressure drop rate | NORMAL | ≥ −0.5 | ≥ −1.0 | Pump noise at 100 ms = ±0.5 bar/s |
-| Pressure drop rate | MODERATE_DROP | ≥ −1.5 | ≥ −2.5 | Proportional widening |
-| Pressure drop rate | STEEP_DROP | ≥ −3.0 | ≥ −5.0 | Proportional widening |
-| Temp overshoot | SLIGHT | < 1.5 | < 1.0 | TELEMETRY_PATTERNS flags > 2 °C as anomaly |
-| Temp overshoot | MODERATE | < 3.0 | < 2.0 | Align with INEI ± 2 °C tolerance |
-| Ramp rate | Labels | VERY_SLOW…VERY_FAST | GENTLE…VERY_AGGRESSIVE | Avoid negative connotation for slow ramps |
-
-### Validated (No Change Needed)
-
-| Metric | Conclusion |
-|--------|------------|
-| Pressure stability bands | Well-calibrated. 0.15 bar jitter threshold is comfortably above sensor noise. |
-| Flow stability bands | Appropriate. 0.10 mL/s threshold accounts for flow meter resolution. |
-| Resistance bands | Reasonable P/F² ranges confirmed by cross-referencing flow and pressure style data. |
-| Resistance erosion bands | Slope thresholds validated against expected puck degradation rates. |
-| Late flow trend bands | Acceleration thresholds align with channel-opening signatures in TELEMETRY_PATTERNS.md. |
-| Temperature stability bands | Std dev bands appropriate — 0.3 °C "VERY_STABLE" matches Decent's ±1 °C spec. |
-| Profile adherence bands | RMSE thresholds reasonable against ±0.5 bar pump regulation noise. |
-| Pressure overshoot bands | 0.25 / 0.5 / 1.0 bar thresholds calibrated from practitioner input: 0.5 bar can occur occasionally, >1.0 bar is highly unlikely in normal operation. No peer-reviewed source; thresholds are expert-informed. |
-| Flow deviation bands | 0.3 / 0.7 / 1.5 ml/s thresholds calibrated from expert input and practical scenario analysis. See section below. |
-| Taper smoothness bands | R² residual thresholds in reasonable range. |
-| Channeling risk scoring | Composite scoring with point system produces sensible risk tiers. |
-
-### Flow Deviation Bands — Rationale
-
-Flow deviation (overshoot/undershoot vs target) is read over the phases that steer by
-flow, against the pump flow. That flow is the pump model's estimate for the power the
-controller chose, so it departs from its target only when the pump runs out of power or
-a pressure limit takes over; it does not measure the puck. (The bands below are
-upstream's, calibrated on its own reading of flow deviation.)
-
-**Bands:** WITHIN_TOLERANCE (<0.3) · MINOR_DEVIATION (<0.7) · NOTABLE_DEVIATION (<1.5) · SEVERE_DEVIATION
-
-**Scenario analysis** (upstream's, for the *puck* flow of a profile targeting ~1 ml/s;
-it does **not** describe this app's flow adherence, which reads the pump flow, so a
-coarse or fine grind does not move that one by these amounts):
-
-| Scenario | Grind | Expected outcome | Flow deviation | Band |
-|----------|-------|-----------------|----------------|------|
-| 30 g in 30 s | Correct | On-target | ~0 ml/s | WITHIN_TOLERANCE |
-| 30 g in 25 s | Slightly coarse | ~20% fast | ~+0.2 ml/s | WITHIN_TOLERANCE |
-| 30 g in 20 s | Coarse | ~50% fast | ~+0.5 ml/s | MINOR_DEVIATION |
-| 30 g in 15 s | Very coarse | ~100% fast | ~+1.0 ml/s | NOTABLE_DEVIATION |
-| 30 g in 45 s | Slightly fine | ~50% slow | ~−0.33 ml/s | MINOR_DEVIATION |
-| 30 g in 60 s | Very fine | ~100% slow | ~−0.5 ml/s | MINOR_DEVIATION |
-| Near-choke | Way too fine | Flow near zero | ~−1.0 ml/s | NOTABLE_DEVIATION |
-
-**Threshold justification:**
-- **0.3 ml/s** — Normal puck-to-puck variation at well-dialled-in grind settings.
-  Represents ~15-30% flow deviation depending on style — a tolerance range where
-  shot timing shifts are noticeable but the extraction is still acceptable.
-- **0.7 ml/s** — Shot timing is significantly off. For a 1 ml/s target, this is a
-  70% deviation. The shot will taste noticeably different from the profile's intent.
-- **1.5 ml/s** — Something is dramatically wrong. Flow is more than doubled (overshoot)
-  or halved (undershoot). Almost certainly requires grind adjustment.
-
-**Note:** These thresholds are expert-informed, not peer-reviewed. They should be
-recalibrated as real-world shot data is collected and analysed.
-
 ---
 
 ## 10. Sources
@@ -436,8 +310,7 @@ recalibrated as real-world shot data is collected and analysed.
    anomaly thresholds adapted from Charlie Hall's gaggimate-barista project.
    `knowledge/diagnostics/TELEMETRY_PATTERNS.md`
 
-7. **SHOT_DIAGNOSTICS_REFERENCE.md** (this repository). Complete metric reference
-   for all diagnostic bands and annotations.
+7. **SHOT_DIAGNOSTICS_REFERENCE.md** (this repository). Complete metric reference.
    `knowledge/diagnostics/SHOT_DIAGNOSTICS_REFERENCE.md`
 
 ---

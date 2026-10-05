@@ -87,3 +87,38 @@ def test_no_retired_word_in_a_tool_description_builtin_or_over_mcp() -> None:
             assert not BAND_LABELS.search(text), (spec.name, BAND_LABELS.search(text))
             checked += 1
     assert checked > 20
+
+
+#: A label as the retired bands wrote it (two or more upper-case words joined by underscores:
+#: `VERY_LOW`, `MODERATE_DROP`, `WITHIN_TOLERANCE`), the single-word ones, and the retired
+#: fields. "Channeling" as a physical effect of the puck stays in the documents, so the word
+#: alone is not matched: the label (`channeling_risk`) and its readings are.
+_DOC_LABELS = re.compile(
+    r"\b[A-Z]{2,}(?:_[A-Z]+)+\b"
+    r"|\b(?:LOW|MODERATE|HIGH|EXCELLENT|GOOD|FAIR|POOR|GENTLE|BRISK|AGGRESSIVE|STABLE|VOLATILE"
+    r"|JITTERY|UNSTABLE|INCREASING|ROUGH|SMOOTH|CLIFF|MINIMAL|SLIGHT|SIGNIFICANT)\b"
+    r"|channeling_risk|primary_signal|execution score"
+)
+
+KNOWLEDGE_DOCS = ROOT / "gaggiclanker" / "knowledge" / "seed" / "docs"
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(KNOWLEDGE_DOCS.rglob("*.md")),
+    ids=lambda p: str(p.relative_to(KNOWLEDGE_DOCS)),
+)
+def test_a_shipped_knowledge_document_has_no_retired_label(path: Path) -> None:
+    found = [
+        (number, match.group(0))
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        # A file name such as TELEMETRY_PATTERNS.md is a name, not a label.
+        for match in _DOC_LABELS.finditer(re.sub(r"[A-Z]+(?:_[A-Z]+)+\.md", "", line))
+    ]
+    assert not found, found
+
+
+def test_the_trimmed_reference_documents_keep_the_channeling_effect_elsewhere() -> None:
+    """The cut removes the label, not the physics: the puck's channeling is still described."""
+    text = (KNOWLEDGE_DOCS / "COFFEE_PROCESSING.md").read_text(encoding="utf-8")
+    assert "channeling" in text.lower()

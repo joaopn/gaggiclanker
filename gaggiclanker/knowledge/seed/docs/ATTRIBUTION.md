@@ -1,8 +1,9 @@
 # Where these documents came from
 
-Every markdown file in this directory (and its subdirectories) is a **verbatim
-copy** of a knowledge file from [gaggimate-mcp](https://github.com/julianleopold/gaggimate-mcp),
-which is MIT-licensed. They are shipped here so gaggiclanker's knowledge tier 2
+Every markdown file in this directory (and its subdirectories) is a copy of a
+knowledge file from [gaggimate-mcp](https://github.com/julianleopold/gaggimate-mcp),
+which is MIT-licensed, verbatim except for gaggiclanker's own notes, which are marked
+*gaggiclanker note*, and two files that have passages cut (see "What was trimmed" below). They are shipped here so gaggiclanker's knowledge tier 2
 can be seeded from files in the repository the way the prompts and the rule tier
 are — the copy in the database is the live one, the file is the default, and
 `POST /api/knowledge/docs/{slug}/reset` puts the file's text back.
@@ -48,6 +49,21 @@ recurring names:
   measured thresholds in `research/ESPRESSO_PHYSICS_AND_THRESHOLD_CALIBRATION.md`.
 * **docs.gaggimate.eu** and the **Espresso Aficionados Discord** — machine
   behaviour, the Automatic Pro profiles (modsmthng).
+
+## What was trimmed, and why
+
+`diagnostics/SHOT_DIAGNOSTICS_REFERENCE.md` and
+`research/ESPRESSO_PHYSICS_AND_THRESHOLD_CALIBRATION.md` are the upstream text
+with passages **cut, never reworded**, because gaggiclanker no longer produces
+the labels they describe. Cut from the first: the band tables and the label
+lists with their thresholds, the annotations that were band labels, the whole
+channeling block (its indicators, descriptors, risk computation and
+annotations), and the per-phase annotation labels, with the cheat-sheet and
+strategy lines that were written in those labels. Cut from the second: the
+resistance bands, the calibration decisions and the label naming decision for
+the bands, and the section that tabulated every band's calibration and the
+channeling risk scoring. "Channeling" as a physical effect in the puck, in any
+document, is untouched: it is not a label.
 
 ## What was left out, and why
 

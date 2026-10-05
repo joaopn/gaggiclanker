@@ -102,16 +102,18 @@ async def test_a_heading_match_wins_where_bm25_has_nothing_to_say(
 ) -> None:
     """The real corpus, where the heading weight alone cannot decide.
 
-    `channeling` appears in more than half the chunks, so its inverse document
+    `extraction` appears in more than half the chunks, so its inverse document
     frequency floors at zero and every match scores within a millionth of a
     point of every other — an order decided by rounding error. The heading
-    tiebreak is what puts the section actually headed "Channeling Indicators"
-    first, and this asserts it against the shipped documents rather than against
-    a three-file fixture where BM25 still discriminates.
+    tiebreak is what puts a section actually headed with the word first, and
+    this asserts it against the shipped documents rather than against a
+    three-file fixture where BM25 still discriminates. (It used `channeling`,
+    until the section headed "Channeling Indicators" was cut from the shipped
+    diagnostics reference with the rest of the retired labels.)
     """
-    hits = await seeded_docs.search_chunks("channeling", k=5)
+    hits = await seeded_docs.search_chunks("extraction", k=5)
     assert hits
-    assert "channeling" in hits[0].chunk.heading.lower()
+    assert "extraction" in hits[0].chunk.heading.lower()
     # And the noise it is protecting against is real: the top scores tie.
     assert hits[0].score == hits[-1].score
 
@@ -119,7 +121,9 @@ async def test_a_heading_match_wins_where_bm25_has_nothing_to_say(
 async def test_common_words_still_rank_their_own_heading_first(
     seeded_docs: KnowledgeService,
 ) -> None:
-    for word in ("pressure", "bloom", "temperature"):
+    # `temperature` was here, until the diagnostics reference lost its annotation
+    # tables and the "Temperature Diagnostics" section merged into its neighbour.
+    for word in ("pressure", "bloom", "flow"):
         hits = await seeded_docs.search_chunks(word, k=3)
         assert hits, word
         assert word in hits[0].chunk.heading.lower(), (word, hits[0].chunk.heading)
