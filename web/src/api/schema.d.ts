@@ -1432,6 +1432,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile-versions/{version_id}/signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a profile version is for: its expectations and their status
+         * @description Every expectation, proposed, confirmed and rejected, with who proposed it.
+         *
+         *     A profile version nobody proposed anything for answers with no expectations (and the Sets
+         *     that use it, for a link to ask the agent), not a 404.
+         */
+        get: operations["get_signature_api_profile_versions__version_id__signature_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profile-versions/{version_id}/signature/confirm-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm every proposed expectation of a profile version in one go
+         * @description All or nothing. One that needs a new phase stays proposed. Nothing waiting is a 200 with
+         *     nothing changed, so a second press is harmless.
+         */
+        post: operations["confirm_all_api_profile_versions__version_id__signature_confirm_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles": {
         parameters: {
             query?: never;
@@ -1929,6 +1973,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sets/{set_id}/signature-overrides/{override_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a proposed override: this version's shots read the new limit
+         * @description A person's press. It applies to this Set version's shots and to no other.
+         */
+        post: operations["confirm_override_api_sets__set_id__signature_overrides__override_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/signature-overrides/{override_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a proposed override, optionally saying why */
+        post: operations["reject_override_api_sets__set_id__signature_overrides__override_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sets/{set_id}/signature-overrides/{override_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw a confirmed override: this version reads the profile's limit again
+         * @description A person's press. After it a new override can be proposed for the version.
+         */
+        post: operations["withdraw_override_api_sets__set_id__signature_overrides__override_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sets/{set_id}/trends": {
         parameters: {
             query?: never;
@@ -2026,6 +2127,26 @@ export interface paths {
          *     is the only way to remove one, and still only before the first shot.
          */
         patch: operations["set_prediction_api_sets__set_id__versions__version_id__prediction_patch"];
+        trace?: never;
+    };
+    "/api/sets/{set_id}/versions/{version_id}/signature-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The overrides proposed for one Set version's signature limits
+         * @description Waiting, confirmed and rejected, newest first, so a card read later tells the truth.
+         */
+        get: operations["list_overrides_api_sets__set_id__versions__version_id__signature_overrides_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/sets/design": {
@@ -2430,6 +2551,66 @@ export interface paths {
          *     a shot somebody filed by hand changes nothing it should not.
          */
         post: operations["post_profile_match_api_shots_profile_match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/signature-expectations/{expectation_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm one proposed expectation: from now on every shot is checked against it
+         * @description A person's press, and the only way an expectation starts to count (409 once answered).
+         */
+        post: operations["confirm_expectation_api_signature_expectations__expectation_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/signature-expectations/{expectation_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject one proposed expectation, optionally saying why
+         * @description Nothing is checked. The reason is what the proposing conversation is told.
+         */
+        post: operations["reject_expectation_api_signature_expectations__expectation_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/signature-expectations/{expectation_id}/tier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a proposed expectation to another tier
+         * @description Only while it waits: a confirmed expectation's tier is what the person confirmed.
+         */
+        post: operations["set_expectation_tier_api_signature_expectations__expectation_id__tier_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2994,6 +3175,22 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** ApiResponse[OverrideAnswer] */
+        ApiResponse_OverrideAnswer_: {
+            data?: components["schemas"]["OverrideAnswer"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[OverrideListData] */
+        ApiResponse_OverrideListData_: {
+            data?: components["schemas"]["OverrideListData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
         /** ApiResponse[PasswordData] */
         ApiResponse_PasswordData_: {
             data?: components["schemas"]["PasswordData"] | null;
@@ -3317,6 +3514,22 @@ export interface components {
         /** ApiResponse[ShotSamplesData] */
         ApiResponse_ShotSamplesData_: {
             data?: components["schemas"]["ShotSamplesData"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SignatureAnswer] */
+        ApiResponse_SignatureAnswer_: {
+            data?: components["schemas"]["SignatureAnswer"] | null;
+            error?: components["schemas"]["ApiError"] | null;
+            meta: components["schemas"]["ApiMeta"];
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiResponse[SignatureData] */
+        ApiResponse_SignatureData_: {
+            data?: components["schemas"]["SignatureData"] | null;
             error?: components["schemas"]["ApiError"] | null;
             meta: components["schemas"]["ApiMeta"];
             /** Ok */
@@ -4544,6 +4757,67 @@ export interface components {
             started_at: string | null;
         };
         /**
+         * ExpectationOut
+         * @description One expectation, with everything a card shows and who proposed it.
+         */
+        ExpectationOut: {
+            /** Answered At */
+            answered_at: string | null;
+            /** Carried From Id */
+            carried_from_id: number | null;
+            /** Carried From Version Id */
+            carried_from_version_id: number | null;
+            expression?: components["schemas"]["JsonValue"] | null;
+            /** Fault */
+            fault: string | null;
+            /** Faults */
+            faults: string[];
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "measure" | "reached" | "expects_warning" | "free_text";
+            /** Needs A New Phase */
+            needs_a_new_phase: boolean;
+            /** Phase */
+            phase: string | null;
+            /** Position */
+            position: number;
+            /** Profile Version Id */
+            profile_version_id: number;
+            /** Proposed At */
+            proposed_at: string;
+            /** Proposed By Draft Id */
+            proposed_by_draft_id: number | null;
+            /** Proposed By Thread Id */
+            proposed_by_thread_id: number | null;
+            /**
+             * Readable
+             * @default true
+             */
+            readable: boolean;
+            /** Reason */
+            reason: string;
+            /** Reject Reason */
+            reject_reason: string;
+            /** Sentence */
+            sentence: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "confirmed" | "rejected";
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "critical" | "important" | "context";
+            /** Warning */
+            warning?: string | null;
+        };
+        /**
          * FieldChange
          * @description One difference between a version and its parent.
          */
@@ -4626,6 +4900,21 @@ export interface components {
          */
         gaggiclanker__api__prompts__ReloadData: {
             [key: string]: number;
+        };
+        /**
+         * TierBody
+         * @description The tier one item moves to.
+         */
+        gaggiclanker__api__shot_info__TierBody: {
+            tier: components["schemas"]["Tier"];
+        };
+        /** TierBody */
+        gaggiclanker__api__signatures__TierBody: {
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "critical" | "important" | "context";
         };
         /** ApiResponse[ReloadData] */
         gaggiclanker__infra__envelope__ApiResponse_ReloadData___1: {
@@ -5384,6 +5673,62 @@ export interface components {
         OutcomeProposalStatus: "proposed" | "accepted" | "changed" | "dismissed" | "superseded";
         /** @enum {string} */
         OutcomeState: "no_prediction" | "open" | "held" | "partly_held" | "failed" | "inconclusive";
+        /** OverrideAnswer */
+        OverrideAnswer: {
+            override: components["schemas"]["OverrideOut"];
+        };
+        /**
+         * OverrideListData
+         * @description `GET /api/sets/{id}/versions/{id}/signature-overrides`: newest first.
+         */
+        OverrideListData: {
+            /** Items */
+            items: components["schemas"]["OverrideOut"][];
+        };
+        /**
+         * OverrideOut
+         * @description An override of one expectation's limit on one Set version, with what it overrides.
+         */
+        OverrideOut: {
+            /** Answered At */
+            answered_at: string | null;
+            compare: components["schemas"]["JsonValue"] | null;
+            /** Compare Text */
+            compare_text: string;
+            /** Expectation Id */
+            expectation_id: number;
+            /**
+             * Expectation Status
+             * @enum {string}
+             */
+            expectation_status: "proposed" | "confirmed" | "rejected";
+            /** Id */
+            id: number;
+            /** Phase */
+            phase: string | null;
+            profile_compare: components["schemas"]["JsonValue"] | null;
+            /** Profile Compare Text */
+            profile_compare_text: string;
+            /** Proposed At */
+            proposed_at: string;
+            /** Proposed By Thread Id */
+            proposed_by_thread_id: number | null;
+            /** Reason */
+            reason: string;
+            /** Reject Reason */
+            reject_reason: string;
+            /** Sentence */
+            sentence: string;
+            /** Set Version Id */
+            set_version_id: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "confirmed" | "rejected" | "withdrawn";
+            /** Tier */
+            tier: string;
+        };
         /**
          * PasswordBody
          * @description A password change. The plain values never leave this request.
@@ -6035,6 +6380,17 @@ export interface components {
             retries: number;
             /** Stopped */
             stopped: boolean;
+        };
+        /**
+         * RejectBody
+         * @description `POST .../reject`: an optional one-line reason, which the proposing conversation is told.
+         */
+        RejectBody: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** RenameBody */
         RenameBody: {
@@ -6791,6 +7147,21 @@ export interface components {
              * @default 0
              */
             shots: number;
+            /** Version Label */
+            version_label: string;
+        };
+        /** SetUsingOut */
+        SetUsingOut: {
+            /** Archived */
+            archived: boolean;
+            /** Is Current */
+            is_current: boolean;
+            /** Set Id */
+            set_id: number;
+            /** Set Name */
+            set_name: string;
+            /** Version Id */
+            version_id: number;
             /** Version Label */
             version_label: string;
         };
@@ -7621,6 +7992,37 @@ export interface components {
             severity: string;
         };
         /**
+         * SignatureAnswer
+         * @description What answering one expectation, or all that wait, did, and the signature as it now stands.
+         */
+        SignatureAnswer: {
+            /** Changed */
+            changed: components["schemas"]["ExpectationOut"][];
+            signature: components["schemas"]["SignatureData"];
+        };
+        /**
+         * SignatureData
+         * @description `GET /api/profile-versions/{id}/signature`.
+         */
+        SignatureData: {
+            /** Confirmed */
+            confirmed: number;
+            /** Expectations */
+            expectations: components["schemas"]["ExpectationOut"][];
+            /** Phases */
+            phases: string[];
+            /** Profile Label */
+            profile_label: string;
+            /** Profile Version Id */
+            profile_version_id: number;
+            /** Proposed */
+            proposed: number;
+            /** Rejected */
+            rejected: number;
+            /** Sets */
+            sets: components["schemas"]["SetUsingOut"][];
+        };
+        /**
          * SimilarOutcome
          * @description How a candidate version actually turned out, over its own shots.
          *
@@ -8064,13 +8466,6 @@ export interface components {
         };
         /** @enum {string} */
         Tier: "base" | "extended" | "excluded";
-        /**
-         * TierBody
-         * @description The tier one item moves to.
-         */
-        TierBody: {
-            tier: components["schemas"]["Tier"];
-        };
         /**
          * TokenEstimates
          * @description Approximate tokens, measured on the example shot at the current tiers.
@@ -10828,6 +11223,68 @@ export interface operations {
             };
         };
     };
+    get_signature_api_profile_versions__version_id__signature_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_all_api_profile_versions__version_id__signature_confirm_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_profiles_api_profiles_get: {
         parameters: {
             query?: {
@@ -11621,6 +12078,106 @@ export interface operations {
             };
         };
     };
+    confirm_override_api_sets__set_id__signature_overrides__override_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_override_api_sets__set_id__signature_overrides__override_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_override_api_sets__set_id__signature_overrides__override_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: number;
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_trends_api_sets__set_id__trends_get: {
         parameters: {
             query?: never;
@@ -11791,6 +12348,38 @@ export interface operations {
             };
         };
     };
+    list_overrides_api_sets__set_id__versions__version_id__signature_overrides_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                version_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_OverrideListData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     design_set_api_sets_design_post: {
         parameters: {
             query?: never;
@@ -11908,7 +12497,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TierBody"];
+                "application/json": components["schemas"]["gaggiclanker__api__shot_info__TierBody"];
             };
         };
         responses: {
@@ -12378,6 +12967,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse_ProfileMatchSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_expectation_api_signature_expectations__expectation_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expectation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_expectation_api_signature_expectations__expectation_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expectation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureAnswer_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_expectation_tier_api_signature_expectations__expectation_id__tier_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                expectation_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["gaggiclanker__api__signatures__TierBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse_SignatureAnswer_"];
                 };
             };
             /** @description Validation Error */

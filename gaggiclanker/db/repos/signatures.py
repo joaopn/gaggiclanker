@@ -39,6 +39,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from gaggiclanker.db.repos.base import utc_now
+from gaggiclanker.db.repos.version_names import label_sql
 from gaggiclanker.db.repository import Repository, row_to_dict
 from gaggiclanker.domain.metric_language import Compare, Expression
 
@@ -578,6 +579,47 @@ class SignatureRepository(Repository):
             )
             if cursor.rowcount != 1:
                 return OverrideAnswer(refused="not_waiting")
+            return OverrideAnswer(row=await self.get_override(override_id))
+
+    async def sets_using(self, profile_version_id: int) -> list[dict[str, Any]]:
+        """The Sets with a version on this profile version: where a person goes to ask for a
+        signature when it has none. The newest such version of each, live Sets first."""
+        rows = await self.db.fetch_all(
+            f"""
+            SELECT st.id AS set_id, st.name AS set_name, st.archived AS archived,
+                   sv.id AS version_id, {label_sql("sv")} AS version_label,
+                   (st.current_version_id = sv.id) AS is_current
+            FROM set_versions sv
+            JOIN sets st ON st.id = sv.set_id
+            WHERE sv.profile_version_id = ?
+              AND sv.id = (SELECT MAX(sv2.id) FROM set_versions sv2
+                            WHERE sv2.set_id = st.id AND sv2.profile_version_id = ?)
+            ORDER BY st.archived, st.id
+            """,  # noqa: S608 - the one interpolation is the version label expression, a constant
+            (profile_version_id, profile_version_id),
+        )
+        return [row_to_dict(row) for row in rows]
+
+    async def set_of_version(self, set_version_id: int) -> int | None:
+        value = await self.db.fetch_value(
+            "SELECT set_id FROM set_versions WHERE id = ?", (set_version_id,)
+        )
+        return None if value is None else int(value)
+
+    async def withdraw_override(self, override_id: int) -> OverrideAnswer:
+        """Take back a confirmed override: the Set version reads the profile's own limit again,
+        and a new override can be proposed for it. Only a confirmed one can be withdrawn."""
+        async with self._transaction():
+            row = await self.get_override(override_id)
+            if row is None:
+                return OverrideAnswer(refused="no_override")
+            cursor = await self.db.execute(
+                "UPDATE set_version_signature_overrides SET status = 'withdrawn', answered_at = ? "
+                "WHERE id = ? AND status = 'confirmed'",
+                (utc_now(), override_id),
+            )
+            if cursor.rowcount != 1:
+                return OverrideAnswer(refused="not_confirmed")
             return OverrideAnswer(row=await self.get_override(override_id))
 
     # ── raw material for evaluation ──────────────────────────────────

@@ -354,7 +354,8 @@ class SignatureService:
         )
         if stored is None:
             raise SignatureRefused(
-                "This version already has a confirmed override, which is the person's answer. "
-                "Say what you would change instead of proposing another."
+                "This version already has a confirmed override, which is the person's answer: they "
+                "can withdraw it, and then you can propose another. Say what you would change "
+                "instead of proposing one now."
             )
         return stored
