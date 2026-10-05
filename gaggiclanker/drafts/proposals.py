@@ -45,15 +45,28 @@ from gaggiclanker.domain.profile_policy import (
     clamp,
     diff_stop_conditions,
 )
+from gaggiclanker.domain.signature import ValidExpectation
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.signatures.service import SignatureService
 
 __all__ = [
     "DraftProposals",
+    "DraftSignature",
     "PreparedDraft",
     "profile_from_version",
     "schema_errors",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class DraftSignature:
+    """Expectations an agent proposes with a draft, already validated against the draft's own
+    phases: they are stored as **proposed** on the draft's profile version, never confirmed."""
+
+    expectations: tuple[ValidExpectation, ...]
+    reason: str
+    thread_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +86,7 @@ class DraftProposals:
         self.settings = settings
         self.drafts = ProfileDraftsRepository(db)
         self.profiles = ProfilesRepository(db)
+        self.signatures = SignatureService(db)
 
     async def bounds(self) -> PolicyBounds:
         """The safety bounds as currently configured.
@@ -143,6 +157,7 @@ class DraftProposals:
         new_profile_only: bool = False,
         reusable_version_ids: Collection[int] = (),
         made_by: Literal["agent", "edit"] = "agent",
+        signature: DraftSignature | None = None,
     ) -> ProfileDraftRow:
         """A draft somebody typed, or a tool proposed. Same layers, no model involved.
 
@@ -199,6 +214,7 @@ class DraftProposals:
             major_reason=major_reason,
             is_new=is_new,
             made_by=made_by,
+            signature=signature,
         )
 
     async def store(
@@ -216,10 +232,18 @@ class DraftProposals:
         major_reason: str = "",
         is_new: bool = False,
         made_by: Literal["agent", "edit"] = "agent",
+        signature: DraftSignature | None = None,
     ) -> ProfileDraftRow:
-        """Insert the draft row for a prepared document."""
-        version, _ = await self.profiles.ensure_version(prepared.profile, source="draft")
-        return await self.drafts.create(
+        """Insert the draft row for a prepared document.
+
+        A draft's version carries the base's confirmed signature as proposals (a draft carries
+        from its base), and the agent's own expectations for it, when it sent some, are stored
+        as proposed on the same version with the draft named as where they came from.
+        """
+        version, created = await self.profiles.ensure_version(prepared.profile, source="draft")
+        if created:
+            await self.signatures.carry_quietly(base_version_id, version.id)
+        row = await self.drafts.create(
             ProfileDraftWrite(
                 base_version_id=base_version_id,
                 draft_version_id=version.id,
@@ -246,6 +270,15 @@ class DraftProposals:
                 notes=notes,
             )
         )
+        if signature is not None and signature.expectations:
+            await self.signatures.add_valid(
+                version.id,
+                signature.expectations,
+                reason=signature.reason,
+                thread_id=signature.thread_id,
+                draft_id=row.id,
+            )
+        return row
 
     async def base_profile(self, version_id: int) -> Profile:
         """The stored version a draft is derived from, or a 404."""

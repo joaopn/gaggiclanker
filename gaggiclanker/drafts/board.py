@@ -107,6 +107,7 @@ from gaggiclanker.drafts.machine import (
 from gaggiclanker.drafts.proposals import DraftProposals, profile_from_version
 from gaggiclanker.infra.errors import Conflict, NotFound, Unprocessable
 from gaggiclanker.settings_service import SettingsService
+from gaggiclanker.signatures.service import SignatureService
 
 __all__ = [
     "AttachToSet",
@@ -364,6 +365,7 @@ class BoardService:
         self.attach = attach
         self.board = ProfileBoardRepository(db)
         self.profiles = ProfilesRepository(db)
+        self.signatures = SignatureService(db)
         self.sets = SetsRepository(db)
         self.drafts = ProfileDraftsRepository(db)
         self.writes = DeviceWritesRepository(db)
@@ -1159,6 +1161,14 @@ class BoardService:
         if action.reason in ("attached", "conflict") and action.row_id is not None:
             row = await self.board.get(action.row_id)
             assert row is not None  # the plan read it a moment ago
+            if action.reason == "conflict":
+                # A file new to the machine that stands under this profile's label with content
+                # the profile never had is what the machine now says the profile is: what the
+                # person confirmed about the profile is proposed again for it. An *attached*
+                # file holds content the profile has had, perhaps an older version, and carrying
+                # onto that would run the signature backwards; a profile made on the display, with
+                # no row, carries nothing.
+                await self.signatures.carry_quietly(row.current_version_id, version.id)
             await self.board.add_version(row.id, version.id, "edited_on_machine")
             # A conflict's file is stood on without being recorded as what the profile last held
             # there, so the difference stays a difference until a person chooses.

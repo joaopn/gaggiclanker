@@ -73,6 +73,7 @@ from gaggiclanker.domain.ids import pad6
 from gaggiclanker.domain.models import IndexEntry, LiveStatus
 from gaggiclanker.infra.sse import SseEvent, SseEventBus
 from gaggiclanker.infra.tasks import TaskRegistry
+from gaggiclanker.signatures.service import SignatureService
 from gaggiclanker.sync.derive import derive_shot, epoch_to_iso, index_fields, rederive_shots
 
 __all__ = [
@@ -240,6 +241,7 @@ class SyncEngine:
 
         self.machines = MachineRepository(db)
         self.profiles = ProfilesRepository(db)
+        self.signatures = SignatureService(db)
         self.shots = ShotsRepository(db)
         self.notes = NotesRepository(db)
         self.runs = SyncRepository(db)
@@ -1200,6 +1202,10 @@ class SyncEngine:
                 profile, device_json=dumps(profile.to_device())
             )
             existing = await self.profiles.get_device_profile(profile.id)
+            if created and existing is not None:
+                # An edit made on the machine is a new version of the profile the file held:
+                # what was confirmed about that one is proposed again for this one.
+                await self.signatures.carry_quietly(existing.current_version_id, version.id)
             await self.profiles.upsert_device_profile(
                 device_id=profile.id,
                 version_id=version.id,

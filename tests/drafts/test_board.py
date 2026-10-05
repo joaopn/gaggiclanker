@@ -1102,3 +1102,117 @@ async def test_adoption_takes_two_profiles_with_one_label_and_reports_the_pair(
     again = await pull(app)
     assert summary_of(again)["pushed"] == [] and summary_of(again)["removed"] == []
     assert "twin" in [str(p["id"]) for p in fake_device.profiles]
+
+
+# ── a signature follows a profile through the board ─────────────────
+
+
+async def _confirmed_signature(app: FastAPI, version_id: int) -> int:
+    """One confirmed expectation on a profile version: its first phase must begin."""
+    from gaggiclanker.db.repos.signatures import SignatureRepository
+    from gaggiclanker.domain.signature import ExpectationInput
+    from gaggiclanker.signatures.service import SignatureService
+
+    version = await ProfilesRepository(app.state.db).get_version(version_id)
+    assert version is not None
+    first = version.profile["phases"][0]["name"]  # type: ignore[index]
+    service = SignatureService(app.state.db)
+    (row,) = await service.propose(
+        version_id, [ExpectationInput(tier="critical", kind="reached", phase=first)], reason="r"
+    )
+    assert (await SignatureRepository(app.state.db).answer(row.id, confirm=True)).row is not None
+    return row.id
+
+
+async def _carried_from(app: FastAPI, version_id: int) -> list[int | None]:
+    from gaggiclanker.db.repos.signatures import SignatureRepository
+
+    rows = await SignatureRepository(app.state.db).for_version(version_id)
+    assert {r.status for r in rows} <= {"proposed"}
+    return [r.carried_from_id for r in rows]
+
+
+async def test_the_content_kept_from_a_conflict_is_proposed_the_files_signature(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider)
+    row = row_for(await get_board(client), APP_LABEL)
+    expectation = await _confirmed_signature(app, row["row"]["current_version_id"])
+    await edit_on_display(fake, row["machine"]["device_id"])
+
+    await pull(app)
+
+    listed = await ProfileBoardRepository(app.state.db).list_versions(row["row"]["id"])
+    assert listed[0].source == "edited_on_machine"
+    assert await _carried_from(app, listed[0].version_id) == [expectation]
+
+
+async def test_a_file_new_to_the_machine_under_a_profiles_label_is_proposed_its_signature(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    app, client, fake = adopted
+    person = row_for(await get_board(client), BASE_LABEL)
+    expectation = await _confirmed_signature(app, person["row"]["current_version_id"])
+    gone = person["machine"]["device_id"]
+    made = copy.deepcopy(next(p for p in fake.profiles if p["id"] == gone))
+    made.update(id="outside", temperature=float(made["temperature"]) + 2)
+    fake.profiles = [p for p in fake.profiles if p["id"] != gone] + [made]
+
+    await pull(app)  # attached as the machine's side
+    await pull(app)
+    seen = data(await client.get(f"/api/profile-board/{person['row']['id']}/conflict"))
+    kept = await resolve(client, person["row"]["id"], "machine", seen["machine"]["content_hash"])
+
+    assert kept.status_code == 200, kept.text
+    machine_version = data(kept)["current_version_id"]
+    assert machine_version != person["row"]["current_version_id"]
+    assert await _carried_from(app, machine_version) == [expectation]
+
+
+async def test_a_profile_made_on_the_display_carries_nothing(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice],
+) -> None:
+    app, client, fake = adopted
+    person = row_for(await get_board(client), BASE_LABEL)
+    await _confirmed_signature(app, person["row"]["current_version_id"])
+    made = copy.deepcopy(next(p for p in fake.profiles if p["label"] == BASE_LABEL))
+    made.update(id="display-made", label="Made on the display")
+    fake.profiles = [*fake.profiles, made]
+
+    await pull(app)
+
+    new = row_for(await get_board(client), "Made on the display")
+    assert await _carried_from(app, new["row"]["current_version_id"]) == []
+    from gaggiclanker.db.repos.signatures import SignatureRepository
+
+    rows = await SignatureRepository(app.state.db).for_version(new["row"]["current_version_id"])
+    assert rows == []
+
+
+async def test_a_file_attached_with_an_older_versions_content_is_not_carried_onto_it(
+    adopted: tuple[FastAPI, httpx.AsyncClient, FakeDevice], provider: FakeProvider
+) -> None:
+    """The signature runs forwards: it is never proposed again on a version the profile had."""
+    app, client, fake = adopted
+    await app_row(app, client, fake, provider, bar=8)
+    first = row_for(await get_board(client), APP_LABEL)
+    older_file = copy.deepcopy(next(p for p in fake.profiles if p["label"] == APP_LABEL))
+    await app_row(app, client, fake, provider, bar=7)
+    current = row_for(await get_board(client), APP_LABEL)
+    assert current["row"]["current_version_id"] != first["row"]["current_version_id"]
+    await _confirmed_signature(app, current["row"]["current_version_id"])
+    # The reset: the profile's file is gone and one with the content of its older version stands
+    # under its label.
+    older_file["id"] = "after-a-reset"
+    fake.profiles = [p for p in fake.profiles if p["id"] != current["machine"]["device_id"]] + [
+        older_file
+    ]
+
+    run = await pull(app)
+
+    assert [a["reason"] for a in summary_of(run)["adopted"]] == ["attached"]
+    row_id = current["row"]["id"]
+    versions = await ProfileBoardRepository(app.state.db).list_versions(row_id)
+    assert first["row"]["current_version_id"] in [v.version_id for v in versions]
+    assert await _carried_from(app, first["row"]["current_version_id"]) == []
